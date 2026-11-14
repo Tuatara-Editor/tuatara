@@ -8,8 +8,9 @@
 ;;;; keywords in its header written anew, and is saved at once, so that many
 ;;;; files renamed one after another need nothing more. A file open with
 ;;;; changes not saved keeps them: its header is not written, and that is said.
-;;;; The buffers visiting a file renamed follow it.
-;;;; As Denote's denote-rename-file and denote-rename-file-keywords do.
+;;;; The buffers visiting a file renamed follow it. One command renames with
+;;;; a title and keywords asked for, the other changes only the keywords of
+;;;; many files at once.
 
 (in-package #:tuatara.defaults)
 
@@ -80,6 +81,13 @@ of both ends, left as it is."
           (t (let ((plain (%text-with-header (lf-newlines text) type title keywords identifier time)))
                (crlf-newlines plain))))))
 
+(defun markdown-keyword-item-p (line style)
+  "True when LINE, of a header of STYLE, is an item of a list of keywords a
+line each under tags: (Markdown's), which the keywords written replace."
+  (and (eq style :markdown)
+       (uiop:string-prefix-p "-" (string-left-trim '(#\Space #\Tab) line))
+       (not (string= "---" (string-trim " " line)))))
+
 (defun %text-with-header (text type title keywords identifier time)
   "TEXT-WITH-HEADER for TEXT whose lines end in line feeds alone."
   (destructuring-bind (name extension style header) type
@@ -97,22 +105,18 @@ of both ends, left as it is."
                               (gap (subseq after 0 (or (position #\Space after :test-not #'char=) (length after)))))
                          ;; the prefix as the line has it, #+TITLE: kept in capitals
                          (concatenate 'string (subseq old 0 (length prefix)) (if (string= gap "") " " gap) value))))
-                (let ((header (loop with in-keywords = nil
-                                    for line in (subseq lines 0 end)
-                                    ;; a list of keywords a line each under tags: (Markdown's YAML), replaced with them
-                                    when (and in-keywords (eq style :markdown)
-                                              (uiop:string-prefix-p "-" (string-left-trim '(#\Space #\Tab) line))
-                                              (not (string= "---" (string-trim " " line))))
-                                      do (progn)
-                                    else
-                                      collect (progn
-                                                (setf in-keywords nil)
-                                                (cond ((header-prefix-p title-prefix line)
+                (let* ((in-keywords nil)
+                       (header (loop for line in (subseq lines 0 end)
+                                     for kept = (cond ((and in-keywords (markdown-keyword-item-p line style)) nil)
+                                                      ((header-prefix-p title-prefix line)
+                                                       (setf in-keywords nil)
                                                        (field title-prefix line (if quoted (format nil "~s" title) title)))
                                                       ((header-prefix-p keywords-prefix line)
                                                        (setf written-keywords t in-keywords t)
-                                                       (field keywords-prefix line (header-keywords style (name-keywords keywords))))
-                                                      (t line))))))
+                                                       (field keywords-prefix line
+                                                              (header-keywords style (name-keywords keywords))))
+                                                      (t (setf in-keywords nil) line))
+                                     when kept collect kept)))
                   ;; a header with no line for the keywords gets one after the title's
                   (unless written-keywords
                     (let ((at (position-if (lambda (line) (header-prefix-p title-prefix line)) header)))
@@ -142,31 +146,33 @@ Returns a sentence when it was not written, else NIL."
     (cond ((null type) nil)
           ((and buffer (tuatara.buffer:buffer-modified-p buffer))
            (format nil "~a has changes not saved: its header was not written" name))
-          ((> (if buffer
-                  (tuatara.buffer:buffer-size buffer)
-                  (tuatara.io:path-size path))
-              *formatted-header-limit*)
+          ((> (if buffer (tuatara.buffer:buffer-size buffer) (tuatara.io:path-size path)) *formatted-header-limit*)
            (format nil "~a is larger than ~a (*formatted-header-limit*): its header was not written"
-                   (escape-controls name) (octets-words *formatted-header-limit*)))
+                   name (octets-words *formatted-header-limit*)))
           (buffer
            (let* ((old (tuatara.buffer:buffer-string buffer))
                   (new (and (text-octets-p old (tuatara.text:rope-octets (tuatara.buffer:buffer-text buffer)))
                             (text-with-header old type title keywords identifier time))))
-             (cond ((null new) (format nil "~a is not all text, or its lines end two ways: its header was not written" name))
-                   (t (unless (string= old new)
-                        (tuatara.buffer:widen-buffer buffer)
-                        (tuatara.buffer:buffer-replace buffer 0 (tuatara.buffer:buffer-size buffer) new)
-                        (tuatara.io:save-buffer-file buffer))
-                      nil))))
+             (cond ((null new) (not-text-words name))
+                   ((string= old new) nil)
+                   (t (tuatara.buffer:widen-buffer buffer)
+                      (tuatara.buffer:buffer-replace buffer 0 (tuatara.buffer:buffer-size buffer) new)
+                      (unless (save-buffer-with-care buffer :quiet t)
+                        (format nil "~a has its header written but not saved" name))))))
           (t
            (let* ((octets (tuatara.io:file-octets path :limit *formatted-header-limit*))
                   (old (ignoring-errors-reported ("reading ~a as text" path)
                          (sb-ext:octets-to-string octets :external-format :utf-8)))
                   (new (and old (text-octets-p old octets) (text-with-header old type title keywords identifier time))))
-             (cond ((null new) (format nil "~a is not all text, or its lines end two ways: its header was not written" name))
+             (cond ((null new) (not-text-words name))
                    (t (unless (string= old new)
                         (tuatara.io:write-text-file (tuatara.text:string->rope new) path))
                       nil)))))))
+
+(defun not-text-words (name)
+  "Why the header of the file NAME was not written: it is not all text, or
+its lines end two ways."
+  (format nil "~a is not all text, or its lines end two ways: its header was not written" name))
 
 (defun text-octets-p (text octets)
   "True when TEXT is all of OCTETS, as UTF-8, octet for octet: nothing in them

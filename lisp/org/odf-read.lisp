@@ -1,4 +1,4 @@
-;;;; lisp/org/odf-read.lisp --- OpenDocument text, spreadsheets and presentations read as Org text, by Tuatara itself, safely.
+;;;; lisp/org/odf-read.lisp --- OpenDocument text, sheets and presentations read as Org text, by Tuatara, safely.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; An OpenDocument file, LibreOffice's own (.odt, .ott; .ods, .ots; .odp,
@@ -87,7 +87,7 @@ numbered levels."
                                           (xml-children style)))
                         :list (loop for level in (xml-children style)
                                     when (equal (xml-name level) "text:list-level-style-number")
-                                      collect (whole-number (xml-attribute level "text:level")))))))))
+                                    collect (whole-number (xml-attribute level "text:level")))))))))
     styles))
 
 (defun odf-style (name key &optional (depth 0))
@@ -155,10 +155,10 @@ comment and when, and what is not text left out."
 heading, or what it holds) to OUT as Org text."
   (dolist (child (xml-children node))
     (if (stringp child)
-        (let ((text (docx-read-escaped (cl-ppcre:regex-replace-all "\\s+" child " "))))
-          (write-string text out)
+        (let ((words (cl-ppcre:regex-replace-all "\\s+" child " ")))
+          (write-string (org-escaped-words words) out)
           (when *odf-open-changes*
-            (loop for c across text do (vector-push-extend c *odf-inserted*))))
+            (loop for c across words do (vector-push-extend c *odf-inserted*))))
         (let ((name (xml-name child)))
           (cond
             ((string= name "text:s") (odf-write-spaces child out))
@@ -172,14 +172,16 @@ heading, or what it holds) to OUT as Org text."
              (let ((words (with-output-to-string (s) (odf-read-inline child s)))
                    (target (xml-attribute child "xlink:href")))
                (if (and target (plusp (length words)) (not (uiop:string-prefix-p "#" target)))
-                   (write-string (office-link-text target words) out)
+                   (write-string (org-safe-link target words) out)
                    (write-string words out))))
             ((string= name "text:note")
              ;; footnotes 1, 2...; endnotes e1, e2...; comments c1, c2...
              (let ((label (if (equal (xml-attribute child "text:note-class") "endnote")
                               (format nil "e~d" (incf (getf *odf-note-numbers* :endnote 0)))
                               (format nil "~d" (incf (getf *odf-note-numbers* :footnote 0))))))
-               (push (cons label (org-safe-line (string-trim " " (odf-plain-text (or (xml-child child "text:note-body") child))))) *odf-notes*)
+               (push (cons label (org-safe-line (string-trim " " (odf-plain-text (or (xml-child child "text:note-body")
+                                                                                     child)))))
+                     *odf-notes*)
                (format out "[fn:~a]" label)))
             ((string= name "office:annotation")
              (let* ((label (format nil "c~d" (incf (getf *odf-note-numbers* :comment 0))))
@@ -245,9 +247,10 @@ NUMBERS counts the items of each level."
           (dolist (part (xml-children item))
             (let ((name (xml-name part)))
               (cond ((member name '("text:p" "text:h") :test #'equal)
-                     (let ((text (docx-read-guarded (string-trim '(#\Space #\Tab) (with-output-to-string (s) (odf-read-inline part s))))))
+                     (let ((text (org-guarded-lines (string-trim '(#\Space #\Tab) (with-output-to-string (s)
+                                                                                    (odf-read-inline part s))))))
                        (office-spend (length text))
-                       (format out "~a~a ~a~%" (make-string (* 2 (min 8 level)) :initial-element #\Space)
+                       (format out "~a~a ~a~%" (spaces (* 2 (min 8 level)))
                                (cond ((not first) " ")
                                      (numbered (format nil "~d." (incf (gethash level numbers 0))))
                                      (t "-"))
@@ -269,13 +272,16 @@ within reason, each cell taken from the room left for the note
                           (let ((cells (loop for cell in (xml-children child)
                                              when (member (xml-name cell) '("table:table-cell"
                                                                             "table:covered-table-cell") :test #'equal)
-                                               append (make-list (max 1 (min 64 (or (docx-read-number cell "table:number-columns-repeated") 1)))
-                                                                 :initial-element cell))))
+                                             append (make-list (max 1 (min 64 (or (docx-read-number
+                                                                                   cell "table:number-columns-repeated")
+                                                                                  1)))
+                                                               :initial-element cell))))
                             (dotimes (i (max 1 (min 64 (or (docx-read-number child "table:number-rows-repeated") 1))))
                               ;; each cell given takes room in the note, an empty one too
                               (office-spend (length cells))
                               (push cells rows))))
-                         ((member name '("table:table-header-rows" "table:table-rows" "table:table-row-group") :test #'equal)
+                         ((member name '("table:table-header-rows" "table:table-rows" "table:table-row-group")
+                                  :test #'equal)
                           (walk child)))))))
       (walk table))
     (nreverse rows)))
@@ -285,11 +291,20 @@ within reason, each cell taken from the room left for the note
 table, a rule under its first row, each cell no longer than
 *OFFICE-VALUE-LENGTH-LIMIT* characters; a cell joined over others written with
 empty ones after it, so that the columns line up."
-  (let ((rows (loop for row in (odf-table-rows table)
-                    collect (loop for cell in row
-                                  collect (if (equal (xml-name cell) "table:covered-table-cell")
-                                              ""
-                                              (org-safe-line (office-value (string-trim " " (odf-plain-text cell)))))))))
+  (let* ((texts (make-hash-table :test 'eq))
+         (rows (loop for row in (odf-table-rows table)
+                     collect (loop for cell in row
+                                   collect (if (equal (xml-name cell) "table:covered-table-cell")
+                                               ""
+                                               ;; a cell repeated is read once
+                                               (let ((text (or (gethash cell texts)
+                                                               (setf (gethash cell texts)
+                                                                     (org-safe-line
+                                                                      (tuatara.display:shorten-string
+                                                                       (string-trim " " (odf-plain-text cell))
+                                                                       *office-value-length-limit*))))))
+                                                 (office-spend (length text))
+                                                 text))))))
     ;; rows of empty cells at the end, as a table's last rows repeated often are, left out
     (loop while (and rows (every (lambda (c) (zerop (length c))) (car (last rows)))) do (setf rows (butlast rows)))
     (when rows (org-write-table-rows rows out))))
@@ -314,7 +329,7 @@ text, a section, a cell, a header) to OUT as Org text."
                (office-spend (length text))
                (cond ((zerop (length text)))
                      ((odf-style-named-p style "Title") (format out "#+title: ~a~%~%" (org-safe-line text :escaped t)))
-                     (t (format out "~a~%~%" (docx-read-guarded text))))))
+                     (t (format out "~a~%~%" (org-guarded-lines text))))))
             ((string= name "text:list") (odf-read-list child out 0 nil numbers) (terpri out))
             ((string= name "table:table") (odf-read-table child out))
             ((member name '("draw:frame" "draw:custom-shape" "draw:g") :test #'string=)
@@ -334,10 +349,13 @@ text, a section, a cell, a header) to OUT as Org text."
 (defun odf-read-changes (text)
   "The tracked changes of TEXT, an OpenDocument text's body (*ODF-CHANGES*):
 by id, each a plist of :KIND, :AUTHOR, :DATE and, for a deletion, the :TEXT
-deleted."
+deleted, its words as they are, as much of them as a value shows
+\(OFFICE-VALUE); none once the note has no room left."
   (let ((changes (make-hash-table :test 'equal)))
     (dolist (region (xml-find-all text "text:changed-region"))
-      (let ((change (find-if (lambda (c) (member (xml-name c) '("text:insertion" "text:deletion" "text:format-change") :test #'equal))
+      (let ((change (find-if (lambda (c)
+                               (member (xml-name c) '("text:insertion" "text:deletion" "text:format-change")
+                                       :test #'equal))
                              (xml-children region))))
         (when change
           (let ((info (xml-child change "office:change-info")))
@@ -348,13 +366,14 @@ deleted."
                         :author (let ((a (and info (xml-child info "dc:creator")))) (and a (xml-all-text a)))
                         :date (let ((d (and info (xml-child info "dc:date")))) (and d (xml-all-text d)))
                         :text (if (equal (xml-name change) "text:deletion")
-                                  (docx-read-escaped (string-trim " " (odf-plain-text change)))
+                                  (handler-case (office-value (string-trim " " (odf-plain-text change)))
+                                    (office-note-full () ""))
                                   "")))))))
     changes))
 
-(defun odf-read-headers ()
-  "The section giving the text of the headers and footers of the file's page
-styles, or an empty string."
+(defun odf-read-headers (out)
+  "Write to OUT the section giving the text of the headers and footers of the
+file's page styles, when they have any."
   (let ((styles (docx-reading-part "styles.xml")) (lines '()))
     (dolist (page (and styles (xml-find-all styles "style:master-page")))
       (dolist (part (xml-children page))
@@ -368,9 +387,10 @@ styles, or an empty string."
             (let ((text (org-safe-line (string-trim " " (odf-plain-text part)))))
               (when (plusp (length text))
                 (push (format nil "- ~a (page style ~a) :: ~a~%" kind
-                              (org-safe-line (or (xml-attribute page "style:display-name") (xml-attribute page "style:name") "")) text)
+                              (org-safe-line (or (xml-attribute page "style:display-name")
+                                                 (xml-attribute page "style:name") "")) text)
                       lines)))))))
-    (if lines (format nil "* Headers and footers~%~{~a~}~%" (nreverse lines)) "")))
+    (when lines (format out "* Headers and footers~%~{~a~}~%" (nreverse lines)))))
 
 ;;; Spreadsheets
 
@@ -396,74 +416,75 @@ written when it shows none."
 does, its formulas as written, its cells' comments after them, at most
 LEFT cells, each no longer than *OFFICE-VALUE-LENGTH-LIMIT* characters. Returns
 how many cells were written."
-  (let ((hidden-columns (make-array 16385 :element-type 'bit :initial-element 0))
-        (rows '()) (formulas '()) (comments '()) (count 0) (cut nil) (row-at 0) (column-at 0))
-    (labels ((walk-columns (node)
+  (let ((cells (make-sheet-cells left))
+        (cell-values (make-hash-table :test 'eq))
+        (row-at 0) (column-at 0))
+    (labels ((shortened (text) (tuatara.display:shorten-string text *office-value-length-limit*))
+             (value-of (cell)
+               ;; a cell repeated, or in a row repeated, is read once
+               (or (gethash cell cell-values)
+                   (setf (gethash cell cell-values) (shortened (odf-cell-value cell)))))
+             (repeat (node attribute most)
+               (max 1 (min most (or (docx-read-number node attribute) 1))))
+             (hidden-p (node)
+               (member (xml-attribute node "table:visibility") '("collapse" "filter") :test #'equal))
+             (walk-columns (node)
                (dolist (child (xml-children node))
                  (let ((name (xml-name child)))
                    (cond ((equal name "table:table-column")
-                          (let ((repeat (max 1 (min 16384 (or (docx-read-number child "table:number-columns-repeated") 1)))))
-                            (when (member (xml-attribute child "table:visibility") '("collapse" "filter") :test #'equal)
-                              (fill hidden-columns 1 :start (min 16384 (1+ column-at)) :end (min 16385 (+ 1 column-at repeat))))
+                          (let ((repeat (repeat child "table:number-columns-repeated" *sheet-most-columns*)))
+                            (when (hidden-p child)
+                              (sheet-hide-columns cells (1+ column-at) (+ column-at repeat)))
                             (incf column-at repeat)))
-                         ((member name '("table:table-columns" "table:table-header-columns" "table:table-column-group") :test #'equal)
+                         ((member name '("table:table-columns" "table:table-header-columns" "table:table-column-group")
+                                  :test #'equal)
                           (walk-columns child))))))
-             (row-cells (row number)
-               (let ((column 0) (cells '()))
-                 (dolist (cell (xml-children row) (nreverse cells))
+             (comment-of (note)
+               (let ((author (xml-child note "dc:creator")))
+                 (format nil "~@[by ~a: ~]~a"
+                         (and author (org-safe-line (shortened (xml-all-text author))))
+                         (org-safe-line (shortened (string-trim " " (odf-plain-text note)))))))
+             (row-cells (row number hidden)
+               (let ((column 0))
+                 (dolist (cell (xml-children row))
                    (when (member (xml-name cell) '("table:table-cell" "table:covered-table-cell") :test #'equal)
-                     (let* ((repeat (max 1 (min 16384 (or (docx-read-number cell "table:number-columns-repeated") 1))))
-                            (value (tuatara.display:shorten-string (odf-cell-value cell) *office-value-length-limit*))
+                     (let* ((repeat (repeat cell "table:number-columns-repeated" *sheet-most-columns*))
+                            (value (value-of cell))
                             (formula (let ((f (xml-attribute cell "table:formula")))
-                                       (and f (org-safe-line (tuatara.display:shorten-string f *office-value-length-limit*)))))
-                            (note (first (xml-local-children cell "annotation"))))
+                                       (and f (org-safe-line (shortened f)))))
+                            (note (first (xml-local-children cell "annotation")))
+                            (comment (and note (comment-of note))))
                        (if (or (plusp (length value)) formula note)
                            (dotimes (i repeat)
                              (incf column)
-                             (when (> column 16384) (return))
-                             (when (>= count left)
-                               (setf cut (format nil "~a~d" (sheet-column-letters column) number))
-                               (return-from row-cells (nreverse cells)))
-                             (let ((place (format nil "~a~d" (sheet-column-letters column) number)))
-                               (incf count)
-                               (office-spend (+ (length value) (length formula)))
-                               (push (cons column value) cells)
-                               (when formula (push (cons place formula) formulas))
-                               (when (and note (zerop i))
-                                 (push (cons place (format nil "~@[by ~a: ~]~a"
-                                                           (let ((a (xml-child note "dc:creator")))
-                                                             (and a (org-safe-line (office-value (xml-all-text a)))))
-                                                           (org-safe-line (office-value (string-trim " " (odf-plain-text note))))))
-                                       comments))))
+                             (when (or (> column *sheet-most-columns*)
+                                       (not (sheet-add-cell cells number column value
+                                                            :hidden hidden :formula formula
+                                                            :comment (and (zerop i) comment))))
+                               (return-from row-cells)))
                            (incf column repeat)))))))
              (walk-rows (node)
                (dolist (child (xml-children node))
-                 (when cut (return))
+                 (when (sheet-cells-cut cells) (return))
                  (let ((name (xml-name child)))
                    (cond ((equal name "table:table-row")
-                          (let ((repeat (max 1 (min 1048576 (or (docx-read-number child "table:number-rows-repeated") 1))))
-                                (hidden (member (xml-attribute child "table:visibility") '("collapse" "filter") :test #'equal)))
+                          (let ((repeat (repeat child "table:number-rows-repeated" *sheet-most-rows*)))
                             (if (notany (lambda (c)
                                           (and (consp c)
-                                               (or (plusp (length (odf-cell-value c))) (xml-attribute c "table:formula")
+                                               (or (plusp (length (value-of c))) (xml-attribute c "table:formula")
                                                    (xml-local-children c "annotation"))))
                                         (xml-children child))
                                 (incf row-at repeat)
                                 (dotimes (i repeat)
                                   (incf row-at)
-                                  (when (or cut (> row-at 1048576)) (return))
-                                  (let ((cells (row-cells child row-at)))
-                                    (when cells (push (list row-at hidden cells) rows)))))))
-                         ((member name '("table:table-header-rows" "table:table-rows" "table:table-row-group") :test #'equal)
+                                  (when (or (sheet-cells-cut cells) (> row-at *sheet-most-rows*)) (return))
+                                  (row-cells child row-at (hidden-p child))))))
+                         ((member name '("table:table-header-rows" "table:table-rows" "table:table-row-group")
+                                  :test #'equal)
                           (walk-rows child)))))))
       (walk-columns table)
       (walk-rows table))
-    (sheet-write-rows (nreverse rows) (lambda (c) (= 1 (bit hidden-columns (min c 16384)))) (nreverse formulas) cut out)
-    (when comments
-      (format out "Comments on its cells:~%")
-      (loop for (place . text) in (nreverse comments) do (format out "- ~a :: ~a~%" place text))
-      (terpri out))
-    count))
+    (sheet-cells-write cells out)))
 
 ;;; Presentations
 
@@ -477,10 +498,7 @@ out (it is the heading). With NOTES, the notes' text alone."
              (dolist (child (xml-children node))
                (let ((name (xml-name child)))
                  (cond ((member name '("text:p" "text:h") :test #'equal)
-                        (let ((text (string-trim " " (odf-plain-text child))))
-                          (office-spend (length text))
-                          (when (plusp (length text))
-                            (format out "~a- ~a~%" (make-string (* 2 (min 8 level)) :initial-element #\Space) (org-safe-line text)))))
+                        (slide-item out (string-trim " " (odf-plain-text child)) level))
                        ((equal name "text:list")
                         (dolist (item (xml-children child))
                           (when (member (xml-name item) '("text:list-item" "text:list-header") :test #'equal)
@@ -498,7 +516,9 @@ out (it is the heading). With NOTES, the notes' text alone."
                       (odf-read-table (xml-child n "table:table") out))
                      ((and (equal name "draw:frame") (xml-child n "draw:image") (not (xml-child n "draw:text-box")))
                       (format out "- ~a~%" (odf-frame-words n)))
-                     ((member name '("draw:text-box" "draw:custom-shape" "draw:rect" "draw:ellipse" "draw:polygon" "draw:path")
+                     ((member name
+                              '("draw:text-box" "draw:custom-shape" "draw:rect" "draw:ellipse" "draw:polygon"
+                                "draw:path")
                               :test #'equal)
                       (paragraphs n 0))
                      (t (mapc #'walk (xml-children n)))))))
@@ -514,23 +534,20 @@ text, its speaker notes under a heading of their own."
   (let ((title (format nil "~{~a~^ ~}"
                        (loop for frame in (xml-children page)
                              when (and (consp frame) (equal (xml-attribute frame "presentation:class") "title"))
-                               collect (string-trim " " (odf-plain-text frame)))))
+                             collect (string-trim " " (odf-plain-text frame)))))
         (notes (xml-child page "presentation:notes")))
-    (format out "* Slide ~d~:[~; (hidden)~]~@[: ~a~]~%" number (odf-style (xml-attribute page "draw:style-name") :hidden)
-            (and (plusp (length title)) (org-safe-line title)))
-    (odf-slide-write-shapes page out)
-    (when notes
-      (let ((text (with-output-to-string (s) (odf-slide-write-shapes page s :notes notes))))
-        (when (plusp (length text))
-          (format out "** Speaker notes~%~a" text))))
-    (terpri out)))
+    (slide-write-as-note out (format nil "Slide ~d" number) (odf-style (xml-attribute page "draw:style-name") :hidden)
+                         title
+                         (lambda (s) (odf-slide-write-shapes page s))
+                         (and notes (lambda (s) (odf-slide-write-shapes page s :notes notes))))))
 
 ;;; The note
 
 (defun odf-outside-links ()
   "The addresses outside it the file being read links to (links, linked
-pictures, sections, sheets and data), sorted, each once; none is followed."
-  (let ((outside '()))
+pictures, sections, sheets and data), sorted, each once, as many as
+OFFICE-LISTED gives; none is followed."
+  (let ((outside (make-hash-table :test 'equal)))
     (dolist (part '("content.xml" "styles.xml"))
       (let ((tree (docx-reading-part part)))
         (labels ((walk (n)
@@ -540,10 +557,10 @@ pictures, sections, sheets and data), sorted, each once; none is followed."
                          (when (and href (plusp (length href)) (not (uiop:string-prefix-p "#" href))
                                     (or (cl-ppcre:scan "^[A-Za-z][A-Za-z0-9+.-]*:" href) (uiop:string-prefix-p "/" href)
                                         (uiop:string-prefix-p "../" href)))
-                           (pushnew href outside :test #'string=))))
+                           (setf (gethash href outside) t))))
                      (mapc #'walk (xml-children n)))))
           (when tree (walk tree)))))
-    (sort outside #'string<)))
+    (office-listed outside)))
 
 (defun odf-minutes (duration)
   "DURATION, as the file writes a time spent (PT1H30M), in minutes, or NIL."
@@ -576,8 +593,9 @@ macros, embedded files or links outside it."
                     (and meta (format nil "~{~a~^, ~}" (mapcar (lambda (k) (string-trim " " (xml-all-text k)))
                                                                (xml-find-all meta "meta:keyword")))))
               (cons "Description" (meta "dc:description")) (cons "Program" (meta "meta:generator"))
-              (cons "Template" (and template (format nil "~a (not fetched)" (or (xml-attribute template "xlink:title")
-                                                                                (xml-attribute template "xlink:href") ""))))
+              (cons "Template" (and template (format nil "~a (not fetched)"
+                                                     (or (xml-attribute template "xlink:title")
+                                                         (xml-attribute template "xlink:href") ""))))
               (cons "Editing time"
                     (let ((m (odf-minutes (meta "meta:editing-duration")))) (and m (format nil "~d minutes" m))))
               (cons "Pages, words" (and statistic
@@ -595,12 +613,15 @@ macros, embedded files or links outside it."
                               names)
        :events (remove-duplicates (loop for part in '("content.xml" "styles.xml")
                                         for tree = (docx-reading-part part)
-                                        append (and tree (mapcar (lambda (e) (or (xml-attribute e "xlink:href") (xml-attribute e "script:macro-name") ""))
-                                                                 (xml-find-all tree "script:event-listener"))))
+                                        append (and tree
+                                                    (mapcar (lambda (e)
+                                                              (or (xml-attribute e "xlink:href")
+                                                                  (xml-attribute e "script:macro-name") ""))
+                                                            (xml-find-all tree "script:event-listener"))))
                                   :test #'string=)
        :embedded (sort (remove-duplicates (loop for n in names
                                                 when (and (uiop:string-prefix-p "Object " n) (find #\/ n))
-                                                  collect (subseq n 0 (position #\/ n)))
+                                                collect (subseq n 0 (position #\/ n)))
                                           :test #'string=)
                        #'string<)
        :outside (odf-outside-links)
@@ -621,6 +642,7 @@ macros, embedded files or links outside it."
          (*odf-inserted* (make-array 0 :element-type 'character :adjustable t :fill-pointer 0))
          (*odf-notes* '())
          (*odf-note-numbers* '())
+         (headers (office-written-text #'odf-read-headers))
          (text (office-written-text (lambda (s) (odf-read-block body s))))
          (notes (reverse *odf-notes*)))
     ;; each insertion's text, as much of it as a value shows
@@ -634,13 +656,14 @@ macros, embedded files or links outside it."
              *odf-changes*)
     (concatenate 'string
                  (odf-read-about path "document")
-                 (odf-read-headers)
+                 headers
                  (office-text-section text)
                  (let ((changes '()))
                    (maphash (lambda (id change) (push (cons id change) changes)) *odf-changes*)
-                   (office-changes-section (loop for (nil . change) in (sort changes #'string< :key #'car)
-                                                 collect (destructuring-bind (&key kind author date text &allow-other-keys) change
-                                                           (list kind author date text)))))
+                   (office-changes-section
+                    (loop for (nil . change) in (sort changes #'string< :key #'car)
+                          collect (destructuring-bind (&key kind author date text &allow-other-keys) change
+                                    (list kind author date text)))))
                  (if notes
                      (format nil
                              "* Footnotes~%~{[fn:~a] ~a~%~}"
@@ -656,13 +679,14 @@ macros, embedded files or links outside it."
                 (lambda (s)
                   (loop for sheet in sheets
                         for n from 1
-                        do (format s "* Sheet ~d: ~a~:[~; (hidden)~]~%" n (org-safe-line (or (xml-attribute sheet "table:name") ""))
+                        do (format s "* Sheet ~d: ~a~:[~; (hidden)~]~%" n
+                                   (org-safe-line (or (xml-attribute sheet "table:name") ""))
                                    (odf-style (xml-attribute sheet "table:style-name") :hidden))
-                           (if (<= left 0)
-                               (format s
-                                       "Not read: the first ~:d cells were (*sheet-most-cells*).~%~%"
-                                       *sheet-most-cells*)
-                               (decf left (odf-sheet-write sheet s left))))))))
+                        (if (<= left 0)
+                            (format s
+                                    "Not read: the first ~:d cells were (*sheet-most-cells*).~%~%"
+                                    *sheet-most-cells*)
+                            (decf left (odf-sheet-write sheet s left))))))))
     (concatenate 'string
                  (odf-read-about path "spreadsheet"
                                  (with-output-to-string (s)
@@ -681,7 +705,8 @@ macros, embedded files or links outside it."
                                                                             (xml-attribute c "office:dde-application")
                                                                             (xml-attribute c "office:name") "unnamed")))
                                                        sources))))
-                                   (format s "- Values :: as last saved with the file; no formula is worked out here~%")))
+                                   (format s "- Values :: as last saved with the file; ~
+no formula is worked out here~%")))
                  text)))
 
 (defun odf-read-presentation-note (path body)
@@ -690,7 +715,8 @@ macros, embedded files or links outside it."
          (hidden (count-if (lambda (page) (odf-style (xml-attribute page "draw:style-name") :hidden)) pages)))
     (concatenate 'string
                  (odf-read-about path "presentation"
-                                 (format nil "- Slides :: ~d~@[, ~d hidden~]~%" (length pages) (and (plusp hidden) hidden)))
+                                 (format nil "- Slides :: ~d~@[, ~d hidden~]~%" (length pages)
+                                         (and (plusp hidden) hidden)))
                  (office-written-text
                   (lambda (s) (loop for page in pages for n from 1 do (odf-slide-write page n s)))))))
 

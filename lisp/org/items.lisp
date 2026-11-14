@@ -14,29 +14,37 @@
 (defun org-checkbox-position (item text)
   "Where ITEM's checkbox is in TEXT: the [ of its [ ], [X] or [-] after the bullet, or NIL."
   (when (org-property item :checkbox)
-    (let* ((begin (org-node-begin item))
-           (line-end (string-line-end text begin))
-           (after-bullet (+ begin
-                            (- (length (org-line-at text begin))
-                               (length (string-left-trim " 	" (org-line-at text begin))))
-                            (length (string-right-trim " " (org-property item :bullet))))))
-      (search "[" text :start2 after-bullet :end2 line-end))))
+    (search "[" text :start2 (org-item-after-bullet item text) :end2 (string-line-end text (org-node-begin item)))))
 
 (defun org-child-items (node)
   "The items right under NODE: those of the plain lists it holds (an item's own, or a section's)."
   (loop for child in (org-node-children node)
         when (eq (org-node-type child) 'plain-list)
-          append (remove 'item (org-node-children child) :key #'org-node-type :test-not #'eq)
+          append (org-children-of child 'item)
         when (member (org-node-type child) '(section))
           append (org-child-items child)))
 
-(defun org-checkbox-counts (node)
-  "How many of the items right under NODE have a checkbox, and how many of those are ticked, as two values."
+(defun org-checkbox-state (item &optional states)
+  "The state of ITEM's checkbox, OFF, TRANS or ON, or NIL when it has none: as
+STATES gives it when it names ITEM, else as the parse read it. STATES is an
+alist from items to the states an edit about to be made gives them."
+  (let ((given (assoc item states :test #'eq)))
+    (if given (cdr given) (org-property item :checkbox))))
+
+(defun org-checkbox-text (state)
+  "The checkbox STATE, OFF, TRANS or ON, as written: [ ], [-] or [X]."
+  (ecase state (off "[ ]") (trans "[-]") (on "[X]")))
+
+(defun org-checkbox-counts (node &optional states)
+  "How many of the items right under NODE have a checkbox, and how many of
+those are ticked, as two values; the states of STATES (ORG-CHECKBOX-STATE)
+counted in place of those read."
   (let ((boxes 0) (ticked 0))
     (dolist (item (org-child-items node))
-      (when (org-property item :checkbox)
-        (incf boxes)
-        (when (eq (org-property item :checkbox) 'on) (incf ticked))))
+      (let ((state (org-checkbox-state item states)))
+        (when state
+          (incf boxes)
+          (when (eq state 'on) (incf ticked)))))
     (values boxes ticked)))
 
 (defun org-headline-todo-counts (headline)
@@ -49,17 +57,18 @@ many of those are done, as two values."
         (when (eq (org-property child :todo-type) 'done) (incf done))))
     (values total done)))
 
-(defun org-cookie-counts (node &optional (added 0))
+(defun org-cookie-counts (node &optional (added 0) states)
   "What the statistics cookies of NODE, an item or a headline, count, as two
 values, all and done: a headline's TODO sub-headlines, or with none, the
 checkboxes right under it; an item's checkboxes right under it. ADDED
-checkboxes, not ticked, are counted beside those, for an item being put in."
+checkboxes, not ticked, are counted beside those, for an item being put in,
+and the checkboxes of STATES as it gives them (ORG-CHECKBOX-STATE)."
   (multiple-value-bind (total done) (if (eq (org-node-type node) 'headline)
                                         (org-headline-todo-counts node)
                                         (values 0 0))
     (if (plusp total)
         (values total done)
-        (multiple-value-bind (boxes ticked) (org-checkbox-counts node)
+        (multiple-value-bind (boxes ticked) (org-checkbox-counts node states)
           (values (+ boxes added) ticked)))))
 
 (defun org-cookie-text (value done total)
@@ -77,8 +86,9 @@ first line), TEXT the text NODE was parsed of."
                      (let ((paragraph (first (org-node-children node))))
                        (and paragraph (eq (org-node-type paragraph) 'paragraph)
                             (let ((line-end (string-line-end text (org-node-begin node))))
-                              (remove-if (lambda (o) (>= (org-node-begin o) line-end)) (org-node-children paragraph))))))))
-    (remove 'statistics-cookie objects :key #'org-node-type :test-not #'eq)))
+                              (remove-if (lambda (o) (>= (org-node-begin o) line-end))
+                                         (org-node-children paragraph))))))))
+    (remove-if-not (lambda (object) (eq (org-node-type object) 'statistics-cookie)) objects)))
 
 (defun org-cookie-edits (node text done total)
   "The edits, as a list of (FROM TO NEW), that make the statistics cookies of
@@ -89,27 +99,29 @@ NODE, of TEXT, say DONE of TOTAL, leaving out those that already do."
         unless (string= new value)
           collect (list (org-node-begin cookie) (+ (org-node-begin cookie) (length value)) new)))
 
-(defun org-statistics-edits (text start &key (added 0))
+(defun org-statistics-edits (text start &key (added 0) states)
   "The edits that bring up to date the cookies and checkbox of START, a node
 of TEXT, and of each item and the headline above it, as a list of (FROM TO
 NEW), characters of TEXT. ADDED checkboxes, not ticked, are counted under the
-first item or headline met, for items being put in there."
+first item or headline met, for items being put in there. STATES, from items
+to the checkbox states the edit gives them (ORG-CHECKBOX-STATE), are counted
+in place of those read; with the states these edits give the items above, they
+are the second value. The parse is left as it was read."
   (let ((edits '()))
     (loop for node = start then (org-node-parent node)
           while node
           when (member (org-node-type node) '(item headline))
-            do (multiple-value-bind (boxes ticked) (org-cookie-counts node added)
+            do (multiple-value-bind (boxes ticked) (org-cookie-counts node added states)
                  (setf added 0)
                  (setf edits (append (org-cookie-edits node text ticked boxes) edits))
-                 (when (and (plusp boxes) (eq (org-node-type node) 'item) (org-property node :checkbox))
+                 (when (and (plusp boxes) (eq (org-node-type node) 'item) (org-checkbox-state node states))
                    (let ((at (org-checkbox-position node text)))
                      (when at
-                       (let ((state (cond ((= ticked boxes) "[X]") ((zerop ticked) "[ ]") (t "[-]"))))
-                         (setf (getf (org-node-properties node) :checkbox)
-                               (cond ((string= state "[X]") 'on) ((string= state "[ ]") 'off) (t 'trans)))
-                         (push (list at (+ at 3) state) edits))))))
+                       (let ((state (cond ((= ticked boxes) 'on) ((zerop ticked) 'off) (t 'trans))))
+                         (push (cons node state) states)
+                         (push (list at (+ at 3) (org-checkbox-text state)) edits))))))
           when (eq (org-node-type node) 'headline) do (loop-finish))
-    edits))
+    (values edits states)))
 
 (defun org-apply-edits (parse edits &key point final)
   "Make EDITS, (FROM TO NEW) of the characters of PARSE (an ORG-PARSE), in its
@@ -142,13 +154,12 @@ carriage return and a newline, each newline put in goes in as both."
   "Set ITEM's checkbox, of PARSE (an ORG-PARSE, POSITION point as a character
 of it), to STATE, OFF, TRANS or ON, written [ ], [-] or [X], and bring up to
 date what depends on it: the counts above, the boxes of the items around and
-the task's keyword."
+the task's keyword. The parse is left as it was read, the edit refused or not."
   (let* ((text (org-parse-text parse))
          (at (org-checkbox-position item text))
          (old (org-property item :checkbox)))
-    (setf (getf (org-node-properties item) :checkbox) state)
-    (org-apply-edits parse (append (list (list at (+ at 3) (ecase state (off "[ ]") (trans "[-]") (on "[X]"))))
-                                   (org-statistics-edits text (org-node-parent item))
+    (org-apply-edits parse (append (list (list at (+ at 3) (org-checkbox-text state)))
+                                   (org-statistics-edits text (org-node-parent item) :states (list (cons item state)))
                                    (org-checkbox-state-edits item text old state))
                      :point position)
     (org-summary-todo (org-parse-buffer parse) (org-node-begin item))))
@@ -194,7 +205,7 @@ cycle it (*ORG-RETURN-CYCLES-CHECKBOXES*); true when it did."
 row (org-table-insert-hline); in a list, the next kind of bullet
 \(org-cycle-list-bullet)."
   (let ((line (buffer-line-head (current-buffer) (point))))
-    (if (uiop:string-prefix-p "|" (string-left-trim " 	" line))
+    (if (uiop:string-prefix-p "|" (string-left-trim *org-blanks* line))
         (org-table-insert-hline)
         (org-cycle-list-bullet))))
 
@@ -213,9 +224,8 @@ list at the margin. Checkboxes and text are kept."
            (list (and item (org-node-parent item))))
       (if (null list)
           (message "Not in a list")
-          (let* ((items (remove 'item (org-node-children list) :key #'org-node-type :test-not #'eq))
-                 (first-line (org-line-at text (org-node-begin (first items))))
-                 (indent (- (length first-line) (length (string-left-trim " 	" first-line))))
+          (let* ((items (org-children-of list 'item))
+                 (indent (org-leading-blanks text (org-node-begin (first items))))
                  (current (string-trim " " (org-property (first items) :bullet)))
                  (kind (cond ((cl-ppcre:scan "^[0-9]+\\.$" current) "1.")
                              ((cl-ppcre:scan "^[0-9]+\\)$" current) "1)")
@@ -229,8 +239,7 @@ list at the margin. Checkboxes and text are kept."
              (loop for each in items
                    for n from 1
                    for begin = (org-node-begin each)
-                   for line = (org-line-at text begin)
-                   for at = (+ begin (- (length line) (length (string-left-trim " 	" line))))
+                   for at = (+ begin (org-leading-blanks text begin))
                    for old = (string-trim " " (org-property each :bullet))
                    collect (list at (+ at (length old))
                                  (if (digit-char-p (char next 0)) (format nil "~d~a" n (subseq next 1)) next)))
@@ -330,7 +339,8 @@ pairs writes, make it the checkbox [ ] and a space, point after them
            (before (tuatara.buffer:buffer-string buffer :start line :end p))
            (after (tuatara.buffer:buffer-string buffer :start p :end end)))
       (when (and (member after '("" "]") :test #'string=)
-                 (cl-ppcre:scan "^(?:[ \\t]*(?:[-+]|[0-9]+[.)])|[ \\t]+\\*) \\[$" before))
+                 (cl-ppcre:scan (load-time-value (cl-ppcre:create-scanner (format nil "^~a \\[$" *org-bullet-re*)))
+                                before))
         (tuatara.buffer:buffer-edit buffer
                                     (vector (tuatara.text:make-edit (1- p) end (tuatara.text:string-octets "[ ] ")))
                                     :group t)
@@ -380,23 +390,15 @@ its text as it is now is at hand, never waited for."
                                       (let ((at (org-checkbox-position item text)))
                                         (and at (< at to) (> (+ at 3) from))))
                                     (org-killed-checkbox-items (org-parse-tree parse) from to)))
-             (kept (loop for item in killed
-                         append (loop for node = item then (org-node-parent node)
-                                      while node
-                                      collect (cons node (org-property node :checkbox))
-                                      until (eq (org-node-type node) 'headline))))
+             (states (mapcar (lambda (item) (cons item nil)) killed))
              (edits '()))
-        ;; the counts are made as if the items were gone, the parse left as it was after
-        (unwind-protect
-             (progn
-               (dolist (item killed)
-                 (setf (getf (org-node-properties item) :checkbox) nil))
-               ;; those under first, so that an item above counts the boxes below it as they will be
-               (dolist (item (reverse killed))
-                 (dolist (edit (org-statistics-edits text (org-node-parent item)))
-                   (unless (and (< (first edit) to) (> (second edit) from))
-                     (setf edits (cons edit (remove (first edit) edits :key #'first)))))))
-          (loop for (node . checkbox) in kept
-                do (setf (getf (org-node-properties node) :checkbox) checkbox)))
+        ;; the counts made as if the items were gone; those under first, so that an item above counts the boxes
+        ;; below it as they will be
+        (dolist (item (reverse killed))
+          (multiple-value-bind (found after) (org-statistics-edits text (org-node-parent item) :states states)
+            (setf states after)
+            (dolist (edit found)
+              (unless (and (< (first edit) to) (> (second edit) from))
+                (setf edits (cons edit (remove (first edit) edits :key #'first)))))))
         (when edits
           (lambda () (org-apply-edits parse edits)))))))

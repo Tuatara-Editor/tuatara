@@ -3,6 +3,7 @@
 
 (defpackage #:tuatara.frontend
   (:use #:cl #:alexandria)
+  (:import-from #:tuatara.runtime #:define-record)
   (:documentation "The narrow interface every painter implements: frames and windows, input,
 glyph-row output, cursor shape, clipboard, pictures, keys and their
 descriptions.")
@@ -21,7 +22,8 @@ descriptions.")
            #:frontend-desktop-style #:frontend-settings-changed #:frontend-renderers #:frontend-measure-drawing
            #:padding-sides
            #:frontend-begin-frame #:frontend-put-row #:frontend-set-cursor #:frontend-end-frame
-           #:image #:image-p #:make-image #:image-width #:image-height #:image-fit-scale #:image-channels #:image-pixels #:image-id
+           #:image #:image-p #:make-image #:image-width #:image-height #:image-fit-scale #:image-channels #:image-pixels
+           #:image-id
            #:frontend-primary-selection #:frontend-set-primary-selection #:frontend-images-p #:frontend-reorders-text-p
            #:frontend-cell-pixels #:frontend-put-image #:*kitty-marks* #:+kitty-placeholder+
            ;; frontends in another process (src/frontend/remote.lisp)
@@ -33,7 +35,7 @@ descriptions.")
            #:request-frames #:request-wait #:request-stop #:request-joins #:request-far #:frontend-focused-p
            #:request-agent #:request-notes #:greet-editor #:*starting-seconds* #:take-window-asked-for
            #:windows-not-come #:*window-seconds* #:+most-client-windows+ #:remote-pid #:decline-window
-           #:remote-client-painted
+           #:remote-client-painted #:+protocol+
            ;; the octets of a connection, sent and received, for other protocols over a local socket too
            #:outbox #:make-outbox #:outbox-octets #:outbox-fill #:outbox-room #:put-octets #:send-outbox
            #:inbox #:make-inbox #:inbox-octets #:inbox-start #:inbox-at #:inbox-stop #:inbox-deadline #:fill-inbox

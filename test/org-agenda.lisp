@@ -611,7 +611,7 @@ help left out."
                    (multiple-value-bind (f editor) (run-keys keys :width 100 :height 60)
                      (values (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "tasks.org")) f editor))))
           ;; t: the next keyword; the agenda shows it at once, the file's buffer holds it, not yet saved
-          (multiple-value-bind (text f) (after "SPC a a t T")
+          (multiple-value-bind (text f) (after "SPC a a t C-c C-t")
             (true (search (format nil "* NEXT Plain scheduled~%") text))
             (true (tuatara.frontend.fake:fake-frame-showing f "NEXT Plain scheduled"))
             (true (tuatara.buffer:buffer-modified-p (tuatara.buffer:find-buffer "tasks.org")))
@@ -619,11 +619,11 @@ help left out."
           ;; saved at once when the file is one of *org-agenda-autosave-files* (t: every agenda file); others not
           (dolist (setting (list t (list (namestring tasks)) (list (concatenate 'string (namestring dir) "*.org"))))
             (let ((tuatara-user:*org-agenda-autosave-files* setting))
-              (after "SPC a a t T")
+              (after "SPC a a t C-c C-t")
               (false (tuatara.buffer:buffer-modified-p (tuatara.buffer:find-buffer "tasks.org")))
               (true (search "NEXT Plain scheduled" (alexandria:read-file-into-string tasks)))))
           (let ((tuatara-user:*org-agenda-autosave-files* (list (namestring notes))))
-            (after "SPC a a t T")
+            (after "SPC a a t C-c C-t")
             (true (tuatara.buffer:buffer-modified-p (tuatara.buffer:find-buffer "tasks.org")))
             (false (search "NEXT Plain scheduled" (alexandria:read-file-into-string tasks))))
           ;; clocking out from the agenda saves the clock's file too
@@ -652,7 +652,7 @@ help left out."
                  f (lambda ()
                      (wait-for "TODO Plain scheduled"
                                (lambda ()
-                                 (tuatara.frontend.fake:fake-queue-keys f "T")
+                                 (tuatara.frontend.fake:fake-queue-keys f "C-c C-t")
                                  (tuatara.frontend.fake:fake-queue-action f #'wait-for-next))))))
               (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults
                                             :buffer (or (tuatara.buffer:find-buffer "*scratch*")
@@ -669,12 +669,6 @@ help left out."
                         (after "SPC a a t C-c C-q u r g e n t RET")))
           (true (search (format nil "SCHEDULED: <2026-09-30 Wed>~%- Note taken on [2026-10-01 Thu 18:00] \\\\~%  Called back~%")
                         (after "SPC a a t C-c C-z C a l l e d SPC b a c k RET")))
-          ;; the leader's SPC a keys on their own in the agenda: d a deadline, t tags, n a note
-          (true (search (format nil "* TODO Plain scheduled~%DEADLINE: <2026-10-20 Tue> SCHEDULED: <2026-09-30 Wed>")
-                        (after "SPC a a t d 2 0 2 6 - 1 0 - 2 0 RET")))
-          (true (search (format nil "* TODO Plain scheduled~55@a~%" ":urgent:") (after "SPC a a t t u r g e n t RET")))
-          (true (search (format nil "- Note taken on [2026-10-01 Thu 18:00] \\\\~%  Called back~%")
-                        (after "SPC a a t n C a l l e d SPC b a c k RET")))
           ;; I clocks in on the entry, O clocks out
           (true (search (format nil "SCHEDULED: <2026-09-30 Wed>~%:LOGBOOK:~%CLOCK: [2026-10-01 Thu 18:00]--[2026-10-01 Thu 18:00] =>  0:00~%:END:")
                         (after "SPC a a t I O")))
@@ -688,7 +682,7 @@ help left out."
                  (progn
                    (tuatara.defaults::set-major-mode other 'tuatara.defaults::org-mode)
                    (tuatara.buffer:buffer-insert other 0 "x")
-                   (multiple-value-bind (text f) (after "SPC a a t T s")
+                   (multiple-value-bind (text f) (after "SPC a a t C-c C-t s")
                      (declare (ignore text))
                      (true (tuatara.frontend.fake:fake-frame-showing f "Saved 1 agenda file"))
                      (true (search "* NEXT Plain scheduled" (alexandria:read-file-into-string tasks)))
@@ -704,14 +698,14 @@ help left out."
           ;; a file that may not be written is not changed
           (fresh)
           (sb-posix:chmod (namestring tasks) #o444)
-          (multiple-value-bind (f editor) (run-keys "SPC a a t T" :width 100 :height 60)
+          (multiple-value-bind (f editor) (run-keys "SPC a a t C-c C-t" :width 100 :height 60)
             (declare (ignore editor))
             (true (tuatara.frontend.fake:fake-frame-showing f "read-only"))
             (false (search "NEXT Plain" (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "tasks.org")))))
           (sb-posix:chmod (namestring tasks) #o644)
           ;; not on an entry, and elsewhere
           (fresh)
-          (true (tuatara.frontend.fake:fake-frame-showing (run-keys "SPC a a a T" :width 100 :height 60) "No entry on this line"))
+          (true (tuatara.frontend.fake:fake-frame-showing (run-keys "SPC a a a C-c C-t" :width 100 :height 60) "No entry on this line"))
           (true (tuatara.frontend.fake:fake-frame-showing (run-keys "M-x o r g - a g e n d a - d e a d l i n e RET"
                                                                     :width 100
                                                                     :height 10)
@@ -1195,11 +1189,11 @@ help left out."
           (true (tuatara.frontend.fake:fake-frame-showing f "TODO call Anna"))
           (true (loop for row below 18 thereis (org-faces-include f row "TODO" :org-checkbox-todo))))
         (fresh)
-        (run-keys "SPC a a t T" :width 100 :height 20)
+        (run-keys "SPC a a t C-c C-t" :width 100 :height 20)
         (true (search (format nil "- [X] call Anna~%  :LOGBOOK:~%  - State \"DONE\"")
                       (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "errands.org"))))
         (fresh)
-        (true (tuatara.frontend.fake:fake-frame-showing (run-keys "SPC a a t d" :width 100 :height 20)
+        (true (tuatara.frontend.fake:fake-frame-showing (run-keys "SPC a a t C-c C-d" :width 100 :height 20)
                                                         "checkbox has no deadline"))
         (fresh)
         ;; refiling from a checkbox's line is refused: its heading would go with it
@@ -1217,9 +1211,13 @@ help left out."
     (flet ((bound (keys) (tuatara.command:lookup-key keymap (tuatara.frontend:parse-key-sequence keys))))
       (is eq 'tuatara.defaults::end-of-buffer (bound "g e"))
       (false (bound "G"))
-      ;; t sets the tags, : does not
-      (is eq 'tuatara.defaults::org-agenda-set-tags (bound "t"))
-      (false (bound ":"))
+      ;; C-f and C-b move between spans as l and h do
+      (is eq 'tuatara.defaults::org-agenda-later (bound "C-f"))
+      (is eq 'tuatara.defaults::org-agenda-earlier (bound "C-b"))
+      ;; C-c C-q sets the tags, t and : do not; one key a command
+      (is eq 'tuatara.defaults::org-agenda-set-tags (bound "C-c C-q"))
+      (dolist (key '("t" ":" "T" "d" "n"))
+        (false (bound key)))
       (is eq 'tuatara.defaults::beginning-of-buffer (bound "g g")))))
 
 (define-test (org agenda-files-patterns)
@@ -1324,7 +1322,7 @@ help left out."
             (true (search "Monday     28 September 2026 W40" text))
             (true (search "Plain scheduled" text)))
           ;; a TODO change on an entry the filters leave: that entry's, and the agenda stays narrowed
-          (multiple-value-bind (text f) (agenda "SPC a a t C-x / s d e a d l i n e SPC s o o n RET g e T")
+          (multiple-value-bind (text f) (agenda "SPC a a t C-x / s d e a d l i n e SPC s o o n RET g e C-c C-t")
             (declare (ignore f))
             (true (uiop:string-prefix-p "Filtered by deadline soon: 1 of " (first-line text)) (first-line text))
             (true (search "NEXT Deadline soon" text))
@@ -1351,7 +1349,7 @@ help left out."
               (false (search "Filtered by" text) "~a: ~a" keys (first-line text))
               (true (null (tuatara:search-filters (tuatara.buffer:find-buffer "*Org Agenda*"))))))
           ;; the keys after C-x / s are its pattern: s a v e saves nothing
-          (multiple-value-bind (text f) (agenda "SPC a a t T C-x / s s a v e RET")
+          (multiple-value-bind (text f) (agenda "SPC a a t C-c C-t C-x / s s a v e RET")
             (true (uiop:string-prefix-p "Filtered by save: 0 of " (first-line text)) (first-line text))
             (false (tuatara.frontend.fake:fake-frame-showing f "Saved"))
             (true (tuatara.buffer:buffer-modified-p (tuatara.buffer:find-buffer "tasks.org")))
@@ -1413,6 +1411,50 @@ help left out."
             (ts (tuatara.defaults::org-ts-repeat (tuatara.defaults::org-read-ts "<1900-01-01 Mon 00:00 ++1h>") now)))
         (true (< (- (thread-cpu-time) start) (* 1/10 internal-time-units-per-second)))
         (true (< now (tuatara.defaults::org-ts-time ts) (+ now 3601)) "~a" (tuatara.defaults::org-ts-text ts))))))
+
+(define-test (org hourly-repeat-of-a-day-alone)
+  ;; a timestamp of a day alone counts its hours from midnight: done, it goes to the day of its first time to come
+  (let* ((now (encode-universal-time 0 30 14 13 11 2026))
+         (cancelled (list (cons (tuatara.dates:day-number 2026 11 13) nil)))
+         (results nil)
+         (thread (sb-thread:make-thread
+                  (lambda ()
+                    (setf results
+                          (list (tuatara.defaults::org-repeat-timestamps "<2026-11-01 Sun +1h>" now)
+                                (tuatara.defaults::org-repeat-timestamps "<2026-11-01 Sun ++1h>" now)
+                                (tuatara.defaults::org-repeat-timestamps "<2026-11-01 Sun .+1h>" now)
+                                (tuatara.defaults::org-repeat-timestamps "<2026-11-01 Sun +36h>" now)
+                                (tuatara.defaults::org-repeat-timestamps "<2026-11-01 Sun +1h>" now cancelled)))))))
+    (true (tuatara.runtime:join-within thread 5) "a day alone repeating by the hour never ends")
+    (is equal '("<2026-11-13 Fri +1h>" "<2026-11-13 Fri ++1h>" "<2026-11-13 Fri .+1h>" "<2026-11-14 Sat +36h>"
+                "<2026-11-14 Sat +1h>")
+        results)))
+
+(define-test (org match-terms-read-whole)
+  ;; a | inside a {pattern} or a "text" is part of it; a match with something it cannot read is refused, not
+  ;; read in part; a pattern from a file that could take for ever is refused
+  (let ((entry (tuatara.defaults::make-org-agenda-entry :tags '("work") :level 1 :properties '(("WHO" . "a|b")))))
+    (flet ((selects-p (match &rest keys)
+             (funcall (apply #'tuatara.defaults::org-match-predicate match keys) entry)))
+      (true (selects-p "{^zz|^wo}"))
+      (false (selects-p "-{^zz|^wo}"))
+      (true (selects-p "WHO=\"a|b\""))
+      (true (selects-p "home|work"))
+      (true (selects-p "{^wo}" :untrusted t))
+      (fail (tuatara.defaults::org-match-predicate "{(w+)+$}" :untrusted t))
+      (fail (tuatara.defaults::org-match-predicate "work and home"))
+      (fail (tuatara.defaults::org-match-predicate "PROP~x")))))
+
+(define-test (org agenda-files-named-or-passed-over)
+  ;; an agenda file that cannot be named is passed over, the others listed
+  (with-test-directory (dir)
+    (let ((good (namestring (put-file (merge-pathnames "a.org" dir) (format nil "* A~%")))))
+      (is equal (list good) (tuatara.defaults::org-agenda-file-paths (list 42 good)))
+      ;; a directory not made yet is a directory to the agenda, as to capture, which files in it
+      (let* ((missing (namestring (merge-pathnames "later/" dir)))
+             (tuatara-user:*org-agenda-files* (list missing)))
+        (is equal '() (tuatara.defaults::org-agenda-file-paths (list missing)))
+        (is string= (concatenate 'string missing "agenda.org") (tuatara.defaults::org-agenda-main-file))))))
 
 (define-test (org warning-of-any-length)
   ;; a warning too long to mean anything: read as days still, never an error that stops the agenda
@@ -1991,6 +2033,10 @@ help left out."
                            (typed-keys "2027-10-31"))))
       (is string= (format nil "* TODO Thing~%SCHEDULED: <2026-10-23 Fri 08:00 +1d>~%")
           (written (format nil "C-c C-s C-r t ~a RET r ~a RET RET" (typed-keys "08:00") (typed-keys "Daily"))))
+      ;; one that cannot be written says why and keeps the menu open, what was set kept
+      (is string= (format nil "* TODO Thing~%SCHEDULED: <2026-10-23 Fri 08:00 +1d>~%")
+          (written (format nil "C-c C-s C-r t ~a RET r ~a RET RET t C-a C-k ~a RET RET"
+                           (typed-keys "zz") (typed-keys "Daily") (typed-keys "08:00"))))
       ;; custom: every so many of a unit, a week's days switched on, ending after so many or on a day
       (is string= (format nil "* TODO Thing~%SCHEDULED: <2026-10-23 Fri +3d>~%")
           (written (format nil
@@ -2302,6 +2348,33 @@ help left out."
           (sb-int:unencapsulate 'tuatara.io:directory-entries 'counted)
           (setf tuatara.defaults::**org-notify-state** kept))))))
 
+(define-test (org notify-sleeps-while-nothing-changes)
+  ;; the tick works the notifications out again only when an Org file open changed, one came due, or a while
+  ;; went by for files changed on disk: not each minute while nothing is due
+  (let* ((tuatara.defaults::*org-notify-tag* "notify")
+         (kept (copy-list tuatara.defaults::**org-notify-state**))
+         (now (get-universal-time))
+         (started 0))
+    (flet ((counted (function &rest arguments) (declare (ignore function arguments)) (incf started)))
+      (sb-int:encapsulate 'tuatara.defaults::org-agenda-in-background 'counted #'counted)
+      (unwind-protect
+           (let ((key (tuatara.defaults::org-notify-open-key)))
+             ;; worked out a moment ago, nothing due for an hour, the files open as they were
+             (setf tuatara.defaults::**org-notify-state** (list nil 0 key (+ now 3600) now))
+             (tuatara.defaults::org-notify-tick nil)
+             (is = 0 started)
+             ;; a notification come due
+             (setf tuatara.defaults::**org-notify-state** (list nil 0 key now now))
+             (tuatara.defaults::org-notify-tick nil)
+             (is = 1 started)
+             ;; long enough since the last time for a file on disk to have changed
+             (setf tuatara.defaults::**org-notify-state**
+                   (list nil 0 key (+ now 3600) (- now tuatara.defaults::*org-notify-disk-check*)))
+             (tuatara.defaults::org-notify-tick nil)
+             (is = 2 started))
+        (sb-int:unencapsulate 'tuatara.defaults::org-agenda-in-background 'counted)
+        (setf tuatara.defaults::**org-notify-state** kept)))))
+
 (define-test (org notify-health-said-as-others)
   ;; check-health says what is missing for desktop notices as for every outside program: what to install
   (let ((tuatara.defaults::*notify-program* "no-such-notify-program-here"))
@@ -2480,7 +2553,7 @@ help left out."
                (alexandria:write-string-into-file text file :if-exists :supersede))
              (text () (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "jobs.org"))))
         (fresh (format nil "* TODO Call Ngaio~%"))
-        (run-keys "SPC a a t T" :width 100 :height 20)
+        (run-keys "SPC a a t C-c C-t" :width 100 :height 20)
         (is string= (format nil "* WAIT Call Ngaio~%") (text))
         (fresh (format nil "* WAIT Call Ngaio~%"))
         (run-keys "SPC a a t C-c C-x C" :width 100 :height 20)
@@ -2506,11 +2579,11 @@ help left out."
                (alexandria:write-string-into-file (format nil "* TODO Call Ngaio~%") file :if-exists :supersede))
              (text () (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "calls.org"))))
         (fresh)
-        (run-keys "SPC a a t T" :width 100 :height 20)
+        (run-keys "SPC a a t C-c C-t" :width 100 :height 20)
         (true (search "* WAIT Call Ngaio" (text)))
         (dolist (undo '("u" "C-_"))
           (fresh)
-          (let ((f (run-keys (format nil "SPC a a t T ~a" undo) :width 100 :height 20)))
+          (let ((f (run-keys (format nil "SPC a a t C-c C-t ~a" undo) :width 100 :height 20)))
             (is string= (format nil "* TODO Call Ngaio~%") (text) "~a" undo)
             (true (tuatara.frontend.fake:fake-frame-showing f "Undone in calls.org"))))
         (fresh)

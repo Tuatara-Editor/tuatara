@@ -23,12 +23,9 @@ when one of them takes it. \\[spellcheck-languages] sets them for one buffer.
   '(:org-code :org-verbatim :org-link :org-meta-line :org-block :org-block-begin-line :org-date
     :org-tag :org-property-value :org-special-keyword :org-drawer :org-macro :org-cite :org-footnote
     :org-formula :org-latex-and-related :org-document-info-keyword :org-checkbox :org-priority
-    :org-todo
-    :org-done :org-wait
-    :org-cancelled :link
-    :markup.raw :markup.link.url
-    :keyword :function
-    :variable :constant)
+    :org-todo :org-done :org-wait :org-cancelled
+    :link :markup.raw :markup.link.url
+    :keyword :function :variable :constant)
   "In text (Org, Markdown, LaTeX and the like), the faces whose words are not
 checked: code, links, dates, tags, keywords. A face counts for those named
 after it with a dot (:markup.raw for :markup.raw.block).
@@ -151,9 +148,12 @@ short (a line truncated at the window's edge or scrolled sideways).")
   "START and END, octets of BUFFER, moved out to the blanks before and after,
 at most *SPELLING-REACH* octets: a word a row cuts short is spelt whole."
   (flet ((blank-p (c) (member c '(#\Space #\Tab #\Newline #\Return))))
-    (let* ((size (tuatara.buffer:buffer-size buffer))
-           (before (tuatara.buffer:buffer-string buffer :start (max 0 (- start *spelling-reach*)) :end start))
-           (after (tuatara.buffer:buffer-string buffer :start end :end (min size (+ end *spelling-reach*))))
+    (let* ((rope (tuatara.buffer:buffer-text buffer))
+           (size (tuatara.buffer:buffer-size buffer))
+           (before (tuatara.buffer:buffer-string
+                    buffer :start (tuatara.text:rope-char-start rope (max 0 (- start *spelling-reach*))) :end start))
+           (after (tuatara.buffer:buffer-string
+                   buffer :start end :end (tuatara.text:rope-char-start rope (min size (+ end *spelling-reach*)))))
            (back (let ((blank (position-if #'blank-p before :from-end t)))
                    (if blank (subseq before (1+ blank)) "")))
            (on (let ((blank (position-if #'blank-p after))) (if blank (subseq after 0 blank) ""))))
@@ -177,7 +177,9 @@ capital after its first letter (camelCase) is left too."
             do (if (member (char text i) '(#\Space #\Tab #\Newline #\Return))
                    (progn (incf at (tuatara.text:char-octet-length (char text i))) (incf i))
                    ;; a run of text up to the next blank
-                   (let* ((j (or (position-if (lambda (c) (member c '(#\Space #\Tab #\Newline #\Return))) text :start i) n))
+                   (let* ((j (or (position-if (lambda (c) (member c '(#\Space #\Tab #\Newline #\Return)))
+                                              text :start i)
+                                 n))
                           (run-at at)
                           (skip (or (search "://" text :start2 i :end2 j) (find #\@ text :start i :end j)
                                     (find #\_ text :start i :end j) (find #\\ text :start i :end j)
@@ -215,12 +217,13 @@ LocalWords: lines) is looked for.")
 FROM, a version before it, did from START on, and these are its last
 *LOCAL-WORDS-REACH* octets (or the whole of it): no change made between them
 touched them."
-  (let ((span (cons start (tuatara.text:rope-octet-length (tuatara.text:version-rope from)))))
-    (loop for version = from then next
-          for next = (tuatara.text:version-next version)
-          until (eq version to)
-          do (unless (and next (setf span (tuatara.buffer:span-after-batch span (tuatara.text:version-batch next))))
-               (return-from tail-kept-p nil)))
+  (let ((span (cons start (tuatara.text:rope-octet-length (tuatara.text:version-rope from))))
+        (batches (tuatara.text:version-batches from to)))
+    (when (eq batches :whole)
+      (return-from tail-kept-p nil))
+    (dolist (batch batches)
+      (unless (setf span (tuatara.buffer:span-after-batch span batch))
+        (return-from tail-kept-p nil)))
     (let ((size (tuatara.text:rope-octet-length (tuatara.text:version-rope to))))
       (and (= (cdr span) size) (= (car span) (max 0 (- size *local-words-reach*)))))))
 
@@ -262,7 +265,9 @@ part of the data or show as text."
   (check-writable buffer)
   (let ((mode (buffer-major-mode buffer)))
     (unless (or (mode-comment-syntax mode) (member (type-of mode) '(text-mode fundamental-mode)))
-      (error (substitute-command-keys "~a has no comments to keep a word list in: \\[spellcheck-correct] keeps “~a” while the editor runs, or in a language's word list" :for-format t)
+      (error (substitute-command-keys "~a has no comments to keep a word list in: \\[spellcheck-correct] keeps ~
+                                       “~a” while the editor runs, or in a language's word list"
+                                      :for-format t)
              (tuatara.modes:mode-lighter (type-of mode)) word)))
   (when (gethash word (local-words buffer))
     (return-from add-local-word :listed))
@@ -270,7 +275,8 @@ part of the data or show as text."
          (from (max 0 (- size *local-words-reach*)))
          (text (tuatara.buffer:buffer-string buffer :start from :end size))
          (at (search "LocalWords:" text :from-end t))
-         (line-end (and at (tuatara.buffer:buffer-line-end buffer (+ from (tuatara.text:string-octet-length (subseq text 0 at)))))))
+         (line-end (and at (tuatara.buffer:buffer-line-end
+                            buffer (+ from (tuatara.text:string-octet-length text :end at))))))
     (if (and line-end
              (<= (+ (tuatara.buffer:buffer-column buffer line-end) 1 (length word)) (buffer-fill-column buffer)))
         (tuatara.buffer:buffer-insert buffer line-end (format nil " ~a" word))
@@ -285,15 +291,15 @@ part of the data or show as text."
   t)
 
 (defun spelling-in-rows (buffer rows syntax)
-  "The words of BUFFER that ROWS show, read as SYNTAX (the ranges the text is
-coloured in, (START END FACE)) says they are to be spelt: as three values,
+  "The words of BUFFER that ROWS show, read as SYNTAX (the lists of ranges the
+text is coloured in, (START END FACE)) says they are to be spelt: as three values,
 those spelt wrong and those not yet answered, each (START END WORD) in order,
 and the languages they are spelt in."
   (let* ((kind (spellcheck-kind buffer))
          (code-faces (and (eq kind :code) (spelling-faces-checked buffer)))
          (languages (spellcheck-languages-of buffer))
          (local (and kind (local-words buffer)))
-         (ranges (sort (copy-list syntax) #'< :key #'first))
+         (ranges (and kind (sort (mapcan #'copy-list syntax) #'< :key #'first)))
          (active '()) (wrong '()) (unknown '()))
     (when kind
       (dolist (segment (tuatara.display:shown-ranges rows :join 2 :shown t :buffer buffer))
@@ -396,8 +402,9 @@ have been drawn anew meanwhile."
 END WORD); NIL when POSITION is in none."
   (let* ((line-start (tuatara.buffer:buffer-line-start buffer position))
          (line-end (tuatara.buffer:buffer-line-end buffer position))
-         (start (max line-start (- position 256)))
-         (end (min line-end (+ position 256))))
+         (rope (tuatara.buffer:buffer-text buffer))
+         (start (tuatara.text:rope-char-start rope (max line-start (- position 256))))
+         (end (tuatara.text:rope-char-start rope (min line-end (+ position 256)))))
     (find-if (lambda (w) (<= (first w) position (second w)))
              (spelling-words (tuatara.buffer:buffer-string buffer :start start :end end) start
                              (spellcheck-kind buffer)))))
@@ -483,8 +490,9 @@ or keep the word, while the editor runs, in the file's own word list (as
                                                (make-candidate (format nil "Keep “~a” in this file's word list" word)
                                                                :value '(:file) :group "Keep it"))
                                          (loop for language in languages
-                                               collect (make-candidate (format nil "Add “~a” to the ~a word list" word language)
-                                                                       :value (list :add language) :group "Keep it")))
+                                               collect (make-candidate
+                                                        (format nil "Add “~a” to the ~a word list" word language)
+                                                        :value (list :add language) :group "Keep it")))
                                  :keep-order t)))
                     (cond ((equal chosen '(:session))
                            (spelling-add languages word (first languages) :session t)

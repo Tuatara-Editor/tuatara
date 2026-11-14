@@ -107,19 +107,20 @@ frontend fits it into the cells it is given."
 
 ;;; Drawing them, in the background
 
-(defstruct (formula-job (:include decoding-job) (:constructor make-formula-job (buffer keys)) (:copier nil))
+(define-record (formula-job (:include decoding-job) (:constructor make-formula-job (buffer keys)) (:copier nil))
   "Formulas being drawn for BUFFER: KEYS, each as FORMULA-LOOKUP-KEY gives it, and
 IMAGES, once done, the picture drawn for each, or NIL for one that could not
 be."
-  keys images)
-
-(setf (documentation 'formula-job-p 'function) "True when OBJECT is a FORMULA-JOB.")
+  (keys nil :documentation "The keys of the formulas FORMULA-JOB draws, each as FORMULA-LOOKUP-KEY gives it.")
+  (images nil
+          :documentation "The picture drawn for each formula of FORMULA-JOB once done, NIL for one that could not be
+drawn."))
 
 (tuatara.runtime:define-job-words formula-job
-  :doing "Drawing"
-  :description (format nil "Drawing ~d formula~:p" (length (formula-job-keys job)))
-  :verb "draw them"
-  :left-words "nothing drawn")
+    :doing "Drawing"
+    :description (format nil "Drawing ~d formula~:p" (length (formula-job-keys job)))
+    :verb "draw them"
+    :left-words "nothing drawn")
 
 (defun start-formula-job (buffer)
   "Draw the formulas waiting (*FORMULA-WAITING*) in a job of BUFFER's, unless
@@ -158,8 +159,9 @@ colour drawn together."
     (loop for group in (let ((groups '()))
                          (dolist (key (formula-job-keys job) (nreverse groups))
                            (let ((group (assoc (list (first key) (fourth key) (fifth key)) groups :test #'equal)))
-                             (if group (push key (cdr group)) (push (list (list (first key) (fourth key) (fifth key)) key)
-                                                                    groups)))))
+                             (if group (push key (cdr group))
+                                 (push (list (list (first key) (fourth key) (fifth key)) key)
+                                       groups)))))
           do (let ((keys (reverse (cdr group))))
                (destructuring-bind (preamble height colour) (car group)
                  (loop for key in keys
@@ -223,7 +225,7 @@ DRAW-FORMULAS draws them, a picture for each, NIL for a page larger than
                      (tuatara.io:path-join (private-cache-directory "formulas/") (format nil "~a/" name))))
          (tex (tuatara.io:path-join directory "formulas.tex"))
          (pdf (tuatara.io:path-join directory "formulas.pdf")))
-    (handler-case (tuatara.io:remove-file pdf) (tuatara.io:file-system-error () nil))
+    (tuatara.io:remove-file-if-there pdf)
     (tuatara.io:replace-file tex (formula-document preamble texts))
     (when (let ((*latex-sandbox-seconds* *formula-seconds*))
             (run-shut-in job tex path (list "-interaction=nonstopmode" "-halt-on-error" "-no-shell-escape"

@@ -17,18 +17,33 @@ HELIX_COMMIT = helix_commit()
 # Tuatara's names for languages Helix calls otherwise
 ALIASES = {'common-lisp': 'lisp', 'dockerfile': 'containerfile', 'sshclientconfig': 'ssh'}
 
+def entry(parts):
+    """PARTS as one entry of a list, four columns in: on one line when it fits
+120 columns, else its first two parts on the first line and each other on a
+line of its own, when each then fits."""
+    line = '(' + ' '.join(parts) + ')'
+    lines = ['(' + ' '.join(parts[:2])] + ['     ' + p for p in parts[2:]]
+    lines[-1] += ')'
+    if 4 + len(line) <= 120 or len(parts) < 3 or any(4 + len(l) > 120 for l in lines):
+        return line
+    return '\n'.join(lines)
+
 def main():
     """Write lisp/lsp/usual-tools.lisp from Helix's languages.toml."""
     with open(os.path.join(HELIX, 'languages.toml'), 'rb') as f:
         toml = tomllib.load(f)
     servers = []
     for name, server in sorted(toml.get('language-server', {}).items()):
-        parts = [lisp_string(name), lisp_list([server['command']] + server.get('args', []))]
+        args = [a.replace('--client-id=helix', '--client-id=tuatara') for a in server.get('args', [])]
+        parts = [lisp_string(name), lisp_list([server['command']] + args)]
         if server.get('config'):
-            parts.append(':options ' + lisp_string(json.dumps(server['config'], separators=(',', ':'), ensure_ascii=False)))
+            config = dict(server['config'])
+            if config.get('hostInfo') == 'helix':
+                config['hostInfo'] = 'tuatara'  # servers shape their behaviour by the client's name
+            parts.append(':options ' + lisp_string(json.dumps(config, separators=(',', ':'), ensure_ascii=False)))
         if server.get('environment'):
             parts.append(':environment ' + lisp_list(f'{k}={v}' for k, v in sorted(server['environment'].items())))
-        servers.append('(' + ' '.join(parts) + ')')
+        servers.append(entry(parts))
     languages = []
     for lang in toml.get('language', []):
         names, features = [], []
@@ -51,13 +66,14 @@ def main():
             if exclude: parts.append(f':except ({lisp_string(name)} . {lisp_list(exclude)})')
         if formatter: parts.append(':formatter ' + lisp_list([formatter['command']] + formatter.get('args', [])))
         if roots: parts.append(':roots ' + lisp_list(roots))
-        languages.append('(' + ' '.join(parts) + ')')
-    header = (';;;; lisp/lsp/usual-tools.lisp --- The language servers and formatters Helix knows, and what marks a project.\n'
+        languages.append(entry(parts))
+    header = (';;;; lisp/lsp/usual-tools.lisp --- The language servers and formatters Helix knows, '
+              'and what marks a project.\n'
               ';;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.\n;;;;\n'
               f';;;; From the languages.toml of Helix (https://github.com/helix-editor/helix) at\n'
               f';;;; commit {HELIX_COMMIT}, MPL-2.0.\n;;;;\n'
               ';;;; Written by tools/languages/tools.py: change that, not this file.\n\n'
-              '(in-package #:tuatara.defaults)\n\n')
+              '(in-package #:tuatara.lsp)\n\n')
     with open(os.path.join(ROOT, 'lisp/lsp/usual-tools.lisp'), 'w', encoding='utf-8') as f:
         f.write(header
                 + "(defparameter *usual-language-servers*\n  '(" + '\n    '.join(servers) + ')\n'

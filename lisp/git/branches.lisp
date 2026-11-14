@@ -11,16 +11,21 @@
 
 ;;; Branches
 
-(defun git-ask-branch (prompt top then &key remote default)
+(defun git-ask-branch (prompt top then &key remote default next)
   "Ask with PROMPT for a branch of the repository at TOP (with REMOTE those
 of its remotes offered too), DEFAULT when nothing is typed (:CURRENT for the
 branch checked out), then call THEN with the name and the branch checked
-out."
+out. With NEXT, the branches a next question offers, :ALL every branch, its
+remotes' too, or :REMOTE only theirs, are read with the first and given to
+THEN as a third argument."
   (git-ask "Reading the branches" top
-           (lambda (job top) (values (git-branches job top :remote remote) (git-current-branch job top)))
-           (lambda (names current)
+           (lambda (job top)
+             (values (git-branches job top :remote remote) (git-current-branch job top)
+                     (and next (git-branches job top :remote t :local (eq next :all)))))
+           (lambda (names current next-names)
              (let ((name (git-read-name prompt names :default (if (eq default :current) current default))))
-               (when name (funcall then name current))))))
+               (when name
+                 (if next (funcall then name current next-names) (funcall then name current)))))))
 
 (define-command git-checkout ()
   "Check out a branch or a revision, asked for: a branch by its name, else a
@@ -74,8 +79,10 @@ stays as it is."
                (let ((current (git-current-branch job top)))
                  (values current
                          (and current
-                              (nth-value 1 (git-job-try job top (list "rev-parse" "--verify" "-q" (format nil "~a@{upstream}" current))))
-                              (git-output-line job top (list "merge-base" current (format nil "~a@{upstream}" current)))))))
+                              (nth-value 1 (git-job-try job top (list "rev-parse" "--verify" "-q"
+                                                                      (format nil "~a@{upstream}" current))))
+                              (git-output-line job top (list "merge-base" current
+                                                             (format nil "~a@{upstream}" current)))))))
              (lambda (current base)
                (if (null current)
                    (message "HEAD is detached: no branch to spin off from")
@@ -85,9 +92,14 @@ stays as it is."
                                       (lambda (job)
                                         (git-job-output job top (list "checkout" "-b" name "--"))
                                         (when base
-                                          (git-job-output job top (list "update-ref" "-m" (format nil "spin-off: moving to ~a's upstream" current)
+                                          (git-job-output job top (list "update-ref" "-m"
+                                                                        (format nil "spin-off: moving to ~a's upstream"
+                                                                                current)
                                                                         (format nil "refs/heads/~a" current) base))))
-                                      (lambda () (message "On ~a, its work spun off from ~a~:[~;, which went back to its upstream~]" name current base))
+                                      (lambda ()
+                                        (message "On ~a, its work spun off from ~a~:[~;, which went back to ~
+                                                  its upstream~]"
+                                                 name current base))
                                       :after (lambda () (git-refresh-repository top))))))))))
 
 (define-command git-branch-rename ()
@@ -98,7 +110,8 @@ stays as it is."
                       (declare (ignore current))
                       (let ((new (git-read-name (format nil "Rename ~a to: " old) '())))
                         (when new
-                          (git-run "Renaming a branch" top (list "branch" "-m" old new) (format nil "Renamed ~a to ~a" old new)))))
+                          (git-run "Renaming a branch" top (list "branch" "-m" old new)
+                                   (format nil "Renamed ~a to ~a" old new)))))
                     :default :current)))
 
 (define-command git-branch-reset ()
@@ -107,18 +120,15 @@ branch checked out keeps the changes not committed (git refuses when they
 would be lost); its commits after the revision stay in git's reflog."
   (with-git-repository (top)
     (git-ask-branch "Reset branch: " top
-                    (lambda (branch current)
-                      (git-ask "Reading the branches" top
-                               (lambda (job top) (git-branches job top :remote t))
-                               (lambda (names)
-                                 (let ((to (git-read-name (format nil "Reset ~a to: " branch) names)))
-                                   (when (and to (yes-or-no-p* (format nil "Move ~a to ~a?" branch to)))
-                                     (git-run "Resetting a branch" top
-                                              (if (equal branch current)
-                                                  (list "reset" "--keep" to "--")
-                                                  (list "branch" "-f" branch to))
-                                              (format nil "Moved ~a to ~a" branch to)))))))
-                    :default :current)))
+                    (lambda (branch current names)
+                      (let ((to (git-read-name (format nil "Reset ~a to: " branch) names)))
+                        (when (and to (yes-or-no-p* (format nil "Move ~a to ~a?" branch to)))
+                          (git-run "Resetting a branch" top
+                                   (if (equal branch current)
+                                       (list "reset" "--keep" to "--")
+                                       (list "branch" "-f" branch to))
+                                   (format nil "Moved ~a to ~a" branch to)))))
+                    :default :current :next :all)))
 
 (defun git-delete-asking-again (doing top arguments refusal forced question done kept failed)
   "Run git with ARGUMENTS for the repository at TOP as a job doing DOING; when
@@ -127,7 +137,8 @@ instead; DONE is said once one has run, KEPT when the answer is no, FAILED
 when git failed otherwise. The status is read again."
   (start-git-job doing
                  (lambda (job)
-                   (multiple-value-bind (text ok said) (git-job-try job top arguments :errors t)
+                   (multiple-value-bind (text ok said)
+                       (git-job-try job top arguments :errors t :environment *git-english*)
                      (declare (ignore text))
                      (values ok (search refusal said))))
                  (lambda (ok refused)
@@ -146,9 +157,11 @@ only in git's reflog then."
                     (lambda (branch current)
                       (cond ((equal branch current) (message "~a is checked out: check out another first" branch))
                             ((yes-or-no-p* (format nil "Delete the branch ~a?" branch))
-                             (git-delete-asking-again "Deleting a branch" top (list "branch" "-d" branch) "not fully merged"
-                                                      (list "branch" "-D" branch)
-                                                      (format nil "~a has commits no other branch has; delete it all the same?" branch)
+                             (git-delete-asking-again "Deleting a branch" top (list "branch" "-d" branch)
+                                                      "not fully merged" (list "branch" "-D" branch)
+                                                      (format nil "~a has commits no other branch has; ~
+                                                                   delete it all the same?"
+                                                              branch)
                                                       (format nil "Deleted ~a" branch) (format nil "~a kept" branch)
                                                       (format nil "git branch: ~a could not be deleted" branch))))))))
 
@@ -158,17 +171,14 @@ is typed), to a branch of a remote asked for: the one pull brings from and
 push sends to, and the status counts ahead and behind of."
   (with-git-repository (top)
     (git-ask-branch "Upstream of: " top
-                    (lambda (branch current)
+                    (lambda (branch current names)
                       (declare (ignore current))
-                      (git-ask "Reading the branches" top
-                               (lambda (job top) (git-branches job top :remote t :local nil))
-                               (lambda (names)
-                                 (let ((upstream (git-read-name (format nil "Upstream of ~a: " branch) names)))
-                                   (when upstream
-                                     (git-run "Setting the upstream" top
-                                              (list "branch" (format nil "--set-upstream-to=~a" upstream) branch)
-                                              (format nil "~a follows ~a" branch upstream)))))))
-                    :default :current)))
+                      (let ((upstream (git-read-name (format nil "Upstream of ~a: " branch) names)))
+                        (when upstream
+                          (git-run "Setting the upstream" top
+                                   (list "branch" (format nil "--set-upstream-to=~a" upstream) branch)
+                                   (format nil "~a follows ~a" branch upstream)))))
+                    :default :current :next :remote)))
 
 (define-menu git-branch-menu (:title "Branch" :show git-menu-shows-p :note git-menu-note)
   "Open the branch menu: check out a branch or a revision, make one (checked
@@ -237,7 +247,7 @@ given (READ-NEW-NATIVE-PATH); its path without its last /, or NIL, said so."
   "Ask where the worktree for BRANCH goes (GIT-WORKTREE-DEFAULT-PATH offered),
 as GIT-READ-NEW-DIRECTORY asks."
   (git-read-new-directory (format nil "Worktree for ~a at: " branch)
-                       :initial (abbreviated-path (git-worktree-default-path top branch))))
+                          :initial (abbreviated-path (git-worktree-default-path top branch))))
 
 (define-command git-worktree-checkout ()
   "Make a worktree for a branch asked for, in a directory asked for: the
@@ -260,7 +270,8 @@ worktree for it in a directory asked for."
                           (let ((path (git-read-worktree-path name top)))
                             (when path
                               (git-run "Making a worktree" top (list "worktree" "add" "-b" name path start)
-                                       (format nil "The new branch ~a checked out in ~a" name (abbreviated-path path)))))))))
+                                       (format nil "The new branch ~a checked out in ~a"
+                                               name (abbreviated-path path)))))))))
 
 (define-command git-worktree-move ()
   "Move a worktree, asked for, not the main one, to a directory asked for."
@@ -281,10 +292,13 @@ asking again, as they would be lost."
     (git-ask-worktree "Delete worktree: " top
                       (lambda (path)
                         (let ((shown (abbreviated-path path)))
-                          (when (yes-or-no-p* (format nil "Delete the worktree ~a and its directory? Its branch stays" shown))
-                            (git-delete-asking-again "Deleting a worktree" top (list "worktree" "remove" path) "modified or untracked"
-                                                     (list "worktree" "remove" "--force" path)
-                                                     (format nil "~a has changes not committed; delete it all the same? They cannot be got back" shown)
+                          (when (yes-or-no-p* (format nil "Delete the worktree ~a and its directory? Its branch stays"
+                                                      shown))
+                            (git-delete-asking-again "Deleting a worktree" top (list "worktree" "remove" path)
+                                                     "modified or untracked" (list "worktree" "remove" "--force" path)
+                                                     (format nil "~a has changes not committed; ~
+                                                                  delete it all the same? They cannot be got back"
+                                                             shown)
                                                      (format nil "Deleted the worktree ~a" shown) "Worktree kept"
                                                      (format nil "git worktree: ~a could not be deleted" shown)))))
                       :others t)))

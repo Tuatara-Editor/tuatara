@@ -64,7 +64,7 @@ down by whole lines: a run ending mid-line first takes the rest of that line."
           (activate-mark-at (lines-down (tuatara.buffer:buffer-mark b) n))
           (let ((start (tuatara.buffer:buffer-line-start b (point))))
             (select-bounds (current-buffer) start (lines-down start n)))))
-    (message "Line marked")))
+    (say-marked "Line")))
 
 (define-command mark-run-line-backward ()
   "Select the line point is on, or grow the run's start up by whole lines: a
@@ -82,7 +82,7 @@ run starting mid-line first takes the start of that line."
           (let ((start (tuatara.buffer:buffer-line-start b (point))))
             (select-bounds (current-buffer) start (next-line-start b start))
             (let ((p start)) (dotimes (i (1- n)) (setf p (line-up p))) (goto p)))))
-    (message "Line marked")))
+    (say-marked "Line")))
 
 (define-command mark-run-exchange ()
   "Swap point and the mark, so that
@@ -98,7 +98,8 @@ run starting mid-line first takes the start of that line."
   "Refuse a key that would take the mark run's selection from it
 (\\<*mark-run-keymap*>\\`v', \\[mark-run-refuse]): leave the run
 first, with \\[mark-run-cancel] or \\[tuatara-quit]."
-  (message "The mark run holds the selection: \\<*mark-run-keymap*>\\[mark-run-cancel] or \\[tuatara-quit] ends it first"))
+  (message "The mark run holds the selection: ~
+\\<*mark-run-keymap*>\\[mark-run-cancel] or \\[tuatara-quit] ends it first"))
 
 (define-command mark-run-cancel ()
   "Drop the selection and end the mark run."
@@ -165,8 +166,9 @@ grow the run by paragraphs.")
 (defparameter *mark-run-bindings*
   '(("w" select-word) ("W" select-symbol) ("b" select-word-backward)
     ("B" select-symbol-backward) ("s" select-sentence) ("S" select-sentence-backward)
-    ("M" mark-run-cancel) ("h" mark-run-left) ("l" mark-run-right)
-    ("j" mark-run-down) ("k" mark-run-up)
+    ("M" mark-run-cancel) ("h" mark-run-left) ("C-b" mark-run-left)
+    ("l" mark-run-right) ("C-f" mark-run-right) ("j" mark-run-down) ("C-n" mark-run-down)
+    ("k" mark-run-up) ("C-p" mark-run-up)
     ("g h" mark-run-line-start) ("g l" mark-run-line-end)
     ("g g" mark-run-buffer-start) ("g e" mark-run-buffer-end)
     ("J" mark-run-line-forward) ("K" mark-run-line-backward)
@@ -220,7 +222,7 @@ the run's, or starts a count."
 object keys' Word marked and the like, though not over a complaint."
   (when (eq (editor-transient-map editor) *mark-run-keymap*)
     (let ((said (editor-message editor)))
-      (when (or (null said) (and (> (length said) 7) (string= " marked" said :start2 (- (length said) 7))))
+      (when (or (null said) (eq said *marked-said*))
         (echo "~a" (substitute-command-keys *mark-run-hint* :marks t))))))
 
 (defun mark-run-exit ()
@@ -244,29 +246,24 @@ object keys' Word marked and the like, though not over a complaint."
   "Start a mark run: the \\`m' prefix held down. \\[mark-run-toggle]
 marks the word at point (from a gap, the one ahead), and then
 \\<*mark-run-keymap*>\\[select-word] \\[select-symbol]
-\\[select-word-backward] \\[select-symbol-backward]
-\\[select-sentence] \\[select-sentence-backward] grow it as
-\\<normal>\\[select-word] \\[select-symbol]
-\\[select-word-backward] \\[select-symbol-backward]
-\\[select-sentence] \\[select-sentence-backward] do:
+\\[select-word-backward] \\[select-symbol-backward] \\[select-sentence]
+\\[select-sentence-backward] grow it as they do after \\<normal>\\`m': so
 \\[mark-run-toggle] \\<*mark-run-keymap*>\\[select-word]
-\\[select-word-backward] selects what \\<normal>\\[select-word]
-\\[select-word] \\[select-word-backward] selects.
-\\<*mark-run-keymap*>\\[mark-run-left] \\[mark-run-down]
-\\[mark-run-up] \\[mark-run-right] move point without ending the
-run, \\[mark-run-line-start] \\[mark-run-line-end]
-\\[mark-run-buffer-start] \\`g e' stretch it to the line's or text's
-edges, \\[mark-run-line-forward] and \\[mark-run-line-backward]
-take whole lines, \\[mark-run-exchange] swaps its ends,
-\\[mark-run-step-back] and \\[mark-run-step-forward] step back and
-forward through it, and \\[mark-run-cancel] ends it. Any other key ends
-the run and does its job on what is selected: \\[mark-run-toggle]
-\\[select-word] \\[delete-selection-or-char] deletes two words; a key that does
-nothing leaves the run as it is. With a selection already made,
-\\[mark-run-toggle] takes it into the run; a rectangle, which has no end
-for the object keys to grow, is let go instead, and the run starts on the word
-at point. \\[select-whole-buffer] in a run selects the whole text and the
-run goes on."
+\\[select-word-backward] selects three words.
+\\[mark-run-left] \\[mark-run-down] \\[mark-run-up] \\[mark-run-right]
+move point without ending the run, \\[mark-run-line-start]
+\\[mark-run-line-end] \\[mark-run-buffer-start] \\`g e' stretch it to the
+line's or text's edges, \\[mark-run-line-forward] and
+\\[mark-run-line-backward] take whole lines, \\[mark-run-exchange] swaps
+its ends, \\[mark-run-step-back] and \\[mark-run-step-forward] step back and
+forward through it, and \\[mark-run-cancel] ends it. Any other key ends the
+run and does its job on what is selected: \\<normal>\\[mark-run-toggle]
+\\<*mark-run-keymap*>\\[select-word] \\<normal>\\[delete-selection-or-char]
+deletes two words; a key that does nothing leaves the run as it is. With a
+selection already made, \\[mark-run-toggle] takes it into the run; a
+rectangle, which has no end for the object keys to grow, is let go instead,
+and the run starts on the word at point. \\<*mark-run-keymap*>\\[select-whole-buffer]
+in a run selects the whole text and the run goes on."
   (let ((b (current-buffer)))
     (when (rectangle-live-p b)
       (setf (tuatara.buffer:buffer-mark-active-p b) nil))
@@ -278,13 +275,13 @@ run goes on."
             (setf (tuatara.buffer:buffer-mark-active-p b) nil)
             (let ((last (editor-last-command *editor*)))
               (setf (editor-last-command *editor*) nil)
-              (handler-case (reporting-errors ("selecting the word at point")
-                              (let ((argument (prefix-argument)))
-                                (setf (editor-prefix-argument *editor*) nil)
-                                (unwind-protect (select-word)
-                                  (setf (editor-prefix-argument *editor*) argument)))
-                              (setf (editor-this-command *editor*) 'select-word))
-                (error () (setf (editor-last-command *editor*) last))))
+              (unless (ignoring-errors-reported ("selecting the word at point")
+                                                (let ((argument (prefix-argument)))
+                                                  (setf (editor-prefix-argument *editor*) nil)
+                                                  (unwind-protect (select-word)
+                                                    (setf (editor-prefix-argument *editor*) argument)))
+                                                (setf (editor-this-command *editor*) 'select-word))
+                (setf (editor-last-command *editor*) last)))
             (mark-run-enter))))))
 
 (defun install-mark-run (editor)

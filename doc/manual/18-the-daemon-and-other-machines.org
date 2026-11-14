@@ -477,6 +477,9 @@ your computer, in the background, to a directory of the editor's own on the
 server. Nothing is fetched from the internet. It must be a program for the
 server's kind of machine that needs nothing but the usual system libraries.
 =M-x server-remove-language-server= takes it away again.
+On your own computer such servers are kept in =tuatara/language-servers/= under
+=$XDG_DATA_HOME= (=~/.local/share= when that is not set), and are looked for
+after the directories of your =PATH=.
 
 *** Commands for the trusted servers
 

@@ -15,13 +15,15 @@
   "XML documents."
   :lighter "XML"
   :block-comment ("<!--" "-->")
-  :extensions ("ascx" "atom" "axaml" "axml" "bpmn" "checkstyle" "cpt" "csl" "dita" "ditamap" "dtml" "fods" "fodt" "fxml" "gir" "glif" "gml" "gpx" "iml" "isml" "itermcolors" "jmx" "kml" "launch" "menu" "mobileconfig" "mpd" "musicxml" "mxml" "ncx" "nuspec" "opml" "osc" "osm" "plist" "policy" "pt" "publishsettings" "pubxml" "rbxlx" "rbxmx" "resx" "rng" "rss" "shproj" "smil" "storyboard" "sublime-snippet" "svg" "terminal" "tld" "tmx" "ui" "vcxproj" "wixproj" "wsdl" "wxi" "wxs" "xaml" "xbl" "xib" "xlf" "xliff" "xml" "xmp" "xoml" "xpdl" "xrc" "xsd" "xsl" "xul")
-  :patterns ("/[^/]*\\.csproj\\.user$" "/[^/]*\\.pubxml\\.user$"
-                                       "/[^/]*\\.vbproj\\.user$"
-                                       "/[^/]*\\.vcxproj\\.filters$"
-                                       "/[^/]*\\.tm[Ll]anguage$"
-                                       "/[^/]*\\.tm[Pp]references$"
-                                       "/[^/]*\\.tm[Tt]heme$"))
+  :extensions ("ascx" "atom" "axaml" "axml" "bpmn" "checkstyle" "cpt" "csl" "dita" "ditamap" "dtml" "fods" "fodt"
+               "fxml" "gir" "glif" "gml" "gpx" "iml" "isml" "itermcolors" "jmx" "kml" "launch" "menu" "mobileconfig"
+               "mpd" "musicxml" "mxml" "ncx" "nuspec" "opml" "osc" "osm" "plist" "policy" "pt" "publishsettings"
+               "pubxml" "rbxlx" "rbxmx" "resx" "rng" "rss" "shproj" "smil" "storyboard" "sublime-snippet" "svg"
+               "terminal" "tld" "tmx" "ui" "vcxproj" "wixproj" "wsdl" "wxi" "wxs" "xaml" "xbl" "xib" "xlf" "xliff"
+               "xml" "xmp" "xoml" "xpdl" "xrc" "xsd" "xsl" "xul")
+  :patterns ("/[^/]*\\.csproj\\.user$" "/[^/]*\\.pubxml\\.user$" "/[^/]*\\.vbproj\\.user$"
+             "/[^/]*\\.vcxproj\\.filters$" "/[^/]*\\.tm[Ll]anguage$" "/[^/]*\\.tm[Pp]references$"
+             "/[^/]*\\.tm[Tt]heme$"))
 
 (define-language xml
   "XML documents, parsed with tree-sitter-xml."
@@ -113,7 +115,8 @@
 
 (define-language svelte
   "Svelte components, parsed with tree-sitter-svelte."
-  :grammar "svelte" :modes (svelte-mode) :indent 2 :queries "svelte" :injection-names "svelte" :definitions :textobjects)
+  :grammar "svelte" :modes (svelte-mode) :indent 2 :queries "svelte" :injection-names "svelte"
+  :definitions :textobjects)
 
 (define-major-mode graphviz-dot-mode prog-mode
   "Graphviz graphs in the DOT language."

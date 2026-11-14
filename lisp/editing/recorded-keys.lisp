@@ -194,14 +194,12 @@ one given to recorded keys before, which then plays these.
     (when (or (and (fboundp name) (not (get name 'recorded-keys)))
               (and other (not (eq other name))))
       (refuse "~(~a~) is the name of a command or function already" name))
-    (setf (fdefinition name) (lambda () (play-keys-saying events (play-count)))
-          (documentation name 'function)
-          (or documentation
-              (format nil "Play the recorded keys ~a, as \\[play-recorded-keys] plays the keys recorded last:
-with a prefix argument N, N times, with 0 until a play fails." text))
-          (get name 'recorded-keys) text
-          (gethash name *commands*) (fdefinition name))
-    name))
+    (setf (get name 'recorded-keys) text)
+    (install-command name
+                     (lambda () (play-keys-saying events (play-count)))
+                     (or documentation
+                         (format nil "Play the recorded keys ~a, as \\[play-recorded-keys] plays the keys recorded last:
+with a prefix argument N, N times, with 0 until a play fails." text)))))
 
 (defun recorded-keys-name-p (name)
   "True when NAME, a string, can name a command of recorded keys: letters,
@@ -261,7 +259,8 @@ and it is only inserted: putting it in the init file is left to you."
         (let ((text (recorded-keys-text events)))
           (check-writable (current-buffer))
           (if (or (find-if (lambda (kind) (member kind '(:paste :secret))) events :key #'tuatara.frontend:event-kind)
-                  (not (equal (map 'list (lambda (event) (tuatara.frontend:key-spec (tuatara.frontend:event-key event))) events)
+                  (not (equal (map 'list (lambda (event) (tuatara.frontend:key-spec (tuatara.frontend:event-key event)))
+                                   events)
                               (ignoring-errors-reported ("reading back the keys ~a" text)
                                 (tuatara.frontend:parse-key-sequence text)))))
               (message "These keys cannot all be written as text: ~a" text)

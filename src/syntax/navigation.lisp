@@ -4,14 +4,18 @@
 ;;;; An expression is what the grammar makes of the text: a word, or a construct
 ;;;; opened by a bracket or by punctuation (a quote, a string's quote mark) that
 ;;;; goes as one; comments are passed over as blank space is. The brackets
-;;;; around a place are found as Emacs finds them, by counting brackets in the
-;;;; text, but the tree says which are in strings, comments and character
-;;;; literals, so those do not count.
+;;;; around a place are found by counting brackets in the text, but the tree
+;;;; says which are in strings, comments and character literals, so those do
+;;;; not count.
 
 (in-package #:tuatara.syntax)
 
 (defconstant +deepest+ 1024
   "The most nodes around a place looked at, from the innermost out.")
+
+(defconstant +navigation-wait+ 1/4
+  "The seconds moving by the syntax tree waits for the program parsing to
+answer: one that hangs is ended then, and holds the editor no longer.")
 
 (defun node-ancestry (syntax start end)
   "The smallest node of SYNTAX's tree spanning octets START below END, then
@@ -22,7 +26,7 @@ is no tree."
     (when tree
       (with-call (call (tree-helper tree) +op-ancestry+)
         (call-u32 call (tree-number tree)) (call-u32 call start) (call-u32 call end)
-        (when (eql 0 (call-send call))
+        (when (eql 0 (call-send call :seconds +navigation-wait+))
           ;; each node around the one before it, all within the text
           (loop with bytes = (tuatara.text:rope-octet-length (syntax-rope syntax))
                 with low = most-positive-fixnum and high = -1
@@ -49,7 +53,7 @@ such node."
       (with-call (call (tree-helper tree) +op-select+)
         (call-u32 call (tree-number tree)) (call-u32 call start) (call-u32 call end)
         (call-u32 call (ecase how (:smallest 0) (:larger 1) (:first-child 2) (:next 3) (:previous 4)))
-        (when (and (eql 0 (call-send call)) (= 1 (reply-u32 call 0)))
+        (when (and (eql 0 (call-send call :seconds +navigation-wait+)) (= 1 (reply-u32 call 0)))
           (let ((from (reply-u32 call 1)) (to (reply-u32 call 2)))
             (unless (<= from to (tuatara.text:rope-octet-length (syntax-rope syntax)))
               (reply-overrun call))
@@ -75,7 +79,8 @@ such node."
 
 (defun string-type-p (name)
   "True when node type NAME is that of a string or character literal, taken as one piece of text."
-  (and (cl-ppcre:scan "string|str_lit|char_lit|char_literal|heredoc_body|fancy_literal|regex" name) t))
+  (loop for part in '("string" "str_lit" "char_lit" "heredoc_body" "fancy_literal" "regex")
+        thereis (and (search part name) t)))
 
 (defun comment-node-p (node)
   "True when NODE is a comment."
@@ -107,7 +112,8 @@ bracket or quote mark: text that reads as part of one expression."
 
 (defun prefix-text-p (rope start end)
   "True when the octets of ROPE from START below END are a few marks put before
-an expression (Lisp's quote and #', Rust's &): no blank, bracket, letter or digit."
+an expression (Lisp's quote and #', Rust's &): no blank, bracket, letter or
+digit."
   (and (< start end) (<= (- end start) 8)
        (loop for i from start below end
              for o = (tuatara.text:rope-octet rope i)
@@ -172,57 +178,57 @@ marks put before an expression (a quote) go with it."
          (p position))
     (loop
       (let ((from p))
-       (setf p (tuatara.text:rope-skip-octets rope p *separating-octets* :backward t))
-       (when (<= p 0) (return 0))
-       (let* ((before (tuatara.text:rope-previous-boundary rope p))
-             (chain (node-ancestry syntax before p))
-             (leaf (first chain))
-             (above (butlast (rest chain)))
-             (comment (find-if #'comment-node-p chain))
-             (inside-string (find-if (lambda (n)
-                                       (and (string-node-p n) (< (tree-node-start n) from (tree-node-end n)))) chain))
-             (string (find-if (lambda (n) (and (string-node-p n) (<= p (tree-node-end n) from))) chain :from-end t)))
-        (flet ((with-prefixes (x &optional (chain chain))
-                 ;; marks before X that belong to it, as a quote does
-                 (loop for parent in (member x chain)
-                       while (and (= (tree-node-end parent) (tree-node-end x))
-                                  (not (eq parent (car (last chain))))
-                                  (or (= (tree-node-start parent) (tree-node-start x))
-                                      (prefix-text-p rope (tree-node-start parent) (tree-node-start x))))
-                       do (setf x parent))
-                 (tree-node-start x)))
-          (cond ((null leaf) (return nil))
-                (comment (if (< (tree-node-start comment) from (tree-node-end comment))
-                             (return :text)
-                             (setf p (min (1- p) (tree-node-start comment)))))
-                (inside-string (return :text))
-                (string (return (with-prefixes string)))
-                ((opening-bracket-node-p leaf) (return nil))
-                ((closing-bracket-node-p leaf)
-                 (let ((open (scan-opener-of (make-bracket-scan syntax before) (1- (tree-node-end leaf)))))
-                   ;; the partner of a token's last bracket opens the whole of ]]
-                   (return
-                     (if open
-                         ;; with the marks before it that belong to it: the node the
-                         ;; brackets end, if one starts at the opening bracket or before
-                         (let* ((around (node-ancestry syntax open (tree-node-end leaf)))
-                                (node (find-if (lambda (n) (and (<= (tree-node-start n) open)
-                                                                (= (tree-node-end n) (tree-node-end leaf))))
-                                               around)))
-                           (if (and node (or (= (tree-node-start node) open)
-                                             (prefix-text-p rope (tree-node-start node) open)))
-                               (with-prefixes node around)
-                               open))
-                         :unbalanced))))
-                ((punctuation-node-p leaf)
-                 (setf p (min (1- p) (tree-node-start leaf))))
-                (t
-                 (let ((x leaf))
-                   (loop for parent in above
+        (setf p (tuatara.text:rope-skip-octets rope p *separating-octets* :backward t))
+        (when (<= p 0) (return 0))
+        (let* ((before (tuatara.text:rope-previous-boundary rope p))
+               (chain (node-ancestry syntax before p))
+               (leaf (first chain))
+               (above (butlast (rest chain)))
+               (comment (find-if #'comment-node-p chain))
+               (inside-string (find-if (lambda (n)
+                                         (and (string-node-p n) (< (tree-node-start n) from (tree-node-end n)))) chain))
+               (string (find-if (lambda (n) (and (string-node-p n) (<= p (tree-node-end n) from))) chain :from-end t)))
+          (flet ((with-prefixes (x &optional (chain chain))
+                   ;; marks before X that belong to it, as a quote does
+                   (loop for parent in (member x chain)
                          while (and (= (tree-node-end parent) (tree-node-end x))
-                                    (compact-text-p rope (tree-node-start parent) (tree-node-start x)))
+                                    (not (eq parent (car (last chain))))
+                                    (or (= (tree-node-start parent) (tree-node-start x))
+                                        (prefix-text-p rope (tree-node-start parent) (tree-node-start x))))
                          do (setf x parent))
-                   (return (tree-node-start x)))))))))))
+                   (tree-node-start x)))
+            (cond ((null leaf) (return nil))
+                  (comment (if (< (tree-node-start comment) from (tree-node-end comment))
+                               (return :text)
+                               (setf p (min (1- p) (tree-node-start comment)))))
+                  (inside-string (return :text))
+                  (string (return (with-prefixes string)))
+                  ((opening-bracket-node-p leaf) (return nil))
+                  ((closing-bracket-node-p leaf)
+                   (let ((open (scan-opener-of (make-bracket-scan syntax before) (1- (tree-node-end leaf)))))
+                     ;; the partner of a token's last bracket opens the whole of ]]
+                     (return
+                       (if open
+                           ;; with the marks before it that belong to it: the node the
+                           ;; brackets end, if one starts at the opening bracket or before
+                           (let* ((around (node-ancestry syntax open (tree-node-end leaf)))
+                                  (node (find-if (lambda (n) (and (<= (tree-node-start n) open)
+                                                                  (= (tree-node-end n) (tree-node-end leaf))))
+                                                 around)))
+                             (if (and node (or (= (tree-node-start node) open)
+                                               (prefix-text-p rope (tree-node-start node) open)))
+                                 (with-prefixes node around)
+                                 open))
+                           :unbalanced))))
+                  ((punctuation-node-p leaf)
+                   (setf p (min (1- p) (tree-node-start leaf))))
+                  (t
+                   (let ((x leaf))
+                     (loop for parent in above
+                           while (and (= (tree-node-end parent) (tree-node-end x))
+                                      (compact-text-p rope (tree-node-start parent) (tree-node-start x)))
+                           do (setf x parent))
+                     (return (tree-node-start x)))))))))))
 
 ;;; Strings and comments, and the brackets around a place
 
@@ -264,19 +270,14 @@ others left out: text whose brackets do not count."
 (defconstant +bracket-reach+ (* 256 1024)
   "The most octets looked through for a bracket's partner, or for the brackets around a place.")
 
-(defstruct (bracket-scan (:constructor %make-bracket-scan (rope spans from to)) (:copier nil))
+(define-record (bracket-scan (:constructor %make-bracket-scan (rope spans from to)) (:copier nil))
   "What looking for brackets in ROPE between octets FROM and TO needs: SPANS,
-the strings, character literals and comments there, whose brackets do not count."
-  (rope nil :read-only t)
-  (spans #() :type simple-vector :read-only t)
-  (from 0 :type fixnum :read-only t)
-  (to 0 :type fixnum :read-only t))
-
-(setf (documentation 'bracket-scan-p 'function) "True when OBJECT is a BRACKET-SCAN."
-      (documentation 'bracket-scan-rope 'function) "The text looked through."
-      (documentation 'bracket-scan-spans 'function) "The ranges whose brackets do not count, in order."
-      (documentation 'bracket-scan-from 'function) "The first octet looked at."
-      (documentation 'bracket-scan-to 'function) "The octet after the last one looked at.")
+the strings, character literals and comments there, whose brackets do not
+count."
+  (rope nil :read-only t :documentation "The text looked through.")
+  (spans #() :type simple-vector :read-only t :documentation "The ranges whose brackets do not count, in order.")
+  (from 0 :type fixnum :read-only t :documentation "The first octet looked at.")
+  (to 0 :type fixnum :read-only t :documentation "The octet after the last one looked at."))
 
 (defun make-bracket-scan (syntax around)
   "A BRACKET-SCAN of SYNTAX's text within +BRACKET-REACH+ octets of AROUND."
@@ -374,7 +375,8 @@ before the end of the scan."
   (let ((rope (bracket-scan-rope scan)) (q position))
     (loop
       (let ((at (and (< q (bracket-scan-to scan))
-                     (tuatara.text:rope-find-any-octet rope tuatara.text:*bracket-octets* :start q :end (bracket-scan-to scan)))))
+                     (tuatara.text:rope-find-any-octet rope tuatara.text:*bracket-octets*
+                                                       :start q :end (bracket-scan-to scan)))))
         (unless at (return nil))
         (let ((span (scan-span-at scan at)))
           (if span
@@ -388,8 +390,9 @@ the start of the scan."
   (let ((rope (bracket-scan-rope scan)) (q position))
     (loop
       (let ((at (and (> q (bracket-scan-from scan))
-                     (tuatara.text:rope-find-any-octet rope tuatara.text:*bracket-octets* :start (bracket-scan-from scan) :end q
-                                                                             :from-end t))))
+                     (tuatara.text:rope-find-any-octet rope tuatara.text:*bracket-octets*
+                                                       :start (bracket-scan-from scan) :end q :from-end t))))
+
         (unless at (return nil))
         (let ((span (scan-span-at scan at)))
           (if span

@@ -9,23 +9,27 @@
 
 (in-package #:tuatara.export)
 
-(defstruct (template-import-job (:include tuatara.runtime:job) (:constructor make-template-import-job
-                                                                             (buffer path name make)) (:copier nil))
+(define-record (template-import-job (:include tuatara.runtime:job) (:constructor make-template-import-job
+                                                                                (buffer path name make)) (:copier nil))
   "A document at PATH being made the template NAME and its note template by
 MAKE, a function of PATH and NAME (DOCX-IMPORT, LATEX-IMPORT), a job for
 BUFFER; NOTE, the note template's path once made; WORDS, what to say of it."
-  path name make note words)
-
-(setf (documentation 'template-import-job-p 'function) "True when OBJECT is a TEMPLATE-IMPORT-JOB.")
+  (path nil :documentation "The path of the document TEMPLATE-IMPORT-JOB makes a template of.")
+  (name nil :documentation "The name of the template TEMPLATE-IMPORT-JOB makes.")
+  (make nil
+        :documentation "The function of the path and the name that makes the template for TEMPLATE-IMPORT-JOB
+\(DOCX-IMPORT, LATEX-IMPORT).")
+  (note nil :documentation "The path of the note template made by TEMPLATE-IMPORT-JOB, once made.")
+  (words nil :documentation "What TEMPLATE-IMPORT-JOB says of its work."))
 
 (tuatara.runtime:define-job-words template-import-job
-  :doing "Making the template"
-  :description (format nil
-                       "Making ~a the template ~a"
-                       (tuatara.io:native-file-name (template-import-job-path job))
-                       (template-import-job-name job))
-  :verb "make the template"
-  :left-words "no template made")
+    :doing "Making the template"
+    :description (format nil
+                         "Making ~a the template ~a"
+                         (tuatara.io:native-file-name (template-import-job-path job))
+                         (template-import-job-name job))
+    :verb "make the template"
+    :left-words "no template made")
 
 (defmethod tuatara.runtime:job-take-in ((job template-import-job))
   "Show a new note begun from the note template made, and say what the template has, or why none was made."
@@ -33,11 +37,17 @@ BUFFER; NOTE, the note template's path once made; WORDS, what to say of it."
       (let ((buffer (new-empty-buffer))
             (name (template-import-job-name job)))
         (set-major-mode buffer 'org-mode)
-        (tuatara.buffer:buffer-insert buffer 0 (formatted-template-text (list name :file (template-import-job-note job))))
+        (tuatara.buffer:buffer-insert buffer 0
+                                      (formatted-template-text (list name :file (template-import-job-note job))))
         (message (concatenate 'string "Template ~a made: ~{~a~^; ~}. A new note begun from it; "
                               "\\[insert-formatted-note-template] ~a begins another")
                  name (template-import-job-words job) name))
       (message "~a" (tuatara.runtime:job-ending-words job))))
+
+(defun template-name-p (name)
+  "True when NAME may name a template: letters, digits, - and _, beginning
+with a letter or digit, and nothing after them, not even a line end."
+  (and (cl-ppcre:scan "\\A[A-Za-z0-9][-A-Za-z0-9_]*\\z" name) t))
 
 (defun start-template-import (path make)
   "Ask the template's name (offered from PATH's) and make the document at
@@ -46,7 +56,7 @@ when PATH is NIL, no document named."
   (let ((name (and path (read-string "Template name: " :initial (title-slug (tuatara.io:native-file-stem path))))))
     (cond ((null path))
           ((zerop (length name)) (message "No name: nothing made"))
-          ((not (cl-ppcre:scan "^[A-Za-z0-9][-A-Za-z0-9_]*$" name))
+          ((not (template-name-p name))
            (message "A template's name is letters, digits, - and _: nothing made"))
           (t (tuatara.runtime:start-job-thread
               (make-template-import-job (current-buffer) path name make)

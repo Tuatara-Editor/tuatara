@@ -22,6 +22,10 @@ a description, but the samples the list of fonts makes."
              tuatara.display:*faces*)
     (sort names #'string< :key #'symbol-name)))
 
+(defun face-doc-of (name)
+  "The description of the face NAME."
+  (tuatara.display:face-doc (tuatara.display:find-face name)))
+
 (defun face-name-text (name)
   "Face NAME as it is written in an init file: :comment."
   (format nil ":~(~a~)" (symbol-name name)))
@@ -31,7 +35,7 @@ a description, but the samples the list of fonts makes."
 first sentence of its description beside it."
   (mapcar (lambda (name)
             (make-candidate (face-name-text name)
-                            :annotation (list (documentation-field (tuatara.display:face-doc (tuatara.display:find-face name)) 1/2))
+                            :annotation (list (documentation-field (face-doc-of name) 1/2))
                             :value name))
           (listed-faces)))
 
@@ -48,9 +52,8 @@ for; none when there are none."
                     collect (format nil "~(~s~) ~a" key
                                     (if (and theme (tuatara.display:role-p value))
                                         (format nil "~(~a~) (~a)" value
-                                                (or (ignoring-errors-reported ("finding the colour ~(~a~)" value)
-                                                      (handler-case (tuatara.display:theme-role-colour theme value)
-                                                        (simple-error () nil)))
+                                                (or (handler-case (tuatara.display:theme-role-colour theme value)
+                                                      (simple-error () nil))
                                                     "no colour"))
                                         (string-downcase (prin1-to-string value))))))))
 
@@ -66,7 +69,7 @@ of it leaves it."
                (when (eq (car setting) name)
                  (loop for (key value) on (cdr setting) by #'cddr
                        when (eq (getf attributes key :unset) :unset)
-                         do (setf attributes (append attributes (list key value)))))))
+                       do (setf attributes (append attributes (list key value)))))))
     attributes))
 
 (defparameter *face-attribute-words*
@@ -86,36 +89,38 @@ drawn now, with the face it comes from when another gives it."
                        (flet ((link (other)
                                 (put (face-name-text other)
                                      :button (lambda () (show-help-pieces (lambda () (describe-face-pieces other)))))))
-        (put (format nil "~a is a face.~%~%" (face-name-text name)))
-        (put "Sample: ")
-        (put *face-sample* name)
-        (put (format nil "~%~%~a~%~%" (with-output-to-string (out)
-                                        (write-documentation out (tuatara.display:face-doc face)))))
-        (put (format nil "Its definition: ~a~%" (face-setting-words (tuatara.display:face-base face))))
-        (when theme
-          (put (format nil "The theme ~(~a~) sets: ~a~%" (tuatara.display:theme-name theme)
-                       (face-setting-words (theme-face-settings theme name) theme))))
-        (let ((yours (cdr (assoc name tuatara.display:*user-face-settings*))))
-          (when yours (put (format nil "Your init file sets: ~a~%" (face-setting-words yours)))))
-        (let ((parent (tuatara.display:face-inherit face)))
-          (when parent
-            (put "Inherits from ")
-            (link parent)
-            (put (format nil ": what this face leaves unset is drawn as that one draws it.~%"))))
-        (put (format nil "~%As drawn now~@[, in the theme ~(~a~)~]:~%" (and theme (tuatara.display:theme-name theme))))
-        (let ((any nil))
-          (loop for (attribute words) in *face-attribute-words*
-                do (multiple-value-bind (value from) (tuatara.display:face-attribute name attribute)
-                     (when value
-                       (setf any t)
-                       (put (format nil "  ~a ~a" (column-text words 18 :elide nil) (cond ((eq value t) "yes")
-                                                                ((stringp value) value)
-                                                                (t (string-downcase (princ-to-string value))))))
-                       (unless (eq from name)
-                         (put ", from ")
-                         (link from))
-                       (put (string #\Newline)))))
-          (unless any (put (format nil "  nothing set: drawn as the text around it~%"))))))))
+                         (put (format nil "~a is a face.~%~%" (face-name-text name)))
+                         (put "Sample: ")
+                         (put *face-sample* name)
+                         (put (format nil "~%~%~a~%~%" (with-output-to-string (out)
+                                                         (write-documentation out (tuatara.display:face-doc face)))))
+                         (put (format nil "Its definition: ~a~%" (face-setting-words (tuatara.display:face-base face))))
+                         (when theme
+                           (put (format nil "The theme ~(~a~) sets: ~a~%" (tuatara.display:theme-name theme)
+                                        (face-setting-words (theme-face-settings theme name) theme))))
+                         (let ((yours (cdr (assoc name tuatara.display:*user-face-settings*))))
+                           (when yours (put (format nil "Your init file sets: ~a~%" (face-setting-words yours)))))
+                         (let ((parent (tuatara.display:face-inherit face)))
+                           (when parent
+                             (put "Inherits from ")
+                             (link parent)
+                             (put (format nil ": what this face leaves unset is drawn as that one draws it.~%"))))
+                         (put (format nil "~%As drawn now~@[, in the theme ~(~a~)~]:~%"
+                                      (and theme (tuatara.display:theme-name theme))))
+                         (let ((any nil))
+                           (loop for (attribute words) in *face-attribute-words*
+                                 do (multiple-value-bind (value from) (tuatara.display:face-attribute name attribute)
+                                      (when value
+                                        (setf any t)
+                                        (put (format nil "  ~a ~a" (column-text words 18 :elide nil)
+                                                     (cond ((eq value t) "yes")
+                                                           ((stringp value) value)
+                                                           (t (string-downcase (princ-to-string value))))))
+                                        (unless (eq from name)
+                                          (put ", from ")
+                                          (link from))
+                                        (put (string #\Newline)))))
+                           (unless any (put (format nil "  nothing set: drawn as the text around it~%"))))))))
 
 (define-command describe-face ()
   "Show all that is known of a face: a sample drawn in it, what it colours,
@@ -168,7 +173,7 @@ value: (:SECTION TITLE) for a title, the face's name for its line."
                   (funcall line (list (format nil "  ~a  " (column-text (face-name-text name) width))
                                       (cons *face-sample* name)
                                       "  "
-                                      (cons (first-sentence (substitute-command-keys (tuatara.display:face-doc (tuatara.display:find-face name)) :marks t))
+                                      (cons (substitute-command-keys (first-sentence (face-doc-of name)) :marks t)
                                             :list-note))
                            nil name))))
          (funcall line (format nil "Every face a theme can colour~@[, drawn as the theme ~(~a~) draws them~]: ~d"
@@ -182,7 +187,7 @@ value: (:SECTION TITLE) for a title, the face's name for its line."
 \(FACE-LIST-PIECES), point put as RENDER-PIECES puts it."
   (multiple-value-bind (pieces entries) (face-list-pieces)
     (render-pieces list pieces :point point :entries entries :keys t
-                               :refill (lambda (list) (face-list-render list :keep)))))
+                   :refill (lambda (list) (face-list-render list :keep)))))
 
 (define-command list-faces ()
   "List every face a theme can colour in *Faces*, in sections by the first

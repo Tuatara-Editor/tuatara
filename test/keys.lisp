@@ -152,7 +152,7 @@ the editor TUATARA.COMMAND:*EDITOR* is bound to."
                                     ("C-x a l" org-store-link)
                                     ("C-x a o" org-clock-out)
                                     ("C-x T h" hl-line-mode)
-                                    ("C-x T v" visual-line-mode)
+                                    ("C-x T v" display-fill-column-mode)
                                     ("C-x w h" swap-window-left)
                                     ("C-x w t" transpose-window-layout)
                                     ("C-x 4 0" kill-buffer-and-window)

@@ -370,6 +370,21 @@ scratch file, given to the clipboard unasked, nor exported unasked. No core dump
            (is string= two (found-at (length text))))
       (tuatara.buffer:kill-buffer buffer))))
 
+(define-test (encrypted block-found-without-copying-the-text)
+  ;; the block near point is found in a time that does not grow with the rest of the buffer
+  (flet ((seconds (size)
+           (let* ((block (format nil "-----BEGIN PGP MESSAGE-----~%x~%-----END PGP MESSAGE-----~%"))
+                  (buffer (tuatara.buffer:make-buffer "armoured-in-a-log"
+                                                      :text (concatenate 'string block
+                                                                         (make-string size :initial-element #\a))))
+                  (start (get-internal-real-time)))
+             (unwind-protect
+                  (progn (dotimes (k 4) (tuatara.defaults::armoured-block buffer "MESSAGE"))
+                         (/ (- (get-internal-real-time) start) internal-time-units-per-second))
+               (tuatara.buffer:kill-buffer buffer)))))
+    (let ((small (seconds (* 1024 1024))) (large (seconds (* 32 1024 1024))))
+      (true (< large (+ 0.2 (* 4 small))) "1 MB in ~,3f s, 32 MB in ~,3f s" small large))))
+
 (define-test (encrypted in-rimu)
   ;; : e on a file of a list asks how to encrypt it; : v on one says what its signature is
   (if (null (tuatara.defaults::gpg-path))
@@ -890,3 +905,54 @@ nothing more."
           (with-environment-variable ("GNUPGHOME" open)
             (run-keys "M-x g p g - l o c k RET"))
           (false (probe-file (merge-pathnames "arguments" dir)) "gpgconf never ran"))))))
+
+(define-test (encrypted passphrase-taken-whatever-asks)
+  ;; a passphrase given goes to gpg's loopback, which gpg would otherwise leave unread for its pinentry
+  (with-test-directory (dir)
+    (let ((tuatara.defaults::*gpg-program* (fake-gpg dir)))
+      (tuatara.defaults::gpg-run (list "--decrypt") :passphrase (copy-seq "kea pass") :asker :agent)
+      (let ((arguments (uiop:read-file-lines (merge-pathnames "arguments" dir))))
+        (is equal "loopback" (second (member "--pinentry-mode" arguments :test #'string=)))))))
+
+(define-test (encrypted gpg-run-held-to-seconds)
+  ;; a gpg that never answers (a keyring locked, an agent stuck) is stopped once its seconds are up
+  (with-test-directory (dir)
+    (let ((tuatara.defaults::*gpg-program*
+            (put-program (merge-pathnames "gpg" dir)
+                         (format nil "#!/bin/sh~%[ \"$1\" = --dump-options ] && exit 0~%exec sleep 60~%")))
+          (start (get-internal-real-time)))
+      (let ((words (handler-case (progn (tuatara.defaults::gpg-run (list "--list-keys") :asker :agent :seconds 1) nil)
+                     (tuatara.runtime:refusal (condition) (princ-to-string condition)))))
+        (true (search "no answer within 1 second:" (or words "")) "~a" words))
+      (true (< (- (get-internal-real-time) start) (* 10 internal-time-units-per-second))))))
+
+(define-test (encrypted key-deletion-failure-said)
+  ;; keys gpg would not delete are not said to be deleted
+  (with-test-directory (dir)
+    (let ((tuatara.defaults::*gpg-program*
+            (put-program (merge-pathnames "gpg" dir)
+                         (format nil "#!/bin/sh~%[ \"$1\" = --dump-options ] && exit 0~%~
+                                      echo 'gpg: key is in use' >&2~%exit 2~%"))))
+      (multiple-value-bind (deleted why)
+          (tuatara.defaults::delete-gpg-keys (list (list :id "ABCD" :name "Kea" :fingerprint "ABCD")
+                                                   (list :id "EF01" :fingerprint "EF01"))
+                                             (list nil))
+        (is = 0 deleted)
+        (true (search "Kea: gpg: key is in use" (or why "")) "~a" why)))))
+
+(define-test (encrypted symmetric-block-asks-its-passphrase)
+  ;; a block made with a passphrase asks for that passphrase, not your key's
+  (if (null (tuatara.defaults::gpg-path))
+      (skip "gpg is not installed here" (true nil))
+      (let* ((tuatara-user:*gpg-passphrase-from* :minibuffer)
+             (cipher (tuatara.defaults::gpg-run (list "--armor" "--symmetric" "--output" "-")
+                                                :input (tuatara.text:string-octets "kea") :passphrase "kea pass"))
+             (asked nil))
+        (sb-int:encapsulate 'tuatara.defaults::gpg-read-passphrase 'asked
+                            (lambda (function prompt &rest more)
+                              (declare (ignore function more))
+                              (setf asked prompt)
+                              nil))
+        (unwind-protect (tuatara.defaults::block-passphrase cipher)
+          (sb-int:unencapsulate 'tuatara.defaults::gpg-read-passphrase 'asked))
+        (is equal "Passphrase for the block: " asked))))

@@ -74,14 +74,21 @@ longer there is said, not made. Returns the buffer, or NIL then."
   (unless (tuatara.io:path-kind (tuatara.io:native (tuatara.io:expand-path path)))
     (message "~a is not there" (abbreviated-path path))
     (return-from show-file-line nil))
-  (let ((buffer (visit-path path :show (if other
-                                           (lambda (buffer) (pop-to-buffer buffer :other t))
-                                           (lambda (buffer) (show-buffer buffer))))))
-    (when (and (tuatara.buffer:buffer-file buffer)
-               (eq buffer (tuatara.display:window-buffer (current-window))))
-      (goto-shown buffer (line-place buffer line :offset offset :column column))
-      (tuatara.display:window-recenter (current-window)))
-    buffer))
+  (visit-path path :show (lambda (buffer)
+                           (show-buffer-position buffer (and (tuatara.buffer:buffer-file buffer)
+                                                             (line-place buffer line :offset offset :column column))
+                                                 :other other))))
+
+(defun show-buffer-position (buffer position &key other)
+  "Show BUFFER, in the selected window or with OTHER in another, selected,
+and put point at POSITION, an octet, with its line in the middle of the
+window; a buffer narrowed to a part not holding it is widened first, and that
+said. With POSITION NIL, only show BUFFER. Returns BUFFER."
+  (if other (pop-to-buffer buffer :other t) (show-buffer buffer))
+  (when (and position (eq buffer (tuatara.display:window-buffer (current-window))))
+    (goto-shown buffer (min position (tuatara.buffer:buffer-size buffer)))
+    (tuatara.display:window-recenter (current-window)))
+  buffer)
 
 (defun show-start-places (places)
   "Put point on the line asked for in each of PLACES, the files the editor was
@@ -111,14 +118,11 @@ places is a list of places for \\[next-place] and \\[previous-place] (ENTRY-PLAC
     (declare (ignore mode entry))
     nil))
 
-(defstruct (entry-places (:constructor entry-places (buffer)) (:copier nil))
+(define-record (entry-places (:constructor entry-places (buffer)) (:copier nil))
   "A list made by a command (RENDER-PIECES) in BUFFER as a list of places
 \(STEP-PLACE): its entries that name a file and a line (ENTRY-PLACE), in order,
 the one gone to last that on the line of its point."
-  (buffer nil :read-only t))
-
-(setf (documentation 'entry-places-p 'function) "True when OBJECT is an ENTRY-PLACES."
-      (documentation 'entry-places-buffer 'function) "The buffer of the list an ENTRY-PLACES goes through.")
+  (buffer nil :read-only t :documentation "The buffer of the list an ENTRY-PLACES goes through."))
 
 (defmethod places-buffer ((places entry-places))
   "The buffer of the list: killed, its places are in force no more."

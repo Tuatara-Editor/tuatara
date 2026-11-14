@@ -301,7 +301,21 @@ typed on either side match in any order, as the minibuffer matches them."
 ROOM-COLUMNS wide: a column of margin either side, the candidates' names, the
 matches of the word typed in their colours, and what is said of each beside
 it; the chosen one in :popup-current, the scroll bar in the right margin.
-Returns the rows and the box's width."
+Returns the rows and the box's width. They are made again only when the
+candidates, the one chosen, the scroll, the word or the room change, so that
+what is said of each is asked once for each change."
+  (let ((from (list (popup-candidates popup) (popup-index popup) (popup-scroll popup) (popup-input-seen popup)
+                    room-columns *popup-rows*))
+        (kept (popup-list-kept popup)))
+    (if (and kept (equal from (first kept)))
+        (values (second kept) (third kept))
+        (multiple-value-bind (rows width) (make-popup-list-box popup room-columns)
+          (setf (popup-list-kept popup) (list from rows width))
+          (values rows width)))))
+
+(defun make-popup-list-box (popup room-columns)
+  "The rows of POPUP's list and the box's width, made afresh as POPUP-LIST-BOX
+describes them."
   (let* ((candidates (popup-candidates popup))
          (count (length candidates))
          (rows (max 1 (min *popup-rows* count)))
@@ -309,9 +323,7 @@ Returns the rows and the box's width."
          (shown (loop for i from first below (min count (+ first rows)) collect i))
          ;; control and invisible characters and octets not UTF-8 written out, as names are everywhere
          (names (mapcar (lambda (i) (shown-name (candidate-string (aref candidates i)))) shown))
-         (notes (mapcar (lambda (i) (let ((note (popup-annotation popup (aref candidates i))))
-                                      (if note (shown-name note) note)))
-                        shown))
+         (notes (mapcar (lambda (i) (shown-name (popup-annotation popup (aref candidates i)))) shown))
          (name-width (reduce #'max names :key #'panel-columns :initial-value 0))
          (note-width (reduce #'max notes :key #'panel-columns :initial-value 0))
          (limit (max 4 (min (cdr *popup-width-limits*) room-columns)))
@@ -329,7 +341,7 @@ Returns the rows and the box's width."
                     (cons top (+ top size))))))
     (values
      (if (zerop count)
-         (list (let ((text (tuatara.display:fit-columns "No match" nil (- width 2) :width #'panel-char-columns)))
+         (list (let ((text (fit-panel-columns "No match" nil (- width 2))))
                  (list (box-row-text text width)
                        (list (list 0 width '(:popup-annotation :popup))))))
          (loop for i in shown
@@ -338,14 +350,14 @@ Returns the rows and the box's width."
                for row from 0
                collect (let* ((current (= i (popup-index popup)))
                               (base (if current '(:popup-current :popup) '(:popup)))
-                              (name (tuatara.display:fit-columns name nil name-width :width #'panel-char-columns))
-                              (note (if (plusp note-width) (tuatara.display:fit-columns note nil note-width :width #'panel-char-columns) ""))
+                              (name (fit-panel-columns name nil name-width))
+                              (note (if (plusp note-width) (fit-panel-columns note nil note-width) ""))
                               (text (with-output-to-string (out)
                                       (write-char #\Space out)
-                                      (write-string (tuatara.display:pad-columns name name-width :width #'panel-char-columns) out)
+                                      (write-string (pad-panel-columns name name-width) out)
                                       (when (plusp note-width)
                                         (write-string "  " out)
-                                        (write-string (tuatara.display:pad-columns note note-width :width #'panel-char-columns) out))
+                                        (write-string (pad-panel-columns note note-width) out))
                                       (write-char #\Space out)))
                               (note-start (+ 1 (length name) (- name-width (panel-columns name)) 2))
                               ;; the chosen one's face first: where it has a colour of its own, it shows
@@ -373,7 +385,7 @@ line set in, as an example is, is kept as it is where it fits, else filled."
            (let ((lines (tuatara.display:fill-words words width :start (length head) :indent indent
                                                                  :width #'panel-char-columns :cut t)))
              (cons (concatenate 'string head (or (first lines) ""))
-                   (mapcar (lambda (line) (concatenate 'string (make-string indent :initial-element #\Space) line))
+                   (mapcar (lambda (line) (concatenate 'string (tuatara.text:spaces indent) line))
                            (rest lines))))))
     (or (loop for part in (tuatara.display:docstring-paragraphs text)
               append (ecase (first part)
@@ -404,7 +416,7 @@ narrow as its widest line lets it."
 (defun box-row-text (text width)
   "TEXT as a row of a box WIDTH columns wide: a space either side, padded
 with spaces to the width."
-  (format nil " ~a " (tuatara.display:pad-columns text (- width 2) :width #'panel-char-columns)))
+  (format nil " ~a " (pad-panel-columns text (- width 2))))
 
 (defun box-rows (lines width)
   "The rows of a box WIDTH columns wide showing LINES, each (TEXT FACES KEYS):
@@ -607,8 +619,8 @@ cuts becomes spaces. Two values: the string and its spans."
            (pad-after (if (< tail n) (- (aref starts tail) box-end) 0))
            (box-at (+ head pad-before))
            (shift (- (+ box-at (length box) pad-after) tail)))
-      (values (concatenate 'string (subseq string 0 head) (make-string pad-before :initial-element #\Space)
-                           box (make-string pad-after :initial-element #\Space) (subseq string tail))
+      (values (concatenate 'string (subseq string 0 head) (tuatara.text:spaces pad-before)
+                           box (tuatara.text:spaces pad-after) (subseq string tail))
               (append (loop for (s e face) in spans
                             when (< s head) collect (list s (min e head) face))
                       (loop for (s e face) in box-spans collect (list (+ s box-at) (+ e box-at) face))
@@ -631,7 +643,7 @@ spans; as they came when no box is on the row."
   (let ((mine (boxes-on-row row boxes)))
     (if (null mine)
         (values string spans face)
-        (let* ((string (tuatara.display:pad-columns string width :width #'panel-char-columns))
+        (let* ((string (pad-panel-columns string width))
                ;; the row's face under the padding too
                (spans (if face (flatten-spans (cons (list 0 (length string) face) spans) (length string)) spans)))
           (dolist (box (reverse mine))

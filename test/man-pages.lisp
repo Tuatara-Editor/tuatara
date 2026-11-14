@@ -223,3 +223,24 @@ completed: a list of strings."
                                            "PATH=/usr/bin:/bin"))
       (false (probe-file completion))
       (true (probe-file other)))))
+
+(define-test (man-pages frame-counts-follow-the-limit)
+  ;; the frames the options offer and say are those the editor opens, whatever its limit is
+  (let ((most tuatara.command:*most-frames*))
+    (is equal (loop for n from 1 to most collect (princ-to-string n))
+        (cdr (assoc "--frames" tuatara.terminal::*completion-values* :test #'string=)))
+    (true (search (format nil "from 1 to ~d" most)
+                  (format nil "~{~a~^ ~}"
+                          (getf (find "--frames" tuatara.terminal:*option-help*
+                                      :key (lambda (entry) (first (first (getf entry :flags))))
+                                      :test #'equal)
+                                :text))))))
+
+(define-test (man-pages kept-files-pin-read-once)
+  ;; the pin of the kept files is read once for the three classes, not once for each
+  (let ((reads 0))
+    (sb-int:encapsulate 'tuatara.terminal::kept-file-rows 'counted
+                        (lambda (function &rest arguments) (incf reads) (apply function arguments)))
+    (unwind-protect (tuatara.terminal::kept-files-roff)
+      (sb-int:unencapsulate 'tuatara.terminal::kept-file-rows 'counted))
+    (is = 1 reads)))

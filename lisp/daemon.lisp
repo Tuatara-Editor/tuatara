@@ -16,6 +16,27 @@
 
 (in-package #:tuatara.defaults)
 
+;;; The daemon this editor runs as, and its sign
+
+(defvar *daemon* nil
+  "The daemon this editor runs as, in the background (DAEMON), or NIL.")
+
+(define-setting *daemon-indicator* "D"
+  "What the mode line shows for a daemon, last among its signs before [-].
+It is always in the same place: in :mode-line-sign while this editor runs as
+a daemon (tuatara --daemon), in each of its clients, else faint, in
+:mode-line-sign-idle.
+- \"D\": D (for daemon), which any font has (the standard).
+- any other text: that text.
+- nil: nothing."
+  :values (or (member nil) string))
+
+(defun daemon-mode-line (editor buffer)
+  "Mode line function: *DAEMON-INDICATOR*, lit while this editor runs as a
+daemon, else faint (MODE-LINE-SIGN)."
+  (declare (ignore editor buffer))
+  (mode-line-sign *daemon-indicator* *daemon*))
+
 ;;; Where a daemon listens
 
 (defparameter *daemon-default-name* "default"
@@ -72,36 +93,23 @@ named from the root. Every directory on the way to it from there must be safe as
 RUNTIME-DIRECTORY-REFUSAL says with ON-THE-WAY. A link on the way is followed and
 where it leads is checked the same way. The directory itself must be no link and
 safe as that says with PRIVATE."
-  (flet ((named (parts) (format nil "/~{~a~^/~}" (reverse parts)))
-         (on-the-way (name stamp)
-           (runtime-directory-refusal stamp (format nil "~a, on the way to ~a," name what) uid :on-the-way t)))
+  (flet ((on-the-way (name stamp)
+           (runtime-directory-refusal stamp (format nil "~a, on the way to ~a," name what) uid :on-the-way t))
+         (link-p (stamp) (and stamp (eq (tuatara.io:stamp-kind stamp) :symlink))))
     (if (not (uiop:string-prefix-p "/" path))
         (format nil "~a is not named from the root" what)
-        (let ((passed '()) (links 0)
-              (ahead (uiop:split-string path :separator "/")))
+        (let ((reached nil))
           (or (on-the-way "/" (tuatara.io:path-stamp "/" :follow nil :failure nil))
-              (loop
-                (let ((part (pop ahead)))
-                  (cond ((and (null part) (null passed)) (return (format nil "~a is the root" what)))
-                        ((null part)
-                         (return (runtime-directory-refusal (tuatara.io:path-stamp (named passed)
-                                                                                   :follow nil :failure nil)
-                                                         what uid :private private)))
-                        ((member part '("" ".") :test #'string=))
-                        ((string= part "..") (pop passed))
-                        ((every (lambda (next) (string= next "")) ahead) (push part passed))
-                        (t
-                         (let* ((name (named (cons part passed)))
-                                (stamp (tuatara.io:path-stamp name :follow nil :failure nil)))
-                           (if (and stamp (eq (tuatara.io:stamp-kind stamp) :symlink))
-                               (let ((target (handler-case (sb-posix:readlink name) (sb-posix:syscall-error () nil))))
-                                 (when (or (null target) (> (incf links) 40))
-                                   (return (format nil "~a, on the way to ~a, leads nowhere" name what)))
-                                 (when (uiop:string-prefix-p "/" target) (setf passed '()))
-                                 (setf ahead (append (uiop:split-string target :separator "/") ahead)))
-                               (let ((why (on-the-way name stamp)))
-                                 (when why (return why))
-                                 (push part passed)))))))))))))
+              ;; each place is checked as one on the way once another comes after it
+              (map-path-places path
+                               (lambda (place stamp)
+                                 (prog1 (and reached (not (link-p (cdr reached)))
+                                             (on-the-way (car reached) (cdr reached)))
+                                   (setf reached (cons place stamp))))
+                               :nowhere (lambda (place) (format nil "~a, on the way to ~a, leads nowhere" place what)))
+              (if (equal (car reached) "/")
+                  (format nil "~a is the root" what)
+                  (runtime-directory-refusal (cdr reached) what uid :private private)))))))
 
 (defvar *runtime-directory* nil
   "The directory of the session's own files that daemons' sockets go in, or NIL
@@ -142,7 +150,7 @@ daemon (DAEMON-NAME-P) or one too long for a socket."
 
 ;;; A daemon: its lock, its socket, and the clients being greeted
 
-(defstruct (daemon (:constructor %make-daemon (name lock listener)) (:copier nil))
+(define-record (daemon (:constructor %make-daemon (name lock listener)) (:copier nil))
   "A daemon running in this process. NAME is its name, and its LOCK is held on
 its lock file (a descriptor). LISTENER is the socket it takes connections on
 (a descriptor). QUEUE holds the events of its frames, and THREAD is the thread
@@ -153,30 +161,20 @@ client. NAMESPACE is the mount namespace it runs in. ENDING is true once it
 was asked to end with no one to ask (ASK-DAEMON-TO-END). LEAVING is a
 semaphore signalled once it has ended while GUARD-DAEMON-LEAVING watches it,
 NIL before."
-  name lock listener
-  (queue (tuatara.frontend:make-event-queue))
-  (thread nil)
-  (greeting 0 :type fixnum)
-  (arrived '())
-  (mutex (sb-thread:make-mutex :name "daemon"))
-  (namespace (tuatara.io:mount-namespace (sb-posix:getpid)))
-  (ending nil)
-  (leaving nil))
-
-(setf (documentation 'daemon-p 'function) "True when OBJECT is a DAEMON."
-      (documentation 'daemon-name 'function) "The name of DAEMON."
-      (documentation 'daemon-lock 'function) "The descriptor of DAEMON's lock file, its lock held."
-      (documentation 'daemon-listener 'function) "The socket DAEMON takes connections on."
-      (documentation 'daemon-queue 'function) "Where the events of DAEMON's frames go."
-      (documentation 'daemon-thread 'function) "The thread taking DAEMON's connections."
-      (documentation 'daemon-greeting 'function) "How many connections DAEMON is greeting."
-      (documentation 'daemon-arrived 'function)
-      "The remote frontends greeted and not yet given a frame, newest first; a window asked for as
-\(:WINDOW REMOTE WHAT)."
-      (documentation 'daemon-mutex 'function) "Held while DAEMON's GREETING or ARRIVED change."
-      (documentation 'daemon-namespace 'function)
-      "The mount namespace DAEMON runs in, as TUATARA.IO:MOUNT-NAMESPACE gives it."
-      (documentation 'daemon-ending 'function) "True once DAEMON was asked to end with no one to ask.")
+  (name nil :documentation "The name of DAEMON.")
+  (lock nil :documentation "The descriptor of DAEMON's lock file, its lock held.")
+  (listener nil :documentation "The socket DAEMON takes connections on.")
+  (queue (tuatara.frontend:make-event-queue) :documentation "Where the events of DAEMON's frames go.")
+  (thread nil :documentation "The thread taking DAEMON's connections.")
+  (greeting 0 :type fixnum :documentation "How many connections DAEMON is greeting.")
+  (arrived '()
+           :documentation "The remote frontends greeted and not yet given a frame, newest first; a window asked for as
+\(:WINDOW REMOTE WHAT).")
+  (mutex (sb-thread:make-mutex :name "daemon") :documentation "Held while DAEMON's GREETING or ARRIVED change.")
+  (namespace (tuatara.io:mount-namespace (sb-posix:getpid))
+             :documentation "The mount namespace DAEMON runs in, as TUATARA.IO:MOUNT-NAMESPACE gives it.")
+  (ending nil :documentation "True once DAEMON was asked to end with no one to ask.")
+  (leaving nil :documentation "The semaphore signalled once DAEMON has ended, NIL before."))
 
 (defun open-daemon (name)
   "Make this process the daemon NAME: take its lock, so that no other daemon
@@ -191,17 +189,13 @@ not safe (DAEMON-DIRECTORY). Returns the DAEMON."
     (unless fd
       (refuse "A daemon named ~a runs already: tuatara --client~:[=~a~;~*~] shows it"
               name (string= name *daemon-default-name*) name))
-    (handler-case
-        (progn
-          ;; a socket left by a daemon that ended without taking it away: no one holds its lock
-          (case (tuatara.io:path-kind socket :follow nil)
-            ((nil))
-            (:socket (tuatara.io:remove-file socket))
-            (t (refuse "Something that is no socket is at ~a: move it away" socket)))
-          (%make-daemon name fd (tuatara.io:listen-at socket)))
-      (error (e)
-        (sb-posix:close fd)
-        (error e)))))
+    (with-fd-closed-on-error (fd "the lock of the daemon ~a" name)
+      ;; a socket left by a daemon that ended without taking it away: no one holds its lock
+      (case (tuatara.io:path-kind socket :follow nil)
+        ((nil))
+        (:socket (tuatara.io:remove-file socket))
+        (t (refuse "Something that is no socket is at ~a: move it away" socket)))
+      (%make-daemon name fd (tuatara.io:listen-at socket)))))
 
 (defun close-daemon (daemon)
   "Stop DAEMON taking connections, take its socket away and let its lock go."
@@ -209,11 +203,11 @@ not safe (DAEMON-DIRECTORY). Returns the DAEMON."
     (when listener
       (tuatara.io:shut-socket listener)
       (tuatara.runtime:join-within (daemon-thread daemon) 2)
-      (ignoring-errors-reported ("closing the daemon's socket") (sb-posix:close listener))
+      (close-fd-quietly listener "the daemon's socket")
       (ignoring-errors-reported ("taking the daemon's socket away")
         (tuatara.io:remove-file (daemon-path (daemon-name daemon) "socket")))))
   (let ((lock (shiftf (daemon-lock daemon) nil)))
-    (when lock (sb-posix:close lock)))
+    (close-fd-quietly lock "the daemon's lock"))
   ;; what was greeted and never given a frame is let go
   (dolist (item (sb-thread:with-mutex ((daemon-mutex daemon)) (shiftf (daemon-arrived daemon) '())))
     (ignoring-errors-reported ("letting a client go")
@@ -272,7 +266,7 @@ when this kernel cannot give the pidfd."
                                  (daemon-knows-root-p)
                                  (tuatara.io:started-by-ssh-server-p pid))))
                (and (eql pid (tuatara.io:pidfd-process pidfd)) (values namespace pid by-ssh)))
-          (sb-posix:close pidfd)))))
+          (close-fd-quietly pidfd "the process of a client")))))
 
 (defun take-connection (daemon editor fd)
   "Take the new connection FD to DAEMON, whose editor is EDITOR. It is
@@ -402,7 +396,7 @@ with user id (UID) UID; else NIL."
   "Close the standard input REQUEST passed, unless it was taken to be read (TAKE-STANDARD-INPUT)."
   (let ((fd (shiftf (tuatara.frontend:request-standard-input request) nil)))
     (when (integerp fd)
-      (ignoring-errors-reported ("closing a client's standard input") (sb-posix:close fd)))))
+      (close-fd-quietly fd "a client's standard input"))))
 
 (defun take-standard-input (request)
   "The descriptor of the standard input REQUEST passed, or NIL, taken from
@@ -434,16 +428,21 @@ agent its ssh connection brings, for the programs of its frames alone
                              :buffer #'client-scratch
                              :start (lambda () (unless (client-ended client) (start-client editor client request)))))
     (push (lambda (client) (declare (ignore client)) (close-standard-input request)) (client-endings client))
-    (let ((notes (tuatara.frontend:request-notes request))
-          (frame (first (client-frames editor client))))
-      (when (and notes frame *daemon*)
-        (tuatara.frontend:queue-push
-         (daemon-queue *daemon*)
-         (tuatara.frontend:make-event :said :frame frame :text (escape-controls (format nil "~{~a~^; ~}" notes))))))
+    (let ((notes (tuatara.frontend:request-notes request)))
+      (when notes
+        (say-in-client-frame editor client (escape-controls (format nil "~{~a~^; ~}" notes)))))
     (tuatara.runtime:debug-report :daemon "client ~d attached in ~a~@[ (~a)~]" (client-number client)
                                   (tuatara.frontend:shown-words (client-directory client))
                                   (tuatara.frontend:request-terminal request))
     client))
+
+(defun say-in-client-frame (editor client text)
+  "Say TEXT in a frame of CLIENT of EDITOR, once the daemon takes it in; nothing
+when the client has no frame or no daemon runs."
+  (let ((frame (first (client-frames editor client))))
+    (when (and frame *daemon*)
+      (tuatara.frontend:queue-push (daemon-queue *daemon*)
+                                   (tuatara.frontend:make-event :said :frame frame :text text)))))
 
 (defun take-in-clients (editor)
   "Tick function of a daemon (*TICK-FUNCTIONS*): give each client greeted
@@ -470,13 +469,9 @@ for: what is greeted wakes the editor."
     (multiple-value-bind (late next) (tuatara.frontend:windows-not-come)
       ;; said in a frame of the client that asked, when it is still there
       (dolist (what late)
-        (let ((frame (first (client-frames editor (first what)))))
-          (when (and frame daemon)
-            (tuatara.frontend:queue-push
-             (daemon-queue daemon)
-             (tuatara.frontend:make-event :said :frame frame
-                                                :text (format nil "The window asked for did not open within ~d seconds"
-                                                              tuatara.frontend:*window-seconds*))))))
+        (say-in-client-frame editor (first what)
+                             (format nil "The window asked for did not open within ~d seconds"
+                                     tuatara.frontend:*window-seconds*)))
       next)))
 
 (defun start-client (editor client request)
@@ -593,7 +588,8 @@ own, so that killing a client's last buffer from it ends that client as
 \\[kill-buffer] there would."
   (and (member client (buffer-clients buffer))
        (not (typep (buffer-major-mode buffer) 'buffers-mode))
-       (not (and (tuatara.buffer:buffer-local buffer :client-scratch) (not (tuatara.buffer:buffer-modified-p buffer))))))
+       (not (and (tuatara.buffer:buffer-local buffer :client-scratch)
+                 (not (tuatara.buffer:buffer-modified-p buffer))))))
 
 (defun note-client-without-buffers (buffer &optional (clients (buffer-clients buffer)))
   "Kill-buffer function: note each client that has BUFFER, about to be killed,
@@ -741,7 +737,7 @@ it keeps (the files visited lately, the places) and ends.
       (unless (eq answers :stay)
         (ask-about-unsaved-by-group editor)
         ;; the saves just begun end before the daemon does, never cut short by its exit
-        (unless (wait-for-saves-begun)
+        (unless (wait-for-saving (running-jobs))
           (refuse "Not stopped: saves are still running"))
         (dolist (answer answers) (when (functionp answer) (call-hook-function answer)))
         (stop-daemon editor)))))
@@ -750,13 +746,6 @@ it keeps (the files visited lately, the places) and ends.
   "The seconds a daemon stopping with no one to ask (tuatara --stop with no
 terminal, SIGTERM at logout) waits for the saves running to end before it
 ends all the same: well within what the system gives a program asked to end.")
-
-(defun wait-for-saves-begun (&key seconds)
-  "Wait for the saves running in the background, those an exit waits for
-\(TUATARA.RUNTIME:JOB-AT-EXIT :WAIT), to end, as WAIT-FOR-SAVES waits, at
-most SECONDS when given: true when they all ended, or none ran."
-  (let ((saves (remove-if-not (lambda (job) (eq :wait (tuatara.runtime:job-at-exit job))) (running-jobs))))
-    (or (null saves) (wait-for-saves saves :seconds seconds))))
 
 (defun unsaved-not-kept ()
   "The buffers with changes leaving the editor would lose (UNSAVED-P) that
@@ -825,7 +814,7 @@ However it goes, the process ends in the time the saves are given and
         (lost-changes-words lost)
         (progn (guard-daemon-leaving *daemon* (+ *no-one-to-ask-save-seconds* *leaving-seconds*))
                (auto-save-unsaved)
-               (unless (wait-for-saves-begun :seconds *no-one-to-ask-save-seconds*)
+               (unless (wait-for-saving (running-jobs) :seconds *no-one-to-ask-save-seconds*)
                  (say-in-daemon-log "The daemon stopped with no one to ask while saves still ran, ~
                                      cut short: ~{~a~^, ~}"
                                     (loop for job in (running-jobs)

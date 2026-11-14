@@ -1268,6 +1268,38 @@ through SSH_ASKPASS, writes the answer in said, and goes no further without one.
       (let ((message (remote-failure (lambda () (tuatara.defaults::remote-attributes "box" "/")))))
         (true (search "differs from the one ssh knows" message))))))
 
+(define-test (remote-files git-ssh-key-question-answered)
+  ;; git fetch over ssh: ssh's question about a new key, its fingerprint shown, reaches the minibuffer from the
+  ;; job and the answer goes back to ssh; refused, the echo area says the key was not accepted
+  (dolist (answer '("yes" "no"))
+    (with-stand-in-sftp (dir log :before (format nil "a=$(\"$SSH_ASKPASS\" '~a') || ~
+                                                    { echo 'Host key verification failed.' >&2; exit 255; }~%~
+                                                    printf '%s\\n' \"$a\" > '~asaid'~%~
+                                                    echo 'fatal: the stand-in serves no repository' >&2; exit 128"
+                                                 (cl-ppcre:regex-replace-all "'" *key-question* (list "'\\''"))
+                                                 (namestring dir)))
+      (let ((repo (merge-pathnames "repo/" dir)))
+        (assert (tuatara.defaults::plain-path-p tuatara.defaults::*ssh-program*) ()
+                "the stand-in ssh must be named in git's ssh command, never the system's")
+        (ensure-directories-exist repo)
+        (scratch-repository repo)
+        (uiop:run-program (list "git" "-C" (namestring repo) "remote" "add" "origin" "box:repo.git"))
+        (unwind-protect
+             (let ((frontend (git-session repo "a.txt"
+                                          (list "f u" (list :until #'minibuffer-up-p 30) (typed-keys answer) "RET"
+                                                (list :until (lambda () (search "git fetch:" (messages-since-step)))
+                                                      30)))))
+               (true (tuatara.frontend.fake:fake-frame-showing frontend "ssh to the server of git fetch"))
+               (true (tuatara.frontend.fake:fake-frame-showing-across-rows
+                      frontend "SHA256:Xq9pLq3TgJzqK2w8mYb7Lk0dQmZp5nR1vYt3sJk0aB4"))
+               (true (search "StrictHostKeyChecking=ask" (uiop:read-file-string log)))
+               (if (string= answer "yes")
+                   (is string= (format nil "yes~%") (said-text dir))
+                   (progn (false (said-text dir))
+                          (true (search "git fetch: the server's key was not accepted"
+                                        (tuatara.buffer:buffer-string (tuatara.command::messages-buffer)))))))
+          (kill-buffers-visiting repo))))))
+
 (define-test (remote-files ssh-question-kinds)
   ;; only ssh's own shapes take the host-key or local form; a server's question, prefixed by ssh, never does
   (is eq :key (tuatara.defaults::ssh-question-kind *key-question*))
@@ -1868,3 +1900,94 @@ killed after."
                 (sb-ext:atomic-decf (tuatara.defaults::sftp-link-wanting link)))))
           (true (> lots 1) "more than one lot, ~d" lots)))))
 
+
+(define-test (remote-files octets-sent-from-a-range-uncopied)
+  ;; a field of (:octets VECTOR START END) goes out as the octets from START below END, after their length
+  (let ((box (tuatara.frontend:make-outbox))
+        (vector (coerce '(1 2 3 4 5 6) 'tuatara.text:octets)))
+    (tuatara.defaults::sftp-put box (list :octets vector 2 5))
+    (is equalp #(0 0 0 3 3 4 5)
+        (subseq (tuatara.frontend:outbox-octets box) 0 (tuatara.frontend:outbox-fill box)))))
+
+(define-test (remote-files links-asked-for-a-lot-at-a-time)
+  ;; where each link of a directory leads is asked for ahead of the answers, not one round trip after another
+  (if (null (sftp-server-program))
+      (skip "no sftp-server here" (true nil))
+      (with-stand-in-sftp (dir log)
+        (let ((there (namestring dir)) (names (loop for n below 40 collect (format nil "link~2,'0d" n))))
+          (put-file (merge-pathnames "target" dir) "x")
+          (dolist (name names)
+            (sb-posix:symlink (if (evenp (length name)) "target" "none") (concatenate 'string there name)))
+          (let* ((details nil)
+                 (flushes (calls-of 'tuatara.defaults::sftp-flush
+                                   (lambda ()
+                                     (setf details (tuatara.defaults::remote-link-details "box" there names))))))
+            (is = 40 (length details))
+            (is string= "target" (car (first details)))
+            (true (getf (cdr (first details)) :size))
+            (true (< flushes 10) "~d flushes for 40 links" flushes))))))
+
+(define-test (remote-files tree-kinds-asked-once)
+  ;; a tree is copied and deleted from the kinds its listings gave: no request for the kind of each entry again
+  (if (null (sftp-server-program))
+      (skip "no sftp-server here" (true nil))
+      (with-stand-in-sftp (dir log)
+        (with-test-directory (here)
+          (let ((remote (concatenate 'string "/ssh:box:" (namestring dir))))
+            (ensure-directories-exist (merge-pathnames "tree/sub/" dir))
+            (dotimes (n 8)
+              (put-file (merge-pathnames (format nil "tree/sub/f~d" n) dir) "x"))
+            (is = 1 (calls-of 'tuatara.defaults::remote-or-local-kind
+                              (lambda ()
+                                (tuatara.defaults::rimu-work :copy (cons (concatenate 'string remote "tree")
+                                                                         (concatenate 'string (namestring here) "tree"))
+                                                             (list nil)))))
+            (is string= "x" (file-text (merge-pathnames "tree/sub/f7" here)))
+            (is = 1 (calls-of 'tuatara.defaults::remote-or-local-kind
+                              (lambda ()
+                                (tuatara.defaults::rimu-work :delete (cons (concatenate 'string remote "tree") nil)
+                                                             (list nil)))))
+            (false (probe-file (merge-pathnames "tree/" dir))))))))
+
+(define-test (remote-files tree-copy-bounded-and-names-cleaned)
+  ;; a tree deeper than *REMOTE-TREE-DEPTH* is not copied down, nor is a file whose name would not show as it is
+  (if (null (sftp-server-program))
+      (skip "no sftp-server here" (true nil))
+      (with-stand-in-sftp (dir log)
+        (with-test-directory (here)
+          (let ((remote (concatenate 'string "/ssh:box:" (namestring dir))))
+            (flet ((copy (from to)
+                     (handler-case (progn (tuatara.defaults::rimu-work :copy (cons from to) (list nil)) :none)
+                       (error (condition) (princ-to-string condition)))))
+              (ensure-directories-exist (merge-pathnames "deep/a/b/c/" dir))
+              (put-file (merge-pathnames "deep/a/b/c/file" dir) "x")
+              (let ((tuatara.defaults::*remote-tree-depth* 2))
+                (true (search "deep" (copy (concatenate 'string remote "deep") (concatenate 'string (namestring here) "deep"))))
+                (false (probe-file (merge-pathnames "deep/a/b/c/file" here))))
+              (ensure-directories-exist (merge-pathnames "odd/" dir))
+              (put-file (merge-pathnames "odd/good" dir) "x")
+              (put-file (concatenate 'string (namestring dir) (format nil "odd/evil~cname" (code-char #x202E))) "x")
+              (true (search "would not show"
+                            (copy (concatenate 'string remote "odd") (concatenate 'string (namestring here) "odd"))))
+              (true (probe-file (merge-pathnames "odd/good" here)))
+              (is = 1 (length (directory (merge-pathnames "odd/*.*" here))))))))))
+
+(define-test (remote-files new-file-beside-the-home-directory)
+  ;; a file with no directory in its path (one in the home directory there) is written
+  (if (null (sftp-server-program))
+      (skip "no sftp-server here" (true nil))
+      (with-stand-in-sftp (dir log :before (format nil "cd '~a'" (namestring dir)))
+        (let* ((octets (coerce '(104 105) 'tuatara.text:octets))
+               (fd (tuatara.io:memory-file "plain" octets :kept nil)))
+          (unwind-protect
+               (tuatara.defaults::remote-upload "box" "fresh.txt" fd 2 :expected (constantly nil))
+            (sb-posix:close fd))
+          (is string= "hi" (file-text (merge-pathnames "fresh.txt" dir)))))))
+
+(define-test (remote-files brought-directory-must-be-plain-for-the-shell)
+  ;; the directory servers are brought to is put in commands the server's shell reads: a space is refused
+  (let ((tuatara.lsp:*brought-language-servers-directory* "my servers/"))
+    (flet ((failure (function)
+             (handler-case (progn (funcall function) :none) (error (condition) (princ-to-string condition)))))
+      (true (search "plain path" (failure (lambda () (tuatara.defaults::manifest-path)))))
+      (true (search "plain path" (failure (lambda () (tuatara.defaults::server-program-path "x"))))))))

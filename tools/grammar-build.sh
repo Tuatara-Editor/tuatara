@@ -1,4 +1,5 @@
-# tools/grammar-build.sh --- How a tree-sitter grammar is generated, compiled and known by what it compiles: sourced by tools/grammars.sh and tools/fuzz-grammars.sh.
+# tools/grammar-build.sh --- How a tree-sitter grammar is generated, compiled and known by what it compiles: sourced by
+# tools/grammars.sh and tools/fuzz-grammars.sh.
 # Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 #
 # The copies of the array.h of tree-sitter in many grammars read one struct
@@ -79,11 +80,21 @@ generate_parser() {
   # program made (src, src/tree_sitter or the file) would read one of the host
   local real top
   top="$(realpath -- "$copy")"
+  # and into no link of the checkout either: src or src/tree_sitter there may be
+  # one that a hostile repository commits, which would take the file elsewhere
+  local target top_dir
+  top_dir="$(realpath -- "$dir")"
   for file in parser.c grammar.json node-types.json tree_sitter/parser.h tree_sitter/alloc.h tree_sitter/array.h; do
     real="$(realpath -e -- "$copy/src/$file" 2>/dev/null)" || continue
     if [ "$real" = "$top/src/$file" ] && [ -f "$real" ] && [ ! -L "$copy/src/$file" ]; then
+      target="$(realpath -m -- "$dir/src/$file")"
+      if [ "$target" != "$top_dir/src/$file" ] || [ -L "$dir/src" ] || [ -L "$dir/src/tree_sitter" ] || [ -L "$dir/src/$file" ]; then
+        rm -rf "$copy"
+        echo "$dir/src/$file is, or lies behind, a link: the parser of $dir is not taken from the copy." >&2
+        exit 1
+      fi
       mkdir -p "$(dirname "$dir/src/$file")"
-      cp -- "$real" "$dir/src/$file"
+      cp --remove-destination -- "$real" "$dir/src/$file"
     fi
   done
   rm -rf "$copy"

@@ -81,7 +81,7 @@ buffer opened safely keeps showing its text as it is. Then run
              (setf (tuatara.buffer:buffer-name buffer) (tuatara.buffer:unique-buffer-name name)))
            (saved-out-of-evidence buffer)
            (take-mode-of-name buffer)))
-       (message "Wrote ~a~:[~*~; (~a in ~,1f s)~]" (escape-controls (abbreviated-path (tuatara.io:save-job-target job)))
+       (message "Wrote ~a~:[~*~; (~a in ~,1f s)~]" (abbreviated-path (tuatara.io:save-job-target job))
                 (> seconds *save-wait*) (octets-words (tuatara.io:save-job-total job)) seconds)
        (when (live-buffer-p buffer)
          (run-hook *after-save-functions* buffer)))
@@ -109,10 +109,6 @@ that calls for none, or a file visited safely."
     (unless (or (eq mode 'fundamental-mode) (eq mode (type-of (buffer-major-mode buffer)))
                 (tuatara.io:safe-visit-p buffer))
       (set-major-mode buffer mode))))
-
-(defun take-in-saves ()
-  "Take in the background saves that have ended and say how each went."
-  (tuatara.io:finish-saves))
 
 (defun save-target (buffer path)
   "The file a save of BUFFER writes: PATH, read relative to the buffer's
@@ -317,31 +313,32 @@ before."
                                                          \\[save-buffer] writes yours over it"
                                                         :marks t :for-format t)
                                                    (names kept) (rest kept)))
-                                 (and changed (format nil (substitute-command-keys
-                                                           "~a changed on disk; \\[revert-buffer] reads ~:[it~;each~] again"
-                                                           :marks t :for-format t)
-                                                      (names changed) (rest changed)))
-                                 (and deleted
-                                      (format nil
-                                              "~a ~:[was~;were~] deleted on disk; saving writes ~:*~:[it~;them~] again"
-                                              (names deleted) (rest deleted)))
-                                 (and stale (format nil (substitute-command-keys
-                                                         "~a ~:[was~;were~] rewritten on disk while shown from ~:*~:[it~;them~]; read-only now, \\[revert-buffer] reads ~:*~:[it~;each~] again"
-                                                         :marks t :for-format t)
-                                                    (names stale) (rest stale)))))))
+                                 (disk-state-words :changed changed)
+                                 (disk-state-words :deleted deleted)
+                                 (disk-state-words :stale stale)))))
         (when parts (message "~{~a~^; ~}" parts))))))
+
+(defun disk-state-words (state buffers)
+  "What has become on disk of the files of BUFFERS, given the latest last, in
+the STATE they are in (:CHANGED, :DELETED or :STALE), as a sentence; NIL for
+no buffers."
+  (when buffers
+    (format nil (substitute-command-keys
+                 (ecase state
+                   (:changed "~a changed on disk; \\[revert-buffer] reads ~:[it~;each~] again")
+                   (:deleted "~a ~:[was~;were~] deleted on disk; saving writes ~:*~:[it~;them~] again")
+                   (:stale "~a ~:[was~;were~] rewritten on disk while shown from ~:*~:[it~;them~]; read-only now, ~
+                            \\[revert-buffer] reads ~:*~:[it~;each~] again"))
+                 :marks t :for-format t)
+            (buffer-names (reverse buffers)) (rest buffers))))
 
 (defun say-disk-state (buffer)
   "Say once what has become of BUFFER's file on disk, if anything."
   (let ((state (tuatara.io:file-disk-state buffer)))
     (unless (eq state (tuatara.buffer:buffer-local buffer :disk-state-said))
       (setf (tuatara.buffer:buffer-local buffer :disk-state-said) state)
-      (let ((name (tuatara.buffer:buffer-name buffer)))
-        (case state
-          (:changed (message "~a changed on disk; \\[revert-buffer] reads it again" name))
-          (:deleted (message "~a was deleted on disk; saving writes it again" name))
-          (:stale (message "~a was rewritten on disk while shown from it; read-only now, \\[revert-buffer] reads it again"
-                           name)))))))
+      (when (member state '(:changed :deleted :stale))
+        (message "~a" (disk-state-words state (list buffer)))))))
 
 (defvar *disk-news-put-off* '()
   "Buffers whose files changed on disk while a question waiting in a frame was
@@ -358,7 +355,7 @@ buffer's file. Asks to be called soon while work runs; otherwise the watcher
 wakes the editor when it has news."
   (let ((shown (tuatara.display:window-buffer (editor-window editor)))
         (counting (tuatara.io:finish-indexing)))
-    (take-in-saves)
+    (tuatara.io:finish-saves)
     (tuatara.io:finish-snapshots)
     (tuatara.io:finish-leases)
     (tuatara.io:watch-files tuatara.buffer:*buffers*)
@@ -427,7 +424,7 @@ background."
                                                               (tuatara.runtime:job-buffer job)))
                                             :grace 1/20
                                             :seconds (and deadline (tuatara.runtime:seconds-left deadline))))
-      (take-in-saves))))
+      (tuatara.io:finish-saves))))
 
 (define-command revert-buffer ()
   "Read the current buffer's file again, replacing its text: one step that undo
@@ -663,38 +660,75 @@ stands in. With a prefix argument (\\[universal-argument]), put it at point as w
 ;;; Directories watched on disk, for whichever parts want them
 
 (defvar *directory-followers* '()
-  "The parts that follow directories on disk, each (WANTED . CHANGED): WANTED
-a function of no arguments returning the directories (native names ending in
-/) the part wants watched now, CHANGED a function called with those of them
-the watcher found changed (a file in one made, deleted, renamed or written).")
+  "The parts that follow directories on disk, each (WANTED CHANGED TELLS):
+WANTED a function of no arguments returning the directories (native names
+ending in /) the part wants watched now, CHANGED a function called with those
+of them the watcher found changed (a file in one made, deleted, renamed or
+written). With TELLS true the part calls DIRECTORIES-FOLLOWED-CHANGED whenever
+what WANTED returns changes, and WANTED is asked only then and when a buffer
+is killed; else it is asked at every tick.")
 
 (defvar *directories-followed* '()
-  "What each part of *DIRECTORY-FOLLOWERS* wanted watched at the last tick, in
-their order, so that the watcher is told only when that changed.")
+  "What each part of *DIRECTORY-FOLLOWERS* wanted watched at the last tick, each
+\(WANTED . DIRECTORIES), so that the watcher is told only when that changed.")
+
+(defvar *directories-followed-count* (list 0)
+  "A cons whose car counts the calls of DIRECTORIES-FOLLOWED-CHANGED.")
+
+(defvar *directories-followed-seen* -1
+  "The count of *DIRECTORIES-FOLLOWED-COUNT* at the last tick.")
+
+(defun directories-followed-changed ()
+  "Say that the directories a part following them (FOLLOW-DIRECTORIES-FOR with
+TELLS) wants watched have changed, from any thread: they are asked for at the
+next tick."
+  (sb-ext:atomic-incf (car *directories-followed-count*))
+  nil)
 
 (defun follow-directories (editor)
   "Tick function: have the watcher watch the directories every part of
 *DIRECTORY-FOLLOWERS* wants, telling it only when they changed (a part's list
 the same object as before, or alike, costs nothing to compare; a directory
-kept read has tens of thousands), and tell each part of those found changed."
+kept read has tens of thousands), and tell each part of those found changed.
+A part that tells of its changes is asked only after it did."
   (declare (ignore editor))
-  (let ((wanted (loop for (want) in *directory-followers*
-                      collect (ignoring-errors-reported ("asking which directories to follow") (funcall want)))))
-    (unless (and (= (length wanted) (length *directories-followed*))
-                 (every (lambda (new old) (or (eq new old) (equal new old))) wanted *directories-followed*))
+  (let* ((count (car *directories-followed-count*))
+         (told (/= count *directories-followed-seen*))
+         (moved nil)
+         (wanted (loop for (want nil tells) in *directory-followers*
+                       for old = (assoc want *directories-followed*)
+                       collect (if (and old tells (not told))
+                                   old
+                                   (let ((new (ignoring-errors-reported ("asking which directories to follow")
+                                                (funcall want))))
+                                     (if (and old (or (eq new (cdr old)) (equal new (cdr old))))
+                                         old
+                                         (progn (setf moved t) (cons want new))))))))
+    (setf *directories-followed-seen* count)
+    (when (or moved (/= (length wanted) (length *directories-followed*)))
       (setf *directories-followed* wanted)
-      (tuatara.io:watch-directories (loop for list in wanted append list)))
+      (tuatara.io:watch-directories (loop for (nil . list) in wanted append list)))
     (let ((changed (tuatara.io:take-directory-news)))
       (when changed
-        (loop for (nil . told) in *directory-followers*
+        (loop for (nil told) in *directory-followers*
               do (ignoring-errors-reported ("telling of directories changed") (funcall told changed))))))
   nil)
 
-(defun follow-directories-for (wanted changed)
+(defun buffer-leaving-followers (buffer)
+  "Say that BUFFER, about to be killed, may take with it directories a part
+follows (DIRECTORIES-FOLLOWED-CHANGED)."
+  (declare (ignore buffer))
+  (directories-followed-changed))
+
+(defun follow-directories-for (wanted changed &key tells)
   "Have the directories WANTED returns watched on disk, and CHANGED called with
-those found changed (see *DIRECTORY-FOLLOWERS*)."
+those found changed (see *DIRECTORY-FOLLOWERS*). With TELLS, WANTED is asked
+only after DIRECTORIES-FOLLOWED-CHANGED is called, which the part does
+whenever what WANTED returns changes, or a buffer is killed: nothing is
+asked at each tick."
   (setf *directory-followers*
-        (append (remove wanted *directory-followers* :key #'car) (list (cons wanted changed)))))
+        (append (remove wanted *directory-followers* :key #'car) (list (list wanted changed tells)))
+        *directories-followed-seen* -1))
 
 (defun install-files ()
   "Let saves, snapshots, countings of lines and the watcher of files on disk
@@ -705,6 +739,7 @@ safely, and the evidence directories be marked (INSTALL-EVIDENCE)."
   (pushnew 'wipe-file *file-changing-commands*)
   (pushnew 'files-tick *tick-functions*)
   (pushnew 'follow-directories *tick-functions*)
+  (pushnew 'buffer-leaving-followers tuatara.buffer:*kill-buffer-functions*)
   (pushnew 'keep-private-directories-fresh *tick-functions*)
   (pushnew 'forget-private-directory tuatara.buffer:*kill-buffer-functions*)
   (pushnew 'files-mode-line *mode-line-functions*)

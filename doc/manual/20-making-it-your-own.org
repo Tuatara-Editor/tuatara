@@ -481,7 +481,8 @@ you want a size for good, change the font in the init file.
 letters are all the same width first, each with a sample written in it. Move
 to a line and press ~RET~ to see the window in that font now. Press ~w~ to
 copy the line that chooses it for good. Then paste it into your init file
-with ~C-y~.
+with ~C-y~. With many fonts installed, listing them takes a moment. The echo
+area says so and you can press ~C-g~ to stop waiting.
 
 #+begin_src lisp
 (setf *gui-font* "Adwaita Mono 14")
@@ -540,7 +541,8 @@ through, =$0= is where the cursor ends, and =${1:text}= is a place that begins
 with text you can type over. =$AUTHOR= is your name, and =$CURRENT_DATE=,
 =$CURRENT_MONTH= and =$CURRENT_YEAR= are today's date.
 
-~C-c y~ (=insert-snippet=) chooses one from a list by name. ~M-x copy-snippet~
+~C-c y~ (=insert-snippet=) chooses one from a list by name, in buffers of
+text and of code. ~M-x copy-snippet~
 copies one of Tuatara's own into your directory, so that you can change it.
 Yours then takes its place.
 
@@ -585,7 +587,7 @@ switches it off.
 The commands and what they show, with the keys they have, are in the table
 below. Some of them are shown in other chapters. Here they are together.
 
-#+table: commands hl-line-mode cursor-column-mode soft-wrap-mode visual-line-mode centred-text-mode invisible-characters-mode text-direction-mode inline-pictures-mode global-hl-line-mode global-soft-wrap-mode global-visual-line-mode global-centred-text-mode global-cursor-column-mode global-invisible-characters-mode global-text-direction-mode global-inline-pictures-mode
+#+table: commands hl-line-mode cursor-column-mode soft-wrap-mode display-fill-column-mode centred-text-mode invisible-characters-mode text-direction-mode inline-pictures-mode global-hl-line-mode global-soft-wrap-mode global-display-fill-column-mode global-centred-text-mode global-cursor-column-mode global-invisible-characters-mode global-text-direction-mode global-inline-pictures-mode
 
 Text that is written from right to left, such as Hebrew and Arabic, is
 shown in the order it is read. =text-direction-mode= is for the rare text
@@ -616,9 +618,10 @@ The pairs, each with what it shows:
   the default, at the fill column or the window's edge, whichever is nearer.
   With =nil= always at the window's edge, so on a wide window the lines
   are long.
-- =*global-visual-line-mode*= and =*visual-line-modes*= draw a line down the
-  window after the fill column, the 80th column when it is 80. Nothing
-  wraps. Off unless set: =(setf *visual-line-modes* '((prog-mode . t)))=.
+- =*global-display-fill-column-mode*= and =*display-fill-column-modes*=
+  draw a line down the window after the fill column, the 80th column when it
+  is 80. Nothing wraps. Off unless set:
+  =(setf *display-fill-column-modes* '((prog-mode . t)))=.
 - =*global-centred-text-mode*= and =*centred-text-modes*= show the text in a
   column in the middle of the window. Off unless set:
   =(setf *centred-text-modes* '((org-mode . t) (text-mode . t)))=.
@@ -645,12 +648,12 @@ The pairs, each with what it shows:
   Off unless set, and never in a file opened safely:
   =(setf *inline-pictures-modes* '((org-mode . t)))=.
 
-#+table: settings *global-hl-line-mode* *hl-line-modes* *global-soft-wrap-mode* *soft-wrap-modes* *soft-wrap-at-fill-column* *global-visual-line-mode* *visual-line-modes* *global-centred-text-mode* *centred-text-modes* *centred-text-width* *global-cursor-column-mode* *cursor-column-modes* *global-invisible-characters-mode* *invisible-characters-modes* *global-text-direction-mode* *text-direction-modes* *global-inline-pictures-mode* *inline-pictures-modes*
+#+table: settings *global-hl-line-mode* *hl-line-modes* *global-soft-wrap-mode* *soft-wrap-modes* *soft-wrap-at-fill-column* *global-display-fill-column-mode* *display-fill-column-modes* *global-centred-text-mode* *centred-text-modes* *centred-text-width* *global-cursor-column-mode* *cursor-column-modes* *global-invisible-characters-mode* *invisible-characters-modes* *global-text-direction-mode* *text-direction-modes* *global-inline-pictures-mode* *inline-pictures-modes*
 
 The faces paint the line, the column and the characters. The first three
 are the same colour unless you set them apart.
 
-#+table: faces :hl-line :cursor-column :soft-wrap-row :visual-line :invisible-character :current-line-number :raw-byte :right-to-left :stored-order
+#+table: faces :hl-line :cursor-column :soft-wrap-row :display-fill-column :invisible-character :current-line-number :raw-byte :right-to-left :stored-order
 
 ** The calendar
 
@@ -768,7 +771,9 @@ A button is a piece of text that does something when you press ~RET~ on it:
 a link in a help page, a name in a list. ~TAB~ goes to the next one in a
 buffer and ~S-TAB~ goes back. Moving past the last goes round to the first.
 ~push-button~ does what the button at the cursor does. It is on ~RET~ and ~l~,
-and on ~C-c l~. Links in Markdown are followed with a command of their own.
+and on ~C-c l~. Links in Markdown are followed with a command of their own,
+and written with ~C-c C-l~ and pictures with ~C-c C-x p~, as in Org (chapter
+14).
 
 The mouse works as in other programs. A click puts the cursor, a drag
 selects, two clicks select a word and three a line. Letting go of the

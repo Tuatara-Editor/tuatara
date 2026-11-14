@@ -125,6 +125,27 @@ and fourth values."
     (false (sb-thread:thread-alive-p (tuatara.terminal-emulator::emulator-writer e)))
     (false (gethash (tuatara.terminal-emulator::emulator-id e) tuatara.terminal-emulator::*emulators*))))
 
+(defun emulator-memory (emulator)
+  "How much memory EMULATOR's screen and scrollback hold, a property list:
+:resident, octets in use; :pages and :compressed-pages of its scrollback;
+:compression, true when compressing can free memory here."
+  (flet ((vt (key) (tuatara.terminal-emulator::vt key)))
+    (tuatara.terminal-emulator::with-emulator-turn (emulator)
+      (when (tuatara.terminal-emulator::emulator-terminal emulator)
+        (tuatara.io:with-foreign-memory (sap (vt :memory-size) :zero t)
+          (setf (sb-sys:sap-ref-64 sap 0) (vt :memory-size))
+          (when (eql (vt :success)
+                     (tuatara.runtime:foreign-call "ghostty_terminal_get" sb-alien:int
+                                                   (sb-sys:system-area-pointer
+                                                    (tuatara.terminal-emulator::emulator-terminal emulator))
+                                                   (sb-alien:int (vt :data-memory-usage))
+                                                   (sb-sys:system-area-pointer sap)))
+            (list :resident (+ (sb-sys:sap-ref-64 sap (vt :memory-primary-resident))
+                               (sb-sys:sap-ref-64 sap (vt :memory-alternate-resident)))
+                  :pages (sb-sys:sap-ref-64 sap (vt :memory-primary-pages))
+                  :compressed-pages (sb-sys:sap-ref-64 sap (vt :memory-primary-compressed-pages))
+                  :compression (/= 0 (sb-sys:sap-ref-8 sap (vt :memory-compression-supported))))))))))
+
 (define-test (emulator compressed-when-quiet)
   ;; a long scrollback, quiet a moment, is compressed in the background and reads back whole
   (let ((was tuatara-user:*terminal-compress-after*))
@@ -134,13 +155,13 @@ and fourth values."
          (with-emulator (e "sh" (list "-c" "seq 1 300000; sleep 30") :columns 80 :rows 24)
            (true (find-if (lambda (r) (search "300000" r))
                           (emulator-screen e :until (screen-has "300000") :seconds 20)))
-           (let ((before (tuatara.terminal-emulator::emulator-memory e))
+           (let ((before (emulator-memory e))
                  (deadline (tuatara.runtime:deadline-in 10))
                  (after nil)
                  (longest 0))
              ;; the library asked for meanwhile, as a frame does: never kept waiting long
              (loop do (let ((start (get-internal-real-time)))
-                        (setf after (tuatara.terminal-emulator::emulator-memory e))
+                        (setf after (emulator-memory e))
                         (setf longest (max longest (- (get-internal-real-time) start))))
                    until (or (plusp (getf after :compressed-pages)) (<= (tuatara.runtime:seconds-left deadline) 0))
                    do (sleep 0.005))
@@ -456,3 +477,23 @@ they run in Tuatara's own program, which runs no scripts as SBCL does."
                      :pictures t :cell-width 10 :cell-height 20)
         (true (find-if (lambda (r) (search "shown" r)) (emulator-screen e :until (screen-has "shown"))))
         (true (tuatara.terminal-emulator::emulator-alive-p e))))))
+
+(define-test (emulator failed-start-leaves-nothing)
+  ;; a terminal whose program cannot be started leaves no emulator kept, nor the library's objects
+  (let ((before (hash-table-count tuatara.terminal-emulator::*emulators*)))
+    (fail (tuatara.terminal-emulator::start-emulator "sh" '() :directory "/nonexistent-tuatara-directory/"))
+    (is = before (hash-table-count tuatara.terminal-emulator::*emulators*))))
+
+(define-test (emulator physical-keys-found-without-garbage)
+  ;; a key typed in a terminal finds its physical key by its base, making nothing
+  (true (tuatara.terminal-emulator::terminal-library-p))
+  (let ((up (tuatara.frontend:make-key :up))
+        (a (tuatara.frontend:make-key #\a)))
+    (is = (cdr (assoc ":up" (tuatara.terminal-emulator::vt :keys) :test #'string=))
+        (tuatara.terminal-emulator::physical-key up))
+    (true (plusp (tuatara.terminal-emulator::physical-key a)))
+    (let ((before (sb-ext:get-bytes-consed)))
+      (dotimes (i 100000)
+        (tuatara.terminal-emulator::physical-key up))
+      ;; other threads may make a little meanwhile: far less than a name made of each key
+      (true (< (- (sb-ext:get-bytes-consed) before) 2000000)))))

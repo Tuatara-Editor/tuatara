@@ -17,7 +17,7 @@
 
 ;;; Places
 
-(defstruct (place (:constructor %make-place (start end)) (:copier nil))
+(define-record (place (:constructor %make-place (start end)) (:copier nil))
   "A stretch of text a split holds, between the anchors START (which stays
 before text put in at it) and END (which goes after it). In a split of cursors a
 place is where its cursor is and what the cursor selects. AT-END puts the cursor
@@ -25,17 +25,15 @@ at the end rather than the start. ANCHORED says the cursor selects from the
 other end. LINE says that it selects its whole line. OFFSET says how far into
 that line it stands. MEMORY holds what the selecting keys left there to grow on
 the next press."
-  start end (at-end nil) (anchored nil) (line nil) (offset 0) (memory nil))
+  (start nil :documentation "The anchor where PLACE begins.")
+  (end nil :documentation "The anchor where PLACE ends.")
+  (at-end nil :documentation "True when PLACE's cursor is at its end rather than its start.")
+  (anchored nil :documentation "True when PLACE's cursor selects from the place's other end.")
+  (line nil :documentation "True when PLACE's cursor selects its whole line.")
+  (offset 0 :documentation "How far into its line PLACE's cursor stands, when it selects the line.")
+  (memory nil :documentation "What the selecting keys left at PLACE's cursor, to grow on the next press."))
 
-(setf (documentation 'place-p 'function) "True when OBJECT is a PLACE of a split."
-      (documentation 'place-start 'function) "The anchor where PLACE begins."
-      (documentation 'place-end 'function) "The anchor where PLACE ends."
-      (documentation 'place-at-end 'function) "True when PLACE's cursor is at its end rather than its start."
-      (documentation 'place-anchored 'function) "True when PLACE's cursor selects from the place's other end."
-      (documentation 'place-line 'function) "True when PLACE's cursor selects its whole line."
-      (documentation 'place-offset 'function) "How far into its line PLACE's cursor stands, when it selects the line."
-      (documentation 'place-memory 'function)
-      "What the selecting keys left at PLACE's cursor, to grow on the next press.")
+(setf (documentation 'place-p 'function) "True when OBJECT is a PLACE of a split.")
 
 (defun make-place (buffer start end)
   "A place of BUFFER from START to END."
@@ -63,7 +61,7 @@ the next press."
 
 ;;; The split
 
-(defstruct (split (:constructor make-split (buffer)) (:copier nil))
+(define-record (split (:constructor make-split (buffer)) (:copier nil))
   "The split in force: its BUFFER and PLACES (a vector, in buffer order).
 PRIMARY is the place that is point's, and TEXT is its text (as last seen), which
 the others follow. PHASE is :SELECT while a verb is awaited or :EDIT while
@@ -79,56 +77,57 @@ the cursors last ran, RUNNING is true in a mark run, whose steps are HISTORY and
 REDO, and REPEAT is what \\<*cursor-keymap*>\\[cursors-repeat] runs again.
 VIRTUAL, for a split past its limit, holds what it needs to write at the places
 it does not hold, those out of sight (a VIRTUAL). A split holds no match that a
-fold hides any of; HIDDEN counts those it left alone, for what it says."
-  buffer (places #()) primary (text "") (phase :select) did (scope "this line") agree tick since
-  bounds edges strayed cursors (column 0) order last running history redo repeat virtual (hidden 0))
-
-(setf (documentation 'split-p 'function) "True when OBJECT is a SPLIT."
-      (documentation 'split-buffer 'function) "The buffer SPLIT holds places in."
-      (documentation 'split-places 'function) "SPLIT's places, a vector in buffer order."
-      (documentation 'split-primary 'function) "The place of SPLIT point is in, whose text the others follow."
-      (documentation 'split-text 'function) "What SPLIT's primary place held when last looked at."
-      (documentation 'split-phase 'function) "SPLIT's phase: :SELECT while a verb is awaited, :EDIT while typing."
-      (documentation 'split-did 'function) "What SPLIT's verb did, for the report as it ends:
+fold hides any of; HIDDEN counts those it left alone, for what it says.
+REMINDER is what the echo area last said while it lasts, with what that
+depends on (SPLIT-HINT)."
+  (buffer nil :documentation "The buffer SPLIT holds places in.")
+  (places #() :documentation "SPLIT's places, a vector in buffer order.")
+  (primary nil :documentation "The place of SPLIT that point is in, whose text the others follow.")
+  (text "" :documentation "What SPLIT's primary place held when last looked at.")
+  (phase :select :documentation "SPLIT's phase: :SELECT while a verb is awaited, :EDIT while typing.")
+  (did nil :documentation "What SPLIT's verb did, for the report as it ends:
 :BEFORE, :AFTER, :LINE-STARTS, :LINE-ENDS, :OPENED-BELOW, :OPENED-ABOVE (typed
 there), :CHANGED, :DELETED, :WRAPPED, :UNWRAPPED, :PASTED, :EDITED, or NIL for
-nothing."
-      (documentation 'split-scope 'function) "What SPLIT searched, named for the reminder."
-      (documentation 'split-agree 'function) "True when every place of SPLIT held the same text."
-      (documentation 'split-tick 'function) "The content number of SPLIT's buffer as the split was made."
-      (documentation 'split-since 'function) "The undo stack of SPLIT's buffer as its typing began."
-      (documentation 'split-bounds 'function) "The primary place's start and end, as the last change left them."
-      (documentation 'split-edges 'function)
-      "Deletions just past the primary place's edges, newest first, as (SIDE . TEXT)."
-      (documentation 'split-strayed 'function) "True when a command changed text away from SPLIT's places."
-      (documentation 'split-cursors 'function) "True when SPLIT is a split of cursors."
-      (documentation 'split-column 'function) "The column on the screen new cursors of SPLIT go to."
-      (documentation 'split-order 'function) "The cursors added to SPLIT after the first, newest first."
-      (documentation 'split-last 'function) "The command SPLIT's cursors last ran together."
-      (documentation 'split-running 'function) "True while SPLIT's cursors are in a mark run."
-      (documentation 'split-history 'function)
-      "The steps of the cursors' mark run, newest first, for
-\\<*mark-run-keymap*>\\[mark-run-step-back]."
-      (documentation 'split-redo 'function)
-      "The steps \\<*mark-run-keymap*>\\[mark-run-step-back] took
-back in the cursors' mark run, for \\[mark-run-step-forward]."
-      (documentation 'split-repeat 'function)
-      "What \\<*cursor-keymap*>\\[cursors-repeat] runs again at
-SPLIT's cursors."
-      (documentation 'split-virtual 'function)
-      "For SPLIT past its limit, what it needs to write at the places it does not hold (a VIRTUAL), or NIL."
-      (documentation 'split-hidden 'function)
-      "How many matches SPLIT left alone because a fold hides them.")
+nothing.")
+  (scope "this line" :documentation "What SPLIT searched, named for the reminder.")
+  (agree nil :documentation "True when every place of SPLIT held the same text.")
+  (tick nil :documentation "The content number of SPLIT's buffer as the split was made.")
+  (since nil :documentation "The undo stack of SPLIT's buffer as its typing began.")
+  (bounds nil :documentation "The primary place's start and end, as the last change left them.")
+  (edges nil :documentation "Deletions just past the primary place's edges, newest first, as (SIDE . TEXT).")
+  (strayed nil :documentation "True when a command changed text away from SPLIT's places.")
+  (cursors nil :documentation "True when SPLIT is a split of cursors.")
+  (column 0 :documentation "The column on the screen new cursors of SPLIT go to.")
+  (order nil :documentation "The cursors added to SPLIT after the first, newest first.")
+  (last nil :documentation "The command SPLIT's cursors last ran together.")
+  (running nil :documentation "True while SPLIT's cursors are in a mark run.")
+  (history nil :documentation "The steps of the cursors' mark run, newest first, for
+\\<*mark-run-keymap*>\\[mark-run-step-back].")
+  (redo nil :documentation "The steps \\<*mark-run-keymap*>\\[mark-run-step-back] took
+back in the cursors' mark run, for \\[mark-run-step-forward].")
+  (repeat nil :documentation "What \\<*cursor-keymap*>\\[cursors-repeat] runs again at
+SPLIT's cursors.")
+  (virtual nil
+           :documentation "For SPLIT past its limit, what it needs to write at the
+places it does not hold (a VIRTUAL), or NIL.")
+  (hidden 0 :documentation "How many matches SPLIT left alone because a fold hides them.")
+  (reminder nil :documentation "What the echo area last said while SPLIT lasts, as (WHAT-IT-DEPENDS-ON . TEXT)."))
 
-(defstruct (block-scope (:constructor make-block-scope (top high left right wide crlf tab-width)) (:copier nil))
+(define-record (block-scope (:constructor make-block-scope (top high left right wide crlf tab-width)) (:copier nil))
   "A rectangle's rows as a split searches them, read as they come rather than
 gathered first: the lines starting from TOP below HIGH, between the columns
 LEFT and RIGHT on the screen (a tab TAB-WIDTH columns at most), or with WIDE
 their whole lines; carriage return and line feed (CRLF) when lines end with a
 carriage return and a newline."
-  (top 0) (high 0) (left 0) (right 0) wide crlf (tab-width 8))
+  (top 0 :documentation "The start of the first line of BLOCK-SCOPE.")
+  (high 0 :documentation "Where BLOCK-SCOPE ends: the lines read start below it.")
+  (left 0 :documentation "The column on the screen where BLOCK-SCOPE starts.")
+  (right 0 :documentation "The column on the screen where BLOCK-SCOPE ends.")
+  (wide nil :documentation "True when BLOCK-SCOPE takes whole lines.")
+  (crlf nil :documentation "True when a carriage return before a newline ends the lines of BLOCK-SCOPE.")
+  (tab-width 8 :documentation "The most columns a tab takes on the screen in BLOCK-SCOPE."))
 
-(defstruct (virtual (:constructor make-virtual) (:copier nil))
+(define-record (virtual (:constructor make-virtual) (:copier nil))
   "What a split past its limit needs to write at the places it does not hold,
 those out of sight, when the work at those it holds is done. KIND :MATCHES:
 the matches of REGEXP (found by MATCHER) in the scope made of SCOPE at the
@@ -148,20 +147,52 @@ the others, or emptying them taking part of the text a fold hides, so that
 they are not held again. SEEN is what the places in sight were last looked
 for in: the text's version, the places held, the columns and mode, and the
 stretches in sight (VIRTUAL-FILL)."
-  kind regexp matcher scope anchors top bottom (column 0) (left 0) (right 0) at-end pad
-  (mode :start) (count 0) exact (limit 0) setting started (passed '()) tab-width (seen nil))
+  (kind nil :documentation "What VIRTUAL writes at: :MATCHES or :ROWS.")
+  (regexp nil :documentation "The regular expression whose matches VIRTUAL writes at, for :MATCHES.")
+  (matcher nil :documentation "The matcher that finds the matches of VIRTUAL.")
+  (scope nil :documentation "What the scope of VIRTUAL is made of, for :MATCHES.")
+  (anchors nil :documentation "The anchors the scope of VIRTUAL is made at, for :MATCHES.")
+  (top nil :documentation "The anchor at the start of the first line of VIRTUAL, for :ROWS.")
+  (bottom nil :documentation "The anchor at the start of the last line of VIRTUAL, for :ROWS.")
+  (column 0 :documentation "The column of the cursor on each row of VIRTUAL: a number, or :END for the line's end.")
+  (left 0 :documentation "The column where the place of VIRTUAL on each row starts.")
+  (right 0 :documentation "The column where the place of VIRTUAL on each row ends.")
+  (at-end nil :documentation "True when the place of VIRTUAL on each row is the line's end.")
+  (pad nil :documentation "True when a row of VIRTUAL short of LEFT is padded out to it.")
+  (mode :start
+        :documentation "What the verb did to the places of VIRTUAL first: :START or :END, narrowed to that edge, or
+:CLEAR, emptied.")
+  (count 0 :documentation "How many places VIRTUAL has, at least unless EXACT.")
+  (exact nil :documentation "True when the COUNT of VIRTUAL is exact rather than a lower bound.")
+  (limit 0 :documentation "The most places the split of VIRTUAL holds.")
+  (setting nil :documentation "The setting the LIMIT of VIRTUAL comes from, for what is said.")
+  (started nil :documentation "True once a job was started for VIRTUAL.")
+  (passed '()
+          :documentation "The matches come into sight while typing that VIRTUAL let go, so that they are not held
+again.")
+  (tab-width nil :documentation "The most columns a tab takes on the screen, or NIL when the columns count characters.")
+  (seen nil
+        :documentation "What the places of VIRTUAL in sight were last looked for in: the text's version, the places
+held, the columns and mode, and the stretches in sight."))
 
-(setf (documentation 'virtual-p 'function) "True when OBJECT is a VIRTUAL.")
-
-(defstruct (split-diff (:constructor %make-split-diff) (:copier nil))
+(define-record (split-diff (:constructor %make-split-diff) (:copier nil))
   "What turns a place holding one text into one holding another. First comes
 whether the text CHANGED. Then come the deletions just past its edges (EDGES
 true), BEFORE and AFTER it, and where their line breaks fall. The new text is
 WHOLE, and MIDDLE is what differs, as octets. The octets the two share at the
 start and end are PREFIX-OCTETS and SUFFIX-OCTETS, and OLD-OCTETS is the old
 text's."
-  changed edges (before "") (after "") before-breaks after-breaks whole middle
-  (prefix-octets 0) (suffix-octets 0) (old-octets 0))
+  (changed nil :documentation "True when the text of SPLIT-DIFF changed.")
+  (edges nil :documentation "True when there are deletions just past the edges of the place.")
+  (before "" :documentation "The text deleted just before the place in SPLIT-DIFF.")
+  (after "" :documentation "The text deleted just after the place in SPLIT-DIFF.")
+  (before-breaks nil :documentation "Where the line breaks fall in the BEFORE text of SPLIT-DIFF.")
+  (after-breaks nil :documentation "Where the line breaks fall in the AFTER text of SPLIT-DIFF.")
+  (whole nil :documentation "The new text of SPLIT-DIFF.")
+  (middle nil :documentation "What differs between the old and new text of SPLIT-DIFF, as octets.")
+  (prefix-octets 0 :documentation "How many octets the old and new text of SPLIT-DIFF share at the start.")
+  (suffix-octets 0 :documentation "How many octets the old and new text of SPLIT-DIFF share at the end.")
+  (old-octets 0 :documentation "The length in octets of the old text of SPLIT-DIFF."))
 
 (defvar *split* nil
   "The split in force, or NIL.")
@@ -172,12 +203,22 @@ text's."
 (defvar *split-copying* nil
   "True while the split writes its places itself, which are not its reader's changes.")
 
-(defstruct (split-typing (:constructor make-split-typing (original)) (:copier nil))
+(define-record (split-typing (:constructor make-split-typing (original)) (:copier nil))
   "The typing under way at the places of a split, its matches or its cursors:
-the primary place's ORIGINAL text as it began, the deletions just past its edges since
-then (EDGES, oldest first, each (SIDE . TEXT)), and the places written as it
-goes (LIVE, a set); the others are written once it ends."
-  (original "") (edges '()) (live (make-hash-table :test 'eq)))
+the primary place's ORIGINAL text as it began, the deletions just past its
+edges since then (EDGES, oldest first, each (SIDE . TEXT)), and the places
+written as it goes (LIVE, a set); the others are written once it ends. COVERED
+is where in the split's places, the vector PLACES, those looked at in sight so
+far are: (FROM . TO) runs of their indices, in order (PLACES-COME-INTO-SIGHT)."
+  (original "" :documentation "The primary place's text as the typing of SPLIT-TYPING began.")
+  (edges '()
+         :documentation "The deletions just past the edges of the primary place since SPLIT-TYPING began, oldest
+first, each (SIDE . TEXT).")
+  (live (make-hash-table :test 'eq) :documentation "The places SPLIT-TYPING has written as it goes, a set.")
+  (covered '()
+           :documentation "The runs (FROM . TO) of indices into PLACES that SPLIT-TYPING has looked at in sight so
+far, in order.")
+  (places nil :documentation "The vector of the places of the split of SPLIT-TYPING."))
 
 (defvar *split-typing* nil
   "The typing at the split in force, or NIL: while it lasts, each key is written
@@ -202,72 +243,74 @@ brings into sight are written by then.")
 limit, those held and how many there are in all."
   (let ((n (length (split-places split))) (virtual (split-virtual split)))
     (if virtual
-        (format nil "~a of ~:[more than ~;~]~:d" (places-phrase split n) (virtual-exact virtual) (virtual-count virtual))
+        (format nil "~a of ~:[more than ~;~]~:d" (places-phrase split n)
+                (virtual-exact virtual) (virtual-count virtual))
         (places-phrase split n))))
 
 (defun split-hint (split)
-  "What the echo area says while SPLIT lasts."
-  (let ((n (length (split-places split))))
-    (cond ((and (split-cursors split) (eq (split-phase split) :edit))
-           (format nil (substitute-command-keys
-                        "Split: writing at ~a~:[~;, those out of sight as you finish~]; \\<insert>\\[tuatara-normal] back to the cursors"
-                        :marks t :for-format t)
-                   (split-places-phrase split)
-                   (or (split-virtual split)
-                       (and *split-typing* (< (hash-table-count (split-typing-live *split-typing*)) n)))))
-          ((eq (split-phase split) :edit)
-           (format nil (substitute-command-keys
-                        "Split: writing at ~a~:[~;, those out of sight as you finish~]; \\<insert>\\[tuatara-normal] to finish"
-                        :marks t :for-format t)
-                   (split-places-phrase split)
-                   (or (split-virtual split)
-                       (and *split-typing* (< (hash-table-count (split-typing-live *split-typing*)) n)))))
+  "What the echo area says while SPLIT lasts, worked out again only when
+something it says has changed."
+  (let* ((n (length (split-places split)))
+         (virtual (split-virtual split))
+         (phase (split-phase split))
+         (cursors (split-cursors split))
+         (running (split-running split))
+         (kept (and (eq phase :edit)
+                    (or virtual (and *split-typing* (< (hash-table-count (split-typing-live *split-typing*)) n)))
+                    t))
+         (selecting (and cursors (eq phase :select) (not virtual) (not running)
+                         (some #'cursor-selecting-p (split-places split))))
+         (key (list phase cursors running kept selecting n (and virtual (virtual-exact virtual))
+                    (and virtual (virtual-count virtual)) (split-scope split) (split-hidden split)
+                    tuatara.command:*keymaps-generation*))
+         (said (split-reminder split)))
+    (declare (dynamic-extent key))
+    (if (equal key (car said))
+        (cdr said)
+        (cdr (setf (split-reminder split) (cons (copy-list key) (split-hint-text split kept selecting)))))))
+
+(defun split-hint-text (split kept selecting)
+  "What the echo area says while SPLIT lasts, the places out of sight still to
+be written when KEPT, the cursors with a selection when SELECTING."
+  (flet ((say (control &rest arguments)
+           (apply #'format nil (substitute-command-keys control :marks t :for-format t) arguments)))
+    (cond ((eq (split-phase split) :edit)
+           (say "Split: writing at ~a~:[~;, those out of sight as you finish~]; \\<insert>\\[tuatara-normal] ~
+~:[to finish~;back to the cursors~]"
+                (split-places-phrase split) kept (split-cursors split)))
           ((and (split-cursors split) (split-virtual split))
-           (format nil (substitute-command-keys
-                        "Split: ~a, those out of sight written in the background; ~
+           (say "Split: ~a, those out of sight written in the background; ~
 \\<*tuatara-normal-keymap*>\\[backward-char] \\[forward-char] \\[beginning-of-line] \\[end-of-line] move all; ~
-\\<*virtual-cursor-keymap*>\\[cursors-insert] \\[cursors-append] ~
-\\[cursors-insert-line] \\[cursors-append-line] ~
+\\<*virtual-cursor-keymap*>\\[cursors-insert] \\[cursors-append] \\[cursors-insert-line] \\[cursors-append-line] ~
 \\[cursors-change] \\[cursors-delete], \\[split-quit]"
-                        :marks t :for-format t)
-                   (split-places-phrase split)))
+                (split-places-phrase split)))
           ((and (split-cursors split) (split-running split))
-           (format nil (substitute-command-keys
-                        "Split: ~a, mark run; ~
-\\<*mark-run-keymap*>\\[select-word] \\[select-symbol] ~
-\\[select-word-backward] \\[select-symbol-backward] ~
-\\[select-sentence] \\[select-sentence-backward] grow, ~
-\\[mark-run-left] \\[mark-run-right] ~
-\\[mark-run-line-start] \\[mark-run-line-end] ~
-\\[mark-run-exchange] adjust, \\[repeat] again, ~
-\\[mark-run-step-back] \\[mark-run-step-forward] step, ~
-\\[mark-run-cancel] or \\<*cursor-keymap*>\\[split-quit] ends"
-                        :marks t :for-format t)
-                   (places-phrase split n)))
+           (say "Split: ~a, mark run; ~
+\\<*mark-run-keymap*>\\[select-word] \\[select-symbol] \\[select-word-backward] \\[select-symbol-backward] ~
+\\[select-sentence] \\[select-sentence-backward] grow, \\[mark-run-left] \\[mark-run-right] ~
+\\[mark-run-line-start] \\[mark-run-line-end] \\[mark-run-exchange] adjust, \\[repeat] again, ~
+\\[mark-run-step-back] \\[mark-run-step-forward] step, \\[mark-run-cancel] or \\<*cursor-keymap*>\\[split-quit] ends"
+                (places-phrase split (length (split-places split)))))
           ((split-cursors split)
-           (format nil (substitute-command-keys
-                        "Split: ~a~:[~; selecting~]; ~
-\\<*cursor-keymap*>\\[add-cursor-below] ~
-\\[add-cursor-above] add, ~
-\\[drop-last-cursor] drop, \\[align-cursors] line up, ~
-\\[cursors-select] \\[cursors-select-lines] \\`m' ~
-\\[cursors-run-toggle] select, ~
-\\[cursors-insert] \\[cursors-append] ~
-\\[cursors-insert-line] \\[cursors-append-line] ~
-\\[cursors-open-below] \\[cursors-open-above] ~
-\\[cursors-change] \\[cursors-delete] ~
-\\[cursors-copy] \\[cursors-yank] ~
-\\[cursors-kill-line], \\[split-selection] find, \\[split-quit]"
-                        :marks t :for-format t)
-                   (places-phrase split n) (some #'cursor-selecting-p (split-places split))))
-          (t (format nil (substitute-command-keys
-                          "Split: ~a in ~a~:[~;, those out of sight written in the background~]~a; ~
-\\<*split-chooser-keymap*>\\[split-insert] before, ~
-\\[split-append] after, \\[split-change] change, ~
+           (say "Split: ~a~:[~; selecting~]; ~
+\\<*cursor-keymap*>\\[add-cursor-below] \\[add-cursor-above] add, \\[drop-last-cursor] drop, ~
+\\[align-cursors] line up, \\[cursors-select] \\[cursors-select-lines] \\`m' \\[cursors-run-toggle] select, ~
+\\[cursors-insert] \\[cursors-append] \\[cursors-insert-line] \\[cursors-append-line] ~
+\\[cursors-open-below] \\[cursors-open-above] \\[cursors-change] \\[cursors-delete] ~
+\\[cursors-copy] \\[cursors-yank] \\[cursors-kill-line], \\[split-selection] find, \\[split-quit]"
+                (places-phrase split (length (split-places split))) selecting))
+          (t (say "Split: ~a in ~a~:[~;, those out of sight written in the background~]~a; ~
+\\<*split-chooser-keymap*>\\[split-insert] before, \\[split-append] after, \\[split-change] change, ~
 \\[split-delete] delete, \\[split-wrap] wrap, \\[split-quit]"
-                          :marks t :for-format t)
-                     (split-places-phrase split) (split-scope split) (split-virtual split)
-                     (hidden-left-words (split-hidden split)))))))
+                  (split-places-phrase split) (split-scope split) (split-virtual split)
+                  (hidden-left-words (split-hidden split)))))))
+
+(defparameter *split-did-words*
+  '((:before . "typed before") (:after . "typed after") (:line-starts . "typed at the line starts of")
+    (:line-ends . "typed at the line ends of") (:opened-below . "typed on new lines below")
+    (:opened-above . "typed on new lines above") (:changed . "changed") (:deleted . "deleted")
+    (:wrapped . "wrapped") (:unwrapped . "unwrapped") (:pasted . "pasted at") (:edited . "edited at"))
+  "What a split says its verb did (SPLIT-DID) to its places as it ends.")
 
 (defun split-report (split)
   "What to say as SPLIT ends: what its verb did, and to how many places, and
@@ -277,25 +320,11 @@ how many matches it left alone because a fold hides them."
                             (places-phrase split (length (split-places split)))
                             (virtual-started (split-virtual split)) (virtual-words split)
                             (substitute-command-keys "\\[stop-job]"))
-                    (places-phrase split (length (split-places split))))))
-    (format nil "~a~a"
-            (if (eql (split-tick split) (tuatara.buffer:buffer-content-number (split-buffer split)))
-                (format nil "Split ended: ~a left alone" places)
-                (case (split-did split)
-                  (:before (format nil "Split: typed before ~a" places))
-                  (:after (format nil "Split: typed after ~a" places))
-                  (:line-starts (format nil "Split: typed at the line starts of ~a" places))
-                  (:line-ends (format nil "Split: typed at the line ends of ~a" places))
-                  (:opened-below (format nil "Split: typed on new lines below ~a" places))
-                  (:opened-above (format nil "Split: typed on new lines above ~a" places))
-                  (:changed (format nil "Split: changed ~a" places))
-                  (:deleted (format nil "Split: deleted ~a" places))
-                  (:wrapped (format nil "Split: wrapped ~a" places))
-                  (:unwrapped (format nil "Split: unwrapped ~a" places))
-                  (:pasted (format nil "Split: pasted at ~a" places))
-                  (:edited (format nil "Split: edited at ~a" places))
-                  (t (format nil "Split ended: ~a left alone" places))))
-            (hidden-left-words (split-hidden split)))))
+                    (places-phrase split (length (split-places split)))))
+        (did (and (not (eql (split-tick split) (tuatara.buffer:buffer-content-number (split-buffer split))))
+                  (cdr (assoc (split-did split) *split-did-words*)))))
+    (format nil "~:[Split ended: ~a left alone~;Split: ~:*~a ~a~]~a"
+            did places (hidden-left-words (split-hidden split)))))
 
 (defun close-split-edit (split &key (background t))
   "End the typing at SPLIT's places: the places it has not written yet are
@@ -424,10 +453,8 @@ nothing is."
            (let ((top (tuatara.buffer:buffer-line-start b (min (point) (tuatara.buffer:buffer-mark b))))
                  (bottom (tuatara.buffer:buffer-line-start b (max (point) (tuatara.buffer:buffer-mark b)))))
              (multiple-value-bind (left right) (rectangle-columns b)
-               (values (make-block-scope top
-                                         (min (tuatara.buffer:buffer-size b)
-                                              (1+ (tuatara.buffer:buffer-line-end b bottom)))
-                                         left right wide (buffer-crlf-p b) (tuatara.display:tab-width-of b))
+               (values (make-block-scope top (next-line-start b bottom) left right wide (buffer-crlf-p b)
+                                         (tuatara.display:tab-width-of b))
                        (if wide "the block's rows" "the block")))))
           ((rectangle-live-p b)
            (values (mapcar (lambda (row)
@@ -511,7 +538,8 @@ rectangle. The answer is :ALL when it is answered yes, else :IN-SIGHT."
   (multiple-value-bind (limit why memory) (place-limit setting)
     (if (or (<= n limit)
             (and (eq why :setting) *split-limit-ask* exact (<= n memory)
-                 (y-or-n-p* (format nil "Hold all ~:d ~a, with every key slow at that many (else those in sight)?" n noun))))
+                 (y-or-n-p* (format nil "Hold all ~:d ~a, with every key slow at that many (else those in sight)?"
+                                    n noun))))
         :all
         :in-sight)))
 
@@ -523,6 +551,15 @@ typing writes as it goes, else every place."
                   (if *split-typing*
                       (+ (hash-table-count (split-typing-live *split-typing*)) 4096)
                       (length (split-places split))))))
+
+(defun distinct-spans (spans)
+  "SPANS, (START . END), in order of their starts, each once. SPANS is
+reordered in doing so."
+  (let ((sorted (sort spans (lambda (a b) (or (< (car a) (car b))
+                                              (and (= (car a) (car b)) (< (cdr a) (cdr b))))))))
+    (loop for rest on sorted
+          unless (and (cdr rest) (equal (first rest) (second rest)))
+          collect (first rest))))
 
 (defun split-search (matcher ranges &key limit)
   "Every match of MATCHER (SPLIT-MATCHER) in RANGES of the current buffer,
@@ -543,8 +580,8 @@ more than that many, returning NIL and true."
                                           (and limit (> (incf count) limit)))))
                              rope matcher (car range) (cdr range) t nil nil)
         (return-from split-search (values nil t 0))))
-    (values (sort (remove-duplicates spans :test #'equal) #'< :key #'car) nil
-            (length (remove-duplicates hidden :test #'equal)))))
+    (let ((spans (distinct-spans spans)))
+      (values spans nil (length (distinct-spans hidden))))))
 
 (defun split-where (buffer position)
   "Where POSITION of BUFFER is, in words: on which line, or at which octet while
@@ -626,6 +663,37 @@ touch, as what to say; NIL when none do."
                 (split-where buffer (car a))
                 (tuatara.buffer:buffer-string buffer :start (car a) :end (min (cdr b) (+ (car a) 60))))))))
 
+(defun begin-split (buffer &key cursors column)
+  "A new split of BUFFER, the split in force ended and the selection let go
+first: with CURSORS, a split of cursors whose new ones go to COLUMN, its keys
+made from those NORMAL state has now."
+  (when *split* (dissolve-split :quiet t))
+  (setf (tuatara.buffer:buffer-mark-active-p buffer) nil)
+  (fresh-selection buffer)
+  (let ((split (make-split buffer)))
+    (setf (split-tick split) (tuatara.buffer:buffer-content-number buffer))
+    (when cursors
+      (build-cursor-keymaps)
+      (setf (split-cursors split) t (split-column split) column (split-scope split) "a column"))
+    split))
+
+(defun await-verb (split banked)
+  "Make SPLIT, whose places are held, the split in force, and wait for a verb;
+the lines BANKED for it are spent. Returns its reminder."
+  (setf (split-primary split) (aref (split-places split) 0)
+        (split-text split) (place-text (split-buffer split) (split-primary split))
+        *split* split)
+  (build-split-chooser-keymap)
+  (arm-split split *split-chooser-keymap*)
+  ;; spent once the split stands, as y and d spend them
+  (when banked (spend-banks (split-buffer split) banked))
+  (split-hint split))
+
+(defun banked-for-split (buffer whole)
+  "The lines banked in BUFFER that a split about to be made there spends: none
+for one over the whole buffer, or while a split or a rectangle is there."
+  (and (not whole) (not (split-here-p buffer)) (not (rectangle-live-p buffer)) (banked-spans buffer)))
+
 (defun hold-virtual-matches (buffer regexp scope words whole first &key (move t) count)
   "Hold the matches of REGEXP in SCOPE of BUFFER, named WORDS (the whole buffer
 with WHOLE), more than a split holds whole (PLACE-LIMIT), as a split of those
@@ -636,35 +704,24 @@ hides any of is not held, and the writing in the background leaves it alone
 and counts it. COUNT, when known, is how many there are in all. Returns what
 to say."
   (multiple-value-bind (limit why) (place-limit)
-    (let ((banked (and (not whole) (not (split-here-p buffer)) (not (rectangle-live-p buffer)) (banked-spans buffer)))
-          (version (tuatara.buffer:buffer-version buffer))
-          (split (make-split buffer)))
-      (when *split* (dissolve-split :quiet t))
-      (setf (tuatara.buffer:buffer-mark-active-p buffer) nil)
-      (fresh-selection buffer)
+    (let* ((banked (banked-for-split buffer whole))
+           (version (tuatara.buffer:buffer-version buffer))
+           (split (begin-split buffer)))
       (when (and move first) (goto (car first)))
       (setf (split-virtual split)
-            (make-virtual :kind :matches :regexp regexp :matcher (split-matcher regexp (block-scope-p scope) buffer)
+            (make-virtual :kind :matches :regexp regexp :matcher (split-matcher regexp (block-scope-p scope))
                           :scope scope
                           :anchors (mapcar (lambda (position)
                                              (tuatara.text:make-anchor version (car position) :bias (cdr position)))
                                            (scope-positions scope))
                           :count (or count limit) :exact (and count t) :limit limit :setting why)
-            (split-scope split) words
-            (split-tick split) (tuatara.buffer:buffer-content-number buffer))
+            (split-scope split) words)
       (virtual-fill split)
       (when (and (zerop (length (split-places split))) first)
         (setf (split-places split) (vector (make-place buffer (car first) (cdr first)))))
       (if (zerop (length (split-places split)))
           (format nil "Nothing matched ~a" regexp)
-          (progn
-            (setf (split-primary split) (aref (split-places split) 0)
-                  (split-text split) (place-text buffer (split-primary split))
-                  *split* split)
-            (build-split-chooser-keymap)
-            (arm-split split *split-chooser-keymap*)
-            (when banked (spend-banks buffer banked))
-            (split-hint split))))))
+          (await-verb split banked)))))
 
 (defun hold-split (buffer regexp spans scope whole &key (move t) (hidden 0))
   "Hold SPANS of BUFFER, the matches of REGEXP found in SCOPE (the whole buffer
@@ -677,29 +734,15 @@ not held."
     (cond ((null spans) (format nil "Nothing matched ~a~a" regexp (hidden-left-words hidden)))
           (touching touching)
           (t
-           (let ((banked (and (not whole)
-                              (not (split-here-p buffer))
-                              (not (rectangle-live-p buffer))
-                              (banked-spans buffer))))
-             (when *split* (dissolve-split :quiet t))
-             (setf (tuatara.buffer:buffer-mark-active-p buffer) nil)
-             (fresh-selection buffer)
-             (let ((split (make-split buffer)))
-               (setf (split-places split)
-                     (map 'simple-vector (lambda (span) (make-place buffer (car span) (cdr span))) spans)
-                     (split-primary split) (aref (split-places split) 0)
-                     (split-scope split) scope
-                     (split-hidden split) hidden
-                     (split-tick split) (tuatara.buffer:buffer-content-number buffer))
-               (setf (split-agree split) (places-agree-p buffer (split-places split))
-                     (split-text split) (place-text buffer (split-primary split))
-                     *split* split)
-               (when move (goto (car (first spans))))
-               (build-split-chooser-keymap)
-               (arm-split split *split-chooser-keymap*)
-               ;; spent once the split stands, as y and d spend them
-               (when banked (spend-banks buffer banked))
-               (split-hint split)))))))
+           (let* ((banked (banked-for-split buffer whole))
+                  (split (begin-split buffer)))
+             (setf (split-places split)
+                   (map 'simple-vector (lambda (span) (make-place buffer (car span) (cdr span))) spans)
+                   (split-scope split) scope
+                   (split-hidden split) hidden
+                   (split-agree split) (places-agree-p buffer (split-places split)))
+             (when move (goto (car (first spans))))
+             (await-verb split banked))))))
 
 (defun split-in-background-p (buffer scope)
   "True when a split's search over SCOPE of BUFFER runs in the background: a
@@ -769,7 +812,7 @@ BEGIN[\\s\\S]*?END around a large block, can be missed;
             (if (split-in-background-p b scope)
                 (start-split-search b regexp scope words whole)
                 (multiple-value-bind (spans too-many hidden)
-                    (split-search (split-matcher regexp nil b) scope :limit (place-count-cap))
+                    (split-search (split-matcher regexp nil) scope :limit (place-count-cap))
                   (message "~a" (if (or too-many
                                         (and spans (not (spans-touch b spans))
                                              (eq (past-limit-choice (length spans) t "matches") :in-sight)))
@@ -854,15 +897,14 @@ stretch starts to what the last ends."
           (push (cons range (coerce (rewrite-pieces-for rope (car range) (cdr range)) 'list)) groups)
           (setf at (cdr range))))))
 
-(defun split-matcher (regexp block buffer)
-  "How a split finds REGEXP in BUFFER, the MATCHER the search prompt's
-replacements use too (MAKE-PATTERN-MATCHER). Case is ignored when it has no
-capital letter. It is found as literal text when nothing in it is special. A $
-matches before the carriage return where BUFFER's lines end with one and a
-newline. It is always compiled for a block's rows (BLOCK), whose parts of lines
-are matched as text. Signals why when it does not compile."
+(defun split-matcher (regexp block)
+  "How a split finds REGEXP, the MATCHER the search prompt's replacements use
+too (MAKE-PATTERN-MATCHER). Case is ignored when it has no capital letter. It
+is found as literal text when nothing in it is special. ^ and $ match at every
+kind of line end. It is always compiled for a block's rows (BLOCK), whose
+parts of lines are matched as text. Signals why when it does not compile."
   (multiple-value-bind (matcher problem)
-      (make-pattern-matcher regexp :regex t :compiled block :crlf (buffer-crlf-p buffer))
+      (make-pattern-matcher regexp :regex t :compiled block)
     (or matcher (refuse "Regexp ~a: ~a" regexp problem))))
 
 (defun piece-matches (function rope matcher scope groups from to halt &key texts)
@@ -882,23 +924,24 @@ match passes over those before it). True when FUNCTION stopped it."
         (declare (type fixnum rows))
         (block each-row
           (tuatara.syntax:with-decoder (decoder)
-           (tuatara.text:with-octet-block (reused (* 1024 1024))
-             (apply
-              #'tuatara.text:map-line-slices
-              (lambda (line s e start-column end-column line-end)
-                (declare (ignore start-column end-column))
-                (when (and halt (zerop (logand (incf rows) 1023)) (funcall halt)) (return-from each-row nil))
-                (let ((s (if wide line s)) (e (if wide line-end e)))
-                  ;; the empty line after the last newline holds no match
-                  (unless (and (= s e size) (plusp size))
-                    (when (tuatara.syntax:map-slice-matches function rope (matcher-scanner matcher) line s e :decoder decoder :texts texts)
-                      (return-from each-row t)))))
-              ;; from the start of the line FROM is in: the rows are read whole, and a
-              ;; walk over the matches may begin just after one
-              rope (tuatara.text:rope-line-start rope from) to
-              (if wide 0 (block-scope-left scope)) (if wide 0 (block-scope-right scope))
-              :block reused
-              (tuatara.display:screen-slice-keys (block-scope-crlf scope) (block-scope-tab-width scope)))))
+            (tuatara.text:with-octet-block (reused (* 1024 1024))
+              (apply
+               #'tuatara.text:map-line-slices
+               (lambda (line s e start-column end-column line-end)
+                 (declare (ignore start-column end-column))
+                 (when (and halt (zerop (logand (incf rows) 1023)) (funcall halt)) (return-from each-row nil))
+                 (let ((s (if wide line s)) (e (if wide line-end e)))
+                   ;; the empty line after the last newline holds no match
+                   (unless (and (= s e size) (plusp size))
+                     (when (tuatara.syntax:map-slice-matches function rope (matcher-scanner matcher) line s e
+                                                             :decoder decoder :texts texts)
+                       (return-from each-row t)))))
+               ;; from the start of the line FROM is in: the rows are read whole, and a
+               ;; walk over the matches may begin just after one
+               rope (tuatara.text:rope-line-start rope from) to
+               (if wide 0 (block-scope-left scope)) (if wide 0 (block-scope-right scope))
+               :block reused
+               (tuatara.display:screen-slice-keys (block-scope-crlf scope) (block-scope-tab-width scope)))))
           nil))
       (let ((range (car (find-if (lambda (group)
                                    (let ((stretch (car group)))
@@ -906,32 +949,53 @@ match passes over those before it). True when FUNCTION stopped it."
                                  groups))))
         (and range (stretch-matches function rope matcher from to (eql to (cdr range)) texts halt (cdr range))))))
 
-(defun split-piece-run (job piece matcher scope groups found index limit count too-many folds hidden)
-  "Find the matches of MATCHER in PIECE of JOB, a split's search over SCOPE
-\(PIECE-MATCHES). Their start and end offsets are kept in pairs at the piece's
-place (INDEX) in FOUND. When FOLDS is not NIL, the matches that FOLDS hide any
-of (TUATARA.DISPLAY:FOLDS-HIDING) are left out and counted in the car of HIDDEN.
+(define-record (search-rewrite (:include rewrite) (:constructor %make-search-rewrite) (:copier nil))
+  "A REWRITE that writes nothing: a split's search for the matches of MATCHER
+over SCOPE (START-SPLIT-SEARCH), its pieces those of GROUPS (SCOPE-GROUPS).
+Each piece's matches are kept at its place (INDEX) in FOUND. The matches FOLDS
+hide any of, when FOLDS is not NIL, are counted in the car of HIDDEN. Once
+there are more than LIMIT in all, counted in the car of COUNT, the car of
+TOO-MANY is set and the search stops."
+  (matcher nil :documentation "The MATCHER JOB finds the matches of.")
+  (scope nil :documentation "What JOB searches: a list of (START . END) stretches or a BLOCK-SCOPE.")
+  (groups nil :documentation "The stretches of the scope of JOB with their pieces (SCOPE-GROUPS).")
+  (found nil :documentation "A vector holding each piece's matches of JOB, start and end offsets in pairs.")
+  (index nil :documentation "A hash table of each piece of JOB to its place in FOUND.")
+  (limit nil :documentation "The most matches JOB finds before it stops, NIL for no limit.")
+  (count nil :documentation "A cons whose car counts the matches JOB has found.")
+  (too-many nil :documentation "A cons whose car is set once JOB has found more than its LIMIT.")
+  (folds nil :documentation "The folds of the buffer as JOB began, NIL when none.")
+  (hidden nil :documentation "A cons whose car counts the matches JOB left out because a fold hides them."))
+
+(defmethod write-piece ((job search-rewrite) piece)
+  "Find the matches of JOB's MATCHER in PIECE (PIECE-MATCHES). Their start and
+end offsets are kept in pairs at the piece's place (INDEX) in FOUND. When
+FOLDS is not NIL, the matches that FOLDS hide any of
+\(TUATARA.DISPLAY:FOLDS-HIDING) are left out and counted in the car of HIDDEN.
 Once there are more than LIMIT matches in all, counted in the car of COUNT, set
 the car of TOO-MANY and stop the job. A match may run past the piece's end
 \(MEND-SEAMS)."
   (start-piece job piece nil)
   (let ((cancel (rewrite-cancel job))
         (offsets (make-array 64 :element-type 'fixnum :adjustable t :fill-pointer 0))
-        (end (rewrite-piece-end piece)))
+        (end (rewrite-piece-end piece))
+        (folds (search-rewrite-folds job))
+        (limit (search-rewrite-limit job)))
     (piece-matches (lambda (s e m g)
                      (declare (ignore m g))
                      (setf (rewrite-piece-done piece) e
                            (rewrite-piece-reach piece) (max e (rewrite-piece-reach piece)))
                      (if (and folds (tuatara.display:folds-hiding folds s e))
-                         (tally hidden)
+                         (tally (search-rewrite-hidden job))
                          (progn
                            (vector-push-extend s offsets)
                            (vector-push-extend e offsets)
-                           (when (and limit (>= (tally count) limit))
-                             (setf (car too-many) t (car cancel) t))))
+                           (when (and limit (>= (tally (search-rewrite-count job)) limit))
+                             (setf (car (search-rewrite-too-many job)) t (car cancel) t))))
                      (car cancel))
-                   (rewrite-rope job) matcher scope groups (rewrite-piece-start piece) end (lambda () (car cancel)))
-    (setf (svref found (gethash piece index)) offsets)
+                   (rewrite-rope job) (search-rewrite-matcher job) (search-rewrite-scope job)
+                   (search-rewrite-groups job) (rewrite-piece-start piece) end (lambda () (car cancel)))
+    (setf (svref (search-rewrite-found job) (gethash piece (search-rewrite-index job))) offsets)
     (unless (car cancel) (setf (rewrite-piece-done piece) end))))
 
 (defun search-ended-here-p (buffer content)
@@ -990,36 +1054,38 @@ then waits its turn, SCOPE followed meanwhile."
     (let* ((rope (tuatara.buffer:buffer-text buffer))
            (folds (tuatara.display:folds-now buffer))
            (hidden (list 0))
-           (matcher (split-matcher regexp (block-scope-p scope) buffer))
+           (matcher (split-matcher regexp (block-scope-p scope)))
            (groups (scope-groups rope scope))
            (pieces (coerce (loop for group in groups append (cdr group)) 'simple-vector))
            (index (let ((table (make-hash-table :test 'eq)))
                     (loop for piece across pieces for i from 0 do (setf (gethash piece table) i))
                     table))
            (found (make-array (length pieces) :initial-element #()))
-           (count (list 0))
            (too-many (list nil))
            (content (tuatara.buffer:buffer-content-number buffer))
-           (job (%make-rewrite :buffer buffer :base (tuatara.buffer:buffer-version buffer) :rope rope
-                               :low (car (car (first groups))) :high (cdr (car (car (last groups))))
-                               :words (format nil "the matches of ~a" regexp)
-                               :what (job-words :search :doing (format nil "~a for ~a" words regexp))
-                               :count-only t :doing (job-words :search :doing)
-                               :verb (job-words :search :verb (format nil "for ~a" regexp)) :leaves "nothing held"
-                               :runner (lambda (job piece)
-                                         (split-piece-run job piece matcher scope groups found index limit count too-many folds hidden))
-                               :report (lambda (job how changes seconds kept)
-                                         (declare (ignore job changes seconds kept))
-                                         (ecase how
-                                           (:done (split-search-take-in buffer regexp scope words whole found content limit (car hidden)))
-                                           ;; stopped at the limit, not by hand: the places found are held
-                                           (:stopped (and (car too-many)
-                                                          (or (search-ended-here-p buffer content)
-                                                              (armed-between-commands
-                                                               (hold-virtual-matches buffer regexp scope words whole
-                                                                                     (first-found found) :move nil)))))))
-                               :pieces pieces
-                               :checkpoint *rewrite-checkpoint* :hook *rewrite-piece-hook*)))
+           (job (%make-search-rewrite
+                 :buffer buffer :base (tuatara.buffer:buffer-version buffer) :rope rope
+                 :low (car (car (first groups))) :high (cdr (car (car (last groups))))
+                 :words (format nil "the matches of ~a" regexp)
+                 :what (job-words :search :doing (format nil "~a for ~a" words regexp))
+                 :count-only t :doing (job-words :search :doing)
+                 :verb (job-words :search :verb (format nil "for ~a" regexp)) :leaves "nothing held"
+                 :matcher matcher :scope scope :groups groups :found found :index index
+                 :limit limit :count (list 0) :too-many too-many :folds folds :hidden hidden
+                 :report (lambda (job how changes seconds kept)
+                           (declare (ignore job changes seconds kept))
+                           (ecase how
+                             (:done (split-search-take-in buffer regexp scope words
+                                                          whole found content limit (car hidden)))
+                             ;; stopped at the limit, not by hand: the places found are held
+                             (:stopped (and (car too-many)
+                                            (or (search-ended-here-p buffer content)
+                                                (armed-between-commands
+                                                 (hold-virtual-matches
+                                                  buffer regexp scope words whole (first-found found)
+                                                  :move nil)))))))
+                 :pieces pieces
+                 :checkpoint *rewrite-checkpoint* :hook *rewrite-piece-hook*)))
       (launch-rewrite job "tuatara split" (format nil "~:d octets in ~d piece~:p, at most ~:d (~(~a~))"
                                                   (scope-extent scope) (length pieces) limit why))
       ;; the selection searched let go meanwhile: a key typed before the split comes acts at the cursor, not on all of
@@ -1097,12 +1163,16 @@ deleted beside the others is let go first, left as it is, and so is one whose
 emptying would take part of the text a fold hides, but not all of it. Returns
 the places kept."
   (let* ((b (split-buffer split)) (virtual (split-virtual split)) (typing *split-typing*)
-         (since (and typing (split-diff (split-typing-original typing) (split-text split) (split-typing-edges typing)))))
+         (since (and typing (split-diff (split-typing-original typing)
+                                        (split-text split) (split-typing-edges typing)))))
     (labels ((pass (other)
                (when other
-                 (setf places (remove-if (lambda (place) (member place other)) places)
-                       (split-places split) (remove-if (lambda (place) (member place other)) (split-places split))
-                       (virtual-passed virtual) (append other (virtual-passed virtual)))))
+                 (let ((gone (make-hash-table :test 'eq)))
+                   (dolist (place other) (setf (gethash place gone) t))
+                   (flet ((kept (places) (remove-if (lambda (place) (gethash place gone)) places)))
+                     (setf places (kept places)
+                           (split-places split) (kept (split-places split))
+                           (virtual-passed virtual) (append other (virtual-passed virtual)))))))
              (let-go ()
                (when (and since (split-diff-edges since) (not (split-cursors split)))
                  (pass (remove-if-not (lambda (place) (eq (place-edit b place since nil :exact t) :differs)) places))))
@@ -1126,21 +1196,21 @@ the places kept."
                                   #'tuatara.display:buffer-screen-column
                                   #'tuatara.buffer:buffer-column)))
                   (delete-spans b (held-spans-of b places) :folds-checked t :group (and typing t)
-                                  :replacements
-                                  (loop for place in places
-                                        collect (multiple-value-bind (s e) (place-bounds b place)
-                                                  ;; a short row padded out; a tab across an edge, its columns outside
-                                                  ;; it
-                                                  (let ((pad (if (or (virtual-pad virtual)
-                                                                     (and (< s e) (virtual-tab-width virtual)))
-                                                                 (max 0 (- (virtual-left virtual) (funcall column b s)))
-                                                                 0))
-                                                        (tail (if (and (< s e) (virtual-tab-width virtual))
-                                                                  (max 0
-                                                                       (- (funcall column b e) (virtual-right virtual)))
-                                                                  0)))
-                                                    (push tail tails)
-                                                    (and (plusp (+ pad tail)) (spaces (+ pad tail)))))))))
+                                :replacements
+                                (loop for place in places
+                                      collect (multiple-value-bind (s e) (place-bounds b place)
+                                                ;; a short row padded out; a tab across an edge, its columns outside
+                                                ;; it
+                                                (let ((pad (if (or (virtual-pad virtual)
+                                                                   (and (< s e) (virtual-tab-width virtual)))
+                                                               (max 0 (- (virtual-left virtual) (funcall column b s)))
+                                                               0))
+                                                      (tail (if (and (< s e) (virtual-tab-width virtual))
+                                                                (max 0
+                                                                     (- (funcall column b e) (virtual-right virtual)))
+                                                                0)))
+                                                  (push tail tails)
+                                                  (and (plusp (+ pad tail)) (spaces (+ pad tail)))))))))
               ;; each place is now its padding: the cursor goes after it, before the spaces past the block
               (loop for place in places
                     for tail in (nreverse tails)
@@ -1172,11 +1242,13 @@ what is in sight are as they were. Returns those held."
     (when (and seen (not (equal seen (virtual-seen virtual))))
       (setf (virtual-seen virtual) seen)
       (let ((new '())
+            (taken (make-hash-table))
             (folds (and (eq (virtual-kind virtual) :matches) (tuatara.display:folds-now b))))
         (dolist (range ranges)
           (dolist (span (virtual-spans b virtual (car range) (cdr range)))
-            (unless (or (virtual-held-p split span) (find (car span) new :key #'car)
+            (unless (or (gethash (car span) taken) (virtual-held-p split span)
                         (and folds (tuatara.display:folds-hiding folds (car span) (cdr span))))
+              (setf (gethash (car span) taken) t)
               (push span new))))
         (when new
           (let* ((sorted (sort new #'< :key #'car))
@@ -1205,7 +1277,7 @@ what is in sight are as they were. Returns those held."
   (let ((lines (make-hash-table)))
     (loop for (start . end) across spans
           do (loop for line = (tuatara.buffer:buffer-line-start buffer start)
-                     then (tuatara.buffer:buffer-forward-char buffer (tuatara.buffer:buffer-line-end buffer line))
+                   then (next-line-start buffer line)
                    do (setf (gethash line lines) t)
                    while (< (tuatara.buffer:buffer-line-end buffer line) end)))
     lines))
@@ -1230,7 +1302,7 @@ text deleted beside the place it was typed at is not there beside this one."
                      always (= (tuatara.text:rope-octet rope (+ to i)) (aref forward i))))
       (values start end text))))
 
-(defstruct (matches-job (:constructor make-matches-job) (:copier nil))
+(define-record (matches-job (:constructor make-matches-job) (:copier nil))
   "What a background job at every match of a split's pattern changes
 \(START-EVERY-MATCH-JOB): in ROPE, the matches MATCHER finds in SCOPE, cut into
 GROUPS (SCOPE-GROUPS), up to HIGH, the scope's end. KIND says what changes.
@@ -1244,11 +1316,31 @@ as the job began (FOLDS-NOW). A match one hides any of is left as it is, counted
 in the car of LEFT. One whose change would take part of the text one hides, but
 not all of it, is counted in the car of HIDDEN. REFUSED counts in its car the
 matches :TYPE could not change."
-  rope matcher scope groups (high 0) kind texts mode text (back *no-octets*) (forward *no-octets*)
-  open close skip folds (refused (list 0)) (hidden (list 0)) (left (list 0)))
+  (rope nil :documentation "The text MATCHES-JOB works in.")
+  (matcher nil :documentation "The matcher MATCHES-JOB finds its matches with.")
+  (scope nil :documentation "The scope MATCHES-JOB searches.")
+  (groups nil :documentation "The scope of MATCHES-JOB cut into groups.")
+  (high 0 :documentation "Where the scope of MATCHES-JOB ends.")
+  (kind nil :documentation "What MATCHES-JOB changes: :TYPE, :DELETE, :WRAP or :UNWRAP.")
+  (texts nil :documentation "The text of each match, read for :WRAP.")
+  (mode nil :documentation "Where :TYPE writes its text: :START, :END or :CLEAR.")
+  (text nil :documentation "The octets :TYPE writes at each match.")
+  (back *no-octets* :documentation "The octets :TYPE deletes just before each match.")
+  (forward *no-octets* :documentation "The octets :TYPE deletes just after each match.")
+  (open nil :documentation "The octets :WRAP puts before each match, or :UNWRAP takes off.")
+  (close nil :documentation "The octets :WRAP puts after each match, or :UNWRAP takes off.")
+  (skip nil
+        :documentation "A vector of (START . END) in order, the matches in sight already done, which MATCHES-JOB
+leaves as they are.")
+  (folds nil :documentation "The folds of the text as MATCHES-JOB began.")
+  (refused (list 0) :documentation "A list whose car counts the matches :TYPE could not change.")
+  (hidden (list 0)
+          :documentation "A list whose car counts the matches left as they are because their change would take part of
+a hidden text.")
+  (left (list 0)
+        :documentation "A list whose car counts the matches left as they are because a fold hides some of them."))
 
-(setf (documentation 'make-matches-job 'function) "Return a MATCHES-JOB: what a background job at every match changes."
-      (documentation 'matches-job-p 'function) "True when OBJECT is a MATCHES-JOB.")
+(setf (documentation 'make-matches-job 'function) "Return a MATCHES-JOB: what a background job at every match changes.")
 
 (defun start-every-match-job (buffer regexp scope words kind &key typed open close skip joins report matcher)
   "Write at every match of REGEXP in SCOPE of BUFFER (a list of stretches or a
@@ -1265,7 +1357,7 @@ or :QUEUED when another job runs or waits in the buffer, or its lines are
 still being counted: it then waits its turn, the matches' stretches and SKIP's
 places followed meanwhile."
   (let ((what (job-words kind :doing (format nil "every other match of ~a in ~a" regexp words)))
-        (matcher (or matcher (split-matcher regexp (block-scope-p scope) buffer))))
+        (matcher (or matcher (split-matcher regexp (block-scope-p scope)))))
     (when (or (job-busy-p buffer) (queued-in buffer) (lines-uncounted-p buffer))
       (let ((followed (and skip (spans-followed buffer skip))))
         (when (queue-if-busy buffer what (scope-positions scope)
@@ -1289,26 +1381,30 @@ places followed meanwhile."
                                    :open (and open (tuatara.text:string-octets open))
                                    :close (and close (tuatara.text:string-octets close))
                                    :skip skip :folds (tuatara.display:folds-now buffer)))
-           (job (%make-rewrite :session t :buffer buffer :base (tuatara.buffer:buffer-version buffer) :rope rope
-                               :low (car (car (first groups))) :high (matches-job-high spec)
-                               :words (format nil "every other match of ~a" regexp)
-                               :what what
-                               :joins joins :hidden-left (matches-job-left spec)
-                               :mapper (lambda (function from to halt) (every-match-edits spec function from to halt))
-                               :expand (lambda (m g) (declare (ignore m)) g)
-                               :all t :lights-matches t :doing (job-words kind :doing)
-                               :verb (job-words kind :verb (format nil "the matches of ~a out of sight" regexp))
-                               :leaves "the matches out of sight are as they were"
-                               :report (or report (job-report kind
-                                                              (lambda (n) (format nil "~:d more match~:*~[es~;~:;es~] of ~a, out of sight," n regexp))
-                                                              (format nil "the other matches of ~a" regexp)
-                                                              :refused (matches-job-refused spec)
-                                                              :hidden (matches-job-hidden spec)))
-                               :pieces (coerce (loop for group in groups append (cdr group)) 'simple-vector)
-                               :checkpoint *rewrite-checkpoint* :hook *rewrite-piece-hook*
-                               :directory (tuatara.io:buffer-scratch-directory buffer))))
-      (launch-rewrite job "tuatara every match" (format nil "~:d octets in ~d piece~:p, ~:d held"
-                                                        (scope-extent scope) (length (rewrite-pieces job)) (length skip)))
+           (job (%make-match-rewrite
+                 :session t :buffer buffer :base (tuatara.buffer:buffer-version buffer) :rope rope
+                 :low (car (car (first groups))) :high (matches-job-high spec)
+                 :words (format nil "every other match of ~a" regexp)
+                 :what what
+                 :joins joins :hidden-left (matches-job-left spec)
+                 :mapper (lambda (function from to halt) (every-match-edits spec function from to halt))
+                 :all t :doing (job-words kind :doing)
+                 :verb (job-words kind :verb (format nil "the matches of ~a out of sight" regexp))
+                 :leaves "the matches out of sight are as they were"
+                 :report (or report
+                             (job-report kind
+                                         (lambda (n)
+                                           (format nil "~:d more match~:*~[es~;~:;es~] of ~a, ~
+out of sight," n regexp))
+                                         (format nil "the other matches of ~a" regexp)
+                                         :refused (matches-job-refused spec)
+                                         :hidden (matches-job-hidden spec)))
+                 :pieces (coerce (loop for group in groups append (cdr group)) 'simple-vector)
+                 :checkpoint *rewrite-checkpoint* :hook *rewrite-piece-hook*
+                 :directory (tuatara.io:buffer-scratch-directory buffer))))
+      (launch-rewrite job "tuatara every match"
+                      (format nil "~:d octets in ~d piece~:p, ~:d held"
+                              (scope-extent scope) (length (rewrite-pieces job)) (length skip)))
       job)))
 
 (defun match-change (spec s e m &optional count)
@@ -1393,26 +1489,27 @@ when nothing comes between. Says so; returns the job, :QUEUED or NIL."
                (not (eq (virtual-mode virtual) :clear)))
       (return-from start-virtual-job nil))
     (let ((job
-            (ecase (virtual-kind virtual)
-              (:matches
-               (start-every-match-job b (virtual-regexp virtual) (virtual-scope-now b virtual) (split-scope split)
-                                      (or kind :type)
-                                      :typed (and typed (list* :mode (virtual-mode virtual) typed))
-                                      :open open :close close :skip skip :joins joins
-                                      :matcher (virtual-matcher virtual)))
-              (:rows
-               (cond ((member kind '(:wrap :unwrap))
-                      (message "~@(~a~) were left as they were: a wrap is made only at those in sight"
-                               (virtual-words split))
-                      (return-from start-virtual-job nil))
-                     ((or (getf typed :back-breaks) (getf typed :forward-breaks))
-                      (message "~@(~a~) were left as they were: a deletion across a line's end is made only at those in sight"
-                               (virtual-words split))
-                      (return-from start-virtual-job nil))
-                     (t (start-lines-job b virtual (or kind :type)
-                                         :text (if typing (split-text split) "")
-                                         :back (or (getf typed :back) 0) :forward (or (getf typed :forward) 0)
-                                         :skip skip :joins joins)))))))
+           (ecase (virtual-kind virtual)
+             (:matches
+              (start-every-match-job b (virtual-regexp virtual) (virtual-scope-now b virtual) (split-scope split)
+                                     (or kind :type)
+                                     :typed (and typed (list* :mode (virtual-mode virtual) typed))
+                                     :open open :close close :skip skip :joins joins
+                                     :matcher (virtual-matcher virtual)))
+             (:rows
+              (cond ((member kind '(:wrap :unwrap))
+                     (message "~@(~a~) were left as they were: a wrap is made only at those in sight"
+                              (virtual-words split))
+                     (return-from start-virtual-job nil))
+                    ((or (getf typed :back-breaks) (getf typed :forward-breaks))
+                     (message "~@(~a~) were left as they were: ~
+a deletion across a line's end is made only at those in sight"
+                              (virtual-words split))
+                     (return-from start-virtual-job nil))
+                    (t (start-lines-job b virtual (or kind :type)
+                                        :text (if typing (split-text split) "")
+                                        :back (or (getf typed :back) 0) :forward (or (getf typed :forward) 0)
+                                        :skip skip :joins joins)))))))
       (when job
         (setf (virtual-started virtual) t)
         (note-split-writer b job (virtual-words split))
@@ -1522,36 +1619,23 @@ outside every one; one change (DELETE-SPANS), the places still held inside."
     (let* ((b (split-buffer split))
            (targets (remove-if-not (lambda (place) (or (not (split-cursors split))
                                                        (multiple-value-bind (s e) (place-bounds b place) (< s e))))
-                                   (coerce (split-places split) 'list)))
-           (off (and targets
-                     (every (lambda (place) (multiple-value-bind (s e) (place-bounds b place)
-                                              (already-wrapped-p b s e open close)))
-                            targets)))
-           (opening (string open))
-           (closing (string close)))
-      (cond ((null targets) (message "~a is undefined" (pressed-key-name)))
-            (t
-             (let* ((bounds (mapcar (lambda (place) (multiple-value-list (place-bounds b place))) targets))
-                    (spans (loop for (s e) in bounds
-                                 if off collect (cons (tuatara.buffer:buffer-forward-char b s -1) s)
-                                   and collect (cons e (tuatara.buffer:buffer-forward-char b e))
-                                 else collect (cons s s) and collect (cons e e)))
-                    (positions (delete-spans b spans :replacements (loop for span in bounds
-                                                                         collect (and (not off) opening)
-                                                                         collect (and (not off) closing)))))
-               ;; each place goes back between its pair, or where the pair was
-               (loop for place in targets
-                     for i from 0 by 2
-                     do (if off
-                            (move-place b place (aref positions i) (aref positions (1+ i)))
-                            (move-place b place (aref positions i)
-                                        (- (aref positions (1+ i)) (tuatara.text:string-octet-length closing))))))
-             (setf (split-did split) (if off :unwrapped :wrapped)
-                   (split-text split) (place-text b (split-primary split)))
-             (when (split-virtual split)
-               (start-virtual-job split :kind (if off :unwrap :wrap) :open opening :close closing))
-             (when (split-cursors split) (adopt-cursor-places split))
-             (echo "~a" (split-hint split)))))))
+                                   (coerce (split-places split) 'list))))
+      (if (null targets)
+          (message "~a is undefined" (pressed-key-name))
+          (multiple-value-bind (positions off)
+              (wrap-spans b (mapcar (lambda (place) (multiple-value-list (place-bounds b place))) targets) open close)
+            ;; each place goes back between its pair, or where the pair was
+            (loop with closing = (tuatara.text:string-octet-length (string close))
+                  for place in targets
+                  for i from 0 by 2
+                  do (move-place b place (aref positions i)
+                                 (if off (aref positions (1+ i)) (- (aref positions (1+ i)) closing))))
+            (setf (split-did split) (if off :unwrapped :wrapped)
+                  (split-text split) (place-text b (split-primary split)))
+            (when (split-virtual split)
+              (start-virtual-job split :kind (if off :unwrap :wrap) :open (string open) :close (string close)))
+            (when (split-cursors split) (adopt-cursor-places split))
+            (echo "~a" (split-hint split)))))))
 
 (define-command split-wrap ()
   "Wrap every place of the split in the pair of the delimiter asked for, or
@@ -1675,7 +1759,8 @@ before (when given)."
   (multiple-value-bind (s e) (place-bounds buffer place)
     (let* ((before (split-diff-before diff))
            (after (split-diff-after diff))
-           (from (if (plusp (length before)) (tuatara.buffer:buffer-forward-char buffer s (- (char-steps buffer before))) s))
+           (from (if (plusp (length before))
+                     (tuatara.buffer:buffer-forward-char buffer s (- (char-steps buffer before))) s))
            (to (if (plusp (length after)) (tuatara.buffer:buffer-forward-char buffer e (char-steps buffer after)) e)))
       (flet ((same-p (there text breaks)
                (if exact
@@ -1744,24 +1829,41 @@ why, as WRITE-PLACES says."
                       :check t))))
 
 (defun sight-ranges (buffer)
-  "The stretches of BUFFER in sight or near it, as (FROM . TO): in every window
-showing it, from a little before each stretch of text the window shows to a
-little after it (what a fold or a search filter hides between them left
-out), and around point."
+  "The stretches of BUFFER in sight or near it, as (FROM . TO) in order, none
+touching another: in every window showing it, from a little before each
+stretch of text the window shows to a little after it (what a fold or a search
+filter hides between them left out), and around point."
   (let* ((size (tuatara.buffer:buffer-size buffer))
          (point (tuatara.buffer:buffer-point buffer))
          (ranges (list (cons (max 0 (- point *split-sight-octets*)) (min size (+ point *split-sight-octets*))))))
-    (dolist (window (frames-windows *editor*) ranges)
+    (dolist (window (frames-windows *editor*))
       (when (eq (tuatara.display:window-buffer window) buffer)
         (let ((start (min size (tuatara.display:window-start window)))
               (rows (tuatara.display:window-rows window)))
           (loop for (from . to) in (or (tuatara.display:shown-ranges rows :buffer buffer) (list (cons start start)))
                 for margin = (max *split-sight-octets* (* 4 (- to from)))
-                do (push (cons (max 0 (- from margin)) (min size (+ to margin))) ranges)))))))
+                do (push (cons (max 0 (- from margin)) (min size (+ to margin))) ranges)))))
+    (tuatara.text:merge-ranges ranges)))
 
-(defun split-places-in-sight (split)
-  "The places of SPLIT in sight or near it (SIGHT-RANGES)."
-  (remove-duplicates (loop for (from . to) in (sight-ranges (split-buffer split)) append (places-in split from to))))
+(defun places-come-into-sight (split typing)
+  "The places of SPLIT come in sight or near it (SIGHT-RANGES) since TYPING, its
+typing, last looked, in order. Each stretch in sight is found among the places
+by halves, and only the places not looked at before are gone through, so that
+a key costs the same however many places are already in sight."
+  (let ((places (split-places split)) (new '()))
+    (unless (eq places (split-typing-places typing))
+      (setf (split-typing-places typing) places (split-typing-covered typing) '()))
+    (loop for (from . to) in (sight-ranges (split-buffer split))
+          do (multiple-value-bind (lo hi) (places-index-range split from to)
+               (let ((i lo) (covered (split-typing-covered typing)))
+                 (loop for (done-from . done-to) in covered
+                       while (< i hi)
+                       do (loop for j from i below (min hi done-from) do (push (aref places j) new))
+                       (setf i (max i done-to)))
+                 (when (< i hi)
+                   (loop for j from i below hi do (push (aref places j) new))
+                   (setf (split-typing-covered typing) (tuatara.text:merge-ranges (acons lo hi covered)))))))
+    (nreverse new)))
 
 (defun copy-to-places (split here)
   "Write what the command did at the place HERE onto the other places of
@@ -1789,7 +1891,7 @@ HERE alone and the split as it was before it, NIL and why (WRITE-PLACES)."
                      (items (list (cons here :here))))
                  (loop for place being the hash-keys of live
                        unless (eq place here) do (push (cons place step) items))
-                 (dolist (place (split-places-in-sight split))
+                 (dolist (place (places-come-into-sight split typing))
                    (unless (gethash place live)
                      (when (eq since :unknown)
                        (setf since (split-diff (split-typing-original typing) new (split-typing-edges typing))))
@@ -1832,41 +1934,51 @@ astray, and keep its reminder up."
               ((split-strayed split)
                (dissolve-split :quiet t)
                (message "Split ended: an edit away from the places"))
-              (t
-               (let ((here (place-at split (tuatara.buffer:buffer-point b))))
-                 (cond ((null here) (dissolve-split))
-                       (t
-                        (unless (eq here (split-primary split))
-                          ;; the place moved into holds what was last copied, as every place then does
-                          (when *split-typing* (write-every-place split nil nil))
-                          (multiple-value-bind (s e) (place-bounds b here)
-                            (setf (split-primary split) here
-                                  (split-text split) (place-text b here)
-                                  (split-bounds split) (cons s e))))
-                        (if (not (split-room-to-write-p split))
-                            ;; the heap would run out: the split ends before it does
-                            (let ((n (length (split-places split))))
-                              (dissolve-split :quiet t)
-                              (message "Split ended: no room in memory to write at ~:d places; what was typed is at one of them" n))
-                            (multiple-value-bind (written why) (copy-to-places split here)
-                              (cond (written
-                                     (when (null (editor-message *editor*)) (echo "~a" (split-hint split))))
-                                    (t (dissolve-split :quiet t)
-                                       (if (eq why :differs)
-                                           (message "Split ended: the text deleted beside this place differs at another; it was deleted here only")
-                                           (message "Split ended: an edit beside a place could not be made at every place")))))))))))))))
+              (t (sync-typing split)))))))
+
+(defun sync-typing (split)
+  "After a command typed at SPLIT's places: copy what it did at the place
+point is in onto the others, or end the split when that cannot be done."
+  (let* ((b (split-buffer split))
+         (here (place-at split (tuatara.buffer:buffer-point b))))
+    (cond ((null here) (dissolve-split))
+          (t
+           (unless (eq here (split-primary split))
+             ;; the place moved into holds what was last copied, as every place then does
+             (when *split-typing* (write-every-place split nil nil))
+             (multiple-value-bind (s e) (place-bounds b here)
+               (setf (split-primary split) here
+                     (split-text split) (place-text b here)
+                     (split-bounds split) (cons s e))))
+           (if (not (split-room-to-write-p split))
+               ;; the heap would run out: the split ends before it does
+               (let ((n (length (split-places split))))
+                 (dissolve-split :quiet t)
+                 (message "Split ended: no room in memory to write at ~:d places; what was typed is at one of them"
+                          n))
+               (multiple-value-bind (written why) (copy-to-places split here)
+                 (cond (written
+                        (when (null (editor-message *editor*)) (echo "~a" (split-hint split))))
+                       (t (dissolve-split :quiet t)
+                          (message (if (eq why :differs)
+                                       "Split ended: the text deleted beside this place differs at another; ~
+it was deleted here only"
+                                       "Split ended: an edit beside a place could not be made at every place"))))))))))
 
 ;;; Showing the places and their cursors
 
+(defun places-index-range (split from to)
+  "Where the places of SPLIT that reach into FROM to TO are in its places, as
+two values: the index of the first and the index after the last."
+  (let* ((b (split-buffer split)) (places (split-places split)) (n (length places))
+         ;; the first place ending at or after FROM, the first starting after TO
+         (lo (tuatara.runtime:bisect (mid 0 n) (< (nth-value 1 (place-bounds b (aref places mid))) from))))
+    (values lo (tuatara.runtime:bisect (mid lo n) (<= (place-bounds b (aref places mid)) to)))))
+
 (defun places-in (split from to)
   "The places of SPLIT that reach into FROM to TO."
-  (let* ((b (split-buffer split)) (places (split-places split)) (lo 0) (hi (length places)))
-    ;; the first place ending at or after FROM
-    (setf lo (tuatara.runtime:bisect (mid lo hi) (< (nth-value 1 (place-bounds b (aref places mid))) from)) hi lo)
-    (loop for i from lo below (length places)
-          for place = (aref places i)
-          while (<= (place-bounds b place) to)
-          collect place)))
+  (multiple-value-bind (lo hi) (places-index-range split from to)
+    (loop for i from lo below hi collect (aref (split-places split) i))))
 
 (defun split-highlights (editor window rows)
   "The places the split holds among ROWS of WINDOW, in :split-place: every
@@ -1879,7 +1991,7 @@ match, or what each cursor selects."
               nconc (loop for place in (places-in split from to)
                           for (s e) = (multiple-value-list (place-bounds b place))
                           when (and (< s e) (or (not (split-cursors split)) (cursor-selecting-p place)))
-                            collect (list s e :split-place)))))))
+                          collect (list s e :split-place)))))))
 
 (defun split-cursor-positions (editor window rows)
   "Where the split's cursors are drawn in ROWS of WINDOW besides point: at the
@@ -1894,20 +2006,27 @@ its own; in a split of cursors, at every other cursor."
         (loop for (from . to) in (tuatara.display:shown-ranges rows :buffer b)
               nconc (loop for place in (places-in split from to)
                           unless (eq place (split-primary split))
-                            collect (multiple-value-bind (s e) (place-bounds b place)
-                                      (cond (offset (max s (min e (+ s offset))))
-                                            ((split-cursors split) (cursor-position b place))
-                                            (t s)))))))))
+                          collect (multiple-value-bind (s e) (place-bounds b place)
+                                    (cond (offset (max s (min e (+ s offset))))
+                                          ((split-cursors split) (cursor-position b place))
+                                          (t s)))))))))
+
+(defvar *split-chooser-pairs* nil
+  "The pairs (PAIR-DELIMITERS) the split's keys were last made with, or NIL
+before then.")
 
 (defun build-split-chooser-keymap ()
   "Make the keys a split waits for a verb on:
 \\<*split-chooser-keymap*>\\[split-insert] \\[split-append]
 \\[split-change] \\[split-delete] \\[split-wrap]
 \\[split-quit], and each delimiter of *PAIR-DELIMITERS* as it
-stands now."
-  (setf *split-chooser-keymap* (make-keymap :name "split"))
-  (define-keys *split-chooser-keymap* *split-chooser-bindings*)
-  (bind-free-delimiter-keys *split-chooser-keymap* 'split-wrap-key))
+stands now: again only once those have changed."
+  (let ((pairs (pair-delimiters)))
+    (unless (and *split-chooser-pairs* (eq pairs *split-chooser-pairs*))
+      (setf *split-chooser-keymap* (make-keymap :name "split")
+            *split-chooser-pairs* pairs)
+      (define-keys *split-chooser-keymap* *split-chooser-bindings*)
+      (bind-free-delimiter-keys *split-chooser-keymap* 'split-wrap-key))))
 
 (defun install-split (editor)
   "Bind the split's keys, and have EDITOR copy what is typed at its places and

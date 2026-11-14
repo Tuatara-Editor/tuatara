@@ -290,7 +290,7 @@ file of text; their native names, as two values."
                         (lambda ()
                           (false (tuatara.git:run-git native '("status")))
                           (false (tuatara.defaults::committed-text file))
-                          (false (tuatara.defaults::git-tracked-p file))
+                          (false (tuatara.defaults::committed-id file))
                           (false (tuatara.git::rimu-git-commits native '("data.txt"))))))))
       (uiop:delete-directory-tree dir :validate t :if-does-not-exist :ignore))))
 
@@ -322,6 +322,8 @@ file of text; their native names, as two values."
                            (is string= "+ three" (tuatara.frontend.fake:fake-screen-line f 2))
                            (forget-file-buffers))))))
                (clrhash tuatara.defaults::**committed-lines**)
+               ;; the version git is, asked once a session, asked before: not counted with the visit's
+               (tuatara.git::git-has-lazy-fetch-option-p)
                (is = 2 (visit))
                (is = 1 (visit)))
           (sb-int:unencapsulate 'tuatara.git:run-git 'note-thread))
@@ -332,14 +334,13 @@ file of text; their native names, as two values."
   ;; private from the start, neither put aside while another session writes to it
   (drain-debug-reports)
   (with-test-directory (dir)
-    (let ((cache (sb-posix:getenv "XDG_CACHE_HOME"))
+    (let ((tuatara-user:*cache-directory* (tuatara.io:native (merge-pathnames "tuatara/" dir)))
           (debug-log (tuatara.io:native (merge-pathnames "debug.log" dir)))
           (stderr-log (tuatara.io:native (merge-pathnames "tuatara/stderr.log" dir))))
       (ensure-directories-exist (merge-pathnames "tuatara/" dir))
       (dolist (log (list debug-log stderr-log))
         (put-file (sb-ext:parse-native-namestring log) (format nil "a session before~%"))
         (sb-posix:chmod log #o644))
-      (sb-posix:setenv "XDG_CACHE_HOME" (tuatara.io:native dir) 1)
       (unwind-protect
            (progn
              (let ((tuatara.runtime:*debug-log-path* debug-log)
@@ -367,7 +368,6 @@ file of text; their native names, as two values."
              (is string=
                  (format nil "a session before~%")
                  (file-text (sb-ext:parse-native-namestring (format nil "~a.1" stderr-log)))))
-        (if cache (sb-posix:setenv "XDG_CACHE_HOME" cache 1) (sb-posix:unsetenv "XDG_CACHE_HOME"))
         (drain-debug-reports)))))
 
 (define-test (state-and-files odd-paths)
@@ -475,8 +475,8 @@ file of text; their native names, as two values."
                       (false (tuatara.defaults::buffer-visiting file :except buffer)))
             (tuatara.buffer:kill-buffer buffer))))
       (dotimes (i 70) (ensure-directories-exist (sb-ext:parse-native-namestring (format nil "~ad~d/x" root i))))
-      (false (tuatara.defaults::rimu-tree-size root :wanted (constantly nil)))
-      (true (tuatara.defaults::rimu-tree-size root :wanted (constantly t))))))
+      (false (tuatara.io:tree-size root :wanted (constantly nil)))
+      (true (tuatara.io:tree-size root :wanted (constantly t))))))
 
 (define-test (state-and-files stream-octets-read-whole)
   ;; a program's output read in pieces as one vector: all of it, more than the limit refused,
@@ -500,6 +500,42 @@ file of text; their native names, as two values."
           (false too-large)
           (true cancelled))))))
 
+(define-test (state-and-files io-names-and-descriptors)
+  ;; names cut to the octets a name may take, relative paths worked out, . and .., files
+  ;; taken away when there, the nearest directory, an environment and a descriptor
+  (let ((long (concatenate 'string (make-string 200 :initial-element (code-char #x416)) ".eml")))
+    (true (<= (tuatara.text:string-octet-length (tuatara.io:fit-name long)) 255))
+    (true (uiop:string-suffix-p (tuatara.io:fit-name long) (format nil "~c.eml" (code-char #x416))))
+    (is string= "short.txt" (tuatara.io:fit-name "short.txt")))
+  (is string= "../b" (tuatara.io:clean-path "a/../../b" :relative t))
+  (is string= "" (tuatara.io:clean-path "a/.." :relative t))
+  (is string= "/b" (tuatara.io:clean-path "/a/../../b"))
+  (true (tuatara.io:dot-entry-name-p ".."))
+  (true (tuatara.io:dot-entry-name-p (tuatara.text:string-octets ".")))
+  (false (tuatara.io:dot-entry-name-p "..."))
+  (with-test-directory (dir)
+    (let ((file (put-file (merge-pathnames "gone.txt" dir) "x"))
+          (native (uiop:native-namestring dir)))
+      (true (tuatara.io:remove-file-if-there (uiop:native-namestring file)))
+      (false (tuatara.io:remove-file-if-there (uiop:native-namestring file)))
+      (is string= native (tuatara.io:nearest-directory native :including-self t))
+      (is string= native (tuatara.io:nearest-directory (concatenate 'string native "not/there")))))
+  (let ((environment (tuatara.io:environment-without '("HOME=") "TUATARA_TEST=1")))
+    (is string= "TUATARA_TEST=1" (first environment))
+    (false (find-if (lambda (s) (uiop:string-prefix-p "HOME=" s)) environment)))
+  (let ((fd (tuatara.io:duplicate-fd 0 :lowest 20)))
+    (unwind-protect (true (>= fd 20))
+      (sb-posix:close fd))))
+
+(define-test (state-and-files nul-separated-fields)
+  ;; a program's -z output: each field before a NUL, empty ones between kept, raw bytes kept raw
+  (flet ((fields (octets &rest keys) (apply #'tuatara.text:nul-fields (coerce octets 'tuatara.text:octets) keys)))
+    (is equal '("M" "a b") (fields #(77 0 97 32 98 0)))
+    (is equal '("M" "" "c") (fields #(77 0 0 99)))
+    (is equal '() (fields #()))
+    (is equal '("b") (fields #(97 0 98 0 99) :start 2 :end 4))
+    (is equal (list (string (code-char #xDCFF))) (fields #(255 0)))))
+
 (define-test (state-and-files path-one-file-name)
   ;; a path written as one name: %XX but for letters, digits and ._-; a long one shortened with a
   ;; number made from all of it, so that an index's cache of a deep directory can still be written
@@ -511,7 +547,7 @@ file of text; their native names, as two values."
       (true shortened)
       (true (<= (length (tuatara.text:string-octets name)) 255))
       (false (string= name (tuatara.io:path-file-name other))))
-    (true (<= (length (tuatara.text:string-octets (tuatara.defaults::index-cache-name root))) 255))
+    (true (<= (length (tuatara.text:string-octets (tuatara.io:path-file-name root))) 255))
     (is string= (concatenate 'string (tuatara.defaults::auto-save-directory) (tuatara.io:path-file-name root))
         (tuatara.defaults::auto-save-path root))))
 
@@ -537,7 +573,11 @@ file of text; their native names, as two values."
         (is equal '("" ".h/" "a/" "b/") (entered :max-depth 1))
         (is equal '("" ".h/") (entered :limit 2))
         (is equal '() (entered :cancel (list t)))
-        (false (tuatara.defaults::walk-directory root (constantly t) :limit 2)))
+        (false (tuatara.defaults::walk-directory root (constantly t) :limit 2))
+        ;; a link to a directory above is not entered round and round
+        (sb-posix:symlink ".." (concatenate 'string root "a/up"))
+        (is equal '("" ".h/" "a/" "a/deep/" "b/" "link/" "link/deep/") (entered :follow-links t))
+        (sb-posix:unlink (concatenate 'string root "a/up")))
       ;; the language servers' watch: nearest directories first, hidden ones left out, as many as allowed
       (let ((tuatara.lsp::*lsp-watched-most* 3))
         (multiple-value-bind (directories stamps) (tuatara.lsp::project-directories root)
@@ -548,8 +588,8 @@ file of text; their native names, as two values."
       (sb-posix:unlink (concatenate 'string root "link"))
       (is equal '("a/deep/y.txt" "a/x.txt" "b/z.txt")
           (mapcar #'cdr (tuatara.defaults::files-under root)))
-      (is = 2 (tuatara.defaults::rimu-tree-size (concatenate 'string root "a/")))
-      (is = 4 (tuatara.defaults::rimu-tree-size root)))))
+      (is = 2 (tuatara.io:tree-size (concatenate 'string root "a/")))
+      (is = 4 (tuatara.io:tree-size root)))))
 
 (define-test (state-and-files gitignore-globs-end-quickly)
   ;; a .gitignore line planted to make the matcher step back for ever is matched at once
@@ -606,7 +646,7 @@ file of text; their native names, as two values."
   ;; a list kept between sessions that nothing changed is looked at again
   ;; (as each edit asks whether its file's project is trusted) with its file
   ;; looked at only for a change, its name and directory not worked out again
-  (let ((list tuatara.defaults::*lsp-trusted*))
+  (let ((list tuatara.defaults::*trusted*))
     (tuatara.defaults::state-list-entries list)
     (let ((octets (nth-value 2 (tuatara.bench::measuring
                                  (dotimes (i 100) (tuatara.defaults::state-list-entries list))))))
@@ -616,7 +656,7 @@ file of text; their native names, as two values."
   ;; while the state directory set is kept in memory for want of its drive,
   ;; a list's file is looked for each time it is read, to be read from the
   ;; drive once that is there
-  (let ((list tuatara.defaults::*lsp-trusted*) (looks 0))
+  (let ((list tuatara.defaults::*trusted*) (looks 0))
     (sb-int:encapsulate 'tuatara.io:state-directory 'counting
                         (lambda (function &rest arguments) (incf looks) (apply function arguments)))
     (unwind-protect
@@ -653,7 +693,7 @@ file of text; their native names, as two values."
       (let* ((file (namestring (put-file (merge-pathnames "a.rs" project) "fn f() {}")))
              (buffer (tuatara.buffer:make-buffer "*trust asked*" :text ""))
              (stamps 0)
-             (list tuatara.defaults::*lsp-trusted*)
+             (list tuatara.defaults::*trusted*)
              (real (tuatara.defaults::real-directory (tuatara.defaults::project-root (namestring project)))))
         (unwind-protect
              (progn
@@ -705,3 +745,24 @@ file of text; their native names, as two values."
         (tuatara.defaults::state-list-put b (list (entry "outlook" "ddddddd")))
         (tuatara.defaults::write-state-list b)
         (is equal '("outlook" "other" "kitty") (names))))))
+
+(define-test (state-and-files files-past-the-limit-given)
+  ;; the files past the most kept in memory are each given to be searched from the disk, none left out
+  (with-test-directory (dir)
+    (dolist (file '("a.txt" "b.txt" "c.txt")) (put-file (merge-pathnames file dir) "x"))
+    (let ((past '()))
+      (multiple-value-bind (files more)
+          (tuatara.defaults::files-under (tuatara.io:native dir) :limit 2
+                                                                 :past (lambda (path relative)
+                                                                         (declare (ignore path))
+                                                                         (push relative past)))
+        (is = 2 (length files))
+        (true more)
+        (is equal '("c.txt") past)))))
+
+(define-test (state-and-files git-config-read-by-section)
+  ;; a key is read from its section only, names in any case, the last one counting
+  (let ((octets (tuatara.text:string-octets (format nil "[user]~%excludesfile = no~%[Core]~%  ExcludesFile = \"~~/one\"~%~
+                                                         [core]~%excludesfile=~~/two~%"))))
+    (is string= "~/two" (tuatara.defaults::git-config-value octets "core" "excludesfile"))
+    (false (tuatara.defaults::git-config-value octets "alias" "excludesfile"))))

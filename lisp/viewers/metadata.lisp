@@ -37,10 +37,11 @@ is kept.")
 rest is left out, and that is said.")
 
 (defvar *file-metadata-functions* '()
-  "Functions of a file's PATH, its kind (TUATARA.IO:OCTETS-KIND's keyword), the
-open file descriptor (FD) and its SIZE, each returning a section of an Org
-note of what the file says of itself, or NIL: the readers M-x show-file-metadata
-asks.")
+  "Functions of a file's PATH and its kind (TUATARA.IO:OCTETS-KIND's keyword),
+given besides the keys :FD, the open file descriptor (FD), and :SIZE, its
+size, each returning a section of an Org note of what the file says of
+itself, or NIL: the readers M-x show-file-metadata asks, each taking the keys
+it uses.")
 
 ;;; The note's sections
 
@@ -260,45 +261,70 @@ when it has none."
     (append (nreverse sections)
             (list (metadata-section "JPEG comments" (mapcar (lambda (c) (cons "Comment" c)) (nreverse comments)))))))
 
+(defparameter *png-text-inflated* (* 64 1024)
+  "The most octets one packed text of a PNG (zTXt, iTXt) is inflated to for
+the note: a longer one is left out.")
+
+(defparameter *png-text-inflated-in-all* (* 16 1024 1024)
+  "The most octets the packed texts of one PNG are inflated to for the note,
+all together: those past it are left out.")
+
+(defun png-time-words (octets data)
+  "When the tIME chunk of the PNG in OCTETS whose data begins at DATA says the
+picture was last changed, in words."
+  (destructuring-bind (year month day hour minute second)
+      (cons (octets-integer octets data 2 :big-endian t) (coerce (subseq octets (+ data 2) (+ data 7)) 'list))
+    (if (and (valid-date-p year month day) (< hour 24) (< minute 60) (< second 61))
+        (utc-time-words (+ (* 86400 (day-number year month day)) (* 3600 hour) (* 60 minute) second))
+        (format nil "no such time: year ~d, month ~d, day ~d, ~d:~d:~d" year month day hour minute second))))
+
+(defun png-text-value (octets type nul end inflated)
+  "The text of the PNG text chunk of TYPE (tEXt, zTXt, iTXt) in OCTETS whose
+key ends at NUL and whose data ends at END, packed text inflated by
+INFLATED, a function of where the zlib data starts and ends; NIL when there
+is none."
+  (cond ((string= type "tEXt") (tuatara.text:octets-latin-1 octets :start (1+ nul) :end end))
+        ((string= type "zTXt")
+         (let ((text (funcall inflated (+ nul 2) end)))
+           (and text (tuatara.text:octets-latin-1 text))))
+        (t (let* ((compressed (and (< (1+ nul) end) (= 1 (aref octets (1+ nul)))))
+                  (language-end (and (< (+ nul 3) end) (position 0 octets :start (+ nul 3) :end end)))
+                  (translated-end (and language-end (position 0 octets :start (1+ language-end) :end end))))
+             (when translated-end
+               (let ((text (if compressed
+                               (funcall inflated (1+ translated-end) end)
+                               (subseq octets (1+ translated-end) end))))
+                 (and text (octets-text text 0 (length text)))))))))
+
 (defun png-metadata (octets)
-  "The sections of the note for the PNG picture in OCTETS: its EXIF, its text and when it says it was last changed."
-  (let ((at 8) (sections '()) (texts '()) (count 0))
-    (loop while (< (+ at 8) (length octets))
-          do (let* ((length (octets-integer octets at 4 :big-endian t))
-                    (type (octets-text octets (+ at 4) (+ at 8)))
-                    (data (+ at 8)) (end (and length (+ data length))))
-               (when (or (null length) (> end (length octets)) (> (incf count) 100000)) (return))
-               (cond ((string= type "IEND") (return))
-                     ((string= type "eXIf") (push (exif-section (subseq octets data end) 0 "in its eXIf chunk") sections))
-                     ((string= type "tIME")
-                      (when (= length 7)
-                        (destructuring-bind (year month day hour minute second)
-                            (cons (octets-integer octets data 2 :big-endian t)
-                                  (coerce (subseq octets (+ data 2) (+ data 7)) 'list))
-                          (push (cons "Last changed (tIME)"
-                                      (if (and (valid-date-p year month day) (< hour 24) (< minute 60) (< second 61))
-                                          (utc-time-words (+ (* 86400 (day-number year month day)) (* 3600 hour) (* 60 minute) second))
-                                          (format nil "no such time: year ~d, month ~d, day ~d, ~d:~d:~d" year month day hour minute second)))
-                                texts))))
-                     ((member type '("tEXt" "zTXt" "iTXt") :test #'string=)
-                      (let ((nul (position 0 octets :start data :end end)))
-                        (when nul
-                          (let ((key (octets-text octets data nul)))
-                            (push (cons key
-                                        (cond ((string= type "tEXt") (tuatara.text:octets-latin-1 octets :start (1+ nul) :end end))
-                                              ((string= type "zTXt")
-                                               (let ((text (zlib-octets octets (+ nul 2) end)))
-                                                 (and text (tuatara.text:octets-latin-1 text))))
-                                              (t (let* ((compressed (and (< (1+ nul) end) (= 1 (aref octets (1+ nul)))))
-                                                        (language-end (and (< (+ nul 3) end) (position 0 octets :start (+ nul 3) :end end)))
-                                                        (translated-end (and language-end (position 0 octets :start (1+ language-end) :end end))))
-                                                   (when translated-end
-                                                     (let ((text (if compressed
-                                                                     (zlib-octets octets (1+ translated-end) end)
-                                                                     (subseq octets (1+ translated-end) end))))
-                                                       (and text (octets-text text 0 (length text)))))))))
-                                  texts))))))
-               (setf at (+ end 4))))
+  "The sections of the note for the PNG picture in OCTETS: its EXIF, its text
+and when it says it was last changed. Each packed text is inflated to no
+more than *PNG-TEXT-INFLATED*, all of them to *PNG-TEXT-INFLATED-IN-ALL*;
+in a job, asking it to stop ends the reading between two of them."
+  (let ((at 8) (sections '()) (texts '()) (count 0) (budget *png-text-inflated-in-all*))
+    (flet ((inflated (start end)
+             ;; the most a packed text could cost counted against what is left for all of them
+             (tuatara.runtime:job-check-stop)
+             (when (plusp budget)
+               (let ((limit (min budget *png-text-inflated*)))
+                 (decf budget limit)
+                 (zlib-octets octets start end :limit limit)))))
+      (loop while (< (+ at 8) (length octets))
+            do (let* ((length (octets-integer octets at 4 :big-endian t))
+                      (type (octets-text octets (+ at 4) (+ at 8)))
+                      (data (+ at 8)) (end (and length (+ data length))))
+                 (when (or (null length) (> end (length octets)) (> (incf count) 100000)) (return))
+                 (cond ((string= type "IEND") (return))
+                       ((string= type "eXIf")
+                        (push (exif-section (subseq octets data end) 0 "in its eXIf chunk") sections))
+                       ((and (string= type "tIME") (= length 7))
+                        (push (cons "Last changed (tIME)" (png-time-words octets data)) texts))
+                       ((member type '("tEXt" "zTXt" "iTXt") :test #'string=)
+                        (let ((nul (position 0 octets :start data :end end)))
+                          (when nul
+                            (push (cons (octets-text octets data nul) (png-text-value octets type nul end #'inflated))
+                                  texts)))))
+                 (setf at (+ end 4)))))
     (append (nreverse sections)
             (list (metadata-section "PNG text"
                                     (remove-if (lambda (f) (search "xmpmeta" (or (cdr f) ""))) (nreverse texts)))))))
@@ -531,6 +557,13 @@ great many it does not have is read in a bounded time."
   (with-pdf-objects-found
     (pdf-metadata-sections octets)))
 
+(defparameter *pdf-acting-names*
+  '(("/JavaScript" . "JavaScript") ("/JS" . "JavaScript") ("/OpenAction" . "an action on opening")
+    ("/AA" . "actions on events") ("/Launch" . "an action starting a program") ("/EmbeddedFile" . "files kept inside it")
+    ("/RichMedia" . "media") ("/XFA" . "an XFA form") ("/SubmitForm" . "a form sent somewhere"))
+  "The names whose presence in a PDF the note tells of under Holds, each with
+what it says of them: what in the file could act, none of it run.")
+
 (defun pdf-metadata-sections (octets)
   "The sections of PDF-METADATA's note for the PDF in OCTETS."
   (let* ((version (let ((header (tuatara.io:pdf-header-at octets)))
@@ -541,7 +574,7 @@ great many it does not have is read in a bounded time."
                    (pdf-resolve octets (pdf-get trailer "/Info"))
                    (let ((at (tuatara.io:octets-search (load-time-value (tuatara.text:string-octets "/Info")) octets
                                                        :from-end t)))
-                     (setf (gethash :scanned *pdf-objects-found*) t)
+                     (note-pdf-scanned)
                      (and at (pdf-resolve octets (pdf-object-at octets (+ at 5)))))))
          (fields (loop for (key . value) in (and (pdf-dictionary-p info) info)
                        for v = (pdf-resolve octets value)
@@ -550,23 +583,19 @@ great many it does not have is read in a bounded time."
                                             (pdf-date-words v))
                                            ((stringp v) v)
                                            (t (princ-to-string v))))))
-         (encrypted (tuatara.io:octets-search (tuatara.text:string-octets "/Encrypt") octets))
-         (acts (loop for (mark . words) in '(("/JavaScript" . "JavaScript") ("/JS" . "JavaScript")
-                                             ("/OpenAction" . "an action on opening")
-                                              ("/AA" . "actions on events") ("/Launch" . "an action starting a program")
-                                              ("/EmbeddedFile" . "files kept inside it") ("/RichMedia" . "media")
-                                              ("/XFA" . "an XFA form") ("/SubmitForm" . "a form sent somewhere"))
-                     when (tuatara.io:octets-search (tuatara.text:string-octets mark) octets)
-                       collect words)))
+         (names (pdf-names-found octets (cons "/Encrypt" (mapcar #'car *pdf-acting-names*))))
+         (encrypted (member "/Encrypt" names :test #'string=))
+         (acts (loop for (name . words) in *pdf-acting-names*
+                     when (member name names :test #'string=) collect words)))
     (list (metadata-section
            "What the PDF says of itself"
            (append (list (cons "PDF version" version)
                          (cons "Saved" (and (plusp saves) (format nil "~d time~:p~:[~; (changed after it was made: each later save is kept beside the first)~]" saves (> saves 1))))
                          (cons "Encrypted" (and encrypted "yes: what it says of itself may be scrambled")))
                    fields
-                   (list (cons "Information found" (and fields (gethash :scanned *pdf-objects-found*)
+                   (list (cons "Information found" (and fields (getf (pdf-read-notes) :scanned)
                                                         "by scanning the file, not from the cross-reference"))
-                         (cons "Cross-reference" (and (gethash :too-many *pdf-objects-found*)
+                         (cons "Cross-reference" (and (getf (pdf-read-notes) :too-many)
                                                       (format nil "lists more than ~:d objects: the rest were not read"
                                                               *pdf-most-entries*))))
                    (list (cons "Holds"
@@ -607,12 +636,17 @@ and where the next begins, past its null (NUL) (two octets wide in UTF-16)."
       (let ((nul (position 0 octets :start start :end end)))
         (if nul (values nul (1+ nul)) (values end end)))))
 
+(defun id3-synchsafe (octets at)
+  "The number ID3 writes synchsafe in the four octets of OCTETS from AT, seven
+bits in each."
+  (loop for i from 0 below 4 sum (ash (logand (aref octets (+ at i)) #x7F) (* 7 (- 3 i)))))
+
 (defun id3-metadata (octets)
   "The sections of the note for the MP3 in OCTETS: its ID3 tags, version 2 at its start and version 1 at its end."
   (let ((fields '()))
     (when (and (tuatara.io:octets-at-p octets "ID3") (> (length octets) 10))
       (let* ((major (aref octets 3)) (flags (aref octets 5))
-             (size (loop for i from 6 below 10 sum (ash (logand (aref octets i) #x7F) (* 7 (- 9 i)))))
+             (size (id3-synchsafe octets 6))
              (end (min (length octets) (+ 10 size)))
              (tag (if (logtest flags #x80)
                       ;; unsynchronised: each FF 00 stands for FF
@@ -622,13 +656,16 @@ and where the next begins, past its null (NUL) (two octets wide in UTF-16)."
                                    (vector-push-extend (aref octets i) out)))
                         (coerce out '(simple-array (unsigned-byte 8) (*))))
                       (subseq octets 10 end)))
-             (at (if (and (logtest flags #x40) (>= major 3)) (+ 4 (or (octets-integer tag 0 4 :big-endian t) 0)) 0))
+             ;; an extended header: its size leaves out its own four octets in version 2.3, and is
+             ;; synchsafe and takes them in from 2.4
+             (at (cond ((not (and (logtest flags #x40) (>= major 3) (>= (length tag) 4))) 0)
+                       ((= major 3) (+ 4 (octets-integer tag 0 4 :big-endian t)))
+                       (t (id3-synchsafe tag 0))))
              (id-size (if (= major 2) 3 4)) (header (if (= major 2) 6 10)) (count 0))
         (loop while (and (<= (+ at header) (length tag)) (< (incf count) *metadata-most-fields*))
               do (let* ((id (octets-text tag at (+ at id-size)))
                         (length (cond ((= major 2) (octets-integer tag (+ at 3) 3 :big-endian t))
-                                      ((= major 4) (loop for i from 4 below 8
-                                                         sum (ash (logand (aref tag (+ at i)) #x7F) (* 7 (- 7 i)))))
+                                      ((= major 4) (id3-synchsafe tag (+ at 4)))
                                       (t (octets-integer tag (+ at 4) 4 :big-endian t))))
                         (data (+ at header)) (data-end (and length (+ data length))))
                    (when (or (zerop (length id))
@@ -700,7 +737,7 @@ and where the next begins, past its null (NUL) (two octets wide in UTF-16)."
 
 ;;; Office and OpenDocument files: their text view's own account
 
-(defun office-metadata (path kind)
+(defun office-metadata (path kind &key &allow-other-keys)
   "The section of the note giving what the Office or OpenDocument file at PATH,
 of KIND, says of itself: the first section of the note its reader makes."
   (let* ((office (office-preview-format kind (tuatara.io:native-file-name path)))
@@ -840,9 +877,10 @@ when OCTETS are not armoured."
                      (return)))
                (setf at (1+ line-end)))
       (setf at (min at (length octets)))
-      (let ((end (min (length octets)
-                      (+ at (* 256 1024))
-                      (or (search (tuatara.text:string-octets "-----END") octets :start2 at) (length octets)))))
+      (let* ((most (min (length octets) (+ at (* 256 1024))))
+             (end (or (tuatara.io:octets-search (load-time-value (tuatara.text:string-octets "-----END")) octets
+                                                :start at :end most)
+                      most)))
         (values (tuatara.io:base64-octets octets :start (min at end) :end end) (nreverse headers))))))
 
 (defun openpgp-octets-hex (octets start end)
@@ -996,11 +1034,12 @@ it, say), one saying what could not be read, so that the rest is still shown."
      (error (e) (list (format nil "* Not read~%Some of what it says of itself could not be read: ~a~%~%"
                               (metadata-value (princ-to-string e)))))))
 
-(defun built-in-metadata (path kind fd size)
+(defun built-in-metadata (path kind &key fd size)
   "The sections of the note giving what the file at PATH, of KIND, open as
 file descriptor (FD), of SIZE octets, says of itself, by the readers of
 this file: its pictures', PDF's, sound's and video's own fields, and XMP
-wherever it is kept."
+wherever it is kept. A file larger than *METADATA-LARGEST-READ* is read at
+its start and end, and the note says so."
   (declare (ignore path))
   (multiple-value-bind (octets cut) (file-octets-for-metadata fd size)
     (append (metadata-part
@@ -1017,24 +1056,26 @@ wherever it is kept."
                (:flac (flac-metadata octets))
                (:openpgp (openpgp-metadata octets))
                (:mp4 (unless cut (mp4-metadata octets)))))
-            (when (and (eq kind :mp4) cut)
-              (list (format nil "* What the video or sound says of itself~%Not read: it is larger than ~a (*metadata-largest-read*), and its parts can be anywhere in it.~%~%"
-                            (octets-words *metadata-largest-read*))))
+            (when cut
+              (list (if (eq kind :mp4)
+                        (format nil "* What the video or sound says of itself~%Not read: it is larger than ~a ~
+                                     (*metadata-largest-read*), and its parts can be anywhere in it.~%~%"
+                                (octets-words *metadata-largest-read*))
+                        (metadata-section "How it was read"
+                                          (list (cons "Read" (format nil "its first and last ~a of ~a ~
+                                                                          (*metadata-largest-read*): what is ~
+                                                                          counted or looked for covers those parts only"
+                                                                     (octets-words (floor *metadata-largest-read* 2))
+                                                                     (octets-words size))))))))
             ;; an MP3's ID3 tag may come before what the contents are told by
             (when (and (not (eq kind :mp3)) (tuatara.io:octets-at-p octets "ID3")) (metadata-part (id3-metadata octets)))
             (metadata-part (xmp-sections octets)))))
 
-(defun office-metadata-function (path kind fd size)
-  "What the Office or OpenDocument file at PATH, of KIND, says of itself
-(OFFICE-METADATA); file descriptor (FD) and SIZE unused."
-  (declare (ignore fd size))
-  (office-metadata path kind))
-
 (defun file-metadata-note
     (path &key (cancel (list nil)) (done (list 0)) (look-up-keys (eq *metadata-look-up-key-owners* t)))
   "The Org note of what the file at PATH is and says of itself, as
-\\[show-file-metadata] shows it; its SHA-256 summed with CANCEL and DONE as
-FILE-SHA256 takes them; with LOOK-UP-KEYS, the owners of the keys an
+\\[show-file-metadata] shows it, every part of it read from one opening of the
+file; its SHA-256 summed with CANCEL and DONE as FD-SHA256 takes them; with LOOK-UP-KEYS, the owners of the keys an
 encrypted file is for looked up in your keyring. Signals an error when it
 cannot be read."
   (let ((*metadata-looking-up-keys* look-up-keys))
@@ -1045,23 +1086,24 @@ cannot be read."
               (head (tuatara.io:read-fd-start fd native size 4096)))
          (multiple-value-bind (words kind) (tuatara.io:octets-kind head)
            (let ((sections (loop for function in *file-metadata-functions*
-                                 append (metadata-part (funcall function native kind fd size)))))
+                                 append (metadata-part (funcall function native kind :fd fd :size size)))))
              (concatenate 'string
                           (format nil "#+title: Metadata of ~a~%~%" (org-safe-line (tuatara.io:native-file-name native)))
-                          (file-facts-section native stamp kind words (file-sha256 native :cancel cancel :done done))
+                          (file-facts-section native stamp kind words (fd-sha256 fd native :cancel cancel :done done))
                           (xattr-section fd)
                           (format nil "~{~a~}" (remove "" sections :test #'string=))))))))))
 
 ;;; The command
 
-(defstruct (metadata-job (:include tuatara.runtime:job)
-                         (:constructor make-metadata-job (buffer path size))
-                         (:copier nil))
+(define-record (metadata-job (:include tuatara.runtime:job)
+                            (:constructor make-metadata-job (buffer path size))
+                            (:copier nil))
   "The metadata of the file at PATH, of SIZE octets, being read for BUFFER, a
 job; DONE, the octets summed so far; TEXT, the note made."
-  path size (done (list 0)) text)
-
-(setf (documentation 'metadata-job-p 'function) "True when OBJECT is a METADATA-JOB.")
+  (path nil :documentation "The path of the file METADATA-JOB reads the metadata of.")
+  (size nil :documentation "The size in octets of the file of METADATA-JOB.")
+  (done (list 0) :documentation "A list whose car counts the octets METADATA-JOB has summed so far.")
+  (text nil :documentation "The note METADATA-JOB made, NIL until it is done."))
 
 (tuatara.runtime:define-job-words metadata-job
   :doing "Reading the file's metadata"
@@ -1130,5 +1172,5 @@ gpg, when it looks up keys, is given your keyring alone, not the file."
   "Have M-x show-file-metadata read pictures, PDFs, sound and video, and Office and
 OpenDocument files, and bind \\`g i' to it in lists of directories."
   (define-key (symbol-value '*rimu-keymap*) "g i" 'show-file-metadata)
-  (pushnew 'office-metadata-function *file-metadata-functions*)
+  (pushnew 'office-metadata *file-metadata-functions*)
   (pushnew 'built-in-metadata *file-metadata-functions*))

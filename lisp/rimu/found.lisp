@@ -78,14 +78,17 @@ its size."
 
 ;;; Finding, as a job of the list
 
-(defstruct (rimu-search (:include tuatara.runtime:job) (:constructor make-rimu-search (buffer spec)) (:copier nil))
+(define-record (rimu-search (:include tuatara.runtime:job) (:constructor make-rimu-search (buffer spec)) (:copier nil))
   "Files being found for the rimu list BUFFER, a job (TUATARA.RUNTIME:JOB):
 SPEC, what is searched for (RIMU-FOUND-P); SEEN, how many files were looked
 at; while duplicates are compared, the car of DONE the octets summed of
 TOTAL; LISTING, what was found, once done or stopped."
-  spec (seen 0) (done (list 0)) (total 0) listing)
-
-(setf (documentation 'rimu-search-p 'function) "True when OBJECT is a RIMU-SEARCH.")
+  (spec nil :documentation "What RIMU-SEARCH looks for, as RIMU-FOUND-P takes it.")
+  (seen 0 :documentation "How many files RIMU-SEARCH has looked at.")
+  (done (list 0)
+        :documentation "A list whose car counts the octets summed so far while RIMU-SEARCH compares duplicates.")
+  (total 0 :documentation "How many octets RIMU-SEARCH has to sum while it compares duplicates.")
+  (listing nil :documentation "What RIMU-SEARCH found, once it is done or stopped, or NIL."))
 
 (defun rimu-search-what (spec)
   "What SPEC searches for, in words: *.pdf in ~/x, duplicates in ~/x."
@@ -104,7 +107,8 @@ through, from 0 to 99; NIL while they are counted."
 
 (tuatara.runtime:define-job-words rimu-search
   :doing (if (plusp (rimu-search-total job)) "Comparing" "Finding")
-  :description (format nil "Finding ~a (~:d looked at)" (rimu-search-what (rimu-search-spec job)) (rimu-search-seen job))
+  :description (format nil "Finding ~a (~:d looked at)"
+                       (rimu-search-what (rimu-search-spec job)) (rimu-search-seen job))
   :verb (format nil "find ~a" (rimu-search-what (rimu-search-spec job)))
   :left-words (if (eq (getf (rimu-search-spec job) :kind) :duplicates)
       "no duplicates listed"
@@ -128,70 +132,121 @@ is one JOB looks for by name or by text."
                   (lines-on-disk path relative (getf spec :directory) (getf spec :text)
                                  :cancel (rimu-search-cancel job) :most 1 :parallel nil))))))
 
-(defun rimu-search-found (job)
-  "Find the files JOB searches for, on its thread: a RIMU-LISTING."
+(defun rimu-search-walk (job root each &key directories)
+  "On JOB's thread, call EACH with the path and the path from ROOT of each file
+under ROOT, counted as seen, the directories too with DIRECTORIES :ALSO,
+names starting with a dot when JOB looks for them."
+  (files-under root :limit most-positive-fixnum :hidden (getf (rimu-search-spec job) :hidden)
+                    :cancel (rimu-search-cancel job) :directories directories
+                    :each (lambda (path relative)
+                            (incf (rimu-search-seen job))
+                            (funcall each path relative))))
+
+(defparameter *rimu-head-octets* (* 64 1024)
+  "How many octets from the start of each file of one size are summed first
+by \\[rimu-duplicates]: only files whose starts agree are summed whole.")
+
+(defun rimu-head-sum (path size)
+  "The SHA-256 sum of the first *RIMU-HEAD-OCTETS* of the file at PATH, SIZE
+octets; NIL when it cannot be read."
+  (let ((fd (ignoring-errors-reported ("opening ~a" path) (tuatara.io:open-for-reading path t))))
+    (when fd
+      (unwind-protect
+           (ignoring-errors-reported ("reading the start of ~a" path)
+             (octets-sha256 (tuatara.io:read-fd-start fd path size *rimu-head-octets*)))
+        (ignoring-errors-reported ("closing ~a" path) (sb-posix:close fd))))))
+
+(defun rimu-same-groups (names sum)
+  "NAMES grouped by the sum SUM gives each, a function of a name: the groups
+of two or more, those SUM gives NIL left out."
+  (let ((by-sum (make-hash-table :test 'equal)))
+    (dolist (name names)
+      (let ((key (funcall sum name)))
+        (when key (push name (gethash key by-sum)))))
+    (loop for group being the hash-values of by-sum
+          when (rest group) collect (reverse group))))
+
+(defun rimu-find-duplicates (job)
+  "On JOB's thread, the files under the roots JOB searches that are the same
+as another, as a RIMU-LISTING in groups: files of one size, their first
+octets alike (RIMU-HEAD-SUM), then their SHA-256 sums alike; the largest
+first."
   (let* ((spec (rimu-search-spec job))
          (directory (getf spec :directory))
          (cancel (rimu-search-cancel job))
+         (by-size (make-hash-table))
+         (buffer (make-array (* 1024 1024) :element-type '(unsigned-byte 8)))
+         (groups '()) (group 0))
+    ;; files of one size only may be the same
+    (dolist (root (getf spec :roots))
+      (let ((prefix (subseq root (length directory))))
+        (rimu-search-walk job root (lambda (path relative)
+                                     (let ((stamp (tuatara.io:path-stamp path :follow nil :failure nil)))
+                                       (when (and stamp (eq (tuatara.io:stamp-kind stamp) :regular))
+                                         (push (concatenate 'string prefix relative)
+                                               (gethash (tuatara.io:stamp-size stamp) by-size))))))))
+    (flet ((path (relative) (concatenate 'string directory relative)))
+      (let ((alike (loop for size being the hash-keys of by-size using (hash-value names)
+                         when (rest names)
+                           nconc (if (> size *rimu-head-octets*)
+                                     ;; files that differ early are not read whole
+                                     (loop for same in (rimu-same-groups (sort names #'string<)
+                                                                         (lambda (relative)
+                                                                           (and (not (car cancel))
+                                                                                (rimu-head-sum (path relative) size))))
+                                           collect (cons size same))
+                                     (list (cons size (sort names #'string<)))))))
+        (when (car cancel) (return-from rimu-find-duplicates nil))
+        (setf (rimu-search-total job) (max 1 (loop for (size . names) in alike sum (* size (length names)))))
+        (dolist (same (sort alike #'> :key #'car))
+          (dolist (names (rimu-same-groups (cdr same)
+                                           (lambda (relative)
+                                             (file-sha256 (path relative)
+                                                          :cancel cancel :done (rimu-search-done job) :buffer buffer))))
+            (when (car cancel) (return-from rimu-find-duplicates nil))
+            (incf group)
+            (dolist (relative (sort names #'string<))
+              (let ((entry (rimu-found-entry directory relative)))
+                (when entry (push (cons entry group) groups))))))
+        (when (car cancel) (return-from rimu-find-duplicates nil))))
+    (let* ((pairs (nreverse groups))
+           (entries (map 'simple-vector #'car pairs))
+           (numbers (map 'simple-vector #'cdr pairs)))
+      (make-rimu-listing directory entries nil nil (rimu-duplicates-words entries numbers) numbers))))
+
+(defun rimu-find-given (spec)
+  "The files SPEC gives (RIMU-SHOW-PATHS), as a RIMU-LISTING in their groups
+and order, those no longer there left out: nothing is searched."
+  (let* ((directory (getf spec :directory))
+         (pairs (loop for (path . group) in (getf spec :paths)
+                      for entry = (rimu-found-entry directory (subseq path (length directory)))
+                      when entry collect (cons entry group))))
+    (make-rimu-listing directory (map 'simple-vector #'car pairs) nil nil (getf spec :words)
+                       (map 'simple-vector #'cdr pairs))))
+
+(defun rimu-find-by-name (job)
+  "On JOB's thread, the files under the directory JOB searches whose names
+or text it looks for (RIMU-SEARCH-NAME), as a RIMU-LISTING."
+  (let* ((spec (rimu-search-spec job))
+         (directory (getf spec :directory))
          (found '()))
-    (flet ((walk (root each &key directories)
-             (files-under root :limit most-positive-fixnum :hidden (getf spec :hidden) :cancel cancel
-                               :directories directories
-                               :each (lambda (path relative)
-                                       (incf (rimu-search-seen job))
-                                       (funcall each path relative)))))
-      (if (eq (getf spec :kind) :duplicates)
-          (let ((by-size (make-hash-table)))
-            ;; files of one size only may be the same
-            (dolist (root (getf spec :roots))
-              (let ((prefix (subseq root (length directory))))
-                (walk root (lambda (path relative)
-                             (let ((stamp (tuatara.io:path-stamp path :follow nil :failure nil)))
-                               (when (and stamp (eq (tuatara.io:stamp-kind stamp) :regular))
-                                 (push (concatenate 'string prefix relative)
-                                       (gethash (tuatara.io:stamp-size stamp) by-size))))))))
-            (let ((alike (loop for size being the hash-keys of by-size using (hash-value names)
-                               when (rest names) collect (cons size (sort names #'string<))))
-                  (buffer (make-array (* 1024 1024) :element-type '(unsigned-byte 8)))
-                  (groups '()) (group 0))
-              (setf (rimu-search-total job) (max 1 (loop for (size . names) in alike sum (* size (length names)))))
-              ;; the largest first
-              (dolist (same (sort alike #'> :key #'car))
-                (let ((by-sum (make-hash-table :test 'equal)))
-                  (dolist (relative (cdr same))
-                    (when (car cancel) (return-from rimu-search-found nil))
-                    (let ((sum (file-sha256 (concatenate 'string directory relative)
-                                            :cancel cancel :done (rimu-search-done job) :buffer buffer)))
-                      (when sum (push relative (gethash sum by-sum)))))
-                  (loop for names being the hash-values of by-sum
-                        when (rest names)
-                          do (incf group)
-                             (dolist (relative (sort names #'string<))
-                               (let ((entry (rimu-found-entry directory relative)))
-                                 (when entry (push (cons entry group) groups)))))))
-              (let* ((pairs (nreverse groups))
-                     (entries (map 'simple-vector #'car pairs))
-                     (numbers (map 'simple-vector #'cdr pairs)))
-                (make-rimu-listing directory entries nil nil (rimu-duplicates-words entries numbers) numbers))))
-          (if (eq (getf spec :kind) :given)
-              ;; given files, in their groups and order: nothing to walk
-              (let ((pairs (loop for (path . group) in (getf spec :paths)
-                                 for entry = (rimu-found-entry directory (subseq path (length directory)))
-                                 when entry collect (cons entry group))))
-                (make-rimu-listing directory (map 'simple-vector #'car pairs) nil nil (getf spec :words)
-                                   (map 'simple-vector #'cdr pairs)))
-          (progn
-            (walk directory (lambda (path relative)
-                              (when (rimu-search-name job path relative)
-                                (let ((entry (rimu-found-entry directory relative)))
-                                  (when entry (push entry found)))))
-                  :directories (if (eq (getf spec :kind) :name) :also nil))
-            (make-rimu-listing directory (coerce (nreverse found) 'simple-vector) nil nil
-                               (format nil
-                                       "~:d found: ~a~@[ (stopped)~]"
-                                       (length found)
-                                       (rimu-search-what spec)
-                                       (car cancel)))))))))
+    (rimu-search-walk job directory (lambda (path relative)
+                                      (when (rimu-search-name job path relative)
+                                        (let ((entry (rimu-found-entry directory relative)))
+                                          (when entry (push entry found)))))
+                      :directories (if (eq (getf spec :kind) :name) :also nil))
+    (make-rimu-listing directory (coerce (nreverse found) 'simple-vector) nil nil
+                       (format nil "~:d found: ~a~@[ (stopped)~]"
+                               (length found) (rimu-search-what spec) (car (rimu-search-cancel job))))))
+
+(defun rimu-search-found (job)
+  "Find the files JOB searches for, on its thread: a RIMU-LISTING, or NIL when
+stopped while comparing duplicates."
+  (let ((spec (rimu-search-spec job)))
+    (ecase (getf spec :kind)
+      (:duplicates (rimu-find-duplicates job))
+      (:given (rimu-find-given spec))
+      ((:name :text) (rimu-find-by-name job)))))
 
 (defun rimu-start-search (buffer)
   "Find again the files the rimu list BUFFER lists (RIMU-FOUND-P), as a job
@@ -320,6 +375,7 @@ up, a group left with one file leaving it. \\[revert-buffer] compares again."
     (when directory
       (rimu-show-found (list :kind :duplicates :directory directory :hidden hidden
                              :roots (if marked
-                                        (mapcar (lambda (entry) (directory-name (rimu-path directory entry) :clean t)) marked)
+                                        (mapcar (lambda (entry) (directory-name (rimu-path directory entry) :clean t))
+                                                marked)
                                         (list directory)))
                        (format nil "*Duplicates in ~a*" (abbreviated-path directory))))))

@@ -34,6 +34,21 @@ reports not yet shown."
     (false evaluated)
     (true (sb-concurrency:queue-empty-p tuatara.runtime:*debug-reports*))))
 
+(define-test (debug-reports tick-without-reports-makes-no-buffer)
+  (drain-debug-reports)
+  (let ((b (tuatara.buffer:find-buffer "*Debug*"))) (when b (tuatara.buffer:kill-buffer b)))
+  (tuatara.defaults::show-debug-reports nil)
+  (false (tuatara.buffer:find-buffer "*Debug*")))
+
+(define-test (debug-reports nested-data-refused-past-its-depth)
+  ;; a reader going into nested data counts its levels, and is refused past the limit
+  (labels ((reader (levels) (tuatara.runtime:with-depth-limit (5 "The list")
+                              (if (zerop levels) :done (reader (1- levels))))))
+    (is eq :done (reader 4))
+    (let ((refusal (handler-case (reader 5) (tuatara.runtime:refusal (r) r))))
+      (true (typep refusal 'tuatara.runtime:refusal))
+      (is string= "The list is nested more than 5 deep" (princ-to-string refusal)))))
+
 (define-test (debug-reports switched-on)
   (drain-debug-reports)
   (unwind-protect

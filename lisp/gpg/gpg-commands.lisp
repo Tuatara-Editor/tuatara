@@ -20,15 +20,21 @@
 
 ;;; Running gpg on work that takes time
 
-(defstruct (gpg-job (:include tuatara.runtime:job) (:constructor make-gpg-job (buffer words then quiet)) (:copier nil))
+(define-record (gpg-job (:include tuatara.runtime:job) (:constructor make-gpg-job (buffer words then quiet))
+                        (:copier nil))
   "gpg at work on WORDS (decrypting report.pdf.gpg), a job; THEN, called on the
 editor's thread with the RESULTS of its work, a list of values (what gpg gave:
 its output, status lines, whether it ended well and what it said; or the keys
 listed). QUIET, true for work that only shows something (the keys listed),
 stopped without asking when its buffer is killed."
-  words then quiet results)
-
-(setf (documentation 'gpg-job-p 'function) "True when OBJECT is a GPG-JOB.")
+  (words nil :documentation "The words describing the work of GPG-JOB, as in \"decrypting report.pdf.gpg\".")
+  (then nil :documentation "The function called on the editor's thread with the results of GPG-JOB.")
+  (quiet nil
+         :documentation "True when GPG-JOB only shows something, so it is stopped without asking when its buffer is
+killed.")
+  (results nil
+           :documentation "The list of values gpg gave for GPG-JOB: its output, status lines, whether it ended well
+and what it said, or the keys listed."))
 
 (tuatara.runtime:define-job-words gpg-job
   :doing (gpg-job-words job)
@@ -335,39 +341,48 @@ MESSAGE-----), to the keys or with a passphrase chosen in the minibuffer."
                                                    (message "Not encrypted: ~a" (gpg-failure-words statuses said))))
                                              :input plain :passphrase passphrase))))))))
 
-(defun armoured-blocks (text kind)
-  "The armoured blocks of KIND (MESSAGE, SIGNED MESSAGE) in TEXT (octets), in
-order, each (START . END), the line end after a block with it."
-  (let ((opening (tuatara.text:string-octets (format nil "-----BEGIN PGP ~a-----" kind)))
-        (closing (tuatara.text:string-octets (format nil "-----END PGP ~a-----"
-                                                         (if (string= kind "SIGNED MESSAGE") "SIGNATURE" kind)))))
-    (loop with from = 0
-          for begin = (search opening text :start2 from)
-          for stop = (and begin (search closing text :start2 begin))
-          while stop
-          collect (let ((end (+ stop (length closing))))
-                    (when (and (< end (length text)) (= (aref text end) 10)) (incf end))
-                    (setf from end)
-                    (cons begin end)))))
+(defun armoured-block-at (rope kind begin limit)
+  "The armoured block of KIND (MESSAGE, SIGNED MESSAGE) whose opening line is
+at BEGIN in ROPE, as (START . END), the line end after it with it, its closing
+line ending at or before LIMIT; NIL when there is none, or the search for it
+was stopped (OCTETS-STOPPER)."
+  (multiple-value-bind (stop after)
+      (tuatara.syntax:search-forward rope (format nil "-----END PGP ~a-----"
+                                                  (if (string= kind "SIGNED MESSAGE") "SIGNATURE" kind))
+                                     :start begin :end limit :case-fold nil :stop (octets-stopper))
+    (when (and stop (integerp after))
+      (cons begin (if (and (< after (tuatara.text:rope-octet-length rope)) (= 10 (tuatara.text:rope-octet rope after)))
+                      (1+ after)
+                      after)))))
 
 (defun armoured-block (buffer kind)
   "The armoured block of KIND (MESSAGE, SIGNED MESSAGE) to work on in BUFFER,
 as two values, where it starts and ends; NIL when there is none. With text
 selected, the first in the selection; else the one point is in, or else the
-one nearest to point, before or after it."
-  (if (region-active-p buffer)
-      (multiple-value-bind (start end) (tuatara.buffer:buffer-region buffer)
-        (let ((found (first (armoured-blocks (tuatara.text:rope-octets (tuatara.buffer:buffer-text buffer)
-                                                                       :start start
-                                                                       :end end) kind))))
-          (and found (values (+ start (car found)) (+ start (cdr found))))))
-      (let* ((point (tuatara.buffer:buffer-point buffer))
-             (blocks (armoured-blocks (tuatara.text:rope-octets (tuatara.buffer:buffer-text buffer)) kind))
-             (found (first (sort (copy-list blocks) #'<
-                                 :key (lambda (b) (cond ((< point (car b)) (- (car b) point))
-                                                        ((> point (cdr b)) (- point (cdr b)))
-                                                        (t 0)))))))
-        (and found (values (car found) (cdr found))))))
+one nearest to point, before or after it. Looked for in BUFFER's text from
+point outward, a search \\[keyboard-quit] stops, only the block found taken."
+  (let* ((rope (tuatara.buffer:buffer-text buffer))
+         (size (tuatara.text:rope-octet-length rope))
+         (opening (format nil "-----BEGIN PGP ~a-----" kind))
+         (stop (octets-stopper)))
+    (flet ((opening-after (from end) (tuatara.syntax:search-forward rope opening :start from :end end :case-fold nil
+                                                                               :stop stop)))
+      (let ((found
+              (if (region-active-p buffer)
+                  (multiple-value-bind (start end) (tuatara.buffer:buffer-region buffer)
+                    (let ((begin (opening-after start end)))
+                      (and (integerp begin) (armoured-block-at rope kind begin end))))
+                  (let* ((point (tuatara.buffer:buffer-point buffer))
+                         (before (tuatara.syntax:search-backward rope opening :start (min size (1+ point))
+                                                                              :case-fold nil :stop stop))
+                         (behind (and (integerp before) (armoured-block-at rope kind before size)))
+                         (after (and (not (and behind (<= point (cdr behind))))
+                                     (opening-after (if behind (cdr behind) point) size)))
+                         (ahead (and (integerp after) (armoured-block-at rope kind after size))))
+                    (cond ((and behind (<= point (cdr behind))) behind)
+                          ((and behind ahead) (if (<= (- point (cdr behind)) (- (car ahead) point)) behind ahead))
+                          (t (or behind ahead)))))))
+        (and found (values (car found) (cdr found)))))))
 
 (define-command gpg-decrypt-region ()
   "Decrypt in place the armoured block (-----BEGIN PGP MESSAGE-----) in the text
@@ -389,7 +404,18 @@ decrypted text to the file unencrypted."
                                          (message "Decrypted in place: not auto-saved, and a save asks before writing it unencrypted")))
                                 (message "Not decrypted: ~a" (gpg-failure-words statuses said))))
                           :input cipher
-                          :passphrase (and (gpg-minibuffer-p) (gpg-own-passphrase "the block"))))))))
+                          :passphrase (block-passphrase cipher)))))))
+
+(defun block-passphrase (cipher)
+  "With the minibuffer asking for passphrases (GPG-MINIBUFFER-P), the
+passphrase for CIPHER, the octets of an armoured encrypted block, asked for:
+its own when a passphrase opens it (a symmetric one, its first packet says),
+else your key's (GPG-OWN-PASSPHRASE). NIL when gpg-agent's pinentry asks."
+  (when (gpg-minibuffer-p)
+    (let ((packets (openpgp-armour-octets cipher)))
+      (if (and packets (plusp (length packets)) (eql 3 (tuatara.io:openpgp-packet-header packets 0)))
+          (gpg-read-passphrase "Passphrase for the block: ")
+          (gpg-own-passphrase "the block")))))
 
 (define-command gpg-sign-region ()
   "Clear-sign the text selected in place (-----BEGIN PGP SIGNED MESSAGE-----), with your key."
@@ -604,17 +630,31 @@ yours with its secret part, asked twice."
                       (lambda () (yes-or-no-p* "Delete your own keys too?")))))
            (message "Nothing deleted"))
           (t (gpg-in-background (format nil "deleting ~d key~:p" (length keys))
-                                (lambda (cancel)
-                                  (loop for key in keys
-                                        until (car cancel)
-                                        do (gpg-run (list "--batch" "--yes" (if (getf key :secret) "--delete-secret-and-public-key" "--delete-keys")
-                                                          (getf key :fingerprint))
-                                                    :asker :agent :cancel cancel)))
-                                (lambda (&rest ignored)
-                                  (declare (ignore ignored))
+                                (lambda (cancel) (delete-gpg-keys keys cancel))
+                                (lambda (deleted failure)
                                   (when (live-buffer-p list) (gpg-keys-show list))
-                                  (message "~d key~:p deleted" (length keys)))
+                                  (if failure
+                                      (message "~d of ~d keys deleted: ~a" deleted (length keys) failure)
+                                      (message "~d key~:p deleted" deleted)))
                                 :asker :agent :buffer list)))))
+
+(defun delete-gpg-keys (keys cancel)
+  "Delete KEYS, of GPG-KEYS, from your keyring one after another, a key of
+yours with its secret part, until gpg fails or CANCEL, a cons, has a true car.
+Two values: how many were deleted, and NIL or why the first not deleted was
+not, in words."
+  (let ((deleted 0))
+    (dolist (key keys (values deleted nil))
+      (when (car cancel) (return (values deleted "stopped")))
+      (multiple-value-bind (output statuses ok said)
+          (gpg-run (list "--batch" "--yes" (if (getf key :secret) "--delete-secret-and-public-key" "--delete-keys")
+                         (getf key :fingerprint))
+                   :asker :agent :cancel cancel)
+        (declare (ignore output))
+        (unless ok
+          (return (values deleted (format nil "~a: ~a" (or (getf key :name) (getf key :id))
+                                          (gpg-failure-words statuses said)))))
+        (incf deleted)))))
 
 (defun install-gpg-commands ()
   "Bind the keys of the list of GnuPG keys; its keys have no mark for deletion."

@@ -29,6 +29,17 @@ With :INTERACTIVE NIL the command is for keys alone: \\[execute-extended-command
           `(setf (gethash ',name *key-only-commands*) t))
      ',name))
 
+(defun install-command (name function &optional documentation)
+  "Make NAME a command that runs FUNCTION, as DEFINE-COMMAND makes one, for a
+command made while the editor runs (a name given to recorded keys, a key of an
+input method, a package's command before the package loads); DOCUMENTATION,
+when given, is its docstring. Returns NAME."
+  (setf (symbol-function name) function
+        (gethash name *commands*) function)
+  (when documentation
+    (setf (documentation name 'function) documentation))
+  name)
+
 (defvar *command-names* (cons -1 nil)
   "The commands by name, as COMMAND-SYMBOL finds them: (COUNT . TABLE), TABLE
 from each command's name to its symbol, made when *COMMANDS* held COUNT.")

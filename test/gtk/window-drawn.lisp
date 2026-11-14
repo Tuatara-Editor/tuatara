@@ -183,6 +183,10 @@ note what they hold and how they differ."
                                  (count-if (lambda (d) (> (abs d) 16)) (map 'list #'- on-card whole))
                                  (length whole)))))))
 
+;; the note's own #+STARTUP: words show its pictures only when the setting allows them
+(when (equal (third (uiop:command-line-arguments)) "floated")
+  (setf tuatara-user:*org-startup-shows-pictures* t))
+
 ;; given up on after ninety seconds, what was seen written all the same
 (run-steps #'steps (second (uiop:command-line-arguments)) :give-up 90)
 

@@ -1,8 +1,8 @@
-;;;; lisp/files/file-local.lisp --- Settings a file gives itself, as Emacs's file variables.
+;;;; lisp/files/file-local.lisp --- Settings a file gives itself in a line or block of its own.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; A file may name settings for itself, as Emacs reads them: on its first
-;;;; line (its second after #!), between -*- and -*-,
+;;;; A file may name settings for itself, in the form many editors read: on
+;;;; its first line (its second after #!), between -*- and -*-,
 ;;;;
 ;;;;   # -*- mode: org; fill-column: 72 -*-
 ;;;;

@@ -237,14 +237,72 @@ PATH a block at a time (FILE-SOURCE), never read whole into memory."
                                        (close-source source)))))
       (tuatara.io:write-octets fd octets :path "gpg")))
 
-(defun gpg-run (arguments &key input input-path passphrase cancel (asker (gpg-asker)) second-input second-path)
+(defun gpg-passphrase-pipe (passphrase)
+  "A pipe holding PASSPHRASE and a line end, for gpg to read whole: its end to
+read from, as a list (FD NIL) as GPG-RUN keeps its pipes. The passphrase is
+written as octets on the pipe itself, and they are wiped."
+  (multiple-value-bind (in out) (sb-posix:pipe)
+    (let ((octets (tuatara.text:string-octets passphrase)))
+      (unwind-protect
+           (progn (tuatara.io:write-octets out octets :path "gpg")
+                  (tuatara.io:write-octets out (load-time-value (tuatara.text:string-octets (string #\Newline)))
+                                           :path "gpg"))
+        (fill octets 0)
+        (sb-posix:close out)))
+    (list in nil)))
+
+(defun gpg-secret-thread (name function)
+  "A thread called NAME calling FUNCTION, nothing of a secret it handles
+written to the debug log should it fail (*SECRET-AT-HAND*): its value is
+FUNCTION's."
+  (tuatara.runtime:make-guarded-thread (lambda () (let ((tuatara.runtime:*secret-at-hand* t)) (funcall function)))
+                                       :name name))
+
+(defun gpg-line-reader (name stream most count keep)
+  "A thread called NAME reading the lines of STREAM to its end, each cut to
+MOST characters, its value those of the first COUNT that KEEP, a function of
+a line, gives back (NIL leaving it out), as it gives them, in order. STREAM is
+closed at its end."
+  (gpg-secret-thread name
+                     (lambda ()
+                       (let ((lines '()))
+                         (unwind-protect
+                              (ignoring-errors-reported ("reading what gpg gives")
+                                (loop for line = (tuatara.io:read-line-bounded stream most)
+                                      for n from 0
+                                      while line
+                                      do (let ((kept (and (< n count) (funcall keep line))))
+                                           (when kept (push kept lines)))))
+                           (ignoring-errors-reported ("closing a pipe from gpg") (close stream)))
+                         (nreverse lines)))))
+
+(defun gpg-command (program environment arguments asker &key status most passphrase second)
+  "The command running gpg, PROGRAM, with ARGUMENTS as GPG-RUN takes them and
+ENVIRONMENT, ASKER (GPG-ASKER) asking for passphrases: its status lines to
+the descriptor STATUS, no more output than MOST, its passphrase read from
+the descriptor PASSPHRASE, and a second input from the descriptor SECOND,
+when given."
+  (list* program
+         (append (gpg-staying-home-options program environment)
+                 (list "--yes" "--status-fd" (princ-to-string status) "--max-output" (princ-to-string most))
+                 (and (not (eq asker :terminal)) (list "--no-tty"))
+                 (and (or (eq asker :minibuffer) passphrase) (list "--pinentry-mode" "loopback"))
+                 (and passphrase (list "--batch" "--passphrase-fd" (princ-to-string passphrase)))
+                 (and (eq asker :minibuffer) (not passphrase) (list "--batch"))
+                 (and second (list "--enable-special-filenames"))
+                 (substitute (and second (format nil "-&~d" second)) :second-input arguments))))
+
+(defun gpg-run (arguments &key input input-path passphrase cancel seconds (asker (gpg-asker)) second-input second-path)
   "Run gpg with ARGUMENTS, never through a shell, giving it INPUT (octets),
 or the file at INPUT-PATH a block at a time, through a pipe and taking what
 it writes the same way, so that nothing it reads or writes touches the disk;
-PASSPHRASE, when given, through a pipe of its own. CANCEL, a cons, stops it
-when its car turns true. ASKER (GPG-ASKER) says how a passphrase gpg needs
-is asked for: by the minibuffer (loopback, PASSPHRASE given), by gpg-agent
-in the terminal lent it (call it within WITH-GPG-TERMINAL), or by its window.
+PASSPHRASE, when given, through a pipe of its own, which gpg's loopback then
+takes in place of any pinentry. CANCEL, a cons, stops it when its car turns
+true; SECONDS, when given, is the most it may take, then it is stopped and
+the run refused (a keyring locked, an agent that does not answer). ASKER
+\(GPG-ASKER) says how a passphrase gpg needs is asked for: by the minibuffer
+\(loopback, PASSPHRASE given), by gpg-agent in the terminal lent it (call it
+within WITH-GPG-TERMINAL), or by its window.
 SECOND-INPUT, more octets (a detached signature), or the file at
 SECOND-PATH, reach gpg through a pipe of their own, named in ARGUMENTS by
 :SECOND-INPUT (made -&N, gpg's name for a descriptor). Its status lines come
@@ -258,106 +316,74 @@ to the debug log (*SECRET-AT-HAND*). It runs with an environment of its own
   (let* ((tuatara.runtime:*secret-at-hand* t)
          (program (or (gpg-path) (tuatara.io:program-missing "gpg" :why (outside-program-install-words :gpg))))
          (environment (gpg-environment asker))
-         (most (gpg-most-output (if input-path
-                                    (tuatara.io:path-size input-path)
-                                    (length input))))
-         (pipe (and passphrase (multiple-value-list (sb-posix:pipe))))
+         (most (gpg-most-output (if input-path (tuatara.io:path-size input-path) (length input))))
+         (pipe (and passphrase (gpg-passphrase-pipe passphrase)))
          (second (and (or second-input second-path) (multiple-value-list (sb-posix:pipe))))
          (status (multiple-value-list (sb-posix:pipe)))
-         (process nil) (statuses '()) (said '()) (output nil) (too-much nil))
+         (process nil) (statuses '()) (said '()) (output nil) (too-much nil) (timed-out nil)
+         (timer (and seconds
+                     (sb-ext:make-timer (lambda ()
+                                          (when (and process (sb-ext:process-alive-p process))
+                                            (setf timed-out t)
+                                            (ignoring-errors-reported ("ending gpg") (sb-ext:process-kill process 9))))
+                                        :name "tuatara gpg deadline" :thread t))))
     (unwind-protect
-         (progn
-           (when pipe
-             ;; the passphrase written and the pipe closed before gpg starts: it reads it whole
-             (let ((stream (sb-sys:make-fd-stream (second pipe) :output t :external-format :utf-8 :buffering :full)))
-               (write-string passphrase stream) (terpri stream) (close stream)
-               (setf (second pipe) nil)))
-           (tuatara.io:call-with-program
-            (list* program
-                   (append (gpg-staying-home-options program environment)
-                           (list "--yes" "--status-fd" (princ-to-string (second status))
-                                 "--max-output" (princ-to-string most))
-                           (and (not (eq asker :terminal)) (list "--no-tty"))
-                           (and (eq asker :minibuffer) (list "--pinentry-mode" "loopback"))
-                           (and pipe (list "--batch" "--passphrase-fd" (princ-to-string (first pipe))))
-                           (and (eq asker :minibuffer) (not pipe) (list "--batch"))
-                           (and second (list "--enable-special-filenames"))
-                           (substitute (and second (format nil "-&~d" (first second))) :second-input arguments)))
-            (lambda (started)
-              (setf process started)
-              (sb-posix:close (second status)) (setf (second status) nil)
-              (when pipe (sb-posix:close (first pipe)) (setf (first pipe) nil))
-              (when second
-                ;; the second input written on a thread of its own, gpg reading it as it goes
-                (sb-posix:close (first second)) (setf (first second) nil)
-                (let ((fd (shiftf (second second) nil)))
-                  (tuatara.runtime:make-guarded-thread
-                   (lambda ()
-                     (let ((tuatara.runtime:*secret-at-hand* t))
-                       (unwind-protect (ignoring-errors-reported ("feeding gpg its second input")
-                                         (gpg-feed fd second-input second-path))
-                         (ignoring-errors-reported ("closing gpg's second input") (sb-posix:close fd)))))
-                   :name "tuatara gpg second input")))
-              (let* ((status-fd (shiftf (first status) nil))
-                     (writer (and (or input input-path)
-                                  (tuatara.runtime:make-guarded-thread
+         (tuatara.io:call-with-program
+          (gpg-command program environment arguments asker :status (second status) :most most
+                                                           :passphrase (first pipe) :second (first second))
+          (lambda (started)
+            (setf process started)
+            (when timer (sb-ext:schedule-timer timer seconds))
+            (sb-posix:close (shiftf (second status) nil))
+            (when pipe (sb-posix:close (shiftf (first pipe) nil)))
+            (when second
+              ;; the second input written on a thread of its own, gpg reading it as it goes
+              (sb-posix:close (shiftf (first second) nil))
+              (let ((fd (shiftf (second second) nil)))
+                (gpg-secret-thread "tuatara gpg second input"
                                    (lambda ()
-                                     (let ((tuatara.runtime:*secret-at-hand* t))
-                                       (ignoring-errors-reported ("feeding gpg its input")
-                                         (gpg-feed (sb-sys:fd-stream-fd (sb-ext:process-input process))
-                                                   input input-path))
-                                       (ignoring-errors-reported ("closing gpg's input")
-                                         (close (sb-ext:process-input process)))))
-                                   :name "tuatara gpg input")))
-                     (reader (tuatara.runtime:make-guarded-thread
-                              (lambda ()
-                                (let ((lines (sb-sys:make-fd-stream status-fd
-                                                                    :input t
-                                                                    :external-format :latin-1
-                                                                    :buffering :full)))
-                                  (unwind-protect
-                                       (let ((tuatara.runtime:*secret-at-hand* t))
-                                         (ignoring-errors-reported ("reading the status gpg gives")
-                                           (loop for line = (tuatara.io:read-line-bounded lines 4096)
-                                                 for count from 0
-                                                 while line
-                                                 when (and (< count 10000) (uiop:string-prefix-p "[GNUPG:] " line))
-                                                   do (push (subseq line 9) statuses))))
-                                    (close lines))))
-                              :name "tuatara gpg status"))
-                     (listener (tuatara.runtime:make-guarded-thread
-                                (lambda ()
-                                  (let ((tuatara.runtime:*secret-at-hand* t))
-                                    (ignoring-errors-reported ("reading what gpg says")
-                                      (loop for line = (tuatara.io:read-line-bounded (sb-ext:process-error process)
-                                                                                     1024)
-                                            for count from 0
-                                            while line
-                                            when (< count 200) do (push line said)))))
-                                :name "tuatara gpg messages"))
-                     (cancelled nil))
-                ;; what was decrypted is kept only in OUTPUT
-                (setf (values output too-much cancelled)
-                      (tuatara.io:read-stream-octets (sb-ext:process-output process) :limit most :cancel cancel :wipe t))
-                (when (or too-much cancelled) (sb-ext:process-kill process 15))
-                (unless output (setf output (make-array 0 :element-type '(unsigned-byte 8))))
-                (when writer (sb-thread:join-thread writer :default nil))
-                (sb-thread:join-thread reader :default nil)
-                (sb-thread:join-thread listener :default nil)
-                (sb-ext:process-wait process)
-                (when too-much
-                  (push (format nil "it gave more than ~a, far more than this holds: stopped" (octets-words most)) said))))
-            :input (if (or input input-path) :stream nil) :output :stream :error :stream :external-format :latin-1
-            :preserve-fds (append (list (second status))
-                                  (and pipe (list (first pipe)))
-                                  (and second (list (first second))))
-            :environment environment))
-      (dolist (fd (append pipe second))
-        (when fd (ignoring-errors-reported ("closing a pipe to gpg") (sb-posix:close fd))))
-      (dolist (fd status) (when fd (ignoring-errors-reported ("closing a pipe from gpg") (sb-posix:close fd)))))
-    (values output (nreverse statuses)
+                                     (unwind-protect (ignoring-errors-reported ("feeding gpg its second input")
+                                                       (gpg-feed fd second-input second-path))
+                                       (ignoring-errors-reported ("closing gpg's second input") (sb-posix:close fd)))))))
+            (let ((writer (and (or input input-path)
+                               (gpg-secret-thread "tuatara gpg input"
+                                                  (lambda ()
+                                                    (ignoring-errors-reported ("feeding gpg its input")
+                                                      (gpg-feed (sb-sys:fd-stream-fd (sb-ext:process-input process))
+                                                                input input-path))
+                                                    (ignoring-errors-reported ("closing gpg's input")
+                                                      (close (sb-ext:process-input process)))))))
+                  (reader (gpg-line-reader "tuatara gpg status"
+                                           (sb-sys:make-fd-stream (shiftf (first status) nil)
+                                                                  :input t :external-format :latin-1 :buffering :full)
+                                           4096 10000
+                                           (lambda (line)
+                                             (and (uiop:string-prefix-p "[GNUPG:] " line) (subseq line 9)))))
+                  (listener (gpg-line-reader "tuatara gpg messages" (sb-ext:process-error process) 1024 200
+                                             #'identity))
+                  (cancelled nil))
+              ;; what was decrypted is kept only in OUTPUT
+              (setf (values output too-much cancelled)
+                    (tuatara.io:read-stream-octets (sb-ext:process-output process) :limit most :cancel cancel :wipe t))
+              (when (or too-much cancelled) (sb-ext:process-kill process 15))
+              (unless output (setf output (make-array 0 :element-type '(unsigned-byte 8))))
+              (when writer (sb-thread:join-thread writer :default nil))
+              (setf statuses (sb-thread:join-thread reader :default nil)
+                    said (sb-thread:join-thread listener :default nil))
+              (sb-ext:process-wait process)
+              (when too-much
+                (setf said (append said (list (format nil "it gave more than ~a, far more than this holds: stopped"
+                                                      (octets-words most))))))))
+          :input (if (or input input-path) :stream nil) :output :stream :error :stream :external-format :latin-1
+          :preserve-fds (append (list (second status)) (and pipe (list (first pipe))) (and second (list (first second))))
+          :environment environment)
+      (when timer (sb-ext:unschedule-timer timer))
+      (dolist (fd (append pipe second status))
+        (when fd (ignoring-errors-reported ("closing a pipe to gpg") (sb-posix:close fd)))))
+    (when timed-out (refuse "gpg gave no answer within ~d second~:p: stopped" seconds))
+    (values output statuses
             (and process (not too-much) (eql 0 (sb-ext:process-exit-code process)) (not (and cancel (car cancel))))
-            (format nil "~{~a~^; ~}" (nreverse said)))))
+            (format nil "~{~a~^; ~}" said))))
 
 (defun gpg-status-p (statuses name)
   "True when STATUSES, gpg's status lines, have one called NAME."
@@ -513,15 +539,17 @@ first where it would write it as it is (TUATARA.IO:HOST-SAVE-TRANSFORM)."
   (setf (tuatara.buffer:buffer-undo-stack buffer) '() (tuatara.buffer:buffer-redo-stack buffer) '())
   (tuatara.buffer:buffer-mark-saved buffer))
 
-(defstruct (decrypt-job (:include tuatara.runtime:job)
-                        (:constructor make-decrypt-job (buffer path passphrase))
-                        (:copier nil))
+(define-record (decrypt-job (:include tuatara.runtime:job)
+                           (:constructor make-decrypt-job (buffer path passphrase))
+                           (:copier nil))
   "The encrypted file at PATH being decrypted for BUFFER, a job: PASSPHRASE,
 the one typed, if any; TEXT, the octets decrypted; INFO, what GPG-DECRYPT says
 of how; STAMP, the file's as read."
-  path passphrase text info stamp)
-
-(setf (documentation 'decrypt-job-p 'function) "True when OBJECT is a DECRYPT-JOB.")
+  (path nil :documentation "The path of the encrypted file DECRYPT-JOB decrypts.")
+  (passphrase nil :documentation "The passphrase typed for DECRYPT-JOB, or NIL.")
+  (text nil :documentation "The octets DECRYPT-JOB decrypted.")
+  (info nil :documentation "What GPG-DECRYPT says of how DECRYPT-JOB decrypted the file.")
+  (stamp nil :documentation "The stamp of the file as DECRYPT-JOB read it."))
 
 (defmethod print-object ((job decrypt-job) stream)
   "Print JOB by the name of the file it decrypts, never its passphrase or text."
@@ -595,8 +623,9 @@ pinentry, when it asks there (WITH-GPG-TERMINAL)."
                (octets (tuatara.io:read-fd-octets fd :path native :size-hint (1+ size)))
                (stamp (tuatara.io:fd-stamp fd native)))
            (multiple-value-bind (text info)
-               (with-gpg-terminal (format nil "decrypting ~a" (tuatara.io:native-file-name native))
-                                  (lambda () (decrypt-naming-keys octets)))
+               (unwind-protect (with-gpg-terminal (format nil "decrypting ~a" (tuatara.io:native-file-name native))
+                                                  (lambda () (decrypt-naming-keys octets :passphrase passphrase)))
+                 (wipe-string passphrase))
              (fill octets 0)
              (decrypted-in buffer native text info stamp)))))
       (start-decrypting-job buffer path passphrase)))
@@ -620,14 +649,17 @@ pinentry, when it asks there (WITH-GPG-TERMINAL)."
    :name "tuatara decrypt"))
 
 (define-command gpg-decrypt-with-passphrase ()
-  "Ask for the passphrase of the encrypted file this buffer waits for, shown
-as stars, and decrypt it with it."
+  "Decrypt again the encrypted file this buffer waits for, its passphrase
+asked as *GPG-PASSPHRASE-FROM* says: in the minibuffer, shown as stars, or by
+gpg-agent's pinentry."
   (let* ((buffer (current-buffer))
          (path (tuatara.buffer:buffer-file buffer)))
     (if (not (and path (encrypted-buffer-p buffer)))
         (message "This buffer waits for no passphrase")
         (start-decrypting buffer (tuatara.io:native path)
-                          (gpg-read-passphrase (format nil "Passphrase for ~a: " (tuatara.io:native-file-name path)))))))
+                          (and (gpg-minibuffer-p)
+                               (gpg-read-passphrase (format nil "Passphrase for ~a: "
+                                                            (tuatara.io:native-file-name path))))))))
 
 (defun encrypted-visit (path show)
   "Show the encrypted file at PATH (a name ending in .gpg), decrypted in the
@@ -635,7 +667,7 @@ background into a buffer of its own, with SHOW, a function of the buffer;
 NIL for any other file. With the minibuffer asking for passphrases, one
 encrypted with a passphrase asks for it first."
   (let ((native (file-view-path path)))
-    (when (and native (uiop:string-suffix-p (string-downcase native) ".gpg"))
+    (when (and native (gpg-name-p native))
       (file-view-show native *encrypted-buffers* (lambda (b) (and (live-buffer-p b) (tuatara.buffer:buffer-file b)
                                                                     (tuatara.io:native (tuatara.buffer:buffer-file b))))
                       (lambda ()
@@ -672,11 +704,11 @@ text in clear, only when the question asked first is answered yes; else the
 save is refused."
   (when (and (tuatara.io:buffer-plaintext-p buffer)
              (not (encrypted-buffer-p buffer))
-             (not (uiop:string-suffix-p (string-downcase (tuatara.io:native path)) ".gpg"))
+             (not (gpg-name-p (tuatara.io:native path)))
              (not (yes-or-no-p* (format nil "~a holds text decrypted in place; save it unencrypted?"
                                         (tuatara.buffer:buffer-name buffer)))))
     (refuse "~a is not saved: it holds text decrypted in place" (tuatara.buffer:buffer-name buffer)))
-  (when (or (encrypted-buffer-p buffer) (uiop:string-suffix-p (string-downcase (tuatara.io:native path)) ".gpg"))
+  (when (or (encrypted-buffer-p buffer) (gpg-name-p (tuatara.io:native path)))
     (let ((encryption (tuatara.buffer:buffer-local buffer :encrypted)))
       (unless (or (getf encryption :keys) (getf encryption :symmetric))
         (setf encryption (or (read-encryption (tuatara.buffer:buffer-name buffer))
@@ -689,38 +721,48 @@ save is refused."
                                                           (tuatara.buffer:buffer-name buffer))
                                                   :confirm t)))
             (name (tuatara.buffer:buffer-name buffer)))
-        (when (eq (gpg-asker) :terminal)
-          ;; encrypted now, the terminal lent to the pinentry: the save writes what it gave
-          (let* ((tuatara.runtime:*secret-at-hand* t)
-                 (plain (tuatara.text:rope-octets (tuatara.text:version-rope (tuatara.buffer:buffer-version buffer)))))
-            (multiple-value-bind (output statuses ok said)
-                (unwind-protect (with-gpg-terminal (format nil "encrypting ~a" name)
-                                                   (lambda () (gpg-run (gpg-encrypt-arguments encryption) :input plain)))
-                  (fill plain 0))
-              (unless (and ok output (plusp (length output)))
-                (refuse "gpg could not encrypt ~a: ~a" name (gpg-failure-words statuses said)))
-              (return-from tuatara.io:host-save-transform (lambda (rope) (declare (ignore rope)) output)))))
-        (lambda (rope)
-          (let ((tuatara.runtime:*secret-at-hand* t)
-                (plain (tuatara.text:rope-octets rope)))
-            (multiple-value-bind (output statuses ok said)
-                (unwind-protect (gpg-run (gpg-encrypt-arguments encryption) :input plain :passphrase passphrase)
-                  (fill plain 0)
-                  (wipe-string passphrase))
-              (unless (and ok output (plusp (length output)))
-                (refuse "gpg could not encrypt ~a: ~a" name (gpg-failure-words statuses said)))
-              output)))))))
+        (if (eq (gpg-asker) :terminal)
+            ;; encrypted now, the terminal lent to the pinentry: the save writes what it gave
+            (let ((output (with-gpg-terminal (format nil "encrypting ~a" name)
+                                             (lambda ()
+                                               (encrypt-octets (tuatara.text:version-rope
+                                                                (tuatara.buffer:buffer-version buffer))
+                                                               encryption name)))))
+              (lambda (rope) (declare (ignore rope)) output))
+            (lambda (rope) (encrypt-octets rope encryption name :passphrase passphrase)))))))
+
+(defun encrypt-octets (rope encryption name &key passphrase)
+  "The octets of ROPE, NAME's text, encrypted by gpg as ENCRYPTION (a plist of
+:KEYS and :SYMMETRIC) says, with PASSPHRASE for the minibuffer's loopback;
+the plain octets and the passphrase are wiped once gpg has them. Refused,
+saying why, when gpg gives nothing."
+  (let ((tuatara.runtime:*secret-at-hand* t)
+        (plain (tuatara.text:rope-octets rope)))
+    (multiple-value-bind (output statuses ok said)
+        (unwind-protect (gpg-run (gpg-encrypt-arguments encryption) :input plain :passphrase passphrase)
+          (fill plain 0)
+          (wipe-string passphrase))
+      (unless (and ok output (plusp (length output)))
+        (refuse "gpg could not encrypt ~a: ~a" name (gpg-failure-words statuses said)))
+      output)))
 
 ;;; Choosing keys
+
+(defparameter *gpg-listing-seconds* 10
+  "The most seconds gpg may take to list the keys (GPG-KEYS): past them it is
+stopped and the listing refused, rather than the editor kept waiting on a
+locked keyring or an agent that does not answer.")
 
 (defun gpg-keys (&key all)
   "The keys gpg has that can encrypt, each a plist of :ID, :NAME, :VALIDITY (words),
 :EXPIRES (a universal time or NIL), :SECRET (true for one of yours) and
 :SUBKEYS (the IDs of its subkeys, which a file names it by), :FINGERPRINT and
 :CAPABILITIES (gpg's letters: e encrypts, s signs, c certifies); with ALL, the
-keys that cannot encrypt too."
+keys that cannot encrypt too. Refused, saying why, when gpg gives no answer
+within *GPG-LISTING-SECONDS*."
   (flet ((lines (arguments)
-           (uiop:split-string (tuatara.text:lenient-string (or (gpg-run arguments :asker :agent) #()))
+           (uiop:split-string (tuatara.text:lenient-string
+                               (or (gpg-run arguments :asker :agent :seconds *gpg-listing-seconds*) #()))
                               :separator '(#\Newline)))
          (fields (line) (uiop:split-string line :separator '(#\:))))
     (let ((secret (loop for line in (lines (list "--list-secret-keys" "--with-colons"))
@@ -851,7 +893,7 @@ managers among them) can then read it, and keep it."
   "Find-file function: a new file whose name ends in .gpg is encrypted from the
 start, its text kept from the disk before its first save encrypts it."
   (let ((file (tuatara.buffer:buffer-file buffer)))
-    (when (and file (uiop:string-suffix-p (string-downcase (tuatara.io:native file)) ".gpg")
+    (when (and file (gpg-name-p (tuatara.io:native file))
                (null (tuatara.io:path-stamp (tuatara.io:native file))))
       (note-encrypted buffer (list :keys '() :symmetric nil)))))
 

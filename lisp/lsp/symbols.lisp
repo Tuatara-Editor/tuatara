@@ -22,51 +22,67 @@
 
 ;;; Calls
 
-(defun lsp-calls (buffer position direction)
-  "The calls of the function at POSITION of BUFFER as its server knows them,
-as DEFINITIONs: with DIRECTION :INCOMING the places that call it, with
-:OUTGOING the functions it calls. Two values: those, and the function's name;
-:NONE when no server knows calls there, NIL when it knows no function there."
-  (lsp-in-step buffer)
-  (multiple-value-bind (doc server) (lsp-doc-at buffer position "callHierarchyProvider" "goto-reference")
-    (if (null server)
-        :none
-        (let ((item (find-if #'hash-table-p
-                             (tuatara.text:json-items (lsp-request-now server "textDocument/prepareCallHierarchy"
-                                                           (doc-params doc server position)))))
-              (*location-files* (make-hash-table :test 'equal))
-              (*location-octets-left* *lsp-location-files-total*))
-          (when item
-            (let ((calls (lsp-request-now server
-                                          (if (eq direction :incoming)
-                                              "callHierarchy/incomingCalls"
-                                              "callHierarchy/outgoingCalls")
-                                          (tuatara.text:json-object "item" item))))
-              (values
-               (remove nil
-                       (loop for call across (tuatara.text:json-items calls)
-                             for other = (tuatara.text:json-get call (if (eq direction :incoming) "from" "to"))
-                             append (map 'list (lambda (range)
-                                                 (lsp-location-definition server (tuatara.text:json-object "uri" (tuatara.text:json-text other "uri")
-                                                                                                           "range" range)))
-                                         (if (eq direction :incoming)
-                                             ;; each place it is called from
-                                             (tuatara.text:json-items call "fromRanges")
-                                             (vector (tuatara.text:json-get other "selectionRange"))))))
-               (or (tuatara.text:json-text item "name") "this"))))))))
+(defun call-definitions (server calls direction)
+  "CALLS, SERVER's answer of the calls of a function in DIRECTION, as
+DEFINITIONs: with :INCOMING each place it is called from, with :OUTGOING each
+function it calls."
+  (location-definitions
+   server
+   (coerce (loop for call across (tuatara.text:json-items calls)
+                 for other = (tuatara.text:json-get call (if (eq direction :incoming) "from" "to"))
+                 append (map 'list (lambda (range)
+                                     (tuatara.text:json-object "uri" (tuatara.text:json-text other "uri")
+                                                               "range" range))
+                             (if (eq direction :incoming)
+                                 (tuatara.text:json-items call "fromRanges")
+                                 (vector (tuatara.text:json-get other "selectionRange")))))
+           'vector)))
+
+(defun lsp-ask-calls (buffer position direction then)
+  "Ask the server of BUFFER for the calls of the function at POSITION, and
+call THEN once they come, while BUFFER is as it was asked of: with DIRECTION
+:INCOMING the places that call it, with :OUTGOING the functions it calls. THEN
+takes those as DEFINITIONs and the function's name, both NIL when the server
+knows no function there. The editor goes on meanwhile. :NONE when no server
+knows calls there."
+  (with-lsp-server (doc server) (buffer "callHierarchyProvider" "goto-reference" :position position :else :none)
+    (lsp-ask-doc server doc "textDocument/prepareCallHierarchy" (doc-params doc server position)
+                 "find the function here"
+                 (lambda (prepared)
+                   (let ((item (find-if #'hash-table-p (tuatara.text:json-items prepared))))
+                     (if (null item)
+                         (funcall then nil nil)
+                         (lsp-ask-doc server doc
+                                      (if (eq direction :incoming)
+                                          "callHierarchy/incomingCalls"
+                                          "callHierarchy/outgoingCalls")
+                                      (tuatara.text:json-object "item" item)
+                                      "find the calls"
+                                      (lambda (calls)
+                                        (funcall then (call-definitions server calls direction)
+                                                 (or (tuatara.text:json-text item "name") "this"))))))))))
 
 (defun show-calls (direction)
-  "List the calls of the function at point in DIRECTION (LSP-CALLS) in *xref*."
+  "List the calls of the function at point in DIRECTION (LSP-ASK-CALLS) in
+*xref* once the server answers."
   (let* ((buffer (current-buffer))
          (position (point)))
-    (multiple-value-bind (found name) (lsp-calls buffer position direction)
-      (if (and (null found) (null name))
-          (message "No function here the server knows")
-          (show-server-places found (format nil "~:[calls made by~;callers of~] ~a" (eq direction :incoming) name)
-                              (lambda () (lsp-calls buffer (min position (tuatara.buffer:buffer-size buffer)) direction))
-                              :none "No language server here knows calls"
-                              :nothing (format nil "~a ~:[calls nothing~;is called from nowhere~] the server knows of"
-                                               name (eq direction :incoming)))))))
+    (labels ((title (name) (format nil "~:[calls made by~;callers of~] ~a" (eq direction :incoming) name))
+             (again ()
+               ;; the list kept until the server answers, then shown anew
+               (lsp-ask-calls buffer (min position (tuatara.buffer:buffer-size buffer)) direction
+                              (lambda (found name) (when found (show-definitions (title name) found :again #'again))))
+               nil))
+      (when (eq (lsp-ask-calls buffer position direction
+                               (lambda (found name)
+                                 (if (null name)
+                                     (message "No function here the server knows")
+                                     (show-server-places found (title name) #'again
+                                                         :nothing (format nil "~a ~:[calls nothing~;is called ~
+                                                                               from nowhere~] the server knows of"
+                                                                          name (eq direction :incoming))))))
+                :none)
+        (message "No language server here knows calls")))))
 
 (define-command lsp-incoming-calls ()
   "List the places that call the function at point, as its language server
@@ -88,44 +104,54 @@ that does.
 - nil: it lists the headings the mode finds."
   :values boolean)
 
-(defun document-symbol-headings (doc server symbols)
-  "SYMBOLS, the names SERVER gives for DOC (DocumentSymbols, nested, or
-SymbolInformation, flat), as MODE-OUTLINE's headings: each (START LEVEL), START
-where its name is, in the order of the text."
+(defun document-symbol-headings (symbols byte)
+  "SYMBOLS, the names a server gives for a document (DocumentSymbols, nested,
+or SymbolInformation, flat), as MODE-OUTLINE's headings: each (START LEVEL),
+START where its name is, by BYTE, a function of a position the server sent
+giving the byte there (DOC-BYTE-FUNCTION), in the order of the text."
   (let ((headings '()))
     (labels ((walk (symbols level)
                (loop for s across symbols
                      for range = (or (tuatara.text:json-get s "selectionRange") (tuatara.text:json-get s "range")
                                      (tuatara.text:json-get s "location" "range"))
-                     for at = (and range (doc-byte doc server (tuatara.text:json-get range "start")))
+                     for at = (and range (funcall byte (tuatara.text:json-get range "start")))
                      when at
-                       do (push (list at level) headings)
-                          (walk (tuatara.text:json-items s "children") (1+ level)))))
+                     do (push (list at level) headings)
+                     (walk (tuatara.text:json-items s "children") (1+ level)))))
       (walk symbols 1))
     (stable-sort (nreverse headings) #'< :key #'first)))
 
+(defun line-headings (headings rope)
+  "HEADINGS, each (START LEVEL) in order, one a line of ROPE, the first of a
+line kept, as the list shows lines."
+  (let ((size (tuatara.text:rope-octet-length rope)) (seen (make-hash-table)))
+    (loop for (start level) in headings
+          for line = (and (<= start size) (tuatara.text:rope-line-start rope start))
+          when (and line (not (gethash line seen)))
+          do (setf (gethash line seen) t)
+          and collect (list start level))))
+
 (defmethod mode-outline :around (mode buffer)
   "In a buffer whose language server lists a file's names, those names, nested
-as they are (*LSP-OUTLINE*); else the mode's headings."
+as they are (*LSP-OUTLINE*): asked of the server here, waited for in the
+search's own thread; the mode's headings when it lists none. Else the mode's
+headings."
   (multiple-value-bind (doc server) (and *lsp-outline* (buffer-docs buffer)
                                          (lsp-server-offers buffer "documentSymbolProvider" "document-symbols"))
-    (let ((symbols (if server
-                       (progn (lsp-in-step buffer)
-                              (tuatara.text:json-items (lsp-request-now server "textDocument/documentSymbol"
-                                                           (tuatara.text:json-object "textDocument" (doc-identifier doc)))))
-                       #())))
-      (if (plusp (length symbols))
-          (let ((headings (document-symbol-headings doc server symbols)))
-            (lambda (rope tree halt)
-              (declare (ignore tree halt))
-              ;; one a line, the outer first, as the list shows lines
-              (let ((size (tuatara.text:rope-octet-length rope)) (seen (make-hash-table)))
-                (loop for (start level) in headings
-                      for line = (and (<= start size) (tuatara.text:rope-line-start rope start))
-                      when (and line (not (gethash line seen)))
-                        do (setf (gethash line seen) t)
-                        and collect (list start level)))))
-          (call-next-method)))))
+    (if (null server)
+        (call-next-method)
+        (let ((own (call-next-method))
+              (name (lsp-server-name server))
+              (promise (progn (lsp-in-step buffer)
+                              (lsp-promise server "textDocument/documentSymbol"
+                                           (tuatara.text:json-object "textDocument" (doc-identifier doc)))))
+              (byte (doc-byte-function doc server)))
+          (lambda (rope tree halt)
+            (multiple-value-bind (result error) (lsp-promise-wait promise :halt halt)
+              (let ((symbols (and (null error) (tuatara.text:json-items result))))
+                (cond (error (error "~a could not list the names: ~a" name (lsp-error-words error)))
+                      ((zerop (length symbols)) (funcall own rope tree halt))
+                      (t (line-headings (document-symbol-headings symbols byte) rope))))))))))
 
 ;;; The project's names
 
@@ -138,29 +164,31 @@ each is listed with what it is and where, and the one chosen is gone to."
                           (buffer-servers buffer))))
     (if (null server)
         (message "No language server here finds a project's names")
-        (let* ((query (read-string "Project symbol: " :initial (or (lsp-word-at buffer (point)) "") :select-initial t))
-               (symbols (remove-if-not (lambda (s) (tuatara.text:json-text s "name"))
-                                       (coerce (tuatara.text:json-items (lsp-request-now server "workspace/symbol" (tuatara.text:json-object "query" query)))
-                                               'list))))
-          (if (null symbols)
-              (message "~a finds no name like ~a" (lsp-server-name server) query)
-              (let ((chosen (completing-read-value "Go to: "
-                                                   (mapcar #'symbol-candidate symbols)
-                                                   :require-match t
-                                                   :keep-order t)))
-                (when (hash-table-p chosen)
-                  (let ((definition (lsp-location-definition
-                                     server (tuatara.text:json-object
-                                             "uri" (tuatara.text:json-text chosen "location" "uri")
-                                             ;; a name the server gives with no place in its file: the file's start
-                                             "range" (or (tuatara.text:json-get chosen "location" "range")
-                                                         (tuatara.text:json-object "start" (tuatara.text:json-object "line" 0 "character" 0)
-                                                                                   "end" (tuatara.text:json-object "line" 0 "character" 0)))))))
-                    (if definition
-                        (progn (push-xref-marker) (go-to-definition definition))
-                        (message "~a gives no place for ~a"
-                                 (lsp-server-name server)
-                                 (tuatara.text:json-text chosen "name")))))))))))
+        (let ((query (read-string "Project symbol: " :initial (or (lsp-word-at buffer (point)) "") :select-initial t)))
+          (lsp-request server "workspace/symbol" (tuatara.text:json-object "query" query)
+                       (lambda (result error)
+                         (let ((symbols (remove-if-not (lambda (s) (tuatara.text:json-text s "name"))
+                                                       (coerce (tuatara.text:json-items result) 'list))))
+                           (cond ((lsp-failure-said server "find names" error))
+                                 ((null symbols) (message "~a finds no name like ~a" (lsp-server-name server) query))
+                                 ;; chosen as a command of its own, which asks
+                                 (t (defer-action (lambda () (go-to-found-symbol server symbols)))))))
+                       :seconds *lsp-wait*)))))
+
+(defun go-to-found-symbol (server symbols)
+  "Ask which of SYMBOLS, names of a project SERVER found, to go to, and go there."
+  (let ((chosen (completing-read-value "Go to: " (mapcar #'symbol-candidate symbols) :require-match t :keep-order t)))
+    (when (hash-table-p chosen)
+      (let ((definition (lsp-location-definition
+                         server (tuatara.text:json-object
+                                 "uri" (tuatara.text:json-text chosen "location" "uri")
+                                 ;; a name the server gives with no place in its file: the file's start
+                                 "range" (or (tuatara.text:json-get chosen "location" "range")
+                                             (let ((start (tuatara.text:json-object "line" 0 "character" 0)))
+                                               (tuatara.text:json-object "start" start "end" start)))))))
+        (if definition
+            (progn (push-xref-marker) (go-to-definition definition))
+            (message "~a gives no place for ~a" (lsp-server-name server) (tuatara.text:json-text chosen "name")))))))
 
 (defun symbol-candidate (symbol)
   "SYMBOL, a name of a project a server found, as a candidate to choose: its

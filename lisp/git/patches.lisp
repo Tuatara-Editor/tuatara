@@ -31,12 +31,14 @@ cover letter, or sign them off (those for applying are left out)."
                      (let ((directory (read-native-path "Write the patches in: " :writing t)))
                        (when directory
                          (let ((directory (tuatara.io:slash-ended directory)))
-                           (git-run "Writing patches" top (append (list "format-patch")
-                                                                  (git-switches-among switches '("--numbered" "--cover-letter" "--signoff"))
-                                                                  (list "-o" directory range))
+                           (git-run "Writing patches" top
+                                    (append (list "format-patch")
+                                            (git-switches-among switches '("--numbered" "--cover-letter" "--signoff"))
+                                            (list "-o" directory range))
                                     (lambda (text)
                                       (let ((n (length (tuatara.text:split-words text '(#\Newline)))))
-                                        (format nil "Wrote ~d patch~:[es~;~] in ~a" n (= n 1) (abbreviated-path directory))))))))))))
+                                        (format nil "Wrote ~d patch~:[es~;~] in ~a"
+                                                n (= n 1) (abbreviated-path directory))))))))))))
 
 (defun git-ask-patch-file (prompt then)
   "Ask with PROMPT for a patch file that is there, then call THEN with its native path."
@@ -52,9 +54,10 @@ three ways where it does not fit (those for writing patches are left out)."
   (with-git-repository (top switches)
     (git-ask-patch-file "Apply patch: "
                         (lambda (path)
-                          (git-run "Applying a patch" top (append (list "apply")
-                                                                  (git-switches-among switches '("--index" "--cached" "--3way"))
-                                                                  (list "--" path))
+                          (git-run "Applying a patch" top
+                                   (append (list "apply")
+                                           (git-switches-among switches '("--index" "--cached" "--3way"))
+                                           (list "--" path))
                                    (format nil "Applied ~a" (abbreviated-path path)))))))
 
 (define-command git-save-patch ()
@@ -65,7 +68,8 @@ for, its octets as git writes them."
       (when path
         (git-ask "Reading the changes" top
                  (lambda (job top)
-                   (git-job-octets job top (list "diff" "--no-color" "--no-ext-diff" "--binary" (git-head-or-empty job top))))
+                   (git-job-octets job top (list "diff" "--no-color" "--no-ext-diff" "--binary"
+                                                 (git-head-or-empty job top))))
                  (lambda (octets)
                    (if (zerop (length octets))
                        (message "No changes to save")

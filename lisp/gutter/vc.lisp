@@ -25,17 +25,15 @@
   "The most octets of a file, and of its text as git has it in HEAD, that are
 compared for the gutter's marks; past it the file has no marks.")
 
-(defstruct (vc-mark (:constructor make-vc-mark (anchor last kind)) (:copier nil))
+(define-record (vc-mark (:constructor make-vc-mark (anchor last kind)) (:copier nil))
   "A gutter mark over whole lines: ANCHOR at the start of its first line,
 LAST at the start of its last, so that lines typed or deleted within it widen
 or narrow it; KIND :added, :changed or :deleted."
-  (anchor nil) (last nil) (kind :changed))
+  (anchor nil :documentation "The anchor at the mark's first line.")
+  (last nil :documentation "The anchor at the start of the mark's last line.")
+  (kind :changed :documentation "The mark's kind: :added, :changed or :deleted."))
 
-(setf (documentation 'make-vc-mark 'function) "Return a mark of KIND over the lines from ANCHOR's to LAST's."
-      (documentation 'vc-mark-p 'function) "True when OBJECT is a VC-MARK."
-      (documentation 'vc-mark-anchor 'function) "The anchor at the mark's first line."
-      (documentation 'vc-mark-last 'function) "The anchor at the start of the mark's last line."
-      (documentation 'vc-mark-kind 'function) "The mark's kind: :added, :changed or :deleted.")
+(setf (documentation 'make-vc-mark 'function) "Return a mark of KIND over the lines from ANCHOR's to LAST's.")
 
 (defun committed-name (path)
   "The name of the file at PATH from its directory, as git is given it there (GIT-OBJECT-NAME)."
@@ -47,7 +45,8 @@ process (RUN-GIT) that reads nothing of it; NIL when git has no such file,
 and no process at all outside a repository."
   (multiple-value-bind (octets ok)
       (tuatara.git:run-git (tuatara.io:parent-path path)
-                           (list "rev-parse" "--verify" "--quiet" (tuatara.git:git-object-name "HEAD" (committed-name path)))
+                           (list "rev-parse" "--verify" "--quiet"
+                                 (tuatara.git:git-object-name "HEAD" (committed-name path)))
                            :cancel cancel :seconds tuatara.git:*git-look-seconds*)
     (let ((id (and ok octets (string-trim '(#\Newline) (tuatara.text:lenient-string octets)))))
       (and (tuatara.git:git-hash-p id) id))))
@@ -87,14 +86,6 @@ as a second value for a text larger than *VC-GUTTER-MAX-BYTES*."
                       (clrhash **committed-lines**))
                     (setf (gethash id **committed-lines**) hashes)))))))))
 
-(defun git-tracked-p (path &key cancel)
-  "True when git has the file at PATH in HEAD, asked by one git process
-\(RUN-GIT) that reads nothing of it; NIL with no process at all outside a
-repository."
-  (nth-value 1 (tuatara.git:run-git (tuatara.io:parent-path path)
-                                    (list "cat-file" "-e" (tuatara.git:git-object-name "HEAD" (committed-name path)))
-                                    :cancel cancel :seconds tuatara.git:*git-look-seconds*)))
-
 (defun line-mark (buffer first last kind)
   "A mark of KIND over the lines FIRST to LAST (from 0) of BUFFER's text as it is now."
   (let ((version (tuatara.buffer:buffer-version buffer)))
@@ -111,25 +102,23 @@ keeps it."
       (destructuring-bind (old-start old-count new-start new-count) h
         (declare (ignore old-start))
         (multiple-value-bind (first last kind)
-            (if (zerop new-count)
-                ;; git reports a deletion after 1-based line NEW-START: mark the line
-                ;; that follows the gap (0-based NEW-START), or the last line
-                (let ((line (min new-start (1- lines)))) (values line line :deleted))
-                (values (1- new-start)
-                        (min (1- lines) (+ new-start new-count -2))
-                        (if (zerop old-count) :added :changed)))
+            (let ((side-first (hunk-side-first new-start new-count)))
+              (if (zerop new-count)
+                  ;; a deletion is after line NEW-START: mark the line that follows the gap, or the last line
+                  (let ((line (min side-first (1- lines)))) (values line line :deleted))
+                  (values side-first
+                          (min (1- lines) (+ side-first new-count -1))
+                          (if (zerop old-count) :added :changed))))
           (let ((first (max first (1+ taken))))
             (when (<= first last)
               (push (line-mark buffer first last kind) marks)
               (setf taken last))))))
     (and marks (coerce (nreverse marks) 'simple-vector))))
 
-(defstruct (vc-job (:include shown-text-job) (:constructor make-vc-job (buffer version)) (:copier nil))
+(define-record (vc-job (:include shown-text-job) (:constructor make-vc-job (buffer version)) (:copier nil))
   "The version-control marks of BUFFER's file worked out in the background
 from its text at VERSION, a look at a file shown (SHOWN-TEXT-JOB); RESULT,
 once done, (TRACKED HUNKS) as VC-START-REFRESH says.")
-
-(setf (documentation 'vc-job-p 'function) "True when OBJECT is a VC-JOB.")
 
 (tuatara.runtime:define-job-words vc-job
   :doing "Comparing with git"
@@ -138,7 +127,7 @@ once done, (TRACKED HUNKS) as VC-START-REFRESH says.")
 (defun vc-start-refresh (buffer)
   "Work out in the background whether BUFFER's file is in git and its marks, a
 job (VC-JOB). Git is asked for the committed text's lines
-\(COMMITTED-LINE-HASHES, or GIT-TRACKED-P for a file too large to compare), and
+\(COMMITTED-LINE-HASHES, or COMMITTED-ID for a file too large to compare), and
 the texts are compared on a thread of their own, from the buffer's text as it is
 now, which never changes, so that nothing waits for it. The result is put in as
 the job is taken in. A refresh started before for BUFFER is stopped
@@ -156,7 +145,7 @@ read as a slice (BUFFER-SLICE), which keeps the mapping while the job reads it."
              (multiple-value-bind (committed too-large) (committed-line-hashes path :cancel cancel)
                (list (and (or committed too-large) t)
                      (and committed (diff-hunks committed (rope-line-hashes (vc-job-rope job))))))
-             (list (git-tracked-p path :cancel cancel) nil))))
+             (list (and (committed-id path :cancel cancel) t) nil))))
      :name "tuatara version control" :slice compare)))
 
 (defmethod tuatara.runtime:job-take-in ((job vc-job))
@@ -180,7 +169,8 @@ meet or touch joined. Complexity: O(edits × log lines)."
   (let ((size (tuatara.buffer:buffer-size buffer)) (ranges '()))
     (loop for e across (tuatara.text:batch-edits batch)
           for p of-type fixnum across (tuatara.text:batch-positions batch)
-          do (let ((first (tuatara.buffer:buffer-line-number buffer (min size (max 0 (- p (tuatara.text:edit-insert-length e))))))
+          do (let ((first (tuatara.buffer:buffer-line-number
+                           buffer (min size (max 0 (- p (tuatara.text:edit-insert-length e))))))
                    (last (tuatara.buffer:buffer-line-number buffer (min size p))))
                (if (and ranges (<= first (1+ (cdar ranges))))
                    (setf (cdar ranges) (max last (cdar ranges)))
@@ -228,7 +218,8 @@ marks are put in among them."
       (loop for (first . last) in (touched-lines buffer batch)
             do (let ((high (first-mark-starting-at-or-after marks version (line-after-start buffer last)))
                      (next first))
-                 (loop for j from (first-mark-ending-at-or-after marks version (tuatara.buffer:buffer-goto-line buffer first))
+                 (loop for j from (first-mark-ending-at-or-after marks version
+                                                                 (tuatara.buffer:buffer-goto-line buffer first))
                          below high
                        do (multiple-value-bind (from to) (mark-lines buffer (svref marks j))
                             (when (< next from)

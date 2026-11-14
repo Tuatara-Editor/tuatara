@@ -11,7 +11,7 @@ tools/languages/generate.py (writes everything for the languages in TABLE).
 The Helix sources are only read: HELIX_SOURCE names them, ../helix
 beside the project by default. Run from the project root."""
 import json, os, re
-from common import HELIX, helix_commit, lisp_list, lisp_string
+from common import HELIX, helix_commit, language_options, lisp_option, lisp_string
 
 ROOT = os.getcwd()
 HELIX_COMMIT = helix_commit()
@@ -631,12 +631,12 @@ def main():
             elif block:
                 # only comments with an end: each line commented between them
                 opts.append(f':block-comment ({lisp_string(block["start"])} {lisp_string(block["end"])})')
-            if exts: opts.append(f':extensions {lisp_list(exts)}')
-            if names: opts.append(f':file-names {lisp_list(names)}')
-            if patterns: opts.append(f':patterns {lisp_list(patterns)}')
+            if exts: opts.append(lisp_option('extensions', exts))
+            if names: opts.append(lisp_option('file-names', names))
+            if patterns: opts.append(lisp_option('patterns', patterns))
             # the program a #! line names, its first word: v of v run
             interpreters = list(dict.fromkeys(i.split()[0] for i in l['shebangs'] if i.split()))
-            if interpreters: opts.append(f':interpreters {lisp_list(interpreters)}')
+            if interpreters: opts.append(lisp_option('interpreters', interpreters))
             forms[family(name)].append(f'(define-major-mode {mode} {parent}\n  {lisp_string(doc)}\n  ' + '\n  '.join(opts) + ')')
         if dropped: continue
         lang_opts = [f':grammar {lisp_string(grammar)}', f':modes ({mode or ""})'.replace('()', 'nil'), f':indent {indent}',
@@ -645,7 +645,7 @@ def main():
         if 'textobjects' in kinds: lang_opts.append(':definitions :textobjects')
         pretty = lighter or name
         forms[family(name)].append(f'(define-language {lang_symbol}\n  {lisp_string(re.split(r"[.](?:\s|$)", doc)[0] + ", parsed with tree-sitter-" + grammar.replace("_", "-") + ".")}\n  '
-                     + ' '.join(lang_opts) + ')')
+                     + language_options(lang_opts) + ')')
     for file, holds, _ in FAMILIES:
         header = (f';;;; lisp/modes/more-languages-{file}.lisp --- The {holds} Helix knows, in major modes named as Emacs\'s.\n'
                   ';;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.\n;;;;\n'

@@ -516,6 +516,63 @@ window draws them with (set-face :org-level-1 :height 2)."
          (is equal '("* One" "Text of one." "** One A" "Text of one A.")
              (loop for i below 4 collect (string-right-trim " " (tuatara.frontend.fake:fake-screen-line f i)))))))))
 
+(define-modal-test (org leaving-org-mode-keeps-no-parse)
+  ;; leaving Org mode lets go of all it kept for the buffer: its parse, its parts, the global view
+  (multiple-value-bind (f editor) (run-keys "M-x o r g - m o d e RET S-TAB M-x t e x t - m o d e RET"
+                                            :text *org-folding* :width 60 :height 12)
+    (declare (ignore f))
+    (let ((kept '()))
+      (maphash (lambda (name value)
+                 (when (and value (symbolp name) (not (keywordp name))
+                            (uiop:string-prefix-p "ORG-" (symbol-name name))
+                            (not (eq name 'tuatara.defaults::org-save-again)))
+                   (push name kept)))
+               (tuatara.buffer::buffer-locals (session-buffer editor)))
+      (is equal '() kept))))
+
+(define-modal-test (org plain-lines-not-looked-through-for-markup)
+  ;; after a key, a line with no bracket, backslash or brace is not looked through for hidden links or entities
+  (multiple-value-bind (f editor) (run-keys "M-x o r g - m o d e RET j" :text *org-folding* :width 60 :height 12)
+    (declare (ignore f))
+    (let ((calls 0))
+      (flet ((counted (function &rest arguments) (incf calls) (apply function arguments)))
+        (sb-int:encapsulate 'tuatara.defaults::org-hidden-ranges 'counted #'counted)
+        (unwind-protect (tuatara.defaults::keep-point-out-of-hidden-markup editor)
+          (sb-int:unencapsulate 'tuatara.defaults::org-hidden-ranges 'counted)))
+      (is = 0 calls))))
+
+(define-modal-test (org task-keywords-read-once-a-parse)
+  ;; RET on a task's headline finds the file's TODO keywords once, not by reading its whole text again and again
+  (let ((tuatara-user:*org-log-done* nil)
+        (scans 0))
+    (flet ((counted (function text)
+             (when (search "Mow the lawn" text) (incf scans))
+             (funcall function text)))
+      (sb-int:encapsulate 'tuatara.defaults::org-todo-keywords-of 'counted #'counted)
+      (unwind-protect
+           (is string= (format nil "#+TODO: TODO WAIT | DONE~%* Jobs [1/1]~%** DONE Mow the lawn~%")
+               (session-text (nth-value 1 (org-screen "j j RET RET"
+                                                      :text (format nil "#+TODO: TODO WAIT | DONE~%* Jobs [0/1]~%** TODO Mow the lawn~%")))))
+        (sb-int:unencapsulate 'tuatara.defaults::org-todo-keywords-of 'counted)))
+    (true (<= scans 1) "~d scans of the text" scans)))
+
+(define-test (org large-file-opens-without-reading-its-drawers)
+  ;; the drawers of a file past *org-fold-metadata-most* are left open as it opens: no line of it is read for them
+  (let ((tuatara-user:*org-fold-metadata* t))
+    (flet ((seconds (megabytes)
+             (let ((b (tuatara.buffer:make-buffer "org large drawers"
+                                                  :text (with-output-to-string (s)
+                                                          (loop repeat (* megabytes 30000)
+                                                                do (format s "* T~%:LOGBOOK:~%- x~%:END:~%"))))))
+               (unwind-protect
+                    (let ((start (get-internal-real-time)))
+                      (tuatara.defaults::org-startup-metadata b '())
+                      (is = 0 (length (tuatara.display:buffer-folds b)))
+                      (/ (- (get-internal-real-time) start) internal-time-units-per-second))
+                 (tuatara.buffer:kill-buffer b)))))
+      (let ((per-megabyte (/ (- (seconds 16) (seconds 8)) 8)))
+        (true (< per-megabyte 1/1000) "~,4f s a megabyte" per-megabyte)))))
+
 (define-test (org cycle-without-parsing)
   ;; TAB on a headline of a large file, its parse not ready: the subtree found by its lines folds as the parse folds it
   (dolist (text (list (format nil "* A~%a text~%~%** A1~%one~%*** A1x~%deep~%** A2~%~%two~%~%* B~%b~%")

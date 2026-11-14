@@ -20,10 +20,10 @@ ends."
   (let ((own (remove-if-not #'package-name (cdr (assoc name *package-code* :test #'string=))))
         (directory (second (assoc name *loaded-package-directories* :test #'string=))))
     (forget-package-code own directory)
-    (setf *package-code* (remove name *package-code* :key #'car :test #'string=)
+    (setf *package-code* (alist-without name *package-code*)
           *loaded-packages* (remove name *loaded-packages* :test #'string=)
           *loaded-package-directories* (remove name *loaded-package-directories* :key #'first :test #'string=))
-    (setf *package-needs* (remove name *package-needs* :key #'car :test #'string=))
+    (setf *package-needs* (alist-without name *package-needs*))
     (pushnew name *unloaded-packages* :test #'string=)
     (tuatara.runtime:debug-report :package "~a unloaded, ~d Lisp package~:p of its own deleted" name (length own))
     (and own t)))
@@ -39,7 +39,7 @@ arranged to load it later is taken back: its commands that would load it
   (state-list-put *removed-packages* (list name))
   (loop for (command owner . stub) in *package-command-stubs*
         when (and (string= owner name) (eq (gethash command *commands*) stub))
-          do (forget-command command))
+        do (forget-command command))
   (setf *package-command-stubs* (remove name *package-command-stubs* :key #'second :test #'string=)
         *deferred-packages* (remove name *deferred-packages* :test #'string=)
         *packages-waiting* (remove name *packages-waiting* :key #'second :test #'string=)
@@ -58,7 +58,8 @@ say what became of each, in *Messages* too."
     (let* ((results (scan-init-file-packages file names))
            (words (loop for name in names
                         for found = (find name results :key #'first :test #'string=)
-                        collect (format nil "~a ~:[has no load-package in the init file~;~:*~a~]" name (fourth found)))))
+                        collect (format nil "~a ~:[has no load-package in the init file~;~:*~a~]" name
+                                        (fourth found)))))
       (dolist (line words) (log-message (format nil "package-load: ~a" line)))
       (message "~{~a~^; ~}" words))))
 
@@ -109,7 +110,8 @@ the line."
                            (let ((kept (remove-if #'unload-package loaded)))
                              (message "~{~a~^, ~} unloaded; \\[package-load] loads ~:[it~;them~] again~@[; ~a~]"
                                       loaded (rest loaded)
-                                      (and kept (format nil "what ~{~a~^, ~} defined outside a Lisp package of ~:[its~;their~] own stays until Tuatara ends"
+                                      (and kept (format nil
+                                                        "what ~{~a~^, ~} defined outside a Lisp package of ~:[its~;their~] own stays until Tuatara ends"
                                                         kept (rest kept))))))))))
 
 (define-command package-remove ()
@@ -125,7 +127,8 @@ the one on the line."
                      (let ((names (packages-not-busy names)))
                        (when names
                          (mapc #'remove-package names)
-                         (message "~{~a~^, ~} removed: not loaded from now on, though the init file names ~:[it~;them~]; \\[package-load] loads ~:*~:[it~;them~] again"
+                         (message "~{~a~^, ~} removed: not loaded from now on, though the init file names ~
+                                   ~:[it~;them~]; \\[package-load] loads ~:*~:[it~;them~] again"
                                   names (rest names)))))))
 
 (defun package-deletion-entry (name)
@@ -135,7 +138,7 @@ versions fetched are kept in, or for a directory of your disk the directory its
 files are compiled into, the directory of yours left as it is."
   (let ((where (package-where (second (declared-package name)))))
     (if (local-source-p where)
-        (list (package-compiled-directory (package-directory-of name where nil))
+        (list (compiled-directory-of (package-directory-of name where nil))
               (format nil "~a, its compiled files (~a stays)" name (abbreviated-path where)) 0 name)
         (list (package-kept-directory where name) (format nil "~a from ~a" name where) 0 name))))
 

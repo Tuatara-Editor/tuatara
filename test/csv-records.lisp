@@ -46,6 +46,28 @@ newline outside double quotes, or the end."
                    while (< line end)
                    do (is = start (tuatara.defaults::rope-record-start rope line))))))
 
+(define-test (csv-records quote-opens-at-a-field-start-with-a-delimiter)
+  ;; told the delimiter, a quote opens a field only where one begins, two in one are one quote,
+  ;; and the quote may be another octet
+  (let* ((text (csv-test-text 400))
+         (rope (tuatara.text:string->rope text)))
+    (loop for start = 0 then (1+ end)
+          for end = (string-record-end text start)
+          while (< start (length text))
+          do (is = end (tuatara.defaults::csv-record-end rope start :delimiter 44))
+             (is = start (tuatara.defaults::rope-record-start rope start :delimiter 44))))
+  (let ((rope (tuatara.text:string->rope (format nil "a,5\" pipe~%b,c~%\"x~%y\",\"say \"\"~%\"\"\"~%"))))
+    ;; the stray quote in 5" opens nothing
+    (is = 9 (tuatara.defaults::csv-record-end rope 0 :delimiter 44))
+    (is = 10 (tuatara.defaults::rope-record-start rope 10 :delimiter 44))
+    ;; a quoted field over a line end, then one whose doubled quotes stand before line ends
+    (is = 31 (tuatara.defaults::csv-record-end rope 14 :delimiter 44))
+    (is = 14 (tuatara.defaults::rope-record-start rope 17 :delimiter 44))
+    (is = 14 (tuatara.defaults::rope-record-start rope 28 :delimiter 44)))
+  (let ((rope (tuatara.text:string->rope (format nil "'a~%b';c~%d~%"))))
+    (is = 7 (tuatara.defaults::csv-record-end rope 0 :quote 39 :delimiter 59))
+    (is = 0 (tuatara.defaults::rope-record-start rope 3 :quote 39 :delimiter 59))))
+
 (defun least-bytes (function &optional (times 100))
   "The least of three runs' octets consed by calling FUNCTION TIMES times, a call's share."
   (loop repeat 3
@@ -150,6 +172,10 @@ newline outside double quotes, or the end."
                           (format nil "N,V~%b,10~%c,\"100\"~%a,9~%")))
   (is string= (format nil "N,V~%c,\"100\"~%b,10~%a,9~%")
       (list-records-after "C-x h M-x s o r t - n u m e r i c - f i e l d s - r e v e r s e RET V RET"
+                          (format nil "N,V~%b,10~%c,\"100\"~%a,9~%")))
+  ;; a count names the field elsewhere: in a file of records it turns nothing round
+  (is string= (format nil "N,V~%a,9~%b,10~%c,\"100\"~%")
+      (list-records-after "C-x h C-u 2 M-x s o r t - n u m e r i c - f i e l d s RET V RET"
                           (format nil "N,V~%b,10~%c,\"100\"~%a,9~%")))
   ;; elsewhere the fields are apart by blanks, from 1
   (is string= (lines-text "x 1" "y 2") (sorted-text "M-x s o r t - f i e l d s RET" (lines-text "y 2" "x 1"))))

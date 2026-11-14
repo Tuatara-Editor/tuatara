@@ -188,10 +188,10 @@ when it ended first (\"Ended 15:47 — client 2 since 14:02, ~/cases/x\")."
 (defmethod tuatara.io:host-program-environment ((host editor-host))
   "The editor's variables, those it keeps for a client (*CLIENT-VARIABLES*)
 taken from the client the work is for (CLIENT-ENVIRONMENT) where it is one
-on a screen of its own, and GPG_TTY naming its terminal: the client of the frame a job was begun in, on its
-thread, else of the frame worked in. For a client on another machine, the
-editor's own variables naming what is on a machine (*MACHINE-VARIABLES*)
-stay."
+on a screen of its own, and GPG_TTY naming its terminal. The client is the
+one of the frame a job was begun in, on its thread, else of the frame worked
+in. For a client on another machine, the editor's own variables naming what
+is on a machine (*MACHINE-VARIABLES*) stay."
   (let* ((editor (or *editor* (running-editor)))
          (frame (or (thread-frame) (and editor (editor-frame editor))))
          (client (and frame (frame-client frame)))

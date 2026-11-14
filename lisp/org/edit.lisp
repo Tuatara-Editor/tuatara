@@ -1,4 +1,4 @@
-;;;; lisp/org/edit.lisp --- Org's structure edited: subtrees moved, promoted and demoted, TODO states, new headlines and items.
+;;;; lisp/org/edit.lisp --- Org's structure edited: subtrees moved and promoted, TODO states, new headlines.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; The commands that edit an Org document by its structure, as Org's do:
@@ -6,13 +6,35 @@
 ;;;; a headline promoted or demoted alone or with its subtree, the TODO
 ;;;; keyword cycled through the document's keywords (a task done noted with
 ;;;; CLOSED: and when, as org-log-done 'time does), a new headline after the
-;;;; subtree (M-RET, as Emacs Org's org-insert-heading-respect-content) or a new item in a list.
-;;;; Each is one step to undo.
+;;;; subtree (M-RET, as Emacs Org's org-insert-heading-respect-content) or a
+;;;; new item in a list. Each is one step to undo.
 
 (in-package #:tuatara.defaults)
 
-;;; Where point is in the structure
+;;; What is logged
 
+(define-setting *org-log-done* :time
+  "What is noted when a task is done.
+- :time, as standard: a CLOSED: line with the time, which the agenda's log
+  mode lists.
+- nil: nothing."
+  :values (member :time nil))
+
+(define-setting *org-log-into-drawer* t
+  "Where the notes logged of a task go.
+The notes are a change of state, a repeat, a reschedule and a note taken.
+- t: into the entry's :LOGBOOK: drawer, where they fold with it
+  (*ORG-FOLD-METADATA*).
+- nil: right after its planning line and properties, outside any drawer."
+  :values boolean)
+
+(define-setting *org-log-repeat* :time
+  "What Org notes when a task that repeats is done.
+- :time: the change of state, and LAST_REPEAT with the time.
+- nil: nothing."
+  :values (member :time nil))
+
+;;; Where point is in the structure
 
 (defun org-current-headline (tree position)
   "The innermost headline of TREE, the root of a parse, whose subtree holds
@@ -68,7 +90,8 @@ file of one kind of line end or of several."
                             do (let ((c (char old i)))
                                  (cond ((char= c #\Newline)
                                         (if (and crlf (> i from) (char= (char old (1- i)) #\Return))
-                                            (push (cons (subseq old from (1- i)) (coerce '(#\Return #\Newline) 'string)) lines)
+                                            (push (cons (subseq old from (1- i)) (coerce '(#\Return #\Newline) 'string))
+                                                  lines)
                                             (push (cons (subseq old from i) (string #\Newline)) lines))
                                         (setf from (1+ i)))
                                        ((and (char= c #\Return)
@@ -143,7 +166,8 @@ structure."
                           :separator '(#\Newline))))
 
 (defun org-entry-from-lines (headline lines final-newline)
-  "The entry made of HEADLINE, its headline's line, and LINES under it, ending with a newline when FINAL-NEWLINE is true."
+  "The entry made of HEADLINE, its headline's line, and LINES under it, ending
+with a newline when FINAL-NEWLINE is true."
   (format nil "~a~{~%~a~}~:[~;~%~]" headline lines final-newline))
 
 ;;; Moving subtrees
@@ -159,7 +183,7 @@ point going with it, each kept folded when it was."
                  (index (position headline siblings))
                  (other (and index (let ((at (if (eq direction :down) (1+ index) (1- index))))
                                      (and (>= at 0) (nth at siblings))))))
-            (if (or (null other) (and (eq direction :up) (zerop index)))
+            (if (null other)
                 (message "Cannot move past superior level or buffer limit")
                 (let* ((first (if (eq direction :down) headline other))
                        (second (if (eq direction :down) other headline))
@@ -260,10 +284,11 @@ passed over the same way.
 - nil: every keyword takes its turn."
   :values (list-of string))
 
-(defun org-keyword-sequence (text)
-  "The TODO keywords of TEXT in the order they cycle: those not done, then
-those done, but for those of *ORG-TODO-KEYWORDS-NOT-CYCLED*."
-  (destructuring-bind (not-done . done) (org-todo-keywords-of text)
+(defun org-keyword-sequence (keywords)
+  "The TODO keywords of KEYWORDS in the order they cycle: those not done,
+then those done, but for those of *ORG-TODO-KEYWORDS-NOT-CYCLED*. KEYWORDS
+is (NOT-DONE . DONE), as ORG-PARSE-TODO-KEYWORDS gives them."
+  (destructuring-bind (not-done . done) keywords
     (remove-if (lambda (keyword) (member keyword *org-todo-keywords-not-cycled* :test #'string=))
                (append not-done done))))
 
@@ -283,15 +308,15 @@ its property drawer, made after its planning line when it has none."
          (head (if planning (list (first lines)) '()))
          (rest (if planning (rest lines) lines))
          (drawer '()))
-    (if (and rest (string-equal (string-trim " 	" (first rest)) ":PROPERTIES:"))
-        (let ((end (position-if (lambda (l) (string-equal (string-trim " 	" l) ":END:")) rest)))
+    (if (and rest (string-equal (string-trim *org-blanks* (first rest)) ":PROPERTIES:"))
+        (let ((end (position-if (lambda (l) (string-equal (string-trim *org-blanks* l) ":END:")) rest)))
           (setf drawer (subseq rest 0 (if end (1+ end) (length rest)))
                 rest (if end (subseq rest (1+ end)) '())))
         (setf drawer (list ":PROPERTIES:" ":END:")))
     (let* ((key (format nil ":~a:" property))
            (line (format nil "~10a ~a" key value))
            (at (position-if (lambda (l)
-                              (let ((from (or (position-if-not (lambda (c) (member c '(#\Space #\Tab))) l) (length l))))
+                              (let ((from (or (position-if-not #'space-or-tab-char-p l) (length l))))
                                 (and (<= (+ from (length key)) (length l))
                                      (string-equal key l :start2 from :end2 (+ from (length key))))))
                             drawer)))
@@ -302,8 +327,7 @@ its property drawer, made after its planning line when it has none."
 
 (defun org-line-after (text position)
   "Where the line after the one ending at or after POSITION in TEXT begins."
-  (let ((newline (position #\Newline text :start (max 0 (min position (length text))))))
-    (if newline (1+ newline) (length text))))
+  (min (length text) (1+ (string-line-end text (max 0 (min position (length text)))))))
 
 (defun org-log-place (owner text)
   "Where what OWNER logs goes in TEXT, OWNER a headline or a list item with a
@@ -366,7 +390,7 @@ takes it); none when LINES is NIL."
   "Where in TEXT the TODO keyword of the headline at BEGIN, LEVEL stars deep,
 is or would be put: after its stars and the spaces and tabs after them, at
 LINE-END, its line's end, at the latest."
-  (or (position-if-not (lambda (c) (member c '(#\Space #\Tab))) text :start (min line-end (+ begin level)) :end line-end)
+  (or (position-if-not #'space-or-tab-char-p text :start (min line-end (+ begin level)) :end line-end)
       line-end))
 
 (defun org-boxes-cleared (lines)
@@ -375,18 +399,21 @@ made [ ]) and the counts on the lines of items with checkboxes made nought
 \([0/3], [0%]), and whether a checkbox was cleared, as two values."
   (let ((changed nil))
     (values (mapcar (lambda (line)
-                      (multiple-value-bind (start end)
-                          (cl-ppcre:scan "^[ \\t]*(?:[-+*]|[0-9]+[.)])[ \\t]+\\[[ Xx-]\\]" line)
-                        (declare (ignore start))
-                        (cond ((null end) line)
-                              (t (unless (char= (char line (- end 2)) #\Space) (setf changed t))
-                                 (org-cookies-nought (concatenate 'string (subseq line 0 (- end 3)) "[ ]" (subseq line end)))))))
+                      (multiple-value-bind (start end starts) (cl-ppcre:scan *org-checkbox-line-scanner* line)
+                        (declare (ignore end))
+                        (if (null start)
+                            line
+                            (let ((box (aref starts 0)))
+                              (unless (char= (char line (1+ box)) #\Space) (setf changed t))
+                              (org-cookies-nought
+                               (concatenate 'string (subseq line 0 box) "[ ]" (subseq line (+ box 3))))))))
                     lines)
             changed)))
 
 (defun org-cookies-nought (text)
   "TEXT with its statistics cookies made nought: [2/3] [0/3], [66%] [0%]."
-  (cl-ppcre:regex-replace-all "\\[[0-9]+%\\]" (cl-ppcre:regex-replace-all "\\[[0-9]+/([0-9]+)\\]" text "[0/\\1]") "[0%]"))
+  (cl-ppcre:regex-replace-all "\\[[0-9]+%\\]" (cl-ppcre:regex-replace-all "\\[[0-9]+/([0-9]+)\\]" text "[0/\\1]")
+                              "[0%]"))
 
 (defun org-cookies-saying (text done total)
   "TEXT with its statistics cookies saying DONE of TOTAL: [2/3], [66%]."
@@ -399,9 +426,9 @@ made [ ]) and the counts on the lines of items with checkboxes made nought
 \(those its headline's counts count) are ticked, and how many there are, as
 two values."
   (let ((boxes (loop for line in lines
-                     for (start end) = (multiple-value-list (cl-ppcre:scan "^[ \\t]*(?:[-+*]|[0-9]+[.)])[ \\t]+\\[[ Xx-]\\]" line))
-                     when start collect (cons (position-if-not (lambda (c) (member c '(#\Space #\Tab))) line)
-                                              (char-equal (char line (- end 2)) #\X)))))
+                     for (start nil starts) = (multiple-value-list (cl-ppcre:scan *org-checkbox-line-scanner* line))
+                     when start
+                       collect (cons (org-leading-blanks line 0) (char= (char line (1+ (aref starts 0))) #\X)))))
     (let ((least (loop for box in boxes minimize (car box))))
       (loop for (indent . ticked) in boxes
             when (= indent least) count ticked into done and count t into total
@@ -418,7 +445,7 @@ them, opened again for its next time: each sub-task with a keyword of
 DONE-KEYWORDS made FIRST-TODO, the CLOSED: of its planning line taken out,
 checkboxes cleared and counts made nought (ORG-BOXES-CLEARED); and how many
 sub-tasks were opened, as a second value."
-  (let ((scanner (cl-ppcre:create-scanner (format nil "^(\\*+[ \\t]+)(~{~a~^|~})(?=[ \\t]|$)"
+  (let ((scanner (cl-ppcre:create-scanner (format nil "^(\\*+ +)(~{~a~^|~})(?=[ \\t]|$)"
                                                   (mapcar #'cl-ppcre:quote-meta-chars done-keywords))))
         (opened 0) (after-opened nil) (out '()))
     (dolist (line (org-boxes-cleared lines))
@@ -427,15 +454,65 @@ sub-tasks were opened, as a second value."
         (cond (end
                (incf opened)
                (setf after-opened t)
-               (push (org-cookies-nought (concatenate 'string (subseq line 0 (aref ends 0)) first-todo (subseq line (aref ends 1))))
+               (push (org-cookies-nought (concatenate 'string (subseq line 0 (aref ends 0)) first-todo
+                                                      (subseq line (aref ends 1))))
                      out))
               ((and after-opened (cl-ppcre:scan "^[ \\t]*CLOSED: \\[[^]\\n]*\\]" line))
                (setf after-opened nil)
                (let ((rest (cl-ppcre:regex-replace "CLOSED: \\[[^]\\n]*\\][ \\t]*" line "")))
-                 (unless (string= (string-trim " 	" rest) "") (push rest out))))
+                 (unless (string= (string-trim *org-blanks* rest) "") (push rest out))))
               (t (setf after-opened nil)
-                 (push (if (cl-ppcre:scan "^\\*+[ \\t]" line) (org-cookies-nought line) line) out)))))
+                 (push (if (cl-ppcre:scan "^\\*+ " line) (org-cookies-nought line) line) out)))))
     (values (nreverse out) opened)))
+
+(defun org-keyword-span (text headline old)
+  "Where in TEXT the TODO keyword OLD of HEADLINE is, or would be put, as two
+values: its start (ORG-KEYWORD-PLACE), and where it ends with the space after
+it; both the start for OLD NIL."
+  (let* ((begin (org-node-begin headline))
+         (line-end (string-line-end text begin))
+         (at (org-keyword-place text begin (org-property headline :level) line-end)))
+    (values at (if old (min line-end (+ at (length old) 1)) at))))
+
+(defun org-repeat-counts (headline text)
+  "What HEADLINE's counts count in TEXT as its task repeats, as a list (DONE
+ALL SUB-TASKS-P): its TODO sub-headlines, or with none the checkboxes of its
+entry (ORG-BOXES-TICKED)."
+  (multiple-value-bind (all finished) (org-headline-todo-counts headline)
+    (if (plusp all)
+        (list finished all t)
+        (let ((line-end (string-line-end text (org-node-begin headline))))
+          (append (multiple-value-list (org-boxes-ticked (org-text-lines (subseq text line-end
+                                                                                 (org-entry-end headline text)))))
+                  (list nil))))))
+
+(defun org-repeat-log-lines (headline text old done now counts cancelling-time)
+  "The lines logged for HEADLINE of TEXT as its task repeats, going from OLD
+to DONE at the universal time NOW, COUNTS as ORG-REPEAT-COUNTS gives them: a
+cancelled time's note for CANCELLING-TIME, else with *ORG-LOG-REPEAT* the change
+of state, how many were ticked or done under it when its headline counts them."
+  (cond (cancelling-time (list (org-occurrence-note :cancelled cancelling-time nil now)))
+        ((and *org-log-repeat* (plusp (second counts)) (org-cookies-of headline text))
+         ;; a note's own words go on the lines after its \\, as Org writes them
+         (list (concatenate 'string (org-state-note done old now) " \\\\")
+               (format nil *org-boxes-ticked-note* (first counts) (second counts) (third counts))))
+        (*org-log-repeat* (list (org-state-note done old now)))))
+
+(defun org-repeat-message (rule done-for cancelled cancelling-time first-todo boxes-cleared reopened)
+  "Say what a repeat did: what it was done or cancelled for (DONE-FOR, the
+text of a day; CANCELLING-TIME, an occurrence), the next day of RULE when it
+goes by one, CANCELLED the times cancelled before, the keyword FIRST-TODO it
+was given again, whether BOXES-CLEARED and how many sub-tasks were REOPENED."
+  (let* ((for-day (cond (cancelling-time (car cancelling-time))
+                        (done-for (org-ts-day-number (org-read-ts done-for)))))
+         (next (and rule for-day
+                    (org-rule-next-open rule (1+ for-day)
+                                        (if cancelling-time (cons cancelling-time cancelled) cancelled)))))
+    (message "~a~@[; next ~a~]: ~a~:[~;, its checkboxes cleared~]~[~:;, ~:*~d sub-task~:p opened again~]"
+             (cond (cancelling-time (format nil "Cancelled for ~a" (org-occurrence-words cancelling-time)))
+                   (done-for (format nil "Done for ~a" (subseq done-for 1 (1- (length done-for)))))
+                   (t "Entry repeats"))
+             (and next (format-day "%F %a" next)) first-todo boxes-cleared reopened)))
 
 (defun org-repeat-entry (parse headline position old done now &key cancelling-time)
   "Repeat the task of HEADLINE (of PARSE, an ORG-PARSE), with timestamps
@@ -456,87 +533,74 @@ The times cancelled one at a time
 the time this one is cancelled, not done: noted as such
 \(ORG-OCCURRENCE-NOTE), whatever *ORG-LOG-REPEAT* says."
   (let* ((text (org-parse-text parse))
+         (keywords (org-parse-todo-keywords parse))
          (begin (org-node-begin headline))
          (line-end (string-line-end text begin))
          (end (org-entry-end headline text))
          (cancelled (org-entry-notes headline text))
-         (level (org-property headline :level))
-         (keyword-at (org-keyword-place text begin level line-end))
-         (old-end (if old (min line-end (+ keyword-at (length old) 1)) keyword-at))
-         (first-todo (first (car (org-todo-keywords-of text))))
+         (first-todo (first (car keywords)))
          (subtree-end (max end (min (length text) (org-node-end headline))))
-         ;; what its counts count, as (DONE ALL SUB-TASKS-P): its TODO sub-headlines, or with none its checkboxes
-         (ticked (multiple-value-bind (all finished) (org-headline-todo-counts headline)
-                   (if (plusp all)
-                       (list finished all t)
-                       (append (multiple-value-list (org-boxes-ticked (org-text-lines (subseq text line-end end)))) (list nil)))))
+         (counts (org-repeat-counts headline text))
          (entry (org-entry-with-log headline text
-                                    (cond (cancelling-time (list (org-occurrence-note :cancelled cancelling-time nil now)))
-                                          ((and *org-log-repeat* (plusp (second ticked)) (org-cookies-of headline text))
-                                           ;; a note's own words go on the lines after its \\, as Org writes them
-                                           (list (concatenate 'string (org-state-note done old now) " \\\\")
-                                                 (format nil *org-boxes-ticked-note* (first ticked) (second ticked) (third ticked))))
-                                          (*org-log-repeat* (list (org-state-note done old now))))
+                                    (org-repeat-log-lines headline text old done now counts cancelling-time)
                                     *org-log-into-drawer*))
          (entry-line-end (or (position #\Newline entry) (length entry)))
-         (headline-text (concatenate 'string (subseq entry 0 (- keyword-at begin)) first-todo " " (subseq entry (- old-end begin) entry-line-end)))
+         (headline-text (multiple-value-bind (keyword-at old-end) (org-keyword-span text headline old)
+                          (concatenate 'string (subseq entry 0 (- keyword-at begin)) first-todo " "
+                                       (subseq entry (- old-end begin) entry-line-end))))
          (body (if (< entry-line-end (length entry)) (subseq entry (1+ entry-line-end)) ""))
          (moved (org-repeat-timestamps body now (if cancelling-time (cons cancelling-time cancelled) cancelled)))
          (rule (org-rule-timestamp-in body 0 (length body)))
          (done-for (and rule (org-rule-done-text rule (org-headline-property headline "LAST_REPEAT") now cancelled)))
-         (lines (org-text-lines moved))
-         (boxes-cleared (nth-value 1 (org-boxes-cleared lines)))
-         (lines (org-boxes-cleared lines))
-         (subtree (subseq text end subtree-end))
-         (reopened (multiple-value-list (org-subtasks-reopened (org-text-lines subtree) (cdr (org-todo-keywords-of text)) first-todo)))
-         (headline-text (if (if (third ticked) (plusp (second reopened)) boxes-cleared)
-                            (org-cookies-nought headline-text)
-                            headline-text))
-         (lines (cond (done-for (org-entry-lines-with lines "LAST_REPEAT" done-for))
-                      (*org-log-repeat* (org-entry-lines-with lines "LAST_REPEAT" (org-timestamp-text now)))
-                      (t lines)))
-         (new (org-entry-from-lines headline-text lines (or (org-ends-with-newline-p moved)
-                                                            (and (null lines) (< entry-line-end (length entry)))))))
-    (when (plusp (second reopened))
-      (setf new (concatenate 'string (org-ensure-newline new)
-                             (format nil "~{~a~^~%~}~:[~;~%~]" (first reopened) (org-ends-with-newline-p subtree)))))
-    (org-replace-chars parse begin (if (plusp (second reopened)) subtree-end end) new
-                       :point (if (<= position line-end) (min position (+ begin (length headline-text))) begin))
-    ;; said: what it was done or cancelled for, and a rule's next day
-    (let* ((for-day (cond (cancelling-time (car cancelling-time))
-                          (done-for (org-ts-day-number (org-read-ts done-for)))))
-           (next (and rule for-day (org-rule-next-open rule (1+ for-day) (if cancelling-time (cons cancelling-time cancelled) cancelled)))))
-      (message "~a~@[; next ~a~]: ~a~:[~;, its checkboxes cleared~]~[~:;, ~:*~d sub-task~:p opened again~]"
-               (cond (cancelling-time (format nil "Cancelled for ~a" (org-occurrence-words cancelling-time)))
-                     (done-for (format nil "Done for ~a" (subseq done-for 1 (1- (length done-for)))))
-                     (t "Entry repeats"))
-               (and next (format-day "%F %a" next)) first-todo boxes-cleared (second reopened)))))
+         (subtree (subseq text end subtree-end)))
+    (multiple-value-bind (lines boxes-cleared) (org-boxes-cleared (org-text-lines moved))
+      (multiple-value-bind (reopened-lines reopened)
+          (org-subtasks-reopened (org-text-lines subtree) (cdr keywords) first-todo)
+        (let* ((headline-text (if (if (third counts) (plusp reopened) boxes-cleared)
+                                  (org-cookies-nought headline-text)
+                                  headline-text))
+               (lines (cond (done-for (org-entry-lines-with lines "LAST_REPEAT" done-for))
+                            (*org-log-repeat* (org-entry-lines-with lines "LAST_REPEAT" (org-timestamp-text now)))
+                            (t lines)))
+               (new (org-entry-from-lines headline-text lines
+                                          (or (org-ends-with-newline-p moved)
+                                              (and (null lines) (< entry-line-end (length entry)))))))
+          (when (plusp reopened)
+            (setf new (concatenate 'string (org-ensure-newline new)
+                                   (format nil "~{~a~^~%~}~:[~;~%~]"
+                                           reopened-lines (org-ends-with-newline-p subtree)))))
+          (org-replace-chars parse begin (if (plusp reopened) subtree-end end) new
+                             :point (if (<= position line-end) (min position (+ begin (length headline-text))) begin))
+          (org-repeat-message rule done-for cancelled cancelling-time first-todo boxes-cleared reopened))))))
+
+(defun org-change-todo (new-keyword)
+  "Set the TODO keyword of the headline point is in to what NEW-KEYWORD, a
+function of the document's parse (an ORG-PARSE) and the headline, returns: a
+keyword, or NIL for none. As ORG-PUT-TODO sets it."
+  (with-org-structure (parse buffer tree text position)
+    (let ((headline (org-current-headline tree position)))
+      (if (null headline)
+          (message "Not in a subtree")
+          (org-put-todo parse position headline (funcall new-keyword parse headline))))))
 
 (defun org-set-todo (step)
   "Set the TODO keyword of the headline point is in to the one STEP (1 or -1)
 from it in the document's sequence (ORG-KEYWORD-SEQUENCE), none past either
 end; from none, or from a keyword the sequence passes over, the first with
 STEP 1 and the last with -1. As ORG-PUT-TODO sets it."
-  (with-org-structure (parse buffer tree text position)
-    (let ((headline (org-current-headline tree position)))
-      (if (null headline)
-          (message "Not in a subtree")
-          (let* ((sequence (org-keyword-sequence text))
-                 (old (org-property headline :todo-keyword))
-                 (index (and old (position old sequence :test #'string=))))
-            (org-put-todo parse position headline
-                          (if index
-                              (let ((next (+ index step))) (and (< -1 next (length sequence)) (nth next sequence)))
-                              (if (plusp step) (first sequence) (car (last sequence))))))))))
+  (org-change-todo
+   (lambda (parse headline)
+     (let* ((sequence (org-keyword-sequence (org-parse-todo-keywords parse)))
+            (old (org-property headline :todo-keyword))
+            (index (and old (position old sequence :test #'string=))))
+       (if index
+           (let ((next (+ index step))) (and (< -1 next (length sequence)) (nth next sequence)))
+           (if (plusp step) (first sequence) (car (last sequence))))))))
 
 (defun org-set-todo-to (keyword)
   "Set the TODO keyword of the headline point is in to KEYWORD, NIL for none,
 as ORG-PUT-TODO sets it."
-  (with-org-structure (parse buffer tree text position)
-    (let ((headline (org-current-headline tree position)))
-      (if (null headline)
-          (message "Not in a subtree")
-          (org-put-todo parse position headline keyword)))))
+  (org-change-todo (constantly keyword)))
 
 (defun org-put-todo (parse position headline new &key (repeat t))
   "Make NEW, a TODO keyword or NIL for none, the keyword of HEADLINE of PARSE
@@ -545,17 +609,13 @@ keyword from one not done notes when (CLOSED:), leaving it takes that away.
 A task whose date repeats, made done, is done this time and moves on to its
 next date instead, unless REPEAT is NIL."
   (let* ((text (org-parse-text parse))
-         (done-keywords (cdr (org-todo-keywords-of text)))
+         (done-keywords (cdr (org-parse-todo-keywords parse)))
          (old (org-property headline :todo-keyword))
          (begin (org-node-begin headline))
-         (level (org-property headline :level))
          (line-end (string-line-end text begin))
-         (keyword-at (org-keyword-place text begin level line-end))
-         (old-end (if old (min line-end (+ keyword-at (length old) 1)) keyword-at))
          (inserted (if new (format nil "~a " new) ""))
          (was-done (and old (member old done-keywords :test #'string=)))
          (now-done (and new (member new done-keywords :test #'string=)))
-         (position (if (>= position old-end) (+ position (- (length inserted) (- old-end keyword-at))) position))
          (now (org-now)))
     (when (and repeat now-done (not was-done)
                (or (org-repeating-timestamp-in-p text line-end (org-entry-end headline text))
@@ -565,36 +625,40 @@ next date instead, unless REPEAT is NIL."
                                                    (org-entry-notes headline text))))))
       (return-from org-put-todo (org-repeat-entry parse headline (org-parse-point parse) old new now)))
     ;; the planning line under the headline: CLOSED: added or taken away
-    (let* ((next-line (min (length text) (1+ line-end)))
-           (planning (and (< next-line (length text))
-                          (org-planning-line-p text :start next-line :end (string-line-end text next-line))))
-           (planning-end (and planning (string-line-end text next-line)))
-           (planning-text (and planning (subseq text next-line planning-end)))
-           (new-planning
-             (cond ((and now-done (not was-done) (not *org-log-done*)) nil)
-                   ((and now-done (not was-done))
-                    (if planning
-                        (cl-ppcre:regex-replace "^([ \\t]*)" planning-text
-                                                (format nil "\\1CLOSED: ~a " (org-timestamp-text now)))
-                        :new))
-                   ((and was-done (not now-done) planning)
-                    (string-right-trim " " (cl-ppcre:regex-replace "CLOSED:[ \\t]*\\[[^]]*\\][ \\t]*" planning-text "")))
-                   (t nil))))
-      (let* ((headline-text (concatenate 'string (subseq text begin keyword-at) inserted (subseq text old-end line-end)))
-             (region-end (cond ((null new-planning) line-end)
-                               ((eq new-planning :new) line-end)
-                               (t planning-end)))
-             (replacement
-               (cond ((null new-planning) headline-text)
-                     ((eq new-planning :new)
-                      (format nil "~a~%CLOSED: ~a" headline-text (org-timestamp-text now)))
-                     ((string= (string-trim " 	" new-planning) "")
-                      ;; the planning line emptied: it goes, with its newline
-                      (setf region-end (min (length text) (1+ planning-end)))
-                      (format nil "~a~%" headline-text))
-                     (t (format nil "~a~%~a" headline-text new-planning)))))
-        (org-replace-chars parse begin region-end replacement :point position)
-        (message "~:[No keyword~;~:*~a~]" new)))))
+    (multiple-value-bind (keyword-at old-end) (org-keyword-span text headline old)
+      (let* ((position (if (>= position old-end) (+ position (- (length inserted) (- old-end keyword-at))) position))
+             (next-line (min (length text) (1+ line-end)))
+             (planning (and (< next-line (length text))
+                            (org-planning-line-p text :start next-line :end (string-line-end text next-line))))
+             (planning-end (and planning (string-line-end text next-line)))
+             (planning-text (and planning (subseq text next-line planning-end)))
+             (new-planning
+              (cond ((and now-done (not was-done) (not *org-log-done*)) nil)
+                    ((and now-done (not was-done))
+                     (if planning
+                         (cl-ppcre:regex-replace "^([ \\t]*)" planning-text
+                                                 (format nil "\\1CLOSED: ~a " (org-timestamp-text now)))
+                         :new))
+                    ((and was-done (not now-done) planning)
+                     (string-right-trim " " (cl-ppcre:regex-replace "CLOSED:[ \\t]*\\[[^]]*\\][ \\t]*"
+                                                                    planning-text "")))
+                    (t nil))))
+        (let* ((headline-text (concatenate 'string (subseq text begin keyword-at) inserted
+                                           (subseq text old-end line-end)))
+               (region-end (cond ((null new-planning) line-end)
+                                 ((eq new-planning :new) line-end)
+                                 (t planning-end)))
+               (replacement
+                (cond ((null new-planning) headline-text)
+                      ((eq new-planning :new)
+                       (format nil "~a~%CLOSED: ~a" headline-text (org-timestamp-text now)))
+                      ((string= (string-trim *org-blanks* new-planning) "")
+                       ;; the planning line emptied: it goes, with its newline
+                       (setf region-end (min (length text) (1+ planning-end)))
+                       (format nil "~a~%" headline-text))
+                      (t (format nil "~a~%~a" headline-text new-planning)))))
+          (org-replace-chars parse begin region-end replacement :point position)
+          (message "~:[No keyword~;~:*~a~]" new))))))
 
 (define-command org-todo ()
   "Change the TODO keyword of the headline point is in to the next of the
@@ -644,8 +708,8 @@ what is open. True when it handled the line."
            (headline (and parse (org-headline-on-line (org-parse-tree parse) text (org-parse-point parse))))
            (keyword (and headline (org-property headline :todo-keyword))))
       (when keyword
-        (let* ((sequence (org-keyword-sequence text))
-               (done-keywords (cdr (org-todo-keywords-of text)))
+        (let* ((sequence (org-keyword-sequence (org-parse-todo-keywords parse)))
+               (done-keywords (cdr (org-parse-todo-keywords parse)))
                (count (length sequence))
                (index (or (position keyword sequence :test #'string=) -1)))
           (multiple-value-bind (boxes tasks) (org-open-under headline)
@@ -679,10 +743,10 @@ what is open. True when it handled the line."
   (org-set-todo -1)
   (org-todo-changed (current-buffer)))
 
-(defun org-cancel-keyword (text)
-  "The done keyword of TEXT that cancels a task: CANCELLED, else CANCELED;
-NIL when its #+TODO: lines have neither."
-  (let ((done (cdr (org-todo-keywords-of text))))
+(defun org-cancel-keyword (keywords)
+  "The done keyword of KEYWORDS that cancels a task: CANCELLED, else
+CANCELED; NIL when they have neither. KEYWORDS is (NOT-DONE . DONE)."
+  (let ((done (cdr keywords)))
     (find-if (lambda (name) (member name done :test #'string=)) *org-cancel-keywords*)))
 
 (defvar *org-agenda-occurrence* nil
@@ -701,10 +765,10 @@ a timestamp with a repeater, or one by rule."
 as two values (ORG-OCCURRENCE-NOTES)."
   (org-occurrence-notes text (string-line-end text (org-node-begin headline)) (org-entry-end headline text)))
 
-(defun org-task-keyword-p (keyword text)
-  "True when KEYWORD is one of TEXT's TODO keywords not done: the entry it
-heads is a task still to do."
-  (and keyword (not (member keyword (cdr (org-todo-keywords-of text)) :test #'string=))))
+(defun org-task-keyword-p (keyword keywords)
+  "True when KEYWORD is one of the TODO keywords KEYWORDS not done: the entry
+it heads is a task still to do. KEYWORDS is (NOT-DONE . DONE)."
+  (and keyword (not (member keyword (cdr keywords) :test #'string=))))
 
 (defun org-occurrence< (a b)
   "True when the occurrence A comes before B: by day, then by time of day,
@@ -763,7 +827,7 @@ done does."
   (let* ((text (org-parse-text parse))
          (now (org-now))
          (keyword (org-property headline :todo-keyword))
-         (task (org-task-keyword-p keyword text))
+         (task (org-task-keyword-p keyword (org-parse-todo-keywords parse)))
          (open (org-open-occurrence headline text now task)))
     (multiple-value-bind (cancelled moved) (org-entry-notes headline text)
       (let ((wanted (let ((at (or occurrence open))) (and at (org-moved-target moved at)))))
@@ -785,7 +849,7 @@ Noted in its log (ORG-OCCURRENCE-NOTE), which the agenda reads: that time
 listed on TO's day, and a task done there done for the time it was."
   (let* ((text (org-parse-text parse))
          (now (org-now))
-         (task (org-task-keyword-p (org-property headline :todo-keyword) text)))
+         (task (org-task-keyword-p (org-property headline :todo-keyword) (org-parse-todo-keywords parse))))
     (multiple-value-bind (cancelled moved) (org-entry-notes headline text)
       (let* ((from (let ((at (or occurrence (org-open-occurrence headline text now task))))
                      (and at (org-moved-target moved at))))
@@ -852,8 +916,9 @@ ended, not moved on."
                                           (lambda () (org-occurrence-choice "Cancel")))
                 (let ((begin (first places))
                       (position (org-parse-point parse)))
-                  (let ((headline (and begin (org-headline-on-line (org-parse-tree parse) (org-parse-text parse) begin)))
-                        (keyword (org-cancel-keyword (org-parse-text parse))))
+                  (let ((headline (and begin
+                                       (org-headline-on-line (org-parse-tree parse) (org-parse-text parse) begin)))
+                        (keyword (org-cancel-keyword (org-parse-todo-keywords parse))))
                     (cond ((eq choice :none))
                           ((null headline) (refuse "The headline is no longer there: nothing cancelled"))
                           ((eq choice :this) (org-cancel-occurrence parse headline position *org-agenda-occurrence*))
@@ -896,18 +961,24 @@ the last colon, those already written left out; work urgent and
                                    collect (make-candidate tag :value (concatenate 'string before tag ":"))))))
                       :separator #\: :initial (if old (format nil ":~{~a~^:~}:" old) "")))))
 
+(defun org-headline-without-tags (line)
+  "LINE, a headline's, without the tags at its end and the blanks after its text."
+  (string-right-trim *org-blanks* (cl-ppcre:regex-replace *org-tags-end-scanner* line "")))
+
 (defun org-headline-with-tags (line tags)
   "The headline LINE with its tags TAGS (a list), put at *ORG-TAGS-COLUMN*,
 or none."
-  (let* ((stripped (string-right-trim " 	" (cl-ppcre:regex-replace "[ \\t]+:[\\w@#%:]+:[ \\t]*$" line "")))
+  (let* ((stripped (org-headline-without-tags line))
          ;; a headline of stars alone keeps the space that makes it one
          (bare (if (every (lambda (c) (char= c #\*)) stripped) (concatenate 'string stripped " ") stripped)))
     (if (null tags)
         bare
         (let* ((text (format nil ":~{~a~^:~}:" tags))
                (used (text-columns bare))
-               (column (if (minusp *org-tags-column*) (- (abs *org-tags-column*) (text-columns text)) *org-tags-column*)))
-          (concatenate 'string bare (make-string (max 1 (- column used)) :initial-element #\Space) text)))))
+               (column (if (minusp *org-tags-column*)
+                           (- (abs *org-tags-column*) (text-columns text))
+                           *org-tags-column*)))
+          (concatenate 'string bare (spaces (max 1 (- column used))) text)))))
 
 (define-command org-set-tags-command ()
   "Set the tags of the headline point is under
@@ -961,7 +1032,7 @@ text it is in, or by the tags it is in; how many lines changed."
          (inside (find-if (lambda (edit) (<= (first edit) position (second edit))) edits))
          (point (if inside
                     (destructuring-bind (begin line-end new) inside
-                      (let ((title-end (length (string-right-trim " 	" (cl-ppcre:regex-replace "[ \\t]+:[\\w@#%:]+:[ \\t]*$" new ""))))
+                      (let ((title-end (length (org-headline-without-tags new)))
                             (before (loop for (start end other) in edits
                                           when (<= end begin) sum (- (length other) (- end start)))))
                         (+ before
@@ -1013,7 +1084,7 @@ under it. An empty note is not kept."
             (message "Not under a headline")
             (multiple-value-bind (note parse places)
                 (org-ask-keeping-places parse (list (org-line-span text (org-node-begin owner)))
-                                        (lambda () (string-trim " 	" (read-string "Note: "))))
+                                        (lambda () (string-trim *org-blanks* (read-string "Note: "))))
               (let ((begin (first places))
                     (position (org-parse-point parse)))
                 (multiple-value-bind (owner item) (if begin (owner parse begin) (values nil nil))
@@ -1054,8 +1125,7 @@ a task."
          (let* ((end (org-last-content-end text (org-node-begin item) (org-node-end item)))
                 (bullet (org-property item :bullet))
                 (indent (subseq text (org-node-begin item)
-                                (+ (org-node-begin item) (- (length (org-line-at text (org-node-begin item)))
-                                                            (length (string-left-trim " 	" (org-line-at text (org-node-begin item))))))))
+                                (+ (org-node-begin item) (org-leading-blanks text (org-node-begin item)))))
                 (next (cl-ppcre:regex-replace "^(\\d+)" (string-trim " " bullet)
                                               (lambda (match number)
                                                 (declare (ignore match))
@@ -1087,8 +1157,7 @@ a task."
 (defun org-renumber-edit (text item number)
   "The edit, a list of one (FROM TO NEW), giving the numbered ITEM of TEXT the
 NUMBER, its . or ) kept; NIL for an item with no number."
-  (let* ((line (org-line-at text (org-node-begin item)))
-         (at (+ (org-node-begin item) (- (length line) (length (string-left-trim " 	" line)))))
+  (let* ((at (+ (org-node-begin item) (org-leading-blanks text (org-node-begin item))))
          (digits (or (position-if-not #'digit-char-p text :start at) (length text))))
     (when (> digits at)
       (list (list at digits (princ-to-string number))))))
@@ -1105,7 +1174,8 @@ or on a headline, a headline of the section's level after its subtree."
   (org-insert-heading t))
 
 (defun install-org-editing ()
-  "Bind Org's keys for TODO states and new headlines (M-h M-j M-k M-l, shared with tables, are bound by INSTALL-ORG-TABLES)."
+  "Bind Org's keys for TODO states and new headlines (M-h M-j M-k M-l, shared
+with tables, are bound by INSTALL-ORG-TABLES)."
   (let ((keymap (mode-keymap 'org-mode)))
     (define-keys keymap '(("C-c C-t" org-todo) ("S-<right>" org-shiftright) ("S-<left>" org-shiftleft)
                           ("C-c C-x C" org-cancel-task)

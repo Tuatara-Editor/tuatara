@@ -69,7 +69,8 @@ them; :NONE when there is none within reach."
       (let ((from (if forward at (max low (- at reach))))
             (to (if forward (min high (+ at 1 reach)) (1+ at))))
         (multiple-value-bind (partner same)
-            (counted-partner rope (coerce (tuatara.syntax:opaque-spans syntax from to) 'simple-vector) at forward from to)
+            (counted-partner rope (coerce (tuatara.syntax:opaque-spans syntax from to) 'simple-vector)
+                             at forward from to)
           (cond (partner (return (values partner same)))
                 ;; the whole node looked through: none there
                 ((if forward (= to high) (= from low)) (return :none))))))))
@@ -105,7 +106,8 @@ cannot tell: no bracket token at AT, or an error in the node around it."
                         (multiple-value-bind (token up) (bracket-token-parent syntax close)
                           (and token (tuatara.syntax:closing-bracket-node-p token) (same-node-p up parent))))
                    (values close (= (kind-of close) (kind-of at)))
-                   (counted-within syntax at (tuatara.syntax:tree-node-start parent) (tuatara.syntax:tree-node-end parent) t))))
+                   (counted-within syntax at (tuatara.syntax:tree-node-start parent)
+                                   (tuatara.syntax:tree-node-end parent) t))))
             ((tuatara.syntax:closing-bracket-node-p leaf)
              ;; the node may begin with marks before its bracket (#( in Lisp)
              (let ((open (loop for i from (tuatara.syntax:tree-node-start parent)
@@ -115,7 +117,8 @@ cannot tell: no bracket token at AT, or an error in the node around it."
                         (multiple-value-bind (token up) (bracket-token-parent syntax open)
                           (and token (tuatara.syntax:opening-bracket-node-p token) (same-node-p up parent))))
                    (values open (= (kind-of open) (kind-of at)))
-                   (counted-within syntax at (tuatara.syntax:tree-node-start parent) (tuatara.syntax:tree-node-end parent) nil))))
+                   (counted-within syntax at (tuatara.syntax:tree-node-start parent)
+                                   (tuatara.syntax:tree-node-end parent) nil))))
             (t :unknown)))))
 
 (defun counted-bracket-partner (buffer syntax at forward)
@@ -148,8 +151,10 @@ bracket, the brackets are counted within *SHOW-PAREN-REACH* octets."
          (before (and (plusp point) (tuatara.text:rope-octet rope (1- point))))
          (after (and (< point size) (tuatara.text:rope-octet rope point)))
          (at (cond ((and (member before tuatara.text:*closing-octets*)
-                         (not (tuatara.text:rope-escaped-p rope (1- point)))) (1- point))
-                   ((and (member after tuatara.text:*opening-octets*) (not (tuatara.text:rope-escaped-p rope point))) point))))
+                         (not (tuatara.text:rope-escaped-p rope (1- point))))
+                    (1- point))
+                   ((and (member after tuatara.text:*opening-octets*) (not (tuatara.text:rope-escaped-p rope point)))
+                    point))))
     (when at
       (multiple-value-bind (partner same) (bracket-partner buffer at (= at point))
         (cond ((member partner '(:text :none)) nil)
@@ -218,19 +223,18 @@ it, else the line before with text, \"...\" and the bracket, else the bracket
 alone."
   (let* ((line (tuatara.buffer:buffer-line-start buffer position))
          (end (tuatara.buffer:buffer-line-end buffer position))
-         (next (tuatara.buffer:buffer-forward-char buffer position))
-         (blank (lambda (text) (every (lambda (c) (member c '(#\Space #\Tab #\Return))) text))))
-    (cond ((not (funcall blank (tuatara.buffer:buffer-string buffer :start line :end position)))
+         (next (tuatara.buffer:buffer-forward-char buffer position)))
+    (cond ((not (blank-text-p (tuatara.buffer:buffer-string buffer :start line :end position)))
            (tuatara.buffer:buffer-string buffer :start line :end next))
-          ((not (funcall blank (tuatara.buffer:buffer-string buffer :start next :end end)))
+          ((not (blank-text-p (tuatara.buffer:buffer-string buffer :start next :end end)))
            (tuatara.buffer:buffer-string buffer :start position :end end))
           (t
            (let ((before (loop for l = line then (tuatara.buffer:buffer-line-start buffer (1- l))
                                while (plusp l)
                                do (let* ((prev (tuatara.buffer:buffer-line-start buffer (1- l)))
-                                         (text (tuatara.buffer:buffer-string buffer :start prev
-                                                                                    :end (tuatara.buffer:buffer-line-end buffer prev))))
-                                    (unless (funcall blank text)
+                                         (text (tuatara.buffer:buffer-string
+                                                buffer :start prev :end (tuatara.buffer:buffer-line-end buffer prev))))
+                                    (unless (blank-text-p (string-right-trim '(#\Return) text))
                                       (return (string-right-trim '(#\Space #\Tab #\Return) text)))))))
              (if before
                  (concatenate 'string before "..." (tuatara.buffer:buffer-string buffer :start position :end next))

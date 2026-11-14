@@ -6,9 +6,10 @@
 # manager, which also fetches the libraries Tuatara needs (GTK 4, ncurses,
 # OpenSSL's crypto, zstd, the C++ runtime) and offers the programs some of its
 # features run, recommended (enchant for spelling, bubblewrap, ImageMagick,
-# poppler's tools, git, man-db with groff, libnotify, bsdtar, 7-Zip) or suggested (GnuPG, xdg-utils, LibreOffice,
-# TeX Live): the packages *outside-programs* names (lisp/files/external.lisp),
-# which a test holds the lists here to. All three hold Tuatara as
+# poppler's tools, git, man-db with groff, libnotify, bsdtar, 7-Zip) or
+# suggested (GnuPG, xdg-utils, LibreOffice, TeX Live): the packages
+# *outside-programs* names (lisp/files/outside-programs.lisp), which a test
+# holds the lists here to. All three hold Tuatara as
 # tools/release.sh lays it out, in
 # /usr/lib/tuatara/, with the command tuatara in /usr/bin, the desktop entries
 # (Tuatara, and Tuatara (client), which opens files in a window of the daemon),

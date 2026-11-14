@@ -15,24 +15,106 @@
 (in-package #:tuatara.defaults)
 
 (defparameter *decoding-carried-settings*
-  '(tuatara-user:*sandbox* tuatara.io::*bwrap-name* tuatara-user:*sandbox-seconds* tuatara-user:*sandbox-memory*
-    tuatara-user:*sandbox-total-memory* tuatara-user:*sandbox-input-limit* *pdf-decoders* *pdf-text-pages*
-    *image-decoders* *magick-largest-side* *picture-memory* *image-view-largest*)
+  (append tuatara.io:*sandbox-carried-settings*
+          '(*pdf-decoders* *pdf-text-pages* *image-decoders* *magick-largest-side* *picture-memory*
+            *image-view-largest*))
   "The settings that decoding reads, carried to the thread that draws a PDF's
 page, takes out its text, draws an image or makes a preview, as they are on
-the editor's when that starts (TUATARA.RUNTIME:CARRY-SETTINGS).")
+the editor's when that starts (TUATARA.RUNTIME:CARRY-SETTINGS): the
+sandbox's, and those of decoding.")
 
-(defstruct (decoding-job (:include tuatara.runtime:job) (:constructor nil) (:copier nil))
+(define-record (decoding-job (:include tuatara.runtime:job) (:constructor nil) (:copier nil))
   "A job whose work is a file decoded in the sandbox for the view of its
 buffer, such as a picture drawn or a PDF's text taken out: \\[keyboard-quit]
 in that buffer stops it (STOP-DECODING), its programs ended with all they
 started, as killing the buffer or leaving does.")
 
-(setf (documentation 'decoding-job-p 'function) "True when OBJECT is a DECODING-JOB.")
-
 (defmethod tuatara.runtime:job-at-exit ((job decoding-job))
   "Decoding only shows something: stopped without asking."
   :quiet)
+
+(define-record (drawing-job (:include decoding-job) (:constructor nil) (:copier nil))
+  "A decoding job drawing the picture of the file at PATH (START-DRAWING-JOB):
+RESULT, once done, what its work gave; FAILURE, why there is nothing, in
+words, when the file could not be read or memory ran short."
+  (path nil :documentation "The path of the file whose picture DRAWING-JOB draws.")
+  (result nil :documentation "What the work of DRAWING-JOB gave, once it is done.")
+  (failure nil
+           :documentation "Why DRAWING-JOB gave nothing, in words, when the file could not be read or memory ran short,
+or NIL."))
+
+(tuatara.runtime:define-job-words drawing-job
+  :doing "Drawing"
+  :description (format nil "Drawing ~a" (tuatara.io:native-file-name (drawing-job-path job)))
+  :verb "draw it"
+  :left-words "nothing drawn")
+
+(defun start-drawing-job (job function &key (name "tuatara drawing"))
+  "Start JOB, a DRAWING-JOB, on a thread called NAME, the settings decoding
+reads carried to it (*DECODING-CARRIED-SETTINGS*): FUNCTION is called with
+the descriptor of JOB's file, opened there, and the cell that stops it
+\(the job's cancel), and what it returns is JOB's RESULT. When the file
+cannot be read, or memory runs short, the RESULT is NIL and FAILURE says why."
+  (tuatara.runtime:start-job-thread
+   job
+   (tuatara.runtime:carry-settings
+    *decoding-carried-settings*
+    (lambda (job)
+      (setf (drawing-job-result job)
+            (handler-case
+                (tuatara.io:call-with-file (drawing-job-path job)
+                                           (lambda (fd path size)
+                                             (declare (ignore path size))
+                                             (funcall function fd (tuatara.runtime:job-cancel job))))
+              (tuatara.io:file-system-error (e)
+                (setf (drawing-job-failure job) (tuatara.io:file-system-error-reason e))
+                nil)
+              (storage-condition ()
+                (setf (drawing-job-failure job) "there was not memory enough to draw it")
+                nil)))))
+   :name name))
+
+(define-record (viewer-search-job (:include decoding-job)
+                                 (:constructor make-viewer-search-job (buffer words search found))
+                                 (:copier nil))
+  "A search through what a view of BUFFER shows (its octets, a PDF's text), a
+job: WORDS, what is looked for, in words; SEARCH, a function of a function
+telling it to stop, giving what it found as values; FOUND, called on the
+editor's thread with those values, BUFFER current; RESULT, those values as a
+list. \\[keyboard-quit] in BUFFER stops it, as it stops decoding."
+  (words nil :documentation "What VIEWER-SEARCH-JOB looks for, in words.")
+  (search nil :documentation "A function of a function telling it to stop, giving what it found as values.")
+  (found nil :documentation "A function called on the editor's thread with the values found, the buffer current.")
+  (result nil :documentation "The values VIEWER-SEARCH-JOB found, as a list."))
+
+(tuatara.runtime:define-job-words viewer-search-job
+  :doing "Searching"
+  :description (format nil "Searching for ~a" (viewer-search-job-words job))
+  :verb "search"
+  :left-words "nothing found")
+
+(defmethod tuatara.runtime:job-take-in ((job viewer-search-job))
+  "Hand what the search found to its FOUND, its buffer current; say how it
+ended when it did not end done."
+  (let ((buffer (tuatara.runtime:job-buffer job)))
+    (cond ((not (eq (tuatara.runtime:job-status job) :done))
+           (message "Search for ~a: ~a" (viewer-search-job-words job) (tuatara.runtime:job-ending-words job)))
+          ((live-buffer-p buffer)
+           (let ((*current-buffer* buffer))
+             (apply (viewer-search-job-found job) (viewer-search-job-result job)))))))
+
+(defun start-viewer-search (buffer words search found)
+  "Search what a view of BUFFER shows in the background, for WORDS (words for
+what is looked for): SEARCH, a function of a function telling it to stop,
+runs on a job of BUFFER's, and FOUND is called with what it gives, on the
+editor's thread, BUFFER current (VIEWER-SEARCH-JOB)."
+  (tuatara.runtime:start-job-thread
+   (make-viewer-search-job buffer words search found)
+   (lambda (job)
+     (setf (viewer-search-job-result job)
+           (multiple-value-list (funcall (viewer-search-job-search job)
+                                         (lambda () (car (tuatara.runtime:job-cancel job)))))))
+   :name "tuatara view search"))
 
 (defun stop-decoding ()
   "Keyboard-quit function: stop the decoding jobs (DECODING-JOB) running for
@@ -62,6 +144,22 @@ shows (its crop box), as :INFO gives its size.")
   "The first of *PDF-DECODERS* whose program for the text the sandbox finds,
 or NIL."
   (find-if (lambda (decoder) (tuatara.io:sandbox-find-program (first (getf decoder :text)))) *pdf-decoders*))
+
+(defun decoding-unavailable-words (decoder what decoders)
+  "Why WHAT (words: pictures, its text) cannot be decoded at all, in words: the
+sandbox not ready (NO-SANDBOX-WORDS), or DECODER, the first of DECODERS found,
+NIL (NO-DECODER-WORDS); NIL when it can be."
+  (let ((status (tuatara.io:sandbox-status)))
+    (cond ((not (eq status :ready)) (no-sandbox-words status))
+          ((null decoder) (no-decoder-words what decoders)))))
+
+(defun no-decoder-words (what decoders)
+  "Why WHAT (words: pictures, its text, PDFs) cannot be decoded when no program
+of DECODERS (*PDF-DECODERS*, *IMAGE-DECODERS*) is found, in words naming the
+package and program of the first, as each view says it."
+  (let ((decoder (first decoders)))
+    (format nil "no program for ~a (install ~a: ~a)" what (getf decoder :name)
+            (first (or (getf decoder :text) (getf decoder :program))))))
 
 (defun decoder-words (decoder)
   "DECODER's programs as a sentence names them: pdftotext and pdfinfo (poppler)."
@@ -181,7 +279,12 @@ WIDTH by HEIGHT; NIL when INFO does not say its size."
         (let ((scale (min (/ width across) (/ height down))))
           (list (max 1 (round (* across scale))) (max 1 (round (* down scale)))))))))
 
-(defun decode-pdf (fd &key cancel (limit (expt 2 20)) pixels on-info)
+(defun pages-note (pages)
+  "The note over a PDF's text saying how many PAGES it has, as DECODE-PDF gives
+its notes, (TEXT . FACE)."
+  (cons (format nil ", ~:d page~:p" pages) nil))
+
+(defun decode-pdf (fd &key cancel (limit (expt 2 20)) pixels on-info ((:text text-wanted) t))
   "The text of the PDF open as file descriptor (FD), taken out in the sandbox,
 as four values: the text of its first *PDF-TEXT-PAGES* pages, up to LIMIT
 octets (1 MB unless given; NIL when there is none); notes about it for a
@@ -193,9 +296,9 @@ said of it (pages, their size), as text. Waits for the programs: call it
 from a thread working in the background. CANCEL, a cons, stops them when
 its car turns true; NIL, NIL, NIL then. ON-INFO, when given, is called with
 what the :INFO program said as soon as it has, before the text is taken
-out."
-  (let ((status (tuatara.io:sandbox-status))
-        (decoder (find-pdf-decoder))
+out. With TEXT NIL, no text is taken out, only how many pages it has and its
+first page drawn."
+  (let ((decoder (find-pdf-decoder))
         (notes '())
         (info "")
         (text nil))
@@ -207,14 +310,9 @@ out."
                (multiple-value-list
                 (tuatara.io:sandbox-run program (decoder-arguments arguments values)
                                         :input fd :cancel cancel :output-limit output-limit)))))
-      (unless (eq status :ready)
-        (note (format nil ", not decoded: ~a" (no-sandbox-words status)) :comment)
-        (return-from decode-pdf (values nil (reverse notes) nil)))
-      (unless decoder
-        (note (format nil ", not decoded: no program for its text (install ~a: ~a)"
-                      (getf (first *pdf-decoders*) :name) (first (getf (first *pdf-decoders*) :text)))
-              :comment)
-        (return-from decode-pdf (values nil (reverse notes) nil)))
+      (let ((why (decoding-unavailable-words decoder "its text" *pdf-decoders*)))
+        (when why
+          (return-from decode-pdf (values nil (list (cons (format nil ", not decoded: ~a" why) :comment)) nil))))
       ;; how many pages, their size, JavaScript and encryption
       (let ((pages nil) (spec (getf decoder :info)))
         (when (and spec (tuatara.io:sandbox-find-program (first spec)))
@@ -225,14 +323,15 @@ out."
               (setf info (tuatara.text:lenient-string output)
                     pages (whole-number (info-field info "Pages")))
               (when on-info (funcall on-info info))
-              (when pages (note (format nil ", ~:d page~:p" pages)))
+              (when pages (push (pages-note pages) notes))
               (when (equal "yes" (info-field info "JavaScript")) (note ", with JavaScript" :warning))
               (when (uiop:string-prefix-p "yes" (info-field info "Encrypted")) (note ", encrypted" :warning)))))
         ;; the text
-        (let ((program (first (getf decoder :text))))
-          (destructuring-bind (output outcome said)
-              (run (getf decoder :text) (list :pages (list (princ-to-string *pdf-text-pages*))) limit)
+        (let ((program (and text-wanted (first (getf decoder :text)))))
+          (destructuring-bind (&optional output outcome said)
+              (and program (run (getf decoder :text) (list :pages (list (princ-to-string *pdf-text-pages*))) limit))
             (case outcome
+              ((nil))
               (:cancelled (stopped))
               ((:done :too-much)
                (let ((all (tuatara.text:lenient-string output)))
@@ -274,21 +373,16 @@ program: call it from a thread working in the background."
 ;;; Pictures: the pixels of an image, made no larger than they are shown
 
 (defparameter *image-decoders*
-  '((:name "ImageMagick"
-     :program ("magick" :density :jpeg-hint :input "-auto-orient" "-resize" :size "-alpha" "on" "-depth" "8" "PAM:-")
-     :jpeg-hint ("-define" "jpeg:size=~dx~d")
-     :sandbox magick-sandbox)
-    (:name "ImageMagick"
-     :program ("convert-im6.q16" :density :jpeg-hint :input "-auto-orient" "-resize" :size "-alpha" "on" "-depth" "8" "PAM:-")
-     :jpeg-hint ("-define" "jpeg:size=~dx~d")
-     :sandbox magick-sandbox)
-    (:name "ImageMagick"
-     :program ("convert-im6.q16hdri" :density :jpeg-hint :input "-auto-orient" "-resize" :size "-alpha" "on" "-depth" "8" "PAM:-")
-     :jpeg-hint ("-define" "jpeg:size=~dx~d")
-     :sandbox magick-sandbox)
-    (:name "GraphicsMagick"
-     :program ("gm" "convert" :density :jpeg-hint :input "-auto-orient" "-resize" :size "-depth" "8" "PAM:-")
-     :jpeg-hint ("-size" "~dx~d")))
+  (append (mapcar (lambda (program)
+                    (list :name "ImageMagick"
+                          :program (list* program '(:density :jpeg-hint :input "-auto-orient" "-resize" :size
+                                                    "-alpha" "on" "-depth" "8" "PAM:-"))
+                          :jpeg-hint '("-define" "jpeg:size=~dx~d")
+                          :sandbox 'magick-sandbox))
+                  '("magick" "convert-im6.q16" "convert-im6.q16hdri"))
+          '((:name "GraphicsMagick"
+             :program ("gm" "convert" :density :jpeg-hint :input "-auto-orient" "-resize" :size "-depth" "8" "PAM:-")
+             :jpeg-hint ("-size" "~dx~d"))))
   "The programs known to turn an image into pixels, the first found used
 \(ImageMagick 7's magick, then ImageMagick 6's convert as some systems still
 have it, under the same policy, then GraphicsMagick). Each is a list of :NAME,
@@ -509,9 +603,10 @@ is run for anything but a picture (-list format)."
   (loop for word in (getf decoder :program) until (keywordp word) collect word))
 
 (defun magick-checked (decoder what function)
-  "What FUNCTION, called with the full path of DECODER's program, gives, kept
-in *MAGICK-CHECKED* under WHAT, the path and the arguments it is run with,
-while the program's file is unchanged; NIL when the program is not found."
+  "What FUNCTION, a function of no arguments running DECODER's program, gives,
+kept in *MAGICK-CHECKED* under WHAT, the program's path and the arguments it
+is run with, while the program's file is unchanged; NIL when the program is
+not found."
   (let* ((path (tuatara.io:sandbox-find-program (first (decoder-words-before-keywords decoder))))
          (stamp (and path (tuatara.io:path-stamp path :failure nil)))
          (key (list* what path (rest (decoder-words-before-keywords decoder))))
@@ -519,7 +614,7 @@ while the program's file is unchanged; NIL when the program is not found."
     (when path
       (if (and known (equalp (car known) stamp))
           (cdr known)
-          (let ((value (funcall function path)))
+          (let ((value (funcall function)))
             (setf (gethash key *magick-checked*) (cons stamp value))
             value)))))
 
@@ -575,9 +670,7 @@ reads (its -list policy), each given Tuatara's policy in its place
 \(MAGICK-SANDBOX) and checked to hold it then (MAGICK-POLICY-CHECK), as two
 values: the paths, and NIL or why the program is not to be run, in words.
 Found once for each program file (MAGICK-CHECKED)."
-  (let ((found (magick-checked decoder :policy (lambda (path)
-                                                 (declare (ignore path))
-                                                 (magick-policy-check decoder)))))
+  (let ((found (magick-checked decoder :policy (lambda () (magick-policy-check decoder)))))
     (values (first found) (second found))))
 
 (defparameter *image-formats*
@@ -612,8 +705,7 @@ when the sandbox cannot run it."
   (when (eq (tuatara.io:sandbox-status) :ready)
     (let ((listed (magick-checked
                    decoder :formats
-                   (lambda (path)
-                     (declare (ignore path))
+                   (lambda ()
                      (let ((words (decoder-words-before-keywords decoder)))
                        (multiple-value-bind (output outcome)
                            (tuatara.io:sandbox-run (first words) (append (rest words) (list "-list" "format"))
@@ -694,31 +786,71 @@ else, or fewer pixels than they say."
                      (and size (handler-case (mapcar #'parse-integer (uiop:split-string size)) (parse-error () nil)))
                    (and (equal maxval "255") (image width height 3))))))))))
 
+(defun picture-refusal (kind header pixels memory decoder policy-refusal)
+  "Why a picture of KIND is not drawn before its program runs, in words, or
+NIL when it may be: its HEADER damaged or giving no size (CODED-PICTURE-REFUSAL),
+the MEMORY drawing its PIXELS would take past *PICTURE-MEMORY*, or
+POLICY-REFUSAL, why DECODER's program is not to be run (MAGICK-POLICY-OVERLAYS)."
+  (cond ((coded-picture-refusal kind header))
+        ((and memory *picture-memory* (> memory *picture-memory*))
+         (format nil "~:[it~;~:*~,1f megapixels~] would take ~a to draw, more than *picture-memory* allows (~a)"
+                 (and pixels (/ pixels 1d6)) (octets-words memory) (octets-words *picture-memory*)))
+        (policy-refusal (format nil "~a: ~a" (first (getf decoder :program)) policy-refusal))))
+
+(defun picture-arguments (decoder kind width height &key head enlarge density)
+  "The arguments DECODER's program is run with to draw a picture of KIND no
+larger than WIDTH by HEIGHT pixels (as DECODE-IMAGE takes ENLARGE and
+DENSITY), HEAD its first octets, giving a JPEG's own size: its :PROGRAM's
+keywords given (DECODER-ARGUMENTS)."
+  (decoder-arguments
+   (rest (getf decoder :program))
+   (list :input (list (format nil "~a:-[0]" (cdr (assoc kind *image-formats*))))
+         :size (list (format nil "~dx~d~:[>~;~]" (max 1 width) (max 1 height) enlarge))
+         :density (and density (list "-density" (princ-to-string density)))
+         :jpeg-hint (and (eq kind :jpeg) (getf decoder :jpeg-hint)
+                         (destructuring-bind (option value) (getf decoder :jpeg-hint)
+                           ;; no larger than the JPEG itself
+                           (multiple-value-bind (across down) (and head (tuatara.io:octets-picture-size head))
+                             (list option (format nil value (max 1 (min width (or across width)))
+                                                  (max 1 (min height (or down height)))))))))))
+
+(defun run-picture-decoder (decoder fd arguments width height &key cancel seconds memory octets overlays)
+  "Run DECODER's program shut in on the picture open as file descriptor (FD),
+OCTETS long, with ARGUMENTS (PICTURE-ARGUMENTS), its output held to WIDTH by
+HEIGHT pixels, given SECONDS and MEMORY (and the policy OVERLAYS its sandbox
+gives in place, MAGICK-SANDBOX), one picture needing more memory than
+*SANDBOX-MEMORY* drawn at a time (CALL-IN-PICTURE-TURN): three values, as
+TUATARA.IO:SANDBOX-RUN gives them."
+  (let ((tuatara-user:*sandbox-memory* memory)
+        ;; all of one run's programs together given no less than it
+        (tuatara-user:*sandbox-total-memory* (and tuatara-user:*sandbox-total-memory*
+                                                  (max tuatara-user:*sandbox-total-memory* (or memory 0))))
+        (large (and memory tuatara-user:*sandbox-memory* (> memory tuatara-user:*sandbox-memory*))))
+    (call-in-picture-turn
+     large cancel
+     (lambda ()
+       (apply #'tuatara.io:sandbox-run (first (getf decoder :program)) arguments
+              :input fd :cancel cancel :seconds seconds :output-limit (+ 4096 (* 4 (max 1 width) (max 1 height)))
+              ;; a TIFF read from a pipe is copied to a file of the sandbox's first
+              :file-limit (max tuatara.io:*sandbox-file-limit* (+ (* 1024 1024) (or octets 0)))
+              (and (getf decoder :sandbox) (funcall (getf decoder :sandbox) :memory memory :overlays overlays)))))))
+
 (defun decode-image (fd kind width height &key cancel density enlarge)
   "The picture in the image open as file descriptor (FD), of KIND
-(TUATARA.IO:OCTETS-KIND's keyword), turned into pixels in the sandbox, no
+\(TUATARA.IO:OCTETS-KIND's keyword), turned into pixels in the sandbox, no
 larger than WIDTH by HEIGHT pixels (with ENLARGE, as large as fits in them,
 its proportions kept, a smaller one made larger), as two values: the picture (a
 TUATARA.FRONTEND:IMAGE), NIL when it could not be made; and notes about it
 for a line over it, as DECODE-PDF gives them. Waits for the program: call
 it from a thread working in the background. CANCEL, a cons, stops it when
 its car turns true; NIL, NIL then. DENSITY, dots an inch, draws a drawing
-(SVG) that finely before it is sized, for print."
-  (let ((status (tuatara.io:sandbox-status))
-        (decoder (find-image-decoder))
-        (format (cdr (assoc kind *image-formats*)))
-        (notes '()))
-    (flet ((note (text &optional face) (push (cons text face) notes))
-           (done (image) (return-from decode-image (values image (reverse notes)))))
-      (unless format (done nil))
-      (unless (eq status :ready)
-        (note (format nil ", not shown: ~a" (no-sandbox-words status)) :comment)
-        (done nil))
-      (unless decoder
-        (note (format nil ", not shown: no program for pictures (install ~a: ~a)"
-                      (getf (first *image-decoders*) :name) (first (getf (first *image-decoders*) :program)))
-              :comment)
-        (done nil))
+\(SVG) that finely before it is sized, for print."
+  (let ((decoder (find-image-decoder)))
+    (flet ((done (image &optional words (face :comment))
+             (return-from decode-image (values image (and words (list (cons words face)))))))
+      (unless (assoc kind *image-formats*) (done nil))
+      (let ((why (decoding-unavailable-words decoder "pictures" *image-decoders*)))
+        (when why (done nil (format nil ", not shown: ~a" why))))
       (let* ((octets (handler-case (sb-posix:stat-size (sb-posix:fstat fd)) (sb-posix:syscall-error () nil)))
              (head (and octets (ignoring-errors-reported ("reading the head of a picture")
                                  (tuatara.io:read-fd-start fd "the picture" octets 65536))))
@@ -728,79 +860,46 @@ its car turns true; NIL, NIL then. DENSITY, dots an inch, draws a drawing
              (memory (picture-memory kind pixels octets (cond ((getf header :components))
                                                               (header (+ 3 (getf header :extra-channels)))
                                                               (t 0))))
-             (large (and memory tuatara-user:*sandbox-memory* (> memory tuatara-user:*sandbox-memory*)))
              ;; the policy files it reads besides Tuatara's, each given Tuatara's
              (policy (multiple-value-list (and (getf decoder :sandbox) (magick-policy-overlays decoder))))
-             (overlays (first policy)))
-        (let ((refusal (coded-picture-refusal kind header)))
-          (when refusal
-            (note (format nil ", not shown: ~a" refusal) :comment)
-            (done nil)))
-        (when (and memory *picture-memory* (> memory *picture-memory*))
-          (note (format nil ", not shown: ~:[it~;~:*~,1f megapixels~] would take ~a to draw, more than *picture-memory* allows (~a)"
-                        (and pixels (/ pixels 1d6)) (octets-words memory) (octets-words *picture-memory*))
-                :comment)
-          (done nil))
-        (when (second policy)
-          (note (format nil ", not shown: ~a: ~a" (first (getf decoder :program)) (second policy)) :comment)
-          (done nil))
-      (destructuring-bind (program &rest arguments) (getf decoder :program)
+             (program (first (getf decoder :program))))
+        (let ((refusal (picture-refusal kind header pixels memory decoder (second policy))))
+          (when refusal (done nil (format nil ", not shown: ~a" refusal))))
         (multiple-value-bind (output outcome said)
-            (let ((tuatara-user:*sandbox-memory* memory)
-                  ;; all of one run's programs together given no less than it
-                  (tuatara-user:*sandbox-total-memory* (and tuatara-user:*sandbox-total-memory*
-                                                            (max tuatara-user:*sandbox-total-memory* (or memory 0)))))
-            (call-in-picture-turn
-             large cancel
-             (lambda ()
-               (apply #'tuatara.io:sandbox-run program
-                      (decoder-arguments
-                       arguments
-                       (list :input (list (format nil "~a:-[0]" format))
-                             :size (list (format nil "~dx~d~:[>~;~]" (max 1 width) (max 1 height) enlarge))
-                             :density (and density (list "-density" (princ-to-string density)))
-                             :jpeg-hint (and (eq kind :jpeg) (getf decoder :jpeg-hint)
-                                             (destructuring-bind (option value) (getf decoder :jpeg-hint)
-                                               ;; no larger than the JPEG itself
-                                               (multiple-value-bind (across down)
-                                                   (and head (tuatara.io:octets-picture-size head))
-                                                 (list option (format nil value (max 1 (min width (or across width)))
-                                                                      (max 1 (min height (or down height))))))))))
-                      :input fd :cancel cancel :seconds seconds :output-limit (+ 4096 (* 4 (max 1 width) (max 1 height)))
-                      ;; a TIFF read from a pipe is copied to a file of the sandbox's first
-                      :file-limit (max tuatara.io:*sandbox-file-limit* (+ (* 1024 1024) (or octets 0)))
-                      (and (getf decoder :sandbox) (funcall (getf decoder :sandbox) :memory memory :overlays overlays))))))
+            (run-picture-decoder decoder fd (picture-arguments decoder kind width height :head head :enlarge enlarge
+                                                                                          :density density)
+                                 width height :cancel cancel :seconds seconds :memory memory :octets octets
+                                              :overlays (first policy))
           (case outcome
-            (:cancelled (return-from decode-image (values nil nil)))
+            (:cancelled (done nil))
             (:done
              (let ((image (decoded-image output))
                    (damage (picture-damage-words said)))
-               (unless image (note (format nil ", not shown: ~a gave no picture" program) :comment))
-               (when (and image damage) (note (format nil ", damaged: ~a" damage) :warning))
-               (done image)))
+               (cond ((null image) (done nil (format nil ", not shown: ~a gave no picture" program)))
+                     (damage (done image (format nil ", damaged: ~a" damage) :warning))
+                     (t (done image)))))
             (:timeout
-             (note (if header
-                       (format nil ", not shown: ~a was stopped after ~d second~:p, all a picture of ~,1f megapixels is given (*sandbox-seconds* and more for each megapixel)"
-                               program seconds (/ pixels 1d6))
-                       (format nil ", not shown: ~a" (sandbox-outcome-words outcome said :label program)))
-                   :comment)
-             (done nil))
+             (done nil (if header
+                           (format nil ", not shown: ~a was stopped after ~d second~:p, all a picture of ~,1f ~
+                                        megapixels is given (*sandbox-seconds* and more for each megapixel)"
+                                   program seconds (/ pixels 1d6))
+                           (format nil ", not shown: ~a" (sandbox-outcome-words outcome said :label program)))))
             (t
              ;; a TIFF-shaped file LibRaw does not develop, a scanner's say: drawn as a TIFF
              (when (and (eq kind :raw) head (tuatara.io:tiff-octets-p head))
                (return-from decode-image (decode-image fd :tiff width height :cancel cancel :density density
                                                                        :enlarge enlarge)))
-             ;; a Fujifilm raw LibRaw does not develop (its compressed kind, on many cores): the camera's own JPEG of it
+             ;; a Fujifilm raw LibRaw does not develop (its compressed kind, on many cores): the camera's own
+             ;; JPEG of it
              (let ((preview (and (eq kind :raw) (raf-preview fd head))))
                (when preview
                  (return-from decode-image (decode-picture preview :jpeg width height :cancel cancel))))
-             (note (if (and (eq outcome :failed) (cl-ppcre:scan "(?i)no decode delegate" (or said "")))
-                       (format nil
-                               ", not shown: ~a here cannot read ~a pictures~@[: it was built or installed without ~a~]"
-                               program format (second (assoc kind *image-format-libraries*)))
-                       (format nil ", not shown: ~a" (sandbox-outcome-words outcome said :label program)))
-                   :comment)
-             (done nil)))))))))
+             (done nil (if (and (eq outcome :failed) (cl-ppcre:scan "(?i)no decode delegate" (or said "")))
+                           (format nil ", not shown: ~a here cannot read ~a pictures~@[: it was built or installed ~
+                                        without ~a~]"
+                                   program (cdr (assoc kind *image-formats*))
+                                   (second (assoc kind *image-format-libraries*)))
+                           (format nil ", not shown: ~a" (sandbox-outcome-words outcome said :label program)))))))))))
 
 (defun decode-picture (octets kind width height
                        &key (cancel (and tuatara.runtime:*job* (tuatara.runtime:job-cancel tuatara.runtime:*job*))))

@@ -1,26 +1,29 @@
 ;;;; lisp/selecting/input-methods.lisp --- Input methods: keys typed in turn making the characters a keyboard lacks.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; As Emacs's input methods (its Quail): a buffer can have one on, and the
-;;;; keys typed into it go through the method's rules before they are text.
-;;;; Swedish's aa gives å, the digraphs' &e' gives é. A key that starts a
-;;;; longer rule shows as typed, underlined, until the next key either goes
-;;;; on with the rule or does not; the longest rule at the start is used and
-;;;; the rest typed again, as Quail does. The methods and their rules are
-;;;; Emacs's own (input-method-table.lisp); the title each shows in the mode
-;;;; line is Emacs's too. In NORMAL state keys are commands, so a method
-;;;; types only where text is typed.
+;;;; A buffer can have an input method on, and the keys typed into it go through
+;;;; the method's rules before they are text. Swedish's aa gives å, the
+;;;; digraphs' &e' gives é. A key that starts a longer rule shows as typed,
+;;;; underlined, until the next key either goes on with the rule or does not;
+;;;; the longest rule at the start is used and the rest typed again. The
+;;;; methods, their rules and the title each shows in the mode line come from
+;;;; GNU Emacs's Quail tables (input-method-table.lisp). In NORMAL state keys
+;;;; are commands, so a method types only where text is typed.
 
 (in-package #:tuatara.defaults)
 
-(defstruct (input-method (:constructor %make-input-method (name title description rules prefixes)) (:copier nil))
+(define-record (input-method (:constructor %make-input-method (name title description rules prefixes)) (:copier nil))
   "An input method: its NAME, the TITLE the mode line shows while it is on, a
 one-line DESCRIPTION, its RULES (a hash table of the keys typed in turn to
 the text they give) and PREFIXES (every start of a rule's keys that a longer
 rule goes on from, as a hash table)."
-  name title description rules prefixes)
-
-(setf (documentation 'input-method-p 'function) "True when OBJECT is an INPUT-METHOD.")
+  (name nil :documentation "The name of INPUT-METHOD.")
+  (title nil :documentation "The title the mode line shows while INPUT-METHOD is on.")
+  (description nil :documentation "A one-line description of INPUT-METHOD.")
+  (rules nil :documentation "The rules of INPUT-METHOD, a hash table of the keys typed in turn to the text they give.")
+  (prefixes nil
+            :documentation "Every start of a rule's keys of INPUT-METHOD that a longer rule goes on from, as a hash
+table."))
 
 (defun make-input-method-of (name title description rules)
   "An input method NAME from RULES, a list of (KEYS . TEXT), its TITLE and DESCRIPTION."
@@ -28,7 +31,7 @@ rule goes on from, as a hash table)."
         (prefixes (make-hash-table :test 'equal)))
     (loop for (keys . text) in rules
           do (setf (gethash keys table) text)
-             (loop for i from 1 below (length keys) do (setf (gethash (subseq keys 0 i) prefixes) t)))
+          (loop for i from 1 below (length keys) do (setf (gethash (subseq keys 0 i) prefixes) t)))
     (%make-input-method name title description table prefixes)))
 
 (defvar *input-methods*
@@ -73,19 +76,19 @@ start gives its text, or the first key itself, and the rest is taken again."
         (prefixes (input-method-prefixes method))
         (done (make-string-output-stream)))
     (loop
-      (cond ((or (zerop (length keys)) (gethash keys prefixes))
-             (return))
-            ((gethash keys rules)
-             (write-string (gethash keys rules) done)
-             (setf keys "")
-             (return))
-            (t (let ((whole (loop for i from (1- (length keys)) downto 1
-                                  when (gethash (subseq keys 0 i) rules) return i)))
-                 (if whole
-                     (progn (write-string (gethash (subseq keys 0 whole) rules) done)
-                            (setf keys (subseq keys whole)))
-                     (progn (write-char (char keys 0) done)
-                            (setf keys (subseq keys 1))))))))
+     (cond ((or (zerop (length keys)) (gethash keys prefixes))
+            (return))
+           ((gethash keys rules)
+            (write-string (gethash keys rules) done)
+            (setf keys "")
+            (return))
+           (t (let ((whole (loop for i from (1- (length keys)) downto 1
+                                 when (gethash (subseq keys 0 i) rules) return i)))
+                (if whole
+                    (progn (write-string (gethash (subseq keys 0 whole) rules) done)
+                           (setf keys (subseq keys whole)))
+                    (progn (write-char (char keys 0) done)
+                           (setf keys (subseq keys 1))))))))
     (values (get-output-stream-string done) keys)))
 
 (defvar *input-method-waiting* '()
@@ -185,7 +188,7 @@ now, or, in NORMAL state, once INSERT state is entered."
   (loop for name in (sort (alexandria:hash-table-keys *input-methods*) #'string<)
         for method = (find-input-method name)
         collect (make-candidate name :annotation (format nil "~a  ~a" (input-method-title method)
-                                                          (input-method-description method)))))
+                                                         (input-method-description method)))))
 
 (defun read-input-method (prompt)
   "Ask PROMPT for an input method, the default one (*DEFAULT-INPUT-METHOD*)
@@ -202,11 +205,10 @@ saying so (by LABEL, when given), as \\[set-input-method] does."
   (message "~a on~a" (if label (format nil "~a (~a)" label name) name) (input-method-state-words)))
 
 (define-command set-input-method ()
-  "Choose an input method and turn it on in this buffer (\\[set-input-method]).
-The keys typed then go through its
-rules, swedish-postfix's aa typing å, rfc1345's &e' typing é. It becomes the
-default, which \\[toggle-input-method] turns on and off from then on;
-\\[describe-input-method] lists its rules."
+  "Choose an input method and turn it on in this buffer. The keys typed then go
+through its rules, swedish-postfix's aa typing å, rfc1345's &e' typing é. It
+becomes the default, which \\[toggle-input-method] turns on and off from then
+on; \\[describe-input-method] lists its rules."
   (let ((name (read-input-method "Input method: ")))
     (when name (turn-on-input-method name))))
 
@@ -250,7 +252,8 @@ default (*default-input-method*), else one asked for (\\[set-input-method])."
            (format out "Input method: ~a (~a in the mode line)~%~%~a~%~%" name (input-method-title method)
                    (input-method-description method))
            (format out (substitute-command-keys
-                        "\\[set-input-method] turns it on, \\[toggle-input-method] off and on again. Keys that start a~%~
+                        "\\[set-input-method] turns it on, \\[toggle-input-method] off and on again. ~
+Keys that start a~%~
 longer rule are shown underlined until the next key settles them.~%~%"
                         :marks t :for-format t))
            (format out "  ~12a~a~%  ~12a~a~%" "KEYS" "TYPE" "----" "----")

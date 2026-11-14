@@ -192,14 +192,15 @@ two are no pair of *PAIR-DELIMITERS*, delete nothing and say so."
             (if (or (>= (tuatara.buffer:buffer-forward-char b start) end)
                     (not (eql close (pair-closer open))))
                 (message (if forward "Not before matching pair" "Not after matching pair"))
-                (let ((p (point))
-                      (inner-end (tuatara.buffer:buffer-forward-char b end -1)))
-                  (tuatara.buffer:buffer-edit b (vector (tuatara.text:make-edit start (tuatara.buffer:buffer-forward-char b start))
+                (let* ((p (point))
+                       (inner-start (tuatara.buffer:buffer-forward-char b start))
+                       (inner-end (tuatara.buffer:buffer-forward-char b end -1)))
+                  (tuatara.buffer:buffer-edit b (vector (tuatara.text:make-edit start inner-start)
                                                         (tuatara.text:make-edit inner-end end)))
                   ;; point stays by its text: before the pair, or after it and two characters on
                   (goto (cond ((<= p start) p)
-                              ((>= p end) (- p (- (tuatara.buffer:buffer-forward-char b start) start) (- end inner-end)))
-                              (t (- p (- (tuatara.buffer:buffer-forward-char b start) start))))))))))))
+                              ((>= p end) (- p (- inner-start start) (- end inner-end)))
+                              (t (- p (- inner-start start))))))))))))
 
 ;;; Definitions
 
@@ -285,16 +286,6 @@ when there are not so many."
                     (target (setf p (if (eq side :start) (car target) (cdr target))))
                     (t (return nil)))))))))
 
-(defun line-start-p (buffer position)
-  "True when POSITION of BUFFER is at the start of a line."
-  (= position (tuatara.buffer:buffer-line-start buffer position)))
-
-(defun next-line-start (buffer position)
-  "The start of the line after the one POSITION of BUFFER is on, or the end of
-the text when that is the last."
-  (let ((end (tuatara.buffer:buffer-line-end buffer position)))
-    (if (< end (tuatara.buffer:buffer-size buffer)) (tuatara.buffer:buffer-forward-char buffer end) end)))
-
 (defun definition-skip (buffer position)
   "POSITION, where a definition starts or ends, moved to where point is left:
 past a semicolon there (the one after a C struct, not part of it); then
@@ -333,8 +324,8 @@ a definition: it is in no string or comment of SYNTAX's tree, where there is one
       (notany (lambda (node) (or (tuatara.syntax:string-node-p node) (tuatara.syntax:comment-node-p node)))
               (tuatara.syntax:node-ancestry syntax position (1+ position)))))
 
-(defun line-opener-before
-    (rope position &key (openers tuatara.text:*opening-octets*) (reach most-positive-fixnum) test block)
+(defun line-opener-before (rope position &key (openers tuatara.text:*opening-octets*) (reach most-positive-fixnum)
+                                             test block)
   "The last octet before POSITION of ROPE that is one of OPENERS (an opening
 bracket) at the start of a line, and for which TEST, a function of its
 offset, is true when given; looked for no further than REACH octets back. NIL
@@ -389,20 +380,20 @@ into one array."
                (setf low high)))
     (values nil (and (< ceiling size) :far))))
 
-(defun line-bracket-before (buffer syntax position)
+(defun line-bracket-before (buffer syntax position block)
   "The last opening bracket before POSITION in BUFFER that begins a line and
 a definition (BRACKET-DEFINITION-P); NIL when there is none, with :FAR as a
-second value when none is within *TEXT-SCAN-LIMIT* octets."
-  (line-opener-before (tuatara.buffer:buffer-text buffer) position :reach *text-scan-limit*
-                                                                   :test (lambda (j) (bracket-definition-p syntax j))
-                                                                   :block (make-array 65537 :element-type '(unsigned-byte 8))))
+second value when none is within *TEXT-SCAN-LIMIT* octets. BLOCK is octets
+to read into, at least 65,537 of them."
+  (line-opener-before (tuatara.buffer:buffer-text buffer) position
+                      :reach *text-scan-limit* :test (lambda (j) (bracket-definition-p syntax j)) :block block))
 
 (defun line-bracket-after (buffer syntax position)
   "The first opening bracket after POSITION in BUFFER that begins a line and
 a definition (BRACKET-DEFINITION-P); NIL when there is none, with :FAR as a
 second value when none is within *TEXT-SCAN-LIMIT* octets."
-  (line-opener-after (tuatara.buffer:buffer-text buffer) position :reach *text-scan-limit*
-                                                                  :test (lambda (j) (bracket-definition-p syntax j))))
+  (line-opener-after (tuatara.buffer:buffer-text buffer) position
+                     :reach *text-scan-limit* :test (lambda (j) (bracket-definition-p syntax j))))
 
 (defun bracket-definition-start (buffer position count)
   "The start of the definition COUNT back from POSITION in BUFFER, for
@@ -413,11 +404,13 @@ value. With too few, the start of the text (its end), and NIL, or POSITION and
   (let ((syntax (ready-syntax buffer))
         (p position))
     (cond ((plusp count)
-           (dotimes (i count (values p t))
-             (multiple-value-bind (q far) (line-bracket-before buffer syntax p)
-               (cond (q (setf p q))
-                     (far (return (values position :far)))
-                     (t (return (values 0 nil)))))))
+           (let ((block (make-array 65537 :element-type '(unsigned-byte 8))))
+             (declare (dynamic-extent block))
+             (dotimes (i count (values p t))
+               (multiple-value-bind (q far) (line-bracket-before buffer syntax p block)
+                 (cond (q (setf p q))
+                       (far (return (values position :far)))
+                       (t (return (values 0 nil))))))))
           ((minusp count)
            (dotimes (i (- count) (values p t))
              (multiple-value-bind (q far) (line-bracket-after buffer syntax p)
@@ -448,7 +441,7 @@ when the looking stopped at its limit (see BEGINNING-OF-DEFUN)."
   "POSITION, a definition's end, moved as \\[end-of-defun] leaves point: on
 past spaces and tabs, and past the line end when only a comment or nothing
 follows."
-  (if (line-start-p buffer position)
+  (if (tuatara.text:rope-line-start-p (tuatara.buffer:buffer-text buffer) position)
       position
       (let ((p (skip-blanks buffer position :octets '(32 9))))
         (if (or (member (tuatara.buffer:buffer-char-at buffer p) '(#\Newline #\Return)) (comment-marker-at-p buffer p))

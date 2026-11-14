@@ -308,6 +308,18 @@ each of them and at the end, the editor woken to redraw."
            (is = 4 start)
            (is = 12 end))
       (tuatara.buffer:kill-buffer b)))
+  ;; the reach either side ends on a character, never inside one of two octets
+  (let* ((text (format nil "~a kupu ~a" (make-string 300 :initial-element #\LATIN_SMALL_LETTER_A_WITH_MACRON)
+                       (make-string 300 :initial-element #\LATIN_SMALL_LETTER_A_WITH_MACRON)))
+         (b (tuatara.buffer:make-buffer "spell-reach-macrons" :text text))
+         (kupu (tuatara.text:string-octet-length text :end (search "kupu" text))))
+    (unwind-protect
+         (progn
+           (multiple-value-bind (start end) (tuatara.defaults::whole-words-segment b (+ kupu 2) (+ kupu 2))
+             (is = kupu start)
+             (is = (+ kupu 4) end))
+           (is string= "kupu" (third (tuatara.defaults::spelling-word-at b (+ kupu 2)))))
+      (tuatara.buffer:kill-buffer b)))
   ;; a word added to one language's list is right where that language is asked, not in another's
   (let ((tuatara.defaults::*spelling-answers* (make-hash-table :test 'equal :synchronized t))
         (tuatara.defaults::*speller* (cons sb-thread:*current-thread* (sb-concurrency:make-mailbox))))

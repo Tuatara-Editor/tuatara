@@ -47,10 +47,12 @@ while its cross-references, contents and outline are still changing.")
 (defparameter *latex-error-lines* 60
   "The most lines of a LaTeX program's errors shown in *LaTeX errors*.")
 
-(defparameter *latex-carried-settings* '(*latex-engines* *latex-runs* *latex-error-lines* *export-trusted-directories*
-                                         *sandbox* tuatara.io::*bwrap-name*)
+(defparameter *latex-carried-settings*
+  (append tuatara.io:*sandbox-carried-settings*
+          '(*latex-engines* *latex-runs* *latex-error-lines* *export-trusted-directories*))
   "The settings an export reads as it works, carried to the thread it works on
-as they are on the editor's when it starts (TUATARA.RUNTIME:CARRY-SETTINGS).")
+as they are on the editor's when it starts (TUATARA.RUNTIME:CARRY-SETTINGS):
+the sandbox's, and those of the export.")
 
 ;;; The programs
 
@@ -83,8 +85,8 @@ release first, for a program of *LATEX-ENGINES* the PATH does not have.")
           (let ((bin (tuatara.io:path-join (tuatara.io:path-join root release) "bin/")))
             (dolist (platform (tuatara.io:directory-entries bin))
               (when (eq (second platform) :directory)
-                (let ((found (tuatara.io:find-program
-                              (tuatara.io:path-join (tuatara.io:path-join bin (concatenate 'string (first platform) "/")) name))))
+                (let* ((directory (tuatara.io:path-join bin (concatenate 'string (first platform) "/")))
+                       (found (tuatara.io:find-program (tuatara.io:path-join directory name))))
                   (when found (return-from tex-live-program found)))))))))))
 
 (defun latex-engines-found ()
@@ -102,9 +104,11 @@ the programs found, and whether they run shut in by the sandbox."
   (let ((engines (latex-engines-found)))
     (if engines
         (multiple-value-bind (status detail) (tuatara.io:sandbox-status)
-          (format nil "PDFs of Org and LaTeX by ~{~a~^, then ~}, ~:[unconfined (~a): a document could read any of your files~;shut in by the sandbox~*~]"
+          (format nil "PDFs of Org and LaTeX by ~{~a~^, then ~}, ~:[unconfined (~a): a document could read any of ~
+your files~;shut in by the sandbox~*~]"
                   (mapcar #'cdr engines) (eq status :ready) detail))
-        (format nil "PDFs of Org and LaTeX by none of ~{~a~^, ~}, on the PATH or in TeX Live's directories: ~a, or give their paths in *latex-engines*"
+        (format nil "PDFs of Org and LaTeX by none of ~{~a~^, ~}, on the PATH or in TeX Live's directories: ~a, or ~
+give their paths in *latex-engines*"
                 (latex-engine-names) (outside-program-install-words :latex)))))
 
 (defun tex-program-beside (path name)
@@ -161,7 +165,8 @@ LaTeX, as M-x check-health says it; NIL when TeX Live cannot be asked."
       (flet ((names (present)
                (format nil "~{~a~^, ~}"
                        (loop for row in *export-languages*
-                             when (eq present (and (member (fifth row) found :test #'string=) t)) collect (first row)))))
+                             when (eq present (and (member (fifth row) found :test #'string=) t))
+                             collect (first row)))))
         (format nil "Hyphenation in PDFs by #+language: ~a~@[; patterns missing for ~a~]"
                 (names t) (let ((missing (names nil))) (and (plusp (length missing)) missing)))))))
 
@@ -175,7 +180,8 @@ a name in lower case; NIL when it says none."
           (let ((at (search mark text :test #'char-equal)))
             (when at
               (let* ((start (+ at (length mark)))
-                     (end (or (position-if (lambda (c) (member c '(#\Newline #\Return #\Space #\Tab))) text :start start)
+                     (end (or (position-if (lambda (c) (member c '(#\Newline #\Return #\Space #\Tab))) text
+                                           :start start)
                               (length text))))
                 (return (string-downcase (subseq text start end)))))))))))
 
@@ -189,9 +195,9 @@ PATH), the one TEX says it is meant for first."
 
 ;;; The job
 
-(defstruct (pdf-export (:include tuatara.runtime:job)
-                       (:constructor make-pdf-export (buffer source kind then save rope enhanced))
-                       (:copier nil))
+(define-record (pdf-export (:include tuatara.runtime:job)
+                          (:constructor make-pdf-export (buffer source kind then save rope enhanced))
+                          (:copier nil))
   "A PDF being made of SOURCE, the file of BUFFER, a job (TUATARA.RUNTIME:JOB):
 KIND :ORG or :LATEX. THEN what is done with the PDF, :FILE (nothing), :VIEW
 \(shown beside), :OUTSIDE (opened in the desktop's program), or :LATEX-ONLY, no
@@ -209,11 +215,34 @@ subtree \"Findings\"), with ORIGINS, the line of the file each line of its text
 comes from, a vector, and LINES, the file's lines, for what is said of them.
 TRUSTED, the texts of its template and setup files that are your own, and
 PICTURES, the files its pictures are drawn from (ORG-LATEX-DOCUMENT). AFTER,
-a function of the job called once the PDF is made and THEN done, or NIL."
-  source kind then save rope enhanced (step "starting") tex text map pdf engine (failed '()) errors
-  (missing '()) (notes '()) part origins lines (trusted '()) (pictures '()) after)
-
-(setf (documentation 'pdf-export-p 'function) "True when OBJECT is a PDF-EXPORT.")
+a function of the job called once the PDF is made and THEN done, or NIL.
+LINE-STARTS, where each line of TEXT begins (TEXT-LINE-STARTS), once asked."
+  (source nil :documentation "The file of the buffer PDF-EXPORT makes a PDF of.")
+  (kind nil :documentation "The kind of the source, :ORG or :LATEX.")
+  (then nil
+        :documentation "What is done with the PDF: :FILE (nothing), :VIEW (shown beside), :OUTSIDE (opened in the
+desktop's program) or :LATEX-ONLY.")
+  (save nil :documentation "The save of the buffer PDF-EXPORT waits for first, or NIL.")
+  (rope nil :documentation "The text of an Org buffer as it was when the export was asked for.")
+  (enhanced nil :documentation "True for Tuatara's own improvements on Org's LaTeX.")
+  (step "starting" :documentation "What PDF-EXPORT does now, in words.")
+  (tex nil :documentation "The LaTeX file PDF-EXPORT writes.")
+  (text nil :documentation "The Org text written as LaTeX.")
+  (map nil :documentation "Which place in the text of PDF-EXPORT each of its lines comes from (ORG-LATEX-DOCUMENT).")
+  (pdf nil :documentation "The PDF made by PDF-EXPORT.")
+  (engine nil :documentation "The program that made the PDF.")
+  (failed '() :documentation "The programs that failed before.")
+  (errors nil :documentation "What each failed program said, (PROGRAM . ERRORS) (LATEX-ERRORS), for *LaTeX errors*.")
+  (missing '()
+           :documentation "The characters no font here has, each (CHARACTER . LINE) by the LaTeX line it is first on.")
+  (notes '() :documentation "What else to say of PDF-EXPORT.")
+  (part nil :documentation "The words for a part exported alone, as the subtree \"Findings\", or NIL.")
+  (origins nil :documentation "The line of the file each line of the text of a part comes from, a vector.")
+  (lines nil :documentation "The lines of the file, for what is said of them.")
+  (trusted '() :documentation "The texts of the template and setup files that are your own.")
+  (pictures '() :documentation "The files the pictures of PDF-EXPORT are drawn from (ORG-LATEX-DOCUMENT).")
+  (after nil :documentation "A function of the job called once the PDF is made and THEN done, or NIL.")
+  (line-starts nil :documentation "Where each line of the text of PDF-EXPORT begins (TEXT-LINE-STARTS), once asked."))
 
 (defun export-name (job)
   "The name of the file JOB makes a PDF of."
@@ -224,16 +253,13 @@ a function of the job called once the PDF is made and THEN done, or NIL."
   (if (eq kind :latex) "Compiling" "Exporting"))
 
 (tuatara.runtime:define-job-words pdf-export
-  :doing (export-doing (pdf-export-kind job))
-  :description (format nil
-                       "~a ~@[~a of ~]~a to ~a"
-                       (export-doing (pdf-export-kind job))
-                       (pdf-export-part job)
-                       (export-name job)
-          (export-target-words job))
-  :verb (format nil "~(~a~) ~a to ~a" (if (eq (pdf-export-kind job) :latex) "compile" "export") (export-name job)
-          (export-target-words job))
-  :left-words "the PDF is as it was")
+    :doing (export-doing (pdf-export-kind job))
+    :description (format nil "~a ~@[~a of ~]~a to ~a" (export-doing (pdf-export-kind job)) (pdf-export-part job)
+                         (export-name job) (export-target-words job))
+    :verb (format nil "~(~a~) ~a to ~a" (if (eq (pdf-export-kind job) :latex) "compile" "export") (export-name job)
+                  (export-target-words job))
+    :left-words "the PDF is as it was")
+
 (defmethod tuatara.runtime:job-state-words ((job pdf-export))
   "What an export is doing now, and at which step, in words."
   (format nil "~a: ~a" (export-doing (pdf-export-kind job)) (pdf-export-step job)))
@@ -241,6 +267,7 @@ a function of the job called once the PDF is made and THEN done, or NIL."
 (defun export-target-words (job)
   "What JOB makes, in a word: LaTeX for an export that stops at the LaTeX file, else PDF."
   (if (eq (pdf-export-then job) :latex-only) "LaTeX" "PDF"))
+
 (defmethod tuatara.runtime:job-holds-queue-p ((job pdf-export))
   "An export holds back no other work on its buffer: it only reads the note."
   nil)
@@ -297,14 +324,28 @@ them taken apart."
   (loop for part in (uiop:split-string value :separator '(#\: #\; #\, #\{ #\}))
         for path = (string-right-trim "/" (string-left-trim "!" (string-trim " " part)))
         when (and (plusp (length path)) (char= #\/ (char path 0)))
-          collect path))
+        collect path))
 
 (defun shown-whole-p (directory)
   "True when DIRECTORY may be shown whole to a LaTeX program shut in: neither
-the root, nor your home directory, nor a directory holding it."
+the root, nor your home directory, nor a directory holding it, nor a place
+the sandbox shows no program (TUATARA.IO:SHOWN-PLACE-P), such as /tmp or
+your runtime directory (XDG_RUNTIME_DIR), where other programs keep the
+sockets they are reached by."
   (let ((real (tuatara.io:real-place directory))
         (home (tuatara.io:real-place (latex-home))))
-    (not (or (string= real "") (string= real home) (uiop:string-prefix-p (concatenate 'string real "/") home)))))
+    (not (or (string= real "") (string= real home) (uiop:string-prefix-p (concatenate 'string real "/") home)
+             (not (tuatara.io:shown-place-p real))))))
+
+(defun trusted-export-directories (&key whole)
+  "The directories *EXPORT-TRUSTED-DIRECTORIES* names, expanded, as native
+paths; with WHOLE, only those that may be shown whole (SHOWN-WHOLE-P). One
+that cannot be expanded is left out, and that reported."
+  (loop for directory in *export-trusted-directories*
+        for native = (ignoring-errors-reported ("expanding ~a" directory)
+                                               (tuatara.io:native (tuatara.io:expand-path directory)))
+        when (and native (or (not whole) (shown-whole-p native)))
+        collect native))
 
 (defun tex-settings-said (path)
   "What the kpsewhich beside the LaTeX program at PATH says TeX's directories
@@ -349,7 +390,7 @@ already, are left out, and so are those not to be shown whole
                                         (list '() nil))))
                         (if kept (setf (gethash key *tex-trees*) found) found))))))
     (flet ((system-p (directory) (or (string= directory "/usr") (uiop:string-prefix-p "/usr/" directory)
-                                  (not (shown-whole-p directory)))))
+                                     (not (shown-whole-p directory)))))
       (values (remove-duplicates (cons own (remove-if #'system-p (first found))) :test #'string= :from-end t)
               (let ((var (second found))) (and var (not (system-p var)) var))))))
 
@@ -361,7 +402,8 @@ latex-texmf-var/, never in VAR, so that a document cannot leave there what a
 LaTeX program run outside the sandbox would then read. As two values, the
 entries for SANDBOX-RUN's OVERLAYS and WRITABLE (VAR made in the editor's
 directory where VAR is not there yet)."
-  (let* ((mine (private-cache-directory (format nil "latex-texmf-var/~a-~36r/" (tuatara.io:native-file-name var) (sxhash var))))
+  (let* ((mine (private-cache-directory (format nil "latex-texmf-var/~a-~36r/" (tuatara.io:native-file-name var)
+                                                (sxhash var))))
          (upper (string-right-trim "/" (tuatara.io:ensure-private-directory (tuatara.io:path-join mine "upper"))))
          (work (string-right-trim "/" (tuatara.io:ensure-private-directory (tuatara.io:path-join mine "work")))))
     (if (eq :directory (tuatara.io:path-kind var))
@@ -384,28 +426,39 @@ of its program's), up to 64 MB of it; NIL when it is not there or cannot be
 read."
   (and (eq :regular (tuatara.io:path-kind path))
        (ignoring-errors-reported ("reading ~a" path)
-         (tuatara.io:file-text path :limit (* 64 1024 1024)))))
+                                 (tuatara.io:file-text path :limit (* 64 1024 1024)))))
+
+(defun included-picture-names (text)
+  "The names TEXT, LaTeX, includes pictures by (\\includegraphics), in order."
+  (let ((names '()))
+    (cl-ppcre:do-register-groups (name) ("\\\\includegraphics\\s*(?:\\[[^\\]]*\\])?\\s*\\{([^}\\n]+)\\}" text)
+                                 (push name names))
+    (nreverse names)))
 
 (defun latex-picture-files (tex trusted)
   "The files the LaTeX document TEX includes as pictures (\\includegraphics) by
-a full name or one from your home directory (~/), written so in one of TRUSTED, the
-texts of its template and setup files that are your own, and which are pictures
-or PDFs by their contents (*LATEX-PICTURE-FILE-KINDS*). Those are the files a
-LaTeX program shut in is shown, each alone and read only, wherever they are. A
-note's own text, or a file that came with it, cannot have a file of yours from
-elsewhere shown, however it writes its name."
-  (let ((text (export-file-text tex))
-        (files '()))
-    (when text
-      (cl-ppcre:do-register-groups (name) ("\\\\includegraphics\\s*(?:\\[[^\\]]*\\])?\\s*\\{([^}\\n]+)\\}" text)
-        (let ((native (and (or (uiop:string-prefix-p "/" name) (uiop:string-prefix-p "~/" name))
-                           (some (lambda (own) (search name own)) trusted)
-                           (ignoring-errors-reported ("expanding ~a" name)
-                             (tuatara.io:native (tuatara.io:expand-path name))))))
-          (when (and native (member (nth-value 1 (ignoring-errors-reported ("reading ~a" native) (file-kind native)))
-                                    *latex-picture-file-kinds*))
-            (pushnew native files :test #'string=)))))
-    (nreverse files)))
+a full name or one from your home directory (~/), which one of TRUSTED, the
+texts of its template and setup files that are your own, includes as a
+picture by a name for the same file, and which are pictures or PDFs by their
+contents (*LATEX-PICTURE-FILE-KINDS*). Those are the files a LaTeX program
+shut in is shown, each alone and read only, wherever they are. A note's own
+text, or a file that came with it, cannot have a file of yours from elsewhere
+shown, however it writes its name."
+  (flet ((native (name)
+           (and (or (uiop:string-prefix-p "/" name) (uiop:string-prefix-p "~/" name))
+                (ignoring-errors-reported ("expanding ~a" name)
+                                          (tuatara.io:native (tuatara.io:expand-path name))))))
+    (let ((text (export-file-text tex))
+          (own (remove nil (mapcar #'native (mapcan #'included-picture-names trusted))))
+          (files '()))
+      (when text
+        (dolist (name (included-picture-names text))
+          (let ((native (native name)))
+            (when (and native (member native own :test #'string=)
+                       (member (nth-value 1 (ignoring-errors-reported ("reading ~a" native) (file-kind native)))
+                               *latex-picture-file-kinds*))
+              (pushnew native files :test #'string=)))))
+      (nreverse files))))
 
 (defun tex-program-places (path directory)
   "What the TeX program at PATH, working in DIRECTORY, is shown, shut in,
@@ -442,10 +495,7 @@ alone, read only."
     (list :directories (append (let ((dirs (list (tuatara.io:parent-path tex)
                                                  (tuatara.io:parent-path (pdf-export-source job)))))
                                  (if (every #'shown-whole-p dirs) dirs (list tex)))
-                               (loop for dir in *export-trusted-directories*
-                                     for native = (ignoring-errors-reported ("expanding ~a" dir)
-                                                    (tuatara.io:native (tuatara.io:expand-path dir)))
-                                     when (and native (shown-whole-p native)) collect native)
+                               (trusted-export-directories :whole t)
                                (pdf-export-pictures job)
                                (latex-picture-files tex (if (eq (pdf-export-kind job) :latex)
                                                             ;; a LaTeX file of your own, in your own directories
@@ -484,7 +534,7 @@ own; TEX-SEARCH-ENVIRONMENT. And *LATEX-PASSED-ENVIRONMENT* as the editor has it
                   for name = (and at (subseq setting 0 at))
                   when (and name (not (assoc name searched :test #'string=)) (string/= name "TEXINPUTS")
                             (some (lambda (passed) (uiop:string-prefix-p passed name)) *latex-passed-environment*))
-                    collect (list name (subseq setting (1+ at)))))))
+                  collect (list name (subseq setting (1+ at)))))))
 
 (defun run-shut-in (job tex path arguments directory &key (ended-well '(0)) scratch places)
   "Run the TeX program at PATH (a LaTeX program, or one making its
@@ -511,7 +561,7 @@ temporary directory (SCRATCH-ENVIRONMENT)."
     (tuatara.runtime:job-check-stop)
     (values (eq outcome :done)
             (sandbox-outcome-words outcome said :label (tuatara.io:native-file-name path)
-                                                           :seconds-setting '*latex-sandbox-seconds*))))
+                                   :seconds-setting '*latex-sandbox-seconds*))))
 
 (defun run-unconfined (job path arguments directory environment &key (ended-well '(0)))
   "Run the TeX program at PATH with ARGUMENTS for JOB in DIRECTORY, with
@@ -519,14 +569,14 @@ ENVIRONMENT (each NAME=VALUE) in place of the editor's own of those names,
 not shut in (RUN-FOR-EXPORT). Returns two values: true when it ended well,
 with an exit code among ENDED-WELL, and else how it ended, as a sentence
 naming it."
-  (let ((code (run-for-export job path arguments
-                              :directory directory
-                              :environment (append environment
-                                                   (remove-if (lambda (v)
-                                                                (some (lambda (setting)
-                                                                        (uiop:string-prefix-p (subseq setting 0 (1+ (position #\= setting))) v))
-                                                                      environment))
-                                                              (tuatara.io:program-environment))))))
+  (let* ((names (mapcar (lambda (setting) (subseq setting 0 (1+ (position #\= setting)))) environment))
+         (code (run-for-export job path arguments
+                               :directory directory
+                               :environment (append environment
+                                                    (remove-if (lambda (v)
+                                                                 (some (lambda (name) (uiop:string-prefix-p name v))
+                                                                       names))
+                                                               (tuatara.io:program-environment))))))
     (values (and (member code ended-well) t)
             (format nil "~a ended with exit code ~a" (tuatara.io:native-file-name path) code))))
 
@@ -584,24 +634,27 @@ points."
         (refuse "~a does not exist (#+export_file_name)" (tuatara.io:parent-path path)))))
 
 (defun org-to-latex (job engine)
-  "Write the Org text of JOB as LaTeX for the program ENGINE (ORG-LATEX-DOCUMENT),
+  "Write the Org text of JOB as LaTeX for the program ENGINE (ORG-LATEX-PARTS),
 beside its file or where its #+export_file_name says; returns the LaTeX
 file's full name."
   (setf (pdf-export-step job) "writing LaTeX")
   (let ((source (pdf-export-source job))
         (text (let ((rope (pdf-export-rope job))) (if (stringp rope) rope (tuatara.text:rope-string rope)))))
-    (multiple-value-bind (latex named map missing notes trusted pictures language)
-        (org-latex-document text :file source :engine engine :enhanced (pdf-export-enhanced job)
-                                 :lines (pdf-export-origins job))
-      (let ((note (and language (latex-language-patterns-note engine language))))
-        (when note (setf notes (append notes (list note)))))
-      (setf (pdf-export-text job) text (pdf-export-map job) map (pdf-export-missing job) missing
-            (pdf-export-notes job) notes (pdf-export-trusted job) trusted (pdf-export-pictures job) pictures)
-      (let ((tex (or named (replaced-type source "tex"))))
-        (check-export-directory tex)
-        (tuatara.runtime:job-check-stop)
-        (tuatara.io:replace-file tex latex)
-        tex))))
+    (let* ((parts (org-latex-parts text :file source :engine engine :enhanced (pdf-export-enhanced job)
+                                   :lines (pdf-export-origins job)))
+           (language (getf parts :language))
+           (note (and language (latex-language-patterns-note engine language)))
+           (tex (or (getf parts :output) (replaced-type source "tex"))))
+      (setf (pdf-export-text job) text
+            (pdf-export-map job) (getf parts :map)
+            (pdf-export-missing job) (getf parts :missing)
+            (pdf-export-notes job) (append (getf parts :notes) (and note (list note)))
+            (pdf-export-trusted job) (getf parts :trusted)
+            (pdf-export-pictures job) (getf parts :pictures))
+      (check-export-directory tex)
+      (tuatara.runtime:job-check-stop)
+      (tuatara.io:replace-file tex (getf parts :latex))
+      tex)))
 
 (defun latex-build-place (tex)
   "The directory under latex/ in the cache directory that holds the working
@@ -629,8 +682,8 @@ there is none, as for a PDF made elsewhere."
          (place (latex-build-place tex))
          (best nil) (best-time 0))
     (when pdf
-      (dolist (entry (ignoring-errors-reported ("listing ~a" place)
-                       (handler-case (tuatara.io:directory-entries place) (tuatara.io:file-system-error () nil))))
+      ;; no working files yet is as normal as none of the right size
+      (dolist (entry (handler-case (tuatara.io:directory-entries place) (tuatara.io:file-system-error () nil)))
         (when (eq (second entry) :directory)
           (let* ((directory (tuatara.io:path-join place (concatenate 'string (first entry) "/")))
                  (synctex (tuatara.io:path-join directory (concatenate 'string stem ".synctex")))
@@ -664,15 +717,16 @@ where it says what went wrong and whether to run it again.")
 octets, from the first line that begins within them; an empty string when
 there is none."
   (or (ignoring-errors-reported ("reading ~a" log)
-        (tuatara.io:call-with-file
-         log
-         (lambda (fd path size)
-           (let* ((from (max 0 (- size *latex-log-tail*)))
-                  (octets (make-array (- size from) :element-type '(unsigned-byte 8)))
-                  (text (tuatara.text:lenient-string octets :end (tuatara.io:read-fd-at fd octets from :path path))))
-             (if (plusp from)
-                 (subseq text (1+ (or (position #\Newline text) (1- (length text)))))
-                 text)))))
+                                (tuatara.io:call-with-file
+                                 log
+                                 (lambda (fd path size)
+                                   (let* ((from (max 0 (- size *latex-log-tail*)))
+                                          (octets (make-array (- size from) :element-type '(unsigned-byte 8)))
+                                          (read (tuatara.io:read-fd-at fd octets from :path path))
+                                          (text (tuatara.text:lenient-string octets :end read)))
+                                     (if (plusp from)
+                                         (subseq text (1+ (or (position #\Newline text) (1- (length text)))))
+                                         text)))))
       ""))
 
 (defun latex-errors (log)
@@ -698,8 +752,9 @@ say it stopped (Emergency stop)."
                       (let ((at (loop for j from (1+ i) below (min (length lines) (+ i 12))
                                       for l = (aref lines j)
                                       when (cl-ppcre:scan "^l\\.[0-9]+" l)
-                                        return (parse-integer l :start 2 :junk-allowed t))))
-                        (push (list :file nil :line at :message (string-left-trim "! " line) :context context) found))))))
+                                      return (parse-integer l :start 2 :junk-allowed t))))
+                        (push (list :file nil :line at :message (string-left-trim "! " line) :context context)
+                              found))))))
     ;; what only says that it stopped, after an error said already
     (last (remove-if (lambda (problem)
                        (cl-ppcre:scan "^\\s*(?:==> Fatal error occurred|Emergency stop)" (getf problem :message)))
@@ -717,11 +772,7 @@ say it stopped (Emergency stop)."
   "The directories the programs making a bibliography and index, of the TeX the
 LaTeX program at ENGINE belongs to, read shut in, besides the directory of the
 LaTeX file: those of *EXPORT-TRUSTED-DIRECTORIES* and TeX's own (TEX-TREES)."
-  (append (loop for directory in *export-trusted-directories*
-                for native = (ignoring-errors-reported ("expanding ~a" directory)
-                               (tuatara.io:native (tuatara.io:expand-path directory)))
-                when native collect native)
-          (tex-trees engine)))
+  (append (trusted-export-directories) (tex-trees engine)))
 
 (defun document-file (name base directories)
   "The full name of the file NAME, as a document or a program working for it
@@ -774,9 +825,9 @@ the program is run: the sums then say nothing of whether it has anything new."
                              when (and (null path) (string= format (cdr file))) collect (car file))
           for found = (tex-files-found engine tex wanted format directory)
           do (when (eq found :unknown) (return-from inputs-sum nil))
-             (tuatara.runtime:job-check-stop)
-             (loop for (nil . path) in found
-                   do (push (or (and path (file-sha256 path)) "-") sums)))
+          (tuatara.runtime:job-check-stop)
+          (loop for (nil . path) in found
+                do (push (or (and path (file-sha256 path)) "-") sums)))
     (dolist (path local)
       (when path (push (or (file-sha256 path) "-") sums)))
     (format nil "~{~a~^ ~}" (nreverse sums))))
@@ -815,9 +866,10 @@ true for one that keeps files of its own between runs (biber unpacks itself)."
          (names (regex text &optional (type "bib"))
            (let ((names '()))
              (cl-ppcre:do-register-groups (list) (regex text)
-               (dolist (name (uiop:split-string list :separator ","))
-                 (let ((name (string-trim " " name)))
-                   (when (plusp (length name)) (push (cons (with-type name type) type) names)))))
+                                          (dolist (name (uiop:split-string list :separator ","))
+                                            (let ((name (string-trim " " name)))
+                                              (when (plusp (length name))
+                                                (push (cons (with-type name type) type) names)))))
              (nreverse names))))
     (let ((bcf (export-file-text (file "bcf")))
           (bibtex (bibtex-lines directory (file "aux")))
@@ -858,7 +910,7 @@ LaTeX file, from which a name is taken) or DIRECTORIES."
                       ;; biber says each bibliography it reads by its full name, then reads a copy of it made in
                       ;; a directory of its own: its errors name the copy, taken back to the last read of that name
                       (cl-ppcre:register-groups-bind (source) ("Found BibTeX data source '([^']+)'" line)
-                        (push source sources))
+                                                     (push source sources))
                       (let ((at (search "ERROR - " line)))
                         (when at
                           (let ((message (cl-ppcre:regex-replace-all "\\S*/([^/\\s]+\\.bib)_[0-9]+\\.utf8"
@@ -867,7 +919,7 @@ LaTeX file, from which a name is taken) or DIRECTORIES."
                                 (cl-ppcre:scan-to-strings "([^\\s,]+\\.bib), line ([0-9]+)" message)
                               (put message
                                    (and match (or (find (aref parts 0) sources :key #'tuatara.io:native-file-name
-                                                                               :test #'string=)
+                                                        :test #'string=)
                                                   (aref parts 0)))
                                    (and match (parse-integer (aref parts 1)))))))))
                      ((string= name "bibtex")
@@ -896,18 +948,15 @@ making its bibliography or index last read when it went well, an alist of
         for at = (position #\Space line)
         when at collect (cons (subseq line 0 at) (subseq line (1+ at)))))
 
-(defstruct (helper-runs (:constructor make-helper-runs ()) (:copier nil))
+(define-record (helper-runs (:constructor make-helper-runs ()) (:copier nil))
   "What the programs making a PDF's bibliography and index did for one try at
 making it (RUN-LATEX): TRIED, each (NAME . SUM) run; FAILURES, the last
 failure of each that has not gone well since, (NAME . PROBLEMS) as
 HELPER-PROBLEMS gives them, in order."
-  (tried '())
-  (failures '()))
-
-(setf (documentation 'helper-runs-p 'function) "True when OBJECT is a HELPER-RUNS."
-      (documentation 'helper-runs-tried 'function) "The programs a HELPER-RUNS has run, each (NAME . SUM)."
-      (documentation 'helper-runs-failures 'function)
-      "The last failure of each program of a HELPER-RUNS not gone well since, each (NAME . PROBLEMS).")
+  (tried '() :documentation "The programs a HELPER-RUNS has run, each (NAME . SUM).")
+  (failures '()
+            :documentation "The last failure of each program of a HELPER-RUNS not
+gone well since, each (NAME . PROBLEMS)."))
 
 (defun made-from-file (directory &optional (type "made-from"))
   "The file of the editor's own beside the working directory DIRECTORY of a PDF,
@@ -976,7 +1025,7 @@ itself be a link to another program that reads its name): so that it, its
 directory and the directories of TeX kpsewhich names agree. PATH as it is when its
 directory is not there."
   (let ((directory (ignoring-errors-reported ("finding where ~a is" path)
-                  (tuatara.io:real-path (tuatara.io:parent-path path)))))
+                                             (tuatara.io:real-path (tuatara.io:parent-path path)))))
     (if directory (tuatara.io:path-join directory (tuatara.io:native-file-name path)) path)))
 
 (defun run-latex (job tex engine path)
@@ -1018,35 +1067,35 @@ off by *sandbox*), it is run not shut in only when you have said yes
              ;; what says which bibliography and index to make counts only when this try writes it
              (dolist (file (list pdf (tuatara.io:path-join directory (concatenate 'string stem ".bcf"))
                                  (tuatara.io:path-join directory (concatenate 'string stem ".idx"))))
-               (ignoring-errors-reported ("deleting ~a" file)
-                 (handler-case (tuatara.io:remove-file file) (tuatara.io:file-system-error () nil))))
+               (ignoring-errors-reported ("deleting ~a" file) (tuatara.io:remove-file-if-there file)))
              (loop for run from 1
                    while (<= run last)
                    do (setf (pdf-export-step job) (format nil "running ~a~:[~*~; (~:r time)~]" engine (> run 1) run))
-                      (let ((before (cross-references directory stem)))
-                        (multiple-value-bind (ended how) (run-tex-program job tex path arguments directory shut-in)
-                          (let ((said (latex-log-text log)))
-                            (unless (and ended (tuatara.io:path-stamp pdf))
-                              (return (values nil (or (latex-errors said)
-                                                      (list (list :message (format nil "~a~:[ and wrote no log~;~]"
-                                                                                   (or how (format nil "~a made no PDF" engine))
-                                                                                   (plusp (length said)))))))))
-                            (let ((helped (make-bibliography-and-index job tex path directory stem shut-in runs)))
-                              ;; what they made is taken in by one more run, past the most if need be
-                              (when (and helped (= run last *latex-runs*))
-                                (incf last))
-                              (unless (or helped (rerun-asked-p said)
-                                          (not (equalp before (cross-references directory stem))))
-                                (return (values pdf nil (helper-runs-failures runs))))))))
+                   (let ((before (cross-references directory stem)))
+                     (multiple-value-bind (ended how) (run-tex-program job tex path arguments directory shut-in)
+                       (let ((said (latex-log-text log)))
+                         (unless (and ended (tuatara.io:path-stamp pdf))
+                           (return (values nil (or (latex-errors said)
+                                                   (let ((how (or how (format nil "~a made no PDF" engine))))
+                                                     (list (list :message (format nil "~a~:[ and wrote no log~;~]"
+                                                                                  how (plusp (length said))))))))))
+                         (let ((helped (make-bibliography-and-index job tex path directory stem shut-in runs)))
+                           ;; what they made is taken in by one more run, past the most if need be
+                           (when (and helped (= run last *latex-runs*))
+                             (incf last))
+                           (unless (or helped (rerun-asked-p said)
+                                       (not (equalp before (cross-references directory stem))))
+                             (return (values pdf nil (helper-runs-failures runs))))))))
                    finally (return (values pdf nil (helper-runs-failures runs))))))
       (let ((had-files (some #'identity (cross-references directory stem))))
         (multiple-value-bind (made why failures) (attempt)
           (if (or made (not had-files))
               (values made why failures)
               (progn (dolist (entry (ignoring-errors-reported ("listing ~a" directory)
-                                      (tuatara.io:directory-entries directory)))
-                       (ignoring-errors-reported ("deleting ~a~a" directory (first entry))
-                         (tuatara.io:delete-tree (tuatara.io:path-join directory (first entry)))))
+                                                              (tuatara.io:directory-entries directory)))
+                       (let ((path (tuatara.io:path-join directory (first entry))))
+                         (ignoring-errors-reported ("deleting ~a" path)
+                                                   (tuatara.io:delete-tree path))))
                      (attempt))))))))
 
 (defun put-pdf (made target)
@@ -1060,6 +1109,24 @@ of TARGET reads either the old PDF or the new, never half of one."
       (error (e)
         (ignoring-errors-reported ("deleting ~a" temporary) (tuatara.io:remove-file temporary))
         (error e)))))
+
+(defun text-line-starts (text)
+  "Where each line of TEXT begins, a vector of positions, the first 0."
+  (let ((starts (make-array 64 :adjustable t :fill-pointer 0)))
+    (vector-push-extend 0 starts)
+    (loop for at = (position #\Newline text) then (position #\Newline text :start (1+ at))
+          while at
+          do (vector-push-extend (1+ at) starts))
+    starts))
+
+(defun line-index-at (starts position)
+  "Which line, from 0, of those beginning at STARTS (TEXT-LINE-STARTS) holds
+POSITION: found by halves."
+  (let ((low 0) (high (length starts)))
+    (loop while (< (1+ low) high)
+          do (let ((middle (floor (+ low high) 2)))
+               (if (<= (aref starts middle) position) (setf low middle) (setf high middle))))
+    low))
 
 (defun error-place (job problem)
   "Where PROBLEM, one of LATEX-ERRORS, is in what JOB was asked to make a PDF
@@ -1080,7 +1147,10 @@ with no line."
            (let* ((map (pdf-export-map job))
                   (entry (find-if (lambda (e) (<= (first e) line)) map :from-end t))
                   (text (pdf-export-text job)))
-             (flet ((line-at (position) (1+ (count #\Newline text :end (min (length text) position)))))
+             (flet ((line-at (position)
+                      (1+ (line-index-at (or (pdf-export-line-starts job)
+                                             (setf (pdf-export-line-starts job) (text-line-starts text)))
+                                         position))))
                (let ((at (if entry
                              ;; an element's lines go to LaTeX one for one, as near as can be told: counted on, within
                              ;; it
@@ -1149,30 +1219,13 @@ it in turn until one does, put beside the LaTeX file."
     ;; the first problem the first program met, where it is in what was written
     (let ((first (first (cdr (assoc (car (last (pdf-export-failed job))) (pdf-export-errors job) :test #'string=)))))
       (refuse "~{~a~^ and ~} failed~@[ (~a)~]; *LaTeX errors* has what they said"
-             (reverse (pdf-export-failed job)) (and first (error-words job first))))))
-
-(defun show-buffer-place (buffer position)
-  "Show BUFFER in another window, selected, point at POSITION, its line in the
-middle; widened first, and that said, when POSITION is outside the part of it
-shown."
-  (pop-to-buffer buffer :other t)
-  (when (eq buffer (tuatara.display:window-buffer (current-window)))
-    (goto-shown buffer (min position (tuatara.buffer:buffer-size buffer)))
-    (tuatara.display:window-recenter (current-window))))
-
-(defun show-place-beside (buffer position stay)
-  "Show BUFFER in another window, point at POSITION, its line in the middle:
-that window selected, or with STAY the selected window kept."
-  (let ((here (current-window)))
-    (show-buffer-place buffer position)
-    (when (and stay (member here (editor-windows)))
-      (select-window here))))
+              (reverse (pdf-export-failed job)) (and first (error-words job first))))))
 
 (defun helpers-failed (job)
   "The names of the programs making JOB's bibliography or index that failed, in order."
   (loop for (program) in (pdf-export-errors job)
         unless (member program (pdf-export-failed job) :test #'string=)
-          collect program))
+        collect program))
 
 (defun show-latex-errors (job)
   "Show what the programs of JOB that failed said, in *LaTeX errors*, a list
@@ -1188,22 +1241,22 @@ through, each problem with a place one of them."
          (lambda (put)
            (loop for (engine . errors) in (pdf-export-errors job)
                  do (funcall put "")
-                    (funcall put (format nil "~a failed:" engine) :heading (list :engine engine))
-                    (dolist (problem errors)
-                      (multiple-value-bind (file line) (error-place job problem)
-                        ;; one entry, the problem, on each of its lines
-                        (let ((entry (list :error file line)))
-                          (funcall put
-                                   (format nil
-                                           "  ~@[~a: ~]~a"
-                                           (and file (format nil "~a:~d" (tuatara.io:native-file-name file) line))
-                                           (getf problem :message))
-                                   nil entry)
-                          ;; the Org line it came from, as written
-                          (when (and file (eq (pdf-export-kind job) :org) (equal file (pdf-export-source job)))
-                            (funcall put (format nil "    | ~a" (or (nth (1- line) org-lines) "")) nil entry))
-                          (dolist (context (getf problem :context))
-                            (funcall put (format nil "    ~a" context) nil entry))))))))
+                 (funcall put (format nil "~a failed:" engine) :heading (list :engine engine))
+                 (dolist (problem errors)
+                   (multiple-value-bind (file line) (error-place job problem)
+                     ;; one entry, the problem, on each of its lines
+                     (let ((entry (list :error file line)))
+                       (funcall put
+                                (format nil
+                                        "  ~@[~a: ~]~a"
+                                        (and file (format nil "~a:~d" (tuatara.io:native-file-name file) line))
+                                        (getf problem :message))
+                                nil entry)
+                       ;; the Org line it came from, as written
+                       (when (and file (eq (pdf-export-kind job) :org) (equal file (pdf-export-source job)))
+                         (funcall put (format nil "    | ~a" (or (nth (1- line) org-lines) "")) nil entry))
+                       (dolist (context (getf problem :context))
+                         (funcall put (format nil "    ~a" context) nil entry))))))))
       (let ((list (set-search-filtering (buffer-in-mode "*LaTeX errors*" 'latex-errors-mode)
                                         :nouns "errors" :heading (lambda (entry) (eq (first entry) :engine)))))
         (render-pieces list (cons (format nil "Making a PDF of ~a~@[, written as LaTeX in ~a~]~%~{~a~%~}"
@@ -1239,7 +1292,8 @@ show what the programs said when none made it."
            (when (and view (equal (pdf-view-path view) pdf))
              (pdf-view-reload buffer))))
        (let ((helpers (helpers-failed job)))
-         (message "Wrote ~a (~a~@[; ~{~a~^ and ~} failed~]) in ~,1f s~@[; ~a~]~@[; ~{~a~^ and ~} failed: *LaTeX errors* has what ~[~;it~:;they~] said~]"
+         (message "Wrote ~a (~a~@[; ~{~a~^ and ~} failed~]) in ~,1f s~@[; ~a~]~@[; ~{~a~^ and ~} failed: *LaTeX ~
+errors* has what ~[~;it~:;they~] said~]"
                   (abbreviated-path pdf)
                   (pdf-export-engine job)
                   (reverse (pdf-export-failed job))
@@ -1302,12 +1356,8 @@ such part (no headline at point)."
     (let* ((tree (org-parse-tree parse))
            (text (org-parse-text parse))
            (lines (coerce (uiop:split-string text :separator '(#\Newline)) 'vector))
-           (starts (let ((v (make-array (length lines))) (at 0))
-                     (dotimes (i (length lines) v)
-                       (setf (aref v i) at)
-                       (incf at (1+ (length (aref lines i)))))))
-           (line-of (lambda (position)
-                      (max 0 (1- (or (position-if (lambda (start) (> start position)) starts) (length lines))))))
+           (starts (text-line-starts text))
+           (line-of (lambda (position) (line-index-at starts position)))
            ;; at the very end of the text, its last character's headline
            (point (min (org-parse-point parse) (max 0 (1- (length text)))))
            (headline (and (eq scope :subtree) (org-current-headline tree point)))
@@ -1315,9 +1365,10 @@ such part (no headline at point)."
                     (:selection (multiple-value-bind (start end) (selection-range)
                                   (and start (cons (org-parse-char parse start)
                                                    (org-parse-char parse (max start (1- end)))))))
-                    (:subtree (and headline (cons (org-node-begin headline)
-                                                  (max (org-node-begin headline)
-                                                       (1- (- (org-node-end headline) (org-node-post-blank headline))))))))))
+                    (:subtree (and headline
+                                   (let ((begin (org-node-begin headline)))
+                                     (cons begin (max begin (1- (- (org-node-end headline)
+                                                                   (org-node-post-blank headline)))))))))))
       (when range
         (let* ((first (funcall line-of (car range)))
                (last (max first (funcall line-of (cdr range))))
@@ -1325,11 +1376,11 @@ such part (no headline at point)."
           (flet ((keep (line text) (push text kept) (push (1+ line) origins)))
             ;; the document's keywords, but for its title when the subtree gives one
             (org-walk-tree tree (lambda (node)
-                                   (when (and (eq (org-node-type node) 'keyword)
-                                              (not (and headline (string-equal (org-property node :key) "TITLE")))
-                                              (not (<= first (funcall line-of (org-node-begin node)) last)))
-                                     (let ((line (funcall line-of (org-node-begin node))))
-                                       (keep line (aref lines line))))))
+                                  (when (and (eq (org-node-type node) 'keyword)
+                                             (not (and headline (string-equal (org-property node :key) "TITLE")))
+                                             (not (<= first (funcall line-of (org-node-begin node)) last)))
+                                    (let ((line (funcall line-of (org-node-begin node))))
+                                      (keep line (aref lines line))))))
             (when headline
               (let ((line (funcall line-of (org-node-begin headline))))
                 (keep line (format nil "#+title: ~a" (or (org-headline-property headline "EXPORT_TITLE")
@@ -1363,6 +1414,14 @@ hidden text shown elsewhere in it, unless you say to go on."
           (t (return-from export-refused-p nil)))
     t))
 
+(defun export-target-refused-p (buffer types text)
+  "True, having said why, when exporting BUFFER, or TEXT, the part of it
+exported, may not write its files of TYPES (EXPORT-TARGET-ALLOWED-P)."
+  (multiple-value-bind (allowed why) (export-target-allowed-p buffer types :text text)
+    (unless allowed
+      (message "Not exported~@[: ~a~]" why)
+      t)))
+
 (defun start-latex-export (then &key enhanced after)
   "Start making a PDF of the current buffer's Org text, or of its LaTeX file,
 saved first when it has changes, and then do THEN with it (PDF-EXPORT), with
@@ -1375,7 +1434,9 @@ AFTER, when given, with the job once the PDF is made; or say why not."
          (text (and kind (tuatara.buffer:buffer-string buffer)))
          (running (find-if #'pdf-export-p (jobs-of buffer :running t))))
     (cond ((export-refused-p buffer text
-                             :wrong-kind (and (null kind) (format nil "~a is neither an Org nor a LaTeX file: nothing to export" name))
+                             :wrong-kind (and (null kind)
+                                              (format nil "~a is neither an Org nor a LaTeX file: nothing to export"
+                                                      name))
                              :running (and running (format nil "~a is being ~(~a~) already (~a)" name
                                                            (if (eq kind :latex) "compiled" "exported")
                                                            (pdf-export-step running)))
@@ -1388,7 +1449,8 @@ AFTER, when given, with the job once the PDF is made; or say why not."
                              name macro (cdr (assoc then *enhanced-commands*)))
                     t))))
           ((and (not (eq then :latex-only)) (null (latex-engines-found)))
-           (message "No program makes PDFs here: none of ~{~a~^, ~} was found on the PATH or in TeX Live's directories (install TeX Live, or give their paths in *latex-engines*)"
+           (message "No program makes PDFs here: none of ~{~a~^, ~} was found on the PATH or in TeX Live's ~
+directories (install TeX Live, or give their paths in *latex-engines*)"
                     (latex-engine-names)))
           ((and (not (eq then :latex-only)) (not (latex-unconfined-allowed-p)))
            (message "Not exported: LaTeX runs only shut in the sandbox unless you say yes"))
@@ -1399,36 +1461,28 @@ AFTER, when given, with the job once the PDF is made; or say why not."
            (let ((save (and (eq kind :latex) (tuatara.io:save-of buffer))))
              (if (and (eq kind :latex) (tuatara.buffer:buffer-modified-p buffer) (null save))
                  (message "Not exported: ~a has changes not saved" name)
-                 (let* ((scope (and (eq kind :org)
-                                    (cond ((region-active-p buffer) :selection)
-                                          ((prefix-argument) :subtree))))
-                        (job (make-pdf-export buffer (tuatara.io:native (tuatara.io:expand-path file)) kind then save
-                                              (and (eq kind :org) (tuatara.buffer:buffer-text buffer)) enhanced)))
-                   (setf (pdf-export-after job) after)
+                 (let ((scope (and (eq kind :org)
+                                   (cond ((region-active-p buffer) :selection)
+                                         ((prefix-argument) :subtree)))))
                    ;; a part alone: its text, and where each of its lines is in the file
-                   (unless scope
-                     (multiple-value-bind (allowed why) (export-target-allowed-p buffer '("tex" "pdf") :text text)
-                       (unless allowed
-                         (message "Not exported~@[: ~a~]" why)
-                         (return-from start-latex-export))))
-                   (when scope
-                     (multiple-value-bind (text origins lines words) (org-export-part buffer scope)
-                       (unless text
-                         (message "There is no headline here to export the subtree of")
-                         (return-from start-latex-export))
-                       ;; where the part says it is written: its headline's EXPORT_FILE_NAME too
-                       (multiple-value-bind (allowed why) (export-target-allowed-p buffer '("tex" "pdf") :text text)
-                         (unless allowed
-                           (message "Not exported~@[: ~a~]" why)
-                           (return-from start-latex-export)))
-                       (setf (pdf-export-rope job) text (pdf-export-origins job) origins
-                             (pdf-export-lines job) (coerce lines 'list) (pdf-export-part job) words)))
-                   (tuatara.runtime:start-job-thread
-                    job (tuatara.runtime:carry-settings *latex-carried-settings* #'export-work)
-                    :name "tuatara export"
-                    :details (format nil "~(~a~), then ~(~a~)~:[~;, enhanced~]" kind then enhanced))
-                   (message "~a ~@[~a of ~]~a to ~a..." (export-doing kind) (pdf-export-part job) name
-                            (if (eq then :latex-only) "LaTeX" "PDF")))))))))
+                   (multiple-value-bind (part origins lines words) (and scope (org-export-part buffer scope))
+                     (cond ((and scope (null part)) (message "There is no headline here to export the subtree of"))
+                           ;; where the part says it is written: its headline's EXPORT_FILE_NAME too
+                           ((export-target-refused-p buffer '("tex" "pdf") (or part text)))
+                           (t (let ((job (make-pdf-export buffer (tuatara.io:native (tuatara.io:expand-path file)) kind
+                                                          then save (and (eq kind :org)
+                                                                         (tuatara.buffer:buffer-text buffer))
+                                                          enhanced)))
+                                (setf (pdf-export-after job) after)
+                                (when part
+                                  (setf (pdf-export-rope job) part (pdf-export-origins job) origins
+                                        (pdf-export-lines job) (coerce lines 'list) (pdf-export-part job) words))
+                                (tuatara.runtime:start-job-thread
+                                 job (tuatara.runtime:carry-settings *latex-carried-settings* #'export-work)
+                                 :name "tuatara export"
+                                 :details (format nil "~(~a~), then ~(~a~)~:[~;, enhanced~]" kind then enhanced))
+                                (message "~a ~@[~a of ~]~a to ~a..." (export-doing kind) words name
+                                         (if (eq then :latex-only) "LaTeX" "PDF")))))))))))))
 
 (define-command org-export-latex-pdf ()
   "Make the Org file of the current buffer into a PDF beside it, in the
@@ -1517,17 +1571,14 @@ desktop's program."
 
 (define-command export-latex-compile-pdf-buffer ()
   "Make the LaTeX file of the current buffer into a PDF beside it, as
-\\[export-latex-compile-pdf] does, and show the PDF: down the right side of the
-screen when it is wide enough (*split-width-threshold* columns), else alone
-on it. The focus stays in the file, and making it again reads the PDF shown
-again, at the same page. Where it shows is the rule for :exported buffers."
+\\[export-latex-compile-pdf] does, and show the PDF where and as
+\\[org-export-latex-pdf-buffer] shows an Org file's."
   (start-latex-export :view))
 
 (define-command export-latex-compile-pdf-xdg ()
   "Make the LaTeX file of the current buffer into a PDF beside it, as
-\\[export-latex-compile-pdf] does, and open the PDF in the desktop's program for
-PDFs (xdg-open), or the one *open-externally-programs* gives
-\"application/pdf\", asking first unless *open-externally-ask* is NIL."
+\\[export-latex-compile-pdf] does, and open the PDF in the desktop's program
+as \\[org-export-latex-pdf-xdg] opens an Org file's."
   (start-latex-export :outside))
 
 (define-command export-latex-template-copy ()
@@ -1548,13 +1599,15 @@ note's #+template: names by its path."
 
 ;;; Word documents and web pages
 
-(defstruct (note-export (:include tuatara.runtime:job) (:copier nil))
+(define-record (note-export (:include tuatara.runtime:job) (:copier nil))
   "An Org note being written as a document for BUFFER, a job: TEXT the note's,
 FILE its file; THEN :FILE or :OUTSIDE (opened in the desktop's program after);
 PATH, the file written; NOTES, what else to say of it."
-  text file then path notes)
-
-(setf (documentation 'note-export-p 'function) "True when OBJECT is a NOTE-EXPORT.")
+  (text nil :documentation "The text of the Org note NOTE-EXPORT writes as a document.")
+  (file nil :documentation "The file of the note.")
+  (then nil :documentation "What is done after: :FILE or :OUTSIDE (opened in the desktop's program).")
+  (path nil :documentation "The path of the file written.")
+  (notes nil :documentation "What else to say of NOTE-EXPORT."))
 
 (defmethod tuatara.runtime:job-holds-queue-p ((job note-export))
   "Writing a note as a document holds back no other work on its buffer: it only reads the note."
@@ -1569,27 +1622,27 @@ it in the desktop's program when asked."
              (when (eq (note-export-then job) :outside) (open-externally-file path :also '(:docx)))))
     (t (message "~a" (tuatara.runtime:job-ending-words job)))))
 
-(defstruct (docx-export (:include note-export) (:constructor make-docx-export (buffer text file then)) (:copier nil))
+(define-record (docx-export (:include note-export) (:constructor make-docx-export (buffer text file then))
+                            (:copier nil))
   "An Org note being written as a Word document (NOTE-EXPORT).")
 
-(setf (documentation 'docx-export-p 'function) "True when OBJECT is a DOCX-EXPORT.")
-
 (tuatara.runtime:define-job-words docx-export
-  :doing "Writing the Word document"
-  :description (format nil "Writing ~a as a Word document" (tuatara.io:native-file-name (docx-export-file job)))
-  :verb "write the Word document"
-  :left-words "no Word document written")
+    :doing "Writing the Word document"
+    :description (format nil "Writing ~a as a Word document" (tuatara.io:native-file-name (docx-export-file job)))
+    :verb "write the Word document"
+    :left-words "no Word document written")
 
-(defstruct (html-export (:include note-export) (:constructor make-html-export (buffer text file then)) (:copier nil))
+(define-record (html-export (:include note-export) (:constructor make-html-export (buffer text file then))
+                            (:copier nil))
   "An Org note being written as a web page (NOTE-EXPORT).")
 
 (setf (documentation 'html-export-p 'function) "True when OBJECT is an HTML-EXPORT.")
 
 (tuatara.runtime:define-job-words html-export
-  :doing "Writing the web page"
-  :description (format nil "Writing ~a as a web page" (tuatara.io:native-file-name (html-export-file job)))
-  :verb "write the web page"
-  :left-words "no web page written")
+    :doing "Writing the web page"
+    :description (format nil "Writing ~a as a web page" (tuatara.io:native-file-name (html-export-file job)))
+    :verb "write the web page"
+    :left-words "no web page written")
 
 (defun start-note-export (then kind type words make write)
   "Start writing the current buffer's Org note as a document of TYPE, the ending
@@ -1609,10 +1662,7 @@ names or NIL, and what else to say."
                              :running (and (find-if (lambda (job) (typep job kind)) (jobs-of buffer :running t))
                                            (format nil "~a is being written as ~a already" name words))
                              :redactions t))
-          ((multiple-value-bind (allowed why) (export-target-allowed-p buffer (list type) :text text)
-             (unless allowed
-               (message "Not exported~@[: ~a~]" why)
-               t)))
+          ((export-target-refused-p buffer (list type) text))
           (t
            (let ((job (funcall make buffer text (tuatara.io:native (tuatara.io:expand-path file)) then)))
              (tuatara.runtime:start-job-thread
@@ -1672,17 +1722,6 @@ line that shows no error, or an error LaTeX said nothing of where it is."
   (destructuring-bind (kind &optional file line) entry
     (and (eq kind :error) file (values file line))))
 
-(defmethod visit-entry ((mode latex-errors-mode) list entry other)
-  "Show the line of the file the error on the line comes from in another
-window, selected, or with OTHER the list kept selected."
-  (declare (ignore list))
-  (multiple-value-bind (file line) (entry-place mode entry)
-    (cond ((not (eq (first entry) :error)) (message "No error on this line"))
-          ((null file) (message "LaTeX said nothing of where this error is"))
-          (t (let ((here (current-window)))
-               (when (and (show-file-line file line :other t) other (member here (editor-windows)))
-                 (select-window here)))))))
-
 (defun install-latex-export ()
   "Bind the keys of *LaTeX errors*; offer the commands making PDFs of
 Org files in Org buffers, those of LaTeX files in LaTeX buffers; and make
@@ -1691,12 +1730,14 @@ the screen when it is wide enough, else alone on it; and offer the checking
 and marking of redactions (INSTALL-REDACTIONS), and the showing of a line in
 the PDF and back (INSTALL-PDF-SYNC)."
   (entry-list-keys 'latex-errors-mode "*LaTeX errors*")
-  (commands-for-mode 'org-mode "Org files" 'org-export-latex 'org-export-latex-enhanced 'org-export-latex-pdf 'org-export-latex-pdf-buffer 'org-export-latex-pdf-xdg
+  (commands-for-mode 'org-mode "Org files" 'org-export-latex 'org-export-latex-enhanced 'org-export-latex-pdf
+                     'org-export-latex-pdf-buffer 'org-export-latex-pdf-xdg
                      'org-export-latex-pdf-enhanced 'org-export-latex-pdf-enhanced-buffer
                      'org-export-latex-pdf-enhanced-xdg)
   (commands-for-mode 'latex-mode "LaTeX files" 'export-latex-compile-pdf 'export-latex-compile-pdf-buffer
                      'export-latex-compile-pdf-xdg)
-  (commands-for-mode 'org-mode "Org files" 'org-insert-export-drawer 'org-export-docx 'org-export-docx-xdg 'org-export-html)
+  (commands-for-mode 'org-mode "Org files" 'org-insert-export-drawer 'org-export-docx 'org-export-docx-xdg
+                     'org-export-html)
   (place-buffers :exported :right-or-alone)
   (install-redactions)
   (install-pdf-sync))

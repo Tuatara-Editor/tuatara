@@ -88,27 +88,43 @@ spaces, its length and every other character as they were."
                      (t (incf i)))))
     out))
 
-(defun latex-group-end (text start)
-  "Where the group TEXT opens at START ({ or [) ends: the position after its
-closing } or ], braces within counted, an escaped one not; NIL when it never ends."
-  (let ((open (char text start)) (depth 0) (i start) (n (length text)))
+(defvar *latex-group-ends* nil
+  "The ends of the groups of the text last read by LATEX-GROUP-END: (TEXT .
+ENDS), ENDS a table of where each group opening at a position ends.")
+
+(defun latex-group-ends (text)
+  "A table of where each group of TEXT ends, by the position it opens at: for
+a { the position after its closing }, braces within counted; for a [ after the
+first ] outside the braces opened after it; an escaped bracket none. A group
+that never ends is not in it. TEXT is read once."
+  (let ((ends (make-hash-table)) (braces '()) (squares (make-hash-table)) (depth 0) (i 0) (n (length text)))
     (loop while (< i n)
           do (let ((c (char text i)))
-               (cond ((char= c #\\) (incf i))
-                     ((char= c #\{) (incf depth))
-                     ((char= c #\}) (decf depth)
-                      (when (and (char= open #\{) (zerop depth)) (return-from latex-group-end (1+ i))))
-                     ((and (char= open #\[) (char= c #\]) (= depth 0)) (return-from latex-group-end (1+ i)))))
-             (incf i))
-    nil))
+               (case c
+                 (#\\ (incf i))
+                 (#\{ (push i braces) (incf depth))
+                 (#\} (when braces (setf (gethash (pop braces) ends) (1+ i))) (decf depth))
+                 (#\[ (push i (gethash depth squares)))
+                 (#\] (dolist (open (gethash depth squares)) (setf (gethash open ends) (1+ i)))
+                      (remhash depth squares))))
+          (incf i))
+    ends))
+
+(defun latex-group-end (text start)
+  "Where the group TEXT opens at START ({ or [) ends: the position after its
+closing } or ], braces within counted, an escaped one not; NIL when it never
+ends. The ends of all of TEXT's groups are found once (LATEX-GROUP-ENDS)."
+  (unless (eq (car *latex-group-ends*) text)
+    (setf *latex-group-ends* (cons text (latex-group-ends text))))
+  (values (gethash start (cdr *latex-group-ends*))))
 
 (defun latex-skip-space (text i &optional (end (length text)))
   "The first position from I in TEXT that is no space, tab or single line end."
   (let ((lines 0))
     (loop while (and (< i end) (member (char text i) '(#\Space #\Tab #\Newline #\Return)))
           do (when (char= (char text i) #\Newline) (incf lines))
-             (when (> lines 1) (return))
-             (incf i))
+          (when (> lines 1) (return))
+          (incf i))
     i))
 
 (defun latex-command-at (text i)
@@ -128,21 +144,21 @@ each (KIND START . END) with START and END inside its brackets, and where
 they end."
   (let ((found '()) (mandatory 0))
     (loop
-      (let ((j (latex-skip-space text i end)))
-        (when (>= j end) (return))
-        (let ((c (char text j)))
-          (cond ((and (char= c #\[) (zerop mandatory))
-                 (let ((e (latex-group-end text j)))
-                   (unless (and e (<= e end)) (return))
-                   (push (list* :optional (1+ j) (1- e)) found)
-                   (setf i e)))
-                ((and (char= c #\{) (< mandatory count))
-                 (let ((e (latex-group-end text j)))
-                   (unless (and e (<= e end)) (return))
-                   (push (list* :mandatory (1+ j) (1- e)) found)
-                   (incf mandatory)
-                   (setf i e)))
-                (t (return))))))
+     (let ((j (latex-skip-space text i end)))
+       (when (>= j end) (return))
+       (let ((c (char text j)))
+         (cond ((and (char= c #\[) (zerop mandatory))
+                (let ((e (latex-group-end text j)))
+                  (unless (and e (<= e end)) (return))
+                  (push (list* :optional (1+ j) (1- e)) found)
+                  (setf i e)))
+               ((and (char= c #\{) (< mandatory count))
+                (let ((e (latex-group-end text j)))
+                  (unless (and e (<= e end)) (return))
+                  (push (list* :mandatory (1+ j) (1- e)) found)
+                  (incf mandatory)
+                  (setf i e)))
+               (t (return))))))
     (values (nreverse found) i)))
 
 (defun latex-mandatory (arguments &optional (n 0))
@@ -155,30 +171,31 @@ in TEXT, as two values: where the \\end begins and where it ends; nested
 ones of the same name counted. NIL when it is not closed before END."
   (let ((open (format nil "\\begin{~a}" name)) (close (format nil "\\end{~a}" name)) (depth 1) (i start))
     (loop
-      (let ((o (search open text :start2 i :end2 end))
-            (c (search close text :start2 i :end2 end)))
-        (cond ((null c) (return nil))
-              ((and o (< o c)) (incf depth) (setf i (+ o (length open))))
-              (t (decf depth)
-                 (when (zerop depth) (return (values c (+ c (length close)))))
-                 (setf i (+ c (length close)))))))))
+     (let ((o (search open text :start2 i :end2 end))
+           (c (search close text :start2 i :end2 end)))
+       (cond ((null c) (return nil))
+             ((and o (< o c)) (incf depth) (setf i (+ o (length open))))
+             (t (decf depth)
+                (when (zerop depth) (return (values c (+ c (length close)))))
+                (setf i (+ c (length close)))))))))
 
 (defun latex-find-command (text names start end)
   "Where TEXT first has one of the commands NAMES (without backslash) from
 START below END, as two values: its start and its name; NIL when it has none."
   (let ((i start))
     (loop
-      (let ((b (position #\\ text :start i :end end)))
-        (unless b (return nil))
-        (multiple-value-bind (name after) (latex-command-at text b)
-          (when (member name names :test #'string=)
-            (return (values b name)))
-          (setf i (max after (1+ b))))))))
+     (let ((b (position #\\ text :start i :end end)))
+       (unless b (return nil))
+       (multiple-value-bind (name after) (latex-command-at text b)
+         (when (member name names :test #'string=)
+           (return (values b name)))
+         (setf i (max after (1+ b))))))))
 
 ;;; LaTeX as Org
 
 (defparameter *latex-org-dropped*
-  '("maketitle" "tableofcontents" "listoffigures" "listoftables" "clearpage" "cleardoublepage" "newpage" "pagebreak" "noindent"
+  '("maketitle" "tableofcontents" "listoffigures" "listoftables" "clearpage" "cleardoublepage" "newpage" "pagebreak"
+    "noindent"
     "centering" "raggedright" "raggedleft" "small" "footnotesize" "scriptsize" "tiny" "large" "Large"
     "LARGE" "huge" "Huge"
     "normalsize" "bfseries" "itshape" "ttfamily" "sffamily" "rmfamily" "normalfont" "hline" "toprule"
@@ -204,7 +221,8 @@ START below END, as two values: its start and its name; NIL when it has none."
   "Accent commands and the codes of the combining characters they stand for.")
 
 (defparameter *latex-org-raw-environments*
-  '("equation" "equation*" "align" "align*" "gather" "gather*" "multline" "multline*" "eqnarray" "eqnarray*" "displaymath" "math"
+  '("equation" "equation*" "align" "align*" "gather" "gather*" "multline" "multline*" "eqnarray" "eqnarray*"
+    "displaymath" "math"
     "tikzpicture")
   "Environments an Org note keeps as LaTeX, as the export writes them.")
 
@@ -212,7 +230,7 @@ START below END, as two values: its start and its name; NIL when it has none."
   "Environments that are tables.")
 
 (defun latex-org-words (text)
-  "Plain TEXT of a LaTeX document as an Org note's words (DOCX-READ-ESCAPED),
+  "Plain TEXT of a LaTeX document as an Org note's words (ORG-ESCAPED-WORDS),
 its lines after the first begun with *LATEX-ORG-INDENT*, its ligatures for
 quotes and dashes the characters they make."
   (let* ((text (cl-ppcre:regex-replace-all "---" text "—"))
@@ -220,7 +238,7 @@ quotes and dashes the characters they make."
          (text (cl-ppcre:regex-replace-all "``" text "“"))
          (text (cl-ppcre:regex-replace-all "''" text "”"))
          (text (substitute #\Space #\~ text))
-         (text (docx-read-guarded (docx-read-escaped text))))
+         (text (org-guarded-lines (org-escaped-words text))))
     (cl-ppcre:regex-replace-all "\\n[ \\t]*" text
                                 (lambda (match) (declare (ignore match)) (format nil "~%~a" *latex-org-indent*))
                                 :simple-calls t)))
@@ -237,24 +255,24 @@ quotes and dashes the characters they make."
 note template when it is in the document's directory or a directory in it (an
 ending tried when it has none); else words saying what it was."
   (let* ((name (string-trim " " name))
+         (name (if (uiop:string-prefix-p "./" name) (subseq name 2) name))
          (safe (and *latex-org-directory* *latex-org-media*
-                    (plusp (length name))
-                    (not (member (char name 0) '(#\/ #\~ #\\)))
-                    (not (search ".." name))
+                    (safe-part-name-p name :link t)
+                    (not (char= (char name 0) #\~))
                     (not (find #\: name))))
          (found (and safe
-                     (loop for ending in '("" ".png" ".jpg" ".jpeg" ".pdf" ".svg")
-                           for path = (concatenate 'string *latex-org-directory* name ending)
-                           when (and (eq :regular (tuatara.io:path-kind path))
-                                     (org-path-beside-p path *latex-org-directory*)
-                                     (<= (or (ignoring-errors-reported ("measuring ~a" path)
-                                               (tuatara.io:call-with-file path
-                                                                          (lambda (fd p size)
-                                                                            (declare (ignore fd p))
-                                                                            size)))
-                                             (1+ *latex-import-picture-limit*))
-                                         *latex-import-picture-limit*))
-                             return path))))
+                     (flet ((size (path)
+                              (or (ignoring-errors-reported ("measuring ~a" path)
+                                                            (tuatara.io:call-with-file path (lambda (fd p size)
+                                                                                              (declare (ignore fd p))
+                                                                                              size)))
+                                  (1+ *latex-import-picture-limit*))))
+                       (loop for ending in '("" ".png" ".jpg" ".jpeg" ".pdf" ".svg")
+                             for path = (concatenate 'string *latex-org-directory* name ending)
+                             when (and (eq :regular (tuatara.io:path-kind path))
+                                       (tuatara.io:really-within-p path *latex-org-directory*)
+                                       (<= (size path) *latex-import-picture-limit*))
+                             return path)))))
     (if found
         (let ((file (import-picture-file found
                                          *latex-org-media*
@@ -271,7 +289,9 @@ when a rule follows it."
   (let* ((text *latex-org-text*)
          (rows '()) (rule-after-first nil) (row-start start) (cells '()) (cell-start start) (depth 0) (i start))
     (flet ((cell (from to) (push (latex-org-string from to) cells))
-           (rule-follows (from) (cl-ppcre:scan "^\\s*(?:\\[[^\\]]*\\])?\\s*\\\\(?:hline|midrule|toprule|cmidrule)" text :start from :end end)))
+           (rule-follows (from)
+             (cl-ppcre:scan "^\\s*(?:\\[[^\\]]*\\])?\\s*\\\\(?:hline|midrule|toprule|cmidrule)" text :start from
+                            :end end)))
       (loop while (< i end)
             do (let ((c (char text i)))
                  (cond ((and (char= c #\\) (< (1+ i) end) (char= (char text (1+ i)) #\\) (zerop depth))
@@ -302,14 +322,17 @@ START below END to OUT as an Org list, nested lists within indented."
   (let ((text *latex-org-text*) (items '()) (i start))
     ;; the \items of this list, not of lists within it
     (loop
-      (multiple-value-bind (at name) (latex-find-command text '("item" "begin") i end)
-        (unless at (return))
-        (if (string= name "item")
-            (progn (push at items) (setf i (+ at 5)))
-            (multiple-value-bind (args after) (latex-arguments text (+ at 6) 1 end)
-              (let ((inner (latex-mandatory args)))
-                (setf i (or (and inner (nth-value 1 (latex-environment-end text (subseq text (car inner) (cdr inner)) after end)))
-                            after)))))))
+     (multiple-value-bind (at name) (latex-find-command text '("item" "begin") i end)
+       (unless at (return))
+       (if (string= name "item")
+           (progn (push at items) (setf i (+ at 5)))
+           (multiple-value-bind (args after) (latex-arguments text (+ at 6) 1 end)
+             (let ((inner (latex-mandatory args)))
+               (setf i
+                     (or (and inner
+                              (nth-value 1 (latex-environment-end text (subseq text (car inner) (cdr inner))
+                                                                  after end)))
+                         after)))))))
     (setf items (nreverse items))
     (loop for (at next) on items
           for number from 1
@@ -323,7 +346,7 @@ START below END to OUT as an Org list, nested lists within indented."
                  (format out "~%~a~a" *latex-org-indent* bullet)
                  (let ((*latex-org-indent* (concatenate 'string
                                                         *latex-org-indent*
-                                                        (make-string (length bullet) :initial-element #\Space))))
+                                                        (spaces (length bullet)))))
                    (write-string (string-trim '(#\Space #\Newline)
                                               (with-output-to-string (s) (latex-org after (or next end) s))) out)))))
     (format out "~%")))
@@ -336,7 +359,8 @@ ARGUMENTS to OUT as an Org heading, unnumbered when starred, tagged
          (base (string-right-trim "*" name))
          (level (1+ (or (position base *latex-org-levels* :test #'string=) 0)))
          (title (let ((m (latex-mandatory arguments))) (if m (latex-org-string (car m) (cdr m)) ""))))
-    (format out "~%~%~a ~a~:[~; :appendix:~]~%" (make-string level :initial-element #\*) title (and *latex-org-appendix* (= level 1)))
+    (format out "~%~%~a ~a~:[~; :appendix:~]~%" (make-string level :initial-element #\*) title
+            (and *latex-org-appendix* (= level 1)))
     (when starred
       (setf *latex-org-drawers* t)
       (format out ":EXPORT:~%numbered: no~%:END:~%"))))
@@ -355,11 +379,13 @@ CLOSE-END. Returns CLOSE-END."
   (let ((text *latex-org-text*))
     (cond
       ((member env *latex-org-raw-environments* :test #'string=)
-       (format out "~%~a~%" (subseq *latex-org-source* start close-end)))
+       (format out "~%~a~%" (org-guarded-lines (subseq *latex-org-source* start close-end))))
       ((member env '("verbatim" "Verbatim" "lstlisting" "minted" "alltt") :test #'string=)
        (let ((from (if (string= env "minted") (nth-value 1 (latex-arguments text stop 1 close)) stop)))
          (format out "~%#+begin_example~%~a~&#+end_example~%"
-                 (cl-ppcre:regex-replace-all "(?m)^(\\*|#\\+|,)" (string-trim '(#\Newline) (subseq *latex-org-source* from close)) ",\\1"))))
+                 (cl-ppcre:regex-replace-all "(?m)^(\\*|#\\+|,)"
+                                             (string-trim '(#\Newline) (subseq *latex-org-source* from close))
+                                             ",\\1"))))
       ((member env *latex-org-tables* :test #'string=)
        ;; past the width and the column spec
        (let ((from (nth-value 1
@@ -387,7 +413,7 @@ LATEX-ORG-FLUSH. Returns the position after it; NIL for a command of
 another kind."
   (let ((text *latex-org-text*))
     (flet ((flush () (latex-org-flush plain out))
-           (raw (from to) (subseq *latex-org-source* from to)))
+           (raw (from to) (org-guarded-lines (subseq *latex-org-source* from to))))
       (cond
         ((member name '("(" "[") :test #'string=)
          (let* ((close (search (if (string= name "(") "\\)" "\\]") text :start2 after :end2 end))
@@ -461,14 +487,14 @@ its plain words to PLAIN for LATEX-ORG-FLUSH. Returns the position after it."
                              (format out "~a~a~a" (second marks) inner (third marks))))))))
          ((string= name "url")
           (group 1 0 (lambda (m)
-                       (let ((target (raw (car m) (cdr m)))) (write-string (office-link-text target target) out)))))
+                       (let ((target (raw (car m) (cdr m)))) (write-string (org-safe-link target target) out)))))
          ((string= name "href")
           (multiple-value-bind (args stop) (latex-arguments text after 2 end)
             (let ((target (latex-mandatory args 0)) (words (latex-mandatory args 1)))
               (flush)
               (when (and target words)
-                (write-string (office-link-text (raw (car target) (cdr target))
-                                                (latex-org-string (car words) (cdr words))) out))
+                (write-string (org-safe-link (raw (car target) (cdr target))
+                                             (latex-org-string (car words) (cdr words))) out))
               stop)))
          ((string= name "footnote")
           (group 1 0 (lambda (m)
@@ -511,6 +537,7 @@ past *LATEX-ORG-DEPTH-LIMIT* groups deep, as it is written."
   (when (>= *latex-org-depth* *latex-org-depth-limit*)
     (write-string (latex-org-words (subseq *latex-org-source* start end)) out)
     (return-from latex-org))
+  (tuatara.runtime:job-check-stop)
   (let ((*latex-org-depth* (1+ *latex-org-depth*))
         (text *latex-org-text*) (i start) (plain (make-string-output-stream)))
     (loop while (< i end)
@@ -523,7 +550,8 @@ past *LATEX-ORG-DEPTH-LIMIT* groups deep, as it is written."
                     (latex-org-flush plain out)
                     (if close
                         (let ((stop (+ close (if double 2 1))))
-                          (write-string *latex-org-source* out :start i :end stop) (setf i stop))
+                          (write-string (org-guarded-lines (subseq *latex-org-source* i stop)) out)
+                          (setf i stop))
                         (progn (write-string "\\dollar{}" out) (incf i)))))
                  ((char= c #\{)
                   (let ((e (or (latex-group-end text i) end)))
@@ -547,7 +575,10 @@ note's: its blank lines at most one, its footnotes at the end."
          (text (cl-ppcre:regex-replace-all "\\n{3,}" text (format nil "~%~%")))
          (text (string-trim '(#\Newline #\Space) text)))
     (if *latex-org-footnotes*
-        (format nil "~a~2%~{~a~%~}" text (loop for note in (reverse *latex-org-footnotes*) for n from 1 collect (format nil "[fn:~d] ~a" n note)))
+        (format nil "~a~2%~{~a~%~}" text
+                (loop for note in (reverse *latex-org-footnotes*)
+                      for n from 1
+                      collect (format nil "[fn:~d] ~a" n note)))
         text)))
 
 ;;; The fields
@@ -556,7 +587,7 @@ note's: its blank lines at most one, its footnotes at the end."
   "The words of the document being read from START below END, as a field's
 example: on one line, nothing escaped."
   (let ((*latex-org-pictures* '()) (*latex-org-media* nil))
-    (string-trim " " (cl-ppcre:regex-replace-all (format nil "\\s+|~a" *docx-read-zero-width-space*)
+    (string-trim " " (cl-ppcre:regex-replace-all (format nil "\\s+|~a" *org-zero-width-space*)
                                                  (with-output-to-string (s)
                                                    (let ((*latex-org-indent* "")) (latex-org start end s)))
                                                  " "))))
@@ -581,7 +612,8 @@ of a field named for LABEL (a date when LABEL says so)."
   (if (latex-import-overlaps-p edits start end)
       edits
       (let ((key (template-field-key label)))
-        (template-field key (if (template-date-label-p label) :date :text) :example (latex-import-plain start end) :label label)
+        (template-field key (if (template-date-label-p label) :date :text) :example (latex-import-plain start end)
+                        :label label)
         (latex-import-edit edits start end (format nil "{{{~a}}}" key)))))
 
 (defun latex-import-preamble-fields (text end edits)
@@ -592,32 +624,32 @@ places."
     (loop
      (multiple-value-bind (at name)
          (latex-find-command text '("newcommand" "renewcommand" "providecommand" "def") i end)
-        (unless at (return edits))
-        (setf i (1+ at))
-        (let* ((p (latex-skip-space text (+ at 1 (length name)) end))
-               (macro (cond ((>= p end) nil)
-                            ((char= (char text p) #\{)
-                             (let ((e (latex-group-end text p)))
-                               (and e (cl-ppcre:scan "^\\{\\s*\\\\[A-Za-z]+\\s*\\}$" (subseq text p e))
-                                    (cons (string-trim "{} \\" (subseq text p e)) e))))
-                            ((char= (char text p) #\\)
-                             (multiple-value-bind (n after) (latex-command-at text p)
-                               (and (alpha-char-p (char n 0)) (cons n after)))))))
-          (when macro
-            (let ((v (latex-skip-space text (cdr macro) end)))
-              ;; a value with no arguments, of words alone
-              (when (and (< v end) (char= (char text v) #\{))
-                (let ((e (latex-group-end text v)))
-                  (when (and e (<= e end))
-                    (let ((value (subseq text (1+ v) (1- e))))
-                      (when (and (plusp (length (string-trim " " value)))
-                                 (not (find #\# value))
-                                 (cl-ppcre:scan "^(?:\\\\[&%$_{} ]|[^\\\\{}])*$" value))
-                        (let ((key (template-field-key (latex-import-camel-words (car macro)))))
-                          (template-field key (if (template-date-label-p (car macro)) :date :text)
-                                          :example (latex-import-plain (1+ v) (1- e))
-                                          :label (latex-import-camel-words (car macro)))
-                          (setf edits (latex-import-edit edits (1+ v) (1- e) (format nil "{{{~a}}}" key))))))))))))))))
+       (unless at (return edits))
+       (setf i (1+ at))
+       (let* ((p (latex-skip-space text (+ at 1 (length name)) end))
+              (macro (cond ((>= p end) nil)
+                           ((char= (char text p) #\{)
+                            (let ((e (latex-group-end text p)))
+                              (and e (cl-ppcre:scan "^\\{\\s*\\\\[A-Za-z]+\\s*\\}$" (subseq text p e))
+                                   (cons (string-trim "{} \\" (subseq text p e)) e))))
+                           ((char= (char text p) #\\)
+                            (multiple-value-bind (n after) (latex-command-at text p)
+                              (and (alpha-char-p (char n 0)) (cons n after)))))))
+         (when macro
+           (let ((v (latex-skip-space text (cdr macro) end)))
+             ;; a value with no arguments, of words alone
+             (when (and (< v end) (char= (char text v) #\{))
+               (let ((e (latex-group-end text v)))
+                 (when (and e (<= e end))
+                   (let ((value (subseq text (1+ v) (1- e))))
+                     (when (and (plusp (length (string-trim " " value)))
+                                (not (find #\# value))
+                                (cl-ppcre:scan "^(?:\\\\[&%$_{} ]|[^\\\\{}])*$" value))
+                       (let ((key (template-field-key (latex-import-camel-words (car macro)))))
+                         (template-field key (if (template-date-label-p (car macro)) :date :text)
+                                         :example (latex-import-plain (1+ v) (1- e))
+                                         :label (latex-import-camel-words (car macro)))
+                         (setf edits (latex-import-edit edits (1+ v) (1- e) (format nil "{{{~a}}}" key))))))))))))))))
 
 (defun latex-import-title-fields (text end edits)
   "EDITS with what \\title, \\author and \\date of TEXT (below END) hold made
@@ -643,41 +675,44 @@ then placeholder text ([Enter name], «Name», <Version>)."
   ;; tables of labels and values: a cell ending in : and the one after it
   (let ((i start))
     (loop
-      (let ((at (search "\\begin{tabular" text :start2 i :end2 end)))
-        (unless at (return))
-        (multiple-value-bind (args stop) (latex-arguments text (+ at 6) 1 end)
-          (let* ((m (latex-mandatory args))
-                 (env (and m (subseq text (car m) (cdr m))))
-                 (from (nth-value 1 (latex-arguments text stop (if (equal env "tabular") 1 2) end)))
-                 (close (and env (latex-environment-end text env stop end))))
-            (unless close (return))
-            (let ((cells '()) (cell-start from) (depth 0) (j from))
-              (flet ((cell (to) (push (cons cell-start to) cells)))
-                (loop while (< j close)
-                      do (let ((c (char text j)))
-                           (cond ((and (char= c #\\) (< (1+ j) close) (char= (char text (1+ j)) #\\) (zerop depth))
-                                  (cell j) (push :row cells) (setf j (+ j 2) cell-start j))
-                                 ((char= c #\\) (incf j 2))
-                                 ((char= c #\{) (incf depth) (incf j))
-                                 ((char= c #\}) (decf depth) (incf j))
-                                 ((and (char= c #\&) (zerop depth)) (cell j) (setf cell-start (1+ j)) (incf j))
-                                 (t (incf j)))))
-                (cell close))
-              (loop for (label value) on (nreverse cells)
-                    when (and (consp label) (consp value))
-                      do (let ((words (latex-import-plain (car label) (cdr label))))
-                           (when (and (cl-ppcre:scan "^[A-Za-z][A-Za-z0-9 /'.()-]{0,40}:$" words)
-                                      (not (search "{{{" (subseq text (car value) (cdr value))))
-                                      (cl-ppcre:scan "^\\s*(?:\\\\text(?:bf|it|tt)\\{)?[^\\\\{}]*\\}?\\s*$"
-                                                     (subseq text (car value) (cdr value))))
-                             (let* ((inner (cl-ppcre:scan-to-strings "\\S(?:.*\\S)?"
-                                                                     (subseq text (car value) (cdr value))))
-                                    (vs (if inner (search inner text :start2 (car value) :end2 (cdr value)) (car value)))
-                                    (ve (if inner (+ vs (length inner)) (car value))))
-                               (setf edits (latex-import-value-edit edits vs ve (string-right-trim ":" words))))))))
-            (setf i (or (nth-value 1 (latex-environment-end text env stop end)) end))))))
+     (let ((at (search "\\begin{tabular" text :start2 i :end2 end)))
+       (unless at (return))
+       (multiple-value-bind (args stop) (latex-arguments text (+ at 6) 1 end)
+         (let* ((m (latex-mandatory args))
+                (env (and m (subseq text (car m) (cdr m))))
+                (from (nth-value 1 (latex-arguments text stop (if (equal env "tabular") 1 2) end)))
+                (close (and env (latex-environment-end text env stop end))))
+           (unless close (return))
+           (let ((cells '()) (cell-start from) (depth 0) (j from))
+             (flet ((cell (to) (push (cons cell-start to) cells)))
+               (loop while (< j close)
+                     do (let ((c (char text j)))
+                          (cond ((and (char= c #\\) (< (1+ j) close) (char= (char text (1+ j)) #\\) (zerop depth))
+                                 (cell j) (push :row cells) (setf j (+ j 2) cell-start j))
+                                ((char= c #\\) (incf j 2))
+                                ((char= c #\{) (incf depth) (incf j))
+                                ((char= c #\}) (decf depth) (incf j))
+                                ((and (char= c #\&) (zerop depth)) (cell j) (setf cell-start (1+ j)) (incf j))
+                                (t (incf j)))))
+               (cell close))
+             (loop for (label value) on (nreverse cells)
+                   when (and (consp label) (consp value))
+                   do (let ((words (latex-import-plain (car label) (cdr label))))
+                        (when (and (cl-ppcre:scan "^[A-Za-z][A-Za-z0-9 /'.()-]{0,40}:$" words)
+                                   (not (search "{{{" (subseq text (car value) (cdr value))))
+                                   (cl-ppcre:scan "^\\s*(?:\\\\text(?:bf|it|tt)\\{)?[^\\\\{}]*\\}?\\s*$"
+                                                  (subseq text (car value) (cdr value))))
+                          (let* ((inner (cl-ppcre:scan-to-strings "\\S(?:.*\\S)?"
+                                                                  (subseq text (car value) (cdr value))))
+                                 (vs (if inner (search inner text :start2 (car value) :end2 (cdr value)) (car value)))
+                                 (ve (if inner (+ vs (length inner)) (car value))))
+                            (setf edits (latex-import-value-edit edits vs ve (string-right-trim ":" words))))))))
+           (setf i (or (nth-value 1 (latex-environment-end text env stop end)) end))))))
     ;; lines labelled Label: value
-    (cl-ppcre:do-scans (ms me rs re "(?m)^[ \\t]*(?:\\\\textbf\\{)?([A-Za-z][A-Za-z /'-]{0,30}):\\}?[ \\t]+([^\\\\{}%&\\n]*[^\\\\{}%&\\s])[ \\t]*(?:\\\\\\\\.*)?$" text nil :start start :end end)
+    (cl-ppcre:do-scans (ms me rs
+                           re #.(concatenate 'string "(?m)^[ \\t]*(?:\\\\textbf\\{)?([A-Za-z][A-Za-z /'-]{0,"
+                                             "30}):\\}?[ \\t]+([^\\\\{}%&\\n]*[^\\\\{}%&\\s])[ "
+                                             "\\t]*(?:\\\\\\\\.*)?$") text nil :start start :end end)
       (setf edits (latex-import-value-edit edits (aref rs 1) (aref re 1) (subseq text (aref rs 0) (aref re 0)))))
     ;; placeholder text, never a command's optional group
     (cl-ppcre:do-scans (ms me rs re *template-placeholder* text nil :start start :end end)
@@ -706,7 +741,12 @@ then placeholder text ([Enter name], «Name», <Version>)."
 ;;; The whole
 
 (defparameter *latex-file-commands*
-  "\\\\(?:includegraphics|includepdf|includesvg|input|include|InputIfFileExists|IfFileExists|lstinputlisting|verbatiminput|import|subimport|openin)(?![A-Za-z@])\\*?[ \\t]*(?:\\[[^\\]\\n]*\\][ \\t]*)*(?:(?:\\\\[A-Za-z@]+|[0-9]+)[ \\t]*=?[ \\t]*)?(?:(?<=import)\\{[^}\\n]*\\}[ \\t]*)?(?:\\{[ \\t\"]*(?:[~/]|[^}\\n]*?\\.\\.[/\\\\])[^}\\n]*\\}|\"?(?:[~/]|[^\\s{}%\"]*?\\.\\.[/\\\\])[^\\s%]*)"
+  #.(concatenate 'string "\\\\(?:includegraphics|includepdf|includesvg|input|include|InputIfFileExists|IfFileExists|"
+                 "lstinputlisting|verbatiminput|inputminted|import|subimport|openin|usepackage|documentclass|"
+                 "bibliography|addbibresource|pgfplotstableread)(?![A-Za-z@])\\*?[ \\t]*(?:\\[[^\\]\\n]*\\][ "
+                 "\\t]*)*(?:(?:\\\\[A-Za-z@]+|[0-9]+)[ \\t]*=?[ \\t]*)?(?:(?<=import)\\{[^}\\n]*\\}[ "
+                 "\\t]*)?(?:\\{[ \\t\"]*(?:[~/]|[^}\\n]*?\\.\\.[/\\\\])[^}\\n]*\\}|\"?(?:[~/]|"
+                 "[^\\s{}%\"]*?\\.\\.[/\\\\])[^\\s%]*)")
   "A LaTeX command taking in a file named from the root, from a home directory
 or from a directory above the document's, in braces or not:
 \\includegraphics{~/photo.png}, \\input{/etc/name}, \\input /etc/name,
@@ -715,15 +755,23 @@ or from a directory above the document's, in braces or not:
 (defun latex-import-without-outside-files (template)
   "TEMPLATE, a LaTeX document being made a template, with each command taking
 in a file named from the root, a home directory or a directory above it
-\(*LATEX-FILE-COMMANDS*) made a comment of its own line,
-and that noted: a document given to you could otherwise put files of yours
-into every report written from it."
+\(*LATEX-FILE-COMMANDS*) made a comment of its own line, and that noted. The
+list is a courtesy, not a barrier: LaTeX can name a file in ways no list
+foresees (\\csname input\\endcsname, a path put together by \\def). What keeps
+a document given to you from putting files of yours into a report is the
+sandbox the export runs LaTeX in; without one the import says the template is
+unchecked."
   (let ((count 0))
     (prog1 (cl-ppcre:regex-replace-all *latex-file-commands* template
-                                       (lambda (match) (incf count) (format nil "%~a (left out on import: a file outside the template)~%" match))
+                                       (lambda (match) (incf count)
+                                         (format nil "%~a (left out on import: a file outside the template)~%" match))
                                        :simple-calls t)
       (when (plusp count)
-        (template-import-note (format nil "~d command~:p taking in files outside it (~~/..., /... or ../...) made comments" count))))))
+        (template-import-note
+         (format nil "~d command~:p taking in files outside it (~~/..., /... or ../...) made comments" count)))
+      (unless (eq (tuatara.io:sandbox-status) :ready)
+        (template-import-note #.(concatenate 'string "no sandbox is ready here: LaTeX runs the template unshut, and "
+                                             "what files it reads is unchecked"))))))
 
 (defun latex-import-apply-edits (text edits)
   "TEXT with EDITS made, each (START END REPLACEMENT), none overlapping another:
@@ -740,7 +788,7 @@ REPLACEMENT in place of the text from START below END."
       (write-string text out :start at))))
 
 (defun latex-import (path name &key (tex (concatenate 'string (latex-templates-directory) name ".tex"))
-                                    (note (concatenate 'string (note-templates-directory) name ".org")))
+                                 (note (concatenate 'string (note-templates-directory) name ".org")))
   "Make of the LaTeX document at PATH the template NAME, TEX, and its note
 template NOTE, as this file's header says, its pictures in the directory
 NAME-media beside NOTE. Returns the note template's path, and as a second
@@ -763,14 +811,17 @@ cannot be read; writes over nothing that exists."
     (unless (and begin finish)
       (refuse "~a has no \\begin{document} and \\end{document}: no LaTeX document to fill in"
               (tuatara.io:native-file-name path)))
-    (let ((*latex-org-levels* (let ((present (remove-if-not (lambda (n) (latex-find-command text (list n (format nil "~a*" n)) begin finish))
+    (let ((*latex-org-levels* (let ((present (remove-if-not (lambda (n)
+                                                              (latex-find-command text (list n (format nil "~a*" n))
+                                                                                  begin finish))
                                                             '("part" "chapter"))))
                                 (append present '("section" "subsection" "subsubsection" "paragraph" "subparagraph"))))
           (template source) (title nil) (body ""))
       (if (search "{{{body}}}" source)
           ;; a Tuatara template already: its places the fields
           (template-places-in source)
-          (let* ((body-start (or (latex-find-command text '("part" "part*" "chapter" "chapter*" "section" "section*") begin finish) finish))
+          (let* ((body-start (or (latex-find-command text '("part" "part*" "chapter" "chapter*" "section" "section*")
+                                                     begin finish) finish))
                  (edits '()))
             ;; the fields tagged already, {{{case}}}, first, in the order written
             (template-places-in (subseq source 0 body-start))
@@ -787,11 +838,12 @@ cannot be read; writes over nothing that exists."
                                    name (tuatara.io:native-file-name path) (latex-import-apply-edits source edits)))))
       (setf template (latex-import-without-outside-files template))
       (when (search "\\input" text) (template-import-note "its \\input files not read (the template still names them)"))
-      (dolist (picture *latex-org-pictures*)
-        (template-import-write (tuatara.io:native (tuatara.io:expand-path (cdr picture)))
-                               (tuatara.io:file-octets (car picture))))
-      (template-import-write tex template)
-      (template-import-write note
-                             (template-note-text name (or title name) (template-import-fields *template-import*) body
-                                                 :drawers *latex-org-drawers*))
+      (template-import-commit
+       (list tex note media)
+       (append (loop for (source . file) in *latex-org-pictures*
+                     collect (cons (tuatara.io:native (tuatara.io:expand-path file))
+                                   (tuatara.io:file-octets source :limit *latex-import-picture-limit*)))
+               (list (cons tex template)
+                     (cons note (template-note-text name (or title name) (template-import-fields *template-import*) body
+                                                    :drawers *latex-org-drawers*)))))
       (template-import-result note))))

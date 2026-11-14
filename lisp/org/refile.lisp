@@ -37,11 +37,14 @@ never above the first)."
 *ORG-TAGS-COLUMN*."
   (let* ((end (or (position #\Newline text) (length text)))
          (line (subseq text 0 end)))
-    (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "^(\\*+ .*?)[ \\t]+(:[\\w@#%:]+:)[ \\t]*$" line)
-      (if (not match)
+    (multiple-value-bind (start tags-end tag-starts tag-ends) (cl-ppcre:scan *org-tags-end-scanner* line)
+      (declare (ignore tags-end))
+      (if (not (and start (let ((stars-end (nth-value 1 (cl-ppcre:scan "^\\*+ " line))))
+                            (and stars-end (>= start stars-end)))))
           text
           (concatenate 'string
-                       (org-headline-with-tags (aref groups 0) (org-tags-from-text (aref groups 1)))
+                       (org-headline-with-tags (subseq line 0 start)
+                                               (org-tags-from-text (subseq line (aref tag-starts 0) (aref tag-ends 0))))
                        (subseq text end))))))
 
 (defun org-top-level (text)
@@ -117,22 +120,17 @@ else the first."
 (defun org-file-headings (path)
   "The headings of the Org file at PATH, each (LEVEL TITLES POSITION): its
 level, its titles from the top heading down (its path), the character it
-begins at. An agenda file's are those the agenda keeps (ORG-AGENDA-ENTRIES),
-read again only when it changed and never opened for it; another's from its
-buffer's parse."
+begins at. An agenda file's are those the agenda keeps, all of them
+\(ORG-AGENDA-FILE-READ), read again only when it changed and never opened for
+it; another's from its buffer's parse."
   (if (member path (ignoring-errors-reported ("listing the agenda files") (org-agenda-file-paths)) :test #'string=)
-      (let ((stack '()))
-        (loop for entry in (org-agenda-entries path)
-              when (eq (agenda-entry-kind entry) :headline)
-                collect (let ((level (agenda-entry-level entry)))
-                          (loop while (and stack (>= (car (first stack)) level)) do (pop stack))
-                          (push (cons level (agenda-entry-title entry)) stack)
-                          (list level (reverse (mapcar #'cdr stack)) (agenda-entry-position entry)))))
+      (fourth (org-agenda-file-read path))
       (let ((target (ignoring-errors-reported ("reading ~a to refile into" path) (tuatara.io:visit-file path))))
         (when target
           (let ((parse (org-parse-now target)))
             (loop for headline in (and parse (org-headlines (org-parse-tree parse)))
-                  collect (list (org-property headline :level) (org-headline-path headline) (org-node-begin headline))))))))
+                  collect (list (org-property headline :level) (org-headline-path headline)
+                                (org-node-begin headline))))))))
 
 (defun org-refile-candidates (buffer &key exclude)
   "Completion candidates for the headings *ORG-REFILE-TARGETS* offers from
@@ -167,19 +165,6 @@ at, which tells it from another of the same titles."
 
 ;;; Refiling
 
-(defun org-clock-in-range-p (buffer start end)
-  "True when the running clock's line is in BUFFER between the octets START and END."
-  (and *org-clock* (eq (org-clock-buffer *org-clock*) buffer)
-       (<= start (tuatara.text:anchor-position (org-clock-line *org-clock*) (tuatara.buffer:buffer-version buffer)) (1- end))))
-
-(defun org-clock-follow (buffer start end)
-  "Point the running clock at its CLOCK: line in BUFFER between the octets
-START and END, where an entry moved with it went."
-  (let* ((text (tuatara.buffer:buffer-string buffer :start start :end (min end (tuatara.buffer:buffer-size buffer))))
-         (at (cl-ppcre:scan "(?m)^[ \\t]*CLOCK: \\[[^]]*\\][ \\t]*$" text)))
-    (when at
-      (org-clock-hold *org-clock* buffer (+ start (tuatara.text:string-octet-length (subseq text 0 at)))))))
-
 (defun org-refile-subtree (buffer headline target &optional target-at)
   "Move HEADLINE of BUFFER (a headline of its parse now), with all under it,
 to the end of what is under TARGET (:olp FILE TITLE ...; of several with
@@ -194,7 +179,7 @@ be filed. Both files saved as filing saves them."
          (last (or (cdr (org-fold-range headline chars)) (string-line-end chars begin)))
          (end (min (length chars) (1+ last)))
          (text (subseq chars begin last))
-         (clocked (org-clock-in-range-p buffer (org-parse-octet parse begin) (org-parse-octet parse end)))
+         (clock-line (org-clock-line-within buffer (org-parse-octet parse begin) (org-parse-octet parse end)))
          (into (tuatara.io:visit-file (second target)))
          (was-modified (tuatara.io:changes-unsaved-p buffer))
          (into-was-modified (tuatara.io:changes-unsaved-p into)))
@@ -216,8 +201,9 @@ be filed. Both files saved as filing saves them."
                              (refuse "~a is no longer there"
                                      (if *secret-at-hand* "The heading" (org-olp-text target))))))
              (multiple-value-bind (at to) (org-insert-entry into-parse text :headline under)
+               (declare (ignore to))
                (setf filed t)
-               (when clocked (org-clock-follow into at to))))
+               (when clock-line (org-clock-follow into at clock-line))))
         (unless filed
           (org-replace-chars parse begin begin (subseq chars begin end)))))
     (org-save-changed buffer was-modified)
@@ -251,7 +237,8 @@ agenda saves its files. With \\[universal-argument], go to the heading chosen in
                                   (org-parse-octet parse (org-node-end headline)))))))
             (destructuring-bind (target at) answer
               (let ((headline (and (first places)
-                                   (org-headline-on-line (org-parse-tree parse) (org-parse-text parse) (first places)))))
+                                   (org-headline-on-line (org-parse-tree parse) (org-parse-text parse)
+                                                         (first places)))))
                 (unless headline (refuse "The headline is no longer there: nothing refiled"))
                 (org-refile-subtree buffer headline target at)
                 (message "Refiled to ~a" (org-olp-text target)))))))))

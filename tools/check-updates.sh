@@ -36,6 +36,7 @@
 # Usage: tools/check-updates.sh [--install | --remove]
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
+. "$root/tools/fetch.sh"
 units="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 unit=tuatara-check-updates
 
@@ -200,10 +201,8 @@ else
 fi
 
 # where tools/quicklisp.lisp finds Quicklisp
-for ql_dist in "$(dirname "${QUICKLISP_SETUP:-/nonexistent/setup.lisp}")" "$HOME/quicklisp" "$HOME/.local/share/quicklisp"; do
-  ql_dist="$ql_dist/dists/quicklisp/distinfo.txt"
-  [ -f "$ql_dist" ] && break
-done
+ql_setup="$(quicklisp_setup 2>/dev/null || true)"
+ql_dist="$(dirname "${ql_setup:-/nonexistent/setup.lisp}")/dists/quicklisp/distinfo.txt"
 ql_pinned="$(sed -n 's/^version: //p' "$ql_dist" 2>/dev/null || true)"
 ql_newest="$(curl -fsS --max-time 60 https://beta.quicklisp.org/dist/quicklisp.txt 2>/dev/null | sed -n 's/^version: //p' || true)"
 

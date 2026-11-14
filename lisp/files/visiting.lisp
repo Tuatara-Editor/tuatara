@@ -314,11 +314,81 @@ home directory.")
 of the path typed, listing what is in it."
   (replace-minibuffer-text 0 (length (editor-minibuffer-text *editor*)) "~/"))
 
-(commands-for-buffers 'asking-for-path-p "a question for a file or a directory" 'minibuffer-home-directory)
+(commands-for-mode 'asking-for-path-p "a question for a file or a directory" 'minibuffer-home-directory)
 
 (define-keys *path-question-keymap* '(("S-TAB" minibuffer-home-directory)))
 
-(defun read-path (prompt &key writing (initial (path-question-start :writing writing)) directories preview)
+(define-record (path-question (:constructor make-path-question (&key writing keep)) (:copier nil))
+  "A question for a path being asked (READ-PATH): WRITING and KEEP as it was
+given them; LISTED, the entries of the directory typed as far as they are
+read; LISTED-FOR, that directory as typed; LISTING, what reads it
+\(START-GATHERING) until it is read."
+  (writing nil :documentation "True for a question whose answer is written to.")
+  (keep nil :documentation "What tells the entries offered, a function of an entry's name (a
+directory's ending in /), or NIL to offer every entry.")
+  (listed '() :documentation "The entries of the directory typed, as far as read.")
+  (listed-for nil :documentation "The directory typed, whose entries are listed.")
+  (listing nil :documentation "What reads the directory typed, until it is read."))
+
+(defun path-question-take (question)
+  "Take what the listing of QUESTION's directory found, once it has: true when
+it came now."
+  (multiple-value-bind (found done) (take-gathered (path-question-listing question))
+    (when done (setf (path-question-listing question) nil))
+    (when found (setf (path-question-listed question) (first found)))
+    (and found t)))
+
+(defun path-question-list (question path)
+  "Start listing the directory of PATH, a path typed in QUESTION, on a thread of
+its own, the paths chosen lately ranked first (those in evidence left out of
+a question whose answer is written to); one read quickly is shown at once.
+A directory whose listing has not ended yet is not listed again."
+  (let* ((expanded (input-directory-path path))
+         (directory (tuatara.io:slash-ended (tuatara.io:native expanded)))
+         (chosen (and *last-used-first* (chosen-paths)))
+         (writing (path-question-writing question))
+         (keep (path-question-keep question)))
+    (setf (path-question-listed question) '() (path-question-listing question) nil)
+    (unless (slow-listing-p directory)
+      (let ((listing (start-gathering
+                      "tuatara file names"
+                      (lambda (give cancel)
+                        (declare (ignore cancel))
+                        (let ((all (directory-candidates expanded (if writing
+                                                                      (remove-if #'evidence-path-p chosen)
+                                                                      chosen))))
+                          (funcall give (if keep
+                                            (remove-if-not (lambda (c) (funcall keep (candidate-string c))) all)
+                                            all)))))))
+        (setf (path-question-listing question) listing)
+        (unless (wait-for-gathering listing *file-listing-wait*)
+          (push (cons directory listing) *slow-listings*))
+        (path-question-take question)))))
+
+(defun path-question-entries (question typed)
+  "The entries QUESTION offers for TYPED, the line as typed: the directory is
+listed again only when its part of the line changes."
+  (let ((directory (input-directory (substitute-file-input typed))))
+    (unless (equal directory (path-question-listed-for question))
+      (path-question-stop question)
+      (setf (path-question-listed-for question) directory)
+      (path-question-list question (substitute-file-input typed)))
+    (path-question-listed question)))
+
+(defun path-question-source (question)
+  "What QUESTION's listing has found since last asked, whether it is still
+reading, and how many entries there are, as a question's SOURCE gives them."
+  (if (path-question-listing question)
+      (values (path-question-take question) (and (path-question-listing question) t)
+              (length (path-question-listed question)))
+      (values nil nil (length (path-question-listed question)))))
+
+(defun path-question-stop (question)
+  "Stop the listing of QUESTION's directory, when it is still under way."
+  (let ((listing (path-question-listing question)))
+    (when listing (stop-gathering listing))))
+
+(defun read-path (prompt &key writing (initial (path-question-start :writing writing)) keep preview)
   "Ask with PROMPT for a path, as READ-FILE-PATH and READ-DIRECTORY-PATH do.
 The question starts from INITIAL (as standard the directory of the path chosen
 last in such a question, else the directory the current buffer stands in, by
@@ -326,9 +396,10 @@ PATH-QUESTION-START). With WRITING, for a question whose answer is written
 to, it is never a place in an evidence directory, which is then neither where
 the question starts (WRITING-START) nor ranked first among the entries. The
 name is completed against the entries of the directory being typed
-\(FILE-CANDIDATES; with DIRECTORIES, its directories only), matched by any part of
-the name. While nothing is typed after the directory, the entry chosen there
-last comes first, the others in order of name; as you type, the best matches
+\(FILE-CANDIDATES; with KEEP, a function of an entry's name, those it is true
+for, a directory's name ending in /), matched by any part of the name. While
+nothing is typed after the directory, the entry chosen there last comes first,
+the others in order of name; as you type, the best matches
 first, those chosen lately before others. A / or ~/ typed after it starts the
 path again (SUBSTITUTE-FILE-INPUT), the line holding just that
 \(REWRITE-FILE-INPUT), and
@@ -353,64 +424,22 @@ line typed, taken as it is (\\<minibuffer>\\[minibuffer-finish] on it, or
      (lambda (show)
        (loop
          (setf input dir)
-         (let* ((listed nil)
-                (listed-for nil)
-                (listing nil)
-                (chosen (labels ((take-listed ()
-                                   ;; what the listing found, once it has: true when it came now
-                                   (multiple-value-bind (found done) (take-gathered listing)
-                                     (when done (setf listing nil))
-                                     (when found (setf listed (first found)))
-                                     (and found t)))
-                                 (list-directory (path)
-                                   (let* ((expanded (input-directory-path path))
-                                          (directory (tuatara.io:slash-ended (tuatara.io:native expanded)))
-                                          (chosen (and *last-used-first*
-                                                       (if writing
-                                                           (remove-if #'evidence-path-p (chosen-paths))
-                                                           (chosen-paths)))))
-                                     (setf listed '() listing nil)
-                                     ;; a directory whose listing has not ended yet is not listed again
-                                     (unless (slow-listing-p directory)
-                                       (setf listing (start-gathering
-                                                      "tuatara file names"
-                                                      (lambda (give cancel)
-                                                        (declare (ignore cancel))
-                                                        (let ((all (directory-candidates expanded chosen)))
-                                                          (funcall give (if directories
-                                                                            (remove-if-not (lambda (c) (directory-input-p (candidate-string c)))
-                                                                                           all)
-                                                                            all))))))
-                                       ;; a directory read quickly is shown at once, as though read here
-                                       (unless (wait-for-gathering listing *file-listing-wait*)
-                                         (push (cons directory listing) *slow-listings*))
-                                       (take-listed)))))
-                          (unwind-protect
-                               (let ((*asking-for-path* t))
-                                (completing-read prompt
-                                                 (lambda (typed)
-                                                   ;; the directory is listed again only when its part of the input
-                                                   ;; changes
-                                                   (setf input typed)
-                                                   (let* ((path (substitute-file-input typed))
-                                                          (directory (input-directory path)))
-                                                     (unless (equal directory listed-for)
-                                                       (when listing (stop-gathering listing))
-                                                       (setf listed-for directory)
-                                                       (list-directory path))
-                                                     listed))
-                                                 :initial dir
-                                                 :keymap *path-question-keymap*
-                                                 :keep-order :until-typed
-                                                 :rewrite #'rewrite-file-input
-                                                 :select #'input-when-directory
-                                                 :reselect t
-                                                 :preview (and preview show)
-                                                 :source (lambda ()
-                                                           (if listing
-                                                               (values (take-listed) (and listing t) (length listed))
-                                                               (values nil nil (length listed))))))
-                            (when listing (stop-gathering listing)))))
+         (let* ((question (make-path-question :writing writing :keep keep))
+                (chosen (unwind-protect
+                             (let ((*asking-for-path* t))
+                               (completing-read prompt
+                                                (lambda (typed)
+                                                  (setf input typed)
+                                                  (path-question-entries question typed))
+                                                :initial dir
+                                                :keymap *path-question-keymap*
+                                                :keep-order :until-typed
+                                                :rewrite #'rewrite-file-input
+                                                :select #'input-when-directory
+                                                :reselect t
+                                                :preview (and preview show)
+                                                :source (lambda () (path-question-source question))))
+                          (path-question-stop question)))
                 ;; the line typed taken (RET on it, or C-j), not a candidate
                 (typed (and (stringp chosen) (string= chosen input)))
                 (path (substitute-file-input (if typed chosen (resolve-file-input (substitute-file-input input) chosen)))))
@@ -418,7 +447,7 @@ line typed, taken as it is (\\<minibuffer>\\[minibuffer-finish] on it, or
                (setf dir path)
                (return (values path typed)))))))))
 
-(defun read-file-path (prompt &key new-file preview (note t) writing)
+(defun read-file-path (prompt &key new-file preview (note t) writing keep)
   "Ask for a file with PROMPT, completing its name against the directory being
 typed, from the directory of the path chosen last in such a question, else the
 directory the current buffer stands in (BUFFER-DIRECTORY): that of its file,
@@ -431,8 +460,9 @@ it. Returns the path typed or chosen, or NIL (said) when nothing was named; a
 directory typed and taken comes with :DIRECTORY as a second value, or with
 NEW-FILE :NEW, for a new file there. With PREVIEW, the file selected is
 shown meanwhile (CALL-WITH-WINDOW-PREVIEW). WRITING, for a question whose
-answer is written to, as READ-PATH has it."
-  (let ((path (read-path prompt :preview preview :writing writing)))
+answer is written to, and KEEP, what tells the entries offered, as READ-PATH
+has them."
+  (let ((path (read-path prompt :preview preview :writing writing :keep keep)))
     (cond ((zerop (length path))
            (if new-file
                (values "./" :new)
@@ -456,7 +486,7 @@ remembered as chosen lately (NOTE-CHOSEN-PATH) unless NOTE is NIL. A caller
 that shows the directory then remembers it itself, once shown
 \(NOTE-VISITED-PATH). WRITING, for a question whose answer is written to, is
 as READ-PATH has it."
-  (let* ((path (read-path prompt :initial initial :directories t :writing writing))
+  (let* ((path (read-path prompt :initial initial :keep #'directory-input-p :writing writing))
          (path (if (zerop (length path)) "./" path)))
     (when note (note-chosen-path path :directory t))
     path))
@@ -622,13 +652,17 @@ run."
 (defun show-reading-result (job path shown &optional (failure "~a could not be read: ~a~%"))
   "Show in the buffer of JOB, a job reading the file at PATH, what was read,
 when that buffer is still there. When JOB is done, SHOWN is the text to show
-(point put at its start) or a function of the buffer that shows it. Else the
-buffer shows why the file could not be read, FAILURE given the file's name
-and the words for how JOB ended, point at its start."
+\(point put at its start) or a function of the buffer that shows it. Else the
+buffer shows why the file could not be read, point at its start: FAILURE, a
+function of the words for how JOB ended returning the text, or a format
+control given the file's name and those words."
   (let ((buffer (tuatara.runtime:job-buffer job)))
     (when (live-buffer-p buffer)
       (cond ((not (eq (tuatara.runtime:job-status job) :done))
-             (set-made-text buffer (format nil failure (tuatara.io:native-file-name path) (tuatara.runtime:job-ending-words job)))
+             (let ((words (tuatara.runtime:job-ending-words job)))
+               (set-made-text buffer (if (functionp failure)
+                                         (funcall failure words)
+                                         (format nil failure (tuatara.io:native-file-name path) words))))
              (setf (tuatara.buffer:buffer-point buffer) 0))
             ((functionp shown) (funcall shown buffer))
             (t (set-made-text buffer shown)
@@ -644,57 +678,6 @@ octets in the hex view, never shown as text or as a view of its kind first."
         (hex-view-on buffer)
         buffer)
       (nth-value 0 (visit-path path :safe safe :show #'identity))))
-
-(defstruct (standard-input-job (:include tuatara.runtime:job) (:constructor make-standard-input-job (buffer descriptor))
-                               (:copier nil))
-  "Standard input being read for BUFFER, a job, from the open DESCRIPTOR into a
-file with no name; SCRATCH, that file's descriptor, and SIZE, the octets in it."
-  descriptor scratch size)
-
-(setf (documentation 'standard-input-job-p 'function) "True when OBJECT is a STANDARD-INPUT-JOB.")
-
-(tuatara.runtime:define-job-words standard-input-job
-  :doing "Reading standard input"
-  :description "Reading standard input"
-  :verb "read"
-  :left-words "standard input not read"
-  :at-exit :quiet)
-
-(defmethod tuatara.runtime:job-take-in ((job standard-input-job))
-  "Show what was read from standard input in its buffer, read only, or why it could not be read."
-  (let ((scratch (standard-input-job-scratch job)))
-    (if (and scratch (not (live-buffer-p (tuatara.runtime:job-buffer job))))
-        (ignoring-errors-reported ("closing the copy of standard input") (sb-posix:close scratch))
-        (show-reading-result job "standard input"
-                             (lambda (buffer)
-                               (multiple-value-bind (rope mapping)
-                                   (tuatara.io:scratch-file-text scratch (standard-input-job-size job) "standard input")
-                                 (set-made-text buffer rope)
-                                 (setf (tuatara.buffer:buffer-mapping buffer) mapping
-                                       (tuatara.buffer:buffer-point buffer) 0)))
-                             "~a could not be read: ~a~%"))))
-
-(defmethod host-visit-standard-input ((host defaults-host) descriptor)
-  "Make a buffer of what is read from the open DESCRIPTOR, standard input, in
-the background. The text goes into a file with no name in the cache directory
-and is read from there as a large file is read, so that its size is bounded by
-the disk. The buffer is called *stdin*, not a file's, read only and opened
-safely, so that nothing in it is acted on. Returns the buffer at once."
-  (let ((buffer (tuatara.buffer:make-buffer (tuatara.buffer:unique-buffer-name "*stdin*")
-                                            :text (format nil "Reading standard input...~%"))))
-    (setf (buffer-read-only-p buffer) t
-          (tuatara.io:safe-visit-p buffer) "it came from standard input")
-    (tuatara.runtime:start-job-thread
-     (make-standard-input-job buffer descriptor)
-     (lambda (job)
-       (unwind-protect
-            (multiple-value-bind (scratch size)
-                (tuatara.io:copy-descriptor-to-scratch (standard-input-job-descriptor job))
-              (setf (standard-input-job-scratch job) scratch
-                    (standard-input-job-size job) size))
-         (ignoring-errors-reported ("closing standard input") (sb-posix:close (standard-input-job-descriptor job)))))
-     :name "tuatara standard input")
-    buffer))
 
 (defun hex-view-on (buffer &optional (at 0))
   "Show BUFFER in the hex view (\\[hex-mode]), its cursor on the octet AT."
@@ -829,9 +812,9 @@ made."
       (let ((above (tuatara.io:nearest-directory path)))
         (if (tuatara.io:writable-p above)
             (message "(New file; its directory ~a is not there yet: saving asks to make it)"
-                     (escape-controls (abbreviated-path directory)))
+                     (abbreviated-path directory))
             (message "(New file, read-only: its directory ~a is not there, and ~a may not be written)"
-                     (escape-controls (abbreviated-path directory)) (escape-controls (abbreviated-path above))))))))
+                     (abbreviated-path directory) (abbreviated-path above)))))))
 
 (defun visit-path-as-text (path safe show)
   "Visit the file at PATH as its text (or octets), as VISIT-PATH-ONCE does
@@ -862,8 +845,8 @@ up."
         (if (equal (tuatara.buffer:buffer-file buffer) (tuatara.io:expand-path path))
             (message "~a is open safely; ~a" (tuatara.buffer:buffer-name buffer) (end-safe-visit-words buffer))
             (message "~a is the same file as ~a, which is open safely~@[ (~a)~]: that buffer is shown"
-                     (escape-controls (abbreviated-path path))
-                     (escape-controls (abbreviated-path (tuatara.buffer:buffer-file buffer)))
+                     (abbreviated-path path)
+                     (abbreviated-path (tuatara.buffer:buffer-file buffer))
                      (tuatara.io:safe-visit-reason buffer))))
       (let ((said (and (not (eq *file-view-said* :none)) *file-view-said*)))
         (cond ((and (not existing) (tuatara.io:safe-visit-reason buffer)) (say-why-safe buffer said))
@@ -1135,3 +1118,24 @@ another machine, is left as it is."
                       (error (e)
                         (message "~a is not renamed: ~a~@[; \\[write-file] writes it there, the old file left as it is~]"
                                  old e (not (equal (tuatara.io:parent-path from) (tuatara.io:parent-path to)))))))))))))
+
+(defun file-kind (path)
+  "What the file at PATH is by its first octets (TUATARA.IO:FILE-HEAD), as two
+values, the words and the keyword of TUATARA.IO:OCTETS-KIND, a TIFF's size
+read where its first directory stands when that is past them
+\(OCTETS-KIND-OF-FILE); NIL when they do not tell, or it cannot be read (a
+third value, why)."
+  (let ((head (tuatara.io:file-head path)))
+    (cond ((null head)
+           (handler-case (reporting-errors ("reading ~a" path)
+                           (tuatara.io:call-with-file path (constantly nil))
+                           (values nil nil "it cannot be read"))
+             (error (e) (values nil nil (princ-to-string e)))))
+          ((tuatara.io:tiff-octets-p head)
+           (multiple-value-bind (words kind)
+               (ignoring-errors-reported ("reading ~a" path)
+                 (tuatara.io:call-with-file path (lambda (fd native size)
+                                                   (declare (ignore native size))
+                                                   (octets-kind-of-file fd head))))
+             (if (keywordp kind) (values words kind) (tuatara.io:octets-kind head))))
+          (t (tuatara.io:octets-kind head)))))

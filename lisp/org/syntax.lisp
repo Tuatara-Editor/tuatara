@@ -14,8 +14,8 @@
 
 ;;; The tree
 
-(defstruct (org-node (:constructor make-org-node (type &key begin end contents-begin contents-end
-                                                       (post-blank 0) post-affiliated properties)))
+(define-record (org-node (:constructor make-org-node (type &key begin end contents-begin contents-end
+                                                          (post-blank 0) post-affiliated properties)))
   "A node of a parsed Org document: TYPE (headline, paragraph, bold...); BEGIN
 and END, where it is in the text, END past the blank lines after it. Where its
 contents are (CONTENTS-BEGIN, CONTENTS-END), when it has any; POST-BLANK, how
@@ -23,10 +23,23 @@ many blank lines (for an object, spaces) follow it; POST-AFFILIATED, where it
 begins after the keywords naming or captioning it; PROPERTIES, a plist of what
 else is known of it (a headline's level, a link's path...); CHILDREN, the nodes
 in it, in order. And PARENT."
-  type begin end contents-begin contents-end (post-blank 0) post-affiliated properties
-  (children '()) parent)
+  (type nil :documentation "The type of an Org node: headline, paragraph, bold and so on.")
+  (begin nil :documentation "The character of the text where an Org node begins.")
+  (end nil :documentation "The character of the text where an Org node ends, past the blank lines after it.")
+  (contents-begin nil :documentation "The character where the contents of an Org node begin, or NIL when it has none.")
+  (contents-end nil :documentation "The character where the contents of an Org node end, or NIL when it has none.")
+  (post-blank 0 :documentation "How many blank lines follow an Org node, or spaces for an object.")
+  (post-affiliated nil
+                   :documentation "The character where an Org node begins after the keywords naming or captioning it.")
+  (properties nil
+              :documentation "A plist of what else is known of an Org node, such as a headline's level or a link's
+path.")
+  (children '() :documentation "The nodes in an Org node, in order.")
+  (parent nil :documentation "The Org node that holds an Org node, or NIL for the root."))
 
-(setf (documentation 'org-node-p 'function) "True when OBJECT is an ORG-NODE.")
+(defun org-children-of (node type)
+  "The children of NODE of TYPE, in order."
+  (remove-if-not (lambda (child) (eq (org-node-type child) type)) (org-node-children node)))
 
 (defun org-property (node key)
   "The property KEY of NODE (ORG-NODE-PROPERTIES), or NIL."
@@ -53,6 +66,9 @@ in it, in order. And PARENT."
   "The elements made of other elements.")
 
 ;;; Reading the text
+
+(defparameter *org-blanks* '(#\Space #\Tab)
+  "The blanks Org's lines and fields are trimmed of: spaces and tabs.")
 
 (defvar *org-text* ""
   "The text being parsed.")
@@ -150,6 +166,19 @@ of the line after its last character that is not blank (not before FLOOR)."
         while (< p to)
         count t
         when (= p (length *org-text*)) do (loop-finish)))
+
+(defun org-leading-blanks (text begin)
+  "How many spaces and tabs the line of TEXT beginning at the character BEGIN
+begins with."
+  (loop for i from begin below (length text)
+        while (space-or-tab-char-p (char text i))
+        count t))
+
+(defun org-item-after-bullet (item text)
+  "Where ITEM's bullet ends in TEXT, the text it was parsed of: the character
+after its -, + or number."
+  (let ((begin (org-node-begin item)))
+    (+ begin (org-leading-blanks text begin) (length (string-trim *org-blanks* (org-property item :bullet))))))
 
 (defun org-indentation (position)
   "The columns of spaces and tabs the line beginning at POSITION begins with, a tab to the next multiple of eight."
@@ -265,7 +294,8 @@ the name (_SRC, or nothing) written in capitals, for :LATEX the lines
   (let ((table (make-hash-table :test 'equal)))
     (cl-ppcre:do-scans (s e rs re (if (eq kind :block)
                                       (load-time-value (cl-ppcre:create-scanner "(?im)^[ \\t]*#\\+END(\\S*)[ \\t]*$"))
-                                      (load-time-value (cl-ppcre:create-scanner "(?m)^[ \\t]*\\\\end\\{(.*)\\}[ \\t]*$")))
+                                      (load-time-value
+                                       (cl-ppcre:create-scanner "(?m)^[ \\t]*\\\\end\\{(.*)\\}[ \\t]*$")))
                        *org-text*)
       (let ((name (subseq *org-text* (aref rs 0) (aref re 0))))
         (when (eq kind :block) (setf name (string-upcase name)))
@@ -327,8 +357,8 @@ parentheses and the time are groups, in that order (ORG-READ-RULE)."
     (format nil (if groups "%%\\(([^>\\n]*)\\)(?: +(~a(?:-~a)?))?" "%%\\((?:[^>\\n]*)\\)(?: +(?:~a(?:-~a)?))?")
             hour (format nil "(?:~a|24:00)" hour))))
 
-(defparameter *org-headline-re* "\\*+[ \\t]"
-  "A headline's start: stars, then a space.")
+(defparameter *org-headline-re* "\\*+ "
+  "A headline's start: stars, then a space (a tab after them makes no headline).")
 
 (defparameter *org-clock-line*
   (let ((stamp (format nil "\\[(~a)\\]" (org-timestamp-body)))
@@ -364,7 +394,11 @@ export binds it true.")
       (load-time-value (org-alphabetical-form *org-paragraph-separate*))
       *org-paragraph-separate*))
 
-(defparameter *org-item-re* "(?:[ \\t]*(?:[-+]|[0-9]+[.)])|[ \\t]+\\*)(?:[ \\t]+|$)"
+(defparameter *org-bullet-re* "(?:[ \\t]*(?:[-+]|[0-9]+[.)])|[ \\t]+\\*)"
+  "A list item's bullet and the blanks before it: -, + or a number and . or ),
+or * set in from the margin.")
+
+(defparameter *org-item-re* (concatenate 'string *org-bullet-re* "(?:[ \\t]+|$)")
   "A list item's first line.")
 
 (defun org-item-re ()
@@ -373,9 +407,27 @@ export binds it true.")
       (load-time-value (org-alphabetical-form *org-item-re*))
       *org-item-re*))
 
+(defun org-item-line-scanner ()
+  "A scanner of *ORG-ITEM-RE* at the start of a line, letters allowed as
+bullets while *ORG-LIST-ALLOW-ALPHABETICAL*; made once."
+  (if *org-list-allow-alphabetical*
+      (load-time-value (cl-ppcre:create-scanner (concatenate 'string "^" (org-alphabetical-form *org-item-re*))))
+      (load-time-value (cl-ppcre:create-scanner (concatenate 'string "^" *org-item-re*)))))
+
+(defparameter *org-checkbox-line-scanner*
+  (cl-ppcre:create-scanner (concatenate 'string "^" *org-bullet-re* "[ \\t]+(\\[[ X-]\\])"))
+  "The start of a list item's first line up to its checkbox, [ ], [X] or [-],
+as the parser reads one; the checkbox is a group.")
+
 (defparameter *org-full-item-re*
-  "[ \\t]*((?:[-+*]|(?:[0-9]+|[A-Za-z])[.)])(?:[ \\t]+|$))(?:\\[@(?:start:)?([0-9]+|[A-Za-z])\\][ \\t]*)?(?:(\\[[ X-]\\])(?:[ \\t]+|$))?(?:(.*)[ \\t]+::(?:[ \\t]+|$))?"
+  (concatenate 'string
+              "[ \\t]*((?:[-+*]|(?:[0-9]+|[A-Za-z])[.)])(?:[ \\t]+|$))(?:\\[@(?:start:)?([0-9]+|[A-Za-z])\\][ \\t]*)?"
+              "(?:(\\[[ X-]\\])(?:[ \\t]+|$))?(?:(.*)[ \\t]+::(?:[ \\t]+|$))?")
   "A list item's first line, its parts: bullet, counter, checkbox, tag.")
+
+(defparameter *org-tags-end-scanner* (cl-ppcre:create-scanner "[ \\t]+(:[\\w@#%:]+:)[ \\t]*$")
+  "A headline's tags at the end of its line, :work:urgent:, the blanks before
+them with them; the tags are a group.")
 
 (defparameter *org-drawer-re* "[ \\t]*:((?:\\w|[-_])+):[ \\t]*$"
   "A drawer's first line, its name.")
@@ -468,7 +520,7 @@ list read last for an item in more than one; NIL before the first list.")
     (cl-ppcre:do-register-groups (words) ("(?im)^[ \\t]*#\\+(?:TODO|SEQ_TODO|TYP_TODO):[ \\t]*(.*)$" text)
       (setf found t)
       (let* ((names (mapcar (lambda (w) (subseq w 0 (or (position #\( w) (length w))))
-                            (uiop:split-string (string-trim " " words) :separator '(#\Space #\Tab))))
+                            (uiop:split-string (string-trim " " words) :separator *org-blanks*)))
              (names (remove "" names :test #'string=))
              (bar (position "|" names :test #'string=)))
         (cond (bar (setf not-done (append not-done (subseq names 0 bar)) done (append done (subseq names (1+ bar)))))
@@ -647,15 +699,8 @@ element, the objects of one that holds text; none deeper than *ORG-DEPTH-LIMIT*.
          ((org-looking-at *org-latex-begin-re* start) (org-latex-environment-parser position start limit affiliated))
          ((org-looking-at *org-drawer-re* start) (org-drawer-parser position start limit affiliated))
          ((org-looking-at "[ \\t]*:(?: |$)" start) (org-fixed-width-parser position start limit affiliated))
-         ((org-looking-at "[ \\t]*#\\+" start)
-          (multiple-value-bind (ok after) (org-looking-at "[ \\t]*#\\+" start)
-            (declare (ignore ok))
-            (cond ((org-looking-at "(?i)BEGIN_(\\S+)" after) (org-block-parser position start limit affiliated))
-                  ((org-looking-at "(?i)CALL:" after) (org-babel-call-parser position start limit affiliated))
-                  ((org-looking-at *org-dynamic-block-re* start)
-                   (org-dynamic-block-parser position start limit affiliated))
-                  ((org-looking-at "\\S+?:" after) (org-keyword-parser position start limit affiliated))
-                  (t (org-paragraph-parser position limit start affiliated)))))
+         ((let ((after (nth-value 1 (org-looking-at "[ \\t]*#\\+" start))))
+            (and after (org-hash-plus-parser position start after limit affiliated))))
          ((org-looking-at *org-footnote-definition-re* start)
           (org-footnote-definition-parser position start limit affiliated))
          ((org-looking-at "[ \\t]*-{5,}[ \\t]*$" start) (org-horizontal-rule-parser position start limit affiliated))
@@ -666,6 +711,15 @@ element, the objects of one that holds text; none deeper than *ORG-DEPTH-LIMIT*.
           (org-table-parser position start limit affiliated))
          ((org-looking-at (org-item-re) start) (org-plain-list-parser position start limit affiliated))
          (t (org-paragraph-parser position limit start affiliated)))))))
+
+(defun org-hash-plus-parser (position start after limit affiliated)
+  "The element whose line at START begins with #+, AFTER where its name
+begins: a block, a call, a dynamic block or a keyword, else a paragraph."
+  (cond ((org-looking-at "(?i)BEGIN_(\\S+)" after) (org-block-parser position start limit affiliated))
+        ((org-looking-at "(?i)CALL:" after) (org-babel-call-parser position start limit affiliated))
+        ((org-looking-at *org-dynamic-block-re* start) (org-dynamic-block-parser position start limit affiliated))
+        ((org-looking-at "\\S+?:" after) (org-keyword-parser position start limit affiliated))
+        (t (org-paragraph-parser position limit start affiliated))))
 
 (defun org-next-headline (position limit)
   "Where the next headline after the line at POSITION begins, below LIMIT, or NIL."
@@ -684,7 +738,7 @@ plist of their values (:name, :caption, :attr_html...), NIL when there are none.
         (org-scan (key) "[ \\t]*#\\+((?:[Aa][Tt][Tt][Rr]_[-_A-Za-z0-9]+)|[A-Za-z]+)(?:\\[.*\\])?:[ \\t]*" p
           (when (or (member (string-upcase key) *org-affiliated-keywords* :test #'string=)
                     (uiop:string-prefix-p "ATTR_" (string-upcase key)))
-            (let ((value (string-trim " 	" (subseq *org-text* match-end (org-line-end p)))))
+            (let ((value (string-trim *org-blanks* (subseq *org-text* match-end (org-line-end p)))))
               (setf matched t)
               (let* ((upper (string-upcase key))
                      (name (cond ((member upper
@@ -735,7 +789,7 @@ its END past them and its POST-BLANK, the lines from COUNT-FROM to there."
          (level (loop for i from position while (eql (org-char i) #\*) count t))
          (p (+ position level))
          (properties (list :level level)))
-    (setf p (loop while (member (org-char p) '(#\Space #\Tab)) do (incf p) finally (return p)))
+    (setf p (loop while (member (org-char p) *org-blanks*) do (incf p) finally (return p)))
     ;; the TODO keyword, followed by a space or the line's end
     (let ((keyword (find-if (lambda (k) (and (<= (+ p (length k)) line-end)
                                              (string= k *org-text* :start2 p :end2 (+ p (length k)))
@@ -746,7 +800,7 @@ its END past them and its POST-BLANK, the lines from COUNT-FROM to there."
         (setf (getf properties :todo-keyword) keyword
               (getf properties :todo-type) (if (member keyword (car *org-todo-keywords*) :test #'string=) 'todo 'done))
         (setf p (+ p (length keyword)))
-        (setf p (loop while (member (org-char p) '(#\Space #\Tab)) do (incf p) finally (return p)))))
+        (setf p (loop while (member (org-char p) *org-blanks*) do (incf p) finally (return p)))))
     ;; the priority
     (org-scan () "\\[#.\\][ \\t]*" p
       (setf (getf properties :priority) (char-code (org-char (+ p 2))) p match-end))
@@ -755,19 +809,18 @@ its END past them and its POST-BLANK, the lines from COUNT-FROM to there."
                (or (= (+ p 7) line-end) (eql (org-char (+ p 7)) #\Space)))
       (setf (getf properties :commentedp) t
             p (+ p 7))
-      (setf p (loop while (member (org-char p) '(#\Space #\Tab)) do (incf p) finally (return p))))
+      (setf p (loop while (member (org-char p) *org-blanks*) do (incf p) finally (return p))))
     ;; the tags at the line's end
-    (let* ((line (subseq *org-text* p line-end))
-           (title-end line-end))
-      (multiple-value-bind (start end rs re) (cl-ppcre:scan "[ \\t]+(:[\\w@#%:]+:)[ \\t]*$" line)
+    (let ((title-end line-end))
+      (multiple-value-bind (start end rs re) (cl-ppcre:scan *org-tags-end-scanner* *org-text* :start p :end line-end)
         (declare (ignore end))
         (when start
-          (let ((tags (tuatara.text:split-words (subseq line (aref rs 0) (aref re 0)) ":")))
+          (let ((tags (tuatara.text:split-words (subseq *org-text* (aref rs 0) (aref re 0)) ":")))
             (setf (getf properties :tags) tags
-                  title-end (+ p start))
+                  title-end start)
             (when (member "ARCHIVE" tags :test #'string=) (setf (getf properties :archivedp) t)))))
       (let* ((title-begin (min p title-end))
-             (raw (string-trim " 	" (subseq *org-text* title-begin title-end))))
+             (raw (string-trim *org-blanks* (subseq *org-text* title-begin title-end))))
         (setf (getf properties :raw-value) raw
               (getf properties :title-begin) title-begin
               (getf properties :title-end) (org-skip-blanks-backward title-end title-begin))))
@@ -871,13 +924,17 @@ blank lines its own."
 (defun org-babel-call-parser (position start limit affiliated)
   "The #+CALL: line at START: the call, its headers and arguments."
   (let ((node (make-org-node 'babel-call))
-        (value (string-trim " 	" (subseq *org-text* (+ (search ":" *org-text* :start2 start) 1) (org-line-end start)))))
+        (value (string-trim *org-blanks* (subseq *org-text* (1+ (search ":" *org-text* :start2 start))
+                                                 (org-line-end start)))))
     (setf (org-node-properties node) (org-call-parts value))
     (org-finish (org-element-with-affiliated node position start affiliated) (org-next-line start) limit)))
 
 (defun org-call-parts (value)
   "VALUE, a call as #+CALL: and call_ write it, NAME[INSIDE](ARGUMENTS)[END], as a plist."
-  (multiple-value-bind (start end rs re) (cl-ppcre:scan "^([^()\\[\\] \\t]+)(?:\\[([^]]*)\\])?\\(([^)]*)\\)(?:[ \\t]*\\[([^]]*)\\]|[ \\t]+(.*?))?[ \\t]*$" value)
+  (multiple-value-bind (start end rs re)
+      (cl-ppcre:scan #.(concatenate 'string "^([^()\\[\\] \\t]+)(?:\\[([^]]*)\\])?\\(([^)]*)\\)"
+                                    "(?:[ \\t]*\\[([^]]*)\\]|[ \\t]+(.*?))?[ \\t]*$")
+                                  value)
     (declare (ignore end))
     (if start
         (flet ((group (i)
@@ -901,6 +958,12 @@ blank lines its own."
 
 ;;; Blocks, drawers and environments
 
+(defparameter *org-block-types*
+  '(("CENTER" . center-block) ("COMMENT" . comment-block) ("EXAMPLE" . example-block) ("EXPORT" . export-block)
+    ("QUOTE" . quote-block) ("SRC" . src-block) ("VERSE" . verse-block))
+  "The element each block's name makes it, #+BEGIN_SRC a source block; a block
+of any other name is a special block.")
+
 (defun org-block-parser (position start limit affiliated)
   "The block #+BEGIN_NAME at START, ended by #+END_NAME; a paragraph when it is not ended."
   (let* ((name (org-scan (n) "[ \\t]*#\\+(?i:BEGIN_)(\\S+)" start n))
@@ -911,14 +974,7 @@ blank lines its own."
                (contents-begin (org-next-line start))
                (contents (subseq *org-text* contents-begin end-line))
                (parameters (or (org-scan (rest) "[ \\t]*#\\+(?i:BEGIN_)\\S+[ \\t]*(.*?)[ \\t]*$" start rest) ""))
-               (element-type (cond ((string= type "CENTER") 'center-block)
-                                   ((string= type "COMMENT") 'comment-block)
-                                   ((string= type "EXAMPLE") 'example-block)
-                                   ((string= type "EXPORT") 'export-block)
-                                   ((string= type "QUOTE") 'quote-block)
-                                   ((string= type "SRC") 'src-block)
-                                   ((string= type "VERSE") 'verse-block)
-                                   (t 'special-block)))
+               (element-type (or (cdr (assoc type *org-block-types* :test #'string=)) 'special-block))
                (greater (member element-type '(center-block quote-block special-block)))
                (node (make-org-node element-type)))
           (case element-type
@@ -963,14 +1019,14 @@ heading or a keyword."
 (defun org-src-header (parameters)
   "PARAMETERS of a #+BEGIN_SRC line split: the language, the switches (-n,
 -r, -l \"...\"), and the header arguments, as three values."
-  (let* ((words (string-trim " 	" parameters))
-         (language (let ((first (first (uiop:split-string words :separator '(#\Space #\Tab)))))
+  (let* ((words (string-trim *org-blanks* parameters))
+         (language (let ((first (first (uiop:split-string words :separator *org-blanks*))))
                      (and (plusp (length first)) first)))
-         (rest (if language (string-trim " 	" (subseq words (length language))) "")))
+         (rest (if language (string-trim *org-blanks* (subseq words (length language))) "")))
     (multiple-value-bind (start end)
         (cl-ppcre:scan "^(?:[-+][A-Za-z](?:[ \\t]+(?:\"[^\"]*\"|[^-+ \\t:]\\S*))?[ \\t]*)+" rest)
-      (let ((switches (and start (string-trim " 	" (subseq rest start end))))
-            (params (string-trim " 	" (if start (subseq rest end) rest))))
+      (let ((switches (and start (string-trim *org-blanks* (subseq rest start end))))
+            (params (string-trim *org-blanks* (if start (subseq rest end) rest))))
         (values language (and (plusp (length switches)) switches) (and (plusp (length params)) params))))))
 
 (defun org-drawer-parser (position start limit affiliated)
@@ -1109,7 +1165,7 @@ are never closed."
   (let* ((structure (org-list-structure start limit))
          (first (first structure))
          (indent (second first))
-         (siblings (remove indent structure :key #'second :test-not #'=))
+         (siblings (remove-if-not (lambda (item) (= (second item) indent)) structure))
          (contents-end (seventh (car (last siblings))))
          (bullet (third first))
          (type (cond ((cl-ppcre:scan "^[ \\t]*[0-9A-Za-z]+[.)]" bullet) 'ordered)
@@ -1143,7 +1199,8 @@ are never closed."
                                         :contents-begin contents-begin :contents-end contents-end
                                         :properties (append (list :bullet bullet)
                                                             (and checkbox
-                                                                 (list :checkbox (case (char checkbox 1) (#\X 'on) (#\- 'trans) (t 'off))))
+                                                                 (list :checkbox (case (char checkbox 1)
+                                                                                   (#\X 'on) (#\- 'trans) (t 'off))))
                                                             (and counter (list :counter (or (whole-number counter)
                                                                                             counter)))
                                                             (and tag (list :tag tag))))))
@@ -1160,7 +1217,9 @@ are never closed."
           do (setf p (org-next-line p)))
     (let ((contents-end p) (formulas '()))
       (loop while (and (< p limit) (org-looking-at "(?i)[ \\t]*#\\+TBLFM:" p))
-            do (push (string-trim " 	" (subseq *org-text* (+ (search ":" *org-text* :start2 p) 1) (org-line-end p))) formulas)
+            do (push (string-trim *org-blanks* (subseq *org-text* (1+ (search ":" *org-text* :start2 p))
+                                                       (org-line-end p)))
+                     formulas)
                (setf p (org-next-line p)))
       (let ((node (make-org-node 'table
                                  :contents-begin (if table-el nil start)
@@ -1173,14 +1232,12 @@ are never closed."
   "The table row at POSITION: a rule (|-) or a row of cells."
   (declare (ignore limit))
   (let* ((rule (org-looking-at "[ \\t]*\\|-" position))
-         (contents-begin (and (not rule) (multiple-value-bind (ok e) (org-looking-at "[ \\t]*\\|" position) (declare (ignore ok)) e)))
-         (line-end (org-line-end position))
-         (node (make-org-node 'table-row :begin position :end (org-next-line position) :post-affiliated position
-                                         :contents-begin contents-begin
-                                         :contents-end (and contents-begin
-                                                            (let ((e (org-skip-blanks-backward line-end contents-begin))) e))
-                                         :properties (list :type (if rule 'rule 'standard)))))
-    node))
+         (contents-begin (and (not rule) (nth-value 1 (org-looking-at "[ \\t]*\\|" position)))))
+    (make-org-node 'table-row :begin position :end (org-next-line position) :post-affiliated position
+                              :contents-begin contents-begin
+                              :contents-end (and contents-begin
+                                                 (org-skip-blanks-backward (org-line-end position) contents-begin))
+                              :properties (list :type (if rule 'rule 'standard)))))
 
 ;;; Objects (inline: markup, links, timestamps...)
 
@@ -1224,18 +1281,27 @@ contents parsed; none deeper than *ORG-DEPTH-LIMIT*."
     (loop
       (multiple-value-bind (object) (org-next-object p end types)
         (unless object (return))
-        (when (and (org-node-contents-begin object) (org-node-contents-end object)
-                   (not (member (org-node-type object) '(table-cell citation-reference))))
-          (org-adopt object (org-parse-objects (org-node-contents-begin object) (org-node-contents-end object)
-                                               (org-object-types (org-node-type object)))))
-        (when (eq (org-node-type object) 'table-cell)
-          (when (and (org-node-contents-begin object)
-                     (< (org-node-contents-begin object) (org-node-contents-end object)))
-            (org-adopt object (org-parse-objects (org-node-contents-begin object) (org-node-contents-end object)
-                                                 (org-object-types 'table-cell)))))
+        (let ((type (org-node-type object))
+              (from (org-node-contents-begin object))
+              (to (org-node-contents-end object)))
+          ;; a citation's references are its own; an empty cell holds nothing
+          (when (and from to (not (eq type 'citation-reference)) (or (not (eq type 'table-cell)) (< from to)))
+            (org-adopt object (org-parse-objects from to (org-object-types type)))))
         (push object objects)
         (setf p (org-node-end object))))
     (nreverse objects)))
+
+(defparameter *org-link-types*
+  '("shell" "news" "mailto" "https" "http" "ftp" "help" "file" "elisp" "doi" "id" "info" "irc" "attachment" "docview")
+  "The link types Org knows as standard.")
+
+(defparameter *org-link-type-scanner*
+  (cl-ppcre:create-scanner (format nil "\\A(?:~{~a~^|~}):" *org-link-types*))
+  "A link type of *ORG-LINK-TYPES* and its colon where it is told to begin, as
+a plain link begins.")
+
+(defparameter *org-link-type-longest* (1+ (reduce #'max *org-link-types* :key #'length))
+  "The most characters a link type of *ORG-LINK-TYPES* and its colon take.")
 
 (defun org-object-candidate (start end)
   "The first place from START below END where an object may begin: one of
@@ -1252,7 +1318,8 @@ tells."
                    (and (alpha-char-p c)
                         (or (= i 0) (not (alphanumericp (schar text (1- i)))))
                         ;; held to the longest type's length, so that no search runs on through a long line
-                        (org-looking-at "(?:https?|ftp|mailto|file|id|doi|news|shell|elisp|help|info|irc|attachment|docview):" i (min end (+ i 11)))))
+                        (cl-ppcre:scan *org-link-type-scanner* text
+                                       :start i :end (min end (+ i *org-link-type-longest*)))))
             return i)))
 
 (defun org-next-object (start end types)
@@ -1310,7 +1377,7 @@ tells."
 (defun org-object-finish (node end)
   "NODE, an object ending at END, with the spaces and tabs after it counted as its POST-BLANK."
   (let ((after end))
-    (loop while (and (< after *org-object-limit*) (member (org-char after) '(#\Space #\Tab))) do (incf after))
+    (loop while (and (< after *org-object-limit*) (member (org-char after) *org-blanks*)) do (incf after))
     (setf (org-node-end node) after
           (org-node-post-blank node) (- after end))
     node))
@@ -1377,8 +1444,10 @@ math, (LATEX . MATH), as Org 9.7 has them.")
   (org-scan (spaces name brackets) "\\\\(?:(_ +)|(there4|sup[123]|frac[13][24]|[a-zA-Z]+)($|\\{\\}|[^a-zA-Z]))" p
     (cond (spaces nil)
           ((gethash name *org-entities*)
-           (let ((end (+ p 1 (length name) (if (equal brackets "{}") 2 0))))
-             (org-object-finish (make-org-node 'entity :begin p :properties (list :name name :use-brackets-p (equal brackets "{}")))
+           (let* ((brackets-p (equal brackets "{}"))
+                  (end (+ p 1 (length name) (if brackets-p 2 0))))
+             (org-object-finish (make-org-node 'entity
+                                               :begin p :properties (list :name name :use-brackets-p brackets-p))
                                 end))))))
 
 (defun org-latex-fragment-parser (p)
@@ -1392,9 +1461,13 @@ math, (LATEX . MATH), as Org 9.7 has them.")
             (#\$ (cond ((eql (org-char (1+ p)) #\$)
                         (let ((close (org-search-close "$$" (+ p 2)))) (and close (+ close 2))))
                        ((eql (org-char (1- p)) #\$) nil)
-                       (t (org-scan () "\\$(?:[^ \\t\\n,.;$]\\$|[^ \\t\\n,.;$][^$]*?[^ \\t\\n,.$]\\$)(?=[-!\"#$%&'()*+,./:;<=>?@\\[\\\\\\]^_`{|}~ \\t\\n]|$)" p match-end)))))))
+                       (t (org-scan () #.(concatenate 'string
+                                                  "\\$(?:[^ \\t\\n,.;$]\\$|[^ \\t\\n,.;$][^$]*?[^ \\t\\n,.$]\\$)"
+                                                  "(?=[-!\"#$%&'()*+,./:;<=>?@\\[\\\\\\]^_`{|}~ \\t\\n]|$)")
+                                    p match-end)))))))
     (when end
-      (org-object-finish (make-org-node 'latex-fragment :begin p :properties (list :value (subseq *org-text* p end))) end))))
+      (org-object-finish (make-org-node 'latex-fragment :begin p :properties (list :value (subseq *org-text* p end)))
+                         end))))
 
 (defun org-line-break-parser (p)
   "The line break at P: \\\\ at the end of a line."
@@ -1465,6 +1538,11 @@ calls are opened and never closed."
   "A call of a macro with arguments, as ORG-MACRO-PARSER reads one: its name
 and what is between its parentheses as its two groups.")
 
+(defun org-macro-arguments (args)
+  "The arguments ARGS, the text between a macro call's parentheses, holds:
+split at each comma not after a backslash, each trimmed."
+  (mapcar (lambda (a) (string-trim *org-blanks* a)) (cl-ppcre:split "(?<!\\\\)," args :limit most-positive-fixnum)))
+
 (defun org-macro-parser (p)
   "The macro call at P: {{{NAME}}} or {{{NAME(ARGUMENTS)}}}."
   (org-scan (key) "\\{\\{\\{([a-zA-Z][-\\w]*)" p
@@ -1476,9 +1554,7 @@ and what is between its parentheses as its two groups.")
       (when close
         (org-object-finish (make-org-node 'macro :begin p
                                                  :properties (list :key (string-downcase key)
-                                                                   :args (and args
-                                                                              (mapcar (lambda (a) (string-trim " 	" a))
-                                                                                      (cl-ppcre:split "(?<!\\\\)," args :limit most-positive-fixnum)))))
+                                                                   :args (and args (org-macro-arguments args))))
                            (+ close (if paren 4 3)))))))
 
 (defun org-target-parser (p)
@@ -1499,7 +1575,8 @@ and what is between its parentheses as its two groups.")
 (defun org-statistics-cookie-parser (p)
   "The statistics cookie at P: [N/M], [N%], [/] or [%]."
   (org-scan () *org-statistics-cookie-re* p
-    (org-object-finish (make-org-node 'statistics-cookie :begin p :properties (list :value (subseq *org-text* p match-end)))
+    (org-object-finish (make-org-node 'statistics-cookie :begin p
+                                                         :properties (list :value (subseq *org-text* p match-end)))
                        match-end)))
 
 (defun org-script-parser (p type)
@@ -1516,7 +1593,8 @@ and what is between its parentheses as its two groups.")
 (defun org-superscript-parser (p) "The superscript at P." (org-script-parser p 'superscript))
 
 (defun org-balanced-end (p open close)
-  "Where the bracketed text beginning at P with OPEN ends, just past its CLOSE, the brackets in it balanced; NIL when unbalanced on its line."
+  "Where the bracketed text beginning at P with OPEN ends, just past its CLOSE,
+the brackets in it balanced; NIL when unbalanced on its line."
   (let ((depth 0))
     (loop for q from p below *org-object-limit*
           for c = (org-char q)
@@ -1536,19 +1614,21 @@ and what is between its parentheses as its two groups.")
       (when (eql (org-char after) #\{)
         (let ((close (org-balanced-end after #\{ #\})))
           (when close
-            (org-object-finish (make-org-node 'inline-src-block :begin p
-                                                                :properties (append (list :language language)
-                                                                                    (and parameters
-                                                                                         (list :parameters parameters))
-                                                                                    (list :value (subseq *org-text* (1+ after) (1- close)))))
-                               close)))))))
+            (org-object-finish
+             (make-org-node 'inline-src-block
+                            :begin p
+                            :properties (append (list :language language)
+                                                (and parameters (list :parameters parameters))
+                                                (list :value (subseq *org-text* (1+ after) (1- close)))))
+             close)))))))
 
 (defun org-inline-babel-call-parser (p)
   "The inline babel call at P: call_NAME[INSIDE](ARGUMENTS)[END]."
   (org-scan (name) "(?i)call_([^()\\[\\] \\t\\n]+)" p
     (let ((after match-end) inside arguments end-header)
       (when (eql (org-char after) #\[)
-        (let ((close (org-balanced-end after #\[ #\]))) (unless close (return-from org-inline-babel-call-parser nil))
+        (let ((close (org-balanced-end after #\[ #\])))
+          (unless close (return-from org-inline-babel-call-parser nil))
           (setf inside (subseq *org-text* (1+ after) (1- close)) after close)))
       (when (eql (org-char after) #\()
         (let ((close (org-balanced-end after #\( #\))))
@@ -1557,17 +1637,15 @@ and what is between its parentheses as its two groups.")
             (when (eql (org-char after) #\[)
               (let ((close (org-balanced-end after #\[ #\])))
                 (when close (setf end-header (subseq *org-text* (1+ after) (1- close)) after close))))
-            (org-object-finish (make-org-node 'inline-babel-call :begin p
-                                                                 :properties (append (list :call name)
-                                                                                     (and inside
-                                                                                          (plusp (length inside))
-                                                                                          (list :inside-header inside))
-                                                                                     (and (plusp (length arguments))
-                                                                                          (list :arguments arguments))
-                                                                                     (and end-header
-                                                                                          (plusp (length end-header))
-                                                                                          (list :end-header end-header))))
-                               after)))))))
+            (org-object-finish
+             (make-org-node 'inline-babel-call
+                            :begin p
+                            :properties (append (list :call name)
+                                                (and inside (plusp (length inside)) (list :inside-header inside))
+                                                (and (plusp (length arguments)) (list :arguments arguments))
+                                                (and end-header (plusp (length end-header))
+                                                     (list :end-header end-header))))
+             after)))))))
 
 (defun org-footnote-reference-parser (p)
   "The footnote reference at P: [fn:LABEL], [fn:: inline text] or [fn:LABEL:inline text]."
@@ -1575,14 +1653,15 @@ and what is between its parentheses as its two groups.")
     (let ((after match-end))
       (case (org-char after)
         (#\] (when (plusp (length label))
-               (org-object-finish (make-org-node 'footnote-reference :begin p :properties (list :label label :type 'standard))
+               (org-object-finish (make-org-node 'footnote-reference :begin p
+                                                                     :properties (list :label label :type 'standard))
                                   (1+ after))))
         (#\: (let ((close (org-balanced-end p #\[ #\])))
                (when close
-                 (org-object-finish (make-org-node 'footnote-reference :begin p :contents-begin (1+ after) :contents-end (1- close)
-                                                   :properties (append (and (plusp (length label))
-                                                                            (list :label label))
-                                                                                           (list :type 'inline)))
+                 (org-object-finish (make-org-node 'footnote-reference
+                                                   :begin p :contents-begin (1+ after) :contents-end (1- close)
+                                                   :properties (append (and (plusp (length label)) (list :label label))
+                                                                       (list :type 'inline)))
                                     close))))))))
 
 (defun org-citation-parser (p)
@@ -1652,10 +1731,6 @@ time range after it too (<%%(diary-float t 1 1) 10:00>).")
       (org-object-finish (make-org-node 'timestamp :begin p :properties (list :type type :raw-value raw)) match-end))))
 
 ;;; Links
-
-(defparameter *org-link-types*
-  '("shell" "news" "mailto" "https" "http" "ftp" "help" "file" "elisp" "doi" "id" "info" "irc" "attachment" "docview")
-  "The link types Org knows as standard.")
 
 (defun org-link-parts (raw)
   "RAW, a link's target as written, as two values: its type and path."
@@ -1727,7 +1802,9 @@ marks of emphasis (*bold*, /italic/, _under_, =code=, ~verbatim~, +struck+) off.
            (let* ((raw (org-link-unescape (cl-ppcre:regex-replace-all "\\s+" (string-trim "
 " target) " "))))
              (multiple-value-bind (type path) (org-link-parts raw)
-               (let ((node (make-org-node 'link :begin p :properties (list :type type :path path :format 'bracket :raw-link raw))))
+               (let ((node (make-org-node 'link
+                                          :begin p
+                                          :properties (list :type type :path path :format 'bracket :raw-link raw))))
                  (when description-end
                    (setf (org-node-contents-begin node) (1+ after) (org-node-contents-end node) description-end))
                  (org-object-finish node end))))))))
@@ -1739,7 +1816,12 @@ marks of emphasis (*bold*, /italic/, _under_, =code=, ~verbatim~, +struck+) off.
                             match-end))))
     (t
      (when (or (<= p *org-object-begin*) (not (alphanumericp (org-char (1- p)))))
-       (org-scan (type path) "([a-z]+):((?:[^][ \\t\\n()<>]|\\((?:[^][ \\t\\n()<>]|\\([^][ \\t\\n()<>]*\\))*\\))+(?:[^\\s!\"#$%&'()*+,\\-./:;<=>?@\\[\\\\\\]^_`{|}~]|/|\\((?:[^][ \\t\\n()<>]|\\([^][ \\t\\n()<>]*\\))*\\)))" p
+       (org-scan (type path) #.(concatenate 'string
+                                          "([a-z]+):((?:[^][ \\t\\n()<>]"
+                                          "|\\((?:[^][ \\t\\n()<>]|\\([^][ \\t\\n()<>]*\\))*\\))+"
+                                          "(?:[^\\s!\"#$%&'()*+,\\-./:;<=>?@\\[\\\\\\]^_`{|}~]|/"
+                                          "|\\((?:[^][ \\t\\n()<>]|\\([^][ \\t\\n()<>]*\\))*\\)))")
+                p
          (when (member type *org-link-types* :test #'string=)
            (org-object-finish (make-org-node 'link :begin p :properties (list :type type :path path :format 'plain
                                                                               :raw-link (format nil "~a:~a" type path)))
@@ -1754,10 +1836,9 @@ marks of emphasis (*bold*, /italic/, _under_, =code=, ~verbatim~, +struck+) off.
            (cell-end (if bar (1+ bar) end))
            (text-end (or bar end))
            (contents-begin (loop for q from start below text-end
-                                 unless (member (org-char q) '(#\Space #\Tab)) return q
+                                 unless (member (org-char q) *org-blanks*) return q
                                  finally (return text-end)))
            (contents-end (org-skip-blanks-backward text-end contents-begin)))
       (when (or bar (< contents-begin text-end))
-        (let ((node (make-org-node 'table-cell :begin start :end cell-end
-                                               :contents-begin contents-begin :contents-end contents-end)))
-          node)))))
+        (make-org-node 'table-cell :begin start :end cell-end
+                                   :contents-begin contents-begin :contents-end contents-end)))))

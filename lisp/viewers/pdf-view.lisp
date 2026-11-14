@@ -87,7 +87,7 @@ them, as steps from it: the next three and the one before.")
 (defparameter *pdf-view-places-kept* 200
   "How many PDFs have their page and zoom kept for the next time.")
 
-(defstruct (pdf-view (:constructor make-pdf-view (path)) (:copier nil))
+(define-record (pdf-view (:constructor make-pdf-view (path)) (:copier nil))
   "What a PDF's view (pdf-view-mode) knows. It holds the PDF's PATH, the PAGE
 shown (from 1), how many PAGES it has and the INFO its :INFO program printed,
 once the text is taken out. ZOOM is how the page is fitted, :PAGE or :WIDTH,
@@ -109,27 +109,66 @@ view's buffer showing the file read as text instead, or NIL for the PDF's own
 text. WORDS is what the line over it calls the file shown (a PDF document when
 NIL). SPOT is the place of a page last shown or clicked, (PAGE X Y), X and Y
 fractions of the page from its top left; MARKED the place marked on it for a
-moment, a PDF-MARK (PDF-VIEW-SHOW-PLACE)."
-  path (page 1) pages (info "") (zoom :page) (factor 1) (top 0) (left 0)
-  (images '()) job text-job stopped last-search (saved t)
-  (page-starts (make-array 0)) copy (lock (sb-thread:make-mutex :name "pdf view copy"))
-  maker (making (sb-thread:make-mutex :name "pdf view making")) reading words spot marked)
+moment, a PDF-MARK (PDF-VIEW-SHOW-PLACE). SEEN is what the view was drawn and
+shown by at the last tick (PDF-VIEW-SEEN-P); RATIO-OF, its pages' width over
+their height with the INFO it was read from, as (INFO . RATIO)
+\(PDF-VIEW-RATIO)."
+  (path nil :documentation "The path of the PDF of PDF-VIEW.")
+  (page 1 :documentation "The page of PDF-VIEW shown, counted from 1.")
+  (pages nil :documentation "How many pages PDF-VIEW has, NIL until its text is taken out.")
+  (info "" :documentation "What the :INFO program printed for PDF-VIEW, once its text is taken out.")
+  (zoom :page :documentation "How the page of PDF-VIEW is fitted, :PAGE or :WIDTH.")
+  (factor 1 :documentation "How much larger than the fit PDF-VIEW draws its page.")
+  (top 0 :documentation "The row of cells of the page shown at the window's top, or :BOTTOM for the page's last rows.")
+  (left 0 :documentation "The column of cells of the page shown at the window's left.")
+  (images '() :documentation "The pages drawn for PDF-VIEW, each (PAGE WIDTH IMAGE DARK), the last drawn first.")
+  (job nil :documentation "The pages of PDF-VIEW being drawn, a list of jobs.")
+  (text-job nil :documentation "The job taking out the text of PDF-VIEW, or NIL.")
+  (stopped nil
+           :documentation "The (PAGE WIDTH) shown when the drawing was stopped, not drawn again until another is wanted,
+or NIL.")
+  (last-search nil :documentation "The last text searched for in PDF-VIEW and where it was found.")
+  (saved t :documentation "True when the page and zoom of PDF-VIEW are kept as they are.")
+  (page-starts (make-array 0)
+               :documentation "A vector of where in the text, in octets, each page of PDF-VIEW after the first begins.")
+  (copy nil
+        :documentation "The PDF-COPY of the octets of PDF-VIEW in memory that its programs read, made once, or NIL.")
+  (lock (sb-thread:make-mutex :name "pdf view copy") :documentation "The mutex that guards the COPY of PDF-VIEW.")
+  (maker nil
+         :documentation "A function of the open file giving the descriptor of the copy, or NIL for
+TUATARA.IO:SEALED-COPY.")
+  (making (sb-thread:make-mutex :name "pdf view making")
+          :documentation "A mutex held while the copy of PDF-VIEW is made.")
+  (reading nil
+           :documentation "A function of the buffer of PDF-VIEW showing the file read as text instead, or NIL for the
+PDF's own text.")
+  (words nil :documentation "What the line over PDF-VIEW calls the file shown, or NIL for a PDF document.")
+  (spot nil
+        :documentation "The place of a page last shown or clicked, (PAGE X Y), X and Y fractions from its top left.")
+  (marked nil :documentation "The PDF-MARK placed on PDF-VIEW for a moment, or NIL.")
+  (seen (make-array 14 :initial-element nil)
+        :documentation "What PDF-VIEW was drawn and shown by at the last tick (PDF-VIEW-SEEN-P).")
+  (ratio-of nil
+            :documentation "The (INFO . RATIO) of the width of its pages over their height, with the INFO it was read
+from (PDF-VIEW-RATIO)."))
 
-(setf (documentation 'pdf-view-p 'function) "True when OBJECT is a PDF-VIEW.")
-
-(defstruct (pdf-mark (:constructor make-pdf-mark (page box)) (:copier nil))
+(define-record (pdf-mark (:constructor make-pdf-mark (page box)) (:copier nil))
   "A place marked on a page of a PDF's view for a moment: PAGE, BOX the
 place as (LEFT TOP RIGHT BOTTOM), fractions of the page from its top left,
 UNTIL the internal real time it is taken off, set once it is first shown, and
 again when it is first shown on the page drawn for the window, FITTED then.
 SCROLL is true until the view has scrolled it into sight. IMAGE is the page's
 picture with the mark laid over it, made from SOURCE (PDF-VIEW-SHOW-PLACE)."
-  page box until fitted (scroll t) source image)
+  (page nil :documentation "The page of PDF-MARK.")
+  (box nil :documentation "The place marked as (LEFT TOP RIGHT BOTTOM), fractions of the page from its top left.")
+  (until nil :documentation "The internal real time at which PDF-MARK is taken off, set once it is first shown.")
+  (fitted nil :documentation "True once the time of PDF-MARK was set again on the page drawn for the window.")
+  (scroll t :documentation "True until the view has scrolled PDF-MARK into sight.")
+  (source nil :documentation "The picture of the page that the image of PDF-MARK is made from.")
+  (image nil :documentation "The picture of the page with PDF-MARK laid over it."))
 
-(setf (documentation 'pdf-mark-p 'function) "True when OBJECT is a PDF-MARK.")
-
-(defstruct (pdf-view-job (:include decoding-job) (:constructor make-pdf-view-job (page width &optional buffer))
-                         (:copier nil))
+(define-record (pdf-view-job (:include decoding-job) (:constructor make-pdf-view-job (page width &optional buffer))
+                            (:copier nil))
   "Work for a PDF's view on THREAD: page PAGE drawn WIDTH pixels wide (its
 IMAGE, its dark picture the RESULT), or the text taken out for BUFFER (PAGE
 NIL: TEXT, NOTES and INFO, where its pages begin the RESULT). DONE is true
@@ -137,9 +176,17 @@ once it is over. REFUSAL is why the file could not be read, when it could not
 \(too large to be given to a decoder, gone). CANCEL, a cons, stops it when its
 car turns true. The text is a decoding job of the job runner, the pages are
 not (PDF-VIEW-START)."
-  page width image text notes info result done refusal)
-
-(setf (documentation 'pdf-view-job-p 'function) "True when OBJECT is a PDF-VIEW-JOB.")
+  (page nil :documentation "The page PDF-VIEW-JOB draws, or NIL when it takes out the text.")
+  (width nil :documentation "The width in pixels PDF-VIEW-JOB draws its page.")
+  (image nil :documentation "The picture PDF-VIEW-JOB drew of its page.")
+  (text nil :documentation "The text PDF-VIEW-JOB took out.")
+  (notes nil :documentation "The notes PDF-VIEW-JOB took out with the text.")
+  (info nil :documentation "The info PDF-VIEW-JOB took out with the text.")
+  (result nil :documentation "The dark picture of the page, or where the pages begin for the text.")
+  (done nil :documentation "True once PDF-VIEW-JOB is over.")
+  (refusal nil
+           :documentation "Why the file could not be read, when it was too large to give to a
+decoder or gone, or NIL."))
 
 (tuatara.runtime:define-job-words pdf-view-job
   :doing "Reading"
@@ -156,22 +203,29 @@ not (PDF-VIEW-START)."
 
 ;;; Work in the background
 
-(defstruct (pdf-copy (:constructor make-pdf-copy (fd stamp)) (:copier nil))
+(define-record (pdf-copy (:constructor make-pdf-copy (fd stamp)) (:copier nil))
   "A PDF's octets in memory, sealed (TUATARA.IO:SEALED-COPY), for its view's
 programs to read: file descriptor (FD), the copy; STAMP, the file's when it
 was made; USERS, how many are reading it; DROPPED once the view needs it no
 more, closed when the last user is done."
-  fd stamp (users 0) dropped)
+  (fd nil :documentation "The descriptor of the sealed copy of PDF-COPY.")
+  (stamp nil :documentation "The stamp of the file when PDF-COPY was made.")
+  (users 0 :documentation "How many are reading PDF-COPY.")
+  (dropped nil
+           :documentation "True once the view no longer needs PDF-COPY, which is closed when the last user is done."))
 
-(setf (documentation 'pdf-copy-p 'function) "True when OBJECT is a PDF-COPY.")
+(defun pdf-copy-close-if-idle (view copy)
+  "Close COPY, VIEW's, when it was dropped and no one reads it any more; called
+with VIEW's lock held."
+  (when (and (pdf-copy-dropped copy) (zerop (pdf-copy-users copy)))
+    (ignoring-errors-reported ("closing the copy of ~a" (pdf-view-path view))
+      (sb-posix:close (pdf-copy-fd copy)))))
 
 (defun pdf-copy-release (view copy)
   "One user of COPY, VIEW's, done with it: closed when it was dropped and no one reads it."
   (sb-thread:with-mutex ((pdf-view-lock view))
     (decf (pdf-copy-users copy))
-    (when (and (pdf-copy-dropped copy) (zerop (pdf-copy-users copy)))
-      (ignoring-errors-reported ("closing the copy of ~a" (pdf-view-path view))
-        (sb-posix:close (pdf-copy-fd copy))))))
+    (pdf-copy-close-if-idle view copy)))
 
 (defun pdf-copy-drop (view)
   "VIEW needs its copy no more: closed now, or by its last user."
@@ -179,11 +233,38 @@ more, closed when the last user is done."
     (let ((copy (pdf-view-copy view)))
       (when (pdf-copy-p copy)
         (setf (pdf-copy-dropped copy) t)
-        (when (zerop (pdf-copy-users copy))
-          (ignoring-errors-reported ("closing the copy of ~a" (pdf-view-path view))
-            (sb-posix:close (pdf-copy-fd copy)))))
+        (pdf-copy-close-if-idle view copy))
       ;; work started after (an embedded file saved) makes a copy of its own, closed when done
       (setf (pdf-view-copy view) :dropped))))
+
+(defun pdf-copy-taken (view fd stamp make)
+  "The copy of VIEW's PDF, open as FD with STAMP, a user of it counted: the one
+kept while the file is unchanged, else a new one MAKE makes of FD, kept in its
+place, the old one closed once its users are done; for a view no longer
+needing one, a copy of its own, closed when done. A copy slow to make is never
+made while VIEW's lock is held, so that the editor's thread never waits on
+it."
+  (loop
+    (let* ((copy (sb-thread:with-mutex ((pdf-view-lock view)) (pdf-view-copy view)))
+           (made (and (not (and (pdf-copy-p copy) (tuatara.io:same-content-p stamp (pdf-copy-stamp copy))))
+                      (funcall make fd))))
+      (sb-thread:with-mutex ((pdf-view-lock view))
+        (let ((now (pdf-view-copy view)))
+          (cond ((and (eq now :dropped) made)
+                 (let ((own (make-pdf-copy made stamp)))
+                   (setf (pdf-copy-dropped own) t (pdf-copy-users own) 1)
+                   (return own)))
+                ;; dropped since it was looked at: made again, outside the lock
+                ((eq now :dropped))
+                (made
+                 (when (pdf-copy-p now)
+                   (setf (pdf-copy-dropped now) t)
+                   (pdf-copy-close-if-idle view now))
+                 (let ((new (make-pdf-copy made stamp)))
+                   (setf (pdf-view-copy view) new (pdf-copy-users new) 1)
+                   (return new)))
+                (t (incf (pdf-copy-users now))
+                   (return now))))))))
 
 (defun call-with-pdf-copy (view function)
   "Call FUNCTION with the descriptor of VIEW's PDF copied in memory, sealed:
@@ -195,28 +276,9 @@ file is copied once for all the pages drawn, not for each."
                  (declare (ignore size))
                  (let ((stamp (tuatara.io:fd-stamp fd path))
                        (make (or (pdf-view-maker view) #'tuatara.io:sealed-copy)))
-                   ;; a copy slow to make (a document made a PDF) made once, the editor's thread never waiting on it
+                   ;; a copy slow to make (a document made a PDF) made once, by one thread at a time
                    (sb-thread:with-mutex ((pdf-view-making view))
-                     (let* ((copy (sb-thread:with-mutex ((pdf-view-lock view)) (pdf-view-copy view)))
-                            (made (and (not (and (pdf-copy-p copy)
-                                                 (tuatara.io:same-content-p stamp (pdf-copy-stamp copy))))
-                                       (funcall make fd))))
-                       (sb-thread:with-mutex ((pdf-view-lock view))
-                         (let ((copy (pdf-view-copy view)))
-                           (cond ((eq copy :dropped)
-                                  (setf copy (make-pdf-copy (or made (funcall make fd)) stamp))
-                                  (setf (pdf-copy-dropped copy) t))
-                                 (made
-                                  ;; the file changed (or no copy yet): the old one closed once its users are done
-                                  (when copy
-                                    (setf (pdf-copy-dropped copy) t)
-                                    (when (zerop (pdf-copy-users copy))
-                                      (ignoring-errors-reported ("closing the copy of ~a" (pdf-view-path view))
-                                        (sb-posix:close (pdf-copy-fd copy)))))
-                                  (setf copy (make-pdf-copy made stamp)
-                                        (pdf-view-copy view) copy)))
-                           (incf (pdf-copy-users copy))
-                           copy)))))))))
+                     (pdf-copy-taken view fd stamp make)))))))
     (unwind-protect (funcall function (pdf-copy-fd copy))
       (pdf-copy-release view copy))))
 
@@ -249,17 +311,20 @@ line says the page."
         (setf (pdf-view-job-thread job) (tuatara.runtime:make-guarded-thread run :name "tuatara pdf view")))
     job))
 
-(defstruct (pdf-view-task (:include tuatara.runtime:job)
-                          (:constructor make-pdf-view-task (buffer words finish quiet))
-                          (:copier nil))
+(define-record (pdf-view-task (:include tuatara.runtime:job)
+                             (:constructor make-pdf-view-task (buffer words finish quiet))
+                             (:copier nil))
   "Work for a PDF's view besides its pages and text, a job: WORDS, what it
 does (reading what report.pdf says of itself); FINISH, a function of its
 RESULT, takes that in on the editor's thread, the view killed meanwhile or
 not; QUIET, true for work that only shows something, stopped without asking
 when the view is killed."
-  words finish quiet result)
-
-(setf (documentation 'pdf-view-task-p 'function) "True when OBJECT is a PDF-VIEW-TASK.")
+  (words nil :documentation "What PDF-VIEW-TASK does, in words.")
+  (finish nil :documentation "A function of the result that takes it in on the editor's thread.")
+  (quiet nil
+         :documentation "True when PDF-VIEW-TASK only shows something and is stopped without asking when the view is
+killed.")
+  (result nil :documentation "What PDF-VIEW-TASK gave, once it is done."))
 
 (tuatara.runtime:define-job-words pdf-view-task
   :doing (pdf-view-task-words job)
@@ -330,9 +395,14 @@ when it shows pictures (a PDF's pages, a terminal's pictures); else NIL."
 
 (defun pdf-view-ratio (view)
   "The width of VIEW's pages over their height, as its first page's size
-says; that of A4 upright until it is known."
-  (let ((size (page-size (pdf-view-info view))))
-    (if size (/ (first size) (second size)) (/ 210 297))))
+says; that of A4 upright until it is known. Read again only when its INFO
+changes."
+  (let ((kept (pdf-view-ratio-of view)) (info (pdf-view-info view)))
+    (if (and kept (eq (car kept) info))
+        (cdr kept)
+        (cdr (setf (pdf-view-ratio-of view)
+                   (cons info (let ((size (page-size info)))
+                                (if size (/ (first size) (second size)) (/ 210 297)))))))))
 
 (defun pdf-view-width (buffer)
   "The width in pixels the page of BUFFER, a PDF's view, is drawn for its
@@ -496,69 +566,97 @@ the page of a place shown meanwhile begins (PDF-VIEW-SHOW-PLACE)."
                (tuatara.io:native-file-name (pdf-view-path view)))
       (funcall (pdf-view-reading view) buffer))))
 
+(defun pdf-view-seen-p (buffer view width)
+  "True when nothing VIEW, BUFFER's, is drawn and shown by has changed since
+the last time this was asked: its page, the WIDTH it is drawn at, where it is
+scrolled, its pictures and jobs, its mark, the window showing it and its
+size, the theme and dark pages; what they are now kept for the next time.
+Nothing is made to ask it."
+  (let ((seen (pdf-view-seen view)) (window (buffer-window buffer)) (i 0) (same t))
+    (flet ((note (value)
+             (unless (eql (svref seen i) value)
+               (setf (svref seen i) value same nil))
+             (incf i)))
+      (note (pdf-view-page view)) (note width) (note (pdf-view-top view)) (note (pdf-view-left view))
+      (note (pdf-view-images view)) (note (pdf-view-job view)) (note (pdf-view-text-job view))
+      (note (pdf-view-info view)) (note (pdf-view-stopped view)) (note (pdf-view-marked view)) (note window)
+      (note (and window (tuatara.display:window-height window))) (note tuatara.display:*face-generation*)
+      (note *pdf-view-dark-pages*))
+    same))
+
+(defun pdf-view-draw (buffer view)
+  "Draw the page BUFFER's VIEW shows, then those around it
+\(PDF-VIEW-WANTED-PAGES), as wide as its window and zoom ask, some at once;
+stop those no longer wanted, let go of those past *PDF-VIEW-MEMORY*, and show
+its page."
+  (let ((width (pdf-view-width buffer))
+        (wanted (pdf-view-wanted-pages view)))
+    ;; pages no longer wanted, or drawn for a width no longer asked, are not worth finishing
+    (dolist (job (pdf-view-job view))
+      (unless (and (member (pdf-view-job-page job) wanted)
+                   (or (null width) (eql width (pdf-view-job-width job))))
+        (setf (car (pdf-view-job-cancel job)) t
+              (pdf-view-job view) (remove job (pdf-view-job view)))))
+    ;; the page shown first, then those ahead, as wide as the window and zoom ask now, some at once
+    (when (and width (or (null (pdf-view-text-job view)) (plusp (length (pdf-view-info view))))
+               (not (equal (pdf-view-stopped view) (list (pdf-view-page view) width))))
+      (dolist (page wanted)
+        (when (and (< (length (pdf-view-job view)) *pdf-view-drawing-at-once*)
+                   (not (find-if (lambda (d) (and (eql (first d) page) (eql (second d) width)))
+                                 (pdf-view-images view)))
+                   (not (find page (pdf-view-job view) :key #'pdf-view-job-page)))
+          (pdf-view-start-page view page width))))
+    (pdf-view-let-go view width)
+    (pdf-view-show buffer)))
+
 (defun pdf-view-tick (editor)
   "Tick function: take in the pages drawn and the text taken out for the PDFs
-shown, show each its page, and draw the page shown,
-then those around it (PDF-VIEW-WANTED-PAGES), as wide as its window and zoom
-ask, some at once; let go of those past *PDF-VIEW-MEMORY*; keep the page and
-zoom of those changed a while ago; take a place marked off its page once
-its moment is over. T while a page or a text is being made, and once more
-after the text is taken in: its header line takes a row of the window, so the
-page is fitted again to the rows left; else the seconds until a mark is to be
-taken off, or NIL. A PDF a waiting
+shown, and, for each a window shows whose page, size or pictures changed
+since the last tick (PDF-VIEW-SEEN-P), draw and show its page
+\(PDF-VIEW-DRAW); keep the page and zoom of those changed a while ago; take a
+place marked off its page once its moment is over. T while a page or a text
+is being made, and once more after the text is taken in: its header line
+takes a row of the window, so the page is fitted again to the rows left;
+else the seconds until a mark is to be taken off, or NIL. A PDF a waiting
 question is about is left as it is until the question is answered
 \(BUFFER-HELD-BY-QUESTION-P)."
   (declare (ignore editor))
   (let ((working nil) (later nil))
-    ;; what was drawn and taken out for a PDF a waiting question is about waits for the answer
-    (dolist (buffer (remove-if #'buffer-held-by-question-p *pdf-views*))
+    (dolist (buffer *pdf-views*)
       (let ((view (pdf-view-of buffer)))
-        (if (null view)
-            (setf *pdf-views* (remove buffer *pdf-views*))
-            (let ((text (pdf-view-text-job view)))
-              (when (and text (pdf-view-job-done text))
-                (setf (pdf-view-text-job view) nil
-                      working t)
-                (pdf-view-take-in-text buffer view text))
-              ;; what pdfinfo said, while the text is still being taken out: enough to draw the pages
-              (when (and text (not (pdf-view-job-done text)) (pdf-view-job-info text) (string= "" (pdf-view-info view)))
-                (setf (pdf-view-info view) (pdf-view-job-info text)
-                      (pdf-view-pages view) (whole-number (info-field (pdf-view-info view) "Pages"))))
-              ;; the pages drawn, taken in
-              (dolist (job (reverse (pdf-view-job view)))
-                (when (pdf-view-job-done job)
-                  (setf (pdf-view-job view) (remove job (pdf-view-job view)))
-                  (pdf-view-take-in-page view job)))
-              (let ((width (pdf-view-width buffer))
-                    (wanted (pdf-view-wanted-pages view)))
-                ;; pages no longer wanted, or drawn for a width no longer asked, are not worth finishing
-                (dolist (job (pdf-view-job view))
-                  (unless (and (member (pdf-view-job-page job) wanted)
-                               (or (null width) (eql width (pdf-view-job-width job))))
-                    (setf (car (pdf-view-job-cancel job)) t
-                          (pdf-view-job view) (remove job (pdf-view-job view)))))
-                ;; the page shown first, then those ahead, as wide as the window and zoom ask now, some at once
-                (when (and width (or (null (pdf-view-text-job view)) (plusp (length (pdf-view-info view))))
-                           (not (equal (pdf-view-stopped view) (list (pdf-view-page view) width))))
-                  (dolist (page wanted)
-                    (when (and (< (length (pdf-view-job view)) *pdf-view-drawing-at-once*)
-                               (not (find-if (lambda (d) (and (eql (first d) page) (eql (second d) width)))
-                                             (pdf-view-images view)))
-                               (not (find page (pdf-view-job view) :key #'pdf-view-job-page)))
-                      (pdf-view-start-page view page width))))
-                (pdf-view-let-go view width)
-                (pdf-view-show buffer))
-              (unless (pdf-view-saved view)
-                (pdf-view-keep-place view))
-              (when (or (pdf-view-job view) (pdf-view-text-job view))
-                (setf working t))
-              (let ((mark (pdf-view-marked view)))
-                (when (and mark (pdf-mark-until mark))
-                  (let ((left (/ (- (pdf-mark-until mark) (get-internal-real-time)) internal-time-units-per-second)))
-                    (if (plusp left)
-                        (setf later (min (or later left) (float left)))
-                        (progn (setf (pdf-view-marked view) nil)
-                               (pdf-view-show buffer))))))))))
+        (cond
+          ((null view) (setf *pdf-views* (remove buffer *pdf-views*)))
+          ;; what was drawn and taken out for a PDF a waiting question is about waits for the answer
+          ((buffer-held-by-question-p buffer))
+          (t
+           (let ((text (pdf-view-text-job view)))
+             (when (and text (pdf-view-job-done text))
+               (setf (pdf-view-text-job view) nil
+                     working t)
+               (pdf-view-take-in-text buffer view text))
+             ;; what pdfinfo said, while the text is still being taken out: enough to draw the pages
+             (when (and text (not (pdf-view-job-done text)) (pdf-view-job-info text) (string= "" (pdf-view-info view)))
+               (setf (pdf-view-info view) (pdf-view-job-info text)
+                     (pdf-view-pages view) (whole-number (info-field (pdf-view-info view) "Pages")))))
+           ;; the pages drawn, taken in
+           (when (some #'pdf-view-job-done (pdf-view-job view))
+             (dolist (job (reverse (pdf-view-job view)))
+               (when (pdf-view-job-done job)
+                 (setf (pdf-view-job view) (remove job (pdf-view-job view)))
+                 (pdf-view-take-in-page view job))))
+           (unless (or (null (buffer-window buffer)) (pdf-view-seen-p buffer view (pdf-view-width buffer)))
+             (pdf-view-draw buffer view))
+           (unless (pdf-view-saved view)
+             (pdf-view-keep-place view))
+           (when (or (pdf-view-job view) (pdf-view-text-job view))
+             (setf working t))
+           (let ((mark (pdf-view-marked view)))
+             (when (and mark (pdf-mark-until mark))
+               (let ((left (/ (- (pdf-mark-until mark) (get-internal-real-time)) internal-time-units-per-second)))
+                 (if (plusp left)
+                     (setf later (min (or later left) (float left)))
+                     (progn (setf (pdf-view-marked view) nil)
+                            (pdf-view-show buffer))))))))))
     (or working later)))
 
 (defun pdf-view-take-in-page (view job)
@@ -691,9 +789,7 @@ or nothing to draw it with, which is said)."
   (let ((native (file-view-path path)))
     (when (and native (pdf-file-p native)
                (file-view-can-draw-p native (find-pdf-decoder)
-                                     (format nil "no program for PDFs (install ~a: ~a)"
-                                             (getf (first *pdf-decoders*) :name)
-                                             (first (getf (first *pdf-decoders*) :text)))))
+                                     (no-decoder-words "PDFs" *pdf-decoders*)))
       (file-view-show native *pdf-views* (lambda (b) (let ((v (pdf-view-of b))) (and v (pdf-view-path v))))
                       (lambda () (pdf-view-make native)) show))))
 
@@ -828,33 +924,29 @@ the pages, and which in the text does what KEYS do in any text (PDF-VIEW-USUAL).
              ((and ,keys (pdf-view-text-p buffer)) (pdf-view-usual ,keys))
              (t ,@body)))))
 
+(defun pdf-view-turn (buffer view step)
+  "Turn BUFFER's VIEW of a PDF STEP pages on (back when negative) from the
+page shown; at the last or the first page, say so."
+  (let ((page (+ (pdf-view-page-now buffer) step)))
+    (cond ((< page 1) (message "The first page"))
+          ((and (pdf-view-pages view) (> page (pdf-view-pages view))) (message "The last page"))
+          (t (pdf-view-go page)))))
+
 (define-pdf-view-command pdf-view-next-page "l"
   "Turn to the next page of the PDF. In its text, move as \\`l' does in any text."
-  (let ((page (pdf-view-page-now buffer)))
-    (if (and (pdf-view-pages view) (>= page (pdf-view-pages view)))
-        (message "The last page")
-        (pdf-view-go (1+ page)))))
+  (pdf-view-turn buffer view 1))
 
 (define-pdf-view-command pdf-view-previous-page "h"
   "Turn to the page before in the PDF. In its text, move as \\`h' does in any text."
-  (let ((page (pdf-view-page-now buffer)))
-    (if (<= page 1)
-        (message "The first page")
-        (pdf-view-go (1- page)))))
+  (pdf-view-turn buffer view -1))
 
 (define-pdf-view-command pdf-view-next-page-anywhere nil
   "Turn to the next page of the PDF; in its text, go to where it begins."
-  (let ((page (pdf-view-page-now buffer)))
-    (if (and (pdf-view-pages view) (>= page (pdf-view-pages view)))
-        (message "The last page")
-        (pdf-view-go (1+ page)))))
+  (pdf-view-turn buffer view 1))
 
 (define-pdf-view-command pdf-view-previous-page-anywhere nil
   "Turn to the page before in the PDF; in its text, go to where it begins."
-  (let ((page (pdf-view-page-now buffer)))
-    (if (<= page 1)
-        (message "The first page")
-        (pdf-view-go (1- page)))))
+  (pdf-view-turn buffer view -1))
 
 (define-pdf-view-command pdf-view-first-page "g h"
   "Turn to the first page of the PDF. In its text, move as \\`g h' does in any text."
@@ -1008,32 +1100,36 @@ key."
   "Find text in the PDF and turn to its page: from the page shown on, asked
 for; again with nothing typed, the next place of the same text. Case is
 ignored while the text has no capital letter, in every language (é finds É).
-In its text, search as \\`C-s' does in any text."
+The search runs in the background, \\[keyboard-quit] stopping it. In its
+text, search as \\`C-s' does in any text."
   (let* ((last (pdf-view-last-search view))
          (typed (read-string (format nil "Search the PDF~@[ (~a)~]: " (car last))))
          (query (if (and (string= typed "") last) (car last) typed))
          (rope (tuatara.buffer:buffer-text buffer)))
     (if (string= query "")
         (message "Nothing to search for")
-        (multiple-value-bind (found end)
-            (matcher-search rope (make-pattern-matcher query :regex nil)
-                            (min (tuatara.text:rope-octet-length rope)
-                                 (if (and last (string= query (car last)) (string= typed ""))
-                                     (1+ (cdr last))
-                                     (or (pdf-view-page-start view (pdf-view-page view)) 0)))
-                            (tuatara.text:rope-octet-length rope)
-                            :stop (octets-stopper))
-          (cond ((eq end :stopped) (message "Search stopped"))
-                (found
-                 (let ((page (pdf-view-page-at view (tuatara.buffer:buffer-line-end buffer found))))
-                   (setf (pdf-view-last-search view) (cons query found))
-                   (pdf-view-go page)
-                   (message "Page ~d: ~a" page
-                            (string-trim " " (tuatara.text:rope-string rope :start (tuatara.buffer:buffer-line-start buffer found)
-                                                                       :end (tuatara.buffer:buffer-line-end buffer found))))))
-                (t
-                 (setf (pdf-view-last-search view) (cons query -1))
-                 (message "No more of ~s; \\[pdf-view-search] RET again searches from the start" query)))))))
+        (let ((from (min (tuatara.text:rope-octet-length rope)
+                         (if (and last (string= query (car last)) (string= typed ""))
+                             (1+ (cdr last))
+                             (or (pdf-view-page-start view (pdf-view-page view)) 0)))))
+          (start-viewer-search
+           buffer (format nil "~s" query)
+           (lambda (stop)
+             (matcher-search rope (make-pattern-matcher query :regex nil) from (tuatara.text:rope-octet-length rope)
+                             :stop stop))
+           (lambda (&optional found end)
+             (cond ((eq end :stopped) (message "Search stopped"))
+                   (found
+                    (let ((page (pdf-view-page-at view (tuatara.buffer:buffer-line-end buffer found))))
+                      (setf (pdf-view-last-search view) (cons query found))
+                      (pdf-view-go page)
+                      (message "Page ~d: ~a" page
+                               (string-trim " " (tuatara.text:rope-string
+                                                 rope :start (tuatara.buffer:buffer-line-start buffer found)
+                                                      :end (tuatara.buffer:buffer-line-end buffer found))))))
+                   (t
+                    (setf (pdf-view-last-search view) (cons query -1))
+                    (message "No more of ~s; \\[pdf-view-search] RET again searches from the start" query)))))))))
 
 ;;; A place on a page
 
@@ -1338,12 +1434,14 @@ by search filters, the file on the line among those they leave."
 
 (defun install-pdf-view ()
   "Bind the keys of a PDF's view, and have PDFs visited shown as their pages."
-  (define-keys *pdf-view-keymap* '(("l" pdf-view-next-page) ("h" pdf-view-previous-page)
+  (define-keys *pdf-view-keymap* '(("l" pdf-view-next-page) ("C-f" pdf-view-next-page)
+                                   ("h" pdf-view-previous-page) ("C-b" pdf-view-previous-page)
                                    ("<next>" pdf-view-next-page-anywhere) ("<prior>" pdf-view-previous-page-anywhere)
                                    ("g h" pdf-view-first-page) ("g l" pdf-view-last-page)
                                    ("g g" pdf-view-page-top) ("g e" pdf-view-page-end)
                                    ("g p" pdf-view-goto-page)
-                                   ("j" pdf-view-scroll-down) ("k" pdf-view-scroll-up)
+                                   ("j" pdf-view-scroll-down) ("C-n" pdf-view-scroll-down)
+                                   ("k" pdf-view-scroll-up) ("C-p" pdf-view-scroll-up)
                                    ("<wheel-down>" pdf-view-scroll-by-wheel) ("<wheel-up>" pdf-view-scroll-by-wheel)
                                    ("H" pdf-view-scroll-left) ("L" pdf-view-scroll-right)
                                    ("=" pdf-view-zoom-in)

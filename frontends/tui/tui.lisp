@@ -4,7 +4,7 @@
 (defpackage #:tuatara.frontend.tui
   (:use #:cl)
   (:import-from #:tuatara.io #:define-c-function #:null-pointer #:null-pointer-p)
-  (:import-from #:tuatara.runtime #:define-setting)
+  (:import-from #:tuatara.runtime #:define-record #:define-setting)
   (:import-from #:tuatara-user #:*tui-padding* #:*tui-pictures* #:*tui-mouse* #:*tui-colours* #:*kitty-keyboard*)
   (:documentation "The ncurses frontend: paints rows into the terminal and turns key presses into events.")
   (:export #:tui-frontend #:make-tui-frontend))
@@ -190,8 +190,8 @@ colours (256, or the basic 16 or 8)."
 
 (defun pair-for (fg bg)
   "The colour pair for terminal colours FG and BG, allocated on first use; 0
-when the terminal has no colours or its pairs are used up. With 24-bit colour FG and BG may be colours of 24 bits,
-which only ncurses's extended pairs take."
+when the terminal has no colours or its pairs are used up. With 24-bit colour
+FG and BG may be colours of 24 bits, which only ncurses's extended pairs take."
   (cond ((and (= fg -1) (= bg -1)) 0)
         ((not *colours*) 0)
         (t (let ((key (cons fg bg)))
@@ -298,12 +298,16 @@ switching themes back and forth never uses the pairs up."
 
 (defconstant +key-code-yes+ 256 "wget_wch result meaning the value is a function-key code.")
 
+(defconstant +key-resize+ 410 "ncurses' code for the terminal's size having changed.")
+
+(defconstant +key-back-tab+ 353 "ncurses' code for Shift and Tab (KEY_BTAB).")
+
 (defparameter *key-codes*
   '((258 . :down) (259 . :up) (260 . :left) (261 . :right) (262 . :home) (263 . :backspace)
     (265 . :f1) (266 . :f2) (267 . :f3) (268 . :f4) (269 . :f5) (270 . :f6) (271 . :f7) (272 . :f8)
     (273 . :f9) (274 . :f10) (275 . :f11) (276 . :f12)
     (330 . :delete) (331 . :insert) (338 . :page-down) (339 . :page-up) (343 . :enter) (360 . :end)
-    (353 . :tab))                        ; KEY_BTAB: shift-tab, reported as tab with shift below
+    (#.+key-back-tab+ . :tab))             ; shift-tab, reported as tab with shift below
   "ncurses key codes and the special keys they stand for.")
 
 (defparameter *shifted-key-codes*
@@ -422,16 +426,16 @@ sessions before are kept beside it (TUATARA.IO:SESSION-LOG)."
   (unless *saved-stderr*
     (let ((fd (tuatara.io:session-log "the terminal")))
       (when fd
-        (setf *saved-stderr* (sb-posix:fcntl 2 1030 10)) ; F_DUPFD_CLOEXEC: kept from programs the editor runs
+        (setf *saved-stderr* (tuatara.io:duplicate-fd 2 :lowest 10))
         (sb-posix:dup2 fd 2)
-        (sb-posix:close fd)))))
+        (tuatara.runtime:close-fd-quietly fd "the session log")))))
 
 (defun restore-stderr ()
   "Give standard error back to the terminal (DIVERT-STDERR)."
   (when *saved-stderr*
     (tuatara.runtime:ignoring-errors-reported ("giving standard error back to the terminal")
       (sb-posix:dup2 *saved-stderr* 2))
-    (tuatara.runtime:ignoring-errors-reported ("closing the saved standard error") (sb-posix:close *saved-stderr*))
+    (tuatara.runtime:close-fd-quietly *saved-stderr* "the saved standard error")
     (setf *saved-stderr* nil)))
 
 (defun set-terminal-modes (modes on)
@@ -605,7 +609,8 @@ TERM_PROGRAM a terminal sets, else TERM."
                                   *colours-why*
                                   (cond ((tuatara.frontend:frontend-images-p f) "pictures (kitty graphics)")
                                         ((null *tui-pictures*) "no pictures (*tui-pictures* is nil)")
-                                        ((multiplexer-p) "no pictures (inside tmux or screen; *tui-pictures* t sends them)")
+                                        ((multiplexer-p)
+                                         "no pictures (inside tmux or screen; *tui-pictures* t sends them)")
                                         (t "no pictures (the terminal does not say it draws kitty's)"))))
           (cons "Clipboard" (if programs
                                 (format nil
@@ -727,12 +732,14 @@ answers as TERMINAL-ANSWERS-IN reads them."
              (kitty-command "a=q,i=32,s=1,v=1,t=s,f=24,S=3" (shared-name-payload shared)))
            (terminal-control "[?u")
            (terminal-control "[c")
-           (let* ((reply (read-terminal-reply 1/4 (lambda (octets)
-                                                    (cl-ppcre:scan (format nil "~c\\[\\?[0-9;]*c" #\Escape)
-                                                                   (sb-ext:octets-to-string octets :external-format :latin-1)))))
+           (let* ((reply (read-terminal-reply
+                          1/4 (lambda (octets)
+                                (cl-ppcre:scan (format nil "~c\\[\\?[0-9;]*c" #\Escape)
+                                               (sb-ext:octets-to-string octets :external-format :latin-1)))))
                   (text (sb-ext:octets-to-string reply :external-format :latin-1)))
-             (give-back-keys (cl-ppcre:regex-replace-all (format nil "~c\\[\\?[0-9;]*[uc]|~c_G[^~c]*~c\\\\" #\Escape #\Escape #\Escape #\Escape)
-                                                         text ""))
+             (give-back-keys (cl-ppcre:regex-replace-all
+                              (format nil "~c\\[\\?[0-9;]*[uc]|~c_G[^~c]*~c\\\\" #\Escape #\Escape #\Escape #\Escape)
+                              text ""))
              (terminal-answers-in text)))
       (when shared
         (handler-case (sb-posix:unlink (shared-picture-path shared)) (sb-posix:syscall-error () nil))))))
@@ -773,11 +780,12 @@ user alone; NIL when none could be made."
                (sb-posix:syscall-error () nil))))
     (when fd
       (unwind-protect
-           (handler-case (tuatara.runtime:reporting-errors ("writing a picture to ~a" path)
-                           (tuatara.io:write-octets fd octets :path name)
-                           name)
-             (error () (tuatara.runtime:ignoring-errors-reported ("deleting ~a" path) (sb-posix:unlink path)) nil))
-        (sb-posix:close fd)))))
+           (or (tuatara.runtime:ignoring-errors-reported ("writing a picture to ~a" path)
+                 (tuatara.io:write-octets fd octets :path name)
+                 name)
+               (progn (tuatara.runtime:ignoring-errors-reported ("deleting ~a" path) (sb-posix:unlink path))
+                      nil))
+        (tuatara.runtime:close-fd-quietly fd "the picture ~a" path)))))
 
 (defun terminal-answers-in (text)
   "What TEXT, the terminal's answer to ASK-TERMINAL, says it does, as
@@ -944,18 +952,23 @@ come is taken as all of it, for a paste whose end never comes.")
 (defparameter *paste-most-seconds* 60
   "The longest one paste is read for, however steadily it comes.")
 
-(defstruct (paste (:constructor make-paste (&optional (limit *paste-limit*))) (:copier nil))
+(define-record (paste (:constructor make-paste (&optional (limit *paste-limit*))) (:copier nil))
   "A paste being read from the terminal (PASTE-TAKE). It holds its TEXT so far,
 at most LIMIT characters, carriage returns made newlines. MATCHED is how many
 characters of the paste's end (*PASTE-END*) have just come, held back until it
 is known whether they are its end. AFTER-RETURN is true after a carriage
 return, whose newline is then left out. CUT is true once characters were left
 out past LIMIT."
-  (text (make-array 0 :element-type 'character :adjustable t :fill-pointer 0))
-  (limit *paste-limit*)
-  (matched 0)
-  (after-return nil)
-  (cut nil))
+  (text (make-array 0 :element-type 'character :adjustable t :fill-pointer 0)
+        :documentation "The characters of PASTE read so far, carriage returns made newlines.")
+  (limit *paste-limit* :documentation "The most characters of PASTE kept.")
+  (matched 0
+           :documentation "How many characters of the end of PASTE (*PASTE-END*) have just come, held back until it is
+known whether they are its end.")
+  (after-return nil
+                :documentation "True when the last character of PASTE read was a carriage return, whose newline is then
+left out.")
+  (cut nil :documentation "True once characters of PASTE were left out past its limit."))
 
 (defun paste-add (paste char)
   "Add CHAR to PASTE's text: a carriage return as a newline, a newline right
@@ -1009,7 +1022,7 @@ F's pending events. Returns the :PASTE event."
                     (when (paste-take paste value) (return))
                     (setf pause (tuatara.runtime:deadline-in *paste-pause-seconds*)))
                    ((= status +key-code-yes+)
-                    (when (= value 410)
+                    (when (= value +key-resize+)
                       (queue-resize f)))
                    (t (let ((left (min (tuatara.runtime:seconds-left pause) (tuatara.runtime:seconds-left most))))
                         (unless (and (plusp left) (consp (tuatara.io:wait-for-fds (list 0) left)))
@@ -1035,61 +1048,60 @@ second part."
         (read-wide-char window)
         (values status value))))
 
+(defun key-event-or-tick (key)
+  "The event of KEY, a key of the terminal; a :TICK when KEY is NIL, a key or
+sequence of no use here, which counts as no key at all."
+  (if key
+      (tuatara.frontend:make-event :key :key key)
+      (tuatara.frontend:make-event :tick)))
+
+(defun read-escape-sequence (f window)
+  "The event for an ESC read from F's WINDOW: a key in a CSI sequence (kitty's
+protocol, or one ncurses does not know), a terminal's late answer, Meta's
+prefix when another key follows at once, or a lone escape. By kitty's protocol
+a lone ESC is never a key (Escape is CSI 27 u): the rest of its sequence is
+waited for, never taken for keys typed. After ESC [ the rest is waited for in
+every mode, as a sequence may come in two parts (over a network), and a paste
+is never read as keys."
+  (%nodelay window t)
+  (multiple-value-bind (status value status-after value-after)
+      (multiple-value-bind (status value) (if *kitty-keyboard-on*
+                                              (read-wide-char-soon window 1/10)
+                                              (read-wide-char window))
+        (if (and (= status 0) (= value (char-code #\[)))
+            (multiple-value-bind (status-after value-after) (read-wide-char-soon window 1/10)
+              (values status value status-after value-after))
+            (values status value -1 0)))
+    (%nodelay window nil)
+    (cond ((and (= status 0) (= value (char-code #\[))
+                (or *kitty-keyboard-on* (= status-after 0)))
+           (multiple-value-bind (parameters final) (read-csi window (and (= status-after 0) value-after))
+             (cond ((null final) (tuatara.frontend:make-event :tick))
+                   ;; text pasted: read whole, to go in as text and never as keys
+                   ((paste-start-p parameters final) (read-paste f window))
+                   (t (key-event-or-tick (if (and (plusp (length parameters)) (char= (char parameters 0) #\<))
+                                             (mouse-key f parameters final)
+                                             (csi-key parameters final)))))))
+          ((= status 0)
+           (tuatara.frontend:make-event :key :key (char-key value :meta t)))
+          (t (tuatara.frontend:make-event :key :key (tuatara.frontend:make-key :escape))))))
+
 (defun wide-char-event (f window status value)
   "The event for what wget_wch read from F's WINDOW: STATUS 0 and a character
 VALUE, or a key code, or nothing at all (the end of input)."
   (cond ((= status +key-code-yes+)
-         (cond ((= value 410)
+         (cond ((= value +key-resize+)
                 (resize-event f))
-               ((= value 353) (tuatara.frontend:make-event :key :key (tuatara.frontend:make-key :tab :shift t)))
+               ((= value +key-back-tab+)
+                (tuatara.frontend:make-event :key :key (tuatara.frontend:make-key :tab :shift t)))
                ;; the mouse's report, its start (ESC [ <) taken by ncurses as the terminal's
                ;; description says: the rest read here
                ((= value +key-mouse+)
                 (multiple-value-bind (parameters final) (read-csi window)
-                  (let ((key (and final (mouse-key f (concatenate 'string "<" parameters) final))))
-                    (if key
-                        (tuatara.frontend:make-event :key :key key)
-                        (tuatara.frontend:make-event :tick)))))
-               (t (let ((key (ncurses-key value)))
-                    ;; a key of no use here: as no key at all
-                    (if key
-                        (tuatara.frontend:make-event :key :key key)
-                        (tuatara.frontend:make-event :tick))))))
+                  (key-event-or-tick (and final (mouse-key f (concatenate 'string "<" parameters) final)))))
+               (t (key-event-or-tick (ncurses-key value)))))
         ((/= status 0) (tuatara.frontend:make-event :quit))
-        ((= value 27)
-         ;; ESC: a key in a CSI sequence (kitty's protocol, or one ncurses does not
-         ;; know), or a terminal's late answer; else Meta's prefix if another key
-         ;; follows at once, or a lone escape
-         ;; by kitty's protocol a lone ESC is never a key (Escape is CSI 27 u): the
-         ;; rest of its sequence is waited for, never taken for keys typed; after
-         ;; ESC [ the rest is waited for in every mode, as a sequence may come in
-         ;; two parts (over a network), and a paste must never be read as keys
-         (%nodelay window t)
-         (multiple-value-bind (status2 value2 status3 value3)
-             (multiple-value-bind (status2 value2) (if *kitty-keyboard-on*
-                                                       (read-wide-char-soon window 1/10)
-                                                       (read-wide-char window))
-               (if (and (= status2 0) (= value2 (char-code #\[)))
-                   (multiple-value-bind (status3 value3) (read-wide-char-soon window 1/10)
-                     (values status2 value2 status3 value3))
-                   (values status2 value2 -1 0)))
-           (%nodelay window nil)
-           (cond ((and (= status2 0) (= value2 (char-code #\[))
-                       (or *kitty-keyboard-on* (= status3 0)))
-                  (multiple-value-bind (parameters final) (read-csi window (and (= status3 0) value3))
-                    (if (and final (paste-start-p parameters final))
-                        ;; text pasted: read whole, to go in as text and never as keys
-                        (read-paste f window)
-                        (let ((key (and final (if (and (plusp (length parameters)) (char= (char parameters 0) #\<))
-                                                  (mouse-key f parameters final)
-                                                  (csi-key parameters final)))))
-                          (if key
-                              (tuatara.frontend:make-event :key :key key)
-                              ;; a sequence of no key, or one not read: as no key at all
-                              (tuatara.frontend:make-event :tick))))))
-                 ((= status2 0)
-                  (tuatara.frontend:make-event :key :key (char-key value2 :meta t)))
-                 (t (tuatara.frontend:make-event :key :key (tuatara.frontend:make-key :escape))))))
+        ((= value 27) (read-escape-sequence f window))
         (t (tuatara.frontend:make-event :key :key (char-key value)))))
 
 (defun next-event (f seconds)
@@ -1154,7 +1166,7 @@ may reach another thread and so not end the wait."
       (setf *background-generation* tuatara.display:*face-generation*))
     (%werase window)))
 
-(defparameter *spaces* (make-string 256 :initial-element #\Space)
+(defparameter *spaces* (tuatara.text:spaces 256)
   "Spaces, for a row's face to be painted past its text.")
 
 (defmethod tuatara.frontend:frontend-put-row ((f tui-frontend) row string &key face spans scales over parts)
@@ -1187,7 +1199,8 @@ may reach another thread and so not end the wait."
                     while (< start length)
                     when (< start end)
                       do (put string pos start row-attrs)
-                         (put string start (min end length) (spec-attributes (tuatara.display:combine-faces span-face face)))
+                         (put string start (min end length)
+                              (spec-attributes (tuatara.display:combine-faces span-face face)))
                          (setf pos (min end length)))
               (put string pos length row-attrs))
             (if face
@@ -1227,14 +1240,23 @@ wl-paste under Wayland, else xclip or xsel under X; NIL when there are none.")
                          (found '("xsel" "--clipboard" "--input") '("xsel" "--clipboard" "--output"))))))))
   *clipboard-programs*)
 
-(defstruct (clipboard-watch (:copier nil))
+(define-record (clipboard-watch (:copier nil))
   "The clipboard kept up to date in the background: PROCESS, wl-paste --watch,
 writes a line each time the clipboard changes, which THREAD reads and then
 reads the clipboard's text into TEXT; STATE is :READING from a change until its
-text is in, then :FRESH; LOCK guards them, CHANGED is told when they change."
-  process thread (text nil) (state :reading)
-  (lock (sb-thread:make-mutex :name "clipboard"))
-  (changed (sb-thread:make-waitqueue)))
+text is in, then :FRESH, and :ENDED once THREAD has ended; LOCK guards them,
+CHANGED is told when they change."
+  (process nil
+           :documentation "The wl-paste process CLIPBOARD-WATCH runs, which writes a line each time the clipboard
+changes.")
+  (thread nil :documentation "The thread reading CLIPBOARD-WATCH's process and the clipboard's text.")
+  (text nil :documentation "The clipboard's text as CLIPBOARD-WATCH last read it, or NIL when it could not be read.")
+  (state :reading
+         :documentation "What CLIPBOARD-WATCH is doing: :READING from a change until the text is in, then :FRESH, and
+:ENDED once its thread has ended.")
+  (lock (sb-thread:make-mutex :name "clipboard") :documentation "The mutex guarding CLIPBOARD-WATCH's text and state.")
+  (changed (sb-thread:make-waitqueue)
+           :documentation "The wait queue signalled when CLIPBOARD-WATCH's text or state change."))
 
 (defvar *clipboard-watch* nil
   "The clipboard watched in the background (CLIPBOARD-WATCH), once the first
@@ -1297,6 +1319,15 @@ watch to ask (the clipboard is then read at once)."
         (when (eq (clipboard-watch-state watch) :fresh)
           (values (clipboard-watch-text watch) t))))))
 
+(defun clipboard-program-output (command)
+  "The text COMMAND, a clipboard program and its arguments, writes, and true when
+it ended well: waited for as long as a second while keys are still read, so that
+\\`C-g' gives up on a clipboard owner that does not answer."
+  (tuatara.io:program-output
+   command :wait (lambda (thread seconds)
+                    (tuatara.command:wait-interruptibly thread :message "Waiting for the clipboard..."
+                                                              :seconds seconds))))
+
 (defmethod tuatara.frontend:frontend-set-clipboard ((f tui-frontend) text)
   (let ((programs (clipboard-programs)))
     (and programs (nth-value 1 (tuatara.io:program-output (first programs) :input text :capture nil)))))
@@ -1307,18 +1338,19 @@ watch to ask (the clipboard is then read at once)."
         text
         (let ((programs (clipboard-programs)))
           (when programs
-            (multiple-value-bind (text ok) (tuatara.io:program-output (second programs))
+            (multiple-value-bind (text ok) (clipboard-program-output (second programs))
               (and ok text)))))))
 
 (defmethod tuatara.frontend:frontend-primary-selection ((f tui-frontend))
   (let ((read (second (clipboard-programs))))
     (when read
       (multiple-value-bind (text ok)
-          (tuatara.io:program-output
+          (clipboard-program-output
            ;; the clipboard's program, asked for the primary selection
            (if (string= (file-namestring (first read)) "wl-paste")
                (list* (first read) "--primary" (rest read))
-               (substitute "--primary" "--clipboard" (substitute "primary" "clipboard" read :test #'equal) :test #'equal)))
+               (substitute "--primary" "--clipboard" (substitute "primary" "clipboard" read :test #'equal)
+                           :test #'equal)))
         (and ok text)))))
 
 (defvar *cursor* '(0 . 0) "Cursor position to apply at the end of the frame.")
@@ -1525,7 +1557,8 @@ from its column FROM: the first marked with its row, its column and, when not
           (unless number
             (setf number (kitty-image-id (tui-next-image f)))
             (incf (tui-next-image f))
-            (tuatara.runtime:debug-report :redisplay "kitty: picture ~d sent, ~dx~d pixels (image ~d), placed ~dx~d cells~:[ through the terminal~; through shared memory~]"
+            (tuatara.runtime:debug-report :redisplay "kitty: picture ~d sent, ~dx~d pixels (image ~d), placed ~dx~d ~
+                                                      cells~:[ through the terminal~; through shared memory~]"
                                           number
                                           (tuatara.frontend:image-width image)
                                           (tuatara.frontend:image-height image)
@@ -1541,8 +1574,9 @@ from its column FROM: the first marked with its row, its column and, when not
           (let ((entry (gethash number images)))
             (setf (fourth entry) t)
             (let* ((window (tui-window f))
-                   (attrs (colour-pair (pair-for (ldb (byte 8 0) number)
-                                                 (terminal-colour (nth-value 1 (tuatara.display:resolve-face-spec :default)))))))
+                   (attrs (colour-pair
+                           (pair-for (ldb (byte 8 0) number)
+                                     (terminal-colour (nth-value 1 (tuatara.display:resolve-face-spec :default)))))))
               (destructuring-bind (top right bottom left) (tui-padding f)
                 (declare (ignore right bottom))
                 (let* ((from-row (min (1- down) (if offset (first offset) 0)))
@@ -1556,7 +1590,7 @@ from its column FROM: the first marked with its row, its column and, when not
                         (%waddstr window (image-row-text (+ from-row r) shown-columns from-column number))
                         (attributes-off window))
                       ;; blank cells, the picture put over them once they are on the screen
-                      (let ((blank (make-string shown-columns :initial-element #\Space)))
+                      (let ((blank (tuatara.text:spaces shown-columns)))
                         (dotimes (r shown-rows)
                           (%wmove window (+ top row r) (+ left column))
                           (%waddstr window blank))

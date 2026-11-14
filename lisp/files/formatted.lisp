@@ -4,8 +4,8 @@
 ;;;;
 ;;;; A formatted name says what a file holds and when it was made:
 ;;;; 20260927T213446--my-notes-on-the-garden__garden_project.org is the
-;;;; identifier (the time it was made), the title, and the keywords, as Denote
-;;;; names files, so that the names read the same in Emacs.
+;;;; identifier (the time it was made), the title, and the keywords, in the
+;;;; form other note tools write, so that the names read the same there.
 
 (in-package #:tuatara.defaults)
 
@@ -224,76 +224,10 @@ when empty, as in 20260927T213446--my-notes__garden_project.org."
 one; an empty string when it has none."
   (let ((dot (position #\. name :from-end t)))
     (cond ((or (null dot) (zerop dot)) "")
-          ((member (subseq name dot) '(".gpg" ".age") :test #'string=)
+          ((encrypted-name-p name)
            (let ((inner (position #\. name :from-end t :end dot)))
              (if (and inner (plusp inner)) (subseq name inner) (subseq name dot))))
           (t (subseq name dot)))))
-
-(defun encrypted-name-p (name)
-  "True when file NAME ends as an encrypted file does: .gpg or .age."
-  (let ((extension (name-extension name)))
-    (some (lambda (end) (and (>= (length extension) (length end))
-                             (string= end extension :start2 (- (length extension) (length end)))))
-          '(".gpg" ".age"))))
-
-(defun unencryptable-name-p (name)
-  "True when file NAME ends as an encrypted file of a kind Tuatara cannot
-encrypt (.age): such a file is not made, its text would be there to read."
-  (and (encrypted-name-p name) (not (uiop:string-suffix-p (string-downcase name) ".gpg"))))
-
-(defparameter *encrypted-text-headers*
-  '("-----BEGIN PGP MESSAGE-----" "-----BEGIN AGE ENCRYPTED FILE-----" "-----BEGIN ENCRYPTED PRIVATE KEY-----")
-  "The lines an encrypted file written as text begins with: gpg --armor, age
---armor, a private key kept under a passphrase (PKCS #8).")
-
-(defparameter *encrypted-signatures*
-  '((0 . "age-encryption.org/v1") (0 . "$ANSIBLE_VAULT;") (0 . "Salted__")
-    (0 . (#x4c #x55 #x4b #x53 #xba #xbe)) (3 . "-FVE-FS-"))
-  "Where in a file, and as what octets, encrypted files of other kinds say what
-they are: age's own header, Ansible's vault, openssl enc, a LUKS volume (its
-header, LUKS and BA BE), a BitLocker volume (-FVE-FS- after the jump). A
-VeraCrypt or TrueCrypt volume says nothing, its header looking like chance
-octets, as it is made to; its zero octets keep its text from being read.")
-
-(defun encrypted-head-p (head)
-  "True when HEAD, the first octets of a file (or its text, as characters),
-begins as an encrypted file does, namely a line of *ENCRYPTED-TEXT-HEADERS*
-\(after blank space), or a key written as text with Proc-Type: 4,ENCRYPTED; one
-of *ENCRYPTED-SIGNATURES* where it belongs. It is also true when HEAD is the
-first packet of a binary OpenPGP message, its tag and version as gpg writes them
-\(TUATARA.IO:OPENPGP-PACKET-P)."
-  (flet ((octet (i) (and (< i (length head))
-                         (let ((x (elt head i))) (if (characterp x) (char-code x) x)))))
-    (let* ((start (position-if-not (lambda (x) (member (if (characterp x) (char-code x) x) tuatara.text:*blank-octets*)) head))
-           (text (map 'string (lambda (x) (if (characterp x) x (code-char x)))
-                      (subseq head (or start 0) (min (length head) (+ (or start 0) 40))))))
-      (or (some (lambda (header) (uiop:string-prefix-p header text)) *encrypted-text-headers*)
-          (and (uiop:string-prefix-p "-----BEGIN " text)
-               (search "Proc-Type: 4,ENCRYPTED"
-                       (map 'string
-                            (lambda (x) (if (characterp x) x (code-char x)))
-                            (subseq head 0 (min (length head) 200)))))
-          (loop for (at . signature) in *encrypted-signatures*
-                thereis (let ((codes (if (stringp signature) (map 'list #'char-code signature) signature)))
-                          (loop for code in codes
-                                for i from at
-                                always (eql (octet i) code))))
-          (tuatara.io:openpgp-packet-p
-           (if (stringp head)
-               ;; text: its characters taken as octets, those past one octet as none
-               (map '(vector (unsigned-byte 8)) (lambda (c) (if (< (char-code c) 256) (char-code c) 0))
-                    (subseq head 0 (min (length head) 8)))
-               head))))))
-
-(defun encrypted-file-p (path &optional text)
-  "True when the file at PATH is encrypted: as its name says (ENCRYPTED-NAME-P for
-.gpg, .age), as its header on disk shows (ENCRYPTED-HEAD-P), or as TEXT, the
-text a buffer shows of it, when given, begins. The text of such a file is
-never read for searching, for a directory kept read or for a dynamic block,
-even while a buffer shows it decrypted."
-  (or (encrypted-name-p (tuatara.io:native-file-name path))
-      (let ((head (tuatara.io:file-head path 4096))) (and head (encrypted-head-p head)))
-      (and text (encrypted-head-p (subseq text 0 (min (length text) 200))))))
 
 (defun identifier-at-start-p (name)
   "True when NAME begins with an identifier: eight digits, T, six digits."
@@ -303,12 +237,9 @@ even while a buffer shows it decrypted."
        (every #'digit-char-p (subseq name 9 15))))
 
 (defun name-keyword-list (name)
-  "The keywords in the formatted file NAME: after __, up to the extension."
-  (let ((start (search "__" name)))
-    (when start
-      (let* ((from (+ start 2))
-             (end (or (position #\. name :start from) (length name))))
-        (tuatara.text:split-words (subseq name from end) "_")))))
+  "The keywords in the formatted file NAME: after __, up to the next part or
+the extension (NAME-PARTS)."
+  (nth-value 3 (name-parts name)))
 
 (defparameter *name-part-markers* '("==" "--" "__" "@@")
   "What begins each part of a formatted name after its identifier: == the
@@ -441,83 +372,7 @@ are kept in (*FORMATTED-FILE-TYPES*) or one that cannot be read."
          (octets (and type (tuatara.io:file-head path 4096))))
     (and octets (front-matter (tuatara.text:lenient-string octets) (third type)))))
 
-;;; Found on a thread of its own while a question is open
-
-(defstruct (gathering (:constructor make-gathering ()) (:copier nil))
-  "What a thread of its own finds while a question waits for it (a list of
-files, the text of files to search). FOUND is what it gave since it was last
-taken, the newest first. COUNT is how many it gave in all. DONE is true once it
-has finished. CANCEL is a cons whose car, turned true, stops it. LOCK is held
-while FOUND changes. WOKEN is when it last woke the editor. FINISHED is a
-semaphore signalled once it has finished (WAIT-FOR-GATHERING)."
-  (lock (sb-thread:make-mutex :name "gathering"))
-  (found '()) (count 0) (done nil) (cancel (list nil)) (woken 0)
-  (finished (sb-thread:make-semaphore :name "gathering finished")))
-
-(setf (documentation 'gathering-p 'function) "True when OBJECT is a GATHERING."
-      (documentation 'gathering-found 'function) "What a GATHERING's thread gave since it was last taken, newest first."
-      (documentation 'gathering-count 'function) "How many things a GATHERING's thread gave in all."
-      (documentation 'gathering-done 'function) "True once a GATHERING's thread has finished."
-      (documentation 'gathering-cancel 'function) "The cons whose car, turned true, stops a GATHERING's thread."
-      (documentation 'gathering-lock 'function) "The lock held while a GATHERING's FOUND changes."
-      (documentation 'gathering-woken 'function) "When a GATHERING's thread last woke the editor, in internal time."
-      (documentation 'gathering-finished 'function) "The semaphore signalled once a GATHERING's thread has finished.")
-
-(defun start-gathering (name work)
-  "Run WORK on a thread named NAME, called with a function that takes each
-thing found and the cancel cons (car true: stop). Returns the GATHERING, from
-which TAKE-GATHERED takes what was found, on the editor's thread; the editor
-is woken as things are found, every twentieth of a second at most, and when
-the work ends."
-  (let ((gathering (make-gathering))
-        (editor *editor*))
-    (flet ((wake ()
-             (setf (gathering-woken gathering) (get-internal-real-time))
-             (when editor (wake-editor editor))))
-      (tuatara.runtime:make-guarded-thread
-       (lambda ()
-         (unwind-protect
-              (funcall work
-                       (lambda (thing)
-                         (sb-thread:with-mutex ((gathering-lock gathering))
-                           (push thing (gathering-found gathering))
-                           (incf (gathering-count gathering)))
-                         (when (> (- (get-internal-real-time) (gathering-woken gathering))
-                                  (floor internal-time-units-per-second 20))
-                           (wake)))
-                       (gathering-cancel gathering))
-           (setf (gathering-done gathering) t)
-           (sb-thread:signal-semaphore (gathering-finished gathering))
-           (wake)))
-       :name name))
-    gathering))
-
-(defun wait-for-gathering (gathering seconds)
-  "Wait until GATHERING's thread has finished, SECONDS at most, asleep
-meanwhile; true when it has."
-  (or (gathering-done gathering)
-      (and (sb-thread:wait-on-semaphore (gathering-finished gathering) :timeout seconds) t)))
-
-(defun take-gathered (gathering)
-  "What GATHERING's thread found since this was last asked, in the order it
-was found, and as a second value true once it has finished, all taken."
-  (let ((done (gathering-done gathering)))
-    (values (reverse (sb-thread:with-mutex ((gathering-lock gathering))
-                       (shiftf (gathering-found gathering) '())))
-            done)))
-
-(defun stop-gathering (gathering)
-  "Stop GATHERING's thread at its next step: what it found is no longer wanted."
-  (setf (car (gathering-cancel gathering)) t))
-
-(defun gathering-source (gathering absorb)
-  "A SOURCE for COMPLETING-READ (see there) taking in what GATHERING finds
-while the question is open. ABSORB is called on the editor's thread with the
-things found since, in the order found (none, at times), and returns how many
-there are to choose from now, which the prompt tells while more come."
-  (lambda ()
-    (multiple-value-bind (new done) (take-gathered gathering)
-      (values (and new t) (not done) (funcall absorb new)))))
+;;; Listing the notes
 
 (defun formatted-file-group (relative)
   "The group a file with a formatted name is listed under among them: the
@@ -712,19 +567,22 @@ TYPE (an entry of *FORMATTED-FILE-TYPES*, or NIL for none) saying TITLE,
 KEYWORDS, IDENTIFIER and TIME, then TEMPLATE's text."
   (concatenate 'string (if type (formatted-file-header-text type title keywords identifier time) "") template))
 
-(defun make-formatted-file (directory title keywords extension &key (template "") (time (get-universal-time)) write)
+(defun make-formatted-file (directory title keywords extension
+                            &key (template "") (time (get-universal-time)) write header)
   "Make a new buffer for a file in DIRECTORY with a formatted name from TITLE,
 KEYWORDS (strings), the time and EXTENSION, beginning with the header of its
-kind (*FORMATTED-FILE-TYPES*) and TEMPLATE, point after them, and show it. Nothing
-is written until it is saved. Returns the buffer, or NIL (said) for a name
-that says encrypted but is no .gpg name, or one there already. With WRITE,
-the file is written at once instead and its path returned, unless its name
-says encrypted: that one is made when its buffer is saved."
+kind (*FORMATTED-FILE-TYPES*), or HEADER, a header written as those are, when
+given, then TEMPLATE, point after them, and show it. Nothing is written until
+it is saved. Returns the buffer, or NIL (said) for a name that says encrypted
+but is no .gpg name, or one there already. With WRITE, the file is written at
+once instead and its path returned, unless its name says encrypted: that one
+is made when its buffer is saved."
   (let* ((directory (directory-name directory))
          (identifier (unique-identifier directory time))
          (name (formatted-file-name identifier title keywords extension))
          (path (concatenate 'string directory name))
-         (type (formatted-file-type-for extension)))
+         (kind (formatted-file-type-for extension))
+         (type (if (and kind header) (list (first kind) (second kind) (third kind) header) kind)))
     (cond ((unencryptable-name-p name)
            (message "~a is not made: only .gpg files can be encrypted" name)
            nil)

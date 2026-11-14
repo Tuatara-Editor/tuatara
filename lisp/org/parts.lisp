@@ -29,7 +29,7 @@ parse before kept meanwhile.")
 waits at most, once after each change, for its parse in the background, so
 that what is typed rarely shows in the colours of the parse before.")
 
-(defstruct (org-state (:constructor make-org-state ()) (:copier nil))
+(define-record (org-state (:constructor make-org-state ()) (:copier nil))
   "What the parse of an Org buffer, or of a part of one (ORG-PART), is: TREE,
 the parse of TEXT, the text at VERSION. RESULT, the latest parse a worker made,
 \(TREE TEXT VERSION RETURNS LANGUAGES PLACES FAILED), put there in one step,
@@ -45,12 +45,31 @@ the carriage returns before its newlines left out, lost one
 FAILED, what went wrong when the latest parse could not be made, the text then
 read as holding nothing Org shows (ORG-PARSE-FAILED). PARSE, for a whole buffer,
 its TREE as an ORG-PARSE (ORG-BUFFER-PARSE)."
-  (version -1) tree text returns result worker wanted (lock (sb-thread:make-mutex :name "org parse"))
-  (done (sb-thread:make-waitqueue)) waited parse-seconds failed parse)
+  (version -1 :documentation "The version of the text of ORG-STATE that its parse is of, -1 before any.")
+  (tree nil :documentation "The parse of the text of ORG-STATE.")
+  (text nil :documentation "The text ORG-STATE parses.")
+  (returns nil
+           :documentation "Where the text of ORG-STATE, with the carriage returns before its newlines left out, lost
+one (ORG-STRIP-RETURNS).")
+  (result nil
+          :documentation "The latest parse a worker made for ORG-STATE, (TREE TEXT VERSION RETURNS LANGUAGES PLACES
+FAILED), put there in one step.")
+  (worker nil :documentation "The thread parsing in the background for ORG-STATE, one at a time, or NIL.")
+  (wanted nil
+          :documentation "What ORG-STATE parses next, the latest asked for (ORG-WANT-PARSE): its VERSION, SOURCE,
+KEYWORDS and CRLF.")
+  (lock (sb-thread:make-mutex :name "org parse")
+        :documentation "The mutex that guards the WANTED and RESULT of ORG-STATE.")
+  (done (sb-thread:make-waitqueue)
+        :documentation "The waitqueue woken as each parse is put in the result of ORG-STATE.")
+  (waited nil :documentation "The last version the colouring waited for in ORG-STATE.")
+  (parse-seconds nil :documentation "How long the worker's last parse for ORG-STATE took, in seconds, or NIL.")
+  (failed nil
+          :documentation "What went wrong when the latest parse of ORG-STATE could not be made, or NIL
+\(ORG-PARSE-FAILED).")
+  (parse nil :documentation "The parse of ORG-STATE, for a whole buffer, its tree as an ORG-PARSE (ORG-BUFFER-PARSE)."))
 
-(setf (documentation 'org-state-p 'function) "True when OBJECT is an ORG-STATE.")
-
-(defstruct (org-part (:constructor make-org-part (level &optional todo-lines)) (:copier nil))
+(define-record (org-part (:constructor make-org-part (level &optional todo-lines)) (:copier nil))
   "A part of an Org buffer: the headline of LEVEL stars beginning it with the
 text under it before the next headline, or for LEVEL 0 the text before the first
 headline; LEVEL NIL while a change has left it to be split again. TODO-LINES,
@@ -72,32 +91,63 @@ TREE for the text before the first headline), START and LENGTH its characters in
 that parse's text, RETURNS-BEFORE the carriage returns that text lost before
 START. CURRENT false once the part changed, the parse then only shown until its
 own is made. BLOCKS, what ORG-BLOCKS-KEY takes of it, once worked out."
-  level todo-lines code-lines commented parse state (returns :unknown) (changed 0)
-  (changed-at (get-internal-real-time)) touched whole blocks)
+  (level nil
+         :documentation "The number of stars of the headline beginning an ORG-PART, 0 for the text before the first
+headline, NIL while a change has left it to be split again.")
+  (todo-lines nil
+              :documentation "Where the #+TODO: lines (#+SEQ_TODO:, #+TYP_TODO:) of an ORG-PART begin, in octets from
+its start.")
+  (code-lines nil
+              :documentation "Where the lines of an ORG-PART that may say where its source blocks are and what they
+are begin, in octets from its start (ORG-LINE-KIND's :CODE).")
+  (commented nil :documentation "True when the headline line of an ORG-PART has the word COMMENT.")
+  (parse nil
+         :documentation "The parse of an ORG-PART once made, (TREE TEXT RETURNS), the characters of TEXT counted from
+the part's start.")
+  (state nil
+         :documentation "The ORG-STATE parsing an ORG-PART in the background, for a part larger than
+*ORG-PARSE-AT-ONCE*, or NIL.")
+  (returns :unknown
+           :documentation "Where the text of an ORG-PART lost a carriage return before a newline once that is asked
+for, :UNKNOWN before.")
+  (changed 0 :documentation "The number of the buffer's version the text of an ORG-PART last changed in.")
+  (changed-at (get-internal-real-time) :documentation "The internal real time the text of an ORG-PART last changed at.")
+  (touched nil
+           :documentation "What was known of an ORG-PART before changes within it alone were taken in, with the octets
+they touched: (LEVEL COMMENTED LOW HIGH TODO-LINES CODE-LINES).")
+  (whole nil
+         :documentation "Where an ORG-PART is in the buffer's whole parse (ORG-BUFFER-TREE) as last made, (TREE NODE
+START LENGTH RETURNS-BEFORE CURRENT).")
+  (blocks nil :documentation "What ORG-BLOCKS-KEY takes of an ORG-PART, once worked out."))
 
-(setf (documentation 'org-part-p 'function) "True when OBJECT is an ORG-PART.")
-
-(defstruct (org-parts (:constructor make-org-parts ()) (:copier nil))
+(define-record (org-parts (:constructor make-org-parts ()) (:copier nil))
   "An Org buffer as its parts, in order: COUNT of them, STARTS, where each
 begins in octets, and PARTS, each an ORG-PART, vectors with room for more.
 VERSION, the buffer's version they are of; BYTES, its size then;
 TODO-KEYWORDS, the TODO keywords its #+TODO: lines set, (NOT-DONE . DONE) as
 ORG-PARSE takes them. SUMS and ADDS, room ORG-PARTS-TAKE-EDITS keeps
 between changes for the moves of the parts."
-  version (bytes 0 :type fixnum) (count 0 :type fixnum)
-  (starts (make-array 16 :element-type 'fixnum) :type (simple-array fixnum (*)))
-  (parts (make-array 16 :initial-element nil) :type simple-vector)
-  todo-keywords
-  (sums (make-array 0 :element-type 'fixnum) :type (simple-array fixnum (*)))
-  (adds (make-array 0 :element-type 'fixnum) :type (simple-array fixnum (*))))
-
-(setf (documentation 'org-parts-p 'function) "True when OBJECT is an ORG-PARTS.")
+  (version nil :documentation "The version of the buffer ORG-PARTS is of.")
+  (bytes 0 :type fixnum :documentation "The size in octets of the buffer ORG-PARTS is of, at its version.")
+  (count 0 :type fixnum :documentation "How many parts ORG-PARTS holds.")
+  (starts (make-array 16 :element-type 'fixnum) :type (simple-array fixnum (*))
+          :documentation "Where each part of ORG-PARTS begins, in octets, a vector with room for more.")
+  (parts (make-array 16 :initial-element nil) :type simple-vector
+         :documentation "The ORG-PARTs of ORG-PARTS in order, a vector with room for more.")
+  (todo-keywords nil
+                 :documentation "The TODO keywords the #+TODO: lines of ORG-PARTS set, (NOT-DONE . DONE) as ORG-PARSE
+takes them.")
+  (sums (make-array 0 :element-type 'fixnum) :type (simple-array fixnum (*))
+        :documentation "Room for ORG-PARTS-TAKE-EDITS: the moves of the parts of ORG-PARTS after each edit, as a sum
+by index (a Fenwick tree).")
+  (adds (make-array 0 :element-type 'fixnum) :type (simple-array fixnum (*))
+        :documentation "Room for ORG-PARTS-TAKE-EDITS: the move of each part of ORG-PARTS by itself."))
 
 ;;; Finding the parts in the text
 
 (defun org-line-kind (octet-at line end)
   "What the line beginning at the octet LINE, before END, is to the parts: a
-headline's number of stars (stars, then a space or a tab), and as a second value
+headline's number of stars (stars, then a space), and as a second value
 true when the word COMMENT is on its line. Else :TODO for a #+TODO:, #+SEQ_TODO:
 or #+TYP_TODO: line. Else :CODE for one that may say where source blocks are and
 what they are, a block's first or last line (#+begin_src, #+end_src and the
@@ -116,7 +166,7 @@ tabs. Else NIL. OCTET-AT gives the octet at a position."
                    thereis (and (= octet 67) (word-at p "COMMENT")))))
     (case (at line)
       (42 (let ((after (loop for p from line while (eql (at p) 42) finally (return p))))
-            (and (member (at after) '(32 9)) (values (- after line) (comment-p after)))))
+            (and (eql (at after) 32) (values (- after line) (comment-p after)))))
       ((32 9 35 58)
        (let ((p (loop for p from line while (member (at p) '(32 9)) finally (return p))))
          (cond ((and (eql (at p) 35) (eql (at (1+ p)) 43))
@@ -141,32 +191,32 @@ window at a time, on the stack. Complexity: O(END - START)."
       (declare (dynamic-extent #'octet-at))
       (loop while (< low end)
             do (setf high (min end (+ low (length window))))
-               (tuatara.text:rope-copy-into rope low high window)
-               (let ((line low))
-                 (declare (type fixnum line))
-                 (loop
-                   (multiple-value-bind (kind commented)
-                       ;; only a line beginning with a star, a blank, # or : may be one
-                       (and (member (aref window (- line low)) '(42 32 9 35 58)) (org-line-kind #'octet-at line end))
-                     (case kind
-                       ((nil))
-                       (:todo (push line todo-lines))
-                       (:code (push line code-lines))
-                       (t (push (list line kind commented) headlines))))
-                   (let ((newline (let ((at (tuatara.text:octets-line-end-position window (- line low) (- high low))))
-                                    ;; a carriage return ending the window ends no line a newline follows
-                                    (and at (not (and (= at (- high low 1)) (= 13 (aref window at)) (< high end)
-                                                      (= 10 (tuatara.text:rope-octet rope high))))
-                                         at))))
-                     (unless newline
-                       ;; the line goes on past the window: the next begins after it
-                       (let ((next (and (< high end) (tuatara.text:rope-find-line-end rope :start high :end end))))
-                         (setf low (if next (1+ next) end))
-                         (return)))
-                     (setf line (+ low newline 1))
-                     (when (>= line high)
-                       (setf low line)
-                       (return)))))))
+            (tuatara.text:rope-copy-into rope low high window)
+            (let ((line low))
+              (declare (type fixnum line))
+              (loop
+               (multiple-value-bind (kind commented)
+                   ;; only a line beginning with a star, a blank, # or : may be one
+                   (and (member (aref window (- line low)) '(42 32 9 35 58)) (org-line-kind #'octet-at line end))
+                 (case kind
+                   ((nil))
+                   (:todo (push line todo-lines))
+                   (:code (push line code-lines))
+                   (t (push (list line kind commented) headlines))))
+               (let ((newline (let ((at (tuatara.text:octets-line-end-position window (- line low) (- high low))))
+                                ;; a carriage return ending the window ends no line a newline follows
+                                (and at (not (and (= at (- high low 1)) (= 13 (aref window at)) (< high end)
+                                                  (= 10 (tuatara.text:rope-octet rope high))))
+                                     at))))
+                 (unless newline
+                   ;; the line goes on past the window: the next begins after it
+                   (let ((next (and (< high end) (tuatara.text:rope-find-line-end rope :start high :end end))))
+                     (setf low (if next (1+ next) end))
+                     (return)))
+                 (setf line (+ low newline 1))
+                 (when (>= line high)
+                   (setf low line)
+                   (return)))))))
     (values (nreverse headlines) (nreverse todo-lines) (nreverse code-lines))))
 
 ;;; Keeping the parts up with the text
@@ -222,7 +272,8 @@ that changed it. As a second value, true when it holds a #+TODO: line."
                                               (1- start))) start))
                    start))
          (to (if touched
-                 (let ((newline (tuatara.text:rope-find-line-end rope :start (min end (+ start (fourth touched))) :end end)))
+                 (let ((newline (tuatara.text:rope-find-line-end rope :start (min end (+ start (fourth touched)))
+                                                                 :end end)))
                    (if newline (1+ newline) end))
                  end)))
     (multiple-value-bind (headlines todo-lines code-lines) (org-scan-parts rope from to)
@@ -281,9 +332,9 @@ O(edits x log^2 parts + parts), and the lines read again."
     (declare (type (simple-array fixnum (*)) starts sums adds) (type fixnum n lowest))
     (labels ((prefix (i)
                (let ((sum 0)) (declare (type fixnum sum))
-                 (loop for k of-type fixnum = (1+ i) then (logandc2 k (logand k (- k)))
-                       while (plusp k) do (incf sum (aref sums k)))
-                 sum))
+                    (loop for k of-type fixnum = (1+ i) then (logandc2 k (logand k (- k)))
+                          while (plusp k) do (incf sum (aref sums k)))
+                    sum))
              (add (i delta)
                (when (< i n)
                  (setf lowest (min lowest i))
@@ -325,7 +376,8 @@ O(edits x log^2 parts + parts), and the lines read again."
                                  ;; its place in the whole parse, shown until it is parsed again
                                  (org-part-whole part)
                                  (let ((whole (org-part-whole old))) (and whole (append (butlast whole) (list nil))))
-                                 (org-part-touched part) (org-part-touched-by old (- start base) (- end base) inserted)))
+                                 (org-part-touched part)
+                                 (org-part-touched-by old (- start base) (- end base) inserted)))
                          (take-in first last))
                      (setf (gethash first dirty) t
                            (svref all first) part)
@@ -333,15 +385,16 @@ O(edits x log^2 parts + parts), and the lines read again."
                      (incf (org-parts-bytes parts) (- inserted (- end start)))))))
       ;; every start where the edits moved it
       (let ((sum 0)) (declare (type fixnum sum))
-        (loop for i of-type fixnum from lowest below n
-              do (incf sum (aref adds i))
+           (loop for i of-type fixnum from lowest below n
+                 do (incf sum (aref adds i))
                  (incf (aref starts i) sum)))
       (flet ((live-p (i) (not (and owner (gethash i owner))))
              (end-of (r) (let ((next (1+ (run-end r)))) (if (< next n) (aref starts next) (org-parts-bytes parts)))))
         ;; a part whose first line no longer begins a headline joins the one before
         (dolist (r (sort (loop for r being the hash-keys of dirty when (live-p r) collect r) #'>))
           (when (and (plusp r) (live-p r)
-                     (not (integerp (org-line-kind (lambda (p) (tuatara.text:rope-octet rope p)) (aref starts r) (end-of r)))))
+                     (not (integerp (org-line-kind (lambda (p) (tuatara.text:rope-octet rope p)) (aref starts r)
+                                                   (end-of r)))))
             (let ((before (resolve (1- r))))
               (setf todo (or todo (org-part-todo-lines (svref all r)) (org-part-todo-lines (svref all before))))
               (setf (gethash before dirty) t
@@ -350,9 +403,11 @@ O(edits x log^2 parts + parts), and the lines read again."
         ;; each part left to split, split, in place when no part came or went
         (let* ((split (loop for r in (sort (loop for r being the hash-keys of dirty when (live-p r) collect r) #'<)
                             collect (multiple-value-bind (new held)
-                                        (org-split-range rope (aref starts r) (end-of r) (org-part-touched (svref all r)) changed)
+                                        (org-split-range rope (aref starts r) (end-of r)
+                                                         (org-part-touched (svref all r)) changed)
                                       (when (or held (org-part-todo-lines (svref all r))) (setf todo t))
-                                      ;; the background parse of the part typed in goes on with the part that begins where it did
+                                      ;; the background parse of the part typed in goes on
+                                      ;; with the part that begins where it did
                                       (setf (org-part-state (cdr (first new)))
                                             (shiftf (org-part-state (svref all r)) nil)
                                             (org-part-whole (cdr (first new))) (org-part-whole (svref all r)))
@@ -384,9 +439,10 @@ O(edits x log^2 parts + parts), and the lines read again."
                        do (dolist (offset (org-part-todo-lines part))
                             (let* ((line (+ start offset))
                                    (end (or (tuatara.text:rope-find-line-end rope :start line)
-                                            (tuatara.text:rope-octet-length rope))))
+                                            (tuatara.text:rope-octet-length rope)))
+                                   (text (tuatara.text:rope-string rope :start line :end end)))
                               ;; a CR LF line's return not one of its words
-                              (write-line (string-right-trim '(#\Return) (tuatara.text:rope-string rope :start line :end end)) out)))))))
+                              (write-line (string-right-trim '(#\Return) text) out)))))))
     (org-todo-keywords-of lines)))
 
 (defun org-buffer-parts (buffer)
@@ -400,14 +456,7 @@ and the lines changed."
          (rope (tuatara.text:version-rope version))
          (parts (tuatara.buffer:buffer-local buffer 'org-parts)))
     (unless (and parts (eq (org-parts-version parts) version))
-      (let* ((batches (and parts
-                           (loop for at = (org-parts-version parts) then next
-                                 for next = (tuatara.text:version-next at)
-                                 until (eq at version)
-                                 collect (let ((batch (and next (tuatara.text:version-batch next))))
-                                           (if (or (null batch) (tuatara.text:batch-swap batch))
-                                               (return :whole)
-                                               batch)))))
+      (let* ((batches (and parts (tuatara.text:version-batches (org-parts-version parts) version)))
              (changed (tuatara.text:version-number version))
              (todo nil))
         (if (or (null parts) (eq batches :whole))
@@ -436,9 +485,10 @@ and the lines changed."
 
 ;;; What is known of a stretch of the text
 
-(defstruct (org-view (:constructor make-org-view (tree text from to returns current &optional base root
-                                                   &aux (plain (and (null base) current (null returns) (= (length text) (- to from))))))
-                    (:copier nil))
+(define-record (org-view (:constructor make-org-view (tree text from to returns current &optional base root
+                                                          &aux (plain (and (null base) current (null returns)
+                                                                           (= (length text) (- to from))))))
+                        (:copier nil))
   "What is known of a part of an Org buffer, the octets FROM below TO: TREE, the
 parse of TEXT, or the part's node of the whole buffer's parse ROOT with TEXT
 that parse's text. RETURNS, where TEXT lost a carriage return before a newline
@@ -447,9 +497,20 @@ false while a parse of it is behind it. PLAIN, true when each character of TEXT
 is one octet of the part, so that the one is found from the other at once; else
 BASE, the buffer's character less TEXT's character there (given for the whole
 buffer's parse, else found when first asked for, ORG-VIEW-BYTE)."
-  tree text from to returns current plain base root)
-
-(setf (documentation 'org-view-p 'function) "True when OBJECT is an ORG-VIEW.")
+  (tree nil :documentation "The parse of the text of an ORG-VIEW, or the part's node of the whole buffer's parse.")
+  (text nil :documentation "The text an ORG-VIEW is of: the text of its tree, or the text of the whole buffer's parse.")
+  (from nil :documentation "The octet where the part an ORG-VIEW is of begins.")
+  (to nil :documentation "The octet below which the part an ORG-VIEW is of ends.")
+  (returns nil
+           :documentation "Where the text of an ORG-VIEW lost a carriage return before a newline (ORG-STRIP-RETURNS).")
+  (current nil
+           :documentation "True when the parse of an ORG-VIEW is of the part as it is now, false while a parse of it
+is behind it.")
+  (plain nil :documentation "True when each character of the text of an ORG-VIEW is one octet of the part.")
+  (base nil
+        :documentation "The buffer's character less the text's character there, for an ORG-VIEW that is not plain, or
+NIL until first asked for (ORG-VIEW-BYTE).")
+  (root nil :documentation "The whole buffer's parse node an ORG-VIEW is of a part of, or NIL."))
 
 (defun org-view-base-char (buffer view)
   "The character of BUFFER that VIEW's text begins at, found the first time."
@@ -566,7 +627,8 @@ before given until that one is done, or NIL while it has none."
                  (when (org-await-parse state version)
                    (org-take-parse state)))
                (if (org-state-tree state)
-                   (make-org-view (org-state-tree state) (org-state-text state) from to (org-state-returns state) (current-p))
+                   (make-org-view (org-state-tree state) (org-state-text state) from to (org-state-returns state)
+                                  (current-p))
                    ;; its place in the whole parse, as it was before it changed
                    (org-whole-view buffer part from to))))))))
 
@@ -661,7 +723,7 @@ NIL when there are none."
                    do (setf (aref within j) (- (aref returns i) from)))
              within)))))
 
-(defstruct (org-snapshot (:constructor make-org-snapshot (parts keywords entries crlf whole version)) (:copier nil))
+(define-record (org-snapshot (:constructor make-org-snapshot (parts keywords entries crlf whole version)) (:copier nil))
   "What the parse of a whole Org buffer is made from, taken from its PARTS
 \(ORG-PARTS) at one version. ENTRIES is a vector of (PART LEVEL SOURCE) in
 order, SOURCE the part's own parse (TREE TEXT RETURNS), or (:WHOLE NODE START
@@ -670,9 +732,13 @@ part's text, a string or (ROPE START END). Or, for a whole parse made afresh,
 WHOLE, the whole text, a string or a rope. The TODO KEYWORDS the parts are
 parsed with; carriage return and line feed (CRLF), true when its lines end that
 way; VERSION, the number of the buffer's version it was taken at."
-  parts keywords entries crlf whole version)
-
-(setf (documentation 'org-snapshot-p 'function) "True when OBJECT is an ORG-SNAPSHOT.")
+  (parts nil :documentation "The ORG-PARTS an ORG-SNAPSHOT is taken from.")
+  (keywords nil :documentation "The TODO keywords the parts of an ORG-SNAPSHOT are parsed with.")
+  (entries nil :documentation "The parts of an ORG-SNAPSHOT in order, a vector of (PART LEVEL SOURCE).")
+  (crlf nil :documentation "True when the lines of an ORG-SNAPSHOT end with carriage return and line feed.")
+  (whole nil
+         :documentation "The whole text of an ORG-SNAPSHOT, a string or a rope, for a whole parse made afresh, or NIL.")
+  (version nil :documentation "The number of the buffer's version an ORG-SNAPSHOT was taken at."))
 
 (defun org-parts-snapshot (buffer parts)
   "An ORG-SNAPSHOT of PARTS, BUFFER's parts as they are now: for each, its own
@@ -686,7 +752,8 @@ octets copied of a mapped file."
          (state (org-buffer-state buffer))
          (count (org-parts-count parts))
          (kept (loop for i below count
-                     thereis (let ((whole (org-part-whole-now buffer (org-part-at parts i)))) (and whole (sixth whole)))))
+                     thereis (let ((whole (org-part-whole-now buffer (org-part-at parts i))))
+                               (and whole (sixth whole)))))
          (entries (make-array count)))
     (dotimes (i count)
       (let* ((part (org-part-at parts i))
@@ -702,7 +769,8 @@ octets copied of a mapped file."
                              (list :whole node start length (org-state-text state) (org-state-returns state))))
                           ((and part-state (org-state-tree part-state)
                                 (>= (org-version-number (org-state-version part-state)) (org-part-changed part)))
-                           (list (org-state-tree part-state) (org-state-text part-state) (org-state-returns part-state)))
+                           (list (org-state-tree part-state) (org-state-text part-state)
+                                 (org-state-returns part-state)))
                           ((not kept) nil)
                           (mapped (tuatara.buffer:buffer-string buffer :start from :end to))
                           (t (list rope from to)))))))
@@ -734,14 +802,14 @@ headlines under it, its contents and blank lines counted to there."
             (org-node-properties copy)
             (loop for (key value) on (org-node-properties node) by #'cddr
                   unless (eq key :children-vector)
-                    nconc (list key (case key
-                                      ((:title-begin :title-end) (moved value))
-                                      (:title (mapcar #'copied value))
-                                      (t value))))
+                  nconc (list key (case key
+                                    ((:title-begin :title-end) (moved value))
+                                    (:title (mapcar #'copied value))
+                                    (t value))))
             (org-node-children copy)
             (loop for child in (org-node-children node)
                   unless (and headline-end (eq (org-node-type child) 'headline))
-                    collect (copied child)))
+                  collect (copied child)))
       (when headline-end
         (let ((contents (let ((begin (org-node-contents-begin node))) (and begin (< begin headline-end) begin))))
           (setf (org-node-end copy) (moved headline-end)
@@ -749,7 +817,8 @@ headlines under it, its contents and blank lines counted to there."
                 (org-node-contents-end copy) (and contents (moved headline-end))
                 (org-node-post-blank copy) (if contents
                                                0
-                                               (org-count-blank-lines (min headline-end (org-next-line (org-node-begin node))) headline-end))))))
+                                               (let ((next (org-next-line (org-node-begin node))))
+                                                 (org-count-blank-lines (min headline-end next) headline-end)))))))
     (values copy (1+ deepest))))
 
 (defun org-whole-places (tree text returns entries)
@@ -828,15 +897,15 @@ parse and the characters of the text), and the parts parsed here."
     (let ((pieces '()) (returns '()) (places '()) (offset 0) (too-deep nil))
       ;; each part's tree, made or copied, where its text begins in the whole and the headlines it closes
       (let ((placed
-              (loop for (part level source) across (org-snapshot-entries snapshot)
-                    collect (multiple-value-bind (text from to part-returns unparsed) (org-entry-text snapshot source)
-                              (let ((node (cond (unparsed (org-parse text :todo-keywords keywords))
-                                                ((eq (first source) :whole) (list (second source) from to))
-                                                (t (first source)))))
-                                (push (list text from to) pieces)
-                                (loop for r across (or part-returns #()) do (push (+ offset r) returns))
-                                (prog1 (list level node text from offset (- to from) part)
-                                  (incf offset (- to from))))))))
+             (loop for (part level source) across (org-snapshot-entries snapshot)
+                   collect (multiple-value-bind (text from to part-returns unparsed) (org-entry-text snapshot source)
+                             (let ((node (cond (unparsed (org-parse text :todo-keywords keywords))
+                                               ((eq (first source) :whole) (list (second source) from to))
+                                               (t (first source)))))
+                               (push (list text from to) pieces)
+                               (loop for r across (or part-returns #()) do (push (+ offset r) returns))
+                               (prog1 (list level node text from offset (- to from) part)
+                                 (incf offset (- to from))))))))
         (let* ((total offset)
                (root (org-empty-tree total))
                (root-children '())
@@ -869,14 +938,17 @@ parse and the characters of the text), and the parts parsed here."
                              (adopt (org-copy-node child (- start from) root)))
                            (push (list part start length root) places))
                          (let* ((closes (char= #\Space (char text (+ from level))))
-                                (outermost (and closes (position-if (lambda (entry) (>= (second entry) level)) open :from-end t)))
+                                (outermost (and closes
+                                                (position-if (lambda (entry) (>= (second entry) level)) open
+                                                             :from-end t)))
                                 (parent (progn (when outermost
                                                  (loop repeat (1+ outermost) do (close-subtree (pop open) start)))
                                                (if open (car (first open)) root)))
                                 (copy (multiple-value-bind (copy depth)
                                           (if (consp source)
                                               (let ((*org-text* text))
-                                                (org-copy-node (first source) (- start from) parent :headline-end (third source)))
+                                                (org-copy-node (first source) (- start from) parent
+                                                               :headline-end (third source)))
                                               (org-copy-node (first (org-node-children source)) start parent))
                                         ;; parsed alone it went deeper than the parse of the whole text may, under its
                                         ;; headlines
@@ -892,7 +964,7 @@ parse and the characters of the text), and the parts parsed here."
                   (text (let ((whole (make-string total)) (at 0))
                           (loop for (text from to) in (nreverse pieces)
                                 do (replace whole text :start1 at :start2 from :end2 to)
-                                   (incf at (- to from)))
+                                (incf at (- to from)))
                           whole)))
               (if too-deep
                   ;; headlines nested past what a parse reads: the whole text parsed, as deep as that goes
@@ -913,13 +985,13 @@ since SNAPSHOT was taken, a parse of it in the background newer than that kept."
     (let ((version (org-snapshot-version snapshot)))
       (loop for (part start length returns-before node) in places
             when (and (org-part-level part) (<= (org-part-changed part) version))
-              do (setf (org-part-whole part) (list tree node start length returns-before t)
-                       (org-part-parse part) nil)
-                 (let ((state (org-part-state part)))
-                   ;; a parse in the background of the text as it is in TREE, let go; how long it took kept
-                   (when (and state (<= (org-version-number (org-state-version state)) version))
-                     (setf (org-state-tree state) nil (org-state-text state) nil (org-state-returns state) nil
-                           (org-state-version state) -1)))))))
+            do (setf (org-part-whole part) (list tree node start length returns-before t)
+                     (org-part-parse part) nil)
+            (let ((state (org-part-state part)))
+              ;; a parse in the background of the text as it is in TREE, let go; how long it took kept
+              (when (and state (<= (org-version-number (org-state-version state)) version))
+                (setf (org-state-tree state) nil (org-state-text state) nil (org-state-returns state) nil
+                      (org-state-version state) -1)))))))
 
 ;;; What says which source blocks a buffer has
 
@@ -941,7 +1013,8 @@ a new one."
                                                             (tuatara.text:rope-octet-length rope))))
                                               (string-trim '(#\Space #\Tab #\Return)
                                                            (tuatara.text:rope-string rope :start line :end end)))))
-                       (arguments (find-if (lambda (line) (and (plusp (length line)) (char= (char line 0) #\:))) lines)))
+                       (arguments (find-if (lambda (line) (and (plusp (length line)) (char= (char line 0) #\:)))
+                                           lines)))
                   (cons (or (org-part-commented part) (and arguments t))
                         (list (org-part-level part) (org-part-commented part)
                               (if arguments
@@ -964,7 +1037,7 @@ since it was last asked."
          (entries (loop for i below (org-parts-count parts)
                         for blocks = (org-blocks-key-entry parts i rope)
                         when blocks
-                          collect (progn (when (car blocks) (setf nesting t))
-                                         (cdr blocks)))))
+                        collect (progn (when (car blocks) (setf nesting t))
+                                       (cdr blocks)))))
     (cons entries
           (and nesting (loop for i below (org-parts-count parts) collect (org-part-level (org-part-at parts i)))))))

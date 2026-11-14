@@ -7,8 +7,9 @@
 ;;;; file, noinlineimages off). Its #+ATTR_ORG: line sizes and places it as
 ;;;; Org 9.7 reads that line: :width 400 or 400px in pixels, 50% or 0.5 of the
 ;;;; text's width (the window's, up to the fill column), t its own width, else
-;;;; the first other #+ATTR_...: line's width that reads so; for a picture alone in its paragraph, :align left,
-;;;; center or right, or :center t, from #+ATTR_ORG: first, then any other. C-c C-x w and then + = - 0 change the
+;;;; the first other #+ATTR_...: line's width that reads so; for a picture
+;;;; alone in its paragraph, :align left, center or right, or :center t, from
+;;;; #+ATTR_ORG: first, then any other. C-c C-x w and then + = - 0 change the
 ;;;; width written there. Formulas are shown as pictures too: $...$ and \(...\)
 ;;;; inside a line, \[...\] or $$...$$ alone on their lines and LaTeX
 ;;;; environments on rows of their own.
@@ -17,11 +18,9 @@
 
 (defun org-picture-link-p (node)
   "True when NODE is a link shown as a picture among the lines: to a file, with
-no description, whose name says it is a picture the image view draws."
-  (and (eq (org-node-type node) 'link)
-       (equal (org-property node :type) "file")
-       (null (org-node-contents-begin node))
-       (inline-picture-path-p (org-property node :path))))
+no description, whose name says it is a picture the image view draws
+\(ORG-IMAGE-LINK-P)."
+  (org-image-link-p node #'inline-picture-path-p))
 
 (defun org-formula-fragment-p (node)
   "True when NODE is a formula shown as a picture: a LaTeX fragment in dollar
@@ -36,21 +35,43 @@ signs or LaTeX's own math delimiters, not a command alone."
 looked for in, for its formulas shown as pictures, as far as its first
 heading.")
 
+(define-setting *org-startup-shows-pictures* nil
+  "Whether an Org file's #+STARTUP: may turn its pictures and formulas on.
+#+STARTUP: inlineimages or latexpreview would show them, its formulas drawn by
+LaTeX as it opens; noinlineimages and nolatexpreview turn them off either way.
+- nil: a file's words only turn them off; \\[inline-pictures-mode] turns them on.
+- t: its words turn them on too, in a file visited as usual, not safely or
+  read-only."
+  :values boolean)
+
+(defun org-own-words-p (buffer)
+  "True when BUFFER's Org file is visited as usual: not safely
+\(TUATARA.IO:SAFE-VISIT-P), and may be written. A note given you, opened
+safely or read-only, never has what it says of itself run."
+  (not (or (tuatara.io:safe-visit-p buffer) (tuatara.buffer:buffer-read-only-p buffer))))
+
+(defun org-file-trusted-p (buffer)
+  "True when BUFFER's Org file is visited as usual (ORG-OWN-WORDS-P) and is in
+a project you trust (BUFFER-IN-TRUSTED-PROJECT-P): its own #+LATEX_HEADER:
+lines are then drawn with its formulas."
+  (and (org-own-words-p buffer) (buffer-in-trusted-project-p buffer)))
+
 (defun org-formula-preamble (buffer)
   "The LaTeX the formulas of BUFFER, an Org buffer, are drawn with before
 \\begin{document}: *FORMULA-PREAMBLE*, then its #+LATEX_HEADER: lines above
-its first heading (within *ORG-FORMULA-HEADER-REACH*), kept while its text
-is unchanged."
+its first heading (within *ORG-FORMULA-HEADER-REACH*) when the file is trusted
+\(ORG-FILE-TRUSTED-P), kept while its text is unchanged."
   (let ((version (tuatara.buffer:buffer-version buffer))
         (kept (tuatara.buffer:buffer-local buffer 'org-formula-preamble)))
     (if (and kept (eq (car kept) version))
         (cdr kept)
         (let* ((text (tuatara.buffer:buffer-string buffer :end (min (tuatara.buffer:buffer-size buffer)
                                                                     *org-formula-header-reach*)))
-               (head (subseq text 0 (or (cl-ppcre:scan "(?m)^\\*+[ \\t]" text) (length text))))
+               (head (subseq text 0 (or (cl-ppcre:scan "(?m)^\\*+ " text) (length text))))
                (lines (let ((found '()))
-                        (cl-ppcre:do-register-groups (line) ("(?im)^[ \\t]*#\\+latex_header:[ \\t]?(.*)$" head)
-                          (push line found))
+                        (when (org-file-trusted-p buffer)
+                          (cl-ppcre:do-register-groups (line) ("(?im)^[ \\t]*#\\+latex_header:[ \\t]?(.*)$" head)
+                            (push line found)))
                         (nreverse found))))
           (cdr (setf (tuatara.buffer:buffer-local buffer 'org-formula-preamble)
                      (cons version (format nil "~a~{~%~a~}" *formula-preamble* lines))))))))
@@ -58,7 +79,7 @@ is unchanged."
 (defun org-attribute-number (text)
   "The number TEXT, digits with perhaps a point among them, as an exact
 rational; NIL when it is no such number."
-  (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "^\\+?([0-9]*)(?:\\.([0-9]+))?$" text)
+  (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "^\\+?([0-9]{0,6})(?:\\.([0-9]{1,6}))?$" text)
     (when (and match (or (plusp (length (aref groups 0))) (aref groups 1)))
       (+ (if (plusp (length (aref groups 0))) (parse-integer (aref groups 0)) 0)
          (if (aref groups 1)
@@ -74,7 +95,7 @@ when it reads as none of these."
   (when text
     (let ((text (string-trim " " text)))
       (cond ((string-equal text "t") t)
-            ((cl-ppcre:scan "^\\+?[0-9]+(?:px)?$" text)
+            ((cl-ppcre:scan "^\\+?[0-9]{1,6}(?:px)?$" text)
              (max 1 (parse-integer (string-right-trim "px" text) :junk-allowed t)))
             ((and (> (length text) 1) (char= (char text (1- (length text))) #\%))
              (let ((number (org-attribute-number (subseq text 0 (1- (length text))))))
@@ -134,69 +155,69 @@ parses read are of the text as it is now."
   (let ((found '()) (current t)
         (end (min end (tuatara.buffer:buffer-size buffer)))
         (directory (buffer-directory buffer)))
-    (flet ((blank-p (text from below) (every (lambda (c) (member c '(#\Space #\Tab))) (subseq text from below))))
-      (dolist (view (org-views buffer start (max end (1+ start))))
-        (if (not (org-view-current view))
-            (setf current nil)
-            (let* ((text (org-view-text view))
-                   (*org-latex-text* text)
-                   (from (org-view-char buffer view (max start (org-view-from view))))
-                   (to (org-view-char buffer view (max (min end (org-view-to view)) (org-view-from view))))
-                   ;; a link on the last line begun is looked for to that line's end
-                   (reach (or (position #\Newline text :start (min to (length text))) (length text))))
-              (labels ((picture (paragraph link)
-                         (let* ((begin (org-node-begin link))
-                                (line (1+ (or (position #\Newline text :end begin :from-end t) -1)))
-                                (after (min (length text) (org-node-end link)))
-                                (line-end (or (position #\Newline text :start after) (length text))))
-                           (when (and (<= from line) (< line to)
-                                      (blank-p text line begin) (blank-p text after line-end))
-                             (let ((line-start (org-view-byte buffer view line)))
-                               (multiple-value-bind (width align float) (org-picture-attributes paragraph)
-                                 (push (make-inline-picture
-                                        line-start (tuatara.buffer:buffer-line-end buffer line-start)
-                                        (tuatara.io:native (tuatara.io:expand-path (org-property link :path)
-                                                                                   :directory directory))
-                                        :width width :float float
-                                        :align (if (org-latex-picture-alone-p paragraph #'org-picture-link-p)
-                                                   align
-                                                   :left))
-                                       found))))))
-                       (formula (from-char to-char value inline)
-                         ;; FROM-CHAR its start, TO-CHAR its end, as characters of the view's text
-                         (when (and (<= from from-char) (< from-char to))
-                           (push (make-inline-picture (org-view-byte buffer view from-char)
-                                                      (org-view-byte buffer view to-char)
-                                                      (make-formula value (org-formula-preamble buffer)
-                                                                    :inline inline)
-                                                      :align (if inline :left :center))
-                                 found)))
-                       (fragment (child)
-                         (let* ((value (org-property child :value))
-                                (begin (org-node-begin child))
-                                (after (min (length text) (+ begin (length value))))
-                                (line (1+ (or (position #\Newline text :end begin :from-end t) -1)))
-                                (line-end (or (position #\Newline text :start after) (length text))))
-                           (if (and (or (uiop:string-prefix-p "\\[" value) (uiop:string-prefix-p "$$" value))
-                                    (blank-p text line begin) (blank-p text after line-end))
-                               (formula line line-end value nil)
-                               (formula begin after value t))))
-                       (environment (node)
-                         (let* ((value (org-property node :value))
-                                (line (or (search value text :start2 (org-node-begin node)) (org-node-begin node)))
-                                (body (string-right-trim '(#\Newline #\Return) value)))
-                           (formula line (min (length text) (+ line (length body))) (string-trim " 	" body) nil)))
-                       (walk (node)
-                         (case (org-node-type node)
-                           (paragraph
-                            (org-children-in-range node from (max reach (1+ from))
-                                                   (lambda (child)
-                                                     (cond ((org-picture-link-p child) (picture node child))
-                                                           ((and formulas (org-formula-fragment-p child))
-                                                            (fragment child))))))
-                           (latex-environment (when formulas (environment node)))
-                           (t (org-children-in-range node from (max reach (1+ from)) #'walk)))))
-                (walk (org-view-tree view)))))))
+    (dolist (view (org-views buffer start (max end (1+ start))))
+      (if (not (org-view-current view))
+          (setf current nil)
+          (let* ((text (org-view-text view))
+                 (*org-export-text* text)
+                 (from (org-view-char buffer view (max start (org-view-from view))))
+                 (to (org-view-char buffer view (max (min end (org-view-to view)) (org-view-from view))))
+                 ;; a link on the last line begun is looked for to that line's end
+                 (reach (or (position #\Newline text :start (min to (length text))) (length text))))
+            (labels ((picture (paragraph link)
+                       (let* ((begin (org-node-begin link))
+                              (line (1+ (or (position #\Newline text :end begin :from-end t) -1)))
+                              (after (min (length text) (org-node-end link)))
+                              (line-end (or (position #\Newline text :start after) (length text))))
+                         (when (and (<= from line) (< line to)
+                                    (blank-text-p text line begin) (blank-text-p text after line-end))
+                           (let ((line-start (org-view-byte buffer view line)))
+                             (multiple-value-bind (width align float) (org-picture-attributes paragraph)
+                               (push (make-inline-picture
+                                      line-start (tuatara.buffer:buffer-line-end buffer line-start)
+                                      (tuatara.io:native (tuatara.io:expand-path (org-property link :path)
+                                                                                 :directory directory))
+                                      :width width :float float
+                                      :align (if (org-export-picture-alone-p paragraph #'org-picture-link-p)
+                                                 align
+                                                 :left))
+                                     found))))))
+                     (formula (from-char to-char value inline)
+                       ;; FROM-CHAR its start, TO-CHAR its end, as characters of the view's text
+                       (when (and (<= from from-char) (< from-char to))
+                         (push (make-inline-picture (org-view-byte buffer view from-char)
+                                                    (org-view-byte buffer view to-char)
+                                                    (make-formula value (org-formula-preamble buffer)
+                                                                  :inline inline)
+                                                    :align (if inline :left :center))
+                               found)))
+                     (fragment (child)
+                       (let* ((value (org-property child :value))
+                              (begin (org-node-begin child))
+                              (after (min (length text) (+ begin (length value))))
+                              (line (1+ (or (position #\Newline text :end begin :from-end t) -1)))
+                              (line-end (or (position #\Newline text :start after) (length text))))
+                         (if (and (or (uiop:string-prefix-p "\\[" value) (uiop:string-prefix-p "$$" value))
+                                  (blank-text-p text line begin) (blank-text-p text after line-end))
+                             (formula line line-end value nil)
+                             (formula begin after value t))))
+                     (environment (node)
+                       (let* ((value (org-property node :value))
+                              (line (or (search value text :start2 (org-node-begin node)) (org-node-begin node)))
+                              (body (string-right-trim '(#\Newline #\Return) value)))
+                         (formula line (min (length text) (+ line (length body)))
+                                  (string-trim *org-blanks* body) nil)))
+                     (walk (node)
+                       (case (org-node-type node)
+                         (paragraph
+                          (org-children-in-range node from (max reach (1+ from))
+                                                 (lambda (child)
+                                                   (cond ((org-picture-link-p child) (picture node child))
+                                                         ((and formulas (org-formula-fragment-p child))
+                                                          (fragment child))))))
+                         (latex-environment (when formulas (environment node)))
+                         (t (org-children-in-range node from (max reach (1+ from)) #'walk)))))
+              (walk (org-view-tree view))))))
     (values (sort found #'< :key #'inline-picture-start) current)))
 
 (defun org-startup-pictures (buffer options)
@@ -204,12 +225,13 @@ parses read are of the text as it is now."
 linked pictures and its formulas among its lines while
 \\[inline-pictures-mode] is on there, and turn that on or off for it where
 the last of inlineimages and latexpreview (on), noinlineimages and
-nolatexpreview (off) there says so."
+nolatexpreview (off) there says so: on only as *ORG-STARTUP-SHOWS-PICTURES*
+allows, in a file visited as usual (ORG-OWN-WORDS-P)."
   (show-inline-pictures buffer 'org-inline-pictures)
-  (let ((choice (org-startup-choice options '("inlineimages" "noinlineimages" "latexpreview" "nolatexpreview"))))
-    (when choice
-      (setf (tuatara.buffer:buffer-local buffer :inline-pictures)
-            (and (member choice '("inlineimages" "latexpreview") :test #'string=) t)))))
+  (let* ((choice (org-startup-choice options '("inlineimages" "noinlineimages" "latexpreview" "nolatexpreview")))
+         (on (member choice '("inlineimages" "latexpreview") :test #'string=)))
+    (when (and choice (or (not on) (and *org-startup-shows-pictures* (org-own-words-p buffer))))
+      (setf (tuatara.buffer:buffer-local buffer :inline-pictures) (and on t)))))
 
 ;;; Changing a picture's width
 
@@ -291,7 +313,7 @@ is left on it."
             (arguments
              (let* ((at (inline-picture-start picture))
                     (indent (tuatara.buffer:buffer-string buffer :start at :end (inline-picture-end picture)))
-                    (blanks (subseq indent 0 (or (position-if-not (lambda (c) (member c '(#\Space #\Tab))) indent) 0))))
+                    (blanks (subseq indent 0 (or (position-if-not #'space-or-tab-char-p indent) 0))))
                (tuatara.buffer:buffer-insert buffer at (format nil "~a#+ATTR_ORG: ~a~%" blanks words))))))))
 
 (define-command org-resize-picture ()

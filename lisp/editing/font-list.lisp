@@ -69,7 +69,7 @@ search filters (\\[search-filter-regex])."
                                 (let ((line (font-init-line (second variant))))
                                   (put "  ")
                                   (put line :font-list-line)
-                                  (put (make-string (- column 2 (length line)) :initial-element #\Space))
+                                  (put (spaces (- column 2 (length line))))
                                   (put *font-sample* (font-sample-face (incf sample) (second variant)))
                                   (end-line (second variant))))))
                           (end-line nil))))
@@ -88,12 +88,13 @@ in it now, \\[font-list-copy] copies its line for the init file,
 \\[revert-buffer] or \\`g r' lists them again; the modal keys' motions, selections
 and \\<support>\\[copy-selection-or-char] work there too. In a terminal the font is
 the terminal's."
-  (let ((faces (tuatara.frontend:frontend-font-faces (editor-frontend *editor*))))
-    (if (null faces)
-        (message "Fonts are listed in a window of its own (tuatara --gui): a terminal's font is its own")
-        (let ((list (buffer-in-mode "*Fonts*" 'font-list-mode)))
-          (font-list-render list faces)
-          (show-buffer list)))))
+  (multiple-value-bind (faces listed) (fonts-listed #'tuatara.frontend:frontend-font-faces)
+    (cond ((not listed))
+          ((null faces)
+           (message "Fonts are listed in a window of its own (tuatara --gui): a terminal's font is its own"))
+          (t (let ((list (buffer-in-mode "*Fonts*" 'font-list-mode)))
+               (font-list-render list faces)
+               (show-buffer list))))))
 
 (define-command font-list-use ()
   "Show the window in the font on the current line of the list of fonts, for
@@ -122,7 +123,7 @@ in the init file (\\[find-file] ~/.config/tuatara/init.lisp)."
   "List the fonts again in BUFFER, the list of fonts, fonts installed since
 included, narrowed again by its search filters, point on the same line
 \(\\[revert-buffer])."
-  (let ((faces (tuatara.frontend:frontend-font-faces (editor-frontend *editor*))))
+  (let ((faces (fonts-listed #'tuatara.frontend:frontend-font-faces)))
     (when faces
       (font-list-render buffer faces :point :keep))))
 

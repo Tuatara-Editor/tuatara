@@ -67,6 +67,11 @@ file sets them."
   (is string= ".org" (tuatara.defaults::name-extension "my findings.org"))
   (is string= "" (tuatara.defaults::name-extension ".bashrc"))
   (true (tuatara.defaults::encrypted-name-p "x.txt.gpg"))
+  (true (tuatara.defaults::encrypted-name-p "X.TXT.GPG"))
+  (true (tuatara.defaults::encrypted-name-p "notes.Age"))
+  (false (tuatara.defaults::encrypted-name-p ".gpg"))
+  (true (tuatara.defaults::unencryptable-name-p "x.age"))
+  (false (tuatara.defaults::unencryptable-name-p "x.GPG"))
   (false (tuatara.defaults::encrypted-name-p "x.org"))
   (is equal '("garden" "index" "home")
       (tuatara.defaults::name-keyword-list "20260224T141326==12--bird-count-record__garden_index_home.org.gpg")))
@@ -667,21 +672,22 @@ file sets them."
                (declare (ignore editor))
                (true (tuatara.frontend.fake:fake-frame-showing f "20260101T100000--newer-note__sketch.txt:1: the newer needle"))
                (false (tuatara.frontend.fake:fake-frame-showing f "older-note__project.org:1:")))
-             ;; text cut short by the limits: a directory under it searched from disk instead
-             (setf (tuatara.defaults::directory-index-left-out (tuatara.defaults::index-for dir)) t)
-             (let ((tuatara.defaults::*directory-indexes*
-                     (list (let ((cut (tuatara.defaults::make-directory-index (tuatara.defaults::directory-index-root (tuatara.defaults::index-for dir)))))
-                             (setf (tuatara.defaults::directory-index-ready cut) t
-                                   (tuatara.defaults::directory-index-left-out cut) t)
-                             cut))))
-               (multiple-value-bind (f editor)
-                   (run-keys `(,(format nil "C-x C-f ~a RET M-s g"
-                                        (key-string (namestring (merge-pathnames "sub/20260101T100000--newer-note__sketch.txt" dir))))
-                               :wait "n e e d l e")
-                             :width 100 :height 20)
-                 (declare (ignore editor))
-                 (true (tuatara.frontend.fake:fake-frame-showing f "20260101T100000--newer-note__sketch.txt:1: the newer needle"))))
-             (setf (tuatara.defaults::directory-index-left-out (tuatara.defaults::index-for dir)) nil)
+             ;; the text of one file kept, at most: the other searched from disk, at the root and under it
+             (let* ((cut (tuatara.defaults::make-directory-index root))
+                    (tuatara.defaults::*directory-indexes* (list cut)))
+               (index-now cut (tuatara.defaults::read-directory-index cut :all (* 1024 1024) 4096 nil 1))
+               (is equal '("20250101T100000--older-note__project.org") (index-texts cut))
+               (is equal '("sub/20260101T100000--newer-note__sketch.txt")
+                   (mapcar #'first (tuatara.defaults::directory-index-large cut)))
+               (let ((f (run-keys '("SPC d g" :wait "n e e d l e") :width 100 :height 20)))
+                 (true (tuatara.frontend.fake:fake-frame-showing f "20250101T100000--older-note__project.org:1: a needle in the older"))
+                 (true (tuatara.frontend.fake:fake-frame-showing f "sub/20260101T100000--newer-note__sketch.txt:1: the newer needle")))
+               (let ((f (run-keys `(,(format nil "C-x C-f ~a RET M-s g"
+                                             (key-string (namestring (merge-pathnames "sub/20260101T100000--newer-note__sketch.txt" dir))))
+                                    :wait "n e e d l e")
+                                  :width 100 :height 20)))
+                 (true (tuatara.frontend.fake:fake-frame-showing f "20260101T100000--newer-note__sketch.txt:1: the newer needle"))
+                 (false (tuatara.frontend.fake:fake-frame-showing f "older-note__project.org:1:"))))
              ;; a change on disk: read again in the background, the new file then there
              (put-file (merge-pathnames "20260202T100000--newest__project.org" dir) (format nil "needle~%"))
              (tuatara.defaults::indexed-directories-changed (list root))
@@ -868,7 +874,7 @@ file sets them."
          (tuatara.defaults::*directories-followed* '())
          (tuatara.defaults::*indexed-directories-watched* (cons nil '()))
          (tuatara.defaults::*directory-followers*
-           (list (cons 'tuatara.defaults::indexed-directories-watched (lambda (changed) (declare (ignore changed)))))))
+           (list (list 'tuatara.defaults::indexed-directories-watched (lambda (changed) (declare (ignore changed)))))))
     (setf (tuatara.defaults::directory-index-directories index)
           (loop for i below 50000 collect (format nil "/nowhere/d~d/" i)))
     (sb-int:encapsulate 'tuatara.io:watch-directories 'count-calls
@@ -974,10 +980,9 @@ file sets them."
 
 (defun index-now (index result)
   "Put RESULT, what READ-DIRECTORY-INDEX gave, in place in INDEX, as the tick does."
-  (destructuring-bind (files corpora left-out large directories) result
+  (destructuring-bind (files corpora large directories) result
     (setf (tuatara.defaults::directory-index-files index) files
           (tuatara.defaults::directory-index-corpora index) corpora
-          (tuatara.defaults::directory-index-left-out index) left-out
           (tuatara.defaults::directory-index-large index) large
           (tuatara.defaults::directory-index-directories index) directories
           (tuatara.defaults::directory-index-ready index) t)
@@ -1146,9 +1151,9 @@ file sets them."
 
 (define-test (formatted cache-names-one-to-one)
   ;; each octet of the name written apart: a dash (U+2014) and " 14" no longer share a directory
-  (is string= "%2Fnotes%E2%80%94%2F" (tuatara.defaults::index-cache-name "/notes—/"))
-  (is string= "%2Fnotes%2014%2F" (tuatara.defaults::index-cache-name "/notes 14/"))
-  (is string= "%2Fn%C3%A9_-1%2F" (tuatara.defaults::index-cache-name "/né_-1/"))
+  (is string= "%2Fnotes%E2%80%94%2F" (tuatara.io:path-file-name "/notes—/"))
+  (is string= "%2Fnotes%2014%2F" (tuatara.io:path-file-name "/notes 14/"))
+  (is string= "%2Fn%C3%A9_-1%2F" (tuatara.io:path-file-name "/né_-1/"))
   ;; an index kept for another directory under the same name is passed over, not taken
   (with-test-directory (dir)
     (with-test-directory (cache)
@@ -1160,6 +1165,28 @@ file sets them."
           (tuatara.defaults::save-index index kept))
         (true (tuatara.defaults::load-index (tuatara.defaults::make-directory-index root) kept))
         (false (tuatara.defaults::load-index (tuatara.defaults::make-directory-index (concatenate 'string root "other/")) kept))))))
+
+(define-test (formatted damaged-index-not-taken)
+  ;; an index kept on disk whose piece names a file elsewhere, starts its files out of order or
+  ;; past its end, or holds fewer files than it says, is read again rather than taken
+  (with-test-directory (dir)
+    (with-test-directory (cache)
+      (let ((root (tuatara.defaults::directory-name dir))
+            (kept (tuatara.io:native cache)))
+        (put-file (merge-pathnames "n.txt" dir) (format nil "a note~%"))
+        (put-file (merge-pathnames "m.txt" dir) (format nil "another note~%"))
+        (let ((index (tuatara.defaults::make-directory-index root)))
+          (tuatara.defaults::read-directory-index index :all (* 1024 1024) 64)
+          (tuatara.defaults::save-index index kept))
+        (let* ((path (concatenate 'string kept "index"))
+               (whole (tuatara.io:file-text path)))
+          (flet ((taken-p (text)
+                   (tuatara.io:write-private-file path text)
+                   (tuatara.defaults::load-index (tuatara.defaults::make-directory-index root) kept)))
+            (true (taken-p whole))
+            (false (taken-p (cl-ppcre:regex-replace "(?m)^P piece-" whole "P ../piece-")))
+            (false (taken-p (cl-ppcre:regex-replace "(?m)^F 0 " whole "F 99999 ")))
+            (false (taken-p (cl-ppcre:regex-replace "(?m)^(P \\S+) 2 " whole "\\1 3 ")))))))))
 
 (define-test (formatted binary-told-alike)
   ;; opening a file and searching files tell a binary one by the same first 64 KB
@@ -1243,8 +1270,7 @@ file sets them."
       (index-now index (tuatara.defaults::read-directory-index index :all 10000 4096))
       (is equal '("a-small.txt" "c-small.txt") (index-texts index))
       ;; the large one kept aside, to be searched from disk
-      (is equal '("b-large.txt") (mapcar #'first (tuatara.defaults::directory-index-large index)))
-      (false (tuatara.defaults::directory-index-left-out index)))
+      (is equal '("b-large.txt") (mapcar #'first (tuatara.defaults::directory-index-large index))))
     ;; searched as grep searches, a piece at a time, never held whole: its lines found, numbered right
     (put-file (merge-pathnames "d-log.txt" dir)
               (with-output-to-string (out)
@@ -1499,3 +1525,81 @@ file sets them."
            (false (tuatara.defaults::identifier-time text) "~s" text))
          (true (sb-concurrency:queue-empty-p tuatara.runtime:*debug-reports*)))
     (drain-debug-reports)))
+
+(define-test (formatted header-saved-as-saving-does)
+  ;; a header written in the buffer visiting the note is saved as any save is, the functions after a save run
+  (with-test-directory (dir)
+    (let* ((path (concatenate 'string (tuatara.io:native dir) "20260927T213446--small__log.txt"))
+           (saved '())
+           (tuatara.defaults::*after-save-functions*
+             (cons (lambda (buffer) (push buffer saved)) tuatara.defaults::*after-save-functions*)))
+      (alexandria:write-string-into-file (format nil "title: Small~%~%text~%") path)
+      (let ((buffer (tuatara.io:visit-file path)))
+        (unwind-protect
+             (progn
+               (loop repeat 200 until (search "text" (tuatara.buffer:buffer-string buffer)) do (sleep 0.01))
+               (false (tuatara.defaults::write-formatted-header path "Larger" '("log") "20260927T213446"))
+               (tuatara.io:finish-saves)
+               (true (member buffer saved))
+               (true (search "Larger" (alexandria:read-file-into-string path))))
+          (tuatara.buffer:kill-buffer buffer))))))
+
+(define-test (formatted parts-that-tell-not-asked-each-tick)
+  ;; a part that tells when its directories change is asked only then, not at every tick
+  (let ((asked 0)
+        (tuatara.defaults::*directories-followed* '())
+        (tuatara.defaults::*directory-followers* '()))
+    (tuatara.defaults::follow-directories-for (lambda () (incf asked) (list "/nowhere/")) (lambda (changed) changed)
+                                              :tells t)
+    (sb-int:encapsulate 'tuatara.io:watch-directories 'quiet (lambda (f directories) (declare (ignore f directories))))
+    (unwind-protect
+         (progn
+           (dotimes (i 100) (tuatara.defaults::follow-directories nil))
+           (is = 1 asked)
+           (tuatara.defaults::directories-followed-changed)
+           (tuatara.defaults::follow-directories nil)
+           (is = 2 asked))
+      (sb-int:unencapsulate 'tuatara.io:watch-directories 'quiet))))
+
+(define-test (formatted every-part-tells-its-directories)
+  ;; no part following directories on disk is asked at every tick: each says when they change
+  (run-keys "")
+  (true tuatara.defaults::*directory-followers*)
+  (is equal '() (loop for (wanted nil tells) in tuatara.defaults::*directory-followers*
+                      unless tells collect wanted)))
+
+(define-test (formatted encrypted-extension-in-any-case)
+  ;; the kind of an encrypted name is read whatever the case of its ending
+  (is string= ".ORG.GPG" (tuatara.defaults::name-extension "NOTES.ORG.GPG"))
+  (is string= ".txt.Age" (tuatara.defaults::name-extension "notes.txt.Age"))
+  (is string= ".org" (tuatara.defaults::name-extension "notes.org")))
+
+(define-test (formatted keywords-read-one-way)
+  ;; the keywords of a name end where its next part begins, as renaming reads them
+  (is equal '("garden" "project") (tuatara.defaults::name-keyword-list "20260927T213446--notes__garden_project@@x.org"))
+  (is equal (nth-value 3 (tuatara.defaults::name-parts "20260927T213446__a_b==sig.org"))
+      (tuatara.defaults::name-keyword-list "20260927T213446__a_b==sig.org")))
+
+(define-test (formatted made-with-a-header-of-its-own)
+  ;; a header given in place of its kind's begins the file made
+  (with-test-directory (dir)
+    (let ((made (tuatara.defaults::make-formatted-file (tuatara.io:native dir) "Day" '() ".org" :write t
+                                                       :header (format nil "#+title: {title}~%#+kind: journal~%"))))
+      (true (search "#+kind: journal" (alexandria:read-file-into-string made))))))
+
+(define-test (formatted titles-read-from-the-head)
+  ;; a link's label takes the note's title from its start: a long note is not read whole for it
+  (with-formatted-directory (dir)
+    (flet ((consed (megabytes)
+             (let* ((name (format nil "20260101T00000~d--big__x.org" megabytes))
+                    (path (namestring (merge-pathnames name dir))))
+               (with-open-file (out path :direction :output)
+                 (format out "#+title: Big ~d~%~%~a~%" megabytes
+                         (make-string (* megabytes 1024 1024) :initial-element #\x)))
+               (let ((before (sb-ext:get-bytes-consed)))
+                 (is string= (format nil "Big ~d" megabytes)
+                     (tuatara.defaults::formatted-link-description (cons path name)))
+                 (- (sb-ext:get-bytes-consed) before)))))
+      (let ((small (consed 1)) (large (consed 4)))
+        (true (< large (* 1024 1024)) "~:d octets for a note of 4 MB" large)
+        (true (< (- large small) (* 256 1024)) "~:d octets more for 3 MB more" (- large small))))))

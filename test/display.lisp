@@ -574,6 +574,140 @@
               do (false (and (< from fold-end) (> to fold-start))))
         (true (find after hidden :key #'first))))))
 
+(define-test (display folds-taken-as-far-as-the-window-reaches)
+  ;; what a window's layout is given of a buffer's folds costs the same however many folds lie
+  ;; outside it
+  (flet ((octets-per-call (count)
+           (with-test-buffer (b "*many-folds*" :text (format nil "~{line ~a~%~}" (loop for i below (* 2 count) collect i)))
+             (loop for line from 2 to (* 2 count) by 2
+                   for line-start = (tuatara.buffer:buffer-goto-line b line)
+                   do (tuatara.display:fold-region b (1- line-start) (tuatara.buffer:buffer-line-end b line-start)))
+             (setf (tuatara.buffer:buffer-local b :display-replacements-function)
+                   (lambda (buffer from to) (declare (ignore buffer from to)) '()))
+             (let ((start (tuatara.buffer:buffer-goto-line b (- (* 2 count) 20))))
+               (tuatara.display::window-hidden b start 40 10)
+               ;; the least of three: a collection may count once in a while
+               (loop repeat 3
+                     minimize (let ((before (sb-ext:get-bytes-consed)))
+                                (loop repeat 10 do (tuatara.display::window-hidden b start 40 10))
+                                (/ (- (sb-ext:get-bytes-consed) before) 10)))))))
+    (let ((small (octets-per-call 500))
+          (large (octets-per-call 5000)))
+      (true (< large (* 2 (max small 4096))) "~d octets a call against ~d" large small))))
+
+(define-test (display folded-buffer-layout-kept)
+  ;; a window on a buffer with folds lays its rows out again only when the text or the folds change
+  (with-test-buffer (b "*kept-folds*" :text (format nil "~{line ~a~%~}" (loop for i below 40 collect i)))
+    (let ((w (tuatara.display:make-window b :width 30 :height 8)))
+      (tuatara.display:fold-region b (1- (tuatara.buffer:buffer-goto-line b 3))
+                                   (tuatara.buffer:buffer-line-end b (tuatara.buffer:buffer-goto-line b 6)))
+      (let ((first (tuatara.display::window-layout w)))
+        (true (tuatara.display::window-laid-out w))
+        (is eq first (tuatara.display::window-layout w))
+        (tuatara.display:unfold-all b)
+        (false (search "line 3" (tuatara.display:row-string (aref first 2))))
+        (true (search "line 3" (tuatara.display:row-string (aref (tuatara.display::window-layout w) 3))))))))
+
+(define-test (display hidden-lines-carried-in-one-copy)
+  ;; an edit after the lines search filters hide carries their bounds on in one copy
+  (let ((count 100000))
+    (with-test-buffer (b "*hidden*" :text (with-output-to-string (out) (dotimes (i (* 2 count)) (write-line "x" out))))
+      ;; every other line hidden, from the newline before it to the newline ending it
+      (let ((bounds (make-array (* 2 count) :element-type 'fixnum)))
+        (dotimes (i count)
+          (setf (aref bounds (* 2 i)) (+ 1 (* 4 i)) (aref bounds (1+ (* 2 i))) (+ 3 (* 4 i))))
+        (tuatara.display:hide-ranges b bounds)
+        (tuatara.display:hidden-bounds b)
+        (tuatara.buffer:buffer-insert b (tuatara.buffer:buffer-size b) "y")
+        (let* ((before (sb-ext:get-bytes-consed))
+               (bounds (tuatara.display:hidden-bounds b))
+               (made (- (sb-ext:get-bytes-consed) before)))
+          (is = (* 2 count) (length bounds))
+          (true (< made (* 3/2 8 2 count)) "~d octets made for ~d stretches" made count))))))
+
+(define-test (display hidden-stretch-found-for-folds-and-search-alike)
+  ;; the stretch hiding a position is the one fold-hiding gives for the lines search filters hide
+  (with-test-buffer (b "*hidden-at*" :text (format nil "one~%two~%three~%four~%five~%"))
+    (let ((bounds (make-array 4 :element-type 'fixnum :initial-contents '(3 7 13 18))))
+      (tuatara.display:hide-ranges b bounds)
+      (let ((hidden (tuatara.display:hidden-bounds b)))
+        (loop for position from 0 below (tuatara.buffer:buffer-size b)
+              do (is equal (tuatara.display:fold-hiding b position)
+                     (tuatara.display::hidden-stretch-at hidden position)
+                     "at ~d" position))
+        (is equal '(3 . 7) (tuatara.display::hidden-stretch-at hidden 3))
+        (false (tuatara.display::hidden-stretch-at hidden 7))))))
+
+(define-test (display hidden-lines-carried-through-several-changes-at-once)
+  ;; the hidden stretches carried through several changes in one go land where carrying them through
+  ;; each in turn puts them, a whole line shown deleted before one too
+  (let ((text (format nil "one~%two~%three~%four~%five~%six~%"))
+        (bounds (make-array 4 :element-type 'fixnum :initial-contents '(7 13 18 23))))
+    (flet ((edit (b) (tuatara.buffer:buffer-delete b 0 4) (tuatara.buffer:buffer-insert b 0 "zero ")
+             (tuatara.buffer:buffer-insert b (tuatara.buffer:buffer-size b) "seven")))
+      (with-test-buffer (stepped "*stepped*" :text text)
+        (with-test-buffer (once "*once*" :text text)
+          (tuatara.display:hide-ranges stepped (copy-seq bounds))
+          (tuatara.display:hide-ranges once (copy-seq bounds))
+          (tuatara.buffer:buffer-delete stepped 0 4)
+          (tuatara.display:hidden-bounds stepped)
+          (tuatara.buffer:buffer-insert stepped 0 "zero ")
+          (tuatara.display:hidden-bounds stepped)
+          (tuatara.buffer:buffer-insert stepped (tuatara.buffer:buffer-size stepped) "seven")
+          (edit once)
+          (is equalp (tuatara.display:hidden-bounds stepped) (tuatara.display:hidden-bounds once))
+          (is eq (tuatara.display:hidden-touched-p stepped) (tuatara.display:hidden-touched-p once)))))))
+
+(define-test (display screen-column-found-near-the-line-start)
+  ;; a column near a line's start is found as fast however long the line goes on after it
+  (flet ((seconds-per-call (length)
+           (with-test-buffer (b "*long-line*" :text (make-string length :initial-element #\a))
+             (let ((start (thread-cpu-time)) (calls 0))
+               (loop do (tuatara.display:buffer-move-to-screen-column b 0 10) (incf calls)
+                     until (> (- (thread-cpu-time) start) (* 1/5 internal-time-units-per-second)))
+               (/ (- (thread-cpu-time) start) internal-time-units-per-second calls)))))
+    (let ((short (seconds-per-call 100000))
+          (long (seconds-per-call 2000000)))
+      (true (< long (* 3 short)) "~,3e against ~,3e s a call" long short))))
+
+(define-test (display floats-kept-per-window)
+  ;; two windows of different widths on one buffer each keep what their text goes round
+  (with-test-buffer (b "*floats*" :text (format nil "~{line ~a~%~}" (loop for i below 20 collect i)))
+    (let ((asked 0)
+          (one (tuatara.display:make-window b :width 30 :height 8))
+          (two (tuatara.display:make-window b :width 50 :height 8))
+          (start (tuatara.buffer:buffer-goto-line b 2)))
+      (setf (tuatara.buffer:buffer-local b :line-scale-function) (lambda (buffer line window)
+                                                                    (declare (ignore buffer line window))
+                                                                    1)
+            (tuatara.buffer:buffer-local b :tall-lines-function) (constantly t)
+            (tuatara.buffer:buffer-local b :line-float-function) (lambda (buffer line window)
+                                                                    (declare (ignore buffer window))
+                                                                    (incf asked)
+                                                                    (and (zerop line) (values :left 5 4)))
+            (tuatara.buffer:buffer-local b :float-before-function) (lambda (buffer at window)
+                                                                      (declare (ignore buffer at window))
+                                                                      0))
+      (true (tuatara.display:window-float-in-force one start))
+      (true (tuatara.display:window-float-in-force two start))
+      (let ((then asked))
+        (loop repeat 3
+              do (tuatara.display:window-float-in-force one start)
+                 (tuatara.display:window-float-in-force two start))
+        (is = then asked)))))
+
+(define-test (display range-face-asked-once-for-line-ends)
+  ;; a range over many lines asks its face once whether it reaches past a line's end
+  (let* ((rows (tuatara.display:layout (tuatara.text:string->rope (format nil "~{line ~a~%~}" (loop for i below 20
+                                                                                                   collect i)))
+                                       0 30 20))
+         (asked 0))
+    (sb-int:encapsulate 'tuatara.display:face-attribute 'counting
+                        (lambda (function &rest arguments) (incf asked) (apply function arguments)))
+    (unwind-protect (tuatara.display:apply-highlights rows (list (list 0 1000 :region)))
+      (sb-int:unencapsulate 'tuatara.display:face-attribute 'counting))
+    (is = 1 asked)))
+
 (define-test (display long-wrapped-line-rows)
   ;; a wrapped line of more than a megabyte: every row begins at a character, and the
   ;; rows above any place in it are found a row at a time, as they are laid out

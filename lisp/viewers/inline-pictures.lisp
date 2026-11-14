@@ -22,7 +22,7 @@
 formulas as LaTeX sets them, or the text as written. A picture is shown on
 rows of its own, as large as its width asks (in Org, :width on its
 #+ATTR_ORG: line) or as *INLINE-PICTURE-WIDTH* says, never wider than the
-text: the window's, or up to the fill column (\[set-fill-column]) where that
+text: the window's, or up to the fill column (\\[set-fill-column]) where that
 is narrower. It stands to the left, the centre or the right of the text as
 its :align says. A formula alone on its lines is centred on rows of its own,
 one inside a line drawn in its columns (*FORMULA-PREAMBLE*). Point on one
@@ -50,8 +50,8 @@ column.
 in; past it, those shown least lately are let go of, and drawn again when
 they come back into sight.")
 
-(defstruct (inline-picture (:constructor make-inline-picture (start end source &key width align float))
-                           (:copier nil))
+(define-record (inline-picture (:constructor make-inline-picture (start end source &key width align float))
+                              (:copier nil))
   "A picture a buffer shows among its lines: the text from START below END
 \(octets) stands for it and is shown as the picture: whole lines, on rows of
 their own, or a formula inside a line (FORMULA-INLINE), in its row. SOURCE,
@@ -61,46 +61,32 @@ whole number of pixels, or a fraction of the text's width (1/2,
 INLINE-PICTURE-ROOM); ALIGN, :left, :center or :right. FLOAT, :left or :right,
 has it stand on that side instead, the text from its own line down going
 round it (INLINE-PICTURE-FLOATS); NIL, rows of its own."
-  (start 0 :type fixnum :read-only t)
-  (end 0 :type fixnum :read-only t)
-  (source nil :read-only t)
-  (width nil :read-only t)
-  (align :left :read-only t)
-  (float nil :read-only t))
+  (start 0 :type fixnum :read-only t
+         :documentation "Where the text standing for the picture begins: a line's start, or a formula's inside a line.")
+  (end 0 :type fixnum :read-only t
+       :documentation "Where the text standing for the picture ends: before
+its last line's newline, or after a formula.")
+  (source nil :read-only t :documentation "What the picture is drawn from: a native path, or a FORMULA.")
+  (width nil :read-only t :documentation "How wide the picture is asked to be, or NIL.")
+  (align :left :read-only t :documentation "Where the picture stands across the window: :left, :center or :right.")
+  (float nil :read-only t
+         :documentation "The side the picture stands on with the text going round it, :left or :right, or NIL."))
 
-(setf (documentation 'inline-picture-p 'function) "True when OBJECT is an INLINE-PICTURE."
-      (documentation 'inline-picture-start 'function)
-      "Where the text standing for the picture begins: a line's start, or a formula's inside a line."
-      (documentation 'inline-picture-end 'function)
-      "Where the text standing for the picture ends: before its last line's newline, or after a formula."
-      (documentation 'inline-picture-source 'function) "What the picture is drawn from: a native path, or a FORMULA."
-      (documentation 'inline-picture-width 'function) "How wide the picture is asked to be, or NIL."
-      (documentation 'inline-picture-align 'function)
-      "Where the picture stands across the window: :left, :center or :right."
-      (documentation 'inline-picture-float 'function)
-      "The side the picture stands on with the text going round it, :left or :right, or NIL.")
-
-(defstruct (formula (:constructor make-formula (text preamble &key inline)) (:copier nil))
+(define-record (formula (:constructor make-formula (text preamble &key inline)) (:copier nil))
   "A formula shown as a picture: TEXT, the LaTeX of it with its delimiters
 \(dollar signs, an equation environment), as a document's body takes it;
 PREAMBLE, the LaTeX before \\begin{document} it is drawn with; INLINE, true for
 one inside a line of text, drawn in the columns it stands in, as tall as a
 row at most. KEY, the key it was last looked up by in the formulas drawn
 \(FORMULA-LOOKUP-KEY), kept with the row height and colour it was for."
-  (text "" :type string :read-only t)
-  (preamble "" :type string :read-only t)
-  (inline nil :read-only t)
-  (key nil))
-
-(setf (documentation 'formula-p 'function) "True when OBJECT is a FORMULA."
-      (documentation 'formula-text 'function) "The LaTeX of the formula, with its delimiters."
-      (documentation 'formula-preamble 'function) "The LaTeX before \\begin{document} the formula is drawn with."
-      (documentation 'formula-inline 'function) "True for a formula inside a line of text."
-      (documentation 'formula-key 'function) "The key the formula was last looked up by, or NIL.")
+  (text "" :type string :read-only t :documentation "The LaTeX of the formula, with its delimiters.")
+  (preamble "" :type string :read-only t :documentation "The LaTeX before \\begin{document} the formula is drawn with.")
+  (inline nil :read-only t :documentation "True for a formula inside a line of text.")
+  (key nil :documentation "The key the formula was last looked up by, or NIL."))
 
 (define-setting *formula-preamble* (format nil "\\usepackage{amsmath}~%\\usepackage{amssymb}")
   "The LaTeX put before \\begin{document} for every formula shown as a picture
-\(\[inline-pictures-mode]), before what the file adds (an Org note's
+\(\\[inline-pictures-mode]), before what the file adds (an Org note's
 #+LATEX_HEADER: lines).
 - a string of LaTeX lines; amsmath and amssymb as standard."
   :values string)
@@ -407,7 +393,7 @@ gives no size yet is shown as its text."
                             (cond ((not images) (picture-source-words source))
                                   ((inline-formula-p picture)
                                    (let ((columns (nth-value 2 (inline-picture-cells buffer picture nil))))
-                                     (and columns (make-string (ceiling columns) :initial-element #\Space))))
+                                     (and columns (spaces (ceiling columns)))))
                                   ((picture-source-size buffer source) "")))
             when text
               collect (list (inline-picture-start picture) (inline-picture-end picture) text
@@ -424,39 +410,49 @@ HEIGHT): :PENDING while one is drawn, :FAILED when none could be, else
   "How many times a picture kept in *INLINE-PICTURE-IMAGES* has been asked for:
 the order they were last shown in.")
 
-(defstruct (inline-picture-job (:include decoding-job)
-                               (:constructor make-inline-picture-job (buffer key path kind width height))
-                               (:copier nil))
-  "A picture being drawn for BUFFER to show among its lines: the file PATH, of
-KIND, drawn WIDTH by HEIGHT pixels, to be kept under KEY in
-*INLINE-PICTURE-IMAGES*; IMAGE, once done, the picture or NIL."
-  key path kind width height image)
-
-(setf (documentation 'inline-picture-job-p 'function) "True when OBJECT is an INLINE-PICTURE-JOB.")
-
-(tuatara.runtime:define-job-words inline-picture-job
-  :doing "Drawing"
-  :description (format nil "Drawing ~a" (tuatara.io:native-file-name (inline-picture-job-path job)))
-  :verb "draw it"
-  :left-words "nothing drawn")
+(define-record (inline-picture-job (:include drawing-job)
+                                  (:constructor make-inline-picture-job (buffer key path width height))
+                                  (:copier nil))
+  "A picture being drawn for BUFFER to show among its lines, a drawing job:
+the file PATH, drawn WIDTH by HEIGHT pixels, to be kept under KEY in
+*INLINE-PICTURE-IMAGES*; RESULT, once done, the picture or NIL."
+  (key nil :documentation "The key INLINE-PICTURE-JOB's picture is kept under in *INLINE-PICTURE-IMAGES*.")
+  (width nil :documentation "The width in pixels INLINE-PICTURE-JOB draws its picture.")
+  (height nil :documentation "The height in pixels INLINE-PICTURE-JOB draws its picture."))
 
 (defmethod tuatara.runtime:job-take-in ((job inline-picture-job))
   "Keep the picture drawn, or that none could be, and let go of those shown
 least lately past *INLINE-PICTURE-MEMORY*; the windows show it at the next
-frame."
-  (let ((image (and (eq (tuatara.runtime:job-status job) :done) (inline-picture-job-image job))))
-    (if image
-        (setf (gethash (inline-picture-job-key job) *inline-picture-images*) (cons image (incf *inline-picture-uses*)))
-        (setf (gethash (inline-picture-job-key job) *inline-picture-images*) :failed))
+frame. One stopped (\\[keyboard-quit], its buffer killed, a size no longer
+wanted) is forgotten, to be drawn again when it is next in sight."
+  (let ((key (inline-picture-job-key job))
+        (image (drawing-job-result job)))
+    (case (tuatara.runtime:job-status job)
+      (:stopped (when (eq (gethash key *inline-picture-images*) :pending)
+                  (remhash key *inline-picture-images*)))
+      (t (setf (gethash key *inline-picture-images*)
+               (if (and image (eq (tuatara.runtime:job-status job) :done))
+                   (cons image (incf *inline-picture-uses*))
+                   :failed))))
     (forget-pictures-past *inline-picture-memory*)))
+
+(defparameter *inline-pictures-failed-kept* 256
+  "The most pictures that could not be drawn kept as such in
+*INLINE-PICTURE-IMAGES*: past it they are all forgotten, and tried again
+when next in sight.")
 
 (defun forget-pictures-past (memory &optional (table *inline-picture-images*))
   "Let go of the pictures of TABLE (*INLINE-PICTURE-IMAGES* unless given, each
 entry (IMAGE . USED) as kept there) shown least lately until those kept take
-no more than MEMORY octets."
-  (let ((kept (loop for key being the hash-keys of table using (hash-value entry)
-                    when (consp entry)
-                      collect (list (cdr entry) key (length (tuatara.frontend:image-pixels (car entry)))))))
+no more than MEMORY octets; and of those that could not be drawn, once more
+than *INLINE-PICTURES-FAILED-KEPT* are."
+  (let ((kept '()) (failed '()))
+    (loop for key being the hash-keys of table using (hash-value entry)
+          do (cond ((consp entry)
+                    (push (list (cdr entry) key (length (tuatara.frontend:image-pixels (car entry)))) kept))
+                   ((eq entry :failed) (push key failed))))
+    (when (> (length failed) *inline-pictures-failed-kept*)
+      (dolist (key failed) (remhash key table)))
     (loop with total = (reduce #'+ kept :key #'third)
           for (nil key octets) in (sort kept #'< :key #'first)
           while (> total memory)
@@ -469,10 +465,20 @@ in the background (begun now when it is not yet) or could not be
 \(PICTURE-SOURCE-IMAGE)."
   (picture-source-image buffer (inline-picture-source picture) width height))
 
+(defun stop-other-picture-sizes (buffer path key)
+  "Stop the drawing of the picture of the file at PATH for BUFFER at sizes
+other than the one KEY is kept by, as when its window is made wider and
+narrower: only the size asked last is drawn."
+  (dolist (job (tuatara.runtime:jobs-of buffer :running t))
+    (when (and (inline-picture-job-p job) (equal (drawing-job-path job) path)
+               (not (equal (inline-picture-job-key job) key)))
+      (tuatara.runtime:job-stop job))))
+
 (defmethod picture-source-image (buffer (path string) width height)
   "The picture of the file at PATH drawn WIDTH by HEIGHT pixels by the image
 view's program, shut in, in a job of BUFFER's; kept by its file's stamp and
-size in *INLINE-PICTURE-IMAGES*."
+size in *INLINE-PICTURE-IMAGES*. The same picture being drawn at another
+size for BUFFER is stopped."
   (let* (;; the stamp kept with its size: the same object while the file is unchanged
          (key (list path (second (gethash path *inline-picture-sizes*)) width height))
          (entry (gethash key *inline-picture-images*)))
@@ -482,22 +488,12 @@ size in *INLINE-PICTURE-IMAGES*."
           (entry nil)
           (t
            (setf (gethash key *inline-picture-images*) :pending)
+           (stop-other-picture-sizes buffer path key)
            (let ((kind (inline-picture-size path)))
-             (tuatara.runtime:start-job-thread
-              (make-inline-picture-job buffer key path kind width height)
-              (tuatara.runtime:carry-settings
-               *decoding-carried-settings*
-               (lambda (job)
-                 (setf (inline-picture-job-image job)
-                       (handler-case
-                           (tuatara.io:call-with-file
-                            path (lambda (fd name size)
-                                   (declare (ignore name size))
-                                   (decode-image fd kind width height :enlarge t
-                                                                      :cancel (tuatara.runtime:job-cancel job))))
-                         (tuatara.io:file-system-error () nil)
-                         (storage-condition () nil)))))
-              :name "tuatara inline picture"))
+             (start-drawing-job (make-inline-picture-job buffer key path width height)
+                                (lambda (fd cancel)
+                                  (decode-image fd kind width height :enlarge t :cancel cancel))
+                                :name "tuatara inline picture"))
            nil))))
 
 (defun inline-pictures-in-rows (window rows)

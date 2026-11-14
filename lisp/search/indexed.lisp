@@ -61,14 +61,13 @@ directory kept read (\\[search-in-files] and the like; at least
 - nil: nothing."
   :values (or (member nil) string))
 
-
-(defstruct (directory-index (:constructor make-directory-index (root)) (:copier nil))
+(define-record (directory-index (:constructor make-directory-index (root)) (:copier nil))
   "What is kept of a directory of *INDEXED-DIRECTORIES*. ROOT is its native
 name ending in /. FILES is every file under it as (RELATIVE . STAMP), the ones
 changed last first. CORPORA is the text of those a search reads, as
-FILE-CORPUS pieces. LEFT-OUT is true when the walk left some out. LARGE is the
-text files too large to keep within the limit, each (RELATIVE PATH), which a
-search reads from disk (LINES-ON-DISK). DIRECTORIES is those under it, watched
+FILE-CORPUS pieces. LARGE is the text files too large to keep within the
+limit or past the most files kept (*INDEXED-FILES-MOST*), each (RELATIVE
+PATH), which a search reads from disk (LINES-ON-DISK). DIRECTORIES is those under it, watched
 on disk. READY is true once it has been read. READING is true while a thread
 reads it, and AGAIN when it is to be read once more after, the directories
 reported changed meanwhile in PENDING (:ALL for all). RESULT is what the
@@ -77,52 +76,33 @@ thread read, until taken in. TREE is each directory's entries as last listed
 too (DIRECTORY-LISTING). What only the reading thread uses: PIECES is the
 text's pieces with the stamps of their files (INDEX-PIECE), and NOT-TEXT is
 the files found not to be text, with their stamps."
-  root (files '()) (corpora #()) (left-out nil) (large '()) (directories '())
-  (ready nil) (reading nil) (again nil) (pending '()) (result nil)
-  (tree nil) (pieces #()) (not-text (make-hash-table :test 'equal)))
+  (root nil :documentation "The directory a DIRECTORY-INDEX keeps, a native name ending in /.")
+  (files '()
+         :documentation "The files under a DIRECTORY-INDEX's root, each
+\(RELATIVE . STAMP), the ones changed last first.")
+  (corpora #() :documentation "The text a search reads under a DIRECTORY-INDEX's root, in pieces.")
+  (large '()
+         :documentation "The text files of a DIRECTORY-INDEX too large to keep,
+or past the most kept, searched from disk.")
+  (directories '() :documentation "The directories under a DIRECTORY-INDEX's root, watched on disk.")
+  (ready nil :documentation "True once a DIRECTORY-INDEX has been read.")
+  (reading nil :documentation "True while a thread reads a DIRECTORY-INDEX.")
+  (again nil :documentation "True when a DIRECTORY-INDEX is to be read once more after the reading under way.")
+  (pending '() :documentation "The directories of a DIRECTORY-INDEX reported changed while it was read, or :ALL.")
+  (result nil :documentation "What a DIRECTORY-INDEX's thread read, until it is taken in.")
+  (tree nil :documentation "Each directory under a DIRECTORY-INDEX's root as last listed, by native name.")
+  (pieces #() :documentation "A DIRECTORY-INDEX's text pieces with their files' stamps.")
+  (not-text (make-hash-table :test 'equal)
+            :documentation "The files of a DIRECTORY-INDEX found not to be text, with their stamps."))
 
-(setf (documentation 'directory-index-p 'function) "True when OBJECT is a DIRECTORY-INDEX."
-      (documentation 'directory-index-root 'function)
-      "The directory a DIRECTORY-INDEX keeps, a native name ending in /."
-      (documentation 'directory-index-files 'function)
-      "The files under a DIRECTORY-INDEX's root, each (RELATIVE . STAMP), the ones changed last first."
-      (documentation 'directory-index-corpora 'function)
-      "The text a search reads under a DIRECTORY-INDEX's root, in pieces."
-      (documentation 'directory-index-left-out 'function) "True when a DIRECTORY-INDEX's walk left files out."
-      (documentation 'directory-index-large 'function)
-      "The text files of a DIRECTORY-INDEX too large to keep, searched from disk.")
-(setf
-      (documentation 'directory-index-directories 'function)
-      "The directories under a DIRECTORY-INDEX's root, watched on disk."
-      (documentation 'directory-index-ready 'function) "True once a DIRECTORY-INDEX has been read."
-      (documentation 'directory-index-reading 'function) "True while a thread reads a DIRECTORY-INDEX."
-      (documentation 'directory-index-again 'function)
-      "True when a DIRECTORY-INDEX is to be read once more after the reading under way."
-      (documentation 'directory-index-pending 'function)
-      "The directories of a DIRECTORY-INDEX reported changed while it was read, or :ALL."
-      (documentation 'directory-index-result 'function) "What a DIRECTORY-INDEX's thread read, until it is taken in."
-      (documentation 'directory-index-tree 'function)
-      "Each directory under a DIRECTORY-INDEX's root as last listed, by native name."
-      (documentation 'directory-index-pieces 'function) "A DIRECTORY-INDEX's text pieces with their files' stamps."
-      (documentation 'directory-index-not-text 'function)
-      "The files of a DIRECTORY-INDEX found not to be text, with their stamps.")
-
-(defstruct (index-directory (:constructor make-index-directory (path entries rules)) (:copier nil))
-  "A directory as an index last listed it: PATH, its native name ending in /;
-ENTRIES, its files and directories in the order listed, each (NAME KIND
-STAMP), KIND :REGULAR or :DIRECTORY, hidden names, backups and links to
-directories left out; RULES, those of its own .gitignore (GITIGNORE-RULES)."
-  path entries rules)
-
-(setf (documentation 'index-directory-p 'function) "True when OBJECT is an INDEX-DIRECTORY.")
-
-(defstruct (index-piece (:constructor make-index-piece (corpus stamps &optional file)) (:copier nil))
+(define-record (index-piece (:constructor make-index-piece (corpus stamps &optional file)) (:copier nil))
   "A piece of an index's text: CORPUS, its FILE-CORPUS; STAMPS, a vector of the
 stamps of its files, in the order of the corpus's paths; FILE, the name of the
 file it is kept in on disk (*INDEXES-KEPT-ON-DISK*), once written."
-  corpus stamps file)
-
-(setf (documentation 'index-piece-p 'function) "True when OBJECT is an INDEX-PIECE.")
+  (corpus nil :documentation "The FILE-CORPUS that holds the text of INDEX-PIECE.")
+  (stamps nil
+          :documentation "A vector of the stamps of the files of INDEX-PIECE, in the order of the paths of its corpus.")
+  (file nil :documentation "The name of the file INDEX-PIECE is kept in on disk, NIL until it is written."))
 
 (define-setting *indexes-kept-on-disk* t
   "Whether what is read of *INDEXED-DIRECTORIES* is kept on disk between
@@ -147,50 +127,15 @@ and inode alike."
        (= (tuatara.io:stamp-size a) (tuatara.io:stamp-size b))
        (= (tuatara.io:stamp-ino a) (tuatara.io:stamp-ino b))))
 
-(defun compact-name (string)
-  "STRING, a file's name or path, as a string of one octet a character when
-every character of it is ASCII, as most names are, else as it is: an index
-keeps hundreds of thousands of them, and a string of any characters takes
-four octets for each."
-  (if (and (not (typep string 'simple-base-string)) (every (lambda (c) (< (char-code c) 128)) string))
-      (coerce string 'simple-base-string)
-      string))
+(defun indexed-directory-listing (path)
+  "The directory PATH (a native name ending in /) as the index keeping it read
+has it listed (INDEX-DIRECTORY), or NIL when none keeps it."
+  (dolist (index *directory-indexes*)
+    (let ((tree (directory-index-tree index)))
+      (when (and tree (directory-index-ready index) (uiop:string-prefix-p (directory-index-root index) path))
+        (return (gethash path tree))))))
 
-(defun compact-join (&rest parts)
-  "PARTS, names or paths, joined as COMPACT-NAME keeps one: made at once at
-one octet a character when every part is such a string already."
-  (if (every (lambda (part) (typep part 'simple-base-string)) parts)
-      (apply #'concatenate 'simple-base-string parts)
-      (compact-name (apply #'concatenate 'string parts))))
-
-(defun list-index-directory (path &key (rules t) hidden)
-  "The directory PATH (a native name ending in /) listed as an index lists it
-(INDEX-DIRECTORY): its files and directories by name, hidden names (but with
-HIDDEN), backups and links to directories left out, each entry examined once
-\(TUATARA.IO:DIRECTORY-ENTRIES); with RULES, those of its .gitignore read."
-  (let* ((all (ignoring-errors-reported ("listing ~a" path) (tuatara.io:directory-entries path :stamps t)))
-         (entries (loop for (name kind nil own stamp) in all
-                        unless (or (and (not hidden) (char= (char name 0) #\.)) (backup-name-p name))
-                          if (and (eq kind :directory) (eq own :directory))
-                            collect (list (compact-name name) :directory stamp)
-                          else if (eq kind :regular)
-                                 collect (list (compact-name name) :regular stamp)))
-         (rules (and rules
-                     (find-if (lambda (e) (and (string= (first e) ".gitignore") (eq (second e) :regular))) all)
-                     (gitignore-rules (concatenate 'string path ".gitignore") path))))
-    (make-index-directory (compact-name path) entries rules)))
-
-(defun directory-listing (path &key (rules t) hidden)
-  "The directory PATH (a native name ending in /) listed (INDEX-DIRECTORY): as
-the index keeping it read has it (*INDEXED-DIRECTORIES*), nothing asked of the
-disk, else listed now (LIST-INDEX-DIRECTORY, its .gitignore read with RULES);
-with HIDDEN, names starting with a dot too, always from the disk, as an index
-keeps none. Every walk of files under a directory lists them so."
-  (or (dolist (index (and (not hidden) *directory-indexes*))
-        (let ((tree (directory-index-tree index)))
-          (when (and tree (directory-index-ready index) (uiop:string-prefix-p (directory-index-root index) path))
-            (return (gethash path tree)))))
-      (list-index-directory path :rules rules :hidden hidden)))
+(pushnew 'indexed-directory-listing *directory-listing-functions*)
 
 (defun index-tree-walk (tree path &optional rules listed)
   "List the directory PATH (as LISTED, when it was just listed) and every
@@ -243,7 +188,9 @@ out may lie at any depth under it."
                      (subdirectories (lambda (directory)
                                        (loop for (name kind) in (index-directory-entries directory)
                                              when (and (eq kind :directory)
-                                                       (not (and rules (gitignored-p rules name (concatenate 'string path name) t))))
+                                                       (not (and rules
+                                                                 (gitignored-p rules name
+                                                                               (concatenate 'string path name) t))))
                                                collect name)))
                      (before (funcall subdirectories old))
                      (after (funcall subdirectories new)))
@@ -259,10 +206,11 @@ out may lie at any depth under it."
   "What TREE holds under ROOT, as four values: every file RULES and the
 .gitignore files do not leave out, each (RELATIVE . STAMP); the same files
 as a search reads them, in the order SEARCH-FILES-AS-READ would read them,
-at most MOST of them, each (RELATIVE PATH STAMP); true when there were more
-than MOST; and every directory, native names. A directory they leave out is
-not in TREE (INDEX-TREE-WALK). Nothing on disk is asked."
-  (let ((files '()) (texts '()) (count 0) (more nil) (directories '())
+at most MOST of them, each (RELATIVE PATH STAMP); those past MOST, each
+\(RELATIVE PATH), to be searched from disk; and every directory, native
+names. A directory they leave out is not in TREE (INDEX-TREE-WALK). Nothing
+on disk is asked."
+  (let ((files '()) (texts '()) (count 0) (past '()) (directories '())
         (slash (load-time-value (coerce "/" 'simple-base-string))))
     (labels ((walk (path relative rules)
                (let ((directory (gethash path tree)))
@@ -280,9 +228,9 @@ not in TREE (INDEX-TREE-WALK). Nothing on disk is asked."
                                     (push (cons inside stamp) files)
                                     (if (< count most)
                                         (progn (push (list inside full stamp) texts) (incf count))
-                                        (setf more t))))))))))
+                                        (push (list inside full) past))))))))))
       (walk (compact-name root) (coerce "" 'simple-base-string) rules))
-    (values (nreverse files) (nreverse texts) more (nreverse directories))))
+    (values (nreverse files) (nreverse texts) (nreverse past) (nreverse directories))))
 
 (defun index-pieces (texts old not-text root limit piece)
   "The pieces of an index's text for TEXTS (INDEX-TREE-FILES), as a vector of
@@ -349,7 +297,8 @@ octets."
                          (let ((entry (gethash relative where)))
                            (case (cond ((and entry
                                              (same-stamp-p stamp (aref (index-piece-stamps (car entry)) (cdr entry))))
-                                        (gather-text-file gatherer relative path :stamp stamp :octets (old-octets entry)))
+                                        (gather-text-file gatherer relative path
+                                                          :stamp stamp :octets (old-octets entry)))
                                        ((same-stamp-p stamp (gethash relative not-text)) :not-text)
                                        (t (gather-text-file gatherer relative path :stamp stamp)))
                              (:text (remhash relative not-text))
@@ -360,17 +309,12 @@ octets."
 
 ;;; Kept on disk between sessions
 
-(defun index-cache-name (root)
-  "The name ROOT's index is kept under in the cache directory: ROOT's name
-written as one file name (TUATARA.IO:PATH-FILE-NAME), so that no two
-directories share a name and a long one still fits."
-  (tuatara.io:path-file-name root))
-
 (defun index-cache-directory (root)
   "The directory the index of ROOT is kept in on disk, made if needed, for you
-alone: indexes/ in the cache directory, then ROOT's name written as one file name
-\(INDEX-CACHE-NAME)."
-  (private-cache-directory (format nil "indexes/~a/" (index-cache-name root))))
+alone: indexes/ in the cache directory, then ROOT's name written as one file
+name (TUATARA.IO:PATH-FILE-NAME), so that no two directories share one and a
+long name still fits."
+  (private-cache-directory (format nil "indexes/~a/" (tuatara.io:path-file-name root))))
 
 (defun stamp-words (stamp)
   "STAMP written as eight numbers, as SAVE-INDEX writes it; - for none."
@@ -446,7 +390,9 @@ left to the other when it holds the lock long."
   "Take into INDEX what SAVE-INDEX kept in DIRECTORY: its pieces of text and
 the files found not to be text. True when they were taken; NIL, and nothing
 taken, when there is nothing kept, it cannot be made sense of, or it was kept
-for another directory than INDEX's."
+for another directory than INDEX's. A piece is not taken unless its file is
+in DIRECTORY, it holds as many files as it says, and they start in order from
+the piece's start, within it."
   (let ((text (ignoring-errors-reported ("reading the index kept in ~a" directory)
                 (tuatara.io:file-text (concatenate 'string directory "index") :missing nil)))
         (head (format nil "tuatara index 2~%R ~a~%" (escape-path (directory-index-root index)))))
@@ -459,8 +405,15 @@ for another directory than INDEX's."
                        (and (first n) (apply #'tuatara.io:make-stamp n))))
                    (close-piece ()
                      (when current
-                       (destructuring-bind (file bytes files) current
+                       (destructuring-bind (file count bytes files) current
                          (let ((files (nreverse files)))
+                           (unless (and (uiop:string-prefix-p "piece-" file) (not (find #\/ file))
+                                        (= count (length files))
+                                        (or (null files) (zerop (first (first files))))
+                                        (loop for previous = 0 then start
+                                              for (start) in files
+                                              always (<= previous start bytes)))
+                             (refuse "piece ~a of the index kept in ~a is damaged" file directory))
                            (push (make-index-piece
                                   (mapped-piece-corpus (concatenate 'string directory file) bytes
                                                        (map 'simple-vector #'third files)
@@ -474,12 +427,13 @@ for another directory than INDEX's."
                 (let ((words (uiop:split-string line :separator " ")))
                   (cond ((string= (first words) "P")
                          (close-piece)
-                         (setf current (list (second words) (parse-integer (fourth words)) '())))
+                         (setf current (list (second words) (parse-integer (third words))
+                                             (parse-integer (fourth words)) '())))
                         ((string= (first words) "F")
                          ;; F START eight numbers PATH (the path may hold spaces)
                          (push (list (parse-integer (second words)) (stamp (subseq words 2 10))
                                      (unescape-path (format nil "~{~a~^ ~}" (subseq words 10))))
-                               (third current)))
+                               (fourth current)))
                         ((string= (first words) "N")
                          (setf (gethash (unescape-path (format nil "~{~a~^ ~}" (subseq words 9))) not-text)
                                (stamp (subseq words 1 9))))))))
@@ -488,14 +442,16 @@ for another directory than INDEX's."
                 (directory-index-not-text index) not-text)
           t)))))
 
-(defun read-directory-index (index changed limit piece &optional kept-on-disk)
+(defun read-directory-index (index changed limit piece &optional kept-on-disk (most *indexed-files-most*))
   "Bring INDEX up to date on the thread reading it: the whole of its directory
 when it has not been read (CHANGED :ALL), else only the directories CHANGED,
 the text of only the files changed read from disk and only the pieces holding
-them made anew. Returns (FILES CORPORA LEFT-OUT LARGE DIRECTORIES), as
+them made anew. Returns (FILES CORPORA LARGE DIRECTORIES), as
 DIRECTORY-INDEX keeps them, its text in pieces of about PIECE octets, at most
-LIMIT in all. With KEPT-ON-DISK, the pieces kept at the last session are
-taken first, at the start, and what changed is kept again after (SAVE-INDEX)."
+LIMIT in all, those of at most MOST files: the files past them are among
+LARGE, searched from disk. With KEPT-ON-DISK, the pieces kept at the last
+session are taken first, at the start, and what changed is kept again after
+\(SAVE-INDEX)."
   (let* ((root (directory-index-root index))
          (cache (and kept-on-disk (ignoring-errors-reported ("making the directory to keep ~a in" root)
                                      (index-cache-directory root)))))
@@ -508,16 +464,15 @@ taken first, at the start, and what changed is kept again after (SAVE-INDEX)."
             (index-tree-walk tree root outer)
             (setf (directory-index-tree index) tree))
           (index-tree-update (directory-index-tree index) changed root outer)))
-    (multiple-value-bind (files texts more directories)
-        (index-tree-files (directory-index-tree index) root (outer-gitignore-rules root) 100000)
+    (multiple-value-bind (files texts past directories)
+        (index-tree-files (directory-index-tree index) root (outer-gitignore-rules root) most)
       (multiple-value-bind (pieces large)
           (index-pieces texts (directory-index-pieces index) (directory-index-not-text index) root limit piece)
         (setf (directory-index-pieces index) pieces)
         (when cache (ignoring-errors-reported ("keeping the index of ~a" root) (save-index index cache)))
         (list (stable-sort files #'> :key (lambda (file) (if (cdr file) (tuatara.io:stamp-mtime (cdr file)) 0)))
               (map 'simple-vector #'index-piece-corpus pieces)
-              more
-              large
+              (nconc large past)
               directories)))))
 
 (defun start-reading-index (index &optional (changed :all))
@@ -532,6 +487,7 @@ noted, and read once it is over."
                 (union changed (directory-index-pending index) :test #'string=)))
       (let ((limit *search-files-limit*)
             (piece *search-files-piece*)
+            (most *indexed-files-most*)
             (kept-on-disk *indexes-kept-on-disk*)
             (editor *editor*))
         (setf (directory-index-reading index) t
@@ -543,7 +499,7 @@ noted, and read once it is over."
            (unwind-protect
                 (setf (directory-index-result index)
                       (or (tuatara.runtime:ignoring-errors-reported ("reading ~a to keep" (directory-index-root index))
-                            (read-directory-index index changed limit piece kept-on-disk))
+                            (read-directory-index index changed limit piece kept-on-disk most))
                           :failed))
              ;; however it ends (a lack of memory too), the reading is over, never shown as going on
              (unless (directory-index-result index) (setf (directory-index-result index) :failed))
@@ -559,9 +515,12 @@ background, and put in place what was read. True while one is read."
                                                 (directory-name d)))
                                             (setting-list '*indexed-directories* *indexed-directories*))
                                    :test #'equal)))
-    ;; those no longer asked for go; those newly asked for are read
-    (setf *directory-indexes*
-          (remove-if-not (lambda (index) (member (directory-index-root index) wanted :test #'equal)) *directory-indexes*))
+    ;; those no longer asked for go, their directories no longer watched; those newly asked for are read
+    (let ((kept (remove-if-not (lambda (index) (member (directory-index-root index) wanted :test #'equal))
+                               *directory-indexes*)))
+      (unless (= (length kept) (length *directory-indexes*))
+        (directories-followed-changed))
+      (setf *directory-indexes* kept))
     (dolist (root (remove nil wanted))
       (unless (find root *directory-indexes* :key #'directory-index-root :test #'string=)
         (let ((index (make-directory-index root)))
@@ -574,13 +533,13 @@ background, and put in place what was read. True while one is read."
           (setf (directory-index-result index) nil
                 (directory-index-reading index) nil)
           (unless (eq result :failed)
-            (destructuring-bind (files corpora left-out large directories) result
+            (destructuring-bind (files corpora large directories) result
               (setf (directory-index-files index) files
                     (directory-index-corpora index) corpora
-                    (directory-index-left-out index) left-out
                     (directory-index-large index) large
                     (directory-index-directories index) directories
-                    (directory-index-ready index) t)))
+                    (directory-index-ready index) t)
+              (directories-followed-changed)))
           (when (directory-index-again index)
             (start-reading-index index (if (eq result :failed) :all (directory-index-pending index))))))
       (when (directory-index-reading index) (setf working t)))
@@ -634,72 +593,6 @@ second value NIL, when no index holds DIRECTORY."
                 t)
         (values nil nil))))
 
-(defparameter *sign-idle-fraction* 1/6
-  "How far the mode line's signs before [-], while their work is not going on,
-stand from its ground towards its text: 0 the ground itself, unseen, 1 the
-text's colour.")
-
-(sb-ext:defglobal **sign-colours-generation** nil
-  "The face generation (TUATARA.DISPLAY:*FACE-GENERATION*) the idle sign's
-colour was last worked out for (FOLLOW-MODE-LINE-COLOURS).")
-
-(defun follow-mode-line-colours ()
-  "Give :mode-line-sign-idle a colour a little off the mode line's ground
-\(*SIGN-IDLE-FRACTION* towards its text), from the mode line's colours as the
-theme in force has them, so that any theme, or a mode line you coloured, gets
-a sign that matches. Left alone when you set the face yourself, under a theme
-without colours, or where the mode line's colours are not known. Worked out
-again only once the faces have changed."
-  (unless (or (eql **sign-colours-generation** tuatara.display:*face-generation*)
-              (assoc :mode-line-sign-idle tuatara.display:*user-face-settings*)
-              (let ((theme (tuatara.display:find-theme tuatara.display:*current-theme*)))
-                (and theme (tuatara.display:theme-colourless theme))))
-    (let* ((reverse (tuatara.display:face-attribute :mode-line :reverse))
-           (fg (or (tuatara.display:face-attribute :mode-line :fg) (tuatara.display:face-attribute :default :fg)))
-           (bg (or (tuatara.display:face-attribute :mode-line :bg) (tuatara.display:face-attribute :default :bg)))
-           (ground (tuatara.display:colour-hex (if reverse fg bg)))
-           (ink (tuatara.display:colour-hex (if reverse bg fg))))
-      (when (and ground ink)
-        (let ((colour (tuatara.display:mix-colours ground ink *sign-idle-fraction*)))
-          (unless (equal colour (tuatara.display:face-attribute :mode-line-sign-idle :fg))
-            (tuatara.display:set-face-attributes :mode-line-sign-idle :fg colour :dim nil))))))
-  (setf **sign-colours-generation** tuatara.display:*face-generation*))
-
-(defun sign-lit-p (sign working)
-  "True while SIGN, a keyword naming a sign of the mode line, is to be lit:
-while WORKING, and for *SIGN-LIT-SECONDS* after its work last began or ended
-\(NOTE-SIGN-WORK)."
-  (or working (not (tuatara.runtime:deadline-passed-p (gethash sign *signs-lit-until* 0)))))
-
-(defun mode-line-sign (indicator working)
-  "The part of the mode line for INDICATOR, a sign before [-]: lit in
-:mode-line-sign while WORKING, else faint in :mode-line-sign-idle; NIL with
-no indicator."
-  (when (and indicator (plusp (length indicator)))
-    (if working
-        (list indicator :mode-line-sign)
-        (progn (follow-mode-line-colours)
-               (list indicator :mode-line-sign-idle)))))
-
-(defvar *daemon* nil
-  "The daemon this editor runs as, in the background (DAEMON), or NIL.")
-
-(define-setting *daemon-indicator* "D"
-  "What the mode line shows for a daemon, last among its signs before [-].
-It is always in the same place: in :mode-line-sign while this editor runs as
-a daemon (tuatara --daemon), in each of its clients, else faint, in
-:mode-line-sign-idle.
-- \"D\": D (for daemon), which any font has (the standard).
-- any other text: that text.
-- nil: nothing."
-  :values (or (member nil) string))
-
-(defun daemon-mode-line (editor buffer)
-  "Mode line function: *DAEMON-INDICATOR*, lit while this editor runs as a
-daemon, else faint (MODE-LINE-SIGN)."
-  (declare (ignore editor buffer))
-  (mode-line-sign *daemon-indicator* *daemon*))
-
 (defun indexing-mode-line (editor buffer)
   "Mode line function: while directories are kept read, *INDEXING-INDICATOR*,
 lit while one is being read (and for a moment after, SIGN-LIT-P), else faint
@@ -728,20 +621,6 @@ side, PUSD; each NIL leaves its sign out."
                     (searching-mode-line editor buffer)
                     (daemon-mode-line editor buffer))))
 
-(defun signs-tick (editor)
-  "Tick function: while a sign of the mode line is lit, the seconds until the
-next is to be drawn faint again, for the editor to look again then; NIL when
-none is lit."
-  (declare (ignore editor))
-  (let ((now (get-internal-real-time)) (soonest nil))
-    (maphash (lambda (sign until)
-               (declare (ignore sign))
-               (when (> until now)
-                 (let ((seconds (/ (- until now) internal-time-units-per-second)))
-                   (setf soonest (if soonest (min soonest seconds) seconds)))))
-             *signs-lit-until*)
-    soonest))
-
 (defun install-indexes ()
   "Keep the directories of *INDEXED-DIRECTORIES* read, and read again as they
 change on disk, the mode line showing *INDEXING-INDICATOR* meanwhile and
@@ -750,4 +629,4 @@ the buffer (*PROCESSING-INDICATOR*)."
   (pushnew 'indexes-tick *tick-functions*)
   (pushnew 'signs-tick *tick-functions*)
   (pushnew 'mode-line-signs *mode-line-lead-functions*)
-  (follow-directories-for 'indexed-directories-watched 'indexed-directories-changed))
+  (follow-directories-for 'indexed-directories-watched 'indexed-directories-changed :tells t))

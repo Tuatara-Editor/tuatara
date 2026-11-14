@@ -37,7 +37,8 @@ asked for, -s signed (with a message too), -f moves a tag of that name."
                                                 (read-string (format nil "Message of ~a: " name)))))
                               (if (and message (zerop (length message)))
                                   (message "An annotated tag needs a message: not tagged")
-                                  (git-run "Tagging" top (append (list "tag") switches (and message (list "-m" message)) (list name revision))
+                                  (git-run "Tagging" top (append (list "tag") switches (and message (list "-m" message))
+                                                                 (list name revision))
                                            (format nil "Tagged ~a as ~a" revision name))))))))))
 
 (define-command git-tag-delete ()
@@ -73,7 +74,9 @@ run), no space or control character in it."
 on this computer written from ~/ made whole; NIL, said so, when it could not
 be given to git (GIT-ADDRESS-P)."
   (let* ((address (string-trim '(#\Space #\Tab) (read-string prompt :initial initial)))
-         (address (if (uiop:string-prefix-p "~/" address) (tuatara.io:native (tuatara.io:expand-path address)) address)))
+         (address (if (uiop:string-prefix-p "~/" address)
+                      (tuatara.io:native (tuatara.io:expand-path address))
+                      address)))
     (if (git-address-p address)
         address
         (progn (message "Not an address git is given: ~a" (escape-controls address)) nil))))
@@ -82,7 +85,7 @@ be given to git (GIT-ADDRESS-P)."
   "Add a remote: a name asked for (origin when nothing is typed and there is
 none) and its address; its branches are fetched with f e."
   (with-git-repository (top)
-    (git-ask "Reading the remotes" top (lambda (job top) (git-lines job top (list "remote")))
+    (git-ask "Reading the remotes" top #'git-remote-names
              (lambda (remotes)
                (let ((name (git-read-name "Remote name: "
                                           '()
@@ -100,7 +103,8 @@ none) and its address; its branches are fetched with f e."
                     (lambda (old)
                       (let ((new (git-read-name (format nil "Rename ~a to: " old) '())))
                         (when new
-                          (git-run "Renaming a remote" top (list "remote" "rename" old new) (format nil "Renamed ~a to ~a" old new))))))))
+                          (git-run "Renaming a remote" top (list "remote" "rename" old new)
+                                   (format nil "Renamed ~a to ~a" old new))))))))
 
 (define-command git-remote-set-address ()
   "Give a remote, asked for, a new address, its own shown to begin with."
@@ -121,14 +125,16 @@ none) and its address; its branches are fetched with f e."
     (git-ask-remote "Remove remote: " top
                     (lambda (remote)
                       (when (yes-or-no-p* (format nil "Remove the remote ~a and its branches here?" remote))
-                        (git-run "Removing a remote" top (list "remote" "remove" remote) (format nil "Removed the remote ~a" remote)))))))
+                        (git-run "Removing a remote" top (list "remote" "remove" remote)
+                                 (format nil "Removed the remote ~a" remote)))))))
 
 (define-command git-remote-prune ()
   "Forget the branches of a remote, asked for, that it no longer has."
   (with-git-repository (top)
     (git-ask-remote "Prune remote: " top
                     (lambda (remote)
-                      (git-over-network "Pruning" top (list "remote" "prune" remote) (format nil "Pruned ~a" remote))))))
+                      (git-over-network "Pruning" top (list "remote" "prune" remote)
+                                        (format nil "Pruned ~a" remote))))))
 
 (define-menu git-remote-menu (:title "Remote" :show git-menu-shows-p :note git-menu-note)
   "Open the remote menu: add a remote, rename one, give it a new address,
@@ -197,7 +203,9 @@ sections; RET on one lists its log."
              (lambda (job top)
                (loop for (title where) in *git-refs-sections*
                      collect (cons title (remove-if (lambda (ref) (plusp (length (sixth ref))))
-                                                    (git-records (git-job-output job top (list "for-each-ref" *git-refs-format* where)) 6)))))
+                                                    (git-records (git-job-output job top (list "for-each-ref"
+                                                                                               *git-refs-format* where))
+                                                                 6)))))
              (lambda (sections)
                (let ((buffer (buffer-in-mode (git-buffer-name "*git refs: ~a*" top) 'git-refs-mode)))
                  (git-set-top buffer top)
@@ -226,5 +234,6 @@ on a section's heading, fold or unfold the section."
 to y in a status, and RET, l and h in that list, TAB and S-TAB folding its
 sections."
   (define-keys *git-status-keymap* '(("t" git-tag-menu) ("M" git-remote-menu) ("y" git-show-refs)))
-  (define-keys (mode-keymap 'git-refs-mode) '(("RET" git-refs-log) ("l" git-refs-log) ("h" quit-window)
+  (define-keys (mode-keymap 'git-refs-mode) '(("RET" git-refs-log) ("l" git-refs-log) ("C-f" git-refs-log)
+                                               ("h" quit-window) ("C-b" quit-window)
                                                ("TAB" list-toggle-fold) ("S-TAB" list-toggle-all-folds))))

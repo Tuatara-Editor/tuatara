@@ -750,6 +750,12 @@ it.
 | none  | ~u~       | The open tasks that have no tag                                   |
 | none  | ~c~       | The entries whose dates look wrong, each with the reason          |
 
+A match is read whole: a =|= inside ={a|b}= or ="a|b"= belongs to it, and a
+match with anything that is not a tag, a comparison or a ={pattern}= is
+refused with a message, not read in part. The same matches work in a clock
+table's =:match=, except a pattern that repeats a repeated part, which could
+take for ever; such a =:match= is left out and said to be.
+
 ~C-x a w~, ~C-x a m~ and ~C-x a y~ open the week, the month or the year
 without asking. Figure 14.2 shows a week.
 
@@ -844,9 +850,10 @@ because the day and the time column already say it. =t= leaves it in.
 
 *** Moving about
 
-~j~ and ~k~ move from line to line. ~l~ shows the next week and ~h~ the one
-before. ~g h~ comes back to today. ~D~, ~w~, ~m~ and ~Y~ change the span to a
-day, a week, a month or a year, and ~g l~ returns to the view you had before.
+~j~ and ~k~ move from line to line. ~l~ or ~C-f~ shows the next week, and ~h~
+or ~C-b~ the one before. ~g h~ comes back to today. ~D~, ~w~, ~m~ and ~Y~
+change the span to a day, a week, a month or a year, and ~g l~ returns to the
+view you had before.
 ~RET~ opens the entry on the line in its file, and ~TAB~ shows it in another
 window while you stay in the agenda. ~c~ opens the calendar on the line's
 day, and ~a~ in the calendar shows the agenda of the week of the day the
@@ -863,18 +870,17 @@ the entry of the line the cursor is on, and change it in its file.
 
 | Modal | Non-modal | What it does to the entry                               |
 |-------+-----------+---------------------------------------------------------|
-| none  | ~T~       | Gives it the next keyword, as ~C-c C-t~ does in the file |
+| none  | ~C-c C-t~ | Gives it the next keyword, as in the file               |
 | none  | ~C-c C-s~ | Schedules it for another day                            |
-| none  | ~d~       | Gives it a deadline                                     |
-| none  | ~t~       | Sets its tags                                           |
-| none  | ~n~       | Adds a note to it                                       |
+| none  | ~C-c C-d~ | Gives it a deadline                                     |
+| none  | ~C-c C-q~ | Sets its tags                                           |
+| none  | ~C-c C-z~ | Adds a note to it                                       |
 | none  | ~I~ / ~O~ | Starts and stops the clock on it                        |
 | none  | ~u~       | Undoes the last change made from this agenda            |
 | none  | ~s~       | Saves every agenda file that has changes                |
 
-The usual keys from the file, such as ~C-c C-t~ and ~C-c C-q~, work in the
-agenda too. Changes made from the agenda are in the files' buffers and are not
-on disk until you press ~s~. If you want them saved as they are made, name the
+These are the keys of the file itself. Changes made from the agenda are in the
+files' buffers and are not on disk until you press ~s~. If you want them saved as they are made, name the
 files in =*org-agenda-autosave-files*=. It is =nil= as standard, no file. =t=
 saves every agenda file at once, and a list names some, as =*org-agenda-files*=
 does, files, directories or patterns. A change is a keyword, a date, tags, a
@@ -898,7 +904,7 @@ which is described below.
    If booking the bach falls in the coming week, press ~l~ to see it there.
 3. Press ~g h~ to come back. Press ~C-x a a~ and then ~t~. Every open task is
    listed, =Book the bach at Kaiteriteri= among them.
-4. Move to that line and press ~T~. It becomes =WAIT=. Press ~u~ to take the
+4. Move to that line and press ~C-c C-t~. It becomes =WAIT=. Press ~u~ to take the
    change back.
 5. Press ~TAB~. The task is shown in its file in another window.
 6. Press ~s~ to save, and ~q~ to close the agenda.
@@ -1236,6 +1242,20 @@ lets you change it.
 ~C-x a l~ works in any file. Under an Org heading it remembers the heading.
 In a file that is not Org it remembers the line.
 
+~C-c C-l~ (=insert-link=) works the same way in Markdown and LaTeX files,
+and writes the link as each of them does:
+
+| File     | ~C-c C-l~ writes                   | With no words          |
+|----------+------------------------------------+------------------------|
+| Org      | =[[file:plan.org][the plan]]=      | =[[file:plan.org]]=    |
+| Markdown | =[the plan](plan.md)=              | =[plan.md](plan.md)=   |
+| LaTeX    | =\href{plan.pdf}{the plan}=        | =\url{plan.pdf}=       |
+
+In Markdown and LaTeX a link to a file is the file's path alone, from the
+file's own directory when it is there or below it, else the whole path.
+Square brackets in the words of a Markdown link are written =\[= and =\]=,
+and a LaTeX link whose braces do not pair is refused.
+
 =*org-link-descriptive*= is the setting for what is shown. At =t=, the
 standard, =[[target][words]]= shows as the words and =[[target]]= as its
 target. Entities show as their characters, =\dollar{}= as =$=. At =nil=
@@ -1265,7 +1285,7 @@ match-formatted-files-link~ writes Tuatara's own kind, and ~M-x
 match-denote-files-link~ writes the kind that the Emacs package Denote
 understands as well.
 
-#+table: commands org-store-link org-insert-link org-open-at-point org-toggle-link-display match-formatted-files-link match-denote-files-link
+#+table: commands org-store-link insert-link org-open-at-point org-toggle-link-display match-formatted-files-link match-denote-files-link
 
 #+table: settings *org-link-descriptive* *org-return-follows-link*
 
@@ -1370,8 +1390,10 @@ terminal that cannot, each picture's line shows its name and size instead:
 To have pictures shown whenever an Org file opens, set
 =(setf *inline-pictures-modes* '((org-mode . t)))= in your init file, or
 =*global-inline-pictures-mode*= to =t= for every buffer. A note can say it
-for itself: =#+STARTUP: inlineimages= shows its pictures, and
-=#+STARTUP: noinlineimages= does not, whatever the settings say.
+for itself: =#+STARTUP: noinlineimages= keeps its pictures hidden, whatever
+the settings say. =#+STARTUP: inlineimages= shows them only when
+=*org-startup-shows-pictures*= is =t=, and only in a note visited as usual,
+not safely or read-only.
 
 #+begin_try Try it, with a picture beside a note
 1. Copy a photo into the directory of an Org note, and call it =garden.jpg=.
@@ -1390,7 +1412,53 @@ for itself: =#+STARTUP: inlineimages= shows its pictures, and
 
 #+table: commands inline-pictures-mode org-resize-picture
 
-#+table: settings *global-inline-pictures-mode* *inline-pictures-modes* *inline-picture-width*
+#+table: settings *global-inline-pictures-mode* *inline-pictures-modes* *inline-picture-width* *org-startup-shows-pictures*
+
+*** Adding a picture
+
+~C-c C-x p~ (=inline-add-picture=) asks for a picture, as ~C-x C-f~ asks for
+a file, and offers only pictures and directories. The picture selected is
+shown in the window while you choose. The link is written on lines of its
+own, with the properties a picture takes written out at their standard
+values, ready to be changed where they stand:
+
+#+begin_example
+#+CAPTION:
+#+NAME: fig:garden
+#+ATTR_ORG: :width t
+#+ATTR_LATEX: :width .9\linewidth
+[[file:garden.jpg]]
+#+end_example
+
+Write the caption after =#+CAPTION:=. =:width t= shows the picture at its
+own width among the lines, and =.9\linewidth= is the width the export to
+LaTeX gives a picture when nothing else is said. The name is made from the
+picture's file name, for the export to refer to it by.
+
+The same key works in Markdown and LaTeX files:
+
+#+begin_example
+![](garden.jpg){width=100%}
+
+\begin{figure}[tbp]
+    \centering
+    \includegraphics[width=.9\linewidth]{garden.jpg}
+    \caption{}
+    \label{fig:garden}
+\end{figure}
+#+end_example
+
+In Markdown the alt text goes between the square brackets; the width is
+read by programs that take attributes, such as Pandoc. In LaTeX the figure
+is indented as the mode indents.
+
+The picture is linked where it is: it is never copied, moved or opened for
+writing, so choosing one leaves it as it was. The path is written from the
+file's directory when the picture is there or below it, else whole (with
+=~= for your home directory in Org only). Adding a picture does not switch
+on pictures among the lines; ~C-x T p~ does that.
+
+#+table: commands inline-add-picture
 
 *** Formulas as pictures
 
@@ -1903,6 +1971,168 @@ wrote yourself, since whoever sends you a note can name any file in them.
 #+table: settings *latex-engines* *latex-main-font* *latex-sans-font* *latex-mono-font* *logos-directory* *export-trusted-directories* *latex-redaction-commands*
 
 #+table: faces :org-macro :org-macro-text
+
+** How Tuatara's Org differs from Emacs's
+
+Many people use Tuatara and Emacs on the same notes. This section says what
+works in each, what one keeps but does not act on, and what to leave out of a
+file that both must read. The Emacs side was checked against the Org manual
+and against Org 9.8.7, by exporting small notes.
+
+Neither program changes a line it does not understand, so a note can be opened
+in both. What differs is what each does with a line the other wrote. It may be
+kept as text, so that the export prints it. It may be ignored: Org reads the
+line and does nothing with it. Or both may act on it, but not alike. The
+tables below say which, line by line.
+
+*** What Org has that Tuatara has not
+
+These are the features of Org that Tuatara lacks, or has in part. The last
+column says what to use in Tuatara. The lines stay in the file whatever
+Tuatara does with them, so Emacs still has them when the note goes back.
+
+| Org                       | Tuatara                                 | Use instead |
+|---------------------------+-----------------------------------------+-------------|
+| Running code (Babel): ~C-c C-c~ on a source block, =#+CALL:=, =src_sh{...}= in a line, =#+RESULTS:= | Nothing in a note is run. The lines are kept; a block is coloured and tangled | Run the code in the terminal (chapter 17) and paste the answer |
+| Formulas in Emacs Lisp, =;L= or ='(...)= | Not run | A formula in Calc's style |
+| A macro whose text begins =(eval= | Not run; the macro gives nothing | A macro that is plain text |
+| Calc functions in a formula | Some: =vsum=, =vmean=, =vmedian=, =vmax=, =vmin=, =vcount=, =vprod=, =abs=, =round=, =floor=, =ceil=, =sqrt=, =exp=, =ln=, =log10=, =sin=, =cos=, =tan= | Not checked what else is missing |
+| =#+CONSTANTS:= and =remote()= in a formula | Not read | Write the number in the formula |
+| =#+INCLUDE:= | Not read; the exports leave the line out | Copy the text |
+| Attachments (~C-c C-a~), the =attachment:= link | Not built; the link is not followed | A =file:= link |
+| Links of type =shell:=, =elisp:=, =help:=, =info:=, =irc:=, =docview:= | Not followed; the echo area says so | Web, file, ID and heading links |
+| =#+LINK:= abbreviations | Not read | The whole address |
+| Effort estimates, column view, =#+COLUMNS:=, =#+BEGIN: columnview=, habits | Not built; =Effort= and =STYLE= are ordinary properties | Not replaced |
+| =#+TAGS:= lists and groups, =#+PRIORITIES:= | Not read | Tags and priorities written on the headings |
+| Archiving a subtree (~C-c C-x C-a~) | No command. =#+ARCHIVE:= and =:ARCHIVE:= are read, only to find archive files for the clock table | Refile, ~C-c C-w~ |
+| Agenda dispatcher: search (=s=), text search (=/=), stuck projects (=#=, =!=) | Offers =a=, =t=, =m=, =c= and views of your own | A match under =m=; the filter of the agenda |
+| Custom agenda commands of other kinds | =:tags-todo=, =:tags= and =:todo= only | Not replaced |
+| =#+STARTUP:= words other than those listed below | Ignored | Settings in your init file |
+| Fast keys and logging marks in a =#+todo:= line, =TODO(t)= | The part in brackets is dropped | ~C-c C-t~; the log settings |
+| Several =#+TODO:= lines as sets cycled one at a time | The lines are joined into one set | One line |
+| Other exporters: ASCII, Beamer, iCalendar, Markdown, ODT, Texinfo, man page | Not built. There is no export menu; the commands are run with ~M-x~ | PDF, Word or HTML |
+
+Some of these are left out on purpose. A note from someone else can hold code,
+a macro or a formula that Emacs would run when it opened the file. Tuatara
+reads such a note as text only.
+
+*** What Tuatara adds to Org
+
+These are the names that only Tuatara acts on. Each can be written in a note
+that Emacs opens too. The last column is what Org 9.8.7 does with the line.
+
+| Name                       | In Tuatara                              | In Emacs Org |
+|----------------------------+-----------------------------------------+--------------|
+| =:EXPORT:= drawer          | Layout settings, in words, for a heading, table, list, block or picture | Kept as text; an export prints its lines |
+| =#+template: NAME=         | The template that gives a PDF or Word document its look. =#+latex_template:= and =#+latex_style:= are older names for it | Ignored |
+| =#+logo: FILE=             | The picture a template's logo takes, from =*logos-directory*= | Ignored |
+| A line =#+KEY:= that a template names | What the template puts in its place | Ignored |
+| =#+export_select_tags:=, =#+export_exclude_tags:= | Keep or leave out headings by tag; Org's =#+select_tags:= and =#+exclude_tags:= are read as well | Ignored. Org's keywords are =#+select_tags:= and =#+exclude_tags:= |
+| The macros =redact(TEXT)=, =R(TEXT)=, =protect(TEXT)= and =P(TEXT)=, each written in triple curly braces | Hide the text in the enhanced PDF, the Word document and the web page | An error, =Undefined Org macro: redact; aborting=, and no export |
+| =#+options: redact:nil= and =protect:t= | Print the redacted text; hide the protected | Ignored |
+| =:appendix:= tag; =annex: yes= in a drawer | Begins the annexes in the enhanced export | Kept as a tag, printed after the title |
+| =:TOC:= tag, =:TOC_3_gh:= | A table of contents kept under the heading | Kept as a tag, printed after the title. The Emacs package toc-org reads it as Tuatara does |
+| =#+BEGIN: formatted-links= and the other =formatted-= blocks | Lists of files with formatted names. The names =denote-links= and the rest make the same blocks | An error, =void-function org-dblock-write:formatted-links=, and the block is left as it was. With the Denote package, the =denote-= names work |
+| =define-dblock-writer= in the init file | A dynamic block of your own | Emacs defines one with =org-dblock-write:NAME= in Emacs Lisp |
+| =NOTIFY_BEFORE= property, =:notify:= tag | Minutes before an entry is told on the desktop; which entries | An ordinary property and tag |
+| =#+ATTR_ORG: :float left= or =right= | A picture with the text going round it | Ignored: the Org manual lists no =:float= for this line |
+| =#+STARTUP: inlineimages=, =latexpreview= | Show pictures and formulas, only when =*org-startup-shows-pictures*= is =t= and the note was not opened safely | Show them |
+
+Three of these need a longer word.
+
+*** The :EXPORT: drawer
+
+A drawer such as
+
+#+begin_example
+,* Costs
+:EXPORT:
+new page: before
+:END:
+#+end_example
+
+is how Tuatara is told to set a part of the document. Tuatara never prints it,
+and never prints a =LOGBOOK= drawer either. Emacs prints every drawer unless
+the note's options leave it out, so a note exported there carries =new page:
+before= into the document as text. Add the line
+
+#+begin_example
+,#+options: d:(not "EXPORT" "LOGBOOK")
+#+end_example
+
+to a note that has such drawers and goes to Emacs. ~M-x
+org-insert-export-drawer~ adds it with the drawer. Both read =d:= alike: =t=
+prints every drawer but =LOGBOOK=, =nil= none, =d:(not "NOTES")= all but those
+named and =d:("NOTES")= only those. Tuatara never prints the =EXPORT= drawer.
+
+Emacs reads a =:PROPERTIES:= drawer only straight under its heading. In a test
+a property drawer put under an =:EXPORT:= drawer was printed as text. Put
+=:PROPERTIES:= first, and the =:EXPORT:= drawer after it, as Tuatara writes
+them.
+
+*** Hidden text
+
+Text inside =redact= or =protect= is a black box in the PDF that the enhanced
+export makes, and in the Word and web page exports. Org has no such macro.
+Emacs stops at the first call, with an error and no file. To export the same
+note in Emacs, give it a macro of that name:
+
+#+begin_example
+,#+macro: redact $1
+#+end_example
+
+Emacs then prints the text in plain words. For a note whose names must stay
+hidden, export only from Tuatara.
+
+*** Tags that choose what is exported
+
+Both programs leave out a heading tagged =noexport= and everything under a
+=COMMENT= heading. The keywords that change which tags those are differ.
+Emacs reads =#+exclude_tags:= and =#+select_tags:=. Tuatara reads those and
+also =#+export_exclude_tags:= and =#+export_select_tags:=. For a note read by
+both, write Org's own forms.
+
+*** Where both read a line, but not alike
+
+| Line                       | In Tuatara                              | In Emacs Org |
+|----------------------------+-----------------------------------------+--------------|
+| =#+options:=               | The options =-=, =<=, =^=, =\n=, =f=, =e=, =d=, =todo=, =pri=, =tags=, =num=, =toc=, =H=, =arch=, =author=, =date=, =title=, =redact= and =protect=; not every export reads every one. A value is one word, or a list in parentheses such as =d:(not "EXPORT" "LOGBOOK")= | Many more |
+| =#+setupfile:=             | Only from the note's directory, or a directory of =*export-trusted-directories*= | A file or a web address |
+| =#+toc:=                   | =headlines= with a depth, =tables=, =figures= | Also =listings= and =local= |
+| =#+macro:=                 | Text with =$1= to =$9=. A value that begins =(eval= gives nothing | The same, and the value is run |
+| =#+startup:=               | =overview=, =fold=, =content=, =showall=, =nofold=, =hidedrawers=, =showdrawers=, =indent=, =noindent=, =literallinks=, =descriptivelinks=, =inlineimages=, =noinlineimages=, =latexpreview=, =nolatexpreview= | Many more |
+| =#+HTML:= and raw HTML    | Left out of the web page, and the export says so | Written as they are |
+| =#+todo:= and =#+seq_todo:=, =#+typ_todo:= | All three are one kind | Not checked for =#+typ_todo:= |
+| The round of =C-c C-t=     | Skips =CANCELLED= and =CANCELED= (=*org-todo-keywords-not-cycled*=) | Not checked |
+| =:tangle= into a directory that is not there | An error, unless =:mkdirp yes= or =*code-files-make-directories*= says to make it | Made with =:mkdirp= non-nil |
+| Tangling, ~C-c C-v t~      | Lists the files and asks before it writes | Not checked |
+
+The settings are different, too. Org's are variables of Emacs set in its init
+file, and Tuatara reads only its own, with names of its own. A setting such as
+=org-capture-templates= is not read here. Capture templates are files in a
+directory (=*capture-template-directories*=).
+
+*** A note for both programs
+
+What follows from the tables:
+
+- Names that only Tuatara reads do no harm in Emacs: =#+template:=, =#+logo:=,
+  =#+export_...tags:=, =NOTIFY_BEFORE=, =#+ATTR_ORG: :float=, and the tags
+  =:appendix:= and =:TOC:= (they are printed as tags).
+- Put =#+options: d:(not "EXPORT" "LOGBOOK")= in a note with =:EXPORT:=
+  drawers that Emacs exports.
+- Leave =redact= and =protect= out of such a note, or give Emacs a macro of
+  that name.
+- Leave the =formatted-= blocks out, or write the =denote-= names, if Emacs
+  has no Denote.
+- Write =#+select_tags:= and =#+exclude_tags:= beside the =export_= forms.
+- Do not count on code, Lisp formulas or =(eval= macros: Emacs runs them and
+  Tuatara does not.
+
+Not checked: other versions of Org than 9.8.7, the exporters of Emacs
+packages outside Org, and these features of Org: inline tasks, radio targets,
+sparse trees, narrowing, sorting, encrypted entries and the mobile
+application.
 
 ** Where to go from here
 

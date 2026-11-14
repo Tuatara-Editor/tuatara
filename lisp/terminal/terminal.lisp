@@ -3,13 +3,13 @@
 ;;;;
 ;;;; A terminal buffer shows the screen of a program run on a pseudo-terminal
 ;;;; (EMULATOR, emulator.lisp), your shell unless told otherwise: its rows as
-;;;; the buffer's text, their colours as faces, point where the program's
-;;;; cursor is. While you type there (INSERT state, or always with modal
-;;;; editing off) every key goes to the program, Escape and C-c too, but for
-;;;; the keys *TERMINAL-EDITOR-KEYS* keep for the editor (C-x and its windows
-;;;; and buffers, M-x, C-g and C-\ to stop typing there, C-q to send the next
-;;;; key whatever it is); C-V pastes, marked as pasted (TERMINAL-PASTE). In NORMAL state the
-;;;; screen stands still as text to move through, select and copy, the
+;;;; the buffer's text, their colours as faces, point where the program's cursor
+;;;; is. While you type there (INSERT state, or always with modal editing off)
+;;;; every key goes to the program, Escape and C-c too, but for the keys
+;;;; *TERMINAL-EDITOR-KEYS* keep for the editor (C-x and its windows and
+;;;; buffers, M-x, C-g and C-\ to stop typing there, C-q to send the next key
+;;;; whatever it is); C-V pastes, marked as pasted (TERMINAL-PASTE). In NORMAL
+;;;; state the screen stands still as text to move through, select and copy, the
 ;;;; program going on meanwhile; i or a types into it again.
 
 (in-package #:tuatara.terminal-emulator)
@@ -181,29 +181,16 @@ programs' colours were last coloured for.")
 
 ;;; A terminal's text with its escape sequences, its colours made faces
 
-(defun sgr-colour (codes)
-  "The colour code (MAKE-LOOK) the SGR CODES (a list, from just after 38 or 48)
-begin with, and the codes after it: 5;N an index of the 256, 2;R;G;B red,
-green and blue; 0 for none."
-  (flet ((part (c) (min 255 (max 0 (or c 0)))))
-    (case (first codes)
-      (5 (values (palette-code (part (second codes))) (cddr codes)))
-      (2 (values (rgb-code (part (second codes)) (part (third codes)) (part (fourth codes))) (nthcdr 4 codes)))
-      (t (values 0 (rest codes))))))
-
-(defun sgr-colour-parts (parts)
-  "The parts of a colour written with colons (2::R:G:B, 2:R:G:B or 5:N, after
-38: or 48:) as SGR-COLOUR takes them, the colour space a 2:: may hold left out."
-  (if (and (eql (first parts) 2) (= (length parts) 5)) (list* 2 (cddr parts)) parts))
-
 (defun ansi-pieces (text)
   "TEXT, a terminal's text with its escape sequences, as pieces (TEXT FACES),
 FACES a list, or plain strings:
 SGR colours, bold, italic and underline as faces, every other sequence (a
-cursor's move, a shell's marks) left out."
+cursor's move, a shell's marks), those the C1 controls begin among them, and
+every other control character but line feeds and tabs left out."
   (let ((pieces '()) (fg 0) (bg 0) (bold nil) (italic nil) (underline nil)
         (out (make-string-output-stream)) (i 0) (n (length text)))
-    (flet ((flush ()
+    (flet ((rgb (value) (rgb-code (ldb (byte 8 16) value) (ldb (byte 8 8) value) (ldb (byte 8 0) value)))
+           (flush ()
              (let ((s (get-output-stream-string out)))
                (when (plusp (length s))
                  (let ((faces (terminal-faces (make-look fg bg (logior (if bold (look-bit :bold) 0)
@@ -213,57 +200,50 @@ cursor's move, a shell's marks) left out."
       (loop while (< i n)
             do (let ((c (char text i)))
                  (cond
-                   ((char= c #\Escape)
-                    (multiple-value-bind (stop final from end) (tuatara.text:escape-sequence-end text i)
+                   ((or (char= c #\Escape) (tuatara.text:c1-control-p c))
+                    (multiple-value-bind (stop final from end) (tuatara.text:escape-sequence-end text i :c1 t)
                       (when (eql final #\m)
                         (flush)
-                        ;; each parameter a code, its parts after colons its own (4:3 a curly
-                        ;; underline, 58:2::R:G:B an underline's colour); 38 and 48 take theirs
-                        ;; either way: 38;2;R;G;B or 38:2::R:G:B
-                        (let ((codes (mapcar (lambda (p)
-                                               (let ((parts (mapcar (lambda (x) (or (whole-number x) 0))
-                                                                    (uiop:split-string p :separator ":"))))
-                                                 (if (rest parts) parts (first parts))))
-                                             (uiop:split-string (subseq text from end) :separator ";"))))
-                          (loop while codes
-                                do (let ((code (pop codes)))
-                                     (when (consp code)
-                                       (setf code (case (first code)
-                                                    ;; an underline's style: 0 none, else one
-                                                    (4 (if (eql 0 (second code)) 24 4))
-                                                    ((38 48) (multiple-value-bind (colour)
-                                                                 (sgr-colour (sgr-colour-parts (rest code)))
-                                                               (if (= (first code) 38) (setf fg colour) (setf bg colour)))
-                                                     nil)
-                                                    (t nil))))
-                                     (case (or code :none)
-                                       (:none nil)
-                                       (0 (setf fg 0 bg 0 bold nil italic nil underline nil))
-                                       (1 (setf bold t)) (3 (setf italic t)) (4 (setf underline t))
-                                       ((21 22) (setf bold nil)) (23 (setf italic nil)) (24 (setf underline nil))
-                                       (39 (setf fg 0)) (49 (setf bg 0))
-                                       (38 (multiple-value-setq (fg codes) (sgr-colour codes)))
-                                       (48 (multiple-value-setq (bg codes) (sgr-colour codes)))
-                                       ;; the sixteen colours by their numbers in the palette
-                                       (t (cond ((<= 30 code 37) (setf fg (palette-code (- code 30))))
-                                                ((<= 40 code 47) (setf bg (palette-code (- code 40))))
-                                                ((<= 90 code 97) (setf fg (palette-code (+ 8 (- code 90)))))
-                                                ((<= 100 code 107) (setf bg (palette-code (+ 8 (- code 100))))))))))))
+                        (tuatara.text:sgr-changes
+                         (lambda (what value)
+                           (ecase what
+                             (:reset (setf fg 0 bg 0 bold nil italic nil underline nil))
+                             (:bold (setf bold value))
+                             (:italic (setf italic value))
+                             (:underline (setf underline value))
+                             (:foreground (setf fg (if value (palette-code value) 0)))
+                             (:background (setf bg (if value (palette-code value) 0)))
+                             (:foreground-rgb (setf fg (rgb value)))
+                             (:background-rgb (setf bg (rgb value)))))
+                         text from end))
                       (setf i stop)))
                    ((char= c #\Return) (incf i))
-                   ((and (< (char-code c) 32) (not (member c '(#\Newline #\Tab)))) (incf i))
+                   ((or (and (< (char-code c) 32) (not (member c '(#\Newline #\Tab)))) (char= c #\Rubout)) (incf i))
                    (t (write-char c out) (incf i)))))
       (flush))
     (nreverse pieces)))
 
+(defvar *key-specs-kept* '()
+  "The lists of keys looked at lately, each (KEYS . SPECS): KEYS as a setting
+holds them, SPECS what they parse to (KEY-SPECS).")
+
+(defun key-specs (keys)
+  "What KEYS, a list of keys written as for bind-key (\"C-x\", \"S-<insert>\"),
+parse to, each as TUATARA.FRONTEND:KEY-SPEC gives it. Kept for as long as the
+setting holds that very list, so that a key typed parses nothing."
+  (let ((kept (assoc keys *key-specs-kept* :test #'eq)))
+    (if kept
+        (cdr kept)
+        (let ((specs (loop for key in keys
+                           collect (first (ignoring-errors-reported ("reading the keys ~s" key)
+                                            (tuatara.frontend:parse-key-sequence key))))))
+          (setf *key-specs-kept* (cons (cons keys specs) (subseq *key-specs-kept* 0 (min 3 (length *key-specs-kept*)))))
+          specs))))
+
 (defun key-among-p (key keys)
   "True when KEY is one of KEYS, each written as keys are written for
 bind-key (\"C-x\", \"S-<insert>\")."
-  (let ((spec (tuatara.frontend:key-spec key)))
-    (some (lambda (keys)
-            (equal spec (first (ignoring-errors-reported ("reading the keys ~s" keys)
-                                 (tuatara.frontend:parse-key-sequence keys)))))
-          keys)))
+  (and (member (tuatara.frontend:key-spec key) (key-specs keys) :test #'equal) t))
 
 (defun terminal-editor-key-p (key emulator)
   "True when KEY stays the editor's in EMULATOR's terminal: one of
@@ -334,8 +314,8 @@ click on a link, is dropped. True when it took KEY."
           (flet ((tell (action button &optional pressed)
                    (and (not (tuatara.frontend:key-shift key))
                         (emulator-mouse emulator action button x y :ctrl (tuatara.frontend:key-ctrl key)
-                                                                   :meta (tuatara.frontend:key-meta key)
-                                                                   :pressed pressed))))
+                                        :meta (tuatara.frontend:key-meta key)
+                                        :pressed pressed))))
             (case base
               ((:wheel-up :wheel-down)
                (cond ((tell :press base))
@@ -357,28 +337,22 @@ click on a link, is dropped. True when it took KEY."
                                (null (resolve-keys *editor* (list (tuatara.frontend:key-spec key))))))
               ;; the middle button: the program's, or a paste of what is selected anywhere
               (:mouse-2 (or (and (tell :press :middle t) (tell :release :middle))
-                            (progn (paste-into-terminal buffer emulator (tuatara.frontend:frontend-primary-selection (editor-frontend *editor*)))
-                                   t))))))))))
+                            (let ((selection (tuatara.frontend:frontend-primary-selection (editor-frontend *editor*))))
+                              (paste-into-terminal buffer emulator selection)
+                              t))))))))))
 
 ;;; Links
 
-(defparameter *terminal-url-pattern* "(?i)\\b(?:https?|ftp|file)://[^\\s<>\"'`]+"
-  "Where a web or file address starts in a terminal's text, and as far as it may go.")
+(defparameter *terminal-url-scanner* (cl-ppcre:create-scanner (tuatara.syntax:url-pattern :file t))
+  "Finds a web or file address in a terminal's text, as far as RFC 3986 lets it go.")
 
 (defun text-urls (text)
   "The web and file addresses written in TEXT, as a list of (START END), by
-characters: an address's last full stop, comma, colon or quotation mark left
-out, and a closing bracket it does not open."
+characters (TUATARA.SYNTAX:URL-PATTERN): an address's last full stop, comma,
+colon or quotation mark left out, and a closing bracket it does not open."
   (let ((found '()))
     (when (search "://" text)
-      (cl-ppcre:do-matches (start end *terminal-url-pattern* text)
-        (loop while (and (> end start)
-                         (let ((c (char text (1- end))))
-                           (or (find c ".,;:!?'\"")
-                               (and (find c tuatara.text:*closers*)
-                                    (> (count c text :start start :end end)
-                                       (count (char tuatara.text:*openers* (position c tuatara.text:*closers*)) text :start start :end end))))))
-              do (decf end))
+      (cl-ppcre:do-matches (start end *terminal-url-scanner* text)
         (push (list start end) found)))
     (nreverse found)))
 
@@ -411,9 +385,9 @@ desktop's program after asking (OPEN-ADDRESS)."
                    ((not (y-or-n-p* (format nil "Open ~a in Tuatara?" (escape-controls path))))
                     (message "Not opened"))
                    (t (visit-path path :safe (and (safe-directory-of path) t)
-                                       :show (lambda (buffer)
-                                               (let ((window (display-buffer buffer :other t)))
-                                                 (when window (select-window window)))))))))
+                                  :show (lambda (buffer)
+                                          (let ((window (display-buffer buffer :other t)))
+                                            (when window (select-window window)))))))))
           (t (open-address address)))))
 
 (define-command terminal-open-link ()
@@ -429,16 +403,16 @@ underlined."
          (mouse (and key (tuatara.frontend:key-column key)))
          (typing (terminal-typing-p buffer)))
     (let ((address
-            ;; typing, the cell clicked on the screen; else at point, in the history view where it was clicked
-            (multiple-value-bind (x y) (and typing mouse (terminal-cell buffer key))
-              (if x
-                  (terminal-link-at buffer emulator x y)
-                  (progn
-                    (when (and mouse (not typing)) (mouse-set-point))
-                    (let ((point (point)))
-                      (terminal-link-at buffer emulator (tuatara.display:buffer-screen-column buffer point)
-                                        (tuatara.buffer:buffer-line-number buffer point)
-                                        :history (not typing))))))))
+           ;; typing, the cell clicked on the screen; else at point, in the history view where it was clicked
+           (multiple-value-bind (x y) (and typing mouse (terminal-cell buffer key))
+             (if x
+                 (terminal-link-at buffer emulator x y)
+                 (progn
+                   (when (and mouse (not typing)) (mouse-set-point))
+                   (let ((point (point)))
+                     (terminal-link-at buffer emulator (tuatara.display:buffer-screen-column buffer point)
+                                       (tuatara.buffer:buffer-line-number buffer point)
+                                       :history (not typing))))))))
       (if address
           (open-terminal-link address)
           (message "No link here")))))
@@ -484,8 +458,8 @@ as faces."
             do (push (list (octets start) (octets stop) '(:link)) spans))
       (loop for (from to look) in row-looks
             when (< from end)
-              do (let ((start (octets from)) (stop (octets (min to end))))
-                   (when (< start stop) (push (list start stop (terminal-faces look)) spans))))
+            do (let ((start (octets from)) (stop (octets (min to end))))
+                 (when (< start stop) (push (list start stop (terminal-faces look)) spans))))
       (list keep (tuatara.text:string-octets row :end end) (nreverse spans)))))
 
 (defun terminal-shown-text (rows looks cursor-row cursor-column &optional shown)
@@ -511,10 +485,10 @@ whose spaces kept for the cursor changed."
       (loop for (nil row-octets row-spans) across entries
             for r from 0
             do (when (plusp r) (setf (aref text octets) 10) (incf octets))
-               (replace text row-octets :start1 octets)
-               (loop for (start end faces) in row-spans
-                     do (push (list (+ octets start) (+ octets end) faces) spans))
-               (incf octets (length row-octets)))
+            (replace text row-octets :start1 octets)
+            (loop for (start end faces) in row-spans
+                  do (push (list (+ octets start) (+ octets end) faces) spans))
+            (incf octets (length row-octets)))
       (values text (nreverse spans)))))
 
 (define-setting tuatara-user:*terminal-title-limit* 40
@@ -524,16 +498,33 @@ in many) the mode line shows.
 - nil: no title is shown."
   :values (or (member nil) (integer 0 *)))
 
+(defparameter *terminal-follow-interval* 1/2
+  "The seconds between two looks at the directory and the title of a terminal's
+program while it prints.")
+
 (defun follow-terminal-program (buffer emulator)
   "Have BUFFER, a terminal, stand in the directory its program is in now, so
 that \\[find-file] and the rest start there and the mode line says it, and keep
-the title the program gave its terminal for the mode line."
-  (let ((directory (emulator-directory emulator)))
-    (when (and directory (not (equal directory (buffer-given-directory buffer))))
-      (setf (buffer-given-directory buffer) directory)))
-  (let ((title (emulator-title emulator)))
-    (unless (eq title :busy)
-      (setf (tuatara.buffer:buffer-local buffer 'terminal-title) title))))
+the title the program gave its terminal for the mode line. Done when the
+program printed since the last look, and not more than once in
+*TERMINAL-FOLLOW-INTERVAL* seconds: the seconds to wait for the next look when
+it is owed but not due, else NIL."
+  (let ((printed (emulator-last-output emulator))
+        (now (get-internal-real-time)))
+    (unless (eql printed (tuatara.buffer:buffer-local buffer 'terminal-followed-output))
+      (let ((due (+ (tuatara.buffer:buffer-local buffer 'terminal-followed-at 0)
+                    (* *terminal-follow-interval* internal-time-units-per-second))))
+        (if (< now due)
+            (/ (- due now) internal-time-units-per-second)
+            (let ((directory (emulator-directory emulator))
+                  (title (emulator-title emulator)))
+              (setf (tuatara.buffer:buffer-local buffer 'terminal-followed-output) printed
+                    (tuatara.buffer:buffer-local buffer 'terminal-followed-at) now)
+              (when (and directory (not (equal directory (buffer-given-directory buffer))))
+                (setf (buffer-given-directory buffer) directory))
+              (unless (eq title :busy)
+                (setf (tuatara.buffer:buffer-local buffer 'terminal-title) title))
+              nil))))))
 
 (defun terminal-mode-line-title (editor buffer)
   "Mode line function: the title the program in BUFFER, a terminal, gave it,
@@ -573,15 +564,15 @@ once, nothing shown: to be tried again."
         (return-from terminal-refresh :busy))
       (setf (tuatara.buffer:buffer-local buffer 'terminal-owed-all) nil)
       (setf (tuatara.buffer:buffer-local buffer :pictures) pictures)
-      (follow-terminal-program buffer emulator)
       (multiple-value-bind (text spans) (terminal-shown-text rows looks y (or x 0) shown)
         (set-made-text buffer text :spans spans :key nil))
       (when y
         (let ((line (tuatara.buffer:buffer-goto-line buffer (min y (1- (length rows))))))
           (setf (tuatara.buffer:buffer-point buffer)
                 (min (tuatara.buffer:buffer-line-end buffer line)
-                     (+ line (tuatara.text:string-octet-length
-                              (aref rows y) :end (min (length (aref rows y)) (tuatara.display:chars-in-columns (aref rows y) x)))))))))))
+                     (+ line (let ((row (aref rows y)))
+                               (tuatara.text:string-octet-length
+                                row :end (min (length row) (tuatara.display:chars-in-columns row x))))))))))))
 
 (defun start-terminal-history (buffer emulator)
   "Make the whole of EMULATOR's screen, scrollback and all, with its colours,
@@ -619,7 +610,8 @@ is on."
             (when (shiftf (tuatara.buffer:buffer-local buffer 'terminal-search-wanted) nil)
               (setf (editor-unread *editor*)
                     (append (editor-unread *editor*)
-                            (list (tuatara.frontend:make-event :key :key (tuatara.frontend:make-key #\r :ctrl t)))))))))))
+                            (list (tuatara.frontend:make-event :key
+                                                               :key (tuatara.frontend:make-key #\r :ctrl t)))))))))))
 
 (defun terminal-tick (editor)
   "Tick function: colour programs' colours again when a theme has been put in
@@ -634,45 +626,51 @@ meanwhile kept by its emulator (BUFFER-HELD-BY-QUESTION-P)."
     (recolour-terminal-faces)
     (setf *terminal-face-generation* tuatara.display:*face-generation*))
   (let ((again nil))
-  (dolist (buffer (copy-list *terminal-buffers*))
-    (let ((emulator (tuatara.buffer:buffer-local buffer :emulator))
-          (window (buffer-window buffer editor)))
-      (cond ((or (null emulator) (not (live-buffer-p buffer)))
-             (setf *terminal-buffers* (remove buffer *terminal-buffers*)))
-            ;; its program's changes stay in the emulator while a waiting question is about it
-            ((buffer-held-by-question-p buffer))
-            (t
-             (let ((all nil))
-               (when window
-                 (multiple-value-bind (columns rows) (terminal-window-size window)
-                   (multiple-value-bind (cell-width cell-height) (terminal-cell-pixels)
-                     (case (emulator-resize emulator columns rows cell-width cell-height)
-                       ((nil))
-                       (:busy (setf again t))
-                       (t (setf all t))))))
-               ;; typing stopped, the history as text, made in the background; typing
-               ;; again, the screen as it is now
-               (let ((typing (terminal-typing-p buffer)))
-                 (unless (eq typing (tuatara.buffer:buffer-local buffer 'terminal-was-typing))
-                   (setf (tuatara.buffer:buffer-local buffer 'terminal-was-typing) typing
-                         all (or all typing))
-                   (if typing
-                       (setf (tuatara.buffer:buffer-local buffer 'terminal-history) nil)
-                       (start-terminal-history buffer emulator)))
-                 (unless typing
-                   (setf (tuatara.buffer:buffer-local buffer :pictures) nil)
-                   (install-terminal-history buffer)))
-               (when (and (terminal-typing-p buffer)
-                          (or all (emulator-changed emulator) (tuatara.buffer:buffer-local buffer 'terminal-owed-all)))
-                 (when (eq (terminal-refresh buffer emulator :all all) :busy)
-                   (setf again t))))
-             (when (emulator-closed emulator)
-               (let ((name (tuatara.buffer:buffer-name buffer))
-                     (process (emulator-process emulator)))
-                 (tuatara.buffer:kill-buffer buffer)
-                 (message "~a ended~@[ (exit ~d)~]" name
-                          (and process (eq (sb-ext:process-status process) :exited) (sb-ext:process-exit-code process)))))))))
-  (and again 1/20)))
+    (flet ((again-in (seconds) (setf again (if again (min again seconds) seconds))))
+      (dolist (buffer (copy-list *terminal-buffers*))
+        (let ((emulator (tuatara.buffer:buffer-local buffer :emulator))
+              (window (buffer-window buffer editor)))
+          (cond ((or (null emulator) (not (live-buffer-p buffer)))
+                 (setf *terminal-buffers* (remove buffer *terminal-buffers*)))
+                ;; its program's changes stay in the emulator while a waiting question is about it
+                ((buffer-held-by-question-p buffer))
+                (t
+                 (let ((all nil))
+                   (when window
+                     (multiple-value-bind (columns rows) (terminal-window-size window)
+                       (multiple-value-bind (cell-width cell-height) (terminal-cell-pixels)
+                         (case (emulator-resize emulator columns rows cell-width cell-height)
+                           ((nil))
+                           (:busy (again-in 1/20))
+                           (t (setf all t))))))
+                   ;; typing stopped, the history as text, made in the background; typing
+                   ;; again, the screen as it is now
+                   (let ((typing (terminal-typing-p buffer)))
+                     (unless (eq typing (tuatara.buffer:buffer-local buffer 'terminal-was-typing))
+                       (setf (tuatara.buffer:buffer-local buffer 'terminal-was-typing) typing
+                             all (or all typing))
+                       (if typing
+                           (setf (tuatara.buffer:buffer-local buffer 'terminal-history) nil)
+                           (start-terminal-history buffer emulator)))
+                     (unless typing
+                       (setf (tuatara.buffer:buffer-local buffer :pictures) nil)
+                       (install-terminal-history buffer)))
+                   (when (and (terminal-typing-p buffer)
+                              (or all (emulator-changed emulator)
+                                  (tuatara.buffer:buffer-local buffer 'terminal-owed-all)))
+                     (when (eq (terminal-refresh buffer emulator :all all) :busy)
+                       (again-in 1/20)))
+                   (when (terminal-typing-p buffer)
+                     (let ((owed (follow-terminal-program buffer emulator)))
+                       (when owed (again-in owed)))))
+                 (when (emulator-closed emulator)
+                   (let ((name (tuatara.buffer:buffer-name buffer))
+                         (process (emulator-process emulator)))
+                     (tuatara.buffer:kill-buffer buffer)
+                     (message "~a ended~@[ (exit ~d)~]" name
+                              (and process (eq (sb-ext:process-status process) :exited)
+                                   (sb-ext:process-exit-code process)))))))))
+      again)))
 
 (defun place-terminals ()
   "Have terminals shown where *TERMINAL-PLACE* and *TERMINAL-SIZE* say, their
@@ -761,7 +759,8 @@ colours a program picks are the theme's (*TERMINAL-PALETTE-ROLES*)."
           (tuatara.buffer:buffer-local buffer :key-handler) 'terminal-key-handler
           (tuatara.buffer:buffer-local buffer :paste-handler) 'terminal-paste-handler
           (buffer-given-directory buffer) directory)
-    (dolist (toggle '(line-numbers hl-line cursor-column soft-wrap spellcheck visual-line centred-text text-direction))
+    (dolist (toggle '(line-numbers hl-line cursor-column soft-wrap spellcheck display-fill-column centred-text
+                      text-direction))
       (ignoring-errors-reported ("turning ~(~a~) off" toggle) (choose-display buffer toggle nil)))
     ;; shown where *terminal-place* says, and its program started, or the buffer killed again
     (let ((started nil))
@@ -773,10 +772,10 @@ colours a program picks are the theme's (*TERMINAL-PALETTE-ROLES*)."
                (setf (tuatara.buffer:buffer-local buffer :emulator)
                      (multiple-value-bind (cell-width cell-height) (terminal-cell-pixels)
                        (start-emulator (first program) (rest program) :columns columns :rows rows :directory directory
-                                                                      :wake (editor-job-waker)
-                                                                      :scrollback-lines tuatara-user:*terminal-scrollback*
-                                                                      :pictures (plusp cell-width)
-                                                                      :cell-width cell-width :cell-height cell-height))))
+                                       :wake (editor-job-waker)
+                                       :scrollback-lines tuatara-user:*terminal-scrollback*
+                                       :pictures (plusp cell-width)
+                                       :cell-width cell-width :cell-height cell-height))))
              (setf started t))
         (unless started (tuatara.buffer:kill-buffer buffer))))
     (push buffer *terminal-buffers*)
@@ -895,7 +894,8 @@ of those that stay the editor's (C-g, C-x, M-x, C-q), say."
     (let ((key (let ((*keys-as-typed* t)) (read-key "Key for the program: "))))
       (echo "")
       (unless (emulator-key emulator key)
-        (message "~a means nothing to a terminal" (tuatara.frontend:key-description (tuatara.frontend:key-spec key)))))))
+        (message "~a means nothing to a terminal"
+                 (tuatara.frontend:key-description (tuatara.frontend:key-spec key)))))))
 
 (define-command terminal-send-escape ()
   "Send Escape to the program in this terminal, at a shell's prompt too,

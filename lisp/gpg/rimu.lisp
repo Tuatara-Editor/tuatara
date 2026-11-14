@@ -59,8 +59,8 @@ without .gpg, for you alone, after asking once: their text is then on disk."
     (let* ((kind (read-signature-kind))
            (passphrase (gpg-own-passphrase (format nil "signing ~a" what))))
       (unwind-protect
-         (dolist (path paths)
-           (sign-file-as path kind (and passphrase (copy-seq passphrase))))
+           (dolist (path paths)
+             (sign-file-as path kind (and passphrase (copy-seq passphrase))))
         (wipe-string passphrase)))))
 
 (define-command rimu-verify-files ()

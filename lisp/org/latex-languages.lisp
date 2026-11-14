@@ -10,35 +10,64 @@
 (in-package #:tuatara.defaults)
 
 (defparameter *export-languages*
-  '(;; code  name   polyglossia   babel         patterns       TeX Live package    Table      Figure    Contents
-    ("en"    "English"               "english"      "english"      "en-us"   "hyphen-english"    "Table"    "Figure"  "Contents")
-    ("en-gb" "British English"       "british"      "british"      "en-gb"   "hyphen-english"    "Table"    "Figure"  "Contents")
-    ("en-us" "American English"      "american"     "american"     "en-us"   "hyphen-english"    "Table"    "Figure"  "Contents")
-    ("en-au" "Australian English"    "australian"   "australian"   "en-gb"   "hyphen-english"    "Table"    "Figure"  "Contents")
-    ("en-nz" "New Zealand English"   "newzealand"   "newzealand"   "en-gb"   "hyphen-english"    "Table"    "Figure"  "Contents")
-    ("en-ca" "Canadian English"      "canadian"     "canadian"     "en-us"   "hyphen-english"    "Table"    "Figure"  "Contents")
-    ("sv"    "Swedish"               "swedish"      "swedish"      "sv"      "hyphen-swedish"    "Tabell"   "Figur"   "Innehåll")
-    ("de"    "German"                "german"       "ngerman"      "de-1996" "hyphen-german"     "Tabelle"  "Abbildung" "Inhalt")
-    ("de-at" "Austrian German"       "austrian"     "naustrian"    "de-1996" "hyphen-german"     "Tabelle"  "Abbildung" "Inhalt")
-    ("de-ch" "Swiss German"          "german"       "ngerman"      "de-1996" "hyphen-german"     "Tabelle"  "Abbildung" "Inhalt")
-    ("fr"    "French"                "french"       "french"       "fr"      "hyphen-french"     "Tableau"  "Figure"  "Table des matières")
-    ("nb"    "Norwegian (Bokmål)"    "norwegian"    "norsk"        "nb"      "hyphen-norwegian"  "Tabell"   "Figur"   "Innhold")
-    ("no"    "Norwegian (Bokmål)"    "norwegian"    "norsk"        "nb"      "hyphen-norwegian"  "Tabell"   "Figur"   "Innhold")
-    ("nn"    "Norwegian (Nynorsk)"   "nynorsk"      "nynorsk"      "nn"      "hyphen-norwegian"  "Tabell"   "Figur"   "Innhald")
-    ("da"    "Danish"                "danish"       "danish"       "da"      "hyphen-danish"     "Tabel"    "Figur"   "Indhold")
-    ("fi"    "Finnish"               "finnish"      "finnish"      "fi"      "hyphen-finnish"    "Taulukko" "Kuva"    "Sisällys")
-    ("es"    "Spanish"               "spanish"      "spanish"      "es"      "hyphen-spanish"    "Tabla"    "Figura"  "Índice")
-    ("it"    "Italian"               "italian"      "italian"      "it"      "hyphen-italian"    "Tabella"  "Figura"  "Indice")
-    ("nl"    "Dutch"                 "dutch"        "dutch"        "nl"      "hyphen-dutch"      "Tabel"    "Figuur"  "Inhoud")
-    ("pt"    "Portuguese"            "portuguese"   "portuguese"   "pt"      "hyphen-portuguese" "Tabela"   "Figura"  "Índice")
-    ("pt-br" "Brazilian Portuguese"  "brazil"       "brazilian"    "pt"      "hyphen-portuguese" "Tabela"   "Figura"  "Sumário")
-    ("pl"    "Polish"                "polish"       "polish"       "pl"      "hyphen-polish"     "Tabela"   "Rysunek" "Spis treści")
-    ("cs"    "Czech"                 "czech"        "czech"        "cs"      "hyphen-czech"      "Tabulka"  "Obrázek" "Obsah")
-    ("is"    "Icelandic"             "icelandic"    "icelandic"    "is"      "hyphen-icelandic"  "Tafla"    "Mynd"    "Efnisyfirlit")
-    ("et"    "Estonian"              "estonian"     "estonian"     "et"      "hyphen-estonian"   "Tabel"    "Joonis"  "Sisukord")
-    ("hu"    "Hungarian"             "hungarian"    "magyar"       "hu"      "hyphen-hungarian"  "Táblázat" "Ábra"    "Tartalomjegyzék")
-    ("tr"    "Turkish"               "turkish"      "turkish"      "tr"      "hyphen-turkish"    "Tablo"    "Şekil"   "İçindekiler")
-    ("ca"    "Catalan"               "catalan"      "catalan"      "ca"      "hyphen-catalan"    "Taula"    "Figura"  "Taula de continguts"))
+  '(;; code, name, polyglossia's name, babel's, the patterns, the TeX Live package;
+    ;; then the words a Word document prints: Table, Figure, Contents
+    ("en"    "English"               "english"      "english"      "en-us"   "hyphen-english"
+     "Table"    "Figure"  "Contents")
+    ("en-gb" "British English"       "british"      "british"      "en-gb"   "hyphen-english"
+     "Table"    "Figure"  "Contents")
+    ("en-us" "American English"      "american"     "american"     "en-us"   "hyphen-english"
+     "Table"    "Figure"  "Contents")
+    ("en-au" "Australian English"    "australian"   "australian"   "en-gb"   "hyphen-english"
+     "Table"    "Figure"  "Contents")
+    ("en-nz" "New Zealand English"   "newzealand"   "newzealand"   "en-gb"   "hyphen-english"
+     "Table"    "Figure"  "Contents")
+    ("en-ca" "Canadian English"      "canadian"     "canadian"     "en-us"   "hyphen-english"
+     "Table"    "Figure"  "Contents")
+    ("sv"    "Swedish"               "swedish"      "swedish"      "sv"      "hyphen-swedish"
+     "Tabell"   "Figur"   "Innehåll")
+    ("de"    "German"                "german"       "ngerman"      "de-1996" "hyphen-german"
+     "Tabelle"  "Abbildung" "Inhalt")
+    ("de-at" "Austrian German"       "austrian"     "naustrian"    "de-1996" "hyphen-german"
+     "Tabelle"  "Abbildung" "Inhalt")
+    ("de-ch" "Swiss German"          "german"       "ngerman"      "de-1996" "hyphen-german"
+     "Tabelle"  "Abbildung" "Inhalt")
+    ("fr"    "French"                "french"       "french"       "fr"      "hyphen-french"
+     "Tableau"  "Figure"  "Table des matières")
+    ("nb"    "Norwegian (Bokmål)"    "norwegian"    "norsk"        "nb"      "hyphen-norwegian"
+     "Tabell"   "Figur"   "Innhold")
+    ("no"    "Norwegian (Bokmål)"    "norwegian"    "norsk"        "nb"      "hyphen-norwegian"
+     "Tabell"   "Figur"   "Innhold")
+    ("nn"    "Norwegian (Nynorsk)"   "nynorsk"      "nynorsk"      "nn"      "hyphen-norwegian"
+     "Tabell"   "Figur"   "Innhald")
+    ("da"    "Danish"                "danish"       "danish"       "da"      "hyphen-danish"
+     "Tabel"    "Figur"   "Indhold")
+    ("fi"    "Finnish"               "finnish"      "finnish"      "fi"      "hyphen-finnish"
+     "Taulukko" "Kuva"    "Sisällys")
+    ("es"    "Spanish"               "spanish"      "spanish"      "es"      "hyphen-spanish"
+     "Tabla"    "Figura"  "Índice")
+    ("it"    "Italian"               "italian"      "italian"      "it"      "hyphen-italian"
+     "Tabella"  "Figura"  "Indice")
+    ("nl"    "Dutch"                 "dutch"        "dutch"        "nl"      "hyphen-dutch"
+     "Tabel"    "Figuur"  "Inhoud")
+    ("pt"    "Portuguese"            "portuguese"   "portuguese"   "pt"      "hyphen-portuguese"
+     "Tabela"   "Figura"  "Índice")
+    ("pt-br" "Brazilian Portuguese"  "brazil"       "brazilian"    "pt"      "hyphen-portuguese"
+     "Tabela"   "Figura"  "Sumário")
+    ("pl"    "Polish"                "polish"       "polish"       "pl"      "hyphen-polish"
+     "Tabela"   "Rysunek" "Spis treści")
+    ("cs"    "Czech"                 "czech"        "czech"        "cs"      "hyphen-czech"
+     "Tabulka"  "Obrázek" "Obsah")
+    ("is"    "Icelandic"             "icelandic"    "icelandic"    "is"      "hyphen-icelandic"
+     "Tafla"    "Mynd"    "Efnisyfirlit")
+    ("et"    "Estonian"              "estonian"     "estonian"     "et"      "hyphen-estonian"
+     "Tabel"    "Joonis"  "Sisukord")
+    ("hu"    "Hungarian"             "hungarian"    "magyar"       "hu"      "hyphen-hungarian"
+     "Táblázat" "Ábra"    "Tartalomjegyzék")
+    ("tr"    "Turkish"               "turkish"      "turkish"      "tr"      "hyphen-turkish"
+     "Tablo"    "Şekil"   "İçindekiler")
+    ("ca"    "Catalan"               "catalan"      "catalan"      "ca"      "hyphen-catalan"
+     "Taula"    "Figura"  "Taula de continguts"))
   "The languages a note's #+LANGUAGE: may name, each (CODE NAME POLYGLOSSIA
 BABEL PATTERNS PACKAGE TABLE FIGURE CONTENTS). CODE is the ISO code, the
 language's name, its name for polyglossia and for babel (NIL where babel cannot
@@ -58,14 +87,16 @@ own); NIL when CODE is none of them."
 (defun export-language-code ()
   "The code the note being written gives for its language (#+LANGUAGE:), or
 NIL when it gives none."
-  (let ((code (and *org-latex* (org-latex-keyword "LANGUAGE"))))
+  (let ((code (and *org-export* (org-export-keyword "LANGUAGE"))))
     (and code (plusp (length (string-trim " " code))) (string-trim " " code))))
 
 (defun latex-loads-language-p (&rest texts)
   "True when one of TEXTS, LaTeX, already loads polyglossia or babel or sets the
 document's language."
   (some (lambda (text)
-          (cl-ppcre:scan "\\\\(?:usepackage|RequirePackage)(?:\\[[^]]*\\])?\\{[^}]*\\b(?:polyglossia|babel)\\b|\\\\(?:setmainlanguage|selectlanguage|babelprovide)\\b"
+          (cl-ppcre:scan #.(concatenate 'string "\\\\(?:usepackage|RequirePackage)(?:\\[[^]]*\\])?"
+                                        "\\{[^}]*\\b(?:polyglossia|babel)\\b"
+                                        "|\\\\(?:setmainlanguage|selectlanguage|babelprovide)\\b")
                          text))
         texts))
 
@@ -79,16 +110,17 @@ set a language themselves; a code not in *EXPORT-LANGUAGES* is said so once
     (cond
       ((null code) "")
       ((latex-loads-language-p *org-latex-template*
-                               (format nil "~{~a~%~}" (append (org-latex-keyword-all "LATEX_HEADER")
-                                                              (org-latex-keyword-all "LATEX_HEADER_EXTRA")))
-                               (or (org-latex-keyword "LATEX_CLASS_OPTIONS") ""))
+                               (format nil "~{~a~%~}" (append (org-export-keyword-all "LATEX_HEADER")
+                                                              (org-export-keyword-all "LATEX_HEADER_EXTRA")))
+                               (or (org-export-keyword "LATEX_CLASS_OPTIONS") ""))
        "")
       (t
        (let ((row (export-language code))
              (modern (member engine '("xelatex" "lualatex") :test #'string-equal)))
          (cond
            ((null row)
-            (export-note "#+language: ~a is not a language the export knows; the document keeps LaTeX's own (~{~a~^, ~})"
+            (export-note "#+language: ~a is not a language the export knows; ~
+the document keeps LaTeX's own (~{~a~^, ~})"
                          code (mapcar #'first *export-languages*))
             "")
            (modern (format nil "\\usepackage{polyglossia}~%\\setmainlanguage{~a}~%" (third row)))

@@ -106,14 +106,14 @@ names that differ look alike.")
 (defun char-columns (char &optional invisible)
   "Number of columns CHAR occupies in the grid: 0 for combining marks, 2 for wide
 characters, 2 for control characters shown as ^X, 4 for a raw byte shown as
-\xNN, 1 otherwise. With INVISIBLE, a character that draws nothing
+\\xNN, 1 otherwise. With INVISIBLE, a character that draws nothing
 \(`*invisible-characters*') takes the columns of its code, as <FEFF> does.
 Tabs are handled by the layout engine, not here."
   (code-columns (char-code char) invisible))
 
 (defun invisible-code-p (code)
   "True when the character of CODE draws nothing of its own and joins no
-letter (`*invisible-characters*'). Complexity: O(1)."
+letter (`*invisible-characters*')."
   (and (>= code #xAD) (in-ranges-p code *invisible-characters*)))
 
 (defun hiding-code-p (code)
@@ -121,8 +121,53 @@ letter (`*invisible-characters*'). Complexity: O(1)."
 could hide or reorder what a name from elsewhere says: one that changes the
 direction text is drawn in (`*direction-controls*') or one of
 `*escaped-invisibles*'. A name shows it as its code (ESCAPE-CONTROLS), and a
-paste or message from another machine leaves it out. Complexity: O(1)."
+paste or message from another machine leaves it out."
   (and (>= code #x61C) (or (in-ranges-p code *direction-controls*) (in-ranges-p code *escaped-invisibles*))))
+
+;;; Names from elsewhere, written out with no character hidden
+
+(defun escape-controls (text &optional spans (which :controls))
+  "TEXT with each control character in it written as the editor shows one in
+text (^J for a newline, ^I for a tab, \\x85 for code 133). Each invisible
+character that changes the direction text is drawn in, or draws nothing at
+all (a zero-width space, *ESCAPED-INVISIBLES*), is written as its code
+\(<202E>, <200B>). So the text takes one line, reads in the order it is written
+and hides no character. This is how a name from elsewhere is shown in a list,
+a heading, the panel under the prompt or the window's title.
+With WHICH :RAW-BYTES, only each raw byte's character (U+DC80..U+DCFF, an
+octet that is not UTF-8) is written, as \\xNN, in the four columns its width
+counts: a row of the screen, laid out already, as it is painted.
+Returns TEXT itself when it has none. The second value is SPANS, lists (START
+END FACE) over TEXT's characters, moved to match. TUATARA.FRONTEND:SHOWN-WORDS
+leaves those characters out instead."
+  (flet ((shown (c)
+           ;; the text C is written as, or NIL to leave it as it is
+           (let ((code (char-code c)))
+             (if (eq which :raw-bytes)
+                 (and (tuatara.text:raw-byte-code-p code) (raw-byte-display code))
+                 (cond ((tuatara.text:control-code-p code) (control-char-display c))
+                       ((hiding-code-p code) (invisible-code-display code)))))))
+    (if (find-if #'shown text)
+        (let ((moved (make-array (1+ (length text)))) (at 0))
+          (values (with-output-to-string (out)
+                    (loop for c across text
+                          for i from 0
+                          do (setf (aref moved i) at)
+                             (let ((shown (shown c)))
+                               (if shown
+                                   (progn (write-string shown out) (incf at (length shown)))
+                                   (progn (write-char c out) (incf at)))))
+                    (setf (aref moved (length text)) at))
+                  (loop for (start end face) in spans
+                        collect (list (aref moved
+                                            (min start (length text))) (aref moved (min end (length text))) face))))
+        (values text spans))))
+
+(defun shown-name (text)
+  "TEXT, a name from elsewhere, as a list, a menu or the window's title shows
+it: its control and invisible characters written out (ESCAPE-CONTROLS), and
+each octet that is not UTF-8 as \\xNN, in the four columns it takes."
+  (values (escape-controls (escape-controls text) nil :raw-bytes)))
 
 (defun invisible-code-display (code)
   "The text the character of CODE, one that draws nothing, is shown as while
@@ -144,7 +189,7 @@ comes before it."
 (defun zero-width-code-p (code)
   "True when the character of CODE takes no column of its own: a mark that
 combines with the character before it (an accent, a vowel sign), or one of
-`*zero-width-ranges*'. Complexity: O(1)."
+`*zero-width-ranges*'."
   (and (>= code #x300)
        (or (in-ranges-p code *zero-width-ranges*) (mark-code-p code))))
 
@@ -196,8 +241,7 @@ second regional indicator of a flag, and the emoji presentation selector
 U+FE0F after a character one column wide shown as a picture
 \(`*emoji-variation-bases*') adds the one that makes it two. A mark at the
 line's start, with nothing to combine with, takes one column, shown on
-*MARK-BASE*. With INVISIBLE, a joiner is shown as its code and joins nothing.
-Complexity: O(1)."
+*MARK-BASE*. With INVISIBLE, a joiner is shown as its code and joins nothing."
   (declare (type fixnum code before own))
   (cond ((< code #x300) (values own code))
         ((and (= before #x200D) (not invisible) (tuatara.text:cluster-joins-p before code 0))
@@ -261,15 +305,15 @@ columns, WIDTH giving each character's own (CHAR-COLUMNS unless given;
 STRING-COLUMNS); STRING itself when it takes that many or more."
   (let ((missing (- columns (string-columns string :width width))))
     (cond ((not (plusp missing)) string)
-          (left (concatenate 'string (make-string missing :initial-element #\Space) string))
-          (t (concatenate 'string string (make-string missing :initial-element #\Space))))))
+          (left (concatenate 'string (tuatara.text:spaces missing) string))
+          (t (concatenate 'string string (tuatara.text:spaces missing))))))
 
 (defun fit-columns (string spans columns &key middle words (width #'char-columns) (ellipsis "…"))
   "STRING and its SPANS, lists (START END FACE) over its characters, cut to
 take at most COLUMNS columns, WIDTH giving each character's own (CHAR-COLUMNS
-unless given; STRING-COLUMNS). ELLIPSIS (… unless given) ends a cut string: with WORDS
-just after the last word that ends before it, when one does, rather than
-inside a word. With MIDDLE the ellipsis stands for what is cut from the
+unless given; STRING-COLUMNS). ELLIPSIS (… unless given) ends a cut string:
+with WORDS just after the last word that ends before it, when one does,
+rather than inside a word. With MIDDLE the ellipsis stands for what is cut from the
 middle, a third of it kept before and the rest after (the start of a path,
 and its last directories and its name). Returns the string and the spans,
 STRING itself when it fits."
@@ -278,14 +322,20 @@ STRING itself when it fits."
     (cond ((<= (columns-of) columns) (values string spans))
           ((not (plusp columns)) (values "" '()))
           (middle
-           (let* ((head (fitting (floor (1- columns) 3)))
-                  (room (- columns 1 (columns-of :end head)))
-                  (tail (loop for start from (length string) downto head
-                              while (<= (columns-of :start start) room)
-                              finally (return (1+ start))))
-                  (tail (min (length string) (max head tail)))
-                  (shift (- (1+ head) tail)))
-             (values (concatenate 'string (subseq string 0 head) "…" (subseq string tail))
+           (let* ((mark (string-columns ellipsis :width width))
+                  (head (fitting (floor (max 0 (- columns mark)) 3)))
+                  (room (- columns mark (columns-of :end head)))
+                  ;; back from the end, a cluster at a time, as far as fits in ROOM
+                  (tail (let ((at (length string)) (used 0))
+                          (loop while (> at head)
+                                do (let* ((start (tuatara.text:string-cluster-start string at))
+                                          (more (columns-of :start start :end at)))
+                                     (when (> (+ used more) room) (return))
+                                     (incf used more)
+                                     (setf at start)))
+                          (max head at)))
+                  (shift (- (+ head (length ellipsis)) tail)))
+             (values (concatenate 'string (subseq string 0 head) ellipsis (subseq string tail))
                      (loop for (start end face) in spans
                            append (append (when (< start head) (list (list start (min end head) face)))
                                           (when (> end tail)
@@ -309,82 +359,6 @@ else cut after its last word that fits and ELLIPSIS (… unless given) added,
 or cut where it must when no word ends early enough (FIT-COLUMNS). With
 ONE-LINE, put on one line first (TUATARA.TEXT:ONE-LINE)."
   (values (fit-columns (if one-line (tuatara.text:one-line string) string) '() most :words t :ellipsis ellipsis)))
-
-(defun fill-words (words column &key (start 0) (indent 0) (width #'char-columns) cut)
-  "WORDS, a list of strings, filled into lines that reach no further than
-COLUMN columns, a space between each two words of a line, WIDTH giving each
-character's columns (CHAR-COLUMNS unless given; STRING-COLUMNS): the first
-line follows START columns already taken, each later one is set in by INDENT
-\(not part of the lines returned). A word too long for a line of its own has
-one to itself, or with CUT is cut into pieces that fit. Returns the lines, NIL
-for no words."
-  (let ((lines '()) (line nil) (used start))
-    (dolist (word words)
-      (let ((wide (string-columns word :width width)))
-        (when cut
-          (loop for room = (- column (if line indent (if lines indent start)))
-                while (and (plusp room) (> wide room))
-                do (let ((piece (max 1 (chars-in-columns word room :width width))))
-                     (when line (push line lines) (setf line nil))
-                     (push (subseq word 0 piece) lines)
-                     (setf word (subseq word piece)
-                           wide (string-columns word :width width)))))
-        (cond ((null line) (setf line word used (+ (if lines indent start) wide)))
-              ((<= (+ used 1 wide) column)
-               (setf line (concatenate 'string line " " word))
-               (incf used (1+ wide)))
-              (t (push line lines)
-                 (setf line word used (+ indent wide))))))
-    (when line (push line lines))
-    (nreverse lines)))
-
-(defun list-item-head (line)
-  "The length of what begins LINE as an item of a list, - or * or a number and
-a full stop, with the blanks after it; NIL when LINE begins no item."
-  (let* ((n (length line))
-         (after (cond ((zerop n) nil)
-                      ((find (char line 0) "-*") 1)
-                      (t (let ((digits (or (position-if-not #'digit-char-p line) n)))
-                           (and (plusp digits) (< digits n) (char= (char line digits) #\.) (1+ digits))))))
-         (words (and after (position-if-not (lambda (c) (member c '(#\Space #\Tab #\Newline #\Return #\Page))) line
-                                            :start after))))
-    (and after (> (or words n) after) (or words n))))
-
-(defun docstring-paragraphs (doc)
-  "DOC, a docstring, cut into its parts in order, for its text to be filled
-and the rest kept as written. The parts are (:BLANK) for a blank line,
-\(:AS-IS LINE) for a line set in (a table, an example; under an item of a list,
-set in further than its words), and (:FILLED HEAD INDENT WORDS LINES) for
-lines whose words are filled. HEAD is what begins them (an item's - or * or
-number and full stop with the blanks after it, else \"\"). INDENT is the
-columns the lines after the first are set in by. WORDS is their words, a list,
-and LINES the lines they were written in. An item's lines go on until a blank
-line or the next item. Any other lines run on into one paragraph."
-  (let ((parts '()) (head nil) (indent 0) (words '()) (lines '()))
-    (flet ((flush ()
-             (when head
-               (push (list :filled head indent (reverse words) (reverse lines)) parts))
-             (setf head nil words '() lines '()))
-           (add (line from)
-             (setf words (revappend (remove "" (uiop:split-string (subseq line from) :separator '(#\Space #\Tab))
-                                            :test #'string=)
-                                    words))
-             (push line lines)))
-      (dolist (line (uiop:split-string doc :separator '(#\Newline)))
-        (let ((item (list-item-head line)))
-          (cond ((every (lambda (c) (member c '(#\Space #\Tab))) line)
-                 (flush) (push (list :blank) parts))
-                (item (flush)
-                      (setf head (subseq line 0 item) indent item)
-                      (add line item))
-                ((and head (plusp indent) (<= (or (position #\Space line :test-not #'char=) 0) indent))
-                 (add line 0))
-                ((char= (char line 0) #\Space)
-                 (flush) (push (list :as-is line) parts))
-                (t (unless head (setf head "" indent 0))
-                   (add line 0)))))
-      (flush))
-    (nreverse parts)))
 
 (sb-ext:define-load-time-global **octet-escapes**
     (let ((texts (make-array 256)))
@@ -415,7 +389,7 @@ it must not be changed."
 (sb-ext:define-load-time-global **spaces**
     (let ((texts (make-array 65)))
       (dotimes (n 65 texts)
-        (setf (svref texts n) (make-string n :initial-element #\Space))))
+        (setf (svref texts n) (tuatara.text:spaces n))))
   "Strings of spaces of each length up to 64, the most a tab can take, made once.")
 
 (declaim (inline next-tab-stop))
@@ -455,7 +429,7 @@ that it is set apart."
   (let ((code (char-code char)))
     (cond ((char= char #\Tab)
            (let ((n (- (next-tab-stop column tab-width) column)))
-             (values (if (< n (length **spaces**)) (svref **spaces** n) (make-string n :initial-element #\Space))
+             (values (if (< n (length **spaces**)) (svref **spaces** n) (tuatara.text:spaces n))
                      n nil)))
           ((tuatara.text:control-code-p code)
            (let ((text (control-char-display char))) (values text (length text) nil)))

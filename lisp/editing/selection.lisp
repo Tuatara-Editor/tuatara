@@ -35,6 +35,19 @@ or at END when FORWARD: a plain selection, whatever kind the one before was
         (tuatara.buffer:buffer-mark-active-p buffer) t)
   (goto (if forward end start)))
 
+(defun region-or-point (buffer)
+  "Two values: the start and end of BUFFER's active region, or point twice
+when it has none."
+  (if (tuatara.buffer:buffer-mark-active-p buffer)
+      (tuatara.buffer:buffer-region buffer)
+      (let ((p (tuatara.buffer:buffer-point buffer))) (values p p))))
+
+(defun activate-mark-at (position)
+  "Set the mark at POSITION and activate the region."
+  (let ((b (current-buffer)))
+    (setf (tuatara.buffer:buffer-mark b) position
+          (tuatara.buffer:buffer-mark-active-p b) t)))
+
 ;;; Functions, types, parameters, comments, tests, entries and elements
 
 (defparameter *text-objects*
@@ -133,7 +146,7 @@ out."
         (message "No syntax tree to select by")
         (let* ((rope (tuatara.buffer:buffer-text b))
                (active (tuatara.buffer:buffer-mark-active-p b)))
-          (multiple-value-bind (start end) (if active (tuatara.buffer:buffer-region b) (values (point) (point)))
+          (multiple-value-bind (start end) (region-or-point b)
             (multiple-value-bind (ranges arounds)
                 (text-object-ranges query (tuatara.syntax:syntax-tree syntax) rope
                                     (format nil "~a.~:[around~;inside~]" object inner)
@@ -175,7 +188,7 @@ changed since."
   "Functions giving, for a buffer with no syntax tree and a position in it,
 the pieces of its text around the position, the smallest first, each (START
 . END), or NIL: how \\[expand-selection] grows the selection there (as a
-language server sees the code).")
+language server sees the code). A LATER gives the list once it comes.")
 
 (defun grow-selection (b next)
   "Grow B's selection by NEXT, a function of a selection's start and end
@@ -197,14 +210,13 @@ prefix says, each kept for \\[shrink-selection] to go back. True when it grew."
         (setf (selection-history b) history))
       grown)))
 
-(defun selection-ranges-step (b)
-  "A step for GROW-SELECTION through the pieces *SELECTION-RANGES-FUNCTIONS*
-give around point in B."
-  (let ((ranges (run-hook-until-success *selection-ranges-functions* b (tuatara.buffer:buffer-point b))))
-    (lambda (start end)
-      (let ((next (find-if (lambda (r) (and (<= (car r) start) (<= end (cdr r)) (< (- end start) (- (cdr r) (car r)))))
-                           ranges)))
-        (and next (values (car next) (cdr next)))))))
+(defun ranges-step (ranges)
+  "A step for GROW-SELECTION through RANGES, pieces of a text around a place,
+each (START . END), the smallest first."
+  (lambda (start end)
+    (let ((next (find-if (lambda (r) (and (<= (car r) start) (<= end (cdr r)) (< (- end start) (- (cdr r) (car r)))))
+                         ranges)))
+      (and next (values (car next) (cdr next))))))
 
 (define-command expand-selection ()
   "Select the smallest piece of syntax around the selection, or around the
@@ -215,8 +227,13 @@ server sees the code. With \\[universal-argument] N, N steps out;
   (let* ((b (current-buffer))
          (syntax (ready-syntax b)))
     (cond ((null syntax)
-           (unless (grow-selection b (selection-ranges-step b))
-             (message "No syntax tree to select by")))
+           (let ((asked (run-hook-until-success *selection-ranges-functions* b (tuatara.buffer:buffer-point b))))
+             ;; a server that could not answer has said so: that stays in the echo area
+             (take-answer b (lambda (ranges)
+                              (cond ((grow-selection b (ranges-step ranges)))
+                                    (ranges (message "Nothing larger to select"))
+                                    ((not (later-p asked)) (message "No syntax tree to select by"))))
+                          asked)))
           ((not (grow-selection b (lambda (start end) (tuatara.syntax:select-node syntax start end :larger))))
            (message "Nothing larger to select")))))
 

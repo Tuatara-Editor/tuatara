@@ -40,7 +40,7 @@ and point at the start of the character that octet is part of."
 
 (defun hex-offset-digits (total)
   "How many hex digits the offsets of a text of TOTAL octets take: eight, or more for a text past 4 GB."
-  (max 8 (length (format nil "~x" total))))
+  (max 8 (ceiling (integer-length total) 4)))
 
 (defun hex-digits (n digits)
   "N in lower-case hex, at least DIGITS digits long, zeros before it."

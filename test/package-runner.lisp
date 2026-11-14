@@ -171,3 +171,10 @@ loads, keeps to the API and passes its tests, 1 otherwise."
            (true (stringp refused))
            (true (search "lacks" refused) "~a" refused))
       (when (find-package '#:runnerlack) (delete-package '#:runnerlack)))))
+
+(define-test (package-runner compiled-in-the-tests-own-cache)
+  ;; a package tested, and every other thing the tests compile or keep, goes in the tests' own
+  ;; cache, never among the developer's compiled packages
+  (let ((own (uiop:xdg-cache-home "tuatara-tests/")))
+    (true (uiop:subpathp (pathname (tuatara.packages::package-cache)) own) "~a" (tuatara.packages::package-cache))
+    (true (uiop:subpathp (pathname (tuatara.io:cache-directory)) own))))

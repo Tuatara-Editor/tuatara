@@ -4,11 +4,11 @@
 (in-package #:tuatara.defaults)
 
 (define-major-mode org-mode text-mode
-  "Org documents: outlines, notes, tasks and literate programs, in
-Org's syntax, with headlines folded with TAB and S-TAB and moved with M-arrows, TODO states,
-tags, timestamps, scheduling and deadlines for the agenda, checkboxes, tables
-and their formulas, links, the clock, dynamic blocks and source blocks to
-tangle; \\[describe-bindings] lists its keys."
+  "Org documents: outlines, notes, tasks and literate programs, in Org's
+syntax, with headlines folded with TAB and S-TAB and moved with M-arrows, TODO
+states, tags, timestamps, scheduling and deadlines for the agenda, checkboxes,
+tables and their formulas, links, the clock, dynamic blocks and source blocks
+to tangle; \\[describe-bindings] lists its keys."
   :lighter "Org" :comment "#" :extensions ("org")
   ;; past what Org's own readers take (the agenda, the clock table): a larger file opens in text mode
   :largest-file *org-file-read-limit*)
@@ -16,8 +16,7 @@ tangle; \\[describe-bindings] lists its keys."
 (defmethod mode-unfilled-line-p ((mode org-mode) text)
   "A headline, a keyword or comment line (#+, # ), a table's line, a drawer's
 or a property's, a fixed-width line (: ), a planning or clock line."
-  (or (and (plusp (length text)) (char= (char text 0) #\*))
-      (cl-ppcre:scan "^\\s*(?:#\\+|#(?:\\s|$)|\\||:|(?:SCHEDULED|DEADLINE|CLOSED|CLOCK):)" text)))
+  (and (cl-ppcre:scan "^(?:\\*+(?:\\s|$)|\\s*(?:#\\+|#(?:\\s|$)|\\||:|(?:SCHEDULED|DEADLINE|CLOSED|CLOCK):))" text) t))
 
 (defparameter *org-laid-out-blocks* '("src" "example" "export" "comment")
   "The Org blocks whose contents are not prose; a quote, verse or centred

@@ -236,6 +236,15 @@ held by nothing else."
   (let ((row (aref (bidi-rows (letters "1 2 3 4 5 6 7 8 9 a " #x5D0) 6) 0)))
     (is eq nil (tuatara.display:row-mixed row))))
 
+(define-test (bidi direction-looked-for-near-the-line-start)
+  ;; a long line of digits, its first letter far into it: taken as written from left to right, the line not
+  ;; read to that letter for each layout
+  (let* ((digits (make-string (* 2 tuatara.display::*direction-reach*) :initial-element #\1))
+         (row (aref (bidi-rows (concatenate 'string digits (letters #x5D0 #x5D1)) 6) 0)))
+    (true (tuatara.display:row-truncated-p row))
+    (is eq nil (tuatara.display:row-mixed row))
+    (is string= "111111" (tuatara.display:row-string row))))
+
 (define-test (bidi tabs-keep-their-columns)
   ;; lines written from right to left set against the right edge: what follows a tab begins at the same column
   (let* ((rows (bidi-rows (letters #x5D0 #\Tab #x5D1 #\Newline #x5D0 #x5D1 #x5D2 #\Tab #x5D3) 20)))

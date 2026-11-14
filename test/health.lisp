@@ -279,7 +279,7 @@ a moment.")
   ;; a grammar that could not be had at first, the program loading grammars having ended (as when the
   ;; sandboxes were ended by something before), is asked for again, not said to be missing
   (let ((refused 0))
-    (remhash "ada" tuatara.syntax::*grammars*)
+    (remhash "ada" tuatara.syntax::**grammars**)
     (sb-int:encapsulate 'tuatara.syntax:find-grammar 'ended-once
                         (lambda (function name)
                           (if (and (equal name "ada") (< refused 1))

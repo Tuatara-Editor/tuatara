@@ -4,11 +4,12 @@
 (defpackage #:tuatara.display
   (:use #:cl #:alexandria)
   (:import-from #:tuatara-user #:*window-min-height* #:*window-min-width* #:*scroll-margin* #:*scroll-recenter*)
-  (:import-from #:tuatara.runtime #:define-setting)
+  (:import-from #:tuatara.runtime #:define-record #:define-setting)
   (:import-from #:tuatara.buffer #:hex-view-p)
   (:export #:buffer-header-line #:buffer-replacements-function)
   (:documentation "The layout engine producing glyph rows from snapshots and window state; faces,
 fonts, rich cells, windows and frames.")
+  (:export #:escape-controls #:shown-name)
   (:export #:*direction-controls* #:*escaped-invisibles* #:in-ranges-p #:fit-columns #:pad-columns #:shorten-string
            #:fill-words #:*screen-column-reach*)
   (:export #:char-columns #:cluster-columns #:mark-code-p #:*mark-base* #:string-columns #:string-column-starts
@@ -18,8 +19,10 @@ fonts, rich cells, windows and frames.")
            #:row #:row-p #:row-string #:row-bytes #:row-start #:row-end #:row-columns #:row-continuation-p #:row-last-p
            #:row-shown-end #:row-truncated-p
            #:row-column-of #:buffer-folds #:fold-region #:unfold-region #:unfold-ranges #:unfold-all #:fold-at
-           #:fold-hiding #:fold-from #:fold-before #:folds-cut #:folds-hiding #:hold-folds #:release-folds #:folds-now
-           #:hide-ranges #:hidden-bounds #:hidden-touched-p #:buffer-hides-p #:hidden-edit-p #:shown-parts
+           #:fold-hiding #:range-folded-p #:fold-from #:fold-before #:folds-cut #:folds-hiding #:hold-folds
+           #:release-folds #:folds-now
+           #:hide-ranges #:hidden-bounds #:hidden-stretch-at #:hidden-touched-p #:buffer-hides-p #:hidden-edit-p
+           #:shown-parts
            #:shown-ranges #:lines-left-out #:visible-line-start #:visible-line-end #:point-out-of-folds
            #:*fold-ellipsis* #:row-faces #:row-char-bytes #:row-spans #:row-extend #:merge-face #:apply-highlights
            #:layout #:point-row-column
@@ -38,14 +41,15 @@ fonts, rich cells, windows and frames.")
            #:reader #:make-reader #:reader-next #:reader-position
            #:window #:make-window #:window-buffer #:window-start #:call-keeping-window-starts
            #:call-keeping-window-lines #:window-width #:window-height #:window-wrap
-           #:window-hscroll #:line-prefix-columns #:*layout-probe* #:window-goal-column #:window-rows #:window-margin
+           #:window-hscroll #:refresh-window-history #:line-prefix-columns #:*layout-probe* #:window-goal-column
+           #:window-rows #:window-margin
            #:window-layout #:window-point-position #:large-column #:window-line-scale #:window-text-width
            #:window-rows-drawn #:window-row-top #:window-row-at #:window-float-in-force #:window-float-function
            #:window-ensure-point-visible #:step-lines #:window-scroll #:window-recenter #:display-column #:code-columns
            #:advance-column #:screen-slice-keys #:buffer-slice-keys #:buffer-screen-column
            #:buffer-move-to-screen-column #:buffer-screen-slice #:scroll-lines
            #:host-tab-width #:sensible-tab-width #:tab-width-of #:host-soft-wrap #:window-wraps-p
-           #:window-layout-rows #:window-row-start #:rows-back
+           #:window-layout-rows #:window-row-start #:rows-back #:row-away
            #:window-point #:window-point-anchor #:window-start-anchor #:window-divider #:window-use-time
            #:window-full-height
            #:window-header-rows #:window-text-top

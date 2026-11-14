@@ -86,60 +86,66 @@ cdr to T once it has run."
   "True when enchant is loaded, loading it the first time (FOREIGN-LIBRARY-P)."
   (and *enchant-library* (foreign-library-p *enchant-library*)))
 
-(defun enchant-octets (word)
-  "WORD as enchant takes it: UTF-8 with a zero after."
-  (sb-ext:string-to-octets word :external-format :utf-8 :null-terminate t))
+(tuatara.io:define-c-function ("enchant_broker_init" %enchant-broker-init) :pointer
+  "A new enchant broker, which finds the dictionaries.")
+
+(tuatara.io:define-c-function ("enchant_broker_request_dict" %enchant-request-dictionary) :pointer
+  "BROKER's dictionary for the language named TAG (en_NZ), or a null pointer."
+  (broker :pointer) (tag :string))
+
+(tuatara.io:define-c-function ("enchant_dict_check" %enchant-check) :int
+  "0 when DICTIONARY takes WORD as spelt right; LENGTH -1 for the whole of WORD."
+  (dictionary :pointer) (word :string) (length sb-alien:long))
+
+(tuatara.io:define-c-function ("enchant_dict_suggest" %enchant-suggest) :pointer
+  "DICTIONARY's suggestions for WORD, a list of strings whose length goes
+where COUNT points; LENGTH -1 for the whole of WORD."
+  (dictionary :pointer) (word :string) (length sb-alien:long) (count :pointer))
+
+(tuatara.io:define-c-function ("enchant_dict_free_string_list" %enchant-free-list) :void
+  "Free LIST, suggestions DICTIONARY gave."
+  (dictionary :pointer) (list :pointer))
+
+(tuatara.io:define-c-function ("enchant_dict_add_to_session" %enchant-add-to-session) :void
+  "Have DICTIONARY take WORD as right while the editor runs; LENGTH -1 for the whole of WORD."
+  (dictionary :pointer) (word :string) (length sb-alien:long))
+
+(tuatara.io:define-c-function ("enchant_dict_add" %enchant-add) :void
+  "Have DICTIONARY take WORD as right from now on, in its personal word list;
+LENGTH -1 for the whole of WORD."
+  (dictionary :pointer) (word :string) (length sb-alien:long))
 
 (defun enchant-dictionary (language)
   "On the speller thread: LANGUAGE's enchant dictionary, asked for the first
 time it is wanted; NIL when enchant has none for it."
   (unless *enchant-broker*
-    (setf *enchant-broker* (foreign-call "enchant_broker_init" sb-sys:system-area-pointer)))
+    (setf *enchant-broker* (%enchant-broker-init)))
   (let ((dictionary (or (gethash language *enchant-dictionaries*)
                         (setf (gethash language *enchant-dictionaries*)
-                              (let* ((name (enchant-octets language))
-                                     (pointer (sb-sys:with-pinned-objects (name)
-                                                (foreign-call "enchant_broker_request_dict" sb-sys:system-area-pointer
-                                                              (sb-sys:system-area-pointer *enchant-broker*)
-                                                              (sb-sys:system-area-pointer (sb-sys:vector-sap name))))))
-                                (if (zerop (sb-sys:sap-int pointer)) :missing pointer))))))
+                              (let ((pointer (%enchant-request-dictionary *enchant-broker* language)))
+                                (if (tuatara.io:null-pointer-p pointer) :missing pointer))))))
     (and (not (eq dictionary :missing)) dictionary)))
 
 (defun enchant-right-p (dictionary word)
   "On the speller thread: true when DICTIONARY takes WORD as spelt right."
-  (let ((octets (enchant-octets word)))
-    (sb-sys:with-pinned-objects (octets)
-      (zerop (foreign-call "enchant_dict_check" sb-alien:int
-                           (sb-sys:system-area-pointer dictionary)
-                           (sb-sys:system-area-pointer (sb-sys:vector-sap octets))
-                           (sb-alien:long (1- (length octets))))))))
+  (zerop (%enchant-check dictionary word -1)))
 
 (defun enchant-suggestions (dictionary word)
   "On the speller thread: what DICTIONARY suggests for WORD, best first, as strings."
-  (let ((octets (enchant-octets word)))
-    (sb-alien:with-alien ((count sb-alien:unsigned-long 0))
-      (let ((list (sb-sys:with-pinned-objects (octets)
-                    (foreign-call "enchant_dict_suggest" sb-sys:system-area-pointer
-                                  (sb-sys:system-area-pointer dictionary)
-                                  (sb-sys:system-area-pointer (sb-sys:vector-sap octets))
-                                  (sb-alien:long (1- (length octets)))
-                                  ((* sb-alien:unsigned-long) (sb-alien:addr count))))))
-        (unless (zerop (sb-sys:sap-int list))
-          (prog1 (loop for i below count
-                       collect (sb-alien:deref (sb-alien:sap-alien list (* (sb-alien:c-string :external-format :utf-8))) i))
-            (foreign-call "enchant_dict_free_string_list" sb-alien:void
-                          (sb-sys:system-area-pointer dictionary) (sb-sys:system-area-pointer list))))))))
+  (sb-alien:with-alien ((count sb-alien:unsigned-long 0))
+    (let ((list (%enchant-suggest dictionary word -1 (sb-alien:alien-sap (sb-alien:addr count)))))
+      (unless (tuatara.io:null-pointer-p list)
+        (prog1 (loop with strings = (sb-alien:sap-alien list (* (sb-alien:c-string :external-format :utf-8)))
+                     for i below count
+                     collect (sb-alien:deref strings i))
+          (%enchant-free-list dictionary list))))))
 
 (defun enchant-add (dictionary word &key session)
   "On the speller thread: have DICTIONARY take WORD as right from now on, in
 its personal word list, kept on disk; with SESSION, only while the editor runs."
-  (let ((octets (enchant-octets word)))
-    (sb-sys:with-pinned-objects (octets)
-      (if session
-          (foreign-call "enchant_dict_add_to_session" sb-alien:void (sb-sys:system-area-pointer dictionary)
-                        (sb-sys:system-area-pointer (sb-sys:vector-sap octets)) (sb-alien:long (1- (length octets))))
-          (foreign-call "enchant_dict_add" sb-alien:void (sb-sys:system-area-pointer dictionary)
-                        (sb-sys:system-area-pointer (sb-sys:vector-sap octets)) (sb-alien:long (1- (length octets))))))))
+  (if session
+      (%enchant-add-to-session dictionary word -1)
+      (%enchant-add dictionary word -1)))
 
 (defun spelling-of (languages word)
   "On the speller thread: :RIGHT when one of LANGUAGES' dictionaries takes

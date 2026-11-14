@@ -62,7 +62,7 @@ the parser. Release them with RELEASE-PARSE."
               (let ((octets (sb-ext:string-to-octets source :external-format :utf-8)))
                 (mapcar (lambda (pattern)
                           (1+ (count 10 octets :end (aref (tuatara.syntax:query-starts query) pattern))))
-                        (tuatara.syntax:query-non-local-patterns query)))
+                        (tuatara.syntax:query-non-local query)))
               "lines of the ~(~a~) rules starting patterns with more than one root" name)))))
   ;; the languages indented by the tree have their rules, and they compile
   (dolist (name '(rust bash))
@@ -151,6 +151,25 @@ the parser. Release them with RELEASE-PARSE."
             (push (enough-namestring file (asdf:system-source-directory "tuatara")) broken))
           (release-parse tree parser))))
     (is equal '() broken)))
+
+(define-test (syntax lisp-loop-named-parses)
+  ;; a loop given a name for return-from parses without errors, the name in a clause of its own
+  (let ((text "(loop named outer for i below 3 do (when (= i 1) (return-from outer i)))"))
+    (multiple-value-bind (tree rope parser) (parse-string "commonlisp" text)
+      (unwind-protect
+           (progn
+             (false (tuatara.syntax:tree-has-error-p tree))
+             (is equal '("named outer")
+                 (let ((found '())
+                       (query (tuatara.syntax:compile-query (tuatara.syntax:find-grammar "commonlisp")
+                                                            "(named_clause) @n")))
+                   (tuatara.syntax:map-query-matches
+                    (lambda (pattern captures count)
+                      (declare (ignore pattern count))
+                      (push (subseq text (aref captures 1) (aref captures 2)) found))
+                    query tree rope 0 (length text))
+                   (nreverse found))))
+        (release-parse tree parser)))))
 
 (define-test (syntax latex-table-columns)
   ;; every & between a table's columns is coloured, those written up against
@@ -319,8 +338,8 @@ what stopped the walk (NIL at a bracket)."
   "The rich colours of all of SYNTAX's buffer, waiting for its parse to finish."
   (let ((tuatara.syntax:*syntax-wait* 30)
         (buffer (tuatara.syntax::syntax-buffer syntax)))
-    (tuatara.syntax:syntax-highlights syntax query (tuatara.defaults::query-faces query :rich 0)
-                                      (list (cons 0 (tuatara.buffer:buffer-size buffer))))))
+    (first (tuatara.syntax:syntax-highlights syntax query (tuatara.defaults::query-faces query :rich 0)
+                                             (list (cons 0 (tuatara.buffer:buffer-size buffer)))))))
 
 (defun fresh-rich-ranges (grammar text query)
   "The rich colours of TEXT parsed from scratch with GRAMMAR."
@@ -1019,12 +1038,12 @@ grammar is forgotten afterwards, and those programs ended."
                             :output :string :error-output :output :ignore-error-status t)
         (declare (ignore error))
         (is = 0 code "the test grammar did not compile:~%~a" output))
-      (remhash "misbehaving" tuatara.syntax::*grammars*)
+      (remhash "misbehaving" tuatara.syntax::**grammars**)
       (remhash "misbehaving" tuatara.syntax::**grammar-faults**)
       (unwind-protect
            (let ((tuatara.syntax:*grammar-directories* (cons directory (tuatara.syntax:grammar-directories))))
              (funcall function (tuatara.syntax:find-grammar "misbehaving") directory))
-        (remhash "misbehaving" tuatara.syntax::*grammars*)
+        (remhash "misbehaving" tuatara.syntax::**grammars**)
         (remhash "misbehaving" tuatara.syntax::**grammar-faults**)
         (dolist (helper (copy-list tuatara.syntax::**helpers**))
           (when (member directory (tuatara.syntax::helper-directories helper) :test #'equal)
@@ -1255,3 +1274,79 @@ has, ended after."
            (tuatara.modes:set-major-mode buffer 'tuatara.defaults::rust-mode)
            (false (tuatara.syntax:buffer-syntax buffer)))
       (tuatara.buffer:kill-buffer buffer))))
+
+(define-test (syntax lua-patterns-read-as-lua)
+  ;; #lua-match? reads its pattern as Lua does: classes, %-quoting and - for a short repeat
+  (flet ((regex (pattern) (tuatara.syntax::lua-pattern-regex pattern)))
+    (is string= "^[A-Z][A-Z_0-9]+$" (regex "^[A-Z][A-Z_0-9]+$"))
+    (is string= "^[-][-][-]" (regex "^[-][-][-]"))
+    (is string= "[0-9]+\\.[A-Za-z]*?x" (regex "%d+%.%a-x"))
+    (is string= "[^0-9]a\\^b\\$c" (regex "%Da^b$c"))
+    (false (regex "%bxy"))
+    (false (regex "%f[%w]"))
+    (false (regex "[%S]"))
+    (true (cl-ppcre:scan (regex "^%u%l+$") "Kea"))
+    (false (cl-ppcre:scan (regex "^%u%l+$") "kea"))))
+
+(define-test (syntax unreadable-rules-leave-helper-alone)
+  ;; rules the helper compiles but the editor's own reader cannot read are refused
+  ;; as rules, the helper that compiled them left running
+  (let ((grammar (tuatara.syntax:find-grammar "rust"))
+        (helper (tuatara.syntax::kept-helper :rules)))
+    (sb-int:encapsulate 'tuatara.syntax::read-query-source 'unreadable
+                        (lambda (function source)
+                          (declare (ignore function source))
+                          (error 'tuatara.syntax::query-source-error)))
+    (unwind-protect
+         (fail (tuatara.syntax:compile-query grammar "(identifier) @not.read") 'tuatara.syntax:query-error)
+      (sb-int:unencapsulate 'tuatara.syntax::read-query-source 'unreadable))
+    (true (tuatara.syntax::helper-alive helper))))
+
+(define-test (syntax queries-let-go-by-the-next-query)
+  ;; a query no longer used is let go of by the helpers when the next query runs,
+  ;; not by the collector's own thread
+  (let* ((grammar (tuatara.syntax:find-grammar "rust"))
+         (query (tuatara.syntax:compile-query grammar "(identifier) @let.go"))
+         (number (tuatara.syntax::query-number query))
+         (helper (tuatara.syntax::kept-helper :rules)))
+    (true (gethash number (tuatara.syntax::helper-queries helper)))
+    (sb-ext:atomic-push number (car tuatara.syntax::**queries-let-go**))
+    (tuatara.syntax::ensure-query helper (tuatara.syntax:compile-query grammar "(identifier) @kept.on"))
+    (false (gethash number (tuatara.syntax::helper-queries helper)))
+    (true (tuatara.syntax::helper-alive helper))))
+
+(define-test (syntax string-kinds-told-without-garbage)
+  ;; telling a string's node kind, asked for each node around a place on every
+  ;; expression motion, makes nothing
+  (true (tuatara.syntax::string-type-p "string_literal"))
+  (true (tuatara.syntax::string-type-p "char_literal"))
+  (false (tuatara.syntax::string-type-p "identifier"))
+  (is = 0 (least-consed (lambda () (tuatara.syntax::string-type-p "call_expression")))))
+
+
+(define-test (syntax moving-by-the-tree-waits-briefly)
+  ;; moving by the tree asks the program parsing with a short wait, so one that
+  ;; hangs holds the editor a quarter of a second, not the usual wait
+  (let* ((buffer (tuatara.buffer:make-buffer "*syntax-moving*" :text "fn main() { let x = (1 + 2); }"))
+         (waits '()))
+    (unwind-protect
+         (let ((syntax (tuatara.syntax:attach-syntax buffer (tuatara.syntax:find-grammar "rust"))))
+           (let ((tuatara.syntax:*syntax-wait* 30)) (true (tuatara.syntax:syntax-ready-tree syntax)))
+           (sb-int:encapsulate 'tuatara.syntax::call-send 'seconds
+                               (lambda (function call &rest keys &key seconds &allow-other-keys)
+                                 (push seconds waits)
+                                 (apply function call keys)))
+           (unwind-protect
+                (progn (tuatara.syntax:node-ancestry syntax 12 13)
+                       (tuatara.syntax:select-node syntax 12 13 :larger))
+             (sb-int:unencapsulate 'tuatara.syntax::call-send 'seconds))
+           (is equal '(1/4 1/4) waits))
+      (tuatara.syntax:detach-syntax buffer)
+      (tuatara.buffer:kill-buffer buffer))))
+
+(define-test (syntax machine-memory-asked-once)
+  ;; the machine's memory, asked for each parse's limit, is asked of the system once
+  (let ((memory (tuatara.syntax::physical-memory)))
+    (true (plusp memory))
+    (is eql memory tuatara.syntax::**physical-memory**)
+    (is eql memory (tuatara.syntax::physical-memory))))

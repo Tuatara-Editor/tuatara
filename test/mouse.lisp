@@ -319,6 +319,11 @@ selected in another program."
     (declare (ignore f))
     (is string= (format nil "hello big world~%second line~%") (session-text editor))))
 
+(define-test (mouse middle-button-on-a-mode-line-pastes-nothing)
+  ;; the middle button pressed on a mode line selects that window and puts nothing in
+  (let ((editor (nth-value 1 (run-events '("C-x 2" (:mouse-2 3 5)) :text *twenty-lines* :height 12 :primary "big "))))
+    (is string= *twenty-lines* (session-text editor))))
+
 (defun click-on-text (frontend text &optional (base :down-mouse-1))
   "Queue on FRONTEND a press of the first mouse button (or BASE) on the first
 cell of TEXT as the frame drawn now shows it, and its release."

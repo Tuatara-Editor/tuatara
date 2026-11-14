@@ -32,39 +32,34 @@ this large, its proportions kept, and shown smaller to fit its window.")
 (defvar *image-views* '()
   "The buffers showing an image file as its picture.")
 
-(defstruct (image-view (:constructor make-image-view (path kind words)) (:copier nil))
+(define-record (image-view (:constructor make-image-view (path kind words)) (:copier nil))
   "What an image's buffer knows: the image file's PATH, its KIND (as
 TUATARA.IO:OCTETS-KIND tells it) and that in WORDS."
-  path kind words)
-
-(setf (documentation 'image-view-p 'function) "True when OBJECT is an IMAGE-VIEW.")
+  (path nil :documentation "The path of the image file of IMAGE-VIEW.")
+  (kind nil :documentation "The kind of IMAGE-VIEW's file, as TUATARA.IO:OCTETS-KIND tells it.")
+  (words nil :documentation "The kind of IMAGE-VIEW's file in words."))
 
 (defun image-view-of (buffer)
   "The IMAGE-VIEW of BUFFER, or NIL when it shows no image file."
   (and (live-buffer-p buffer) (tuatara.buffer:buffer-local buffer 'image-view)))
 
-(defstruct (image-draw-job (:include decoding-job) (:constructor make-image-draw-job (buffer view)) (:copier nil))
-  "VIEW's image being drawn for BUFFER, a decoding job: RESULT, once done,
-\(IMAGE . NOTES) as DECODE-IMAGE gives them."
-  view result)
-
-(setf (documentation 'image-draw-job-p 'function) "True when OBJECT is an IMAGE-DRAW-JOB.")
-
-(tuatara.runtime:define-job-words image-draw-job
-  :doing "Drawing"
-  :description (format nil "Drawing ~a" (tuatara.io:native-file-name (image-view-path (image-draw-job-view job))))
-  :verb "draw it"
-  :left-words "nothing drawn")
+(define-record (image-draw-job (:include drawing-job) (:constructor make-image-draw-job (buffer view path))
+                               (:copier nil))
+  "VIEW's image, the file at PATH, being drawn for BUFFER, a drawing job:
+RESULT, once done, (IMAGE . NOTES) as DECODE-IMAGE gives them."
+  (view nil :documentation "The IMAGE-VIEW whose image IMAGE-DRAW-JOB draws."))
 
 (defmethod tuatara.runtime:job-take-in ((job image-draw-job))
-  "Give the image's buffer its picture (IMAGE-VIEW-SHOW), or say it was stopped."
+  "Give the image's buffer its picture (IMAGE-VIEW-SHOW), or say why there is none."
   (let ((buffer (tuatara.runtime:job-buffer job)))
     (when (image-view-of buffer)
       (image-view-show buffer (image-draw-job-view job)
                        (or (case (tuatara.runtime:job-status job)
-                             (:done (image-draw-job-result job))
+                             (:done (drawing-job-result job))
                              (:stopped (cons nil (list (cons ", not shown: stopped" :comment)))))
-                           (cons nil (list (cons ", not shown: it could not be read" :comment))))))))
+                           (cons nil (list (cons (format nil ", not shown: ~a"
+                                                         (or (drawing-job-failure job) "it could not be read"))
+                                                 :comment))))))))
 
 (defun image-file-kind (native)
   "What the file at NATIVE is by its octets, as two values, a keyword and
@@ -76,24 +71,13 @@ SVG); else NIL."
 
 (defun image-view-start (buffer view)
   "Start drawing VIEW's image, BUFFER's, in the background."
-  (tuatara.runtime:start-job-thread
-   (make-image-draw-job buffer view)
-   (tuatara.runtime:carry-settings
-    *decoding-carried-settings*
-    (lambda (job)
-      (setf (image-draw-job-result job)
-            (handler-case
-                (tuatara.io:call-with-file
-                 (image-view-path view)
-                 (lambda (fd path size)
-                   (declare (ignore path size))
-                   (multiple-value-bind (image notes)
-                       (decode-image fd (image-view-kind view) *image-view-largest* *image-view-largest*
-                                     :cancel (tuatara.runtime:job-cancel job))
-                     (cons image notes))))
-              (storage-condition ()
-                (cons nil (list (cons ", not shown: there was not memory enough to draw it" :comment))))))))
-   :name "tuatara image view"))
+  (start-drawing-job (make-image-draw-job buffer view (image-view-path view))
+                     (lambda (fd cancel)
+                       (multiple-value-bind (image notes)
+                           (decode-image fd (image-view-kind view) *image-view-largest* *image-view-largest*
+                                         :cancel cancel)
+                         (cons image notes)))
+                     :name "tuatara image view"))
 
 (defun image-view-visit (path show)
   "Show the image file at PATH as its picture, with SHOW, a function of the
@@ -105,9 +89,7 @@ nothing to draw it with, which is said)."
     (when native
       (multiple-value-bind (kind words) (image-file-kind native)
         (when (and kind
-                   (file-view-can-draw-p native (find-image-decoder)
-                                         (format nil "no program for pictures (install ~{~a~^ or ~})"
-                                                 (mapcar (lambda (d) (getf d :name)) *image-decoders*))))
+                   (file-view-can-draw-p native (find-image-decoder) (no-decoder-words "pictures" *image-decoders*)))
           (file-view-show native *image-views* (lambda (b) (let ((v (image-view-of b))) (and v (image-view-path v))))
                           (lambda () (image-view-make native kind words)) show))))))
 
@@ -127,29 +109,21 @@ nothing to draw it with, which is said)."
     buffer))
 
 (defun image-view-show (buffer view result)
-  "Give BUFFER, VIEW's, the picture in RESULT, (IMAGE . NOTES), or say in its
-header and its text why there is none. With no picture, or where pictures are
-not shown, the file's octets in its place (FILE-VIEW-FALL-TO-OCTETS)."
+  "Give BUFFER, VIEW's, the picture in RESULT, (IMAGE . NOTES), what is said of
+it in its header. With no picture, or where pictures are not shown, the
+file's octets in its place, and why (FILE-VIEW-FALL-TO-OCTETS)."
   (destructuring-bind (image . notes) result
-    (let ((text (format nil " ~a~{~a~}" (image-view-words view) (mapcar #'car notes))))
-      (setf (tuatara.display:buffer-header-line buffer)
-            (lambda (window) (declare (ignore window)) (values text nil))))
-    (if image
-        (setf (tuatara.buffer:buffer-local buffer :image) image)
-        ;; nothing to show: the words, and why
-        (progn
-          (set-made-text buffer (substitute-command-keys
-                                 (format nil "~a: ~a~{~a~}~%~%The picture could not be drawn: \\[hex-mode] shows its octets.~%"
-                                         (tuatara.io:native-file-name (image-view-path view)) (image-view-words view)
-                                         (mapcar #'car notes))))
-          (setf (tuatara.buffer:buffer-local buffer :picture-pending) nil
-                (tuatara.buffer:buffer-local buffer :picture-view) nil)))
-    (cond ((null image)
-           (file-view-fall-to-octets buffer
-                                     (format nil "The picture could not be drawn (~a~{~a~})" (image-view-words view)
-                                             (mapcar #'car notes))))
-          ((not (and *editor* (tuatara.frontend:frontend-images-p (editor-frontend *editor*))))
-           (file-view-fall-to-octets buffer "Pictures are not shown here")))))
+    (let ((words (format nil "~a~{~a~}" (image-view-words view) (mapcar #'car notes))))
+      (cond ((null image)
+             ;; its text shown, no picture on its way, while the octets are opened
+             (setf (tuatara.buffer:buffer-local buffer :picture-pending) nil
+                   (tuatara.buffer:buffer-local buffer :picture-view) nil)
+             (file-view-fall-to-octets buffer (format nil "The picture could not be drawn (~a)" words)))
+            ((not (and *editor* (tuatara.frontend:frontend-images-p (editor-frontend *editor*))))
+             (file-view-fall-to-octets buffer "Pictures are not shown here"))
+            (t (let ((text (format nil " ~a" words)))
+                 (setf (tuatara.display:buffer-header-line buffer) (lambda (window) (declare (ignore window)) (values text nil))
+                       (tuatara.buffer:buffer-local buffer :image) image)))))))
 
 (defun image-view-forget (buffer)
   "Forget BUFFER, killed, among the images shown; its drawing, a job of its, is stopped with it."

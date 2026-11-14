@@ -2,15 +2,15 @@
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; M-x format-buffer gives the buffer's text to its language's formatter
-;;;; (rustfmt, ruff, clang-format, shfmt..., see *LANGUAGE-FORMATTERS*, else the one
-;;;; Helix names) on its standard input, in the background, shut in the sandbox:
-;;;; it sees the project's directory and its own, read only, and no network. What
-;;;; comes back is put in as one change that undo takes back whole, only the
-;;;; lines that differ replaced, so that point and the marks stay on their text;
-;;;; when the buffer was changed meanwhile, nothing is put in. With no formatter
-;;;; installed, its language server lays the code out where one does; else it
-;;;; is indented as Tuatara indents it. *FORMAT-ON-SAVE* has the languages it
-;;;; names formatted before each save.
+;;;; (rustfmt, ruff, clang-format, shfmt..., see *LANGUAGE-FORMATTERS*, else the
+;;;; usual one for the language) on its standard input, in the background, shut
+;;;; in the sandbox: it sees the project's directory and its own, read only, and
+;;;; no network. What comes back is put in as one change that undo takes back
+;;;; whole, only the lines that differ replaced, so that point and the marks
+;;;; stay on their text; when the buffer was changed meanwhile, nothing is put
+;;;; in. With no formatter installed, its language server lays the code out
+;;;; where one does; else it is indented as Tuatara indents it. *FORMAT-ON-SAVE*
+;;;; has the languages it names formatted before each save.
 
 (in-package #:tuatara.lsp)
 
@@ -39,22 +39,26 @@ to give up sooner on one that hangs.
 - a number: that many seconds, 30 as standard."
   :values (number 0 *))
 
-(defstruct (format-job (:include tuatara.runtime:job)
-                       (:constructor make-format-job (buffer version program then))
-                       (:copier nil))
+(define-record (format-job (:include tuatara.runtime:job)
+                          (:constructor make-format-job (buffer version program then))
+                          (:copier nil))
   "BUFFER's text at VERSION being laid out by PROGRAM, a job: OUTPUT, the text
 it gave back, and SAID, what it said when it failed; THEN, a function of the
 buffer and whether its text was laid out, called once it is over."
-  version program then output said)
-
-(setf (documentation 'format-job-p 'function) "True when OBJECT is a FORMAT-JOB.")
+  (version nil :documentation "The version of the buffer's text that FORMAT-JOB lays out.")
+  (program nil :documentation "The program that lays out the text for FORMAT-JOB.")
+  (then nil
+        :documentation "The function FORMAT-JOB calls once it is over, given the buffer and whether its text was laid
+out.")
+  (output nil :documentation "The text the program of FORMAT-JOB gave back.")
+  (said nil :documentation "What the program of FORMAT-JOB said when it failed."))
 
 (tuatara.runtime:define-job-words format-job
-  :doing "Formatting"
-  :description (format nil "Formatting ~a with ~a" (tuatara.buffer:buffer-name (tuatara.runtime:job-buffer job))
-                       (tuatara.io:native-file-name (format-job-program job)))
-  :verb "format"
-  :left-words "the text is as it was")
+    :doing "Formatting"
+    :description (format nil "Formatting ~a with ~a" (tuatara.buffer:buffer-name (tuatara.runtime:job-buffer job))
+                         (tuatara.io:native-file-name (format-job-program job)))
+    :verb "format"
+    :left-words "the text is as it was")
 
 (defun buffer-language (buffer)
   "The language of BUFFER's major mode, or NIL."
@@ -90,17 +94,20 @@ and its arguments) prints when given INPUT (octets) from DIRECTORY, as two
 values: the octets, or NIL when it failed, and what it said then. Shut in
 the sandbox when *FORMAT-IN-SANDBOX*."
   (if *format-in-sandbox*
-      (let ((fd (tuatara.io:memory-file "tuatara-format" input :kept nil)))
+      (let ((fd (tuatara.io:memory-file "tuatara-format" input :kept nil))
+            (directories (remove-duplicates
+                          (remove-if-not #'tuatara.io:shown-place-p
+                                         (list directory (tuatara.io:parent-path program)
+                                               (tuatara.io:parent-path
+                                                (or (tuatara.io:resolve-links program) program))))
+                          :test #'equal)))
         (unwind-protect
              (multiple-value-bind (output outcome said)
                  (tuatara.io:sandbox-run program (rest command)
                                          :input fd :seconds *format-seconds* :cancel cancel
                                          :output-limit (+ (* 4 (length input)) (* 1024 1024))
-                                         :directories (remove-duplicates
-                                                       (list directory (tuatara.io:parent-path program)
-                                                             (tuatara.io:parent-path (or (tuatara.io:resolve-links program) program)))
-                                                       :test #'equal)
-                                         :directory directory)
+                                         :directories directories
+                                         :directory (if (tuatara.io:shown-place-p directory) directory "/tmp"))
                (case outcome
                  (:done (values output nil))
                  (:unavailable (values nil (format nil "~a; *format-in-sandbox* nil runs formatters without it"
@@ -197,7 +204,8 @@ the text was put in."
          (message "~a could not format ~a: ~a" name (tuatara.buffer:buffer-name buffer) failure)
          nil)
         ((not (eq (tuatara.buffer:buffer-version buffer) version))
-         (message "~a changed while ~a laid it out: nothing put in; format it again" (tuatara.buffer:buffer-name buffer) name)
+         (message "~a changed while ~a laid it out: nothing put in; format it again"
+                  (tuatara.buffer:buffer-name buffer) name)
          nil)
         (t (message "~a formatted by ~a~[: it was laid out already~:;, ~:*~d place~:p changed~]"
                     (tuatara.buffer:buffer-name buffer) name (funcall put-in))
@@ -209,18 +217,20 @@ otherwise, and go on with what was waiting for it."
   (let* ((buffer (tuatara.runtime:job-buffer job))
          (output (format-job-output job))
          (formatted
-           (cond ((not (live-buffer-p buffer)) (return-from tuatara.runtime:job-take-in))
-                 (t (finish-formatting buffer
-                                       (tuatara.io:native-file-name (format-job-program job))
-                                       (format-job-version job)
-                                       (case (tuatara.runtime:job-status job)
-                                         (:stopped (format nil "it was stopped; ~a" (tuatara.runtime:job-left-words job)))
-                                         (:failed (short-failure-words (or (tuatara.runtime:job-error job)
-                                                                           "it ended unexpectedly")))
-                                         (t (and (null output) (short-failure-words (format-job-said job)))))
-                                       (lambda ()
-                                         (put-text-by-lines buffer (tuatara.text:version-rope (format-job-version job))
-                                                           (tuatara.text:octets->rope (coerce output 'tuatara.text:octets)))))))))
+          (cond ((not (live-buffer-p buffer)) (return-from tuatara.runtime:job-take-in))
+                (t (finish-formatting buffer
+                                      (tuatara.io:native-file-name (format-job-program job))
+                                      (format-job-version job)
+                                      (case (tuatara.runtime:job-status job)
+                                        (:stopped (format nil "it was stopped; ~a"
+                                                          (tuatara.runtime:job-left-words job)))
+                                        (:failed (short-failure-words (or (tuatara.runtime:job-error job)
+                                                                          "it ended unexpectedly")))
+                                        (t (and (null output) (short-failure-words (format-job-said job)))))
+                                      (lambda ()
+                                        (put-text-by-lines buffer (tuatara.text:version-rope (format-job-version job))
+                                                           (tuatara.text:octets->rope
+                                                            (coerce output 'tuatara.text:octets)))))))))
     (when (format-job-then job) (funcall (format-job-then job) buffer formatted))))
 
 (define-command format-buffer ()

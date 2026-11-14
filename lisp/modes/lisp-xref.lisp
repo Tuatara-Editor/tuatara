@@ -68,20 +68,16 @@ a step further back, \\[xref-go-forward] forward again."
 
 ;;; Definitions
 
-(defstruct (definition (:constructor make-definition (summary group locate)) (:copier nil))
+(define-record (definition (:constructor make-definition (summary group locate)) (:copier nil))
   "Where a name is defined: SUMMARY, how the list shows it, (defun name);
 GROUP, the file or buffer it is in, as the list heads it; LOCATE, a function of
 no arguments returning the buffer and the octet where the definition begins,
 or NIL and what to say when it cannot be reached."
-  (summary "" :type string :read-only t)
-  (group "" :type string :read-only t)
-  (locate nil :read-only t))
+  (summary "" :type string :read-only t :documentation "How the list of definitions shows a DEFINITION.")
+  (group "" :type string :read-only t :documentation "The file or buffer a DEFINITION is in.")
+  (locate nil :read-only t :documentation "The function that finds a DEFINITION's buffer and octet."))
 
-(setf (documentation 'make-definition 'function) "A DEFINITION from its SUMMARY, GROUP and LOCATE function."
-      (documentation 'definition-p 'function) "True when OBJECT is a DEFINITION."
-      (documentation 'definition-summary 'function) "How the list of definitions shows a DEFINITION."
-      (documentation 'definition-group 'function) "The file or buffer a DEFINITION is in."
-      (documentation 'definition-locate 'function) "The function that finds a DEFINITION's buffer and octet.")
+(setf (documentation 'make-definition 'function) "A DEFINITION from its SUMMARY, GROUP and LOCATE function.")
 
 (defgeneric mode-name-at-point (mode buffer position)
   (:documentation "The name at POSITION of BUFFER that MODE can look up the definitions of,
@@ -90,7 +86,8 @@ as a string; NIL when there is none.")
 
 (defgeneric mode-find-definitions (mode buffer name)
   (:documentation "Where NAME, a string, is defined, as MODE looks it up for BUFFER: a list of
-DEFINITION; :NONE when MODE looks up no definitions.")
+DEFINITION; :NONE when MODE looks up no definitions. For a NAME not empty it may be a LATER giving
+the list once it comes, for a mode that asks a program.")
   (:method (mode buffer name) (declare (ignore mode buffer name)) :none))
 
 (defgeneric mode-name-candidates (mode buffer)
@@ -98,13 +95,20 @@ DEFINITION; :NONE when MODE looks up no definitions.")
 for \\[xref-find-definitions] to ask with; NIL for none.")
   (:method (mode buffer) (declare (ignore mode buffer)) nil))
 
+(defun locate-definition (definition)
+  "The buffer holding DEFINITION and the octet it is at, as two values; NIL,
+after saying why, when it cannot be reached."
+  (multiple-value-bind (b position) (funcall (definition-locate definition))
+    (cond ((typep b 'tuatara.buffer:buffer) (values b position))
+          (t (message "~a" position) nil))))
+
 (defun go-to-definition (definition &key other)
   "Go to DEFINITION in the selected window, or with OTHER in another, or say
 why it cannot be reached."
-  (multiple-value-bind (b position) (funcall (definition-locate definition))
-    (if (typep b 'tuatara.buffer:buffer)
-        (progn (if other (pop-to-buffer b :other t) (show-buffer b)) (goto-shown b position))
-        (message "~a" position))))
+  (multiple-value-bind (b position) (locate-definition definition)
+    (when b
+      (if other (pop-to-buffer b :other t) (show-buffer b))
+      (goto-shown b position))))
 
 (define-command xref-find-definitions ()
   "Go to the definition of the name at point.
@@ -137,15 +141,16 @@ definitions, as xref-find-definitions does."
                                                   (mode-name-candidates mode b)
                                                   :initial (or at-point ""))))
                      (if (symbolp chosen) (qualified-name chosen) chosen))
-                   at-point))
-         (definitions (mode-find-definitions mode b name)))
-    (cond ((null definitions) (message "No definitions found for: ~a" name))
-          ((null (rest definitions))
-           (push-xref-marker)
-           (go-to-definition (first definitions)))
-          (t
-           (push-xref-marker)
-           (show-definitions name definitions)))))
+                   at-point)))
+    (take-answer b (lambda (definitions)
+                     (cond ((null definitions) (message "No definitions found for: ~a" name))
+                           ((null (rest definitions))
+                            (push-xref-marker)
+                            (go-to-definition (first definitions)))
+                           (t
+                            (push-xref-marker)
+                            (show-definitions name definitions))))
+                 (mode-find-definitions mode b name))))
 
 ;;; The list of definitions: *xref*
 
@@ -180,13 +185,20 @@ file's line in :heading, point as RENDER-PIECES puts it."
 (defun xref-refill (list)
   "Find the definitions *xref* LIST shows again, from the buffer they were
 first looked for in while it is there, and list them, point on the same line
-\(\\[revert-buffer])."
-  (let* ((source (tuatara.buffer:buffer-local list 'xref-source))
-         (name (tuatara.buffer:buffer-local list 'xref-name))
-         (again (tuatara.buffer:buffer-local list 'xref-again))
-         (found (and source (live-buffer-p source)
-                     (if again (funcall again) (mode-find-definitions (buffer-major-mode source) source name)))))
-    (xref-list-render list name (if (consp found) found (tuatara.buffer:buffer-local list 'xref-definitions)))))
+\(\\[revert-buffer]); those a program is asked for are listed when they come,
+while LIST is the current buffer as it was."
+  (let ((source (tuatara.buffer:buffer-local list 'xref-source))
+        (name (tuatara.buffer:buffer-local list 'xref-name))
+        (again (tuatara.buffer:buffer-local list 'xref-again)))
+    (flet ((show (found &rest more)
+             (declare (ignore more))
+             (xref-list-render list name
+                               (if (consp found) found (tuatara.buffer:buffer-local list 'xref-definitions)))))
+      (if (and source (live-buffer-p source))
+          (take-answer list #'show (if again
+                                       (funcall again)
+                                       (mode-find-definitions (buffer-major-mode source) source name)))
+          (show nil)))))
 
 (defun show-definitions (name definitions &key again)
   "List DEFINITIONS of NAME in *xref*, file by file, and select its window.
@@ -208,16 +220,15 @@ there finds them again; else as the definitions of NAME."
 select that window when SELECT; in another window when that one is gone."
   (let* ((list (current-buffer))
          (window (tuatara.buffer:buffer-local list 'xref-window)))
-    (multiple-value-bind (b position) (funcall (definition-locate definition))
-      (if (not (typep b 'tuatara.buffer:buffer))
-          (message "~a" position)
-          (let ((target (if (member window (editor-windows *editor*)) window (display-buffer b :other t))))
-            (when target
-              (let ((here (current-window)))
-                (select-window target)
-                (show-buffer b)
-                (goto-shown b position)
-                (unless select (select-window here)))))))))
+    (multiple-value-bind (b position) (locate-definition definition)
+      (when b
+        (let ((target (if (member window (editor-windows *editor*)) window (display-buffer b :other t))))
+          (when target
+            (let ((here (current-window)))
+              (select-window target)
+              (show-buffer b)
+              (goto-shown b position)
+              (unless select (select-window here)))))))))
 
 (defmethod list-entry-noun ((mode xref-mode))
   "A definition."
@@ -320,8 +331,10 @@ were evaluated from in this session."
                                        (lambda ()
                                          (if (live-buffer-p b)
                                              (values b (min (tuatara.buffer:buffer-size b)
-                                                            (tuatara.text:anchor-position anchor (tuatara.buffer:buffer-version b))))
-                                             (values nil (format nil "~a, where it was defined, has been killed" name))))))
+                                                            (tuatara.text:anchor-position
+                                                             anchor (tuatara.buffer:buffer-version b))))
+                                             (values nil
+                                                     (format nil "~a, where it was defined, has been killed" name))))))
                     out))))))
     ;; defined by the init file, in place of the source records, which may name only the
     ;; file of what made the function (recorded keys)

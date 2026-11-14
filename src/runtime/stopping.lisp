@@ -36,17 +36,15 @@ work or another, without reading the clock.")
 on in the background: a regular expression stuck on one line answers no key
 for longer than this.")
 
-(defstruct (stop-entry (:constructor make-stop-entry (slow)) (:copier nil))
+(define-record (stop-entry (:constructor make-stop-entry (slow)) (:copier nil))
   "The threads doing the work of one cancel (STOPPABLE-WORK), one entry for
 each time a thread began it, and SLOW, the seconds one stoppable call of it
 may take, or NIL."
-  (threads '()) slow)
+  (threads '() :documentation "The threads doing a cancel's work.")
+  (slow nil :documentation "Seconds one stoppable call of a cancel's work may take, or NIL."))
 
 (setf (documentation 'make-stop-entry 'function) "Return a stop entry for work whose calls may take
-SLOW seconds, or NIL for no limit."
-      (documentation 'stop-entry-p 'function) "True when OBJECT is a STOP-ENTRY."
-      (documentation 'stop-entry-threads 'function) "The threads doing a cancel's work."
-      (documentation 'stop-entry-slow 'function) "Seconds one stoppable call of a cancel's work may take, or NIL.")
+SLOW seconds, or NIL for no limit.")
 
 (sb-ext:defglobal **stop-entries** (make-hash-table :test 'eq)
   "For each cancel whose work runs now (STOPPABLE-WORK), its STOP-ENTRY.")
@@ -162,10 +160,10 @@ and return what it returns."
 car true, a stoppable call (STOPPABLE) of BODY's, under way or begun after,
 on this thread or on the worker pool for it, ends BODY at once; what BODY
 does between such calls goes on until it looks at CANCEL itself. Returns
-BODY's values, or NIL and CANCEL's car when BODY was stopped so. With SLOW, seconds, BODY is also
-stopped, CANCEL's car :SLOW, when one of its stoppable calls takes longer:
-for work on the editor's thread, which then goes on with it in the
-background."
+BODY's values, or NIL and CANCEL's car when BODY was stopped so. With SLOW,
+seconds, BODY is also stopped, CANCEL's car :SLOW, when one of its stoppable
+calls takes longer: for work on the editor's thread, which then goes on with
+it in the background."
   `(call-stoppable-work ,cancel ,slow (lambda () ,@body)))
 
 (defun call-within-stop-cells (cells function)

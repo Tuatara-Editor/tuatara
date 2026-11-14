@@ -85,6 +85,28 @@ it holds nothing else, and the column its text starts at, as three values."
       (declare (ignore blank))
       (values count (= p end) column))))
 
+(defun text-columns (text &optional (column 0))
+  "The column on the screen after TEXT begun at COLUMN (the start of a line
+unless given): a tab to the next tab stop (TAB-COLUMNS), a wide character
+two columns, a combining mark none."
+  (let ((width (tab-columns)) (before 0))
+    (loop for c across text
+          do (multiple-value-bind (columns next) (tuatara.display:advance-column (char-code c) column before width nil)
+               (incf column columns)
+               (setf before next)))
+    column))
+
+(defun text-column (rope position moved)
+  "The column of POSITION in ROPE, a tab to the next tab stop, its line
+taken as indented when MOVED, the table of lines indented before it in the
+same pass (or NIL), has it: each line's start to (COLUMN . WIDTH), the column
+its text moves to and the octets of blanks it begins with now."
+  (let* ((start (tuatara.text:rope-line-start rope position))
+         (move (and moved (gethash start moved))))
+    (text-columns (tuatara.text:rope-string rope :start (if move (min position (+ start (cdr move))) start)
+                                                   :end position)
+                   (if move (car move) 0))))
+
 (defun indentation-text (buffer column)
   "What indents a line of BUFFER to COLUMN: spaces, or where BUFFER wants tabs
 (BUFFER-INDENT-TABS-P) as many tab characters as fit, and spaces after them."
@@ -92,8 +114,8 @@ it holds nothing else, and the column its text starts at, as three values."
       (let ((width (buffer-tab-width buffer)))
         (concatenate 'string
                      (make-string (floor column width) :initial-element #\Tab)
-                     (make-string (mod column width) :initial-element #\Space)))
-      (make-string column :initial-element #\Space)))
+                     (spaces (mod column width))))
+      (spaces column)))
 
 ;;; Setting them for a major mode
 
@@ -147,7 +169,7 @@ character in whatever the settings say."
                (goal (+ (next-tab-stop column width) (* width (1- count)))))
           (goto (tuatara.buffer:buffer-insert b p (if (buffer-indent-tabs-p b)
                                                       (make-string count :initial-element #\Tab)
-                                                      (make-string (- goal column) :initial-element #\Space))))))))
+                                                      (spaces (- goal column)))))))))
 
 (defun key-character (key)
   "The character KEY stands for when typed after \\[quoted-insert]: a key's own

@@ -308,6 +308,11 @@ of matches made in the background."
     (declare (ignore f))
     (is = 5 (session-point editor))))
 
+(defun follow-case (text matched)
+  "TEXT in the letter case of MATCHED, as a replacement whose pattern ignored
+case writes it."
+  (tuatara.defaults::case-like text (tuatara.defaults::match-case-kind matched)))
+
 (define-test (incremental-search gives-way)
   ;; a search past the serial window stops when a key is waiting and shows it is searching
   (let ((tuatara.syntax:*serial-window* 100) (tuatara.syntax:*parallel-piece* 100)
@@ -344,6 +349,12 @@ of matches made in the background."
   (some (lambda (span) (let ((f (third span))) (or (eq f face) (and (listp f) (member face f))))) spans))
 
 (define-modal-test (incremental-search scope)
+  ;; a replacement of a pattern that matches nothing replaces the first match on the line at
+  ;; point, and with a % in front every match in the buffer, one between each two characters
+  (is string= (format nil "-ab~%cd") (session-text (nth-value 1 (run-keys (format nil "r r ~a RET" (key-string "x*/-"))
+                                                                          :text (format nil "ab~%cd")))))
+  (is string= (format nil "-a-b-~%-c-d-")
+      (session-text (nth-value 1 (run-keys (format nil "r r ~a RET" (key-string "%x*/-")) :text (format nil "ab~%cd")))))
   ;; a region limits a search to itself, from its start; the prompt says so
   (multiple-value-bind (f editor) (run-keys "C-SPC l l l l l C-s a" :text "abc abc abc" :width 80)
     (declare (ignore editor))
@@ -432,13 +443,13 @@ of matches made in the background."
                                                             :text "élan ÉLAN Élan"))))
   (is string= "x ÉLAN Élan" (session-text (nth-value 1 (run-keys (format nil "r r ~a M-r RET" (key-string "%élaN/x"))
                                                                   :text "élaN ÉLAN Élan"))))
-  (is string= "Bar" (tuatara.defaults::follow-case "bar" "Foo"))
-  (is string= "BAR" (tuatara.defaults::follow-case "bar" "FOO"))
-  (is string= "bar" (tuatara.defaults::follow-case "bar" "foo"))
-  (is string= "New Name" (tuatara.defaults::follow-case "new name" "Old Word"))
-  (is string= "Bar" (tuatara.defaults::follow-case "bar" "A"))
-  (is string= "bar" (tuatara.defaults::follow-case "bar" "fOO"))
-  (is string= "TEST-NEW" (tuatara.defaults::follow-case "test-new" "TEST"))
+  (is string= "Bar" (follow-case "bar" "Foo"))
+  (is string= "BAR" (follow-case "bar" "FOO"))
+  (is string= "bar" (follow-case "bar" "foo"))
+  (is string= "New Name" (follow-case "new name" "Old Word"))
+  (is string= "Bar" (follow-case "bar" "A"))
+  (is string= "bar" (follow-case "bar" "fOO"))
+  (is string= "TEST-NEW" (follow-case "test-new" "TEST"))
   ;; a replacement that says its case (\u \U \l \L) is written so, not in the case of what it replaces
   (is string= "Kia Ora Koutou"
       (session-text (nth-value 1 (run-keys (format nil "r r ~a RET" (key-string "%\\b(\\w)(\\w*)/\\u\\1\\L\\2"))
@@ -752,6 +763,17 @@ of matches made in the background."
     (declare (ignore f))
     (is string= "a<1>b<2>" (session-text editor))))
 
+(defun background-search-ended ()
+  "Wait until the search in the background, when one goes on, has ended, for
+at most 20 seconds."
+  (loop with deadline = (tuatara.runtime:deadline-in 20)
+        for state = tuatara.defaults::*search*
+        until (or (null state)
+                  (let ((background (tuatara.defaults::search-state-background state)))
+                    (or (null background) (car (first background))))
+                  (<= (tuatara.runtime:seconds-left deadline) 0))
+        do (sleep 0.02)))
+
 (define-test (incremental-search searched-in-the-background)
   ;; a search that takes more than a moment goes on in the background: RET while it does
   ;; ends the search once it has found its match; C-g stops one that finds nothing
@@ -759,17 +781,8 @@ of matches made in the background."
   (let ((text (concatenate 'string (make-string 30000000 :initial-element #\a) "bc"))
         (tuatara.defaults::*search-foreground-seconds* 0))
     (multiple-value-bind (f editor)
-        (run-keys (list "C-s b c RET"
-                        ;; until the search in the background has found it (the editor is woken then)
-                        (lambda ()
-                          (loop with deadline = (tuatara.runtime:deadline-in 20)
-                                for state = tuatara.defaults::*search*
-                                until (or (null state)
-                                          (let ((background (tuatara.defaults::search-state-background state)))
-                                            (or (null background) (car (first background))))
-                                          (<= (tuatara.runtime:seconds-left deadline) 0))
-                                do (sleep 0.02)))
-                        :tick)
+        ;; until the search in the background has found it (the editor is woken then)
+        (run-keys (list "C-s b c RET" #'background-search-ended :tick)
                   :text text :width 80)
       (true (tuatara.frontend.fake:fake-frame-showing f "searching"))
       (is = (+ 30000000 2) (session-point editor))
@@ -780,6 +793,35 @@ of matches made in the background."
         (is = 0 (session-point editor))
         (false tuatara.defaults::*search*))
       (true (< (- (get-internal-real-time) start) (* 20 internal-time-units-per-second))))))
+
+(define-test (incremental-search background-search-passes-hidden-lines)
+  ;; a search gone on in the background passes over the matches in the lines filters hide,
+  ;; as it does on the editor's thread
+  (let* ((text (concatenate 'string "x" (string #\Newline) "needle hidden" (string #\Newline)
+                            (make-string 30000000 :initial-element #\a) (string #\Newline)
+                            "shown needle" (string #\Newline)))
+         (hidden-end (position #\Newline text :start 2))
+         (tuatara.defaults::*search-foreground-seconds* 0))
+    (multiple-value-bind (f editor)
+        (run-keys (list (lambda ()
+                          (tuatara.display:hide-ranges (tuatara.command:current-buffer)
+                                                       (coerce (list 1 hidden-end) '(vector fixnum))))
+                        "C-s n e e d l e" #'background-search-ended :tick "RET")
+                  :text text :width 80)
+      (declare (ignore f))
+      (is = (+ (search "shown needle" text) (length "shown needle")) (session-point editor)))))
+
+(define-test (incremental-search count-leaves-out-hidden-lines)
+  ;; the count is of the matches the search visits: those in lines filters hide are left out
+  (let ((text (format nil "needle a~%needle hidden~%shown needle~%")))
+    (multiple-value-bind (f editor)
+        (run-keys (list (lambda ()
+                          (tuatara.display:hide-ranges (tuatara.command:current-buffer)
+                                                       (coerce (list 8 22) '(vector fixnum))))
+                        "C-s n e e d l e" #'wait-for-search-count :tick "C-s" #'wait-for-search-count :tick "RET")
+                  :text text :width 80)
+      (true (tuatara.frontend.fake:fake-frame-showing f "2/2    Regex search forward: needle"))
+      (is = 35 (session-point editor)))))
 
 (define-test (incremental-search search-gives-way-soon)
   ;; a search longer than a moment gives the editor's thread back soon at every key, going on

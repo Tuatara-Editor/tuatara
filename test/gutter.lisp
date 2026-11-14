@@ -284,3 +284,15 @@ background, are in; return the frontend and the editor."
              (is = 5005 (marks))
              (is equal '(:changed :added :changed :changed) (mapcar #'kind '(1 2 6 7))))
         (tuatara.buffer:kill-buffer b)))))
+
+(define-test (gutter line-numbers-reuse-their-strings)
+  ;; a number is the same string each time it is drawn, and the width is the digits of the last number
+  (flet ((shown (line) (tuatara.defaults::line-numbers-cell nil nil 0 line '(nil nil nil nil))))
+    (is string= "42" (shown 41))
+    (is eq (shown 41) (shown 41))
+    (is string= "123456" (shown 123455)))
+  (is = 1 (tuatara.defaults::digit-count 0))
+  (is = 1 (tuatara.defaults::digit-count 9))
+  (is = 2 (tuatara.defaults::digit-count 10))
+  (is = 5 (tuatara.defaults::digit-count 99999))
+  (is = 6 (tuatara.defaults::digit-count 100000)))

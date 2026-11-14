@@ -573,7 +573,7 @@ seconds; the editor draws after it as it does when woken."
     (true table)
     ;; the known ones still kept
     (is string= "t" (getf (tuatara.defaults::org-property table :affiliated) :name))
-    (is equal '(:width "5cm") (tuatara.defaults::org-latex-attributes table "latex"))
+    (is equal '(:width "5cm") (tuatara.defaults::org-export-attributes table "latex"))
     (is equal (list :scope "file" (format nil ":~(~a~)" name) 1)
         (tuatara.defaults::dblock-read-params (format nil ":scope file :~(~a~) 1" name)))
     (false (find-symbol name :keyword))
@@ -651,10 +651,18 @@ seconds; the editor draws after it as it does when woken."
         (format nil "Press C-x now.~%")
         (after "g g l l l l l l l l l C-c M" (format nil "Press {{{kbd(C-x)}}} now.~%")))))
 
+(define-test (org todo-by-step-and-to-a-keyword)
+  ;; org-set-todo (S-right, S-left) and org-set-todo-to (the checkboxes finishing a task: test org todo-return,
+  ;; "all ticked: done") change the keyword through one definition
+  (is string= (format nil "* WAIT Task~%") (org-text-after "S-<right>" (format nil "* TODO Task~%")))
+  (is string= (format nil "* Task~%") (org-text-after "S-<left>" (format nil "* TODO Task~%")))
+  (is string= (format nil "Plain~%") (org-text-after "S-<right>" (format nil "Plain~%"))))
+
 (define-test (org todo-keyword-after-any-spaces)
-  ;; spaces or tabs after the stars, more than one: the keyword is changed where it is, the title kept
+  ;; more than one space after the stars: the keyword is changed where it is, the title kept
   (true (uiop:string-prefix-p (format nil "*   WAIT Task~%") (org-text-after "C-c C-t" (format nil "*   TODO Task~%"))))
-  (true (uiop:string-prefix-p (format nil "**~cTODO Task~%" #\Tab)
+  ;; a tab after the stars makes no headline, as in Org: no keyword is put there
+  (true (uiop:string-prefix-p (format nil "**~cTask~%" #\Tab)
                               (org-text-after "C-c C-t" (format nil "**~cTask~%" #\Tab))))
   (true (uiop:string-prefix-p (format nil "*  Task~%")
                               (org-text-after "C-c C-t C-c C-t C-c C-t C-c C-t" (format nil "*  Task~%"))))

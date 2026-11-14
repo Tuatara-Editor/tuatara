@@ -5,7 +5,7 @@
 ;;;; macro), git runs the programs a repository names for itself (hooks,
 ;;;; filters), and a build (M-x compile) runs its own code. None happens by
 ;;;; itself for a project you have not said you trust: once asked and kept
-;;;; between sessions, or in *LSP-TRUSTED-PROJECTS*. One question, the same
+;;;; between sessions, or in *TRUSTED-PROJECTS*. One question, the same
 ;;;; words whatever asks, says all a yes allows, and offers a third answer,
 ;;;; look only: git reads the project, nothing of it runs, and it is not
 ;;;; asked again. A project that is, or holds, an evidence directory is looked
@@ -15,7 +15,7 @@
 
 (in-package #:tuatara.defaults)
 
-(define-setting *lsp-trusted-projects* '()
+(define-setting *trusted-projects* '()
   "Directories whose projects you trust to run their own programs.
 Their language servers start by themselves as their files are opened, git runs
 the programs they name for themselves (hooks, filters), and \\[compile] runs
@@ -25,14 +25,14 @@ asked (kept between sessions).
 - a list of directories' names, ~ for your home directory."
   :values (list-of directory))
 
-(defvar *lsp-trusted-kept* 500
+(defvar *trusted-kept* 500
   "How many projects trusted when asked are remembered, and how many looked
 at only.")
 
-(define-state-list *lsp-trusted* "lsp-trusted" 'parse-absolute-path-line 'escape-path '*lsp-trusted-kept* :trust t
-  :line-key 'parse-absolute-path-line)
+(define-state-list *trusted* "trusted" 'parse-absolute-path-line 'escape-path '*trusted-kept* :trust t
+  :line-key 'parse-absolute-path-line :formerly "lsp-trusted")
 
-(define-state-list *look-only* "look-only" 'parse-absolute-path-line 'escape-path '*lsp-trusted-kept*
+(define-state-list *look-only* "look-only" 'parse-absolute-path-line 'escape-path '*trusted-kept*
   :header (format nil "# Projects looked at only, never trusted to run their own programs: git~%~
                        # reads them and runs nothing they name. One directory a line, where it~%~
                        # really is (\\\\, \\n and \\r stand for \\, a newline and a return).~%")
@@ -52,15 +52,15 @@ ending in /; NIL when it is not there."
     (and real (tuatara.io:slash-ended real))))
 
 (defvar *trusted-directories-seen* '()
-  "Where the directories of *LSP-TRUSTED-PROJECTS* really are, as the setting was
+  "Where the directories of *TRUSTED-PROJECTS* really are, as the setting was
 last looked at: (DIRECTORIES . REAL), DIRECTORIES the setting's directories as written and
 REAL where each really is, NIL for one not there then.")
 
 (defun trusted-setting-directories ()
-  "Where the directories of *LSP-TRUSTED-PROJECTS* really are, those there: each
+  "Where the directories of *TRUSTED-PROJECTS* really are, those there: each
 looked up once while the setting stays the same, one not there looked for
 again each time."
-  (let ((directories (setting-list '*lsp-trusted-projects* *lsp-trusted-projects*))
+  (let ((directories (setting-list '*trusted-projects* *trusted-projects*))
         (seen *trusted-directories-seen*))
     (unless (equal directories (car seen))
       (setf seen (cons (copy-list directories) (make-list (length directories)))
@@ -73,43 +73,47 @@ again each time."
 (defun project-trusted-p (root)
   "True when the project at ROOT may run its own programs. That holds when it,
 where it really is, was trusted when asked (kept by where it really was then),
-or is in one of *LSP-TRUSTED-PROJECTS* (where they really are). It never
+or is in one of *TRUSTED-PROJECTS* (where they really are). It never
 holds for one that is, is in or holds an evidence directory
 \(DIRECTORY-HOLDS-EVIDENCE-P), whose programs could write there, nor for one
 within a directory answered look only (PROJECT-LOOK-ONLY-P). The answer that runs
-less wins."
+less wins. While the project is still being looked through for evidence
+directories it is not trusted, with :PENDING as a second value: the answer
+is to be asked again."
   (let ((real (real-directory root)))
     (and real
-         (or (member real (state-list-entries *lsp-trusted*) :test #'equal)
+         (or (member real (state-list-entries *trusted*) :test #'equal)
              (some (lambda (trusted) (tuatara.io:path-within-p real trusted))
                    (trusted-setting-directories)))
          (not (real-directory-look-only-p real))
          ;; asked only of a project trusted, and told from the setting, not by reading the project
          (not (evidence-path-p real))
-         (not (directory-holds-evidence-p real)))))
+         (multiple-value-bind (holds looking) (directory-holds-evidence-p real)
+           (if looking (values nil :pending) (not holds))))))
 
 (defun trusted-project-key (file)
   "What an answer of BUFFER-IN-TRUSTED-PROJECT-P about FILE depends on, as it
 stands now: a vector of FILE, the generations of the projects trusted and of
-those looked at only (STATE-LIST-GENERATION), *LSP-TRUSTED-PROJECTS* and the
+those looked at only (STATE-LIST-GENERATION), *TRUSTED-PROJECTS* and the
 generation of *EVIDENCE-DIRECTORIES*."
-  (vector file (state-list-generation *lsp-trusted*) (state-list-generation *look-only*) *lsp-trusted-projects*
+  (vector file (state-list-generation *trusted*) (state-list-generation *look-only*) *trusted-projects*
           (evidence-generation)))
 
 (defun trusted-project-key-current-p (key file)
   "True when KEY, made by TRUSTED-PROJECT-KEY, is what it would be now for
 FILE, which allocates nothing."
   (and (equal (svref key 0) file)
-       (eql (svref key 1) (state-list-generation *lsp-trusted*))
+       (eql (svref key 1) (state-list-generation *trusted*))
        (eql (svref key 2) (state-list-generation *look-only*))
-       (equal (svref key 3) *lsp-trusted-projects*)
+       (equal (svref key 3) *trusted-projects*)
        (eql (svref key 4) (evidence-generation))))
 
 (defun buffer-in-trusted-project-p (buffer)
   "True when BUFFER visits a file of a project you trust (PROJECT-TRUSTED-P):
 its text is then parsed by the program shared by such files, not one of its
 own. Looked up again only when the file, the projects trusted or looked at
-only when asked, *LSP-TRUSTED-PROJECTS* or *EVIDENCE-DIRECTORIES* change."
+only when asked, *TRUSTED-PROJECTS* or *EVIDENCE-DIRECTORIES* change, or
+while the project is still being looked through for evidence directories."
   (let* ((file (tuatara.buffer:buffer-file buffer))
          (seen (tuatara.buffer:buffer-local buffer :trusted-project-seen)))
     (if (and seen (trusted-project-key-current-p (car seen) file))
@@ -118,12 +122,12 @@ only when asked, *LSP-TRUSTED-PROJECTS* or *EVIDENCE-DIRECTORIES* change."
         ;; project to a file elsewhere lends it no trust
         (let* ((real (and file (ignoring-errors-reported ("finding where ~a is" file)
                                  (tuatara.io:real-path (tuatara.io:native (tuatara.io:expand-path file))))))
-               (answer (and real
-                            (let ((root (project-root (tuatara.io:parent-path real))))
-                              (and root (project-trusted-p root) t)))))
-          (setf (tuatara.buffer:buffer-local buffer :trusted-project-seen)
-                (cons (trusted-project-key file) answer))
-          answer))))
+               (root (and real (project-root (tuatara.io:parent-path real)))))
+          (multiple-value-bind (answer pending) (and root (project-trusted-p root))
+            (unless pending
+              (setf (tuatara.buffer:buffer-local buffer :trusted-project-seen)
+                    (cons (trusted-project-key file) (and answer t))))
+            (and answer t))))))
 
 (defmethod tuatara.syntax:host-trusted-text-p ((host defaults-host) buffer)
   "True when BUFFER visits a file of a project you trust (BUFFER-IN-TRUSTED-PROJECT-P),
@@ -147,25 +151,31 @@ answered look only."
 (defun project-evidence-words (root)
   "Why the project at ROOT can never be trusted, a phrase, or NIL: it is in
 an evidence directory (EVIDENCE-PATH-P), or is or holds one
-\(DIRECTORY-HOLDS-EVIDENCE-P), whose programs could write there."
+\(DIRECTORY-HOLDS-EVIDENCE-P), whose programs could write there. :PENDING as
+a second value while it is still being looked through for one."
   (multiple-value-bind (in entry) (evidence-path-p root)
     (if in
         (evidence-words in entry)
-        (directory-holds-evidence-p root))))
+        (multiple-value-bind (words looking) (directory-holds-evidence-p root)
+          (values words (and looking :pending))))))
 
 (defun project-look-only-reason (root)
   "Why the project at ROOT is only looked at, never run, a phrase; NIL when
 it is trusted, or not yet answered: it is, is in or holds an evidence directory
 \(PROJECT-EVIDENCE-WORDS), which no trust lifts; or it was answered look
-only (PROJECT-LOOK-ONLY-P)."
-  (or (project-evidence-words root)
-      (and (project-look-only-p root) "it is not trusted")))
+only (PROJECT-LOOK-ONLY-P). :PENDING as a second value while it is still
+being looked through for evidence directories: the answer is to be asked again."
+  (multiple-value-bind (words pending) (project-evidence-words root)
+    (cond (words (values words pending))
+          ((project-look-only-p root) "it is not trusted"))))
 
 (defun trust-question (real)
   "The question asked of the project at REAL, the same words whatever asks:
 all a yes allows, what look only does, and that no leaves it to be asked
 again."
-  (format nil "Trust ~a? y: its language servers start by themselves and run its code, git runs the programs it names (hooks, filters), and its build commands run (M-x compile); l: look only, git reads it and nothing of it runs; n: not now (y, l or n) "
+  (format nil "Trust ~a? y: its language servers start by themselves and run its code, git runs the ~
+               programs it names (hooks, filters), and its build commands run (M-x compile); l: look only, ~
+               git reads it and nothing of it runs; n: not now (y, l or n) "
           (abbreviated-path real)))
 
 (defun ask-project-trust (root &key again)
@@ -190,13 +200,13 @@ never asked of (asked again with AGAIN, it stays so)."
           (t (case (read-answer-key (trust-question real) '(#\y #\l #\n) :fresh t)
                (#\y (when (yes-or-no-p* (format nil "Trust ~a to run its own programs?" (abbreviated-path real)))
                       (state-list-drop *look-only* (list real))
-                      (state-list-put *lsp-trusted* (list real))
+                      (state-list-put *trusted* (list real))
                       (if (project-look-only-p real) :look-only :trusted)))
-               (#\l (state-list-drop *lsp-trusted* (list real))
+               (#\l (state-list-drop *trusted* (list real))
                 (state-list-put *look-only* (list real))
                 :look-only)
                (t (when again
-                    (state-list-drop *lsp-trusted* (list real))
+                    (state-list-drop *trusted* (list real))
                     (state-list-drop *look-only* (list real)))
                   nil))))))
 
@@ -217,7 +227,7 @@ its own programs (its language servers, the programs git runs for it, its
 build commands). The key l keeps it to looking only, git reading it and
 running nothing of it. The key n forgets the answer, to be asked again. A
 project in or holding an evidence directory cannot be trusted, and a directory of
-*LSP-TRUSTED-PROJECTS* stays trusted whatever is answered."
+*TRUSTED-PROJECTS* stays trusted whatever is answered."
   (let* ((buffer (current-buffer))
          (root (or (tuatara.buffer:buffer-local buffer :git-top)
                    (let ((directory (buffer-directory buffer)))
@@ -231,7 +241,7 @@ project in or holding an evidence directory cannot be trusted, and a directory o
           (message "~a ~a" (abbreviated-path root)
                    (cond (evidence (format nil "cannot be trusted: ~a" evidence))
                          ((eq answer :trusted) "is trusted")
-                         ((project-trusted-p root) "is trusted all the same: it is in *lsp-trusted-projects*")
+                         ((project-trusted-p root) "is trusted all the same: it is in *trusted-projects*")
                          ((and (eq answer :look-only)
                                (not (member (real-directory root) (state-list-entries *look-only*) :test #'equal)))
                           "is looked at only all the same: a directory holding it is")

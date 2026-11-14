@@ -138,34 +138,38 @@ stands for), and where it ends. No more than 64 KB of it is read."
 
 (defun pdf-literal-string-at (octets i &optional raw)
   "The (literal string) in OCTETS from I, its escapes and balanced brackets
-read, as text (with RAW, as its octets), and where it ends. No more than
-64 KB of it is read."
+read, as text (with RAW, as its octets), and where it ends, past its closing
+bracket however long it is. No more than 64 KB of it is kept."
   (let ((n (length octets)) (out (make-array 0 :element-type '(unsigned-byte 8) :adjustable t :fill-pointer 0))
         (level 1)
         (j (1+ i)))
-    (loop while (and (< j n) (plusp level) (< (length out) 65536))
-          do (let ((x (aref octets j)))
-               (cond ((= x 92)
-                      (incf j)
-                      (when (< j n)
-                        (let ((e (aref octets j)))
-                          (case (code-char e)
-                            (#\n (vector-push-extend 10 out))
-                            (#\r (vector-push-extend 13 out))
-                            (#\t (vector-push-extend 9 out))
-                            (#\b (vector-push-extend 8 out)) (#\f (vector-push-extend 12 out))
-                            ((#\Newline #\Return))
-                            (t (if (<= 48 e 55)
-                                   (let ((value 0) (k 0))
-                                     (loop while (and (< k 3) (< j n) (<= 48 (aref octets j) 55))
-                                           do (setf value (+ (* value 8) (- (aref octets j) 48))) (incf j) (incf k))
-                                     (decf j)
-                                     (vector-push-extend (logand value 255) out))
-                                   (vector-push-extend e out)))))))
-                     ((= x 40) (incf level) (vector-push-extend x out))
-                     ((= x 41) (decf level) (when (plusp level) (vector-push-extend x out)))
-                     (t (vector-push-extend x out)))
-               (incf j)))
+    (flet ((keep (octet) (when (< (length out) 65536) (vector-push-extend octet out))))
+      (loop while (and (< j n) (plusp level))
+            do (let ((x (aref octets j)))
+                 (cond ((= x 92)
+                        (incf j)
+                        (when (< j n)
+                          (let ((e (aref octets j)))
+                            (case (code-char e)
+                              (#\n (keep 10))
+                              (#\r (keep 13))
+                              (#\t (keep 9))
+                              (#\b (keep 8))
+                              (#\f (keep 12))
+                              (#\Newline)
+                              ;; a line end of CR LF, after a backslash, is passed over whole
+                              (#\Return (when (and (< (1+ j) n) (= (aref octets (1+ j)) 10)) (incf j)))
+                              (t (if (<= 48 e 55)
+                                     (let ((value 0) (k 0))
+                                       (loop while (and (< k 3) (< j n) (<= 48 (aref octets j) 55))
+                                             do (setf value (+ (* value 8) (- (aref octets j) 48))) (incf j) (incf k))
+                                       (decf j)
+                                       (keep (logand value 255)))
+                                     (keep e)))))))
+                       ((= x 40) (incf level) (keep x))
+                       ((= x 41) (decf level) (when (plusp level) (keep x)))
+                       (t (keep x)))
+                 (incf j))))
     (values (if raw (coerce out '(simple-array (unsigned-byte 8) (*))) (pdf-string-text out)) j)))
 
 (defparameter *pdf-item-limit* 1000
@@ -190,11 +194,19 @@ where the items stopped being read."
 and where it ends."
   (let ((n (length octets)) (j (1+ i)))
     (loop while (and (< j n) (not (pdf-delimiter-p (aref octets j)))) do (incf j))
-    (values (concatenate 'string "/" (cl-ppcre:regex-replace-all "#([0-9A-Fa-f]{2})" (tuatara.text:octets-latin-1 octets :start (1+ i) :end j)
-                                                                 (lambda (m g)
-                                                                   (declare (ignore m))
-                                                                   (string (code-char (parse-integer g :radix 16))))
-                                                                 :simple-calls t))
+    (values (if (position 35 octets :start i :end j)
+                (concatenate 'string "/" (cl-ppcre:regex-replace-all
+                                          "#([0-9A-Fa-f]{2})" (tuatara.text:octets-latin-1 octets :start (1+ i) :end j)
+                                          (lambda (m g)
+                                            (declare (ignore m))
+                                            (string (code-char (parse-integer g :radix 16))))
+                                          :simple-calls t))
+                ;; most names have no escape: their octets, each its character, the / first
+                (let ((name (make-string (- j i))))
+                  (loop for k from i below j
+                        for at from 0
+                        do (setf (char name at) (code-char (aref octets k))))
+                  name))
             j)))
 
 (defun pdf-number-at (octets i &optional (end (length octets)))
@@ -287,15 +299,24 @@ NIL for NIL."
 
 ;;; Objects as the file writes them
 
-(defstruct (pdf-indirect (:copier nil))
+(define-record (pdf-indirect (:copier nil))
   "An object of a PDF as the file writes it (NUMBER GENERATION obj ...
 endobj): its number, generation and value, where it and its stream lie, and
 the object stream holding it, each read by PDF-INDIRECT-GET; CONFIRMED, true
 when its stream's /Length reaches an endstream, so that where the stream
 ends is known, not guessed."
-  number generation value at end stream-start stream-end length packed-in confirmed)
-
-(setf (documentation 'pdf-indirect-p 'function) "True when OBJECT is a PDF-INDIRECT.")
+  (number nil :documentation "The number of PDF-INDIRECT.")
+  (generation nil :documentation "The generation number of PDF-INDIRECT.")
+  (value nil :documentation "The value of PDF-INDIRECT.")
+  (at nil :documentation "The octet where PDF-INDIRECT starts in the file.")
+  (end nil :documentation "The octet where PDF-INDIRECT ends in the file.")
+  (stream-start nil :documentation "The octet where the stream of PDF-INDIRECT starts, or NIL when it has none.")
+  (stream-end nil :documentation "The octet where the stream of PDF-INDIRECT ends, or NIL when it has none.")
+  (length nil :documentation "The /Length the stream of PDF-INDIRECT declares.")
+  (packed-in nil :documentation "The object stream holding PDF-INDIRECT, or NIL when it is written in the file itself.")
+  (confirmed nil
+             :documentation "True when the /Length of PDF-INDIRECT's stream reaches an endstream, so that where the
+stream ends is known."))
 
 (declaim (inline pdf-indirect-get))
 (defun pdf-indirect-get (object field)
@@ -334,13 +355,18 @@ when no NUMBER GENERATION stands before P."
               (when (or (< i 0) (pdf-white-p (aref octets i)) (pdf-delimiter-p (aref octets i)))
                 (values start (pdf-integer-at octets start) (pdf-integer-at octets generation-start))))))))))
 
-(defun pdf-indirect-object-at (octets at)
+(defun pdf-endstream-from (octets start)
+  "Where the first endstream at or after START in OCTETS is, or NIL."
+  (tuatara.io:octets-search (load-time-value (tuatara.text:string-octets "endstream")) octets :start start))
+
+(defun pdf-indirect-object-at (octets at &key endstream-from)
   "The object written in OCTETS from AT (its number: NUMBER GENERATION obj),
 as a PDF-INDIRECT with where its stream lies; NIL when none begins there. A
 stream's length is the one its dictionary gives when endstream follows it
-there, else as far as endstream; its end is confirmed when that /Length,
-written there or in an object written just after the stream, reaches an
-endstream."
+there, else as far as endstream, found by ENDSTREAM-FROM, a function of where
+to look from, when given (else PDF-ENDSTREAM-FROM); its end is confirmed when
+that /Length, written there or in an object written just after the stream,
+reaches an endstream."
   (let ((n (length octets)))
     (multiple-value-bind (number after) (pdf-integer-at octets at)
       (multiple-value-bind (generation after) (and number (pdf-integer-at octets after))
@@ -357,9 +383,9 @@ endstream."
                          (exact (and (integerp length) (<= 0 length) (<= (+ data length) n)
                                      (tuatara.io:octets-at-p octets "endstream" (pdf-skip-space octets (+ data length)))
                                      (+ data length)))
-                         (close (or (and exact (pdf-skip-space octets exact))
-                                    (tuatara.io:octets-search (load-time-value (tuatara.text:string-octets "endstream"))
-                                                              octets :start data)))
+                         (close (or (and exact (pdf-skip-space octets exact)) (if endstream-from
+                                                                                   (funcall endstream-from data)
+                                                                                   (pdf-endstream-from octets data))))
                          (data-end (or exact
                                        (and close (let ((e close))
                                                     (when (and (> e data) (= (aref octets (1- e)) 10)) (decf e))
@@ -394,16 +420,19 @@ endstream, as writers put a stream's length after it."
                                 (tuatara.io:octets-at-p octets "endstream"
                                                         (pdf-skip-space octets (+ data value))))))))))
 
-
 (defun map-pdf-written-objects (function octets)
   "Call FUNCTION with each object written in the PDF in OCTETS, as a
 PDF-INDIRECT, in the order written: each found by its NUMBER GENERATION obj,
 none in a comment, the octets of each not looked in again, its stream's
 among them when its end is confirmed (PDF-INDIRECT-OBJECT-AT). Stop when
 FUNCTION returns true, and return that. In a job, it ends when the job is
-asked to stop."
+asked to stop. Each endstream is looked for once, however many streams
+without a right /Length stand before it, so that the file is read in a time
+in step with its size."
   (let ((n (length octets)) (mark (load-time-value (tuatara.text:string-octets "obj"))) (i 0) (count 0)
-        (cursor 0) (depth 0) (comment nil) (escape nil))
+        (cursor 0) (depth 0) (comment nil) (escape nil)
+        ;; the last endstream looked for: from where, and where it is (NIL: none after there)
+        (looked-from nil) (found nil))
     (flet ((in-comment-p (to)
              ;; read on from the cursor to TO: in a % comment there, outside a (string)?
              (loop while (< cursor to)
@@ -418,7 +447,12 @@ asked to stop."
                       (incf cursor))
              comment)
            (read-afresh (from)
-             (setf cursor from depth 0 comment nil escape nil)))
+             (setf cursor from depth 0 comment nil escape nil))
+           (endstream-from (start)
+             ;; the one found before stands when nothing between could hold another
+             (unless (and looked-from (<= looked-from start) (or (null found) (>= found start)))
+               (setf looked-from start found (pdf-endstream-from octets start)))
+             found))
       (loop
         (let ((p (tuatara.io:octets-search mark octets :start i)))
           (unless p (return nil))
@@ -426,7 +460,7 @@ asked to stop."
           (let ((at (pdf-object-header-before octets p))
                 (next (+ p 3)))
             (when (and at (or (>= (+ p 3) n) (pdf-delimiter-p (aref octets (+ p 3)))) (not (in-comment-p at)))
-              (let ((object (pdf-indirect-object-at octets at)))
+              (let ((object (pdf-indirect-object-at octets at :endstream-from #'endstream-from)))
                 (when object
                   (let ((result (funcall function object)))
                     (when result (return result)))
@@ -1074,6 +1108,20 @@ streams hold them found once, at the first object looked for, and at most
   `(let ((*pdf-objects-found* (make-hash-table :test 'equal)))
      ,@body))
 
+(defun pdf-read-notes ()
+  "What is known of how the PDF read through (WITH-PDF-OBJECTS-FOUND) was
+read, as a plist: :SCANNED, true once an object was found by scanning the
+file rather than by its cross-reference; :TOO-MANY, true when its
+cross-reference lists more than *PDF-MOST-ENTRIES* objects."
+  (and *pdf-objects-found*
+       (list :scanned (gethash :scanned *pdf-objects-found*) :too-many (gethash :too-many *pdf-objects-found*))))
+
+(defun note-pdf-scanned ()
+  "Say, of the PDF read through (WITH-PDF-OBJECTS-FOUND), that something of it
+was found by scanning the file (PDF-READ-NOTES)."
+  (when *pdf-objects-found*
+    (setf (gethash :scanned *pdf-objects-found*) t)))
+
 (defun pdf-objects-written (octets)
   "Where each object of the PDF in OCTETS is written, as three values: a
 hash table of (NUMBER . GENERATION) to the offsets of their headers, the
@@ -1293,6 +1341,51 @@ FOUND what is known of it); NIL when it is in neither."
              (destructuring-bind (stream data offsets index) place
                (pdf-packed-object data offsets number :index index :in (pdf-indirect-number stream)))))))
 
+(defun pdf-name-written-p (data name)
+  "True when DATA, a PDF's octets or an object stream's, writes NAME (a string
+with its /) as a whole name, the next octet ending it."
+  (let ((mark (tuatara.text:string-octets name)) (n (length data)))
+    (loop for at = (tuatara.io:octets-search mark data) then (tuatara.io:octets-search mark data :start (1+ at))
+          while at
+          thereis (let ((after (+ at (length mark))))
+                    (or (= after n) (pdf-delimiter-p (aref data after)))))))
+
+(defparameter *pdf-most-escaped-names* 10000
+  "The most names written with #xx escapes read from one stretch of a PDF
+\(PDF-ESCAPED-NAMES).")
+
+(defun pdf-escaped-names (data)
+  "The names DATA, a PDF's octets or an object stream's, writes with #xx
+escapes (/Java#53cript), each as the name it stands for (/JavaScript), at
+most *PDF-MOST-ESCAPED-NAMES* of them, as a hash table of the names."
+  (let ((names (make-hash-table :test 'equal)))
+    (loop for at = (position 35 data) then (position 35 data :start (1+ at))
+          while (and at (< (hash-table-count names) *pdf-most-escaped-names*))
+          do (let ((slash (loop for i from (1- at) downto (max 0 (- at 127))
+                                for c = (aref data i)
+                                when (= c 47) return i
+                                when (pdf-delimiter-p c) return nil)))
+               (when slash
+                 (setf (gethash (pdf-name-at data slash) names) t))))
+    names))
+
+(defun pdf-names-found (octets names)
+  "Those of NAMES, names with their / (/JavaScript), that the PDF in OCTETS
+writes, in the order of NAMES: looked for in its octets and in its object
+streams decoded, as far as *PDF-OBJECT-STREAMS-READ* allows, a name written
+with #xx escapes (/Java#53cript) taken as the one it stands for. Within
+WITH-PDF-OBJECTS-FOUND, the object streams are decoded once for all that
+reads the file."
+  (let* ((found (pdf-objects-scanned octets))
+         (places (cons octets (loop for stream in (gethash :object-streams found)
+                                    for data = (pdf-object-stream-named octets found (pdf-indirect-number stream))
+                                    when data collect data)))
+         (escaped (mapcar #'pdf-escaped-names places)))
+    (remove-if-not (lambda (name)
+                     (or (some (lambda (data) (pdf-name-written-p data name)) places)
+                         (some (lambda (table) (gethash name table)) escaped)))
+                   names)))
+
 (defun pdf-resolve (octets value)
   "VALUE, an object of the PDF in OCTETS, with a reference followed once to
 what it names (PDF-FIND-OBJECT)."
@@ -1325,7 +1418,7 @@ stop."
                        ((and (= c 60) (< (1+ i) n) (= (aref octets (1+ i)) 60))
                         (pdf-object-at octets i))
                        ((= c 60) (pdf-hex-string-at octets i t))
-                       ((= c 47) (multiple-value-bind (name end) (pdf-object-at octets i) (values name end)))
+                       ((= c 47) (pdf-name-at octets i))
                        ((= c 91)
                         (let ((items '()) (j (1+ i)))
                           (loop

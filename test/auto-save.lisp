@@ -66,6 +66,11 @@ and the editor."
       (tuatara.frontend.fake:fake-queue-action f (lambda () (take steps (get-internal-real-time))))
       (values f (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults)))))
 
+(defun recovered-p ()
+  "True once notes.txt has been recovered, its buffer changed by the copy taken in."
+  (let ((buffer (tuatara.buffer:find-buffer "notes.txt")))
+    (and buffer (tuatara.buffer:buffer-modified-p buffer))))
+
 (defun copies-in (directory)
   "The names of the files in DIRECTORY."
   (mapcar #'file-namestring (uiop:directory-files directory)))
@@ -104,7 +109,8 @@ and the editor."
         ;; visited again: said; recovered as one edit, which undo takes back; a save deletes the copy
         (multiple-value-bind (f editor)
             (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file))
-                                     (format nil "M-x ~{~a~^ ~} RET y" (map 'list #'string "recover-file"))))
+                                     (format nil "M-x ~{~a~^ ~} RET y" (map 'list #'string "recover-file"))
+                                     (list :until #'recovered-p)))
           (declare (ignore editor))
           (true (tuatara.frontend.fake:fake-frame-showing f "has changes auto-saved"))
           (true (tuatara.frontend.fake:fake-frame-showing f "notes.txt recovered"))
@@ -114,6 +120,7 @@ and the editor."
             (tuatara.buffer:kill-buffer buffer)))
         (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file))
                                  (format nil "M-x ~{~a~^ ~} RET y" (map 'list #'string "recover-file"))
+                                 (list :until #'recovered-p)
                                  "C-x C-s" (list :until (lambda () (null (copy))))))
         (is string= "first line kea" (alexandria:read-file-into-string file))
         (false (copy))
@@ -247,3 +254,22 @@ and the editor."
            (false (eq thread here)))
       (sb-int:unencapsulate 'tuatara.defaults::auto-save-copies 'where))
     (false (member 'tuatara.defaults::auto-saves-startup-notice tuatara.command:*tick-functions*))))
+
+(define-test (auto-save recovered-away-from-the-editor)
+  ;; the copy is read on a thread of its own, never on the editor's
+  (with-test-directory (dir)
+    (let* ((file (namestring (put-file (merge-pathnames "kept.txt" dir) "old")))
+           (copy (namestring (put-file (merge-pathnames "kept.txt.copy" dir) "new")))
+           (b (tuatara.io:visit-file file))
+           (threads '()))
+      (sb-int:encapsulate 'tuatara.io:file-octets 'where
+                          (lambda (function path &rest keys)
+                            (push sb-thread:*current-thread* threads) (apply function path keys)))
+      (unwind-protect
+           (progn
+             (tuatara.defaults::recover-in-background b copy)
+             (loop repeat 500 until threads do (sleep 0.01))
+             (true threads)
+             (false (member sb-thread:*current-thread* threads)))
+        (sb-int:unencapsulate 'tuatara.io:file-octets 'where)
+        (tuatara.buffer:kill-buffer b)))))

@@ -156,3 +156,36 @@ package's settings left out."
     (fail (macroexpand-1 '(tuatara.runtime::define-setting *no-such-setting* 1 "A setting." :values (intger 0 *))))
     (fail (macroexpand-1 '(tuatara.runtime::define-setting *no-such-setting* 1 "A setting." :values (integer 0))))
     (fail (macroexpand-1 '(tuatara.runtime::define-setting *no-such-setting* 1 nil :values boolean)))))
+
+(tuatara.runtime:define-record (sample-record (:constructor make-sample-record (size)) (:copier nil))
+  "A record the documentation tests define, to read its readers' documentation back."
+  (size 0 :type fixnum :documentation "How large the sample record is.")
+  (name "sample" :read-only t :documentation "What the sample record is called."))
+
+(tuatara.runtime:define-record (sample-record-kind (:include sample-record) (:copier nil))
+  "A sample record of a kind, to read back what its readers take from SAMPLE-RECORD."
+  (kind nil :documentation "The kind of the sample record."))
+
+(define-test (documentation record-slots-documented)
+  (is string= "How large the sample record is." (documentation 'sample-record-size 'function))
+  (is string= "What the sample record is called." (documentation 'sample-record-name 'function))
+  (is string= "The kind of the sample record." (documentation 'sample-record-kind-kind 'function))
+  ;; the readers a record takes from the one it includes keep that one's documentation
+  (is string= "How large the sample record is." (documentation 'sample-record-kind-size 'function))
+  (is string= "True when OBJECT is a SAMPLE-RECORD." (documentation 'sample-record-p 'function))
+  (true (docstring-with-sentence-p (documentation 'make-sample-record 'function)))
+  (true (docstring-with-sentence-p (documentation 'make-sample-record-kind 'function)))
+  (is = 3 (sample-record-size (make-sample-record 3)))
+  (is string= "sample" (sample-record-name (make-sample-record-kind :size 1 :kind :small))))
+
+(define-test (documentation record-without-slot-documentation-refused)
+  (flet ((refusal (form)
+           (handler-case (progn (macroexpand-1 form) nil)
+             (error (e) (princ-to-string e)))))
+    (true (search "SIZE" (refusal '(tuatara.runtime:define-record (bare-record) "A record." (size 0)))))
+    (true (search "SIZE" (refusal '(tuatara.runtime:define-record (bare-record) "A record." size))))
+    (true (search "SIZE" (refusal '(tuatara.runtime:define-record (bare-record) "A record."
+                                    (name nil :documentation "Its name.") (size 0 :type fixnum)))))
+    (true (refusal '(tuatara.runtime:define-record (bare-record) (size 0 :documentation "How large it is."))))
+    (false (refusal '(tuatara.runtime:define-record (bare-record) "A record."
+                      (size 0 :documentation "How large it is."))))))

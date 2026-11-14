@@ -153,27 +153,6 @@ program, which reads it outside the sandbox.
 - nil: it opens the file at once."
   :values boolean)
 
-(defun file-kind (path)
-  "What the file at PATH is by its first octets (TUATARA.IO:FILE-HEAD), as two
-values, the words and the keyword of TUATARA.IO:OCTETS-KIND, a TIFF's size
-read where its first directory stands when that is past them
-\(OCTETS-KIND-OF-FILE); NIL when they do not tell, or it cannot be read (a
-third value, why)."
-  (let ((head (tuatara.io:file-head path)))
-    (cond ((null head)
-           (handler-case (reporting-errors ("reading ~a" path)
-                           (tuatara.io:call-with-file path (constantly nil))
-                           (values nil nil "it cannot be read"))
-             (error (e) (values nil nil (princ-to-string e)))))
-          ((tuatara.io:tiff-octets-p head)
-           (multiple-value-bind (words kind)
-               (ignoring-errors-reported ("reading ~a" path)
-                 (tuatara.io:call-with-file path (lambda (fd native size)
-                                                   (declare (ignore native size))
-                                                   (octets-kind-of-file fd head))))
-             (if (keywordp kind) (values words kind) (tuatara.io:octets-kind head))))
-          (t (tuatara.io:octets-kind head)))))
-
 (defun open-externally-refusal (path &key also)
   "Why the file at PATH is not opened in the desktop's program, as a sentence,
 or NIL when it may be, with its kind in words as a second value; ALSO, kinds
@@ -192,146 +171,10 @@ opened this once besides *OPEN-EXTERNALLY-KINDS*."
   "Files being copied to be opened in the desktop's program, each (THREAD
 . SAID), SAID set to what to say once it is over.")
 
-(defun private-directory-in (base name)
-  "The directory NAME (ending in /, latex/pictures/ for one within another)
-in the directory BASE, for you alone, made with those above it when it is
-not there (ENSURE-PRIVATE-DIRECTORY); its native name, ending in /."
-  (tuatara.io:ensure-private-directory (tuatara.io:path-join (tuatara.io:native base) name)))
-
-(defun private-cache-directory (name)
-  "The directory NAME (ending in /) in the cache directory, for you alone, made
-when it is not there; its native name, ending in /."
-  (private-directory-in (tuatara.io:cache-directory) name))
-
-(defun remote-copy-p (path)
-  "True when PATH is in the directory of the copies of files read from another
-machine, which last only as long as their buffers: a name not worth remembering."
-  (uiop:string-prefix-p (private-cache-directory "remote/") path))
-
-(defun private-state-directory (name)
-  "The directory NAME (ending in /) in the state directory, which keeps what
-lasts from one session to the next, for you alone, made when it is not
-there; its native name, ending in /."
-  (private-directory-in (tuatara.io:state-directory) name))
-
 (defun opened-copies-directory ()
   "Where the copies of files opened in the desktop's programs are kept, for
 you alone: opened/ in the cache directory."
   (private-cache-directory "opened/"))
-
-(defvar *private-directories-held* (make-hash-table :test 'equal :synchronized t)
-  "The private directories this session made and still uses (NEW-PRIVATE-DIRECTORY),
-by native name ending in /: FORGET-OLD-COPIES leaves them be, however old,
-and KEEP-PRIVATE-DIRECTORIES-FRESH keeps them from looking old to other sessions.")
-
-(defvar *private-directories-touched* 0
-  "When KEEP-PRIVATE-DIRECTORIES-FRESH last marked the private directories held as
-used, in universal time.")
-
-(defun forget-old-copies (directory)
-  "Delete what DIRECTORY holds from more than a day ago, but for the private
-directories a session still uses (*PRIVATE-DIRECTORIES-HELD*, or the owner.lock of
-MAKE-OWNED-DIRECTORY held): copies whose programs have them open still, or are
-long done."
-  (let ((day-ago (- (get-universal-time) 86400)))
-    (dolist (entry (ignoring-errors-reported ("listing ~a" directory) (tuatara.io:directory-entries directory)))
-      (let* ((path (tuatara.io:path-join directory (first entry)))
-             (stamp (tuatara.io:path-stamp path :follow nil :failure nil)))
-        (when (and stamp (< (mtime-universal-time (tuatara.io:stamp-mtime stamp)) day-ago)
-                   (not (gethash (tuatara.io:slash-ended path) *private-directories-held*))
-                   (not (tuatara.io:lock-file-held-p (tuatara.io:path-join (tuatara.io:slash-ended path)
-                                                                           "owner.lock"))))
-          (ignoring-errors-reported ("deleting ~a" path) (tuatara.io:delete-tree path)))))))
-
-(defun new-private-directory (directory &key (hold t))
-  "A new directory of its own in DIRECTORY, its name random, for you alone,
-made; what DIRECTORY holds from more than a day ago deleted first
-\(FORGET-OLD-COPIES). With HOLD (as standard), the directory is kept, however
-old, until DELETE-PRIVATE-DIRECTORY deletes it or the session ends; with HOLD
-NIL, it goes a day after it was made, as the copies opened in other programs
-do."
-  (forget-old-copies directory)
-  (let ((place (tuatara.io:path-join directory (tuatara.io:slash-ended (tuatara.io:random-name)))))
-    (tuatara.io:make-directory place #o700)
-    (when hold
-      (setf (gethash place *private-directories-held*) t))
-    place))
-
-(defun make-owned-directory (name &key (base (tuatara.io:cache-directory)))
-  "A new directory of its own in NAME (ending in /, in the directory BASE, by
-default the cache directory), its file owner.lock locked from the moment it
-is made while the session runs, and then naming this machine, so that no
-other session, whatever process numbers it sees, takes it for one left
-behind (FORGET-ABANDONED-DIRECTORIES). Returns the directory, a native name ending
-in /, and the descriptor of the lock, to close when the directory is deleted."
-  (let* ((directory (new-private-directory (private-directory-in base name)))
-         (lock (tuatara.io:path-join directory "owner.lock"))
-         (fd (tuatara.io:open-lock-file lock)))
-    (tuatara.io:write-octets fd (tuatara.text:string-octets (machine-instance)) :path lock)
-    (values directory fd)))
-
-(defun forget-abandoned-directories (name &key own (base (tuatara.io:cache-directory)) before)
-  "Delete the directories in NAME (in the directory BASE, by default the cache
-directory) that sessions on this machine no longer running made with
-MAKE-OWNED-DIRECTORY and left (they crashed): each whose owner.lock names this
-machine and no session holds, BEFORE, a function of the directory, called
-first, when given; and one with no owner.lock, made more than an hour ago.
-OWN, a directory of this session, stays. Another machine's, sharing the
-directory, are its own to judge."
-  (let ((all (private-directory-in base name))
-        (hour-ago (- (get-universal-time) 3600)))
-    (dolist (entry (ignoring-errors-reported ("listing ~a" all) (tuatara.io:directory-entries all)))
-      (let* ((directory (tuatara.io:slash-ended (tuatara.io:path-join all (first entry))))
-             (lock (tuatara.io:path-join directory "owner.lock")))
-        (unless (equal directory own)
-          (if (eq (tuatara.io:path-kind lock :follow nil) :regular)
-              (let ((host (ignoring-errors-reported ("reading ~a" lock)
-                            (tuatara.text:lenient-string (tuatara.io:file-octets lock :limit 1024))))
-                    (fd (ignoring-errors-reported ("opening ~a" lock) (sb-posix:open lock sb-posix:o-rdwr))))
-                (when (and fd (equal host (machine-instance)) (tuatara.runtime:lock-fd fd))
-                  (when before
-                    (ignoring-errors-reported ("ending what ~a held" directory) (funcall before directory)))
-                  (ignoring-errors-reported ("deleting ~a" directory) (tuatara.io:delete-tree directory)))
-                (when fd (sb-posix:close fd)))
-              (let ((stamp (tuatara.io:path-stamp directory :follow nil :failure nil)))
-                (when (and stamp (< (mtime-universal-time (tuatara.io:stamp-mtime stamp)) hour-ago))
-                  (ignoring-errors-reported ("deleting ~a" directory) (tuatara.io:delete-tree directory))))))))))
-
-(defun delete-private-directory (directory)
-  "Delete DIRECTORY, a private directory NEW-PRIVATE-DIRECTORY made, and all in it; it
-is held no longer."
-  (ignoring-errors-reported ("deleting ~a" directory) (tuatara.io:delete-tree directory))
-  (remhash directory *private-directories-held*))
-
-(defun keep-private-directories-fresh (editor)
-  "Tick function: every six hours, mark the private directories this session
-holds (*PRIVATE-DIRECTORIES-HELD*) as used now, so that another session's sweep
-of old copies (FORGET-OLD-COPIES) leaves them be. Returns the seconds until
-it is next wanted."
-  (declare (ignore editor))
-  (let ((due (+ *private-directories-touched* (* 6 3600)))
-        (now (get-universal-time)))
-    (when (>= now due)
-      (setf *private-directories-touched* now)
-      (maphash (lambda (directory held)
-                 (declare (ignore held))
-                 (ignoring-errors-reported ("marking ~a as used" directory) (tuatara.io:touch-path directory)))
-               *private-directories-held*))
-    (max 60 (- (+ *private-directories-touched* (* 6 3600)) now))))
-
-(defun attachment-file-name (name &optional (fallback "attachment"))
-  "NAME, as an attachment or an embedded file calls itself, made a file's name
-alone; what follows its last / or \\, control characters and those a name
-cannot hold on the drives other systems use (: * ? \" < > |) left out, spaces
-and full stops trimmed from its ends, at most 200 characters; FALLBACK for
-one with nothing left, or no NAME."
-  (let* ((name (or name ""))
-         (name (subseq name (1+ (or (position-if (lambda (c) (member c '(#\/ #\\))) name :from-end t) -1))))
-         (name (remove-if (lambda (c) (or (< (char-code c) 32) (= (char-code c) 127) (<= #xD800 (char-code c) #xDFFF)
-                                          (find c ":*?\"<>|")))
-                          name))
-         (name (string-trim " ." name)))
-    (if (zerop (length name)) fallback (subseq name 0 (min 200 (length name))))))
 
 (defun private-copy-path (name)
   "Where a private copy of a file called NAME goes: in a new directory of its own
@@ -460,126 +303,6 @@ agrees, is opened, after asking (*OPEN-EXTERNALLY-ASK*)."
         (message "~a shows no file" (tuatara.buffer:buffer-name (current-buffer)))
         (open-externally-file path))))
 
-(defun program-health-words (what program missing &key (how "shut in"))
-  "What a program does here, as \\[check-health] says it: WHAT by PROGRAM,
-HOW (mailboxes by readpst, shut in), or with PROGRAM NIL, WHAT by none;
-MISSING, what to do about it (install readpst)."
-  (if program
-      (format nil "~a by ~a~@[, ~a~]" what program how)
-      (format nil "~a by none: ~a" what missing)))
-
-(defparameter *outside-programs*
-  '((:spelling :name "Enchant" :what "spelling"
-     :found enchant-p
-     :fedora ("enchant2") :debian ("libenchant-2-2") :arch ("enchant") :weight :recommends)
-    (:sandbox :name "bubblewrap" :what "pictures, programs and grammars run shut in"
-     :programs ("bwrap")
-     :fedora ("bubblewrap") :debian ("bubblewrap") :arch ("bubblewrap") :weight :recommends)
-    (:pictures :name "ImageMagick" :what "pictures"
-     :programs ("magick")
-     :fedora ("ImageMagick")
-     :debian ("imagemagick")
-     :arch ("imagemagick" "libjpeg-turbo" "libtiff" "libwebp" "libheif" "librsvg" "libraw" "openjpeg2" "libjxl")
-     :weight :recommends)
-    (:pdf :name "poppler" :what "PDF files"
-     :programs ("pdftotext" "pdftoppm")
-     :fedora ("poppler-utils") :debian ("poppler-utils") :arch ("poppler") :weight :recommends)
-    (:git :name "git" :what "the git interface"
-     :programs ("git")
-     :fedora ("git-core") :debian ("git") :arch ("git") :weight :recommends)
-    (:man :name "man-db and groff" :what "manual pages"
-     :programs ("man" "groff")
-     :fedora ("man-db" "groff-base") :debian ("man-db" "groff-base") :arch ("man-db" "groff") :weight :recommends)
-    (:notify :name "libnotify" :what "notifications told on the desktop"
-     :programs ("notify-send")
-     :fedora ("libnotify") :debian ("libnotify-bin") :arch ("libnotify") :weight :recommends)
-    (:archives :name "bsdtar" :what "zip, 7z, rar, ISO 9660 and cpio archives"
-     :programs ("bsdtar")
-     :fedora ("bsdtar") :debian ("libarchive-tools") :arch ("libarchive") :weight :recommends)
-    (:seven-zip :name "7-Zip" :what "encrypted 7z and rar, more zip methods"
-     :programs (("7zz" "7z" "7za"))
-     :fedora ("7zip") :debian ("7zip") :arch ("7zip") :weight :recommends)
-    (:gpg :name "GnuPG" :what "encrypted files"
-     :programs ("gpg")
-     :fedora ("gnupg2") :debian ("gnupg") :arch ("gnupg") :weight :suggests)
-    (:open :name "xdg-utils" :what "files opened in the desktop programs"
-     :programs ("xdg-open")
-     :fedora ("xdg-utils") :debian ("xdg-utils") :arch ("xdg-utils") :weight :suggests)
-    (:office :name "LibreOffice" :what "pages of Office documents"
-     :programs ("soffice")
-     :fedora ("libreoffice-writer" "libreoffice-calc" "libreoffice-impress")
-     :debian ("libreoffice-writer" "libreoffice-calc" "libreoffice-impress")
-     :arch ("libreoffice-fresh")
-     :weight :suggests)
-    (:latex :name "TeX Live" :what "PDFs of Org and LaTeX files"
-     :found tuatara.export:latex-engines-found
-     :fedora ("texlive-xetex" "texlive-luatex")
-     :debian ("texlive-xetex" "texlive-luatex")
-     :arch ("texlive-xetex" "texlive-luatex")
-     :weight :suggests))
-  "The software from outside that Tuatara's features run, each (KEY . PLIST):
-:NAME what it is called, :WHAT what it is for, the packages it comes in on
-Fedora, on Debian and Ubuntu, and on Arch (:FEDORA, :DEBIAN, :ARCH), and
-whether Tuatara's own packages recommend it or only suggest it (:WEIGHT).
-:PROGRAMS lists the programs it is found by, each a name or a list of names
-of which any one will do (HEALTH-NEEDS-MISSING); :FOUND, a function of no
-arguments returning true when it is there, stands in for :PROGRAMS for what
-is not a program.
-Arch's ImageMagick reads most kinds of picture only with their libraries
-installed beside it (JPEG, TIFF, WebP, HEIF and AVIF, SVG, camera raws,
-JPEG 2000, JPEG XL: the Arch packages of *IMAGE-FORMAT-LIBRARIES*), so they
-are named with it.
-\\[check-health] says what to install from it; tools/distro-packages.sh names
-the same packages.")
-
-(defparameter *system-programs*
-  '((:ssh :name "OpenSSH and setpriv" :what "a daemon or files on another machine"
-     :programs ("ssh" "setpriv")
-     :fedora ("openssh-clients" "util-linux") :debian ("openssh-client" "util-linux") :arch ("openssh" "util-linux")
-     :weight :suggests))
-  "Programs of the system that Tuatara uses and its packages do not pull in,
-as *OUTSIDE-PROGRAMS* lists the software that they do.")
-
-(defun outside-program (key)
-  "The entry of *OUTSIDE-PROGRAMS* or *SYSTEM-PROGRAMS* for KEY, a property
-list; an error when there is none."
-  (or (rest (or (assoc key *outside-programs*) (assoc key *system-programs*)))
-      (refuse "No outside program is known as ~s" key)))
-
-(defun system-package-family ()
-  "Which packages this system takes, by its /etc/os-release: :FEDORA,
-:DEBIAN (Ubuntu too) or :ARCH; NIL for another or when it does not say."
-  (let ((text (ignoring-errors-reported ("reading /etc/os-release")
-                (tuatara.io:file-text "/etc/os-release" :limit 65536))))
-    (when text
-      (let ((ids (loop for line in (uiop:split-string text :separator '(#\Newline))
-                       when (or (uiop:string-prefix-p "ID=" line) (uiop:string-prefix-p "ID_LIKE=" line))
-                         append (tuatara.text:split-words (string-trim "\"'" (subseq line (1+ (position #\= line))))))))
-        (cond ((intersection ids '("fedora" "rhel" "centos") :test #'string=) :fedora)
-              ((intersection ids '("debian" "ubuntu") :test #'string=) :debian)
-              ((intersection ids '("arch") :test #'string=) :arch))))))
-
-(defun outside-program-install-words (key &optional (family (system-package-family)))
-  "What to install for the outside program KEY (*OUTSIDE-PROGRAMS*), in words:
-install its name, with its packages on this system (FAMILY, as
-SYSTEM-PACKAGE-FAMILY gives it), or on each system when it is not known."
-  (let ((entry (outside-program key)))
-    (format nil "install ~a (~{~a~^; ~})" (getf entry :name)
-            (loop for (system label) in '((:fedora "Fedora") (:debian "Debian and Ubuntu") (:arch "Arch"))
-                  when (or (null family) (eq family system))
-                    collect (format nil "~a: ~{~a~^ ~}" label (getf entry system))))))
-
-(defun outside-program-health-words (key what program &key (how "shut in"))
-  "What the outside program KEY (*OUTSIDE-PROGRAMS*) does here, as
-\\[check-health] says it (PROGRAM-HEALTH-WORDS): WHAT by PROGRAM, its path
-found or NIL, HOW, or by none, what to install."
-  (program-health-words what program (outside-program-install-words key) :how how))
-
-(defun git-health-words ()
-  "What runs git here, as \\[check-health] says it."
-  (outside-program-health-words :git "repositories, their changes and history" (tuatara.io:find-program "git")
-                                :how "never through a shell, only for projects trusted"))
-
 (defun external-program-words ()
   "What opens files outside Tuatara here, as M-x check-health says it."
   (let ((program (and *open-externally-program* (tuatara.io:find-program *open-externally-program*))))
@@ -635,9 +358,7 @@ kind (*OPEN-ADDRESS-SCHEMES*) is refused, and that is said."
          (type (format nil "x-scheme-handler/~a" (address-scheme address))))
     (multiple-value-bind (program arguments given label) (and (open-address-p address) (external-opener type))
       (cond ((not (open-address-p address))
-             (message "Links of the kind ~a are not opened: ~a"
-                      (escape-controls (address-scheme address))
-                      (escape-controls address)))
+             (message "Links of the kind ~a are not opened: ~a" (address-scheme address) address))
             ((null program) (message "~a" (opener-missing given type)))
             ((not (yes-or-no-p* (format nil
                                         "Open ~a in ~a, outside Tuatara?~:[ (the files it asked to attach left out)~;~]"

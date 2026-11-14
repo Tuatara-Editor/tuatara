@@ -1,5 +1,4 @@
-;;;; src/dates/dates.lisp --- Dates and times: day numbers, weekdays, ISO weeks, local time, names, and times written in
-;;;; a pattern.
+;;;; src/dates/dates.lisp --- Dates and times: day numbers, weeks, local time, names and patterns.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; A day is a number: 0 for 1900-01-01, one more for each day after, below 0
@@ -421,6 +420,7 @@ date. O(length of INPUT)."
 none before END."
   (and (< i end) (let ((c (char text i))) (and (char<= #\0 c #\9) (- (char-code c) 48)))))
 
+(declaim (inline fixed-digits short-digits char-at-p))
 (defun fixed-digits (text start count end)
   "The number the COUNT digits at START of TEXT write, or NIL when there are
 not COUNT digits there before END."
@@ -598,10 +598,10 @@ times. Four values: its year, month and day, and the index after it; NIL when
 no date that is in the calendar is there."
   (multiple-value-bind (year month day at)
       (ecase format
-        (:iso (let ((y (fixed-digits text start 4 end))
-                    (m (and (char-at-p text (+ start 4) end "-") (fixed-digits text (+ start 5) 2 end)))
-                    (d (and (char-at-p text (+ start 7) end "-") (fixed-digits text (+ start 8) 2 end))))
-                (and y m d (values y m d (+ start 10)))))
+        (:iso (let* ((y (fixed-digits text start 4 end))
+                     (m (and y (char-at-p text (+ start 4) end "-") (fixed-digits text (+ start 5) 2 end)))
+                     (d (and m (char-at-p text (+ start 7) end "-") (fixed-digits text (+ start 8) 2 end))))
+                (and d (values y m d (+ start 10)))))
         ((:dmy :mdy)
          (multiple-value-bind (a at) (short-digits text start end)
            (when (and a (char-at-p text at end (if (eq format :dmy) "./-" "/-")))
@@ -722,7 +722,9 @@ when it gives none; NIL when it names no date."
     (multiple-value-bind (after day nanos zone) (date-time-at text 0 end :iso)
       (cond (after
              (values (- (+ (* 86400 day) (floor nanos 1000000000)) (* 60 (or zone 0))) zone))
-            ((written-date-at text 0 end :iso)
+            ;; a date running into more digits is none
+            ((let ((at (nth-value 3 (written-date-at text 0 end :iso))))
+               (and at (not (ascii-digit text at end))))
              (multiple-value-bind (year month day) (written-date-at text 0 end :iso)
                (values (* 86400 (day-number year month day)) nil)))
             ;; a month alone: its first day

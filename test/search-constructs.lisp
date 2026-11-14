@@ -336,7 +336,7 @@ question as PATTERN/REPLACEMENT."
   ;; SHA-256 as FIPS 180-4 gives it, the digest written where it is asked
   (let ((digest (make-array 32 :element-type '(unsigned-byte 8))))
     (is string= "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
-        (tuatara.text:octets-hex (tuatara.syntax::sha256 (tuatara.text:string-octets "abc") 3 digest))))
+        (tuatara.text:octets-hex (tuatara.syntax::short-sha256 (tuatara.text:string-octets "abc") 3 digest))))
   (flet ((both (pattern text)
            (let ((finds (construct-finds pattern text)))
              (is equal finds (construct-finds-in-string pattern text) "~a on ~s, in a string" pattern text)

@@ -50,7 +50,7 @@ available unqualified, and the public API of TUATARA is used.")
            #:*state-directory* #:*packages-directory* #:*package-size-limit* #:*archive-seconds*
            #:*archive-free-reserve* #:*archive-listing-limit* #:*differences-limit* #:*gpg-loopback-warning*
            ;; language servers and formatters
-           #:*language-servers* #:*language-formatters* #:*lsp-trusted-projects* #:*lsp-languages*
+           #:*language-servers* #:*language-formatters* #:*trusted-projects* #:*lsp-languages*
            #:*lsp-signature-help* #:*lsp-inlay-hints*
            #:*lsp-wait* #:*lsp-watch-files* #:*lsp-watch-skipped*
            #:*lsp-idle-delay* #:*lsp-hover-echo* #:*lsp-highlight-symbol* #:*lsp-code-lenses* #:*lsp-outline*
@@ -78,6 +78,7 @@ available unqualified, and the public API of TUATARA is used.")
            ;; Org: notes, the agenda, capture, code files and dynamic blocks
            #:*org-startup-indented* #:*org-bullets* #:*org-list-bullets* #:*org-checkbox-signs*
            #:*org-complete-checkboxes* #:*org-return-cycles-checkboxes* #:*org-return-cycles-todo*
+           #:*org-startup-shows-pictures*
            #:*org-log-checkboxes*
            #:*org-standard-todo-keywords* #:*org-todo-keywords-not-cycled* #:*org-todo-keyword-faces*
            #:*org-todo-follows-checkboxes* #:*org-cycle-hide-drawers* #:*org-fold-metadata* #:*org-hide-leading-stars*
@@ -130,6 +131,7 @@ available unqualified, and the public API of TUATARA is used.")
            #:*formatted-file-directory* #:*formatted-file-extension* #:*formatted-file-keywords*
            #:*formatted-file-sort-keywords* #:*formatted-file-prompts* #:*formatted-file-type*
            #:*formatted-file-types* #:*search-files-min-input* #:*search-files-limit* #:*indexed-directories*
+           #:*indexed-files-most*
            #:*daemon-indicator* #:*processing-indicator* #:*indexing-indicator* #:*searching-indicator*
            #:*indexes-kept-on-disk* #:*preview-files* #:*preview-formatted-files* #:*preview-formatted-search*
            #:*preview-file-search* #:*preview-buffers* #:*search-results-save-files*
@@ -140,7 +142,8 @@ available unqualified, and the public API of TUATARA is used.")
            #:*sentence-end-double-space* #:*extra-sentence-abbreviations* #:*removed-sentence-abbreviations*
            #:*git-commit-fill-column* #:*fill-paragraph-limit* #:*fill-ask-column* #:*global-hl-line-mode*
            #:*global-soft-wrap-mode* #:*soft-wrap-modes* #:*centred-text-width* #:*centred-text-modes*
-           #:*soft-wrap-at-fill-column* #:*soft-wrap-indicator* #:*global-visual-line-mode* #:*visual-line-modes*
+           #:*soft-wrap-at-fill-column* #:*soft-wrap-indicator* #:*global-display-fill-column-mode*
+           #:*display-fill-column-modes*
            #:*hl-line-modes* #:*global-cursor-column-mode* #:*cursor-column-modes* #:*global-spellcheck-mode*
            #:*spellcheck-modes* #:*spellcheck-languages* #:*spellcheck-excluded-faces* #:*spellcheck-comment-faces*
            #:*spellcheck-string-faces* #:*global-centred-text-mode* #:*line-numbers-modes*

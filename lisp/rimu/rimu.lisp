@@ -163,8 +163,8 @@ and \\`%' are free."
 
 ;;; What a directory holds
 
-(defstruct (rimu-listing (:constructor make-rimu-listing (directory entries free reason &optional found groups))
-                         (:copier nil))
+(define-record (rimu-listing (:constructor make-rimu-listing (directory entries free reason &optional found groups))
+                            (:copier nil))
   "A directory as rimu read it: DIRECTORY, its native name ending in /;
 ENTRIES, a vector of its entries (TUATARA.IO:LISTED), . and .. among them;
 FREE, the octets that may still be written on its file system, or NIL;
@@ -174,18 +174,28 @@ found so far, by column name, each a vector in the order of ENTRIES, or
 under DIRECTORY (\\[rimu-find], \\[rimu-duplicates]) has FOUND, a line saying
 what was found, its entries named by their paths from DIRECTORY, and GROUPS,
 for files kept together in the order given, the group of each entry, a
-vector, or NIL. GIT-STAMPS are the stamps of the files of git's own that
-say which commit is checked out and what is staged, when its git column was
-read, for a list read again to keep that column while they are unchanged
-\(RIMU-CARRY-CELLS); MARK-KEYS, each entry's key among the marks
-\(RIMU-ENTRY-MARK)."
-  (directory "" :read-only t) (entries #() :read-only t) (free nil :read-only t) (reason nil :read-only t)
-  (found nil :read-only t) (groups nil :read-only t)
-  (cells (make-hash-table :test 'eq :synchronized t) :read-only t)
-  (tuatara.git:git-stamps nil)
-  (mark-keys (make-hash-table :test 'eq :synchronized t) :read-only t))
-
-(setf (documentation 'rimu-listing-p 'function) "True when OBJECT is a RIMU-LISTING.")
+vector, or NIL. KEYS, by column name, what each column that keeps its texts
+while something stays the same (RIMU-SET-COLUMN's KEEP-WHILE) found when it
+was read, for a list read again (RIMU-CARRY-CELLS); MARK-KEYS, each entry's
+key among the marks (RIMU-ENTRY-MARK)."
+  (directory "" :read-only t :documentation "The native name of the directory of RIMU-LISTING, ending in /.")
+  (entries #() :read-only t
+           :documentation "A vector of the entries of RIMU-LISTING (TUATARA.IO:LISTED), . and .. among them.")
+  (free nil :read-only t
+        :documentation "The octets that may still be written on the file system of RIMU-LISTING, or NIL.")
+  (reason nil :read-only t :documentation "Why RIMU-LISTING could not be read, or NIL.")
+  (found nil :read-only t
+         :documentation "A line saying what was found, for a list of files found under the directory, or NIL.")
+  (groups nil :read-only t
+          :documentation "For files kept together, a vector of the group of each entry of RIMU-LISTING, or NIL.")
+  (cells (make-hash-table :test 'eq :synchronized t) :read-only t
+         :documentation "The texts of the columns found so far, by column name, each a vector in the order of the
+entries, or :PENDING while they are found in the background.")
+  (keys (make-hash-table :test 'eq :synchronized t) :read-only t
+        :documentation "By column name, what each column that keeps its texts while something stays the same found when
+RIMU-LISTING was read.")
+  (mark-keys (make-hash-table :test 'eq :synchronized t) :read-only t
+             :documentation "The key among the marks of each entry of RIMU-LISTING."))
 
 (defun rimu-read (directory)
   "Read DIRECTORY, a native name ending in /, into a RIMU-LISTING."
@@ -246,14 +256,24 @@ narrow as a column wants, in units of 1,024, 4.1K, 12M."
 
 ;;; Columns
 
-(defstruct (rimu-column (:constructor make-rimu-column (name cells place align shown documentation)) (:copier nil))
+(define-record (rimu-column (:constructor make-rimu-column
+                               (name cells place align shown documentation &optional keep-while interim))
+                           (:copier nil))
   "A column rimu can show beside the names of entries (RIMU-SET-COLUMN): NAME,
 a keyword; CELLS, the function giving its texts; PLACE, :BEFORE or :AFTER the
 names; ALIGN, :LEFT or :RIGHT; SHOWN, a function of a list's buffer, true
-where it shows; DOCUMENTATION, what it shows."
-  name cells place align shown documentation)
-
-(setf (documentation 'rimu-column-p 'function) "True when OBJECT is a RIMU-COLUMN.")
+where it shows; DOCUMENTATION, what it shows; KEEP-WHILE, a function of a
+directory, or NIL; INTERIM, true when its old texts show while it is found
+again."
+  (name nil :documentation "The name of RIMU-COLUMN, a keyword.")
+  (cells nil :documentation "The function giving the texts of RIMU-COLUMN.")
+  (place nil :documentation "Where RIMU-COLUMN shows, :BEFORE or :AFTER the names.")
+  (align nil :documentation "How RIMU-COLUMN is aligned, :LEFT or :RIGHT.")
+  (shown nil :documentation "A function of a list's buffer, true where RIMU-COLUMN shows.")
+  (documentation nil :documentation "What RIMU-COLUMN shows, in words.")
+  (keep-while nil
+              :documentation "A function of a directory, or NIL, that tells when the texts of RIMU-COLUMN are kept.")
+  (interim nil :documentation "True when the old texts of RIMU-COLUMN show while it is found again."))
 
 (defvar *rimu-columns* '()
   "The columns rimu can show beside the names of entries, in the order they
@@ -270,7 +290,8 @@ each (NAME ENTRIES CELLS), for RIMU-TICK to show.")
 (defvar *rimu-editor* nil
   "The editor rimu last ran in, which RIMU-COLUMN-READY wakes.")
 
-(defun rimu-set-column (name cells &key (place :before) (align :left) (shown 'rimu-details-p) documentation)
+(defun rimu-set-column (name cells &key (place :before) (align :left) (shown 'rimu-details-p) documentation
+                                        keep-while interim)
   "Make NAME, a keyword, a column rimu shows beside the names of entries, in
 place of the column of that name, or after the others. CELLS is a function of
 a directory (its native name, ending in /) and a vector of its entries
@@ -280,8 +301,12 @@ none; or :PENDING when they are found in the background, to be given by
 RIMU-COLUMN-READY. PLACE :BEFORE puts the column before the names, among the
 details, :AFTER after them; ALIGN :LEFT or :RIGHT lines its texts up on that
 side; SHOWN, a function of a list's buffer, is true where the column shows: by
-default where the details do (\\<rimu-mode>\\[rimu-toggle-details]). Returns NAME."
-  (let ((column (make-rimu-column name cells place align shown documentation))
+default where the details do (\\<rimu-mode>\\[rimu-toggle-details]).
+When a list is read again, KEEP-WHILE, a function of its directory, keeps
+the column's texts as they were while it gives the same value (EQUALP, not
+NIL) and the same names are listed; with INTERIM, the texts found before
+show beside the same names until the column is found again. Returns NAME."
+  (let ((column (make-rimu-column name cells place align shown documentation keep-while interim))
         (old (find name *rimu-columns* :key #'rimu-column-name)))
     (setf *rimu-columns* (if old (substitute column old *rimu-columns*) (append *rimu-columns* (list column))))
     name))
@@ -359,11 +384,13 @@ could not be examined."
         (octal (eq *rimu-permissions* :octal)))
     (cond ((null stamp) (if octal "????" "??????????"))
           (octal
-           (let ((text (format nil "~a~@[~c~]" (mode-octal-text (tuatara.io:stamp-mode stamp)) (tuatara.io:listed-label entry))))
+           (let ((text (format nil "~a~@[~c~]"
+                               (mode-octal-text (tuatara.io:stamp-mode stamp)) (tuatara.io:listed-label entry))))
              (rimu-faced-runs text
                               (lambda (i) (and (= i 1) (logtest (tuatara.io:stamp-mode stamp) #o7000) :rimu-set-id)))))
           (t
-           (let ((text (format nil "~a~@[~c~]" (first (mode-field (tuatara.io:stamp-mode stamp))) (tuatara.io:listed-label entry))))
+           (let ((text (format nil "~a~@[~c~]"
+                               (first (mode-field (tuatara.io:stamp-mode stamp))) (tuatara.io:listed-label entry))))
              (rimu-faced-runs text (lambda (i)
                                      (let ((c (char text i)))
                                        (cond ((and (member i '(3 6 9)) (find c "sStT")) :rimu-set-id)
@@ -389,7 +416,10 @@ each entry, for its text."
                                                        ;; none: a directory as a commit left it, not on the disk
                                                        ((zerop (tuatara.io:stamp-ino stamp)) "-")
                                                        (t (princ-to-string (tuatara.io:stamp-ino stamp)))))))
-                 :align :right :documentation "The inode number of each entry, as ls -i writes it: which file on its file system it is; - for an entry of a directory as a commit left it.")
+                 :align :right
+                 :documentation (concatenate 'string "The inode number of each entry, as ls -i writes it: which file "
+                                             "on its file system it is; - for an entry of a directory as a commit "
+                                             "left it."))
 
 (rimu-set-column :permissions (rimu-cells-by-entry 'rimu-permissions-cell)
                  :documentation "The permissions of each entry, as ls -l writes them: drwxr-xr-x.")
@@ -429,14 +459,15 @@ each entry, for its text."
                                                      (rimu-time-text (rimu-mtime entry) now)
                                                      "?"))
                                 entries)))
-                 :documentation "When each entry last changed, as ls -l writes it: Sep 30 11:03, or Sep 30  2025 when older than half a year.")
+                 :documentation (concatenate 'string "When each entry last changed, as ls -l writes it: Sep 30 11:03, "
+                                             "or Sep 30  2025 when older than half a year."))
 
 ;;; Laying a directory out
 
-(defstruct (rimu-view (:constructor make-rimu-view
-                                    (details dotfiles sort directories-first ignored columns marks elsewhere
-                                     taken-out))
-                      (:copier nil))
+(define-record (rimu-view (:constructor make-rimu-view
+                                       (details dotfiles sort directories-first ignored columns marks elsewhere
+                                        taken-out))
+                         (:copier nil))
   "How a rimu list lays its directory out, taken as it is asked for. DETAILS,
 DOTFILES and SORT are as the list has them. DIRECTORIES-FIRST and IGNORED are
 the values of *RIMU-DIRECTORIES-FIRST* and *RIMU-IGNORED-EXTENSIONS*. COLUMNS
@@ -445,11 +476,17 @@ the files of its directory, or NIL. ELSEWHERE is the full names of the files
 it has marked \(>) in other directories (RIMU-MARK-KEYS-ELSEWHERE). TAKEN-OUT
 is a copy of the names of the entries taken out of it
 \(\\<rimu-mode>\\[rimu-take-out-lines]), or NIL."
-  details dotfiles sort directories-first ignored columns marks elsewhere taken-out)
+  (details nil :documentation "Whether RIMU-VIEW lays out details, as the list has it.")
+  (dotfiles nil :documentation "Whether RIMU-VIEW lays out dotfiles, as the list has it.")
+  (sort nil :documentation "How RIMU-VIEW sorts the entries, as the list has it.")
+  (directories-first nil :documentation "The value of *RIMU-DIRECTORIES-FIRST* when RIMU-VIEW was taken.")
+  (ignored nil :documentation "The value of *RIMU-IGNORED-EXTENSIONS* when RIMU-VIEW was taken.")
+  (columns nil :documentation "The RIMU-COLUMNs RIMU-VIEW shows.")
+  (marks nil :documentation "A copy of the marks of the files of the directory of RIMU-VIEW, or NIL.")
+  (elsewhere nil :documentation "The full names of the files marked in other directories (RIMU-MARK-KEYS-ELSEWHERE).")
+  (taken-out nil :documentation "A copy of the names of the entries taken out of the list, or NIL."))
 
-(setf (documentation 'rimu-view-p 'function) "True when OBJECT is a RIMU-VIEW.")
-
-(defstruct (rimu-layout (:constructor make-rimu-layout (text spans lines names &optional table)) (:copier nil))
+(define-record (rimu-layout (:constructor make-rimu-layout (text spans lines names &optional table)) (:copier nil))
   "A directory laid out for its list. TEXT is its text. SPANS is a vector of
 (START END FACE), octets of TEXT in faces, in order. LINES is the entry on
 each line, NIL on the others. NAMES is a table from each entry to the octets
@@ -457,9 +494,15 @@ its name starts after the start of its line, so that its name is found on
 whichever line shows it, the list narrowed by search filters or not. TABLE is
 its columns as KEEP-LIST-TABLE takes them (TITLES TEXTS FIRST), the name among
 them, or NIL when it shows the names alone."
-  text spans lines names table)
-
-(setf (documentation 'rimu-layout-p 'function) "True when OBJECT is a RIMU-LAYOUT.")
+  (text nil :documentation "The text of the directory laid out as RIMU-LAYOUT.")
+  (spans nil :documentation "A vector of (START END FACE), the octets of the text of RIMU-LAYOUT in faces, in order.")
+  (lines nil :documentation "The entry on each line of RIMU-LAYOUT, NIL on the others.")
+  (names nil
+         :documentation "A table from each entry of RIMU-LAYOUT to the octets its name starts after the start of its
+line.")
+  (table nil
+         :documentation "The columns of RIMU-LAYOUT as KEEP-LIST-TABLE takes them (TITLES TEXTS FIRST), or NIL when it
+shows the names alone."))
 
 (defun rimu-details-p (buffer)
   "True when the rimu list BUFFER shows the details (\\<rimu-mode>\\[rimu-toggle-details])."
@@ -580,14 +623,137 @@ link leads, and the name alone as a second value."
                 name)
             name)))
 
+(define-record (rimu-writer (:constructor make-rimu-writer ()) (:copier nil))
+  "The text of a list being laid out (RIMU-LAY-OUT): OUT, where it is written;
+OCTETS, how many were written; SPANS, (START END FACE) for the octets in
+faces, the last first; LINES, the entry of each line written, the last first."
+  (out (make-string-output-stream) :documentation "Where the text of RIMU-WRITER is written.")
+  (octets 0 :documentation "How many octets RIMU-WRITER has written.")
+  (spans '() :documentation "The (START END FACE) of the octets RIMU-WRITER wrote in faces, the last first.")
+  (lines '() :documentation "The entry of each line RIMU-WRITER wrote, the last first."))
+
+(defun rimu-put (writer text &optional face)
+  "Write TEXT with WRITER, in FACE."
+  (let ((n (tuatara.text:string-octet-length text)) (at (rimu-writer-octets writer)))
+    (when (and face (plusp n)) (push (list at (+ at n) face) (rimu-writer-spans writer)))
+    (write-string text (rimu-writer-out writer))
+    (setf (rimu-writer-octets writer) (+ at n))))
+
+(defun rimu-pad (writer n)
+  "Write N spaces with WRITER, none when N is not above 0."
+  (when (plusp n) (rimu-put writer (spaces n))))
+
+(defun rimu-put-cell (writer pieces width align)
+  "Write PIECES, a list of (STRING . FACE), with WRITER in a cell WIDTH
+columns wide, lined up on the ALIGN side, :LEFT or :RIGHT."
+  (let ((room (- width (rimu-pieces-width pieces))))
+    (when (eq align :right) (rimu-pad writer room))
+    (dolist (piece pieces) (rimu-put writer (car piece) (cdr piece)))
+    (when (eq align :left) (rimu-pad writer room))))
+
+(defun rimu-end-line (writer entry)
+  "End the line WRITER writes, the line of ENTRY, or of none when it is NIL."
+  (rimu-put writer (string #\Newline))
+  (push entry (rimu-writer-lines writer)))
+
+(defun rimu-lay-out-header (writer listing view shown)
+  "Write with WRITER the first lines of LISTING's list as VIEW lays it out,
+SHOWN the positions of the entries shown: the directory's name, the marks kept
+in other directories, what was found, with the details the octets used and
+free, and why it could not be read."
+  (flet ((line (text &optional face)
+           (rimu-put writer "  ")
+           (rimu-put writer text face)
+           (rimu-end-line writer nil)))
+    (rimu-put writer "  ")
+    (rimu-put writer (rimu-header-name (rimu-listing-directory listing)) :heading)
+    (rimu-put writer ":")
+    (rimu-end-line writer nil)
+    ;; marks kept in other directories, which the operations take too
+    (let ((elsewhere (count-if #'rimu-mark-still-there-p (rimu-view-elsewhere view))))
+      (when (plusp elsewhere)
+        (rimu-put writer (substitute-command-keys
+                          (format nil "  ~d marked in other directories, taken by the operations too ~
+                                       (\\<rimu-mode>\\[list-unmark-all] takes every mark away)"
+                                  elsewhere))
+                  :list-marked)
+        (rimu-end-line writer nil)))
+    (when (rimu-listing-found listing)
+      (line (escape-controls (rimu-listing-found listing))))
+    (when (rimu-view-details view)
+      (let ((entries (rimu-listing-entries listing))
+            (free (rimu-listing-free listing)))
+        (line (format nil "total used in directory ~a available ~a"
+                      (rimu-size-words (loop for i in shown sum (tuatara.io:listed-used (aref entries i))))
+                      (if free (rimu-size-words free) "unknown")))))
+    (when (rimu-listing-reason listing)
+      (line (rimu-listing-reason listing) :error))))
+
+(defun rimu-lay-out-entry (writer listing view i cells widths name-width last-after)
+  "Write with WRITER the line of the entry at I among LISTING's entries, as
+VIEW lays it out: a column for its mark, a space, the columns before the name
+lined up (CELLS and WIDTHS, those of VIEW's columns), its name and where a
+symbolic link leads, and, after the names lined up NAME-WIDTH wide, the
+columns after it, LAST-AFTER the position of the last of those, given no
+width. Those empty at the end of the line are left out. Returns the octets
+from the line's start its name starts after."
+  (let* ((entry (aref (rimu-listing-entries listing) i))
+         (columns (rimu-view-columns view))
+         (line-start (rimu-writer-octets writer))
+         (mark (and (rimu-view-marks view)
+                    (gethash (rimu-mark-key (rimu-listing-directory listing) entry) (rimu-view-marks view)))))
+    (flet ((cell (vector) (rimu-cell-pieces (and (vectorp vector) (aref vector i)))))
+      ;; the first column for its mark; its colour and its name's come from the marks as
+      ;; they are when shown (mode-syntax-highlights), so that unmarking shows at once
+      (rimu-put writer (string (or mark #\Space)))
+      (rimu-put writer " ")
+      (loop for column in columns
+            for vector in cells
+            for width in widths
+            when (eq (rimu-column-place column) :before)
+              do (rimu-put-cell writer (cell vector) width (rimu-column-align column))
+                 (rimu-put writer " "))
+      (prog1 (- (rimu-writer-octets writer) line-start)
+        (multiple-value-bind (part alone) (rimu-name-part entry (rimu-view-details view))
+          (rimu-put writer alone (rimu-name-face entry (rimu-view-ignored view)))
+          (when (> (length part) (length alone))
+            (rimu-put writer " -> ")
+            (rimu-put writer (subseq part (+ (length alone) 4))
+                      (case (rimu-leads-to entry) ((nil) :rimu-broken-symlink) (:directory :list-directory))))
+          (let ((after (loop for column in columns
+                             for vector in cells
+                             for width in widths
+                             for k from 0
+                             when (eq (rimu-column-place column) :after)
+                               collect (list (cell vector) (if (eql k last-after) 0 width)
+                                             (rimu-column-align column)))))
+            (loop while (and after (null (first (car (last after))))) do (setf after (butlast after)))
+            (when after
+              (rimu-pad writer (- name-width (text-columns part)))
+              (loop for (pieces width align) in after
+                    for k from 1
+                    do (rimu-put writer "  ")
+                       (rimu-put-cell writer pieces (if (= k (length after)) 0 width) align)))))))))
+
+(defun rimu-table-row (entry i ordered)
+  "The texts of the entry ENTRY, at I among its listing's, for the table of its
+list's columns (KEEP-LIST-TABLE): for each of ORDERED, (COLUMN . CELLS) or NIL
+for the name, its text, a vector."
+  (map 'simple-vector
+       (lambda (place)
+         (if place
+             (let ((vector (cdr place)))
+               (format nil "~{~a~}" (mapcar #'car (rimu-cell-pieces (and (vectorp vector) (aref vector i))))))
+             (escape-controls (tuatara.io:listed-name entry))))
+       ordered))
+
 (defun rimu-lay-out (listing view)
   "LISTING laid out as VIEW says, a RIMU-LAYOUT. It has the directory's name;
 with the details, the octets its entries shown take on the disk and those
 still free; why it could not be read, if it could not; then a line per entry
-shown. A line is two spaces, for marks, the columns before the name lined up,
-the name, where a symbolic link leads (with the details), and the columns
-after the name lined up after the longest."
+shown (RIMU-LAY-OUT-ENTRY), files found in groups a line apart."
   (let* ((entries (rimu-listing-entries listing))
+         (groups (rimu-listing-groups listing))
          (shown (rimu-shown listing view))
          (columns (rimu-view-columns view))
          (cells (mapcar (lambda (column) (rimu-cells listing column)) columns))
@@ -600,7 +766,7 @@ after the name lined up after the longest."
                          (loop for i in shown
                                maximize (text-columns (rimu-name-part (aref entries i) (rimu-view-details view))))
                          0))
-         (out (make-string-output-stream))
+         (writer (make-rimu-writer))
          (names (make-hash-table :test 'eq))
          ;; the columns in the order the line shows them, NIL for the name
          (ordered (and columns
@@ -611,107 +777,28 @@ after the name lined up after the longest."
                                      when (eq (rimu-column-place column) :after) collect (cons column vector)))))
          (texts (and ordered (make-hash-table :test 'eq)))
          (first-texts nil)
-         (octets 0) (spans '()) (lines '()) (last-group nil))
-    (labels ((put (text &optional face)
-               (let ((n (tuatara.text:string-octet-length text)))
-                 (when (and face (plusp n)) (push (list octets (+ octets n) face) spans))
-                 (write-string text out)
-                 (incf octets n)))
-             (pad (n) (when (plusp n) (put (make-string n :initial-element #\Space))))
-             (put-cell (pieces width align)
-               (let ((room (- width (rimu-pieces-width pieces))))
-                 (when (eq align :right) (pad room))
-                 (dolist (piece pieces) (put (car piece) (cdr piece)))
-                 (when (eq align :left) (pad room))))
-             (end-line (entry)
-               (put (string #\Newline))
-               (push entry lines)))
-      (put "  ")
-      (put (rimu-header-name (rimu-listing-directory listing)) :heading)
-      (put ":")
-      (end-line nil)
-      ;; marks kept in other directories, which the operations take too
-      (let ((elsewhere (count-if #'rimu-mark-still-there-p (rimu-view-elsewhere view))))
-        (when (plusp elsewhere)
-          (put (format nil "  ~d marked in other directories, taken by the operations too (U takes every mark away)" elsewhere)
-               :list-marked)
-          (end-line nil)))
-      (when (rimu-listing-found listing)
-        (put "  ")
-        (put (escape-controls (rimu-listing-found listing)))
-        (end-line nil))
-      (when (rimu-view-details view)
-        (let ((free (rimu-listing-free listing)))
-          (put (format nil "  total used in directory ~a available ~a"
-                       (rimu-size-words (loop for i in shown sum (tuatara.io:listed-used (aref entries i))))
-                       (if free (rimu-size-words free) "unknown"))))
-        (end-line nil))
-      (when (rimu-listing-reason listing)
-        (put "  ")
-        (put (rimu-listing-reason listing) :error)
-        (end-line nil))
-      (dolist (i shown)
-        ;; a line apart between groups
-        (let ((groups (rimu-listing-groups listing)))
-          (when groups
-            (unless (eql (aref groups i) last-group)
-              (when last-group (end-line nil))
-              (setf last-group (aref groups i)))))
-        (let* ((entry (aref entries i))
-               (line-start octets)
-               (mark (and (rimu-view-marks view)
-                          (gethash (rimu-mark-key (rimu-listing-directory listing) entry) (rimu-view-marks view)))))
-          ;; the first column for its mark; its colour and its name's come from the marks as
-          ;; they are when shown (mode-syntax-highlights), so that unmarking shows at once
-          (put (string (or mark #\Space)))
-          (put " ")
-          (loop for column in columns
-                for vector in cells
-                for width in widths
-                when (eq (rimu-column-place column) :before)
-                  do (put-cell (rimu-cell-pieces (and (vectorp vector) (aref vector i))) width (rimu-column-align column))
-                     (put " "))
-          (let ((name octets))
-            (setf (gethash entry names) (- name line-start))
-            (multiple-value-bind (part alone) (rimu-name-part entry (rimu-view-details view))
-              (put alone (rimu-name-face entry (rimu-view-ignored view)))
-              (when (> (length part) (length alone))
-                (put " -> ")
-                (put (subseq part (+ (length alone) 4))
-                     (case (rimu-leads-to entry) ((nil) :rimu-broken-symlink) (:directory :list-directory))))
-              ;; the columns after the name, those empty at the end of the line left out
-              (let ((after (loop for column in columns
-                                 for vector in cells
-                                 for width in widths
-                                 for k from 0
-                                 when (eq (rimu-column-place column) :after)
-                                   collect (list (rimu-cell-pieces (and (vectorp vector) (aref vector i)))
-                                                 (if (eql k last-after) 0 width) (rimu-column-align column)))))
-                (loop while (and after (null (first (car (last after))))) do (setf after (butlast after)))
-                (when after
-                  (pad (- name-width (text-columns part)))
-                  (loop for (pieces width align) in after
-                        for k from 1
-                        do (put "  ")
-                           (put-cell pieces (if (= k (length after)) 0 width) align)))))
-            (when texts
-              (let ((row (map 'simple-vector
-                              (lambda (place)
-                                (if place
-                                    (let ((vector (cdr place)))
-                                      (format nil "~{~a~}" (mapcar #'car (rimu-cell-pieces (and (vectorp vector) (aref vector i))))))
-                                    (escape-controls (tuatara.io:listed-name entry))))
-                              ordered)))
-                (setf (gethash entry texts) row)
-                (unless first-texts (setf first-texts row))))
-            (end-line entry)))))
-    (make-rimu-layout (get-output-stream-string out)
-                      (coerce (nreverse spans) 'simple-vector)
-                      (coerce (nreverse lines) 'simple-vector)
+         (last-group nil))
+    (rimu-lay-out-header writer listing view shown)
+    (dolist (i shown)
+      (when groups
+        (unless (eql (aref groups i) last-group)
+          (when last-group (rimu-end-line writer nil))
+          (setf last-group (aref groups i))))
+      (let ((entry (aref entries i)))
+        (setf (gethash entry names) (rimu-lay-out-entry writer listing view i cells widths name-width last-after))
+        (when texts
+          (let ((row (rimu-table-row entry i ordered)))
+            (setf (gethash entry texts) row)
+            (unless first-texts (setf first-texts row))))
+        (rimu-end-line writer entry)))
+    (make-rimu-layout (get-output-stream-string (rimu-writer-out writer))
+                      (coerce (nreverse (rimu-writer-spans writer)) 'simple-vector)
+                      (coerce (nreverse (rimu-writer-lines writer)) 'simple-vector)
                       names
                       (and texts
                            (list (map 'simple-vector
-                                      (lambda (place) (if place (string-downcase (rimu-column-name (car place))) "name"))
+                                      (lambda (place)
+                                        (if place (string-downcase (rimu-column-name (car place))) "name"))
                                       ordered)
                                  texts first-texts)))))
 
@@ -727,6 +814,21 @@ after the name lined up after the longest."
 (defun rimu-list-p (buffer)
   "True when BUFFER is a rimu list."
   (typep (buffer-major-mode buffer) 'rimu-mode))
+
+(defun rimu-plain-list-p (buffer)
+  "True when BUFFER is a rimu list of a directory as the disk keeps it: not a
+preview's list, not one of files found, not one of a source other than the
+disk (a commit's directory, another machine's)."
+  (and (rimu-list-p buffer)
+       (not (tuatara.buffer:buffer-local buffer 'rimu-preview-buffer))
+       (not (rimu-found-p buffer))
+       (not (rimu-source buffer))))
+
+(defmacro do-rimu-lists ((list) &body body)
+  "Run BODY with LIST bound to each rimu list there is, without making a list
+of them."
+  `(dolist (,list tuatara.buffer:*buffers*)
+     (when (rimu-list-p ,list) ,@body)))
 
 (defun rimu-source (buffer)
   "The source BUFFER lists its directory from, when it is a rimu list of a directory
@@ -779,13 +881,13 @@ SOURCE keeps it does through SOURCE; the others are refused there (RIMU-SOURCE-R
 one it refuses (RIMU-SOURCE-REFUSAL)."))
 
 (defvar *rimu-disk-commands*
-  '(rimu-quick-edit rimu-goto-file rimu-home rimu-last-directory rimu-toggle-git rimu-toggle-sizes rimu-toggle-picture
-    rimu-diff rimu-archive-list rimu-verify-files show-file-metadata open-externally
-    rimu-find rimu-find-text rimu-duplicates diff-files)
+  '(rimu-quick-edit rimu-goto-file rimu-home rimu-last-directory rimu-toggle-picture rimu-diff rimu-archive-list
+    rimu-verify-files show-file-metadata open-externally rimu-find rimu-find-text rimu-duplicates diff-files)
   "The commands refused in a rimu list of a directory as something other than
 the disk keeps it (RIMU-SOURCE), as they work on the files as the disk has
 them, besides those that change files its source does not do
-\(RIMU-SOURCE-CHANGES).")
+\(RIMU-SOURCE-CHANGES). A column worked out from the disk adds the command
+that shows it.")
 
 (defun rimu-source-refusal (command buffer)
   "What to say instead of running COMMAND in BUFFER when it is a rimu list of
@@ -817,15 +919,22 @@ part of it, with its /."
       "/"
       (concatenate 'string (tuatara.io:native-file-name directory) "/")))
 
+(defun rimu-take-directory (buffer directory)
+  "Make DIRECTORY, a native name ending in /, the one the rimu list BUFFER
+lists: where what is made from it goes, and the one watched on disk for it
+\(*RIMU-FOLLOW-CHANGES*)."
+  (setf (tuatara.buffer:buffer-local buffer 'rimu-directory) directory
+        (buffer-given-directory buffer) directory)
+  (directories-followed-changed))
+
 (defun rimu-set-up (buffer directory &optional like)
   "Make BUFFER, in rimu-mode, a list of DIRECTORY (a native name ending in /),
 showing what LIKE, another list, shows (details, names starting with a dot,
 order, and opened safely when it is), or else what the settings say."
   (flet ((from (key setting)
            (if like (tuatara.buffer:buffer-local like key) setting)))
-    (setf (tuatara.buffer:buffer-local buffer 'rimu-directory) directory
-          (buffer-given-directory buffer) directory
-          (tuatara.buffer:buffer-local buffer 'rimu-listing) nil
+    (rimu-take-directory buffer directory)
+    (setf (tuatara.buffer:buffer-local buffer 'rimu-listing) nil
           (tuatara.buffer:buffer-local buffer 'rimu-generation) 0
           (tuatara.buffer:buffer-local buffer 'rimu-details) (from 'rimu-details *rimu-details*)
           (tuatara.buffer:buffer-local buffer 'rimu-dotfiles) (from 'rimu-dotfiles *rimu-dotfiles*)
@@ -845,45 +954,17 @@ order, and opened safely when it is), or else what the settings say."
 (defun rimu-make-list (directory &key name like)
   "A new rimu list of DIRECTORY (a native name ending in /), called NAME or
 after the directory, showing what LIKE, another list, shows."
-  (let ((buffer (tuatara.buffer:make-buffer (tuatara.buffer:unique-buffer-name (or name (rimu-buffer-name directory))))))
+  (let ((buffer (tuatara.buffer:make-buffer
+                 (tuatara.buffer:unique-buffer-name (or name (rimu-buffer-name directory))))))
     (set-major-mode buffer 'rimu-mode)
     (rimu-set-up buffer directory like)
     buffer))
-
-(defun rimu-entry-at (buffer position)
-  "The entry on the line of the rimu list BUFFER holding POSITION, or NIL on
-the lines that show none."
-  (list-entry-at buffer position))
-
-(defun rimu-line-entry (buffer line)
-  "The entry LINE of the rimu list BUFFER shows, or NIL for a line that shows
-none: the entries are those the list shows, the search filters narrowing it
-or not (LIST-ENTRY-AT)."
-  (let ((entries (tuatara.buffer:buffer-local buffer 'list-entries #()))
-        (index (- line (tuatara.buffer:buffer-local buffer 'list-first-line 0))))
-    (and (< -1 index (length entries)) (svref entries index))))
-
-(defun rimu-shown-entries (buffer)
-  "The entries the rimu list BUFFER shows, in their order, those a search
-filter hides (\\[search-filter-regex]) left out, with the line each is on as a
-second value, a vector of them."
-  (let ((entries (tuatara.buffer:buffer-local buffer 'list-entries #()))
-        (first (tuatara.buffer:buffer-local buffer 'list-first-line 0))
-        (shown '()) (lines '()))
-    (loop for entry across entries
-          for line from first
-          when entry do (push entry shown) (push line lines))
-    (values (nreverse shown) (coerce (nreverse lines) 'vector))))
-
-(defun rimu-entry-at-point ()
-  "The entry on the current line of the current rimu list, or NIL."
-  (rimu-entry-at (current-buffer) (point)))
 
 (defun rimu-line-position (buffer line)
   "Where point goes on LINE of the rimu list BUFFER: the start of the entry's
 name, else the line's start."
   (let* ((layout (tuatara.buffer:buffer-local buffer 'rimu-layout))
-         (entry (rimu-line-entry buffer line))
+         (entry (list-line-entry buffer line))
          (start (tuatara.buffer:buffer-goto-line buffer line)))
     (+ start (or (and entry layout (gethash entry (rimu-layout-names layout))) 0))))
 
@@ -921,17 +1002,19 @@ each time it is laid out."
          (others (and *editor*
                       (loop for window in (buffer-windows buffer)
                             unless (eq window selected)
-                              collect (cons window (and (not fresh)
-                                                        (let ((entry (rimu-entry-at buffer (tuatara.display:window-point window))))
-                                                          (and entry (tuatara.io:listed-octets entry))))))))
+                              collect (cons window
+                                            (and (not fresh)
+                                                 (let ((entry (list-entry-at buffer
+                                                                             (tuatara.display:window-point window))))
+                                                   (and entry (tuatara.io:listed-octets entry))))))))
          (version (tuatara.buffer:buffer-version buffer))
          (remembered (and *editor* (not fresh)
                           (loop for window in (frames-windows)
-                                nconc (loop for entry in (tuatara.display:window-history window)
-                                            when (eq (first entry) buffer)
-                                              collect (list window
-                                                            (let ((was (rimu-entry-at buffer (tuatara.text:anchor-position (third entry) version))))
-                                                              (and was (tuatara.io:listed-octets was)))))))))
+                                nconc (loop for (owner nil point) in (tuatara.display:window-history window)
+                                            when (eq owner buffer)
+                                              collect (let ((was (list-entry-at
+                                                                  buffer (tuatara.text:anchor-position point version))))
+                                                        (list window (and was (tuatara.io:listed-octets was)))))))))
     (show-list-text buffer (rimu-layout-text layout) (rimu-layout-spans layout) '()
                     :entries (rimu-layout-lines layout) :point :start :refill 'rimu-refill
                     :mark-key (rimu-entry-mark-key buffer))
@@ -963,16 +1046,23 @@ each time it is laid out."
 
 ;;; Reading in the background
 
-(defstruct (rimu-job (:constructor make-rimu-job (generation point-on fresh)) (:copier nil))
+(define-record (rimu-job (:constructor make-rimu-job (generation point-on fresh)) (:copier nil))
   "The reading and laying out of a rimu list's directory on THREAD. GENERATION
 is which of the list's jobs it is, only its last being shown. POINT-ON is the
 octets of the name point goes to, or NIL for the entry point is on when it is
 shown. FRESH is true when the list shows another directory than before.
 LISTING and LAYOUT hold the result once done, or REASON holds why it failed.
 DONE is true then."
-  generation point-on fresh thread listing layout reason done)
-
-(setf (documentation 'rimu-job-p 'function) "True when OBJECT is a RIMU-JOB.")
+  (generation nil :documentation "Which of the jobs of the list RIMU-JOB is, only the last being shown.")
+  (point-on nil
+            :documentation "The octets of the name point goes to when RIMU-JOB is shown, or NIL for the entry point is
+on.")
+  (fresh nil :documentation "True when the list of RIMU-JOB shows another directory than before.")
+  (thread nil :documentation "The thread RIMU-JOB runs on.")
+  (listing nil :documentation "The RIMU-LISTING that RIMU-JOB read, once it is done.")
+  (layout nil :documentation "The RIMU-LAYOUT that RIMU-JOB made, once it is done.")
+  (reason nil :documentation "Why RIMU-JOB failed, or NIL.")
+  (done nil :documentation "True once RIMU-JOB is over."))
 
 (defvar *rimu-waiting* '()
   "The rimu lists whose directory is read or laid out in the background, for
@@ -1029,39 +1119,44 @@ In a list of files found, reading again looks at those files again
             (rimu-show-layout buffer (rimu-reading-layout directory) nil :fresh t))))
     buffer))
 
+(defun rimu-same-names-p (old new)
+  "True when the listings OLD and NEW list the same names in the same order."
+  (let ((old-entries (rimu-listing-entries old)) (new-entries (rimu-listing-entries new)))
+    (and (= (length old-entries) (length new-entries))
+         (every (lambda (a b) (equalp (tuatara.io:listed-octets a) (tuatara.io:listed-octets b)))
+                old-entries new-entries))))
+
 (defun rimu-carry-cells (old new view)
   "NEW, a listing of the directory OLD listed read again, with what of OLD's
-columns still holds for it, in VIEW. The git column is kept whole while the
-same names are listed and git's own files say the same commit is checked out
-and the same staged (GIT-STAMPS). The sizes are worked out again in the
-background, showing the old ones of the same names meanwhile. Returns NEW."
-  (let* ((columns (mapcar #'rimu-column-name (rimu-view-columns view)))
-         (git (and (member :git columns)
-                   (let ((top (ignoring-errors-reported ("finding the repository of ~a" (rimu-listing-directory new))
-                                (tuatara.git:repository-top (rimu-listing-directory new)))))
-                     (and top (let ((stamps (tuatara.git:git-stamps (concatenate 'string top ".git/"))))
-                                (and (some #'identity stamps) stamps)))))))
-    (setf (rimu-listing-git-stamps new) git)
-    (when (and old (equal (rimu-listing-directory old) (rimu-listing-directory new)))
-      (let ((old-cells (rimu-listing-cells old)) (new-cells (rimu-listing-cells new))
-            (old-entries (rimu-listing-entries old)) (new-entries (rimu-listing-entries new)))
-        (let ((cells (gethash :git old-cells)))
-          (when (and git (vectorp cells) (equalp git (rimu-listing-git-stamps old))
-                     (= (length old-entries) (length new-entries))
-                     (every (lambda (a b) (equalp (tuatara.io:listed-octets a) (tuatara.io:listed-octets b))) old-entries new-entries))
-            (setf (gethash :git new-cells) cells)))
-        (let ((cells (gethash :sizes old-cells))
-              (column (find :sizes (rimu-view-columns view) :key #'rimu-column-name)))
-          (when (and column (vectorp cells))
-            (let ((by-name (make-hash-table :test 'equalp)))
-              (loop for entry across old-entries
-                    for cell across cells
-                    do (setf (gethash (tuatara.io:listed-octets entry) by-name) cell))
-              ;; the walk begun again; the old sizes shown until it gives the new
-              (rimu-cells new column)
-              (setf (gethash :sizes new-cells)
-                    (map 'simple-vector (lambda (entry) (gethash (tuatara.io:listed-octets entry) by-name)) new-entries)))))))
-    new))
+columns still holds for it, in VIEW (RIMU-SET-COLUMN's KEEP-WHILE and
+INTERIM). OLD may be NIL, or a listing of another directory, which gives
+nothing. Returns NEW."
+  (let ((old (and old (equal (rimu-listing-directory old) (rimu-listing-directory new)) old))
+        (new-cells (rimu-listing-cells new)))
+    (dolist (column (rimu-view-columns view) new)
+      (let ((name (rimu-column-name column))
+            (keep-while (rimu-column-keep-while column)))
+        (when keep-while
+          (let ((key (ignoring-errors-reported ("finding whether the column ~(~a~) of ~a still holds"
+                                                name (rimu-listing-directory new))
+                       (funcall keep-while (rimu-listing-directory new))))
+                (cells (and old (gethash name (rimu-listing-cells old)))))
+            (setf (gethash name (rimu-listing-keys new)) key)
+            (when (and key (vectorp cells) (equalp key (gethash name (rimu-listing-keys old)))
+                       (rimu-same-names-p old new))
+              (setf (gethash name new-cells) cells))))
+        (when (and old (rimu-column-interim column) (not (gethash name new-cells)))
+          (let ((cells (gethash name (rimu-listing-cells old))))
+            (when (vectorp cells)
+              (let ((by-name (make-hash-table :test 'equalp)))
+                (loop for entry across (rimu-listing-entries old)
+                      for cell across cells
+                      do (setf (gethash (tuatara.io:listed-octets entry) by-name) cell))
+                ;; the column found again; the old texts shown until it gives the new
+                (rimu-cells new column)
+                (setf (gethash name new-cells)
+                      (map 'simple-vector (lambda (entry) (gethash (tuatara.io:listed-octets entry) by-name))
+                           (rimu-listing-entries new)))))))))))
 
 (defun rimu-take-in (buffer job)
   "Show in the rimu list BUFFER what JOB read and laid out, unless a later job
@@ -1074,15 +1169,14 @@ took its place or the buffer was killed meanwhile."
         (let ((read (rimu-listing-directory (rimu-job-listing job))))
           ;; a source may find where the directory is, from the root, only as it reads it
           (when (and (rimu-source buffer) (string/= read (tuatara.buffer:buffer-local buffer 'rimu-directory)))
-            (setf (tuatara.buffer:buffer-local buffer 'rimu-directory) read
-                  (buffer-given-directory buffer) read
-                  (tuatara.buffer:buffer-name buffer)
+            (rimu-take-directory buffer read)
+            (setf (tuatara.buffer:buffer-name buffer)
                   (tuatara.buffer:unique-buffer-name (rimu-source-buffer-name (rimu-source buffer) read))))
           (setf (tuatara.buffer:buffer-local buffer 'rimu-listing) (rimu-job-listing job))
           (rimu-show-layout buffer (rimu-job-layout job)
                             (or (rimu-job-point-on job)
                                 (and (not (rimu-job-fresh job))
-                                     (let ((entry (rimu-entry-at buffer (tuatara.buffer:buffer-point buffer))))
+                                     (let ((entry (list-entry-at buffer (tuatara.buffer:buffer-point buffer))))
                                        (and entry (tuatara.io:listed-octets entry)))))
                             :fresh (rimu-job-fresh job))
           (when (rimu-source buffer)
@@ -1130,7 +1224,7 @@ is about, kept for once it is answered (BUFFER-HELD-BY-QUESTION-P)."
 (defun rimu-directories-changed (changed)
   "Note that the lists of the directories CHANGED (native names) are to be read
 again, and read them (RIMU-FOLLOW-DISK)."
-  (dolist (list (remove-if-not #'rimu-list-p tuatara.buffer:*buffers*))
+  (do-rimu-lists (list)
     (when (member (tuatara.buffer:buffer-local list 'rimu-directory) changed :test #'string=)
       (setf (tuatara.buffer:buffer-local list 'rimu-disk-changed) t)))
   (rimu-follow-disk))
@@ -1140,7 +1234,7 @@ again, and read them (RIMU-FOLLOW-DISK)."
 \(*RIMU-FOLLOW-CHANGES*), point and marks kept; a list being read just then,
 or one a waiting question is about, once that is over."
   (when *rimu-follow-changes*
-    (dolist (list (remove-if-not #'rimu-list-p tuatara.buffer:*buffers*))
+    (do-rimu-lists (list)
       (when (and (tuatara.buffer:buffer-local list 'rimu-disk-changed)
                  (not (tuatara.buffer:buffer-local list 'rimu-job))
                  (not (buffer-held-by-question-p list)))
@@ -1152,12 +1246,15 @@ or one a waiting question is about, once that is over."
 whose marks changed line by line since they were laid out, so that the whole
 list they are narrowed from shows those marks too; a list being read just
 then, or one a waiting question is about, once that is over."
-  (dolist (list (remove-if-not #'rimu-list-p tuatara.buffer:*buffers*))
+  (do-rimu-lists (list)
     (when (and (tuatara.buffer:buffer-local list 'rimu-marks-changed)
                (not (tuatara.buffer:buffer-local list 'rimu-job))
                (not (buffer-held-by-question-p list)))
       (setf (tuatara.buffer:buffer-local list 'rimu-marks-changed) nil)
       (rimu-update list :wait nil))))
+
+(defvar *rimu-following* nil
+  "Whether *RIMU-FOLLOW-CHANGES* had the lists' directories watched when RIMU-TICK last looked.")
 
 (defun rimu-tick (editor)
   "Tick function: show the lists whose directories were read in the
@@ -1166,6 +1263,9 @@ lists a waiting question is about, shown once it is answered
 \(BUFFER-HELD-BY-QUESTION-P); T while something is read, the seconds until
 the preview is due, or NIL."
   (setf *rimu-editor* editor)
+  (unless (eq *rimu-following* (and *rimu-follow-changes* t))
+    (setf *rimu-following* (and *rimu-follow-changes* t))
+    (directories-followed-changed))
   (let ((working nil))
     (when *rimu-ready* (rimu-show-ready))
     (dolist (buffer (copy-list *rimu-waiting*))
@@ -1197,27 +1297,27 @@ key (RIMU-MARK-KEY) made once for each entry listed."
 mark and name of each entry marked since in the face of its mark."
   (let ((layout (tuatara.buffer:buffer-local buffer 'rimu-layout)))
     (when layout
-      (loop for (from . to) in (tuatara.display:shown-ranges rows :buffer buffer)
-            nconc (made-spans-between buffer from to)
-            ;; marks given since the list was laid out: the mark and the name in its face
-            nconc (let ((marks (tuatara.buffer:buffer-local buffer 'rimu-marks)))
-                    (when (and marks (plusp (hash-table-count marks)))
-                      (loop for line from (tuatara.buffer:buffer-line-number buffer from)
-                              to (tuatara.buffer:buffer-line-number buffer (max from (1- to)))
-                            for entry = (rimu-line-entry buffer line)
-                            for mark = (and entry (rimu-entry-mark buffer entry marks))
-                            when mark
-                              collect (let ((start (tuatara.buffer:buffer-goto-line buffer line)))
-                                        (list start (1+ start) (list-mark-face mark)))
-                              and collect (let ((name (rimu-line-position buffer line)))
-                                            (list name
-                                                  (tuatara.buffer:buffer-line-end buffer name)
-                                                  (list-mark-face mark))))))))))
+      (list (loop for (from . to) in (tuatara.display:shown-ranges rows :buffer buffer)
+                  nconc (made-spans-between buffer from to)
+                  ;; marks given since the list was laid out: the mark and the name in its face
+                  nconc (let ((marks (tuatara.buffer:buffer-local buffer 'rimu-marks)))
+                          (when (and marks (plusp (hash-table-count marks)))
+                            (loop for line from (tuatara.buffer:buffer-line-number buffer from)
+                                    to (tuatara.buffer:buffer-line-number buffer (max from (1- to)))
+                                  for entry = (list-line-entry buffer line)
+                                  for mark = (and entry (rimu-entry-mark buffer entry marks))
+                                  when mark
+                                    collect (let ((start (tuatara.buffer:buffer-goto-line buffer line)))
+                                              (list start (1+ start) (list-mark-face mark)))
+                                    and collect (let ((name (rimu-line-position buffer line)))
+                                                  (list name
+                                                        (tuatara.buffer:buffer-line-end buffer name)
+                                                        (list-mark-face mark)))))))))))
 
 (defmethod mode-file-name-at-point ((mode rimu-mode) buffer)
   "The file or directory of the entry on point's line in a rimu list, else the
 directory it lists, for the commands that offer a file name."
-  (let ((entry (rimu-entry-at buffer (tuatara.buffer:buffer-point buffer)))
+  (let ((entry (list-entry-at buffer (tuatara.buffer:buffer-point buffer)))
         (directory (tuatara.buffer:buffer-local buffer 'rimu-directory)))
     (cond ((null entry) directory)
           ((= (length (tuatara.io:listed-octets entry)) 1) directory)
@@ -1229,6 +1329,22 @@ directory it lists, for the commands that offer a file name."
   (if (eq (tuatara.buffer:buffer-local buffer 'rimu-sort) :time) "by time" "by name"))
 
 ;;; Commands
+
+(defun rimu-show-nearest (directory &key point-on)
+  "List with rimu DIRECTORY, or where it is gone the nearest directory above it
+that is there; point on the entry whose name is the octets POINT-ON when it
+is DIRECTORY's."
+  (let ((place (tuatara.io:nearest-directory directory :including-self t)))
+    (rimu-show-directory place :point-on (and (string= (string-right-trim "/" place) (string-right-trim "/" directory))
+                                              point-on))))
+
+(defun rimu-plain-list-of (directory)
+  "The plain rimu list (RIMU-PLAIN-LIST-P) of DIRECTORY, a native name ending
+in /, when there is one."
+  (find-if (lambda (b)
+             (and (rimu-plain-list-p b)
+                  (equal (tuatara.buffer:buffer-local b 'rimu-directory) directory)))
+           tuatara.buffer:*buffers*))
 
 (defun rimu-show-directory (path &key point-on other show safe root back)
   "List the directory at PATH with rimu: in the list of it there is, else in a
@@ -1249,13 +1365,7 @@ read. Returns the list, or NIL (said) when PATH is no directory."
            (message "~a is not a directory" (abbreviated-path (string-right-trim "/" directory))) nil)
           (t (let ((buffer (if remote
                                (remote-rimu-list directory)
-                               (or (find-if (lambda (b)
-                                              (and (rimu-list-p b)
-                                                   (not (tuatara.buffer:buffer-local b 'rimu-preview-buffer))
-                                                   (not (rimu-found-p b))
-                                                   (not (rimu-source b))
-                                                   (equal (tuatara.buffer:buffer-local b 'rimu-directory) directory)))
-                                            tuatara.buffer:*buffers*)
+                               (or (rimu-plain-list-of directory)
                                    (rimu-make-list directory)))))
                (when safe (setf (tuatara.io:safe-visit-p buffer) t))
                (when root
@@ -1274,10 +1384,7 @@ read. Returns the list, or NIL (said) when PATH is no directory."
 nor one of files found. NIL when there is none."
   (let ((root (project-root directory)))
     (find-if (lambda (b)
-               (and (live-buffer-p b) (rimu-list-p b)
-                    (not (tuatara.buffer:buffer-local b 'rimu-preview-buffer))
-                    (not (rimu-found-p b))
-                    (not (rimu-source b))
+               (and (live-buffer-p b) (rimu-plain-list-p b)
                     (equal root (project-root (tuatara.buffer:buffer-local b 'rimu-directory)))))
              (append *buffer-order* (remove-if (lambda (b) (member b *buffer-order*)) tuatara.buffer:*buffers*)))))
 
@@ -1290,9 +1397,7 @@ DIRECTORY is no directory."
   (let* ((directory (directory-name directory :clean t))
          (reused (and *rimu-reuse-lists* (not safe)
                       (eq :directory (tuatara.io:path-kind directory))
-                      (notany (lambda (b) (and (rimu-list-p b) (not (rimu-source b))
-                                               (equal (tuatara.buffer:buffer-local b 'rimu-directory) directory)))
-                              tuatara.buffer:*buffers*)
+                      (not (rimu-plain-list-of directory))
                       (rimu-list-of-project directory))))
     (if reused
         (progn (if show (funcall show reused) (show-buffer reused))
@@ -1317,7 +1422,7 @@ DIRECTORY there is, else one of its project (RIMU-SHOW-IN-PROJECT), else a
 new one, point on the entry whose name is the octets POINT-ON;
 \\<rimu-mode>\\[rimu-last-directory] there comes back to BUFFER's directory."
   (let* ((leaving (tuatara.buffer:buffer-local buffer 'rimu-directory))
-         (entry (rimu-entry-at buffer (tuatara.buffer:buffer-point buffer)))
+         (entry (list-entry-at buffer (tuatara.buffer:buffer-point buffer)))
          (list (rimu-show-in-project directory :point-on point-on :safe (tuatara.io:safe-visit-p buffer))))
     (when list
       (setf (tuatara.buffer:buffer-local list 'rimu-last-directory)
@@ -1340,16 +1445,15 @@ stays in its project."
       (return-from rimu-enter (rimu-enter-elsewhere buffer directory point-on)))
     (when (and leaving (not (string= leaving directory)))
       (setf (tuatara.buffer:buffer-local buffer 'rimu-last-directory)
-            (cons leaving (let ((entry (rimu-entry-at buffer (tuatara.buffer:buffer-point buffer))))
+            (cons leaving (let ((entry (list-entry-at buffer (tuatara.buffer:buffer-point buffer))))
                             (and entry (tuatara.io:listed-octets entry)))))
       ;; the lines taken out and the filters go; the marks stay with their files
       (let ((table (tuatara.buffer:buffer-local buffer 'rimu-taken-out)))
         (when table (clrhash table)))
       (drop-search-filters buffer)))
   (rimu-forget-found buffer)
-  (setf (tuatara.buffer:buffer-local buffer 'rimu-directory) directory
-        (buffer-given-directory buffer) directory
-        (tuatara.buffer:buffer-local buffer 'rimu-listing) nil)
+  (rimu-take-directory buffer directory)
+  (setf (tuatara.buffer:buffer-local buffer 'rimu-listing) nil)
   (let ((name (if (rimu-source buffer)
                   (rimu-source-buffer-name (rimu-source buffer) directory)
                   (rimu-buffer-name directory))))
@@ -1464,7 +1568,7 @@ opened safely, everything opens safely."
 this list; a file is visited as \\[find-file] visits it, safely where that would
 be, and with a prefix argument (\\[universal-argument]) safely always. A named
 pipe, a socket or a device is not opened; rimu says what it is."
-  (rimu-open-entry (rimu-entry-at-point) :here :safe (and (prefix-argument) t)))
+  (rimu-open-entry (list-entry-at) :here :safe (and (prefix-argument) t)))
 
 (define-command rimu-display ()
   "Show the entry on the current line in another window, staying in the list:
@@ -1472,7 +1576,7 @@ a directory in a list of its own, a file as \\<rimu-mode>\\[rimu-open] opens it.
 the preview on, it is shown in the preview's window, in place of the preview
 until point moves on; a quick edit there ends first (asking whether to save)."
   (rimu-end-quick-edit-first)
-  (rimu-open-entry (rimu-entry-at-point) :display :safe (and (prefix-argument) t)))
+  (rimu-open-entry (list-entry-at) :display :safe (and (prefix-argument) t)))
 
 (defun rimu-goto-line (buffer line)
   "Put point on the name of the entry on LINE of the rimu list BUFFER."
@@ -1493,7 +1597,7 @@ list come back to) goes back to the name of the last entry."
   "Go to an entry of this list, its name asked for with completion; among
 those the search filters leave, while they narrow the list."
   (let ((buffer (current-buffer)))
-    (multiple-value-bind (entries lines) (rimu-shown-entries buffer)
+    (multiple-value-bind (entries lines) (list-shown-entries buffer)
       (let ((names (mapcar (lambda (entry) (escape-controls (tuatara.io:listed-name entry))) entries)))
         (if (null names)
             (message "No files in this list")
@@ -1588,13 +1692,14 @@ the commands that change files in a list opened safely, and in a list of a
 directory not on the disk those it does not do (RIMU-SOURCE-REFUSAL)."
   (pushnew 'rimu-preview-follow (editor-post-command-functions editor))
   (pushnew 'rimu-keep-point-on-entries (editor-post-command-functions editor))
-  (dolist (command '(rimu-copy rimu-move rimu-symlink rimu-hardlink rimu-rename list-delete-marked list-execute rimu-make-directory
-                     rimu-edit-names rimu-names-finish rimu-touch rimu-make-formatted-file rimu-wipe-files
+  (dolist (command '(rimu-copy rimu-move rimu-symlink rimu-hardlink rimu-rename list-delete-marked list-execute
+                     rimu-make-directory rimu-edit-names rimu-names-finish rimu-touch rimu-make-formatted-file
+                     rimu-wipe-files
                      rimu-trash rimu-trash-restore rimu-trash-empty
                      rimu-encrypt-files rimu-decrypt-files rimu-sign-files
                      rimu-archive-create rimu-archive-extract rename-formatted rename-formatted-keywords))
     (pushnew command *file-changing-commands*))
-  (define-keys *rimu-keymap* '(("RET" rimu-open) ("l" rimu-open) ("h" rimu-up)
+  (define-keys *rimu-keymap* '(("RET" rimu-open) ("l" rimu-open) ("C-f" rimu-open) ("h" rimu-up) ("C-b" rimu-up)
                                ("o" rimu-quick-edit) ("C-o" rimu-display) ("g f" rimu-goto-file)
                                (">" rimu-next-directory) ("<" rimu-previous-directory)
                                ("I" rimu-toggle-details) ("H" rimu-toggle-dotfiles)
@@ -1616,7 +1721,7 @@ directory not on the disk those it does not do (RIMU-SOURCE-REFUSAL)."
   (pushnew 'rimu-refresh-lists *paths-changed-functions*)
   (pushnew 'rimu-source-refusal *command-refusal-functions*)
   (pushnew 'rimu-tick *tick-functions*)
-  (follow-directories-for 'rimu-watched-directories 'rimu-directories-changed))
+  (follow-directories-for 'rimu-watched-directories 'rimu-directories-changed :tells t))
 
 (commands-for-mode 'rimu-mode "a rimu list (\\[rimu])"
                    'rimu-up 'rimu-open 'rimu-quick-edit 'rimu-display 'rimu-goto-file

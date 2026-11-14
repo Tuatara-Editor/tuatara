@@ -26,9 +26,7 @@ not show it."
   (let ((n (length rows)))
     (when (plusp n)
       ;; the last row that starts at or before POSITION
-      (let ((i (let ((lo 0) (hi n))
-                 (setf lo (tuatara.runtime:bisect (mid lo hi) (<= (tuatara.display:row-start (aref rows mid)) position)) hi lo)
-                 (1- lo))))
+      (let ((i (1- (tuatara.runtime:bisect (mid 0 n) (<= (tuatara.display:row-start (aref rows mid)) position)))))
         (when (>= i 0)
           (let ((first i) (last i))
             ;; the rows of a wrapped line

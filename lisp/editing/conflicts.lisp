@@ -45,17 +45,14 @@ asked, with \\[conflict-markers-mode].")
   "Seconds without an edit after which a buffer whose edits left a marker no
 conflict holds is looked through again whole.")
 
-(defstruct (conflict (:constructor make-conflict (start base separator end)) (:copier nil))
+(define-record (conflict (:constructor make-conflict (start base separator end)) (:copier nil))
   "A conflict in a buffer: anchors at the starts of its marker lines, START
 \(<<<<<<<), BASE (|||||||, or NIL where there is none), SEPARATOR (=======)
 and END (>>>>>>>)."
-  start base separator end)
-
-(setf (documentation 'conflict-p 'function) "True when OBJECT is a CONFLICT."
-      (documentation 'conflict-start 'function) "The anchor at the start of a conflict's <<<<<<< line."
-      (documentation 'conflict-base 'function) "The anchor at the start of a conflict's ||||||| line, or NIL."
-      (documentation 'conflict-separator 'function) "The anchor at the start of a conflict's ======= line."
-      (documentation 'conflict-end 'function) "The anchor at the start of a conflict's >>>>>>> line.")
+  (start nil :documentation "The anchor at the start of a conflict's <<<<<<< line.")
+  (base nil :documentation "The anchor at the start of a conflict's ||||||| line, or NIL.")
+  (separator nil :documentation "The anchor at the start of a conflict's ======= line.")
+  (end nil :documentation "The anchor at the start of a conflict's >>>>>>> line."))
 
 ;;; Finding them
 
@@ -96,7 +93,8 @@ Complexity: O(END - START), little more than finding the newlines."
                                    ;; no marker on this line: on to its end
                                    (if (= octet 13)
                                        (setf column -2)
-                                       (let ((newline (position-if (lambda (b) (or (= b 10) (= b 13))) block :start i :end n)))
+                                       (let ((newline (position-if (lambda (b) (or (= b 10) (= b 13)))
+                                                                   block :start i :end n)))
                                          (setf i (1- (or newline n))))))
                                   ((zerop column)
                                    (if (member octet '(60 61 62 124))
@@ -317,19 +315,14 @@ already; while one is edited, look again when its time is up."
 
 ;;; Looking through a buffer in the background
 
-(defstruct (conflict-job (:include shown-text-job)
-                         (:constructor make-conflict-job (buffer tell go)) (:copier nil))
+(define-record (conflict-job (:include shown-text-job)
+                            (:constructor make-conflict-job (buffer tell go)) (:copier nil))
   "BUFFER looked through for conflicts in the background, a look at a file
 shown (SHOWN-TEXT-JOB); TELL as CONFLICT-LOOK-THROUGH takes it, GO a place:
 once found, point goes to the first conflict if it is still there. RESULT,
 once done, the conflicts as CONFLICT-FIND-ALL gives them."
-  tell go)
-
-(setf (documentation 'conflict-job-p 'function) "True when OBJECT is a CONFLICT-JOB."
-      (documentation 'conflict-job-tell 'function)
-      "Whether a look for conflicts says what it found: T, :FOUND only when some are, NIL."
-      (documentation 'conflict-job-go 'function)
-      "Where point was when the conflicts were asked for, to go to the first, or NIL.")
+  (tell nil :documentation "Whether a look for conflicts says what it found: T, :FOUND only when some are, NIL.")
+  (go nil :documentation "Where point was when the conflicts were asked for, to go to the first, or NIL."))
 
 (tuatara.runtime:define-job-words conflict-job
   :doing "Looking for conflicts"
@@ -373,10 +366,12 @@ held any does not."
           (setf (tuatara.buffer:buffer-point buffer) (conflict-start-at buffer (svref (conflict-list buffer) 0))))
         (when (and tell (or (plusp count) (eq tell t)))
           (if (plusp count)
-              (message (substitute-command-keys "~:d conflict~:p in ~a: \\<*conflict-keymap*>\\[conflict-next] goes to the next, \\[conflict-keep-first-side] and \\[conflict-keep-second-side] keep a side"
+              (message (substitute-command-keys "~:d conflict~:p in ~a: \\<*conflict-keymap*>\\[conflict-next] goes ~
+                                                 to the next, \\[conflict-keep-first-side] and ~
+                                                 \\[conflict-keep-second-side] keep a side"
                                                 :for-format t)
-                       count (escape-controls (tuatara.buffer:buffer-name buffer)))
-              (message "No conflicts in ~a" (escape-controls (tuatara.buffer:buffer-name buffer)))))))))
+                       count (tuatara.buffer:buffer-name buffer))
+              (message "No conflicts in ~a" (tuatara.buffer:buffer-name buffer))))))))
 
 (defun conflict-keymap-follows (buffer)
   "True when the keys BUFFER has for itself (BUFFER-OVERRIDE-KEYMAP) are those CONFLICT-FOLLOW-KEYMAP put there."
@@ -404,7 +399,8 @@ were."
 holds another text as it stands on disk than when it was: read again, or
 filled after it was shown."
   (and (not (tuatara.buffer:buffer-modified-p buffer))
-       (not (eql (tuatara.buffer:buffer-local buffer 'conflict-text-seen) (tuatara.buffer:buffer-content-number buffer)))
+       (not (eql (tuatara.buffer:buffer-local buffer 'conflict-text-seen)
+                 (tuatara.buffer:buffer-content-number buffer)))
        (not (tuatara.buffer:buffer-local buffer 'conflict-job))
        (<= (tuatara.buffer:buffer-size buffer) *conflict-markers-max-bytes*)))
 
@@ -495,9 +491,10 @@ the one before (-1), and say which of how many it is."
 (defun conflict-done-words (buffer)
   "What is said once the last conflict of BUFFER is put right: that none is
 left, and, for a file in git, how to stage it."
-  (format nil (substitute-command-keys "No conflicts left in ~a~:[~;: save it (\\[save-buffer]), then \\[git] and \\<git-status-mode>\\[git-stage] on its line stage it~]"
+  (format nil (substitute-command-keys "No conflicts left in ~a~:[~;: save it (\\[save-buffer]), then \\[git] and ~
+                                        \\<git-status-mode>\\[git-stage] on its line stage it~]"
                                        :for-format t)
-          (escape-controls (tuatara.buffer:buffer-name buffer))
+          (tuatara.buffer:buffer-name buffer)
           (let ((file (tuatara.buffer:buffer-file buffer)))
             (and file (tuatara.git:repository-top (tuatara.io:parent-path file))))))
 
@@ -581,14 +578,16 @@ lines kept."
       (uiop:split-string (if (char= (char text (1- (length text))) #\Newline) (subseq text 0 (1- (length text))) text)
                          :separator '(#\Newline))))
 
-(defstruct (conflict-sides-job (:include tuatara.runtime:job)
-                               (:constructor make-conflict-sides-job (buffer rope first second names)) (:copier nil))
+(define-record (conflict-sides-job (:include tuatara.runtime:job)
+                                  (:constructor make-conflict-sides-job (buffer rope first second names)) (:copier nil))
   "How the two sides of a conflict differ, worked out in the background for
 BUFFER, the buffer showing it, a job: ROPE the text, FIRST and SECOND each
 \(FROM . TO), the octets of a side, NAMES the sides' names; TEXT once done."
-  rope first second names text)
-
-(setf (documentation 'conflict-sides-job-p 'function) "True when OBJECT is a CONFLICT-SIDES-JOB.")
+  (rope nil :documentation "The rope of text the sides are taken from, for JOB.")
+  (first nil :documentation "The octet range (FROM . TO) of the first side of JOB.")
+  (second nil :documentation "The octet range (FROM . TO) of the second side of JOB.")
+  (names nil :documentation "The names of the two sides of JOB, as a list of two.")
+  (text nil :documentation "The unified diff of the two sides of JOB once worked out, NIL before."))
 
 (tuatara.runtime:define-job-words conflict-sides-job
   :doing "Comparing the two sides"
@@ -636,9 +635,9 @@ background, the editor free meanwhile."
              :name "tuatara conflict sides")
             (pop-to-buffer shown :other t))))))
 
-(commands-for-buffers 'conflict-markers-on-p "a file with conflicts in it (\\[conflict-markers-mode])"
-                      'conflict-next 'conflict-previous 'conflict-keep-first-side 'conflict-keep-second-side
-                      'conflict-keep-both-sides 'conflict-keep-base 'conflict-show-sides-diff)
+(commands-for-mode 'conflict-markers-on-p "a file with conflicts in it (\\[conflict-markers-mode])"
+                   'conflict-next 'conflict-previous 'conflict-keep-first-side 'conflict-keep-second-side
+                   'conflict-keep-both-sides 'conflict-keep-base 'conflict-show-sides-diff)
 
 (define-command conflict-markers-mode ()
   "Show the conflicts a merge left in the current buffer, and give it the
@@ -668,7 +667,7 @@ positive, off when it is zero or less."
     (conflict-follow-keymap buffer)
     (if on
         (progn (conflict-look-through buffer :tell t)
-               (message "Looking for conflicts in ~a..." (escape-controls (tuatara.buffer:buffer-name buffer))))
+               (message "Looking for conflicts in ~a..." (tuatara.buffer:buffer-name buffer)))
         (message "Conflict markers off"))))
 
 (defun install-conflicts (editor)

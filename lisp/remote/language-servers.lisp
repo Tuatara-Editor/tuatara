@@ -31,13 +31,21 @@ LOADER the program a glibc system starts such a program with.")
   "The libraries a program may need and still be brought: glibc's own and
 libgcc's, which are on every system with a glibc.")
 
+(defun brought-path (name)
+  "NAME in the directory language servers are brought to, from the server's
+home directory; refused when that is not a plain path (PLAIN-PATH-P), as it
+is put in commands the server's shell reads."
+  (let ((path (concatenate 'string tuatara.lsp:*brought-language-servers-directory* name)))
+    (unless (plain-path-p path :relative t) (refuse "~a is no plain path" path))
+    path))
+
 (defun manifest-path ()
   "The list of what was brought, from the home directory of the server."
-  (concatenate 'string tuatara.lsp:*brought-language-servers-directory* ".manifest"))
+  (brought-path ".manifest"))
 
 (defun server-program-path (name)
   "Where the language server NAME, already checked, is kept on the server, from its home directory."
-  (concatenate 'string tuatara.lsp:*brought-language-servers-directory* name))
+  (brought-path name))
 
 ;;; What a program needs
 
@@ -66,19 +74,19 @@ STRINGS, as a list of numbers, NIL when it wants none."
       (let ((at 0))
         (loop repeat (min count 256)
               do (tuatara.runtime:job-check-stop)
-                 (let ((auxiliary (+ at (field (+ at 8) 4))))
-                   (loop repeat (min (field (+ at 2) 2) 256)
-                         do (let ((text (elf-string strings (field (+ auxiliary 8) 4))))
-                              (when text
-                                (let ((version (if (string= text "GLIBC_ABI_DT_RELR")
-                                                   '(2 36)
-                                                   (tuatara.io:version-numbers text "^GLIBC_"))))
-                                  (when (and version (or (null highest) (tuatara.io:version-at-least-p version highest)))
-                                    (setf highest version)))))
-                            (setf auxiliary (+ auxiliary (field (+ auxiliary 12) 4)))))
-                 (let ((next (field (+ at 12) 4)))
-                   (when (zerop next) (return))
-                   (incf at next)))))
+              (let ((auxiliary (+ at (field (+ at 8) 4))))
+                (loop repeat (min (field (+ at 2) 2) 256)
+                      do (let ((text (elf-string strings (field (+ auxiliary 8) 4))))
+                           (when text
+                             (let ((version (if (string= text "GLIBC_ABI_DT_RELR")
+                                                '(2 36)
+                                                (tuatara.io:version-numbers text "^GLIBC_"))))
+                               (when (and version (or (null highest) (tuatara.io:version-at-least-p version highest)))
+                                 (setf highest version)))))
+                      (setf auxiliary (+ auxiliary (field (+ auxiliary 12) 4)))))
+              (let ((next (field (+ at 12) 4)))
+                (when (zerop next) (return))
+                (incf at next)))))
     highest))
 
 (defun elf-program-needs (fd size name)
@@ -101,19 +109,19 @@ script."
              (refuse "~a is not a 64-bit little-endian program" name)))
       (let* ((table (u 32 8)) (entry (u 54 2)) (count (u 56 2))
              (segments
-               (progn
-                 (unless (and (= entry 56) (<= count 256)) (refuse "~a has a program table not understood" name))
-                 (let ((octets (elf-octets fd (* 56 count) table size name)))
-                   (loop for at from 0 below (* 56 count) by 56
-                         collect (list (tuatara.io:octets-integer octets at 4)
-                                       (tuatara.io:octets-integer octets (+ at 8) 8)
-                                       (tuatara.io:octets-integer octets (+ at 16) 8)
-                                       (tuatara.io:octets-integer octets (+ at 32) 8)))))))
+              (progn
+                (unless (and (= entry 56) (<= count 256)) (refuse "~a has a program table not understood" name))
+                (let ((octets (elf-octets fd (* 56 count) table size name)))
+                  (loop for at from 0 below (* 56 count) by 56
+                        collect (list (tuatara.io:octets-integer octets at 4)
+                                      (tuatara.io:octets-integer octets (+ at 8) 8)
+                                      (tuatara.io:octets-integer octets (+ at 16) 8)
+                                      (tuatara.io:octets-integer octets (+ at 32) 8)))))))
         (flet ((segment (type) (find type segments :key #'first))
                (file-at (address)
                  (loop for (type offset start length) in segments
                        when (and (= type 1) (<= start address) (< address (+ start length)))
-                         return (+ offset (- address start)))))
+                       return (+ offset (- address start)))))
           (let ((loader (let ((interp (segment 3)))
                           (and interp
                                (elf-string (elf-octets fd (min (fourth interp) 256) (second interp) size name) 0))))
@@ -156,7 +164,8 @@ be reached, is a kind not known or says no number for the account."
            (name (first lines))
            (machine (find name *program-machines* :key #'first :test #'string=)))
       (unless machine
-        (refuse "~a says it is a ~a, a kind of machine nothing can be brought to" host (server-said-shown (or name ""))))
+        (refuse "~a says it is a ~a, a kind of machine nothing can be brought to" host
+                (server-said-shown (or name ""))))
       (unless (and (second lines) (cl-ppcre:scan "^\\d{1,10}$" (second lines)))
         (refuse "~a says no number for the account logged in" host))
       (values machine
@@ -182,7 +191,8 @@ would not run on HOST, a server of the kind MACHINE with the glibc GLIBC."
               (or loader "a loader of its own") host))
     (let ((wanted (getf needs :glibc)))
       (when (and loader wanted (not (and glibc (tuatara.io:version-at-least-p glibc wanted))))
-        (refuse "~a wants glibc ~{~a~^.~} or later and ~a has ~:[none that says so~;~:*~{~a~^.~}~]" name wanted host glibc)))))
+        (refuse "~a wants glibc ~{~a~^.~} or later and ~a has ~:[none that says so~;~:*~{~a~^.~}~]" name wanted host
+                glibc)))))
 
 (defun server-manifest (host)
   "What the list kept on HOST says was brought: each (NAME SUM), the lines
@@ -200,7 +210,7 @@ there is no list."
             when (and (= (length parts) 2) (tuatara.lsp:language-server-program-name-p (first parts))
                       (= 64 (length (second parts)))
                       (every (lambda (c) (find c "0123456789abcdef")) (second parts)))
-              collect parts))))
+            collect parts))))
 
 (defun write-server-manifest (host entries)
   "Keep ENTRIES, (NAME SUM) each, as the list of what was brought to HOST,
@@ -267,23 +277,31 @@ there would not use what is in it."
 
 ;;; The job
 
-(defstruct (server-program-job (:include tuatara.runtime:job)
-                               (:constructor make-server-program-job (buffer host program path))
-                               (:copier nil))
+(define-record (server-program-job (:include tuatara.runtime:job)
+                                  (:constructor make-server-program-job (buffer host program path))
+                                  (:copier nil))
   "A language server taken to a trusted server or away from it: HOST, PROGRAM
 its name, PATH its full name here, NIL when it is being taken away; DOING
 says the step, SIZE the octets to send, SENT, a cons, those sent; UID the
 number of the account there; WORDS what is said at the end."
-  host program path (doing "Starting") (size 0) (sent (list 0)) uid words)
-
-(setf (documentation 'server-program-job-p 'function) "True when OBJECT is a SERVER-PROGRAM-JOB.")
+  (host nil :documentation "The host the language server is taken to or away from.")
+  (program nil :documentation "The name of the language server of SERVER-PROGRAM-JOB.")
+  (path nil
+        :documentation "The full name of the language server of SERVER-PROGRAM-JOB on this machine, NIL when it is
+being taken away.")
+  (doing "Starting" :documentation "The words saying the step SERVER-PROGRAM-JOB is at.")
+  (size 0 :documentation "How many octets SERVER-PROGRAM-JOB has to send.")
+  (sent (list 0) :documentation "A cons holding how many octets SERVER-PROGRAM-JOB has sent.")
+  (uid nil :documentation "The number of the account SERVER-PROGRAM-JOB works as on the host.")
+  (words nil :documentation "What SERVER-PROGRAM-JOB says at its end."))
 
 (tuatara.runtime:define-job-words server-program-job
-  :doing (server-program-job-doing job)
-  :description (format nil "~:[Taking away~;Bringing~] ~a on ~a" (server-program-job-path job)
-                       (server-program-job-program job) (server-program-job-host job))
-  :verb "bring it"
-  :left-words (format nil "~a stays listed there, what was copied can be taken away" (server-program-job-program job)))
+    :doing (server-program-job-doing job)
+    :description (format nil "~:[Taking away~;Bringing~] ~a on ~a" (server-program-job-path job)
+                         (server-program-job-program job) (server-program-job-host job))
+    :verb "bring it"
+    :left-words (format nil "~a stays listed there, what was copied can be taken away"
+                        (server-program-job-program job)))
 
 (defmethod tuatara.runtime:job-percent ((job server-program-job))
   "How much of the program has been sent."
@@ -375,10 +393,11 @@ taken, never takes the name. The list of what was brought is put back."
                             (setf placed t))
                        (unless placed
                          (ignoring-errors-reported ("putting back the list of what was brought to ~a" host)
-                           (write-server-manifest host entries))))
+                                                   (write-server-manifest host entries))))
                      (write-server-manifest host (append others (list (list name ours))))
                      (setf (server-program-job-words job)
-                           (format nil "~a brought to ~a, in ~a" name host tuatara.lsp:*brought-language-servers-directory*)))))))
+                           (format nil "~a brought to ~a, in ~a" name host
+                                   tuatara.lsp:*brought-language-servers-directory*)))))))
       (sb-posix:close fd))))
 
 (defun remove-language-server (job)
@@ -403,7 +422,8 @@ directory too once nothing is left in it."
                  (let ((left (remove name entries :key #'first :test #'string=)))
                    (write-server-manifest host left)
                    (unless left
-                     (handler-case (remote-change host :rmdir (string-right-trim "/" tuatara.lsp:*brought-language-servers-directory*))
+                     (handler-case (remote-change host :rmdir (string-right-trim "/"
+                                                                                 tuatara.lsp:*brought-language-servers-directory*))
                        (sftp-refusal () nil)))))
                (setf (server-program-job-words job) (format nil "~a taken away from ~a" name host))))))))
 

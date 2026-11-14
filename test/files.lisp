@@ -20,7 +20,7 @@ so that none is left for a later test to find."
 (those of a directory kept read in a test), so that no test leaves one in the
 cache directory."
   (let ((indexes (merge-pathnames "indexes/" (tuatara.io:cache-directory)))
-        (prefix (tuatara.defaults::index-cache-name (namestring directory))))
+        (prefix (tuatara.io:path-file-name (namestring directory))))
     (dolist (kept (ignore-errors (uiop:subdirectories indexes)))
       (let ((name (car (last (pathname-directory kept)))))
         (when (and (stringp name) (uiop:string-prefix-p prefix name))
@@ -62,9 +62,9 @@ thread may take is multiplied by it."
   (let ((top (string-right-trim "/"
                                 (or (tuatara.defaults::real-directory (namestring directory)) (namestring directory)))))
     (tuatara.defaults::state-list-drop
-     tuatara.defaults::*lsp-trusted*
+     tuatara.defaults::*trusted*
      (remove-if-not (lambda (entry) (and (stringp entry) (tuatara.io:path-within-p entry top)))
-                    (tuatara.defaults::state-list-entries tuatara.defaults::*lsp-trusted*)))))
+                    (tuatara.defaults::state-list-entries tuatara.defaults::*trusted*)))))
 
 (defmacro with-test-directory ((directory) &body body)
   "Run BODY with DIRECTORY bound to a new empty directory in the cache directory
@@ -79,7 +79,16 @@ the projects within it trusted no more."
        (forget-kept-indexes ,directory)
        (forget-committed-lines)
        (forget-trusted-under ,directory)
-       (uiop:delete-directory-tree ,directory :validate (lambda (p) (search "/tuatara/test-" (namestring p)))))))
+       (uiop:delete-directory-tree ,directory :validate (lambda (p) (uiop:subpathp p *test-cache-directory*))))))
+
+(defmacro with-file-in-tmp ((path ending) &body body)
+  "Run BODY with PATH bound to a new name for a file lying directly in /tmp,
+as a download or a copy made to look at does, ending in ENDING; whatever BODY
+puts there is removed afterwards."
+  `(let ((,path (format nil "/tmp/tuatara-test-~d-~36r~a" (sb-posix:getpid)
+                        (random (expt 36 8) (load-time-value (make-random-state t))) ,ending)))
+     (unwind-protect (progn ,@body)
+       (when (probe-file ,path) (delete-file ,path)))))
 
 (defmacro with-visited ((buffer path) &body body)
   "Run BODY with BUFFER visiting the file at PATH, killed afterwards."
@@ -675,6 +684,46 @@ second value."
         (tuatara.io:save-buffer-file b)
         (is string= "again mine: original" (file-text path))
         (is eq nil (tuatara.io:check-file b))))))
+
+(define-test (visiting-and-saving changed-while-saving-refused)
+  ;; a program changing the file while a save is under way has its change kept: the file is looked at again
+  ;; just before the new text takes its place, by rename and in place alike
+  (with-test-directory (dir)
+    (dolist (in-place '(nil t))
+      (let* ((path (put-file (merge-pathnames (if in-place "linked.txt" "renamed.txt") dir) "original"))
+             (other (and in-place (namestring (merge-pathnames "other-name.txt" dir))))
+             (stamp (tuatara.io:path-stamp path))
+             (changed nil))
+        (when other (sb-posix:link (namestring path) other))
+        (flet ((change-it (&rest progress)
+                 (declare (ignore progress))
+                 (unless changed
+                   (setf changed t)
+                   (put-file path "changed meanwhile, by someone else"))))
+          ;; in place: changed once the backup is made, before the file is opened to be written
+          (sb-int:encapsulate 'tuatara.io::backup-copy 'changed-meanwhile
+                              (lambda (function &rest arguments)
+                                (multiple-value-prog1 (apply function arguments) (change-it))))
+          (unwind-protect
+               (fail (tuatara.io:write-text-file (tuatara.text:string->rope "mine") (namestring path)
+                                                 :expected stamp :progress (and (not in-place) #'change-it))
+                   tuatara.io:file-changed-on-disk "~:[by rename~;in place~]" in-place)
+            (sb-int:unencapsulate 'tuatara.io::backup-copy 'changed-meanwhile)))
+        (is string= "changed meanwhile, by someone else" (file-text path))))
+    (is equal '("linked.txt" "other-name.txt" "renamed.txt") (directory-names dir))))
+
+(define-test (visiting-and-saving made-names-within-255-octets)
+  ;; a name numbered, or an attachment's own name, never takes more than a name may on disk: what
+  ;; comes before the number, or before the ending, is shortened, never within a character
+  (let* ((long (format nil "~a.pdf" (make-string 200 :initial-element (code-char #xe9))))
+         (numbered (tuatara.io:numbered-name long 12))
+         (attachment (tuatara.defaults::attachment-file-name long)))
+    (true (<= (tuatara.text:string-octet-length numbered) 255))
+    (true (uiop:string-suffix-p numbered " (12).pdf"))
+    (true (<= (tuatara.text:string-octet-length (tuatara.io:numbered-name long 3 :dash)) 255))
+    (true (<= (tuatara.text:string-octet-length attachment) 255))
+    (true (uiop:string-suffix-p attachment ".pdf"))
+    (is string= "short.pdf" (tuatara.defaults::attachment-file-name "a/b\\short.pdf"))))
 
 (define-test (visiting-and-saving copied-to-a-free-name)
   ;; a copy never goes over a file: the name asked for, else (2) and so on before its ending
@@ -2179,3 +2228,31 @@ the old one put back after."
                       (setf text (copy-seq (tuatara.command:editor-minibuffer-text tuatara.command:*editor*)))))
               :text "/a//" :width 80 :height 12)
     (is string= "/a//" text)))
+
+(define-test (visiting-and-saving failure-words-written-as-given)
+  ;; a reading that failed is shown in the words its caller makes of why, names with ~ in them as they are
+  (let* ((b (tuatara.buffer:make-buffer "*failed reading*"))
+         (job (tuatara.defaults::make-differences-job b "/tmp/a~1" "/tmp/b~2")))
+    (unwind-protect
+         (progn
+           (setf (tuatara.runtime:job-status job) :failed (tuatara.runtime:job-error job) "no room")
+           (tuatara.runtime:job-take-in job)
+           (let ((text (tuatara.buffer:buffer-string b)))
+             (true (search "/tmp/a~1 and /tmp/b~2 could not be compared: " text) "~a" text)))
+      (tuatara.buffer:kill-buffer b))))
+
+(define-test (visiting-and-saving opened-without-following-a-link)
+  ;; asked not to follow one, a link at the name itself is refused, what it leads to never opened;
+  ;; a file there is opened, and a link is followed as before when not asked
+  (with-test-directory (dir)
+    (let ((file (namestring (merge-pathnames "plain.so" dir)))
+          (link (namestring (merge-pathnames "link.so" dir))))
+      (alexandria:write-string-into-file "x" file)
+      (sb-posix:symlink file link)
+      (true (typep (handler-case (tuatara.io:open-for-reading link nil :accept '(:regular) :follow nil)
+                     (tuatara.io:file-system-error (e) e))
+                   'tuatara.io:file-system-error))
+      (dolist (path (list file link))
+        (let ((fd (tuatara.io:open-for-reading path nil :accept '(:regular) :follow (string= path link))))
+          (true fd)
+          (sb-posix:close fd))))))

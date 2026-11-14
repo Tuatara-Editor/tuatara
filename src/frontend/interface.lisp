@@ -1,15 +1,15 @@
 ;;;; src/frontend/interface.lisp --- Keys, events and the painter interface.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; Every frontend (ncurses, GTK4, SDL, the fake one for tests) implements the
-;;;; generic functions below and nothing else.  The editor never talks to a
-;;;; toolkit directly.
+;;;; Every frontend (the terminal's, GTK4's, a client's at the other end of a
+;;;; connection and the fake one for tests) implements the generic functions
+;;;; below and nothing else. The editor never talks to a toolkit directly.
 
 (in-package #:tuatara.frontend)
 
 ;;; Keys
 
-(defstruct (key (:constructor make-key (base &key ctrl meta shift column row)) (:copier nil))
+(define-record (key (:constructor make-key (base &key ctrl meta shift column row)) (:copier nil))
   "A key press. BASE is a character or a keyword naming a special key (:up,
 :down, :left, :right, :home, :end, :page-up, :page-down, :backspace, :delete,
 :insert, :enter, :tab, :escape, :f1 ... :f12), a turn of the mouse wheel
@@ -17,21 +17,15 @@
 pressed, :drag-mouse-1 moved while held, :double-mouse-1 and :triple-mouse-1
 pressed twice or three times at once). CTRL, META and SHIFT are the
 modifiers; COLUMN and ROW, the cell of the screen a mouse key happened at."
-  (base #\Nul :type (or character keyword) :read-only t)
-  (ctrl nil :type boolean :read-only t)
-  (meta nil :type boolean :read-only t)
-  (shift nil :type boolean :read-only t)
-  (column nil :read-only t)
-  (row nil :read-only t))
+  (base #\Nul :type (or character keyword) :read-only t :documentation "The character or special-key keyword of KEY.")
+  (ctrl nil :type boolean :read-only t :documentation "True when Control is held in KEY.")
+  (meta nil :type boolean :read-only t :documentation "True when Meta (Alt) is held in KEY.")
+  (shift nil :type boolean :read-only t
+         :documentation "True when Shift is held in KEY (only reported for special keys).")
+  (column nil :read-only t :documentation "The screen column a mouse KEY happened at, or NIL.")
+  (row nil :read-only t :documentation "The screen row a mouse KEY happened at, or NIL."))
 
-(setf (documentation 'make-key 'function) "Return a KEY for BASE with the modifiers CTRL, META and SHIFT."
-      (documentation 'key-p 'function) "True when OBJECT is a KEY."
-      (documentation 'key-base 'function) "The character or special-key keyword of KEY."
-      (documentation 'key-ctrl 'function) "True when Control is held in KEY."
-      (documentation 'key-meta 'function) "True when Meta (Alt) is held in KEY."
-      (documentation 'key-shift 'function) "True when Shift is held in KEY (only reported for special keys)."
-      (documentation 'key-column 'function) "The screen column a mouse KEY happened at, or NIL."
-      (documentation 'key-row 'function) "The screen row a mouse KEY happened at, or NIL.")
+(setf (documentation 'make-key 'function) "Return a KEY for BASE with the modifiers CTRL, META and SHIFT.")
 
 (defun key-spec (key)
   "The canonical, EQUAL-comparable form of KEY: a list of modifier keywords in
@@ -55,8 +49,8 @@ the order :ctrl :meta :shift followed by the base."
     ("<f1>" . :f1) ("<f2>" . :f2) ("<f3>" . :f3) ("<f4>" . :f4) ("<f5>" . :f5) ("<f6>" . :f6)
     ("<f7>" . :f7) ("<f8>" . :f8) ("<f9>" . :f9) ("<f10>" . :f10) ("<f11>" . :f11) ("<f12>" . :f12)
     ("<wheel-up>" . :wheel-up) ("<wheel-down>" . :wheel-down)
-    ("<down-mouse-1>" . :down-mouse-1) ("<drag-mouse-1>" .
-                                        :drag-mouse-1) ("<up-mouse-1>" . :up-mouse-1) ("<mouse-2>" . :mouse-2)
+    ("<down-mouse-1>" . :down-mouse-1) ("<drag-mouse-1>" . :drag-mouse-1) ("<up-mouse-1>" . :up-mouse-1)
+    ("<mouse-2>" . :mouse-2)
     ("<double-mouse-1>" . :double-mouse-1) ("<triple-mouse-1>" . :triple-mouse-1))
   "The key names of key sequences (RET, SPC, TAB, <f5> and the rest) and the
 base each stands for.")
@@ -100,7 +94,7 @@ KEY-DESCRIPTION writes it, with a space between (C-x C-f)."
 
 ;;; Events
 
-(defstruct (event (:constructor make-event (kind &key key width height files column row text frame)) (:copier nil))
+(define-record (event (:constructor make-event (kind &key key width height files column row text frame)) (:copier nil))
   "Something the frontend reports. KIND is :key (with KEY), :resize (with WIDTH
 and HEIGHT in cells), :drop when files were dropped on the window (FILES,
 their paths, on the cell COLUMN, ROW), or :paste when text was pasted into the
@@ -112,30 +106,20 @@ from the frontend itself, or :quit when the frontend can deliver nothing
 more. :secret stands among recorded keys where a secret was typed, which is
 never recorded. FRAME is the editor's frame the event happened in, where
 frames share one source of events; NIL for the frame being worked in."
-  (kind :key :type keyword :read-only t)
-  (key nil :type (or null key) :read-only t)
-  (width 0 :type fixnum :read-only t)
-  (height 0 :type fixnum :read-only t)
-  (files '() :type list :read-only t)
-  (column nil :read-only t)
-  (row nil :read-only t)
-  (text nil :type (or null string) :read-only t)
-  (frame nil :read-only t))
+  (kind :key :type keyword :read-only t
+        :documentation "The kind of EVENT: :key, :resize, :drop, :paste, :close, :focus, :detached, :said,
+:quit, :secret among recorded keys, or :tick when a timed read found no key.")
+  (key nil :type (or null key) :read-only t :documentation "The KEY of a :key EVENT.")
+  (width 0 :type fixnum :read-only t :documentation "Width in cells of a :resize EVENT.")
+  (height 0 :type fixnum :read-only t :documentation "Height in cells of a :resize EVENT.")
+  (files '() :type list :read-only t :documentation "The paths of the files of a :drop EVENT.")
+  (column nil :read-only t :documentation "The column of the cell a :drop EVENT happened on.")
+  (row nil :read-only t :documentation "The row of the cell a :drop EVENT happened on.")
+  (text nil :type (or null string) :read-only t :documentation "The text of a :paste EVENT.")
+  (frame nil :read-only t :documentation "The frame EVENT happened in, or NIL for the frame being worked in."))
 
 (setf (documentation 'make-event 'function) "Return an EVENT of KIND with the given KEY, WIDTH,
-HEIGHT, FILES, COLUMN, ROW and TEXT."
-      (documentation 'event-p 'function) "True when OBJECT is an EVENT."
-      (documentation 'event-kind 'function)
-      "The kind of EVENT: :key, :resize, :drop, :paste, :close, :focus, :detached, :said, :quit, :secret among
-recorded keys, or :tick when a timed read found no key."
-      (documentation 'event-key 'function) "The KEY of a :key EVENT."
-      (documentation 'event-width 'function) "Width in cells of a :resize EVENT."
-      (documentation 'event-height 'function) "Height in cells of a :resize EVENT."
-      (documentation 'event-files 'function) "The paths of the files of a :drop EVENT."
-      (documentation 'event-column 'function) "The column of the cell a :drop EVENT happened on."
-      (documentation 'event-row 'function) "The row of the cell a :drop EVENT happened on."
-      (documentation 'event-text 'function) "The text of a :paste EVENT."
-      (documentation 'event-frame 'function) "The frame EVENT happened in, or NIL for the frame being worked in.")
+HEIGHT, FILES, COLUMN, ROW and TEXT.")
 
 (defun dropped-name-p (name)
   "True when NAME, the path of a file dropped on a window, may be opened: a
@@ -153,23 +137,18 @@ window asked to close; not a wake, nor a change of the window's size."
 ;;; A queue of events, for frontends that deliver them from threads of their
 ;;; own; the frames that share a source of events share one
 
-(defstruct (event-queue (:constructor make-event-queue ()) (:copier nil))
+(define-record (event-queue (:constructor make-event-queue ()) (:copier nil))
   "Events on their way to the editor from the threads that read them, oldest
 first, with how many wait of each frame."
-  (items '()) (tail '())
-  (counts (make-hash-table :test 'eq))
-  (lock (sb-thread:make-mutex :name "events"))
-  (waiting (sb-thread:make-waitqueue :name "events"))
-  (taken (sb-thread:make-waitqueue :name "events taken")))
+  (items '() :documentation "The events in QUEUE, oldest first.")
+  (tail '() :documentation "The last cons of QUEUE's items.")
+  (counts (make-hash-table :test 'eq) :documentation "How many events wait in QUEUE, by the frame they name.")
+  (lock (sb-thread:make-mutex :name "events") :documentation "The mutex guarding QUEUE.")
+  (waiting (sb-thread:make-waitqueue :name "events") :documentation "Where the editor waits for QUEUE's next event.")
+  (taken (sb-thread:make-waitqueue :name "events taken")
+         :documentation "Where a thread waits for the editor to take events from QUEUE."))
 
-(setf (documentation 'make-event-queue 'function) "An empty EVENT-QUEUE."
-      (documentation 'event-queue-p 'function) "True when OBJECT is an EVENT-QUEUE."
-      (documentation 'event-queue-items 'function) "The events in QUEUE, oldest first."
-      (documentation 'event-queue-tail 'function) "The last cons of QUEUE's items."
-      (documentation 'event-queue-lock 'function) "The mutex guarding QUEUE."
-      (documentation 'event-queue-waiting 'function) "Where the editor waits for QUEUE's next event."
-      (documentation 'event-queue-counts 'function) "How many events wait in QUEUE, by the frame they name."
-      (documentation 'event-queue-taken 'function) "Where a thread waits for the editor to take events from QUEUE.")
+(setf (documentation 'make-event-queue 'function) "An empty EVENT-QUEUE.")
 
 (defun tick-p (event)
   "True when EVENT is a :TICK, a wake with nothing done by you."
@@ -483,23 +462,17 @@ or the text's when NIL; SHAPE :hidden shows no cursor (over a picture)."))
 
 ;;; Pictures
 
-(defstruct (image (:constructor %make-image (width height channels pixels id)) (:copier nil))
+(define-record (image (:constructor %make-image (width height channels pixels id)) (:copier nil))
   "A picture to show: WIDTH by HEIGHT pixels, each CHANNELS octets (3, red,
 green and blue; 4, with alpha), row after row from the top left, in PIXELS;
 ID, a number no other picture of this session has, by which a frontend tells
 pictures apart."
-  (width 0 :type fixnum :read-only t)
-  (height 0 :type fixnum :read-only t)
-  (channels 4 :type fixnum :read-only t)
-  (pixels nil :read-only t)
-  (id 0 :type fixnum :read-only t))
-
-(setf (documentation 'image-p 'function) "True when OBJECT is an IMAGE."
-      (documentation 'image-width 'function) "The picture's width in pixels."
-      (documentation 'image-height 'function) "The picture's height in pixels."
-      (documentation 'image-channels 'function) "The octets of each pixel of the picture: 3 (RGB) or 4 (RGBA)."
-      (documentation 'image-pixels 'function) "The picture's pixels, row after row from the top left."
-      (documentation 'image-id 'function) "The number that tells the picture apart from every other of the session.")
+  (width 0 :type fixnum :read-only t :documentation "The picture's width in pixels.")
+  (height 0 :type fixnum :read-only t :documentation "The picture's height in pixels.")
+  (channels 4 :type fixnum :read-only t :documentation "The octets of each pixel of the picture: 3 (RGB) or 4 (RGBA).")
+  (pixels nil :read-only t :documentation "The picture's pixels, row after row from the top left.")
+  (id 0 :type fixnum :read-only t
+      :documentation "The number that tells the picture apart from every other of the session."))
 
 (defun image-fit-scale (image width height &optional (most 1))
   "The scale IMAGE is drawn at to fit in WIDTH by HEIGHT pixels, its
@@ -512,7 +485,11 @@ unless given)."
 
 (defun make-image (width height channels pixels)
   "A picture of WIDTH by HEIGHT pixels of CHANNELS octets each (3 or 4), from
-PIXELS, row after row from the top left, with an ID of its own."
+PIXELS, row after row from the top left, with an ID of its own. Refused when
+PIXELS holds fewer octets than that, so that no frontend reads past them."
+  (unless (and (typep width '(integer 0)) (typep height '(integer 0)) (typep channels '(integer 1))
+               (vectorp pixels) (>= (length pixels) (* width height channels)))
+    (tuatara.runtime:refuse "A picture of ~a by ~a pixels came with too few octets for them: not shown" width height))
   (%make-image width height channels pixels (sb-ext:atomic-incf (car **image-count**))))
 
 (defgeneric frontend-focused-p (frontend)

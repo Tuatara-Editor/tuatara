@@ -482,7 +482,7 @@ you trust the project. There are three answers.
 ~M-x trust-project~ asks again for the project of the current buffer, whatever
 was said before. ~M-x lsp-forget-project~ takes the trust back and ends its
 servers. To trust a whole directory of your own projects without being asked,
-put it in =*lsp-trusted-projects*= in the init file, but never the directory
+put it in =*trusted-projects*= in the init file, but never the directory
 where files others send you are kept.
 
 A /project/ is the directory that holds the language's own mark, such as
@@ -604,8 +604,10 @@ turns off the sandbox for a formatter that cannot work shut in.
 
 =*lsp-languages*= lists the languages whose servers are used.
 =*language-servers*= names a server of your own choice for a language in place
-of the usual one. =*lsp-wait*= is the seconds a command waits for an answer it
-needs at once, and a key press stops the wait sooner. =*lsp-watch-files*= tells
+of the usual one. =*lsp-wait*= is the seconds Tuatara waits for a server's
+answer before it gives the question up. You can keep working meanwhile: a
+completion, a definition or a larger selection is used when it comes, unless
+you have moved or changed the text since. =*lsp-watch-files*= tells
 servers about files other programs changed, and =*lsp-watch-skipped*= names the
 directories it never watches, such as =target= and =node_modules=.
 =*lsp-outline*= makes ~M-g o~ list the server's names.
@@ -639,7 +641,7 @@ the steps still show what Tuatara says.
 
 *** Settings and faces
 
-#+table: settings *lsp-trusted-projects* *lsp-languages* *language-servers* *lsp-idle-delay* *lsp-signature-help* *lsp-hover-echo* *lsp-highlight-symbol* *lsp-diagnostics-display* *lsp-diagnostics-style* *lsp-inlay-hints* *lsp-semantic-tokens* *lsp-semantic-faces* *lsp-code-lenses* *lsp-outline* *lsp-wait* *lsp-watch-files* *lsp-watch-skipped* *language-formatters* *format-on-save* *format-in-sandbox* *format-seconds* *word-completion-keep-case*
+#+table: settings *trusted-projects* *lsp-languages* *language-servers* *lsp-idle-delay* *lsp-signature-help* *lsp-hover-echo* *lsp-highlight-symbol* *lsp-diagnostics-display* *lsp-diagnostics-style* *lsp-inlay-hints* *lsp-semantic-tokens* *lsp-semantic-faces* *lsp-code-lenses* *lsp-outline* *lsp-wait* *lsp-watch-files* *lsp-watch-skipped* *language-formatters* *format-on-save* *format-in-sandbox* *format-seconds* *word-completion-keep-case*
 
 #+table: faces :diagnostic-error :diagnostic-warning :diagnostic-info :diagnostic-hint :diagnostic-error-ground :diagnostic-warning-ground :diagnostic-info-ground :diagnostic-hint-ground :symbol-highlight :inlay-hint :code-lens :fold-ellipsis
 
@@ -672,11 +674,11 @@ for today, =$TM_FILENAME= for the file, =$AUTHOR= for the name in
 
 Type the key and press ~TAB~, and the text goes in with the cursor in the first
 place. ~TAB~ moves on to the next place and ~S-TAB~ back to the one before.
-After the last place the cursor goes to =$0=. ~C-c y~ (=insert-snippet=) chooses
-a snippet from a list by name, each with its key, and with text selected the
-selection goes where the snippet has =$TM_SELECTED_TEXT=. ~M-x copy-snippet~
-copies one of Tuatara's own into your directory so that you can change it, and
-yours takes the place of Tuatara's.
+After the last place the cursor goes to =$0=. ~C-c y~ (=insert-snippet=), in
+buffers of text and of code, chooses a snippet from a list by name, each with
+its key, and with text selected the selection goes where the snippet has
+=$TM_SELECTED_TEXT=. ~M-x copy-snippet~ copies one of Tuatara's own into your
+directory so that you can change it, and yours takes the place of Tuatara's.
 
 #+begin_try Try it, with a Python script header
 1. In a terminal, make the snippet. Type this as one command.
@@ -941,11 +943,18 @@ instead. The lines are indented as the mode indents them.
 
 ~C-c ]~ (=latex-close-environment=) writes the =\end= for the nearest =\begin=
 that has none yet, on a line of its own and indented like its =\begin=. A
-=\begin= or =\end= after a =%= is a comment and does not count. When every
-environment before the cursor is closed, it says so. Both keys work in NORMAL
+=\begin= or =\end= after a =%= is a comment and does not count, nor does one
+inside a =verbatim=, =lstlisting=, =minted= or =comment= environment. When
+every environment before the cursor is closed, it says so. Both keys work in NORMAL
 and INSERT state.
 
 #+table: commands latex-insert-environment latex-close-environment
+
+~C-c C-l~ writes a link as =\href{...}{...}=, and ~C-c C-x p~ asks for a
+picture and writes a =figure= environment around its =\includegraphics=,
+with an empty =\caption{}= and a =\label{}= to fill in. Both work as they do
+in Org notes; "Making and following links" and "Adding a picture" in the Org
+chapter say more.
 
 ~C-x T p~ shows a LaTeX file's formulas as pictures, as it does in an Org
 note (see "Formulas as pictures" in the Org chapter): =$...$= and =\(...\)=

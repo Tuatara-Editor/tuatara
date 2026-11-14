@@ -167,6 +167,37 @@ allows."
   "The one of *GIT-FORMAT-WORDS-REFUSED* VALUE, an option or its value, holds, or NIL."
   (find-if (lambda (refused) (search refused value)) *git-format-words-refused*))
 
+(defparameter *git-config-reading-options*
+  '("--get" "--get-all" "--get-regexp" "--get-urlmatch" "--get-color" "--get-colorbool" "--list" "-l")
+  "The options of git config that only read its settings.")
+
+(defparameter *git-config-writing-words*
+  '("--add" "--unset" "--unset-all" "--replace-all" "--rename-section" "--remove-section" "--edit" "-e"
+    "set" "unset" "edit" "rename-section" "remove-section")
+  "The words that have git config change its settings.")
+
+(defun git-config-reading-p (more)
+  "True when git config with the words MORE after it only reads. Its first word
+is get or list, or its first option is one of *GIT-CONFIG-READING-OPTIONS*. No
+word of *GIT-CONFIG-WRITING-WORDS* is among them. There are no more names and
+values than reading takes (a name and a pattern with --get, --get-all,
+--get-regexp and the others asking of one setting; none with --list), as git
+takes config NAME VALUE --get as setting NAME."
+  (let ((first-option (find-if (lambda (word) (uiop:string-prefix-p "-" word)) more))
+        (plain (count-if-not (lambda (word) (uiop:string-prefix-p "-" word)) more)))
+    (and (notany (lambda (word) (member word *git-config-writing-words* :test #'string=)) more)
+         (or (member (first more) '("get" "list") :test #'equal)
+             (and first-option
+                  (member first-option *git-config-reading-options* :test #'string=)
+                  (uiop:string-prefix-p "-" (first more))
+                  (<= plain (if (member first-option '("--list" "-l") :test #'string=) 0 2)))))))
+
+(defun git-leading-options-refused (arguments words)
+  "The options in ARGUMENTS before WORDS, the tail of it from git's command
+on (GIT-COMMAND-WORDS), that *GIT-LINE-OPTIONS-ALLOWED* does not allow."
+  (remove-if (lambda (word) (member word *git-line-options-allowed* :test #'string=))
+             (ldiff arguments words)))
+
 (defun git-reading-refusal (arguments)
   "Why git is not run with ARGUMENTS in a repository not trusted, in one
 sentence. NIL when they only read. They only read when all of these hold.
@@ -176,8 +207,7 @@ parts) is given only the options listed for it, each in a word of its own,
 whose values ask for no signature and no name mapped. Names to branch and tag
 come only when listing. git config is only reading."
   (let* ((words (git-command-words arguments))
-         (leading (remove-if (lambda (word) (member word *git-line-options-allowed* :test #'string=))
-                             (ldiff arguments words)))
+         (leading (git-leading-options-refused arguments words))
          (command (first words))
          (more (rest words))
          (part (and (member command *git-commands-of-several-parts* :test #'equal)
@@ -229,7 +259,8 @@ come only when listing. git config is only reading."
   "Signal GIT-REFUSED: the repository at TOP is not read, why said by CONTROL
 and ARGUMENTS."
   (error 'git-refused :operation "read" :path top
-                      :reason (escape-controls (format nil "~a is not read: ~?" (abbreviated-path top) control arguments))))
+                      :reason (escape-controls (format nil "~a is not read: ~?"
+                                                       (abbreviated-path top) control arguments))))
 
 (defparameter *git-small-file-most* (* 64 1024)
   "The most octets a file of git's own that names a place (.git as a file,
@@ -261,12 +292,12 @@ a worktree). Both where they really are, ending in /. GIT-REFUSED when there
 is none git could read: no HEAD file there, no objects directory."
   (let* ((dot (tuatara.io:path-join (tuatara.io:native top) ".git"))
          (directory (case (tuatara.io:path-kind dot :follow nil)
-                   ((:directory :symlink) (git-directory-from top ".git"))
-                   (:regular
-                    (let ((text (git-small-file top dot ".git file")))
-                      (unless (uiop:string-prefix-p "gitdir: " text)
-                        (git-refuse-reading top "its .git file names no directory"))
-                      (git-directory-from top (subseq text 8)))))))
+                      ((:directory :symlink) (git-directory-from top ".git"))
+                      (:regular
+                       (let ((text (git-small-file top dot ".git file")))
+                         (unless (uiop:string-prefix-p "gitdir: " text)
+                           (git-refuse-reading top "its .git file names no directory"))
+                         (git-directory-from top (subseq text 8)))))))
     (unless directory (git-refuse-reading top "it has no directory of git's own"))
     (let* ((commondir (tuatara.io:path-join directory "commondir"))
            (common (if (tuatara.io:path-kind commondir :follow nil)
@@ -282,11 +313,17 @@ is none git could read: no HEAD file there, no objects directory."
 (defun git-real-directory (top)
   "Git's own directory for the repository or worktree at TOP (GIT-REAL-DIRECTORIES),
 or NIL when it has none git could read."
-  (handler-case (values (git-real-directories top)) (git-refused () nil)))
+  (values (git-real-directories-or-nil top)))
+
+(defun git-real-directories-or-nil (top)
+  "GIT-REAL-DIRECTORIES of TOP, both values, or NIL when it has none git could
+read (git refusing the repository), an error otherwise reported."
+  (ignoring-errors-reported ("finding git's own directory for ~a" top)
+    (handler-case (git-real-directories top) (git-refused () nil))))
 
 ;;; Its shadow
 
-(defstruct (git-shadow (:constructor make-git-shadow (directory)) (:copier nil))
+(define-record (git-shadow (:constructor make-git-shadow (directory)) (:copier nil))
   "A shadow of a repository not trusted, in DIRECTORY. STATE is the state of what
 it was copied from (GIT-REPOSITORY-STATE). DIRECTORIES are the directories of its
 references, whose stamps tell when one was written. SETTINGS are the
@@ -296,18 +333,28 @@ copied into it so far. INDEX-STAMPS and LOGS-STAMPS are the state of the index
 and of the logs copied into it last, :NONE before. USERS is how many runs of
 git use it now. RETIRED is true once a newer shadow took its place, deleted
 when the last run using it is done."
-  directory (state :none) (directories '()) settings (elsewhere '()) (copied 0)
-  (index-stamps :none) (logs-stamps :none) (users 0) retired)
+  (directory nil :documentation "The directory of GIT-SHADOW.")
+  (state :none :documentation "The state of what GIT-SHADOW was copied from (GIT-REPOSITORY-STATE), :NONE before.")
+  (directories '()
+               :documentation "The directories of the references of GIT-SHADOW, whose stamps tell when one was
+written.")
+  (settings nil :documentation "The extensions given to GIT-SHADOW, each (NAME VALUE).")
+  (elsewhere '() :documentation "The directories of objects outside the repository that its alternates name.")
+  (copied 0 :documentation "How many octets have been copied into GIT-SHADOW.")
+  (index-stamps :none :documentation "The state of the index copied into GIT-SHADOW last, :NONE before.")
+  (logs-stamps :none :documentation "The state of the logs copied into GIT-SHADOW last, :NONE before.")
+  (users 0 :documentation "How many runs of git use GIT-SHADOW now.")
+  (retired nil
+           :documentation "True once a newer shadow took the place of GIT-SHADOW, which is deleted when the last run
+using it is done."))
 
-(setf (documentation 'git-shadow-p 'function) "True when OBJECT is a GIT-SHADOW.")
-
-(defstruct (git-shadow-place (:constructor make-git-shadow-place ()) (:copier nil))
+(define-record (git-shadow-place (:constructor make-git-shadow-place ()) (:copier nil))
   "Where the shadow of one repository is kept: LOCK, held while it is looked
 at, made, taken up or let go of, so that one repository's shadow being made
 holds up no other; CURRENT, the shadow in use, or NIL."
-  (lock (sb-thread:make-mutex :name "tuatara git shadow")) current)
-
-(setf (documentation 'git-shadow-place-p 'function) "True when OBJECT is a GIT-SHADOW-PLACE.")
+  (lock (sb-thread:make-mutex :name "tuatara git shadow")
+        :documentation "The mutex held while the shadow of the repository is looked at, made, taken up or let go of.")
+  (current nil :documentation "The shadow of the repository in use, or NIL."))
 
 (defvar *git-shadows* (make-hash-table :test 'equal :synchronized t)
   "The GIT-SHADOW-PLACE of each repository not trusted git was run in, by its
@@ -363,11 +410,11 @@ that ended without deleting its own (a crash) leaves them
 \(FORGET-ABANDONED-DIRECTORIES)."
   (forget-abandoned-directories "git-shadow/" :own (car *git-shadows-directory*)))
 
-(defun git-file-row (path)
+(defun git-file-row (path &optional stamp)
   "What a shadow knows of the file or directory at PATH, a link not followed:
 its kind, device, inode, size, and the times of its change, in nanoseconds;
-NIL when it is not there."
-  (let ((stamp (tuatara.io:path-stamp path :follow nil :failure nil)))
+NIL when it is not there. STAMP is the stamp of PATH when the caller has it."
+  (let ((stamp (or stamp (tuatara.io:path-stamp path :follow nil :failure nil))))
     (and stamp (list (tuatara.io:stamp-kind stamp) (tuatara.io:stamp-dev stamp) (tuatara.io:stamp-ino stamp)
                      (tuatara.io:stamp-size stamp) (tuatara.io:stamp-mtime stamp) (tuatara.io:stamp-ctime stamp)))))
 
@@ -386,7 +433,7 @@ opened. NIL when ROOT is not there."
                      (when (> (incf count) *git-shadow-most-entries*)
                        (git-refuse-reading top "~a holds too many references" (abbreviated-path root)))
                      (let ((path (concatenate 'string relative name)))
-                       (push (list* path own (git-file-row (tuatara.io:path-join directory name))) rows)
+                       (push (list* path own (git-file-row (tuatara.io:path-join directory name) stamp)) rows)
                        (when (eq own :directory)
                          (walk (tuatara.io:slash-ended (tuatara.io:path-join directory name))
                                (concatenate 'string path "/") (1+ depth)))))))))
@@ -473,7 +520,7 @@ format newer than 1, or one needing an extension that is neither one of
         '()
         (let* ((text (unwind-protect (git-helper-output top (git-shadow-directory shadow)
                                                         (list "config" "--file" copy "--no-includes" "-z" "--list"))
-                       (handler-case (delete-file (sb-ext:parse-native-namestring copy)) (file-error () nil))))
+                       (tuatara.io:remove-file-if-there copy)))
                (entries (loop for entry in (uiop:split-string text :separator (list (code-char 0)))
                               for newline = (position #\Newline entry)
                               when (plusp (length entry))
@@ -499,8 +546,16 @@ format newer than 1, or one needing an extension that is neither one of
 
 (defun git-shadow-settings-text (settings)
   "The settings a shadow's git reads, for SETTINGS, its extensions."
-  (format nil "[core]~%	repositoryformatversion = ~d~%	bare = false~%	logallrefupdates = false~%~@[[extensions]~%~{	~{~a = ~a~}~%~}~]"
-          (if settings 1 0) settings))
+  (with-output-to-string (out)
+    (flet ((line (control &rest arguments)
+             (format out "~c~?~%" #\Tab control arguments)))
+      (format out "[core]~%")
+      (line "repositoryformatversion = ~d" (if settings 1 0))
+      (line "bare = false")
+      (line "logallrefupdates = false")
+      (when settings
+        (format out "[extensions]~%")
+        (loop for (name value) in settings do (line "~a = ~a" name value))))))
 
 (defun git-object-directories (top common)
   "The directories of objects git reads for the repository at TOP, whose common
@@ -525,7 +580,8 @@ must be a directory. GIT-REFUSED otherwise."
                    (let ((alternates (tuatara.io:path-join real "info/alternates")))
                      (when (tuatara.io:path-kind alternates :follow nil)
                        (when (>= depth *git-alternates-deepest*)
-                         (git-refuse-reading top "its alternates name others more than ~d deep" *git-alternates-deepest*))
+                         (git-refuse-reading top "its alternates name others more than ~d deep"
+                                             *git-alternates-deepest*))
                        (dolist (line (uiop:split-string (git-small-file top alternates "alternates")
                                                         :separator '(#\Newline)))
                          (let ((line (string-trim '(#\Space #\Return #\Tab) line)))
@@ -548,14 +604,14 @@ were copied last."
     (unless (equal key (git-shadow-logs-stamps shadow))
       (let ((to (tuatara.io:path-join (git-shadow-directory shadow) (if (eq which :stash) "logs/refs/stash" "logs/"))))
         (if (eq which :stash)
-            (progn (handler-case (delete-file (sb-ext:parse-native-namestring to)) (file-error () nil))
+            (progn (tuatara.io:remove-file-if-there to)
                    (git-copy-file top from to "logs" shadow))
             (progn (ignoring-errors-reported ("deleting the copy ~a" to) (tuatara.io:delete-tree to))
                    (git-copy-tree top from to "logs" shadow)
                    (unless (string= directory common)
-                     (handler-case (delete-file (sb-ext:parse-native-namestring (tuatara.io:path-join to "HEAD")))
-                       (file-error () nil))
-                     (git-copy-file top (tuatara.io:path-join directory "logs/HEAD") (tuatara.io:path-join to "HEAD") "logs" shadow)))))
+                     (tuatara.io:remove-file-if-there (tuatara.io:path-join to "HEAD"))
+                     (git-copy-file top (tuatara.io:path-join directory "logs/HEAD") (tuatara.io:path-join to "HEAD")
+                                    "logs" shadow)))))
       (setf (git-shadow-logs-stamps shadow) key))))
 
 (defun make-git-shadow-of (top directory common)
@@ -574,13 +630,16 @@ an empty one to run in. Its objects' directories are looked at first
               (remove-if (lambda (objects) (tuatara.io:path-within-p objects own)) (git-object-directories top common)))
         (tuatara.io:write-private-file (tuatara.io:path-join place "config") (git-shadow-settings-text settings))
         (git-copy-file top (tuatara.io:path-join directory "HEAD") (tuatara.io:path-join place "HEAD") "HEAD" shadow)
-        (git-copy-file top (tuatara.io:path-join common "packed-refs") (tuatara.io:path-join place "packed-refs") "packed-refs" shadow)
+        (git-copy-file top (tuatara.io:path-join common "packed-refs") (tuatara.io:path-join place "packed-refs")
+                       "packed-refs" shadow)
         (dolist (name '("shallow" "info/exclude"))
           (git-copy-file top (tuatara.io:path-join common name) (tuatara.io:path-join place name) name shadow))
         (setf (git-shadow-directories shadow)
-              (git-copy-tree top (tuatara.io:path-join common "refs/") (tuatara.io:path-join place "refs/") "references" shadow))
+              (git-copy-tree top (tuatara.io:path-join common "refs/") (tuatara.io:path-join place "refs/")
+                             "references" shadow))
         (when (tuatara.io:path-kind (tuatara.io:path-join common "reftable/") :follow nil)
-          (git-copy-tree top (tuatara.io:path-join common "reftable/") (tuatara.io:path-join place "reftable/") "packed-refs" shadow))
+          (git-copy-tree top (tuatara.io:path-join common "reftable/") (tuatara.io:path-join place "reftable/")
+                         "packed-refs" shadow))
         (dolist (name '("refs/" "objects/" "empty/" "logs/"))
           (ensure-directories-exist (sb-ext:parse-native-namestring (tuatara.io:path-join place name))))
         (setf (git-shadow-settings shadow) settings
@@ -610,7 +669,7 @@ has no index. GIT-REFUSED when one is not a file."
           (if (tuatara.io:path-kind from :follow nil)
               (progn (git-copy-file top from fresh "index" shadow)
                      (tuatara.io:rename-path fresh to :replace t))
-              (handler-case (delete-file (sb-ext:parse-native-namestring to)) (file-error () nil)))))
+              (tuatara.io:remove-file-if-there to))))
       (setf (git-shadow-index-stamps shadow) rows))))
 
 (defparameter *git-commands-without-index*
@@ -795,8 +854,9 @@ blamed as HEAD has it, its own text; anything else is refused
 so, once: it is not run there again this session until \\[git] asks."
   (unless (gethash top *git-timed-out*)
     (setf (gethash top *git-timed-out*) t)
-    (message "~a" (escape-controls (format nil "git ran too long in ~a: it is not asked of it again this session, the change gutter there left out, until ~a there"
-                                           (abbreviated-path top) (substitute-command-keys "\\[git]"))))))
+    (message "git ran too long in ~a: it is not asked of it again this session, the change gutter there left out, ~
+              until \\[git] there"
+             (abbreviated-path top))))
 
 (defun forget-git-shadow (top)
   "Have the repository at TOP read anew when git next runs there: its shadow
@@ -812,26 +872,38 @@ again if it ran too long there before."
             (setf (git-shadow-place-current place) nil)
             (retire-git-shadow shadow)))))))
 
+(defvar *git-reads-only-seen* (make-hash-table :test 'equal :synchronized t)
+  "The answers of GIT-READS-ONLY-P by the top of a repository, each (KEY STAMP
+ANSWER): KEY what trust and evidence stood at then (TRUSTED-PROJECT-KEY),
+STAMP that of the top's .git.")
+
 (defun git-reads-only-p (top)
   "True when git only reads the repository at TOP, on its shadow: it is not
 trusted (PROJECT-TRUSTED-P); or it is, but git's own directory its .git leads
 to, or the common one, is of a repository looked at only (a directory answered
-so, or within one, or an evidence directory or one holding it)."
-  (or (not (project-trusted-p top))
-      (multiple-value-bind (directory common) (ignoring-errors-reported ("finding git's own directory for ~a" top)
-                                             (handler-case (git-real-directories top) (git-refused () nil)))
-        (and directory
-             (or (project-look-only-reason (tuatara.io:parent-path (string-right-trim "/" common)))
-                 (project-look-only-reason directory)
-                 (project-look-only-reason common))
-             t))))
+so, or within one, or an evidence directory or one holding it). The answer is
+kept and found again only when the projects trusted or looked at only, the
+evidence directories or the top's .git change."
+  (let ((stamp (tuatara.io:path-stamp (tuatara.io:path-join (tuatara.io:native top) ".git")
+                                      :follow nil :failure nil))
+        (seen (gethash top *git-reads-only-seen*)))
+    (if (and seen (trusted-project-key-current-p (first seen) top) (equalp stamp (second seen)))
+        (third seen)
+        (let ((answer (or (not (project-trusted-p top))
+                          (multiple-value-bind (directory common) (git-real-directories-or-nil top)
+                            (and directory
+                                 (or (project-look-only-reason (tuatara.io:parent-path (string-right-trim "/" common)))
+                                     (project-look-only-reason directory)
+                                     (project-look-only-reason common))
+                                 t)))))
+          (setf (gethash top *git-reads-only-seen*) (list (trusted-project-key top) stamp answer))
+          answer))))
 
 (defun git-directory-elsewhere (top)
   "Git's own directory for the repository at TOP when it is not TOP's .git, as
 a .git file or link, or a worktree's common directory, leads elsewhere; NIL
 when it is there, or there is none."
-  (multiple-value-bind (directory common) (ignoring-errors-reported ("finding git's own directory for ~a" top)
-                                         (handler-case (git-real-directories top) (git-refused () nil)))
+  (multiple-value-bind (directory common) (git-real-directories-or-nil top)
     (let ((own (let ((real (real-directory top))) (and real (tuatara.io:path-join real ".git/")))))
       (and directory (not (and own (string= directory own) (string= common own)))
            (if (string= directory common) directory (format nil "~a (its common directory ~a)" directory common))))))
@@ -848,8 +920,10 @@ raw forms. The shadow is let go of once FUNCTION returns."
   (let ((refusal (git-reading-refusal arguments)))
     (when refusal
       (error 'git-refused :operation (or (first (git-command-words arguments)) "") :path top
-                          :reason (escape-controls (format nil "~a is looked at only (~a): ~a" (abbreviated-path top)
-                                                           (or (project-look-only-reason top) "it is not trusted") refusal)))))
+                          :reason (escape-controls (format nil "~a is looked at only (~a): ~a"
+                                                           (abbreviated-path top)
+                                                           (or (project-look-only-reason top) "it is not trusted")
+                                                           refusal)))))
   (multiple-value-bind (dir common) (git-real-directories top)
     (let ((words (git-command-words arguments)))
       (multiple-value-bind (shadow place)

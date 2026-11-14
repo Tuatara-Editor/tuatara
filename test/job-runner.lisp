@@ -13,8 +13,9 @@ marks. A job whose work runs out of memory ends as failed.")
   "Each kind of job, as (NAME MAKE STOP-QUESTION STOPPED): MAKE a function of a
 buffer giving a new job of that kind for it, nothing done yet; what stop-job
 asks before stopping it, and what is said once it has stopped."
-  (list (list "rewrite" (lambda (b) (tuatara.defaults::%make-rewrite :buffer b :words "in the buffer"
-                                                                      :pieces (vector (tuatara.defaults::make-rewrite-piece 0 3))))
+  (list (list "rewrite" (lambda (b) (tuatara.defaults::%make-match-rewrite
+                                     :buffer b :words "in the buffer"
+                                     :pieces (vector (tuatara.defaults::make-rewrite-piece 0 3))))
               "Stop replacing at 0%?" "Stopped: nothing replaced")
         (list "sort" (lambda (b) (tuatara.defaults::%make-sort-job :buffer b :words "Sorting"))
               "Stop sorting at 0%?" "Stopped: nothing was changed")
@@ -297,3 +298,44 @@ questions asked, the first first; what would be shown below them is kept in
     (false (tuatara.git::git-push-allowed-p '("--force")))
     (is equal '("Force the push?") prompts)
     (is equal '("Commits the remote has that this branch has not are taken away.") *question-details*)))
+
+(defstruct (runner-test-job (:include tuatara.runtime:job) (:constructor make-runner-test-job ()))
+  "A job of no kind, for the tests of the list of jobs alone.")
+
+(define-test (job-runner jobs-added-from-two-threads-kept)
+  ;; a job's thread may start a job while the editor's thread takes one in:
+  ;; neither loses the other's
+  (let ((saved (symbol-value 'tuatara.runtime:*jobs*))
+        (lost (list 0)))
+    (setf (symbol-value 'tuatara.runtime:*jobs*) '())
+    (unwind-protect
+         (flet ((churn ()
+                  (loop repeat 50000
+                        do (let ((job (make-runner-test-job)))
+                             (tuatara.runtime::remember-job job)
+                             (unless (member job (symbol-value 'tuatara.runtime:*jobs*))
+                               (sb-ext:atomic-incf (car lost)))
+                             (tuatara.runtime:forget-job job)))))
+           (mapc #'sb-thread:join-thread (list (sb-thread:make-thread #'churn) (sb-thread:make-thread #'churn))))
+      (setf (symbol-value 'tuatara.runtime:*jobs*) saved))
+    (is = 0 (car lost))))
+
+(define-test (job-runner waiting-for-the-saves)
+  ;; one wait serves the kill or exit query and the daemon stopping: it waits for the saves alone (the
+  ;; sort, stopped at an exit, is not waited for), and for SECONDS at most
+  (let* ((b (tuatara.buffer:make-buffer "job-runner saves" :text "abc"))
+         (ended (sb-thread:make-thread (lambda () nil)))
+         (hanging (sb-thread:make-thread (lambda () (sleep 30)))))
+    (unwind-protect
+         (progn
+           (sb-thread:join-thread ended)
+           (let ((done (tuatara.io::%make-save-job :buffer b :thread ended))
+                 (sort (tuatara.defaults::%make-sort-job :buffer b :words "Sorting")))
+             (true (tuatara.defaults::wait-for-saving '()))
+             (true (tuatara.defaults::wait-for-saving (list sort done))))
+           (let ((start (get-internal-real-time)))
+             (false (tuatara.defaults::wait-for-saving
+                     (list (tuatara.io::%make-save-job :buffer b :thread hanging)) :seconds 1/5))
+             (true (< (- (get-internal-real-time) start) (* 5 internal-time-units-per-second)))))
+      (ignore-errors (sb-thread:terminate-thread hanging))
+      (tuatara.buffer:kill-buffer b))))

@@ -391,6 +391,65 @@ were before MAP-LINE-SLICES: (LINE START END START-COLUMN END-COLUMN LINE-END)."
                (is equal (line-slices-by-steps b left right) (nreverse found) "~d-~d" left right))))
       (tuatara.buffer:kill-buffer b))))
 
+(define-test (rope line-slices-stop-at-the-row-asked-for)
+  ;; a row of a long line read without its end reads about as much as the row,
+  ;; whatever the line's length; the slice's end is given for the line's end
+  (let ((rope (tuatara.text:string->rope (format nil "~a~%next" (make-string 3000000 :initial-element #\x)))))
+    (flet ((row (left right)
+             (let ((found nil))
+               (tuatara.text:map-line-slices (lambda (&rest row) (setf found row)) rope 0 1 left right
+                                             :octets t :to-line-end nil)
+               found)))
+      (destructuring-bind (line s e sc ec line-end block block-start block-end) (row 10 20)
+        (declare (ignore block block-start))
+        (is equal '(0 10 20 10 20 20) (list line s e sc ec line-end))
+        (true (< block-end 100000) "read to ~:d" block-end))
+      (is = 1000020 (sixth (row 1000000 1000020))))))
+
+(define-test (rope uncounted-scans-make-no-blocks)
+  ;; the line and character scans read into a kept block: no 64 KB made per call
+  (let ((rope (tuatara.text:string->rope (with-output-to-string (o) (dotimes (i 20000) (write-line "line é" o))))))
+    (flet ((made (calls)
+             (nth-value 2 (measuring
+                            (dotimes (i calls)
+                              (tuatara.text:rope-nth-newline rope 0 100000 5000)
+                              (tuatara.text:rope-count-chars rope 0 100000))))))
+      (let ((each (/ (- (made 200) (made 50)) 150)))
+        (true (< each 2000) "~:d octets a call" (round each))))))
+
+(define-test (rope octet-searches-make-nothing)
+  ;; searching for octets, a bracket's partner or a line makes nothing per call
+  (let ((rope (tuatara.text:string->rope (format nil "(a b)~%  ~%text (c)~%"))))
+    (flet ((made (calls)
+             (nth-value 2 (measuring
+                            (dotimes (i calls)
+                              (tuatara.text:rope-find-any-octet rope '(40 41) :start 1)
+                              (tuatara.text:rope-skip-octets rope 1 tuatara.text:*blank-octets*)
+                              (tuatara.text:rope-bracket-match rope 0)
+                              (tuatara.text:rope-line-downward rope 6 :blank nil))))))
+      (let ((each (/ (- (made 400) (made 100)) 300)))
+        (true (< each 8) "~:d octets a call" (round each))))))
+
+(define-test (rope many-edits-side-by-side-joined)
+  ;; edits so close together that they are made as one, more of them than the
+  ;; stack holds arguments for, are joined without passing each piece as one
+  (let* ((pairs 300000)
+         (rope (tuatara.text:string->rope (with-output-to-string (o)
+                                            (dotimes (i pairs) (format o "~cx~c" #\Return #\Newline)))))
+         (edits (coerce (loop for i below pairs
+                              collect (tuatara.text:make-edit (1+ (* 3 i)) (+ 2 (* 3 i))))
+                        'simple-vector)))
+    (is = (* 2 pairs) (tuatara.text:rope-octet-length (tuatara.text:apply-edits rope edits)))))
+
+(define-test (rope edit-rebuilds-branches-with-little-garbage)
+  ;; a character typed into a large text copies its leaf and the branches above
+  ;; it once each, nothing grown as it goes
+  (let* ((rope (tuatara.text:string->rope (make-string (* 8 1024 1024) :initial-element #\a)))
+         (edit (vector (tuatara.text:make-edit 5000000 5000000 (to-octets "x"))))
+         (made (loop repeat 3
+                     minimize (nth-value 2 (measuring (tuatara.text:apply-edits rope edit))))))
+    (true (< made 7000) "~:d octets made" made)))
+
 (define-test (rope line-slices-past-characters-of-no-width)
   ;; a run of characters of no width longer than the block read does not cut
   ;; the line short: what follows it is in the slice, the line's end its end

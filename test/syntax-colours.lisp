@@ -318,7 +318,8 @@
              (buffer (tuatara.buffer:make-buffer "*syntax-far*" :text rope)))
         (unwind-protect
              (let* ((syntax (tuatara.syntax:attach-syntax buffer grammar))
-                    (shown (tuatara.syntax:syntax-highlights syntax query faces (list (cons at (+ at (length code))))))
+                    (shown (first (tuatara.syntax:syntax-highlights syntax query faces
+                                                                    (list (cons at (+ at (length code)))))))
                     (string (+ at (search "\"line\"" code))))
                (true (tuatara.syntax:syntax-too-big syntax))
                (true (find-if (lambda (range) (and (= string (first range)) (= (+ string 6) (second range)))) shown)
@@ -753,14 +754,50 @@
     (unwind-protect
          (let* ((syntax (tuatara.syntax:attach-syntax buffer grammar))
                 (tuatara.syntax:*syntax-wait* 30)
-                (top (tuatara.syntax:syntax-highlights syntax query faces (list (cons 0 100))))
-                (bottom (tuatara.syntax:syntax-highlights syntax query faces (list (cons 300 400)))))
+                (top (first (tuatara.syntax:syntax-highlights syntax query faces (list (cons 0 100)))))
+                (bottom (first (tuatara.syntax:syntax-highlights syntax query faces (list (cons 300 400))))))
            (true top)
            (true bottom)
-           (is eq top (tuatara.syntax:syntax-highlights syntax query faces (list (cons 0 100))))
-           (is eq bottom (tuatara.syntax:syntax-highlights syntax query faces (list (cons 300 400)))))
+           (is eq top (first (tuatara.syntax:syntax-highlights syntax query faces (list (cons 0 100)))))
+           (is eq bottom (first (tuatara.syntax:syntax-highlights syntax query faces (list (cons 300 400))))))
       (tuatara.syntax:detach-syntax buffer)
       (tuatara.buffer:kill-buffer buffer))))
+
+(define-test (syntax colours-of-parts-not-joined)
+  ;; the colours of two parts shown at once, and of two ways of colouring, are given as their
+  ;; own lists, so drawing a frame copies none of them: no more garbage for more colours
+  (let* ((text (with-output-to-string (s) (dotimes (i 300) (format s "fn f~d() {}~%" i))))
+         (buffer (tuatara.buffer:make-buffer "*syntax-unjoined*" :text text))
+         (grammar (tuatara.syntax:find-grammar "rust"))
+         (query (tuatara.syntax:compile-query grammar (tuatara.defaults::language-rules (language-named 'rust))))
+         (faces (tuatara.defaults::query-faces query :rich 0)))
+    (flet ((consed (function)
+             (funcall function)
+             (loop repeat 3
+                   minimize (let ((before (tuatara.bench::bytes-consed)))
+                              (funcall function)
+                              (- (tuatara.bench::bytes-consed) before)))))
+      (unwind-protect
+           (let ((syntax (tuatara.syntax:attach-syntax buffer grammar))
+                 (tuatara.syntax:*syntax-wait* 30))
+             (flet ((parts-consed (lines)
+                      (let ((parts (list (cons 0 (search (format nil "fn f~d(" lines) text))
+                                         (cons (search "fn f290(" text) (search "fn f292(" text)))))
+                        (is = 2 (length (tuatara.syntax:syntax-highlights syntax query faces parts)))
+                        (consed (lambda () (tuatara.syntax:syntax-highlights syntax query faces parts))))))
+               (let ((few (parts-consed 10)) (many (parts-consed 200)))
+                 (true (< (- many few) 512) "~d octets for 10 lines, ~d for 200" few many))))
+        (tuatara.syntax:detach-syntax buffer)
+        (tuatara.buffer:kill-buffer buffer))
+      (flet ((syntax-consed (n)
+               (let* ((ranges (loop for i below n collect (list i (1+ i) :keyword)))
+                      (tuatara.command:*syntax-highlight-functions*
+                        (list (lambda (editor window rows) (declare (ignore editor window rows)) (list ranges))
+                              (lambda (editor window rows) (declare (ignore editor window rows)) (list ranges)))))
+                 (is = 2 (length (tuatara.command:window-syntax nil nil #())))
+                 (consed (lambda () (tuatara.command:window-syntax nil nil #()))))))
+        (let ((few (syntax-consed 10)) (many (syntax-consed 1000)))
+          (true (< (- many few) 512) "~d octets for 10 ranges, ~d for 1,000" few many))))))
 
 (define-test (syntax slow-lines-of-a-large-text-parsed-once)
   ;; a text too large to parse whole whose lines parse too slowly is not parsed again on every scroll
@@ -963,3 +1000,16 @@
                (true (member shown arguments :test #'string=) "~a shown" shown)
                (true (uiop:string-prefix-p (concatenate 'string shown "/") run) "~a run within ~a" run shown)))
         (tuatara.io:remove-file in-tmp)))))
+
+(define-test (syntax names-hashed-without-garbage)
+  ;; a name's hash is the low bits of the rope's hash of its octets, and taking it makes no garbage
+  (let* ((rope (tuatara.text:rope-insert (tuatara.text:string->rope (make-string 2000 :initial-element #\a)) 700 "name"))
+         (count 10000)
+         (sum 0))
+    (declare (type fixnum sum))
+    (is = (ldb (byte 62 0) (tuatara.text:rope-hash rope 690 710)) (tuatara.syntax::name-hash rope 690 710))
+    (let ((before (sb-ext:get-bytes-consed)))
+      (dotimes (i count)
+        (setf sum (logxor sum (ldb (byte 62 0) (tuatara.text:rope-hash rope 690 (+ 700 (mod i 300)))))))
+      (let ((made (- (sb-ext:get-bytes-consed) before)))
+        (true (< made 4096) "~d octets made for ~d hashes" made count)))))

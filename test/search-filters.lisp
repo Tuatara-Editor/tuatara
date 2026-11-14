@@ -1361,7 +1361,7 @@ whole text finds (SCAN-KEPT-STARTS), and counts them; with EVERYWHERE, worked
 out in small pieces on all but two cores. Else what each found, for the
 report."
   (let* ((rope (tuatara.text:string->rope text))
-         (filter (tuatara.defaults::make-search-filter pattern :crlf crlf :hide hide))
+         (filter (tuatara.defaults::make-search-filter pattern :hide hide))
          (matcher (tuatara.defaults::search-filter-matcher filter))
          (ranges (or ranges (list (list 0 (tuatara.text:rope-octet-length rope)))))
          (oracle (scan-kept-starts rope matcher crlf :ends ends :ranges ranges :hide hide)))
@@ -1403,7 +1403,7 @@ for, anchors, empty matches, line ends, and matches running over them.")
           (is eq t (filter-scan-agrees text pattern :crlf crlf :everywhere t)))
         ;; lines a filter before left: the runs it leaves, others hidden
         (let* ((rope (tuatara.text:string->rope text))
-               (runs (tuatara.defaults::lines-matching (list (tuatara.defaults::make-search-filter "e" :crlf crlf)) rope
+               (runs (tuatara.defaults::lines-matching (list (tuatara.defaults::make-search-filter "e")) rope
                                                       (runs-of (list (list 0 (tuatara.text:rope-octet-length rope)))) crlf))
                (ranges (loop for i from 0 below (length runs) by 2 collect (list (aref runs i) (aref runs (1+ i))))))
           (dolist (pattern *line-bound-filter-patterns*)
@@ -1445,7 +1445,7 @@ for, anchors, empty matches, line ends, and matches running over them.")
                                 '(1 2))))
         (destructuring-bind (pattern string lines) case
           (let* ((rope (tuatara.text:string->rope string))
-                 (filter (tuatara.defaults::make-search-filter pattern :crlf crlf))
+                 (filter (tuatara.defaults::make-search-filter pattern))
                  (all (runs-of (list (list 0 (length string))))))
             (is equal lines
                 (kept-line-numbers string (tuatara.defaults::lines-matching (list filter) rope all crlf)) "~a" pattern)
@@ -1460,7 +1460,7 @@ for, anchors, empty matches, line ends, and matches running over them.")
             ;; hidden: the lines no part of a match lies on
             (is equal (sort (set-difference (loop for n from 0 below (count #\Newline string) collect n) lines) #'<)
                 (sort (kept-line-numbers string (tuatara.defaults::lines-matching
-                                                 (list (tuatara.defaults::make-search-filter pattern :crlf crlf :hide t)) rope all crlf))
+                                                 (list (tuatara.defaults::make-search-filter pattern :hide t)) rope all crlf))
                       #'<))
             ;; a list's lines, matched together
             (let ((list-lines (coerce (butlast (uiop:split-string (remove #\Return string) :separator '(#\Newline))) 'simple-vector)))

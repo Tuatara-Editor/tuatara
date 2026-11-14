@@ -369,6 +369,10 @@ list starts on its first line, on a screen WIDTH by HEIGHT."
       (when (tuatara.buffer:live-buffer-p odd) (tuatara.buffer:kill-buffer odd))
       (let ((l (tuatara.buffer:find-buffer "*Buffers*"))) (when l (tuatara.buffer:kill-buffer l)))))
   (is string= "a^Ib^Mc" (tuatara.command:escape-controls (format nil "a~cb~cc" #\Tab #\Return)))
+  ;; a question in the echo area writes them out as a message does: a name in it hides nothing
+  (let ((tuatara.command:*editor* (nth-value 1 (run-keys ""))))
+    (tuatara.command::echo "Delete ~a? " (format nil "nl~%name~c.txt" (code-char #x202E)))
+    (is string= "Delete nl^Jname<202E>.txt? " (tuatara.command:editor-message tuatara.command:*editor*)))
   (is string= "rtl<202E>gnp.exe<2066>\\x85"
       (tuatara.command:escape-controls (format nil
                                                "rtl~cgnp.exe~c~c"

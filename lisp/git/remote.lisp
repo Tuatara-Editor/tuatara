@@ -5,49 +5,78 @@
 ;;;; as Magit's do: from or to the branch's upstream, from or to a remote asked
 ;;;; for, every remote, tags. Git never asks for a password on the terminal
 ;;;; (the editor's) and never runs a program an address names; the keys and
-;;;; credentials it needs come from your agent and helpers, and on a desktop
-;;;; ssh asks for a key's passphrase in a window of its own. A pull with no
-;;;; switch only moves the branch on (fast-forward); a forced push is asked
-;;;; first.
+;;;; credentials it needs come from your agent and helpers. What ssh asks, a
+;;;; server's key it has not seen or a key's passphrase, is put to you in the
+;;;; minibuffer as for a server's files (remote/asking.lisp): ssh itself adds
+;;;; a key you accept to your known hosts, and refuses a changed one, which is
+;;;; said plainly and never offered. With nobody to ask, a desktop's window asks
+;;;; for a passphrase and a key ssh does not know is refused, saying so. A pull
+;;;; with no switch only moves the branch on (fast-forward); a forced push is
+;;;; asked first.
 
 (in-package #:tuatara.git)
 
 (defun git-network-environment (&rest settings)
   "What git is given to fetch or push, with SETTINGS, each (KEY VALUE), of its
-configuration besides: never to run a program an address of the ext:: kind
-names, nor the ssh a repository's own configuration names. The keys and
-credentials it needs come from your agent and helpers; a key's passphrase
-the agent does not hold is asked in ssh's own window on a desktop
-\(SSH-ASKPASS-WINDOW-P), never on the terminal, and with no desktop ssh asks
-nothing and fails. A server whose key ssh does not know yet is refused."
+configuration besides, when nobody is asked what ssh asks (GIT-NETWORK-VARIABLES)."
+  (git-network-variables nil nil settings))
+
+(defun git-network-variables (ssh asking settings)
+  "The environment (NAME=VALUE strings) git reaches a server with, SETTINGS,
+each (KEY VALUE), of its configuration besides: never to run a program an
+address of the ext:: kind names, nor the ssh a repository's own
+configuration names. The keys and credentials it needs come from your agent
+and helpers. With SSH, the command running ssh, and ASKING, its environment
+\(CALL-ANSWERING-SSH), what ssh asks is put to you in the minibuffer: a key
+not seen before, a key's passphrase. Without, a key's passphrase the agent
+does not hold is asked in ssh's own window on a desktop
+\(SSH-ASKPASS-WINDOW-P), never on the terminal, with no desktop ssh asks
+nothing and fails, and a server whose key ssh does not know yet is refused."
   (let ((settings (cons '("protocol.ext.allow" "never") settings))
-        (askpass (ssh-askpass-window-p)))
-    (append (if askpass
-                (list "GIT_SSH_COMMAND=ssh -o StrictHostKeyChecking=yes" (format nil "SSH_ASKPASS=~a" askpass)
-                      "SSH_ASKPASS_REQUIRE=force")
-                (list "GIT_SSH_COMMAND=ssh -o BatchMode=yes"))
+        (askpass (and (null ssh) (ssh-askpass-window-p))))
+    (append (cond ((and ssh (plain-path-p (first ssh)))
+                   (cons (format nil "GIT_SSH_COMMAND=~{~a~^ ~}" ssh) asking))
+                  (ssh (cons (format nil "GIT_SSH_COMMAND=ssh~{ ~a~}" (rest ssh)) asking))
+                  (askpass
+                   (list "GIT_SSH_COMMAND=ssh -o StrictHostKeyChecking=yes" (format nil "SSH_ASKPASS=~a" askpass)
+                         "SSH_ASKPASS_REQUIRE=force"))
+                  (t (list "GIT_SSH_COMMAND=ssh -o BatchMode=yes")))
             (list (format nil "GIT_CONFIG_COUNT=~d" (length settings)))
             (loop for (key value) in settings
                   for i from 0
                   collect (format nil "GIT_CONFIG_KEY_~d=~a" i key)
                   collect (format nil "GIT_CONFIG_VALUE_~d=~a" i value)))))
 
+(defun call-with-git-environment (environment arguments function)
+  "On a job's thread, call FUNCTION with ENVIRONMENT, the NAME=VALUE strings
+given to git running ARGUMENTS. ENVIRONMENT :NETWORK, for git reaching a
+server, gives it GIT-NETWORK-VARIABLES', what ssh asks put to you in the
+minibuffer meanwhile when someone can answer (CALL-ANSWERING-SSH)."
+  (if (eq environment :network)
+      (call-answering-ssh (format nil "the server of git ~a" (or (first (git-command-words arguments)) ""))
+                          (lambda (ssh asking) (funcall function (git-network-variables ssh asking '()))))
+      (funcall function environment)))
+
 (defun git-over-network (doing top arguments done)
   "Run git with ARGUMENTS for the repository at TOP over the network, as a job
-doing DOING, saying DONE once it has (GIT-RUN), and that it works in the background meanwhile."
-  (git-run doing top arguments done :environment (git-network-environment))
+doing DOING, saying DONE once it has (GIT-RUN), and that it works in the
+background meanwhile; what ssh asks is put to you (CALL-WITH-GIT-ENVIRONMENT)."
+  (git-run doing top arguments done :environment :network)
   (say-in-background doing))
 
 (defun git-ask-remote (prompt top then)
   "Ask with PROMPT for a remote of the repository at TOP (origin first when
 it has one), then call THEN with its name; said so when it has none."
   (git-ask "Reading the remotes" top
-           (lambda (job top) (git-lines job top (list "remote")))
+           #'git-remote-names
            (lambda (remotes)
              (if (null remotes)
                  (message "No remote: M-x git-remote-add adds one")
-                 (let ((name (git-read-name prompt remotes :require-match t
-                                                           :default (if (member "origin" remotes :test #'string=) "origin" (first remotes)))))
+                 (let ((name (git-read-name prompt remotes
+                                            :require-match t
+                                            :default (if (member "origin" remotes :test #'string=)
+                                                         "origin"
+                                                         (first remotes)))))
                    (when name (funcall then name)))))))
 
 ;;; Fetching
@@ -68,7 +97,8 @@ repository has not, the branches checked out left as they are."
   (with-git-repository (top switches)
     (git-ask-remote "Fetch from: " top
                     (lambda (remote)
-                      (git-over-network "Fetching" top (append (list "fetch") switches (list remote)) (format nil "Fetched from ~a" remote))))))
+                      (git-over-network "Fetching" top (append (list "fetch") switches (list remote))
+                                        (format nil "Fetched from ~a" remote))))))
 
 (define-menu git-fetch-menu (:title "Fetch" :show git-menu-shows-p :note git-menu-note)
   "Open the fetch menu: fetch from the upstream remote, a remote asked for, or
@@ -112,9 +142,12 @@ to them (fast-forward), unless the pull menu says to rebase (-r) or merge
                                                                   (format nil "refs/remotes/~a" remote)))
                                          (git-current-branch job top)))
                                (lambda (branches current)
-                                 (let ((branch (git-read-name (format nil "Pull from ~a's branch: " remote) branches :default current)))
+                                 (let ((branch (git-read-name (format nil "Pull from ~a's branch: " remote) branches
+                                                              :default current)))
                                    (when branch
-                                     (git-over-network "Pulling" top (append (list "pull") (git-pull-arguments switches) (list remote branch))
+                                     (git-over-network "Pulling" top
+                                                       (append (list "pull") (git-pull-arguments switches)
+                                                               (list remote branch))
                                                        (format nil "Pulled ~a from ~a" branch remote))))))))))
 
 (define-menu git-pull-menu (:title "Pull" :show git-menu-shows-p :note git-menu-note)
@@ -160,7 +193,8 @@ in the push menu makes that its upstream."
                    (git-ask-remote (format nil "Push ~a to: " branch) top
                                    (lambda (remote)
                                      (when (git-push-allowed-p switches)
-                                       (git-over-network "Pushing" top (append (list "push") switches (list remote branch))
+                                       (git-over-network "Pushing" top
+                                                         (append (list "push") switches (list remote branch))
                                                          (format nil "Pushed ~a to ~a" branch remote))))))))))
 
 (define-command git-push-tags ()
@@ -177,7 +211,9 @@ in the push menu makes that its upstream."
                    (git-ask-remote (format nil "Push ~a to: " tag) top
                                    (lambda (remote)
                                      (when (git-push-allowed-p switches)
-                                       (git-over-network "Pushing a tag" top (append (list "push") switches (list remote (format nil "refs/tags/~a" tag)))
+                                       (git-over-network "Pushing a tag" top
+                                                         (append (list "push") switches
+                                                                 (list remote (format nil "refs/tags/~a" tag)))
                                                          (format nil "Pushed ~a to ~a" tag remote)))))))))
 
 (define-menu git-push-menu (:title "Push" :show git-menu-shows-p :note git-menu-note)
@@ -201,11 +237,12 @@ hooks. \\`C-h' there lists every action."
 
 (defvar *git-built-in-commands* nil
   "The commands built into git, as git --list-cmds=builtins lists them, read
-the first time they are wanted.")
+in the background the first time they are wanted (GIT-RUN-COMMAND).")
 
 (defun git-built-in-commands ()
   "The commands built into git (*GIT-BUILT-IN-COMMANDS*): those it runs
-itself, never a program or an alias of a repository's or yours."
+itself, never a program or an alias of a repository's or yours. Git is asked
+the first time, on the thread calling it."
   (or *git-built-in-commands*
       (setf *git-built-in-commands*
             (let ((git (tuatara.io:find-program "git")))
@@ -219,31 +256,6 @@ itself, never a program or an alias of a repository's or yours."
                                          ""))
                         :separator '(#\Newline)))))))
 
-(defparameter *git-config-reading-options*
-  '("--get" "--get-all" "--get-regexp" "--get-urlmatch" "--get-color" "--get-colorbool" "--list" "-l")
-  "The options of git config that only read its settings.")
-
-(defparameter *git-config-writing-words*
-  '("--add" "--unset" "--unset-all" "--replace-all" "--rename-section" "--remove-section" "--edit" "-e"
-    "set" "unset" "edit" "rename-section" "remove-section")
-  "The words that have git config change its settings.")
-
-(defun git-config-reading-p (more)
-  "True when git config with the words MORE after it only reads. Its first word
-is get or list, or its first option is one of *GIT-CONFIG-READING-OPTIONS*. No
-word of *GIT-CONFIG-WRITING-WORDS* is among them. There are no more names and
-values than reading takes (a name and a pattern with --get, --get-all,
---get-regexp and the others asking of one setting; none with --list), as git
-takes config NAME VALUE --get as setting NAME."
-  (let ((first-option (find-if (lambda (word) (uiop:string-prefix-p "-" word)) more))
-        (plain (count-if-not (lambda (word) (uiop:string-prefix-p "-" word)) more)))
-    (and (notany (lambda (word) (member word *git-config-writing-words* :test #'string=)) more)
-         (or (member (first more) '("get" "list") :test #'equal)
-             (and first-option
-                  (member first-option *git-config-reading-options* :test #'string=)
-                  (uiop:string-prefix-p "-" (first more))
-                  (<= plain (if (member first-option '("--list" "-l") :test #'string=) 0 2)))))))
-
 (defun git-command-refusal (words)
   "Why git is not run with WORDS, typed for \\[git-run-command], in words; NIL
 when it may be. While evidence directories are named (*EVIDENCE-DIRECTORIES*), three
@@ -256,15 +268,18 @@ filters, programs)."
   (when (tuatara.io:writing-refused-anywhere-p)
     (let* ((rest (git-command-words words))
            (command (first rest))
-           (leading (remove-if (lambda (word) (member word *git-line-options-allowed* :test #'string=))
-                               (ldiff words rest))))
+           (leading (git-leading-options-refused words rest)))
       (cond (leading
-             (format nil "while evidence directories are named, git is given no option before its command here but ~{~a~^, ~} (not ~a)"
+             (format nil "while evidence directories are named, git is given no option before its command here ~
+                          but ~{~a~^, ~} (not ~a)"
                      *git-line-options-allowed* (first leading)))
             ((and command (not (member command (git-built-in-commands) :test #'string=)))
-             (format nil "while evidence directories are named, only git's own commands run here, not ~a (an alias, or a program of its family)" command))
+             (format nil "while evidence directories are named, only git's own commands run here, not ~a ~
+                          (an alias, or a program of its family)"
+                     command))
             ((and (equal command "config") (not (git-config-reading-p (rest rest))))
-             "while evidence directories are named, git config only reads here (--get, --list): a setting it writes could have git run a program")))))
+             (concatenate 'string "while evidence directories are named, git config only reads here (--get, --list): "
+                          "a setting it writes could have git run a program"))))))
 
 (define-command git-run-command ()
   "Run git with the words asked for (log --oneline -5, say; quotes group
@@ -274,15 +289,25 @@ directories are named, only git's own commands, with no setting given on the
 line (GIT-COMMAND-REFUSAL)."
   (with-git-repository (top)
     (multiple-value-bind (words ok) (tuatara.io:command-words (read-string "Run git: "))
-      (cond ((not ok) (message "A quote is left open: nothing run"))
-            ((null words) (message "Nothing to run"))
-            ((git-command-refusal words) (message "Nothing run: ~a" (git-command-refusal words)))
-            (t (git-show-output (format nil "Running git ~a" (first words)) top words "*git output*"
-                                :mode 'special-mode :empty (format nil "git ~a printed nothing" (first words))
-                                :environment (git-network-environment)
-                                :after (lambda () (git-refresh-repository top))))))))
+      (flet ((run ()
+               (let ((refusal (git-command-refusal words)))
+                 (if refusal
+                     (message "Nothing run: ~a" refusal)
+                     (git-show-output (format nil "Running git ~a" (first words)) top words "*git output*"
+                                      :mode 'special-mode :empty (format nil "git ~a printed nothing" (first words))
+                                      :environment :network
+                                      :after (lambda () (git-refresh-repository top)))))))
+        (cond ((not ok) (message "A quote is left open: nothing run"))
+              ((null words) (message "Nothing to run"))
+              ((or *git-built-in-commands* (not (tuatara.io:writing-refused-anywhere-p))) (run))
+              ;; git's own commands are asked of it once, in the background
+              (t (start-git-job "Reading git's own commands"
+                                (lambda (job) (declare (ignore job)) (git-built-in-commands) nil)
+                                (lambda (&rest ignored) (declare (ignore ignored)) (run))
+                                :quiet t)))))))
 
 (defun install-git-remote ()
   "Bind the fetch menu to f, the pull menu to F, the push menu to P and
 running a git command to ! in a status."
-  (define-keys *git-status-keymap* '(("f" git-fetch-menu) ("F" git-pull-menu) ("P" git-push-menu) ("!" git-run-command))))
+  (define-keys *git-status-keymap*
+               '(("f" git-fetch-menu) ("F" git-pull-menu) ("P" git-push-menu) ("!" git-run-command))))

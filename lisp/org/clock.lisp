@@ -17,12 +17,20 @@
 - nil: right under the headline."
   :values boolean)
 
-(defstruct (org-clock (:conc-name org-clock-))
+(define-record (org-clock (:conc-name org-clock-))
   "The clock running: the BUFFER of the task, an anchor on the start of its
 CLOCK: LINE, when it STARTED (universal time, whole minutes), the TASK's
 title and the PATH of its file, where its line is found again when the
 buffer is killed (ORG-CLOCK-LIVE-BUFFER)."
-  buffer line started task path)
+  (buffer nil :documentation "The buffer of the task ORG-CLOCK is running for.")
+  (line nil
+        :documentation "An anchor on the start of the CLOCK: line of ORG-CLOCK, following the edits made in its
+buffer.")
+  (started nil :documentation "When ORG-CLOCK started, in universal time and whole minutes.")
+  (task nil :documentation "The title of the task ORG-CLOCK is running for.")
+  (path nil
+        :documentation "The path of the file the task of ORG-CLOCK is in, where its line is found again when the
+buffer is killed."))
 
 (defvar *org-clock* nil
   "The clock running, an ORG-CLOCK, or NIL.")
@@ -55,6 +63,20 @@ kept as its own, where it is found again (ORG-CLOCK-LIVE-BUFFER)."
         (org-clock-path clock) (tuatara.buffer:buffer-file buffer)
         (org-clock-line clock) (tuatara.text:make-anchor (tuatara.buffer:buffer-version buffer) octet :bias :after)))
 
+(defun org-clock-line-within (buffer start end)
+  "Which line of BUFFER from the octet START, counted from 0, the running
+clock's line is, when it is there below the octet END; else NIL."
+  (let ((at (and *org-clock* (eq (org-clock-buffer *org-clock*) buffer) (org-clock-line-start *org-clock*))))
+    (and at (<= start at) (< at end)
+         (count #\Newline (tuatara.buffer:buffer-string buffer :start start :end at)))))
+
+(defun org-clock-follow (buffer start line)
+  "Hold the running clock to the line LINE (from 0) of BUFFER from the octet
+START, where an entry moved with it went (ORG-CLOCK-LINE-WITHIN)."
+  (let ((at start))
+    (dotimes (i line) (setf at (next-line-start buffer at)))
+    (org-clock-hold *org-clock* buffer at)))
+
 (defun org-clock-live-buffer (clock)
   "CLOCK's buffer, live: when the buffer it ran in was killed, its file
 visited again, unseen, and its open CLOCK: line, of the time it started,
@@ -70,10 +92,9 @@ file or the line is no longer there, or the buffer had no file."
                (line (format nil "CLOCK: ~a" (org-timestamp-text (org-clock-started clock))))
                (at (and text (loop for at = (search line text) then (search line text :start2 (1+ at))
                                    while at
-                                   when (org-read-clock-line text (string-line-start text at))
-                                   do (multiple-value-bind (from to)
-                                          (org-read-clock-line text (string-line-start text at))
-                                          (when (and from (not to)) (return at)))))))
+                                  do (multiple-value-bind (from to)
+                                         (org-read-clock-line text (string-line-start text at))
+                                        (when (and from (not to)) (return at)))))))
           (if at
               (progn (org-clock-hold clock buffer (org-parse-octet parse (string-line-start text at)))
                      buffer)
@@ -104,17 +125,31 @@ is forgotten with only its start. The clock running, or NIL."
     (when others
       (let ((words (format nil "~{~a~^; ~}~@[; and ~d more~]"
                            (loop for clock in others repeat *org-clocks-named*
-                                 collect (format nil "~a since ~a" (org-clock-task clock) (format-time "%F %R" (org-clock-started clock))))
+                                 collect (format nil "~a since ~a" (org-clock-task clock)
+                                                 (format-time "%F %R" (org-clock-started clock))))
                            (and (> (length others) *org-clocks-named*) (- (length others) *org-clocks-named*)))))
-        (notify (format nil "~d CLOCK: line~:p left open, with only a start" (length others)) words :source "Clock" :desktop nil)
+        (notify (format nil "~d CLOCK: line~:p left open, with only a start" (length others)) words
+                :source "Clock" :desktop nil)
         (message "Open CLOCK: lines left as well, with only a start: ~a" words)))
     running))
+
+(defvar *org-clocks-none-open* nil
+  "The agenda files as they were (ORG-AGENDA-SOURCES-KEY) when they were last
+found to have no clock left running, or NIL.")
+
+(defun org-clocks-left-open-noted (&optional (now (org-now)))
+  "ORG-CLOCKS-LEFT-OPEN at NOW, looked for again only when an agenda file
+changed since none was found (*ORG-CLOCKS-NONE-OPEN*)."
+  (let ((key (org-agenda-sources-key)))
+    (unless (and *org-clocks-none-open* (equal key *org-clocks-none-open*))
+      (or (org-clocks-left-open now)
+          (progn (setf *org-clocks-none-open* key) nil)))))
 
 (defun org-clock-running ()
   "The clock running: *ORG-CLOCK*, else the one left running in the agenda
 files that was started last (ORG-CLOCK-TAKE-UP), as after a restart,
 running again from when it started; NIL when there is none."
-  (or *org-clock* (org-clock-take-up (org-clocks-left-open))))
+  (or *org-clock* (org-clock-take-up (org-clocks-left-open-noted))))
 
 (defun org-clock-open-line (clock)
   "CLOCK's line in its buffer as two values, its start and end (octets), when
@@ -228,27 +263,30 @@ saved when that is its buffer's only change, as \\[org-clock-out] does."
       ((null clock) (message "No clock is running"))
       ((null (org-clock-live-buffer clock)))
       (t
-        (check-writable (org-clock-buffer clock))
-        (setf *org-clock* nil)
-        (multiple-value-bind (start end) (org-clock-open-line clock)
-          (if (null start)
-              (message "The clock's line is gone: clock cancelled")
-              (let* ((buffer (org-clock-buffer clock))
-                     (rope (tuatara.buffer:buffer-text buffer))
-                     (size (tuatara.buffer:buffer-size buffer))
-                     (end (min size (1+ (tuatara.text:rope-line-end rope end))))
-                     (before (tuatara.buffer:buffer-line-start buffer (max 0 (1- start))))
-                     (above (and (plusp start) (tuatara.buffer:buffer-string buffer :start before :end start)))
-                     (below (tuatara.buffer:buffer-string buffer :start end :end (min size (tuatara.buffer:buffer-line-end buffer end))))
-                     (blank '(#\Space #\Tab #\Return #\Newline))
-                     (empty-drawer (and above (string= (string-trim blank above) ":LOGBOOK:")
-                                        (string= (string-trim blank below) ":END:")))
-                     (modified (tuatara.io:changes-unsaved-p buffer)))
-                (if empty-drawer
-                    (tuatara.buffer:buffer-delete buffer before (min size (1+ (tuatara.text:rope-line-end rope end))))
-                    (tuatara.buffer:buffer-delete buffer start end))
-                (org-save-changed buffer modified :existing t)
-                (message "Clock cancelled: ~a" (org-clock-task clock)))))))))
+       (check-writable (org-clock-buffer clock))
+       (multiple-value-bind (start end) (org-clock-open-line clock)
+         (if (null start)
+             (progn (setf *org-clock* nil)
+                    (message "The clock's line is gone: clock cancelled"))
+             (let* ((buffer (org-clock-buffer clock))
+                    (size (tuatara.buffer:buffer-size buffer))
+                    (after (next-line-start buffer end))
+                    (before (tuatara.buffer:buffer-line-start buffer (max 0 (1- start))))
+                    (above (and (plusp start) (tuatara.buffer:buffer-string buffer :start before :end start)))
+                    (below (tuatara.buffer:buffer-line-text buffer after))
+                    (blank '(#\Space #\Tab #\Return #\Newline))
+                    (empty-drawer (and above (string= (string-trim blank above) ":LOGBOOK:")
+                                       (string= (string-trim blank below) ":END:")))
+                    (modified (tuatara.io:changes-unsaved-p buffer)))
+               ;; the task's line may be outside the part of its buffer shown
+               (tuatara.buffer:with-narrowing-lifted (buffer)
+                 (if empty-drawer
+                     (tuatara.buffer:buffer-delete buffer before (next-line-start buffer after))
+                     (tuatara.buffer:buffer-delete buffer start after)))
+               ;; the clock is let go only once its line is gone
+               (setf *org-clock* nil)
+               (org-save-changed buffer modified :existing t)
+               (message "Clock cancelled: ~a" (org-clock-task clock)))))))))
 
 (define-command org-clock-goto ()
   "Go to the task the clock runs on (\\`C-c C-x C-j', from any buffer \\`C-x a j'):
@@ -264,7 +302,8 @@ left open in the agenda files, as after a restart, runs again
           ;; the task's headline: the nearest line above beginning with *, the clock's line shown
           (goto-shown buffer (loop for line = (tuatara.buffer:buffer-line-start buffer start)
                                      then (tuatara.buffer:buffer-line-start buffer (1- line))
-                                   when (or (zerop line) (eql (tuatara.buffer:buffer-char-at buffer line) #\*)) return line)
+                                   when (or (zerop line) (eql (tuatara.buffer:buffer-char-at buffer line) #\*))
+                                     return line)
                       :open start)))))
 
 (defun org-update-clock-line (parse position)

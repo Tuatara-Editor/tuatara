@@ -47,23 +47,29 @@ EXISTING, only those that exist."
                                (and *source-tree* (merge-pathnames source *source-tree*))))))
     (if existing (remove-if-not #'uiop:directory-exists-p all) all)))
 
+(defun own-variable (name)
+  "The value of the environment variable NAME as the editor itself has it,
+or NIL when it has none: what the editor's own directories, time zone, terminal
+and switches are read from. A program started for someone else is given their
+variables where they came with a request (PROGRAM-VARIABLE); this one never
+follows them."
+  (sb-posix:getenv name))
+
 ;;; Memory
 
-(defstruct (spares (:constructor make-spares (make &key (keep-p (constantly t)))) (:copier nil))
+(define-record (spares (:constructor make-spares (make &key (keep-p (constantly t)))) (:copier nil))
   "Things kept to be used again, buffers above all, so that work done piece
 after piece on several cores makes no new ones: MAKE, a function of none,
 makes one when none is kept; KEEP-P, a function of one, says whether one given
 back is worth keeping."
-  (make nil :type function) (keep-p nil :type function) (items '()) (lock (sb-thread:make-mutex :name
-                                                                                                "tuatara spares")))
+  (make nil :type function :documentation "The function of none making one of SPARES when none is kept.")
+  (keep-p nil :type function :documentation "The function saying whether one given back to SPARES is kept.")
+  (items '() :documentation "The ones SPARES keeps.")
+  (lock (sb-thread:make-mutex :name
+                              "tuatara spares") :documentation "The lock guarding SPARES's items."))
 
 (setf (documentation 'make-spares 'function) "Return SPARES that makes each with MAKE and keeps
-those KEEP-P is true of."
-      (documentation 'spares-p 'function) "True when OBJECT is a SPARES."
-      (documentation 'spares-make 'function) "The function of none making one of SPARES when none is kept."
-      (documentation 'spares-keep-p 'function) "The function saying whether one given back to SPARES is kept."
-      (documentation 'spares-items 'function) "The ones SPARES keeps."
-      (documentation 'spares-lock 'function) "The lock guarding SPARES's items.")
+those KEEP-P is true of.")
 
 (defun take-spare (spares)
   "One of SPARES, kept or newly made."
@@ -108,9 +114,27 @@ the program loads them again when it next needs them."
 (defmacro foreign-call (name result &rest arguments)
   "Call the C function NAME of a library FOREIGN-LIBRARY-P has loaded, which
 returns RESULT (an alien type), with ARGUMENTS, each a list of an alien type
-and a value."
+and a value. Kept for the calls written with it: a new call to C is a function
+of its own, made with TUATARA.IO:DEFINE-C-FUNCTION."
   `(sb-alien:alien-funcall (sb-alien:extern-alien ,name (function ,result ,@(mapcar #'first arguments)))
                            ,@(mapcar #'second arguments)))
+
+;;; Reading nested data from a file
+
+(defvar *reading-depth* 0
+  "How many levels deep the readers of nested data from a file are now, on
+this thread (WITH-DEPTH-LIMIT).")
+
+(defmacro with-depth-limit ((limit &optional (what "The data")) &body body)
+  "Run BODY one level of nesting deeper, as a reader of nested data from a
+file does on going into a list, an element or an object, and return what it
+returns. When that makes more than LIMIT levels, BODY is not run: it is
+refused (REFUSE), WHAT, a phrase, saying what is nested too deep. Levels are
+counted on each thread, by every reader under way on it."
+  `(let ((*reading-depth* (1+ *reading-depth*)))
+     (when (> *reading-depth* ,limit)
+       (refuse "~a is nested more than ~d deep" ,what ,limit))
+     ,@body))
 
 ;;; Searching a sorted run
 
@@ -128,3 +152,8 @@ called for each step."
                   (declare (type fixnum ,var))
                   (if ,before (setf ,lo (1+ ,var)) (setf ,hi ,var))))
        ,lo)))
+
+(defun first-index-at-or-after (vector value)
+  "The first index of VECTOR, integers never decreasing, whose element is at
+least VALUE; its length when none."
+  (bisect (mid 0 (length vector)) (< (aref vector mid) value)))

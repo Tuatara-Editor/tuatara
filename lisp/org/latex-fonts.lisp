@@ -1,4 +1,4 @@
-;;;; lisp/org/latex-fonts.lisp --- Fonts for the enhanced export: chosen from those installed, and a font for every character.
+;;;; lisp/org/latex-fonts.lisp --- Fonts for the enhanced export: chosen from those installed, one for each character.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; The enhanced export sets a document in fonts found on this system when
@@ -48,13 +48,45 @@ article).
 say (the fonts LaTeX has by standard, which fontconfig may not list): Latin
 and its punctuation, as ranges of code points.")
 
+(defvar *fontconfig-answers* (make-hash-table :test 'equal)
+  "What fontconfig has printed, by its program and arguments, while the fonts
+installed are as they were (FONTS-STAMP).")
+
+(defvar *fontconfig-answers-stamp* nil
+  "The FONTS-STAMP *FONTCONFIG-ANSWERS* were given under.")
+
+(defvar *fontconfig-lock* (sb-thread:make-mutex :name "fontconfig answers")
+  "Held while *FONTCONFIG-ANSWERS* is read or changed.")
+
+(defun fonts-stamp ()
+  "When the directories fonts are installed in last changed, as a list, so
+that an answer of fontconfig's is asked again once a font is added or taken
+away."
+  (mapcar (lambda (directory)
+            (let ((stamp (tuatara.io:path-stamp directory :failure nil)))
+              (and stamp (tuatara.io:stamp-mtime stamp))))
+          (list* "/usr/share/fonts" "/usr/local/share/fonts" (tuatara.io:user-font-directories))))
+
 (defun fontconfig-output (program &rest arguments)
   "What fontconfig's PROGRAM (fc-list, fc-match) prints given ARGUMENTS, or NIL
-when it is not here or fails; never run through a shell."
-  (let ((path (tuatara.io:find-program program)))
-    (when path
-      (multiple-value-bind (output ok) (tuatara.io:program-output (cons path arguments) :seconds 10)
-        (and ok output (plusp (length output)) output)))))
+when it is not here or fails; never run through a shell. Asked once while the
+fonts installed are unchanged (FONTS-STAMP)."
+  (let ((key (cons program arguments)) (stamp (fonts-stamp)))
+    (multiple-value-bind (answer found)
+        (sb-thread:with-mutex (*fontconfig-lock*)
+          (unless (equal stamp *fontconfig-answers-stamp*)
+            (clrhash *fontconfig-answers*)
+            (setf *fontconfig-answers-stamp* stamp))
+          (gethash key *fontconfig-answers*))
+      (if found
+          answer
+          (let* ((path (tuatara.io:find-program program))
+                 (answer (when path
+                           (multiple-value-bind (output ok)
+                               (tuatara.io:program-output (cons path arguments) :seconds 10)
+                             (and ok output (plusp (length output)) output)))))
+            (sb-thread:with-mutex (*fontconfig-lock*)
+              (setf (gethash key *fontconfig-answers*) answer)))))))
 
 (defun fontconfig-match (family format)
   "What fontconfig prints of the font it shows FAMILY in, FORMAT its
@@ -98,8 +130,8 @@ them."
         when (and file (plusp bar) (not (variable-font-file-p file))
                   ;; OpenType and TrueType alone: fontspec loads no other kind (Type 1, bitmaps)
                   (cl-ppcre:scan "(?i)\\.(otf|ttf|ttc|otc)$" file))
-          collect (list* (own-family (subseq line 0 bar) (subseq line (1+ bar) languages-end)) file
-                         (and charsets (list (charset-ranges (subseq line (1+ file-end))))))))
+        collect (list* (own-family (subseq line 0 bar) (subseq line (1+ bar) languages-end)) file
+                       (and charsets (list (charset-ranges (subseq line (1+ file-end))))))))
 
 (defun charset-ranges (text)
   "TEXT, a charset as fontconfig writes it (20-7e a0-17f), as a list of

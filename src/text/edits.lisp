@@ -5,24 +5,20 @@
 
 ;;; Edits
 
-(defstruct (edit (:constructor make-edit (start end &optional insert)) (:copier nil))
+(define-record (edit (:constructor make-edit (start end &optional insert)) (:copier nil))
   "One edit against a text: delete the octets from START below END (byte offsets
 in the text the edit applies to) and put INSERT, an octet vector or NIL, in their
 place. A pure insertion has START = END; a pure deletion has no INSERT. After
 APPLY-EDITS, DELETED holds the octets that were removed, for undo."
-  (start 0 :type fixnum)
-  (end 0 :type fixnum)
-  (insert nil :type (or null octets))
-  (deleted nil))
+  (start 0 :type fixnum :documentation "Byte offset where EDIT's deleted range starts.")
+  (end 0 :type fixnum :documentation "Byte offset where EDIT's deleted range ends (exclusive).")
+  (insert nil :type (or null octets) :documentation "The octets EDIT inserts, or NIL.")
+  (deleted nil
+           :documentation "The octets EDIT removed, filled in by APPLY-EDITS; NIL
+before that or when nothing was deleted."))
 
 (setf (documentation 'make-edit 'function)
-      "Return an EDIT deleting byte range START below END and inserting INSERT (an octet vector or NIL)."
-      (documentation 'edit-p 'function) "True when OBJECT is an EDIT."
-      (documentation 'edit-start 'function) "Byte offset where EDIT's deleted range starts."
-      (documentation 'edit-end 'function) "Byte offset where EDIT's deleted range ends (exclusive)."
-      (documentation 'edit-insert 'function) "The octets EDIT inserts, or NIL."
-      (documentation 'edit-deleted 'function)
-      "The octets EDIT removed, filled in by APPLY-EDITS; NIL before that or when nothing was deleted.")
+      "Return an EDIT deleting byte range START below END and inserting INSERT (an octet vector or NIL).")
 
 (declaim (inline edit-insert-length edit-delete-length))
 (defun edit-insert-length (edit)
@@ -105,8 +101,9 @@ Complexity: O(leaf size + edit sizes)."
     (return-from rebuild-leaf (rebuild-uncounted-span node leaf-start edits i j scratch)))
   (let* ((old (if (leaf-p node)
                   (leaf-octets node)
-                  (piece-copy node 0 (node-bytes node) (or (car scratch)
-                                                           (setf (car scratch) (make-octets +span-size+))) 0)))
+                  (piece-copy node 0 (node-bytes node)
+                              (or (car scratch) (setf (car scratch) (make-octets +span-size+)))
+                              0)))
          (base (if (leaf-p node) (leaf-start node) 0))
          (old-len (node-bytes node))
          (new-len old-len)
@@ -119,44 +116,52 @@ Complexity: O(leaf size + edit sizes)."
          ;; or not by what comes to follow it: the line ends are counted again
          (recount nil))
     (declare (type octets old)
-             (type fixnum base old-len new-len dchars dutf16 dlines dinvalid dreturns dnewlines ins-chars ins-utf16 ins-lines ins-invalid ins-returns ins-newlines same)
+             (type fixnum base old-len new-len dchars dutf16 dlines dinvalid dreturns dnewlines)
+             (type fixnum ins-chars ins-utf16 ins-lines ins-invalid ins-returns ins-newlines same)
              (type (or null octets) last-ins))
     (flet ((take-inserts ()
              ;; the counts of the insert used SAME times since it was summarised
-             (incf dchars (* same ins-chars)) (incf dutf16 (* same ins-utf16)) (incf dlines (* same ins-lines))
-             (incf dinvalid
-                   (* same ins-invalid)) (incf dreturns (* same ins-returns)) (incf dnewlines (* same ins-newlines))
-                   (setf same 0)))
-    ;; Pass 1: the new length, the count deltas, and the deleted octets for undo.
-    (loop for k of-type fixnum from i below j
-          for e of-type edit = (aref edits k)
-          do (let ((s (max 0 (- (edit-start e) leaf-start)))
-                   (en (min old-len (- (edit-end e) leaf-start))))
-               (declare (type fixnum s en))
-               (when (and indexed (> s 0) (= 13 (aref old (+ base s -1))))
-                 (setf recount t))
-               (when (> en s)
-                 (decf new-len (- en s))
-                 (when indexed
-                   (multiple-value-bind (c u l v r n) (summarise old (+ base s) (+ base en))
-                     (declare (type fixnum c u l v r n))
-                     (decf dchars
-                           c) (decf dutf16 u) (decf dlines l) (decf dinvalid v) (decf dreturns r) (decf dnewlines n)
-                           (when (plusp r) (setf recount t))))
-                 (push (subseq old (+ base s) (+ base en)) (edit-deleted e)))
-               (when (and (edit-insert e) (>= (edit-start e) leaf-start))
-                 (let ((ins (edit-insert e)))
-                   (declare (type octets ins))
+             (incf dchars (* same ins-chars))
+             (incf dutf16 (* same ins-utf16))
+             (incf dlines (* same ins-lines))
+             (incf dinvalid (* same ins-invalid))
+             (incf dreturns (* same ins-returns))
+             (incf dnewlines (* same ins-newlines))
+             (setf same 0)))
+      ;; Pass 1: the new length, the count deltas, and the deleted octets for undo.
+      (loop for k of-type fixnum from i below j
+            for e of-type edit = (aref edits k)
+            do (let ((s (max 0 (- (edit-start e) leaf-start)))
+                     (en (min old-len (- (edit-end e) leaf-start))))
+                 (declare (type fixnum s en))
+                 (when (and indexed (> s 0) (= 13 (aref old (+ base s -1))))
+                   (setf recount t))
+                 (when (> en s)
+                   (decf new-len (- en s))
                    (when indexed
-                     (unless (eq ins last-ins)
-                       (take-inserts)
-                       (multiple-value-setq (ins-chars ins-utf16 ins-lines ins-invalid ins-returns ins-newlines)
-                         (summarise ins 0 (length ins)))
-                       (setf last-ins ins)
-                       (when (plusp ins-returns) (setf recount t)))
-                     (incf same))
-                   (incf new-len (length ins))))))
-    (take-inserts))
+                     (multiple-value-bind (c u l v r n) (summarise old (+ base s) (+ base en))
+                       (declare (type fixnum c u l v r n))
+                       (decf dchars c)
+                       (decf dutf16 u)
+                       (decf dlines l)
+                       (decf dinvalid v)
+                       (decf dreturns r)
+                       (decf dnewlines n)
+                       (when (plusp r) (setf recount t))))
+                   (push (subseq old (+ base s) (+ base en)) (edit-deleted e)))
+                 (when (and (edit-insert e) (>= (edit-start e) leaf-start))
+                   (let ((ins (edit-insert e)))
+                     (declare (type octets ins))
+                     (when indexed
+                       (unless (eq ins last-ins)
+                         (take-inserts)
+                         (multiple-value-setq (ins-chars ins-utf16 ins-lines ins-invalid ins-returns ins-newlines)
+                           (summarise ins 0 (length ins)))
+                         (setf last-ins ins)
+                         (when (plusp ins-returns) (setf recount t)))
+                       (incf same))
+                     (incf new-len (length ins))))))
+      (take-inserts))
     (if (zerop new-len)
         #()
         ;; Pass 2: build the new octets in one pass.
@@ -188,16 +193,18 @@ Complexity: O(leaf size + edit sizes)."
                                              (+ (node-newlines node) dnewlines))))
                 (t (vector (make-leaf new))))))))
 
-(defun merge-small-leaves (leaves)
-  "Return LEAVES (a simple-vector of leaves and spans) with adjacent ones merged
-into in-memory leaves wherever one of them is smaller than +MIN-LEAF+ and the
-pair fits in +MAX-LEAF+. Unindexed spans are left alone."
-  (declare (type simple-vector leaves))
-  (if (< (length leaves) 2)
-      leaves
-      (let ((out (make-array 0 :adjustable t :fill-pointer 0))
+(defun merge-small-leaves (leaves n)
+  "The first N of LEAVES (a simple-vector of leaves and spans) with adjacent
+ones merged into in-memory leaves wherever one of them is smaller than
++MIN-LEAF+ and the pair fits in +MAX-LEAF+, put back in LEAVES from its start;
+returns how many there are now. Unindexed spans are left alone."
+  (declare (type simple-vector leaves) (type fixnum n))
+  (if (< n 2)
+      n
+      (let ((out 0)
             (current (aref leaves 0)))
-        (loop for k from 1 below (length leaves)
+        (declare (type fixnum out))
+        (loop for k from 1 below n
               for next = (aref leaves k)
               do (if (and (node-indexed-p current) (node-indexed-p next)
                           (or (< (node-bytes current) +min-leaf+) (< (node-bytes next) +min-leaf+))
@@ -213,9 +220,9 @@ pair fits in +MAX-LEAF+. Unindexed spans are left alone."
                                                  (+ (node-invalid current) (node-invalid next))
                                                  (+ (node-returns current) (node-returns next))
                                                  (+ (node-newlines current) (node-newlines next)))))
-                     (progn (vector-push-extend current out) (setf current next))))
-        (vector-push-extend current out)
-        (coerce out 'simple-vector))))
+                     (progn (setf (svref leaves out) current) (incf out) (setf current next))))
+        (setf (svref leaves out) current)
+        (1+ out))))
 
 (defun rebuild-branch (branch branch-start edits i j scratch)
   "Apply EDITS[I..J) to BRANCH, whose text starts at byte BRANCH-START, and return
@@ -226,37 +233,43 @@ SCRATCH is passed down to REBUILD-LEAF."
            (optimize speed (safety 1)))
   (let* ((children (branch-children branch))
          (last (1- (length children)))
-         (new (make-array 0 :adjustable t :fill-pointer 0))
+         (new (make-array (+ (length children) 4)))
+         (count 0)
          (child-start branch-start)
          (k i))
-    (declare (type fixnum child-start k last))
-    (loop for ci from 0 to last
-          for child = (aref children ci)
-          do (let* ((child-end (+ child-start (node-bytes child)))
-                    ;; m: the first edit at or beyond K that starts at or after CHILD-END
-                    ;; (binary search, the edits are sorted by start), except that the
-                    ;; last child takes everything that is left.
-                    (m (if (= ci last)
-                           j
-                           (tuatara.runtime:bisect (mid k j) (< (edit-start (the edit (aref edits mid))) child-end)))))
-               (declare (type fixnum child-end m))
-               (if (= k m)
-                   (vector-push-extend child new)
-                   (loop for node across (if (branch-p child)
-                                             (rebuild-branch child child-start edits k m scratch)
-                                             (rebuild-leaf child child-start edits k m scratch))
-                         do (vector-push-extend node new)))
-               ;; Only the last edit of a child can delete past CHILD-END (the edits
-               ;; are non-overlapping); if it does, it continues into the next child.
-               (setf k (if (and (> m k) (> (edit-end (the edit (aref edits (1- m)))) child-end))
-                           (1- m)
-                           m))
-               (setf child-start child-end)))
-    (let ((nodes (coerce new 'simple-vector)))
-      (cond ((zerop (length nodes)) #())
-            (t (unless (branch-p (aref nodes 0))
-                 (setf nodes (merge-small-leaves nodes)))
-               (group-into-branches nodes))))))
+    (declare (type fixnum child-start k last count) (type simple-vector new))
+    (flet ((add (node)
+             (when (= count (length new))
+               (setf new (replace (make-array (* 2 count)) new)))
+             (setf (svref new count) node)
+             (incf count)))
+      (loop for ci from 0 to last
+            for child = (aref children ci)
+            do (let* ((child-end (+ child-start (node-bytes child)))
+                      ;; m: the first edit at or beyond K that starts at or after CHILD-END
+                      ;; (binary search, the edits are sorted by start), except that the
+                      ;; last child takes everything that is left.
+                      (m (if (= ci last)
+                             j
+                             (tuatara.runtime:bisect (mid k j)
+                               (< (edit-start (the edit (aref edits mid))) child-end)))))
+                 (declare (type fixnum child-end m))
+                 (if (= k m)
+                     (add child)
+                     (loop for node across (if (branch-p child)
+                                               (rebuild-branch child child-start edits k m scratch)
+                                               (rebuild-leaf child child-start edits k m scratch))
+                           do (add node)))
+                 ;; Only the last edit of a child can delete past CHILD-END (the edits
+                 ;; are non-overlapping); if it does, it continues into the next child.
+                 (setf k (if (and (> m k) (> (edit-end (the edit (aref edits (1- m)))) child-end))
+                             (1- m)
+                             m))
+                 (setf child-start child-end))))
+    (cond ((zerop count) #())
+          (t (unless (branch-p (svref new 0))
+               (setf count (merge-small-leaves new count)))
+             (group-into-branches new count)))))
 
 (defun insert-shape (insert)
   "Two values for INSERT, an octet vector or NIL: whether it begins with a
@@ -294,7 +307,7 @@ and their inserts."
         (when (edit-insert e) (push (edit-insert e) parts))
         (setf at (edit-end e))))
     (when (< at end) (push (rope-octets rope :start at :end end) parts))
-    (apply #'concatenate 'octets (nreverse parts))))
+    (join-octets (nreverse parts))))
 
 (defun widen-group (rope edits group)
   "Widen GROUP, a list (START END MEMBERS), in place until neither of its edges
@@ -464,7 +477,7 @@ edits + touched leaves + log n)."
                      (setf (edit-deleted e)
                            (if (null (cdr pieces))
                                (car pieces)
-                               (apply #'concatenate 'octets (nreverse pieces)))))))
+                               (join-octets (nreverse pieces)))))))
         ;; widened edits hand each edit its own deleted octets
         (when owners
           (loop for k from 0 below n

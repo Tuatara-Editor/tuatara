@@ -155,26 +155,49 @@ let go of, and made again when they are drawn again.")
 
 (defun make-layouts ()
   "Room for the layouts painting makes as needed, kept from one frame to the
-next: a table of the layouts of the text drawn, each set out once however
-often it is drawn (KEPT-LAYOUT), the table of those of the frames before it
-\(AGE-LAYOUTS), and a list of (SCALE . LAYOUTS) for the parts drawn SCALE times
-as large, whose layouts Pango sets out for that scale (LAYOUTS-AT-SCALE)."
-  (vector (make-hash-table :test 'equal) (make-hash-table :test 'equal) '()))
+next: a generation of the layouts of the text drawn, each set out once however
+often it is drawn (KEPT-LAYOUT), the generation of those of the frames before
+it \(AGE-LAYOUTS), a list of (SCALE . LAYOUTS) for the parts drawn SCALE
+times as large, whose layouts Pango sets out for that scale (LAYOUTS-AT-SCALE),
+and how many layouts the first generation holds."
+  (vector (make-layout-generation) (make-layout-generation) '() 0))
+
+(defun make-layout-generation ()
+  "An empty generation of layouts: a table by the name of a face's own font (NIL
+for the window's), holding a vector of a table by text for each of the four
+fonts (FONT-INDEX). Looking a layout up by those three in turn conses nothing."
+  (make-hash-table :test 'equal))
+
+(defun layout-text-table (generation font index &optional create)
+  "The table by text of the layouts in GENERATION for the font named FONT (NIL
+for the window's) and the font INDEX; NIL when there is none yet, a new one
+made when CREATE."
+  (let ((tables (or (gethash font generation)
+                    (and create (setf (gethash font generation) (make-array 4 :initial-element nil))))))
+    (and tables
+         (or (svref tables index)
+             (and create (setf (svref tables index) (make-hash-table :test 'equal)))))))
+
+(defun map-generation-layouts (function generation)
+  "Call FUNCTION on each layout in GENERATION."
+  (loop for tables being the hash-values of generation
+        do (loop for table across tables
+                 when table do (loop for layout being the hash-values of table do (funcall function layout)))))
 
 (defun free-layouts (layouts)
   "Let go of the layouts in LAYOUTS (MAKE-LAYOUTS), those of its scales too."
-  (loop for i below 2
-        do (loop for layout being the hash-values of (aref layouts i) do (g-object-unref layout)))
+  (loop for i below 2 do (map-generation-layouts #'g-object-unref (aref layouts i)))
   (loop for (nil . own) in (aref layouts 2) do (free-layouts own)))
 
 (defun age-layouts (layouts)
   "Before a frame: once LAYOUTS (MAKE-LAYOUTS) has made half of
 *MOST-KEPT-LAYOUTS* since it last did this, let go of the layouts not drawn
 since then and start again, the ones drawn since kept; for its scales too."
-  (when (> (hash-table-count (aref layouts 0)) (floor *most-kept-layouts* 2))
-    (loop for layout being the hash-values of (aref layouts 1) do (g-object-unref layout))
+  (when (> (aref layouts 3) (floor *most-kept-layouts* 2))
+    (map-generation-layouts #'g-object-unref (aref layouts 1))
     (setf (aref layouts 1) (aref layouts 0)
-          (aref layouts 0) (make-hash-table :test 'equal)))
+          (aref layouts 0) (make-layout-generation)
+          (aref layouts 3) 0))
   (loop for (nil . own) in (aref layouts 2) do (age-layouts own)))
 
 (defun frame-layouts (f)
@@ -216,15 +239,18 @@ same one after, from a frame before too (AGE-LAYOUTS), so that text drawn
 again, as when a window scrolls, is not set out again. A layout keeps what
 it was made for (the screen's scale, the font's settings): the layouts are
 let go of when those change (FORGET-LAYOUTS)."
-  (let ((key (list text font index)))
-    (or (gethash key (aref layouts 0))
-        (let ((old (gethash key (aref layouts 1))))
+  (let ((kept (layout-text-table (aref layouts 0) font index t)))
+    (or (gethash text kept)
+        (let* ((aged (layout-text-table (aref layouts 1) font index))
+               (old (and aged (gethash text aged))))
           (when old
-            (remhash key (aref layouts 1))
-            (setf (gethash key (aref layouts 0)) old)))
+            (remhash text aged)
+            (incf (aref layouts 3))
+            (setf (gethash text kept) old)))
         (let ((layout (font-layout f cr font index)))
           (pango-layout-set-text layout text)
-          (setf (gethash key (aref layouts 0)) layout)))))
+          (incf (aref layouts 3))
+          (setf (gethash text kept) layout)))))
 
 (defun draw-text (f cr layouts text column y flags &optional font shape)
   "Draw TEXT from COLUMN on the row whose top is at Y, in the font FLAGS ask for,
@@ -707,7 +733,7 @@ their width in pixels."
          (unwind-protect (progn ,@body)
            (cairo-restore ,cr))))))
 
-(defstruct (kept-rows (:constructor make-kept-rows (key)) (:copier nil))
+(define-record (kept-rows (:constructor make-kept-rows (key)) (:copier nil))
   "The rows of the window as last painted, kept from one frame to the next so
 that only what changed is painted again (KEEP-ROWS). PIECES holds, for each row
 down the window, its parts as painted, each (FROM BELOW STRIP SHOWS TEXTURE).
@@ -717,7 +743,10 @@ method composes). SHOWS is what it shows (PIECE-CONTENT), NIL for a strip yet
 to be painted. TEXTURE is the strip as the graphics card is given it
 \(STRIP-TEXTURE), or NIL until it is. KEY is what they were painted for
 \(ROWS-PAINTED-FOR)."
-  key (pieces #()))
+  (key nil :documentation "What the rows of KEPT-ROWS were last painted for (ROWS-PAINTED-FOR).")
+  (pieces #()
+          :documentation "The parts of each row down the window as last painted, one list of (FROM BELOW STRIP SHOWS
+TEXTURE) for each row of KEPT-ROWS."))
 
 (defun forget-kept-rows (f)
   "Let go of the rows F keeps painted (KEEP-ROWS): the next frame is painted whole."
@@ -836,13 +865,14 @@ counted from FROM, to be compared with what a strip shows."
                     when (and (< s end) (> e start))
                       collect (list (- (max s start) start) (- (min e end) start) span-face)))))))
 
-(defun paint-piece (f strip layouts shows row from below)
+(defun paint-piece (f strip layouts shows content row from below)
   "Paint on STRIP, the cells of a row from column FROM below BELOW, which shows
-SHOWS (PIECE-CONTENT, or NIL for nothing yet), what ROW shows there: of a part
-whose characters alone changed, the columns they are in (CHANGED-COLUMNS),
-else all of it, its cells in the ground's colour first."
+SHOWS (PIECE-CONTENT, or NIL for nothing yet), what ROW shows there, CONTENT
+\(PIECE-CONTENT): of a part whose characters alone changed, the columns they
+are in (CHANGED-COLUMNS), else all of it, its cells in the ground's colour
+first."
   (let ((cw (cell-width f)))
-    (multiple-value-bind (left right) (changed-columns shows (piece-content row from below))
+    (multiple-value-bind (left right) (changed-columns shows content)
       (let ((left (+ from (or left 0)))
             (right (if left (min below (+ from right)) below))
             (cr (cairo-create strip)))
@@ -876,7 +906,9 @@ painted the first time, and when what they are painted for changes
     (let* ((old (kept-rows-pieces kept))
            (n (length rows))
            (cw (cell-width f))
-           (bounds (map 'vector (lambda (row) (row-bounds row columns)) rows))
+           ;; a row of no parts is one piece over the whole grid, the same list for each
+           (whole (list (cons 0 columns)))
+           (bounds (map 'vector (lambda (row) (if (and row (sixth row)) (row-bounds row columns) whole)) rows))
            ;; what each row's last part shows now and showed before, for the shift
            (lasts (map 'vector
                        (lambda (row b)
@@ -909,22 +941,23 @@ painted the first time, and when what they are painted for changes
                          do (push piece free)))
         (dotimes (i n)
           (let ((row (aref rows i)))
-            (dolist (piece (aref new i))
-              (destructuring-bind (from below strip shows &optional texture) piece
-                (declare (ignore texture))
-                (unless strip
-                  (let ((spare (find-if (lambda (p) (and (= (- (second p) (first p)) (- below from)))) free)))
-                    (if spare
-                        (progn (setf free (remove spare free) (third piece) (third spare))
-                               (when (fifth spare) (g-object-unref (fifth spare))))
-                        (setf (third piece) (row-strip f (* (- below from) cw))))
-                    (setf shows nil (fourth piece) nil)))
-                (let ((content (and row (piece-content row from below))))
-                  (unless (and shows (equal content shows))
-                    (paint-piece f (third piece) layouts shows row from below)
-                    ;; its texture, of what it showed, made again when next shown (STRIP-TEXTURE)
-                    (when (fifth piece) (g-object-unref (fifth piece)) (setf (fifth piece) nil))
-                    (setf (fourth piece) content)))))))
+            (loop for (piece . more) on (aref new i)
+                  do (destructuring-bind (from below strip shows &optional texture) piece
+                       (declare (ignore texture))
+                       (unless strip
+                         (let ((spare (find-if (lambda (p) (and (= (- (second p) (first p)) (- below from)))) free)))
+                           (if spare
+                               (progn (setf free (remove spare free) (third piece) (third spare))
+                                      (when (fifth spare) (g-object-unref (fifth spare))))
+                               (setf (third piece) (row-strip f (* (- below from) cw))))
+                           (setf shows nil (fourth piece) nil)))
+                       ;; the last piece's content was made for the shift above
+                       (let ((content (if more (and row (piece-content row from below)) (aref lasts i))))
+                         (unless (and shows (equal content shows))
+                           (paint-piece f (third piece) layouts shows content row from below)
+                           ;; its texture, of what it showed, made again when next shown (STRIP-TEXTURE)
+                           (when (fifth piece) (g-object-unref (fifth piece)) (setf (fifth piece) nil))
+                           (setf (fourth piece) content)))))))
         (dolist (piece free)
           (cairo-surface-destroy (third piece))
           (when (fifth piece) (g-object-unref (fifth piece)))))
@@ -1174,8 +1207,7 @@ from an offset, cut to its cells, painted whole by the drawing area."
                (notany #'sixth (frame-images frame)))
           (progn
             (drawn-on-card f t)
-            (handler-case (tuatara.runtime:reporting-errors ("showing the rows") (place-pieces f frame))
-              (error (e) (format *error-output* "~&Tuatara could not show the rows: ~a~%" e))))
+            (place-pieces f frame))
           (progn
             (drawn-on-card f nil)
             (gtk-widget-queue-draw (gtk-area f)))))))
@@ -1216,16 +1248,14 @@ cursor."
     (when f
       (follow-display-scale f area)
       (let ((frame (sb-thread:with-mutex ((gtk-lock f)) (gtk-shown f))))
-        (handler-case (tuatara.runtime:reporting-errors ("painting the window")
-                        (paint-frame f cr width height frame (gtk-focused f)))
-          (error (e) (format *error-output* "~&Tuatara could not paint: ~a~%" e)))
-        ;; where the cursor is, for the input method's window
-        (when frame
-          (multiple-value-bind (x y w h) (frame-cursor-pixels f frame)
-            (gtk-im-context-set-cursor-location (gtk-im f)
-                                                (round (+ (fourth (gtk-padding f))
-                                                          x)) (round (+ (first (gtk-padding f)) y))
-                                                          (round w) (round h))))))))
+        (unwind-protect (paint-frame f cr width height frame (gtk-focused f))
+          ;; where the cursor is, for the input method's window, whether or not the painting went through
+          (when frame
+            (multiple-value-bind (x y w h) (frame-cursor-pixels f frame)
+              (gtk-im-context-set-cursor-location (gtk-im f)
+                                                  (round (+ (fourth (gtk-padding f)) x))
+                                                  (round (+ (first (gtk-padding f)) y))
+                                                  (round w) (round h)))))))))
 
 (defun call-with-painted-frame (function frame &key (columns 80) (rows 24) (font (font-name)) (focused t) preedit
                                                     (padding 0))

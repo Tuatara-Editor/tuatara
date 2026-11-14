@@ -32,7 +32,7 @@ one is fetched, once all of them are done (SAY-PACKAGE-UPDATE-DONE)."
         (let ((begun (loop for (name source version file) in fetched
                            for where = (package-where source)
                            when (start-package-fetch name where version file (package-key name where version))
-                             collect name)))
+                           collect name)))
           (when (rest begun)
             (setf *package-update-round* (union begun *package-update-round* :test #'string=)))))))
 
@@ -120,6 +120,12 @@ CONDITION, none for one loaded."
   (or (list-mark-face mark)
       (unless (string= condition "loaded") :list-dim)))
 
+(defun declared-package-condition (name)
+  "How the package NAME stands as the init file declares it (PACKAGE-CONDITION),
+or NIL when the init file does not name it."
+  (let ((declared (declared-package name)))
+    (and declared (package-condition name (package-state name (second declared) (third declared))))))
+
 (defun packages-render (list &optional (point :line))
   "Fill LIST, the package manager, with a line for each package of
 *DECLARED-PACKAGES* and a summing-up line; marks kept on those still there."
@@ -135,7 +141,8 @@ CONDITION, none for one loaded."
          (list (list-mark-sign mark)
                (cons name (package-name-face mark condition))
                (or (third entry) version (if (local-source-p where) "directory" ""))
-               (if (and entry (string/= (second entry) "-")) (subseq (second entry) 0 (min 7 (length (second entry)))) "")
+               (if (and entry (string/= (second entry) "-")) (subseq (second entry) 0 (min 7 (length (second entry))))
+                   "")
                condition
                (package-signed-words where)
                (if (local-source-p where) (abbreviated-path where) where)))))
@@ -248,22 +255,17 @@ a second value, where the reading stopped, (LINE . WHY), or NIL."
      (loop for (form line inside) in found
            for name = (second form)
            collect (list name line inside
-                         (let ((before (let ((declared (declared-package name)))
-                                         (and declared (package-condition name (package-state name (second declared) (third declared)))))))
+                         (let ((before (declared-package-condition name)))
                            (if (member before '("loaded" "fetching" "loading" "later" "waiting") :test #'equal)
                                before
                                (handler-case
                                    (reporting-errors ("evaluating the package ~a" name)
-                                     (let ((*package* (find-package :tuatara-user)))
-                                       (setf *package-failures* (remove name *package-failures*
-                                                                        :key #'car :test #'string=)
-                                             *refused-packages* (remove name *refused-packages* :test #'string=))
-                                       (eval form)
-                                       (let ((declared (declared-package name)))
-                                         (if declared
-                                             (package-condition name
-                                                                (package-state name (second declared) (third declared)))
-                                             "not named"))))
+                                                     (let ((*package* (find-package :tuatara-user)))
+                                                       (clear-package-failure name)
+                                                       (setf *refused-packages*
+                                                             (remove name *refused-packages* :test #'string=))
+                                                       (eval form)
+                                                       (or (declared-package-condition name) "not named")))
                                  (error (e) (format nil "failed: ~a" e)))))))
      stopped)))
 
@@ -281,14 +283,16 @@ became is in *Messages* (\\[view-echo-area-messages])."
       (refuse "No init file at ~a" (abbreviated-path file)))
     (multiple-value-bind (results stopped) (scan-init-file-packages file)
       (loop for (name line inside outcome) in results
-            do (log-message (format nil "package-scan: ~a, line ~d~:[~;, inside another form (a parenthesis left open before it?)~]: ~a"
+            do (log-message (format nil
+                                    "package-scan: ~a, line ~d~:[~;, inside another form (a parenthesis left open before it?)~]: ~a"
                                     name line inside outcome)))
       (when stopped
         (log-message (format nil
                              "package-scan: ~a could not be read on from line ~d: ~a; packages after it are not seen"
                              (abbreviated-path file) (car stopped) (cdr stopped))))
       (package-manager)
-      (message "~[No packages~;1 package~:;~:*~d packages~] in ~a~[~:;, ~:*~d inside another form~]~[~:;, ~:*~d failed~]~@[, read up to line ~d~]: \\[view-echo-area-messages] says each"
+      (message "~[No packages~;1 package~:;~:*~d packages~] in ~a~[~:;, ~:*~d inside another form~]~[~:;, ~:*~d ~
+                failed~]~@[, read up to line ~d~]: \\[view-echo-area-messages] says each"
                (length results) (abbreviated-path file)
                (count-if #'third results)
                (count-if (lambda (r) (uiop:string-prefix-p "failed" (fourth r))) results)
@@ -371,7 +375,8 @@ safely, else a note that it has none or is not fetched yet."
          (multiple-value-bind (buffer existing) (tuatara.io:visit-file (tuatara.io:native readme) :safe t)
            (values buffer (not existing))))
         (t
-         (values (side-preview-note name (format nil "~a ~:[is not fetched yet: there is nothing of it to show.~;~:*has no README in ~a.~]"
+         (values (side-preview-note name (format nil
+                                                 "~a ~:[is not fetched yet: there is nothing of it to show.~;~:*has no README in ~a.~]"
                                                  name (and directory (abbreviated-path (tuatara.io:native directory)))))
                  t))))))
 

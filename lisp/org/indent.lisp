@@ -30,13 +30,12 @@ list item begins, after its bullet and its checkbox."
   (let ((base (when (org-indented-p buffer)
                 (multiple-value-bind (begin level) (org-headline-at-or-before buffer line-start)
                   (when begin
-                    (make-string (if (and (= begin line-start) (not continuation))
+                    (spaces (if (and (= begin line-start) (not continuation))
                                      (1- level)
-                                     (* 2 level))
-                                 :initial-element #\Space)))))
+                                     (* 2 level)))))))
         (hang (if continuation (org-hanging-columns buffer line-start) 0)))
     (if (plusp hang)
-        (concatenate 'string base (make-string hang :initial-element #\Space))
+        (concatenate 'string base (spaces hang))
         base)))
 
 (defvar *org-level-heights* (cons -1 nil)
@@ -49,7 +48,8 @@ be drawn large; looked up once for each change of the faces (*FACE-GENERATION*).
   (let ((generation tuatara.display:*face-generation*))
     (unless (eql (car *org-level-heights*) generation)
       (setf *org-level-heights*
-            (cons generation (loop for level from 1 to 8 thereis (tuatara.display:face-attribute (org-level-face level) :height)))))
+            (cons generation (loop for level from 1 to 8
+                                   thereis (tuatara.display:face-attribute (org-level-face level) :height)))))
     (cdr *org-level-heights*)))
 
 (defun org-line-scale (buffer line-start window)
@@ -99,7 +99,7 @@ only where the text still holds what it stands for."
                    (let* ((line (org-view-byte buffer view (org-node-begin node)))
                           (bullet (string-trim " " (org-property node :bullet)))
                           (head (octets-at line (min 200 (- size line))))
-                          (at (and head (position-if-not (lambda (c) (member c '(#\Space #\Tab))) head)))
+                          (at (and head (position-if-not #'space-or-tab-char-p head)))
                           (sign (cdr (assoc bullet
                                             (setting-list '*org-list-bullets* *org-list-bullets* :pairs t)
                                             :test #'string=))))
@@ -111,10 +111,14 @@ only where the text still holds what it stands for."
                               (box (and box-at (<= (+ box-at 3) (length head))
                                         (string-trim " " (subseq head (+ at (length bullet)) box-at))))
                               (box-sign (and box (string= box "") (org-property node :checkbox)
-                                             (cdr (assoc (subseq head box-at (+ box-at 3)) (setting-list '*org-checkbox-signs* *org-checkbox-signs* :pairs t) :test #'string=)))))
+                                             (cdr (assoc (subseq head box-at (+ box-at 3))
+                                                         (setting-list '*org-checkbox-signs* *org-checkbox-signs*
+                                                                       :pairs t)
+                                                         :test #'string=)))))
                          ;; a space after the sign, so that one drawn wider than its cell is not half under the cursor
                          (when box-sign
-                           (push (list (+ line box-at) (+ line box-at 3) (concatenate 'string box-sign " ") :org-checkbox)
+                           (push (list (+ line box-at) (+ line box-at 3) (concatenate 'string box-sign " ")
+                                       :org-checkbox)
                                  found))))))
                  (org-children-in-range node from to #'walk))))
       (when (or *org-list-bullets* *org-checkbox-signs*)

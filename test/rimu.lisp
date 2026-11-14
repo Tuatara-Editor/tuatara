@@ -364,7 +364,7 @@ shown at the end of a row after a space."
       ;; in a list, it goes up
       (multiple-value-bind (f editor) (rimu-session dir "C-x C-j C-x C-j" :file file)
         (declare (ignore f))
-        (is string= "tuatara/" (current-name editor))
+        (is string= (rimu-list-name (uiop:pathname-parent-directory-pathname dir)) (current-name editor))
         (let ((point (session-point editor)) (below (car (last (pathname-directory dir)))))
           (is string= below (subseq (session-text editor) point (+ point (length below)))))))))
 
@@ -1120,7 +1120,7 @@ program writing as it goes makes them: each entry's sizes after its data."
     (tuatara.frontend.tui::forget-shared-pictures)
     (false (probe-file (concatenate 'string "/dev/shm/" name))))
   ;; how many cells it takes: no larger than it is, its proportions kept
-  (let ((image (tuatara.frontend:make-image 200 100 3 nil)))
+  (let ((image (tuatara.frontend:make-image 200 100 3 (make-array 60000 :element-type '(unsigned-byte 8)))))
     (is equal '(20 5) (multiple-value-list (tuatara.frontend.tui::image-cells image 60 30 10 20)))
     (is equal '(10 3) (multiple-value-list (tuatara.frontend.tui::image-cells image 10 30 10 20))))
   ;; a row of its cells: the first marked with its row and column 0
@@ -1593,6 +1593,37 @@ and the editor."
         (true commits)
         (true (and commits (search "The first file" (format nil "~a" (gethash "a.txt" commits)))))))))
 
+(define-test (rimu git-column-names-git-would-quote)
+  ;; a file name with a non-ASCII character is found in the log like any other
+  (with-test-directory (dir)
+    (let* ((directory (tuatara.io:native dir))
+           (git (lambda (&rest arguments)
+                  (eql 0 (sb-ext:process-exit-code
+                          (sb-ext:run-program "git"
+                                              (append (list "-C" directory "-c" "user.name=Test" "-c"
+                                                            "user.email=test@example.org"
+                                                            "-c" "commit.gpgSign=false")
+                                                      arguments)
+                                              :search t :output nil :error nil))))))
+      (put-file (merge-pathnames "a.txt" dir) (format nil "a~%"))
+      (put-file (merge-pathnames (format nil "caf~ae.txt" (code-char #xe9)) dir) (format nil "b~%"))
+      (true (funcall git "init" "-q"))
+      (true (funcall git "add" "."))
+      (true (funcall git "commit" "-q" "-m" "Both files"))
+      (let ((commits (tuatara.git::rimu-git-commits directory (list "a.txt" (format nil "caf~ae.txt" (code-char #xe9))))))
+        (is = 2 (and commits (hash-table-count commits)))))))
+
+(define-test (rimu plain-lists)
+  ;; a preview's list is no plain list of its directory, a found list neither
+  (with-test-directory (dir)
+    (let* ((directory (tuatara.io:native dir))
+           (list (tuatara.defaults::rimu-make-list directory)))
+      (true (tuatara.defaults::rimu-plain-list-p list))
+      (is eq list (tuatara.defaults::rimu-plain-list-of directory))
+      (setf (tuatara.buffer:buffer-local list 'tuatara.defaults::rimu-preview-buffer) t)
+      (false (tuatara.defaults::rimu-plain-list-p list))
+      (false (tuatara.defaults::rimu-plain-list-of directory)))))
+
 (define-modal-test (rimu bindings-none-here)
   (with-rimu-tree (dir)
     (rimu-session dir "?" :width 120 :height 40)
@@ -1604,6 +1635,40 @@ and the editor."
                                   (uiop:split-string text :separator '(#\Newline)))))
         (true lines)
         (true (every (lambda (l) (search "(none here)" l)) lines))))))
+
+(define-test (rimu sizes-walk-ended-by-a-newer)
+  ;; the sizes of a directory worked out again, as after a change on disk, end the walk begun before
+  (with-test-directory (dir)
+    (ensure-directories-exist (merge-pathnames "docs/" dir))
+    (rimu-forget)
+    (let* ((directory (namestring dir))
+           (list (tuatara.defaults::rimu-make-list directory))
+           (entries (tuatara.defaults::rimu-listing-entries (tuatara.defaults::rimu-read directory)))
+           (wanted '())
+           (done (sb-thread:make-semaphore)))
+      (setf (tuatara.buffer:buffer-local list 'tuatara.defaults::rimu-sizes) t)
+      (sb-int:encapsulate 'tuatara.defaults::rimu-column-ready 'note-done
+                          (lambda (function &rest arguments)
+                            (declare (ignore function arguments))
+                            (sb-thread:signal-semaphore done)))
+      (sb-int:encapsulate 'tuatara.io:tree-size 'keep-wanted
+                          (lambda (function directory &rest arguments)
+                            (declare (ignore function directory))
+                            (push (getf arguments :wanted) wanted)
+                            0))
+      (unwind-protect
+           (progn
+             (tuatara.defaults::rimu-size-cells directory entries)
+             (true (sb-thread:wait-on-semaphore done :timeout 10))
+             (true (and wanted (funcall (first wanted))) "the only walk wanted")
+             (tuatara.defaults::rimu-size-cells directory entries)
+             (true (sb-thread:wait-on-semaphore done :timeout 10))
+             (is = 2 (length wanted))
+             (true (funcall (first wanted)) "the newer walk wanted")
+             (false (funcall (second wanted)) "the older walk still wanted"))
+        (sb-int:unencapsulate 'tuatara.io:tree-size 'keep-wanted)
+        (sb-int:unencapsulate 'tuatara.defaults::rimu-column-ready 'note-done)
+        (rimu-forget)))))
 
 (define-test (rimu sizes-column)
   (with-test-directory (dir)
@@ -1622,7 +1687,7 @@ and the editor."
         ;; in the units of the size column and the first lines
         (true (find-if (lambda (l) (and (search "docs" l) (search "2.5K" l))) lines))
         (true (find-if (lambda (l) (and (search "a.txt" l) (search "1.5K" l))) lines))))
-    (is = 2500 (tuatara.defaults::rimu-tree-size (namestring (merge-pathnames "docs/" dir))))
+    (is = 2500 (tuatara.io:tree-size (namestring (merge-pathnames "docs/" dir))))
     ;; hidden again with S; shown from the start with *rimu-directory-sizes*
     (multiple-value-bind (f editor) (rimu-session dir "S S")
       (declare (ignore f))
@@ -1808,7 +1873,7 @@ and the editor."
                (lines (uiop:split-string (tuatara.buffer:buffer-string list) :separator '(#\Newline))))
           (true (search "dir^Jnl:" (first lines)))
           (is equal "a.txt" (tuatara.io:listed-name
-                             (tuatara.defaults::rimu-entry-at list (tuatara.buffer:buffer-point list))))))
+                             (tuatara.defaults::list-entry-at list (tuatara.buffer:buffer-point list))))))
       (rimu-forget))))
 
 (define-test (rimu place-kept-while-away)
@@ -1847,7 +1912,7 @@ and the editor."
                                :width 100)
           (declare (ignore f))
           (is string= (rimu-list-name dir) (current-name editor))
-          (let ((entry (tuatara.defaults::rimu-entry-at (list-buffer) (session-point editor))))
+          (let ((entry (tuatara.defaults::list-entry-at (list-buffer) (session-point editor))))
             (is = 2 reread "the list read again each time")
             (true entry)
             (is equalp (tuatara.text:string-octets "m.txt") (and entry (tuatara.io:listed-octets entry)))))))
@@ -1889,6 +1954,32 @@ and the editor."
              (let ((later (tuatara.defaults::rimu-carry-cells again (tuatara.defaults::rimu-read directory) view)))
                (false (gethash :git (tuatara.defaults::rimu-listing-cells later)))))
         (sb-int:unencapsulate 'tuatara.git:run-git-program 'count-runs)))))
+
+(define-test (rimu git-column-kept-in-a-worktree)
+  ;; in a worktree .git is a file naming git's own directory elsewhere: the git column is kept
+  ;; for a list read again there too, and read again once a commit is made
+  (with-test-directory (dir)
+    (let ((main (merge-pathnames "main/" dir))
+          (work (merge-pathnames "work/" dir)))
+      (ensure-directories-exist main)
+      (scratch-repository main)
+      (git-output main "worktree" "add" "-q" "-b" "side" (namestring work))
+      (trust-test-repository work)
+      (tuatara.git::install-rimu-git)
+      (let* ((directory (namestring work))
+             (view (tuatara.defaults::make-rimu-view nil nil :name nil nil
+                                                     (list (find :git tuatara.defaults::*rimu-columns*
+                                                                 :key #'tuatara.defaults::rimu-column-name))
+                                                     nil nil nil))
+             (old (tuatara.defaults::rimu-carry-cells nil (tuatara.defaults::rimu-read directory) view)))
+        (setf (gethash :git (tuatara.defaults::rimu-listing-cells old))
+              (map 'vector #'tuatara.io:listed-name (tuatara.defaults::rimu-listing-entries old)))
+        (let ((again (tuatara.defaults::rimu-carry-cells old (tuatara.defaults::rimu-read directory) view)))
+          (is eq (gethash :git (tuatara.defaults::rimu-listing-cells old))
+              (gethash :git (tuatara.defaults::rimu-listing-cells again)))
+          (git-output work "commit" "-q" "--allow-empty" "-m" "Second")
+          (let ((later (tuatara.defaults::rimu-carry-cells again (tuatara.defaults::rimu-read directory) view)))
+            (false (gethash :git (tuatara.defaults::rimu-listing-cells later)))))))))
 
 (define-test (rimu marks-found-without-garbage)
   ;; the mark of each entry shown is found by a key made once for the entry, not again at each
@@ -1938,3 +2029,17 @@ and the editor."
                               texts)
                      "~s" texts)))
         (drain-debug-reports)))))
+
+(define-test (rimu list-watched-when-made-and-let-go)
+  ;; the directory of a list made is watched from the next tick on, rimu saying so rather than
+  ;; being asked at every tick, and let go once the list is killed
+  (with-test-directory (dir)
+    (let ((native (tuatara.io:native (namestring dir))))
+      (flet ((watched ()
+               (cdr (assoc 'tuatara.defaults::rimu-watched-directories tuatara.defaults::*directories-followed*))))
+        (rimu-session dir "")
+        (true (third (assoc 'tuatara.defaults::rimu-watched-directories tuatara.defaults::*directory-followers*)))
+        (true (member native (watched) :test #'string=))
+        (rimu-forget)
+        (tuatara.defaults::follow-directories nil)
+        (false (member native (watched) :test #'string=))))))

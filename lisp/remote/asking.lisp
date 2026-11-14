@@ -8,7 +8,9 @@
 ;;;; A script needs no program of its own, in a package or an AppImage, and
 ;;;; starts at once. The words of a question may be a server's, so they are
 ;;;; cleaned before they are shown; a password or passphrase is read hidden,
-;;;; goes through the pipe only, and is wiped here once sent.
+;;;; goes through the pipe only, and is wiped here once sent. Git, fetching,
+;;;; pulling or pushing over ssh, asks through the same pipes, answered on a
+;;;; thread of their own while git runs (CALL-ANSWERING-SSH).
 
 (in-package #:tuatara.defaults)
 
@@ -41,30 +43,23 @@ variable of the shell. Any other first line ends it with a failure.")
 (defparameter *ssh-connecting-seconds* 1
   "How long a connection to a server has taken before the echo area says so.")
 
-(defstruct (ssh-asking (:constructor make-ssh-asking (host jump directory question answer)) (:copier nil))
+(define-record (ssh-asking (:constructor make-ssh-asking (host jump directory question answer)) (:copier nil))
   "How ssh's questions for one connection reach you. HOST is the machine asked
 for. JUMP is the machines ssh goes through to it (ProxyJump), or NIL. DIRECTORY
 is the connection's private directory. QUESTION and ANSWER are this end of the
 named pipes the script uses, as file descriptors. ASKED is how many questions
 it has asked. SAID is how many octets of what ssh wrote on its error output
 have been shown."
-  (host "" :type string :read-only t)
-  (jump nil :read-only t)
-  (directory "" :type string :read-only t)
-  (question 0 :type fixnum :read-only t)
-  (answer 0 :type fixnum :read-only t)
-  (asked 0 :type fixnum)
-  (said 0 :type fixnum))
+  (host "" :type string :read-only t :documentation "The machine ASKING's connection is to, as ssh takes it.")
+  (jump nil :read-only t :documentation "The machines ASKING's ssh goes through, or NIL.")
+  (directory "" :type string :read-only t :documentation "The private directory of ASKING's connection.")
+  (question 0 :type fixnum :read-only t :documentation "This end of ASKING's pipe of questions.")
+  (answer 0 :type fixnum :read-only t :documentation "This end of ASKING's pipe of answers.")
+  (asked 0 :type fixnum :documentation "How many questions ASKING's connection has asked.")
+  (said 0 :type fixnum :documentation "How many octets of what ASKING's ssh wrote have been shown."))
 
 (setf (documentation 'make-ssh-asking 'function) "An SSH-ASKING for HOST with those pipes."
-      (documentation 'ssh-asking-p 'function) "True when OBJECT is an SSH-ASKING."
-      (documentation 'ssh-asking-host 'function) "The machine ASKING's connection is to, as ssh takes it."
-      (documentation 'ssh-asking-jump 'function) "The machines ASKING's ssh goes through, or NIL."
-      (documentation 'ssh-asking-directory 'function) "The private directory of ASKING's connection."
-      (documentation 'ssh-asking-said 'function) "How many octets of what ASKING's ssh wrote have been shown."
-      (documentation 'ssh-asking-question 'function) "This end of ASKING's pipe of questions."
-      (documentation 'ssh-asking-answer 'function) "This end of ASKING's pipe of answers."
-      (documentation 'ssh-asking-asked 'function) "How many questions ASKING's connection has asked.")
+      (documentation 'ssh-asking-p 'function) "True when OBJECT is an SSH-ASKING.")
 
 (defvar *ssh-may-ask* t
   "True when a connection made now may put ssh's questions to you: not for
@@ -73,7 +68,7 @@ work nobody is waiting on, such as completing a file name as it is typed.")
 (defun someone-to-ask-p (editor)
   "True when EDITOR, the running one or NIL, shows a frame in which a question
 can be answered: not one running in the background with no client."
-  (and editor (not (tuatara.command::idle-frame-p editor (tuatara.command::editor-frame editor)))))
+  (and editor (not (idle-frame-p editor (editor-frame editor)))))
 
 (defun ssh-can-ask-p (program)
   "True when questions of ssh, the program PROGRAM, can be put in the
@@ -92,22 +87,34 @@ the words of a question of ssh's."
   (let ((jump (cdr (assoc "proxyjump" (ssh-settings program host) :test #'string=))))
     (and jump (string/= jump "none") (tuatara.frontend:shown-words jump))))
 
-(defun open-ssh-asking (program directory host)
+(defun open-ssh-asking (program directory host &key (jump t))
   "An SSH-ASKING for a connection to HOST through ssh, PROGRAM, its pipes and
 script made in DIRECTORY, private to you; each pipe held open both ways here, so
 that the script never waits to open one and sees it end should the editor. A
-TUATARA.IO:FILE-SYSTEM-ERROR when they cannot be made, nothing left open."
+TUATARA.IO:FILE-SYSTEM-ERROR when they cannot be made, nothing left open. With
+JUMP NIL, HOST is words naming the server for the questions, not a host ssh
+is asked about, and no machine ssh goes through is looked for."
   (flet ((pipe (name) (tuatara.io:open-named-pipe (tuatara.io:path-join directory name))))
     (tuatara.io:write-new-file (ssh-asking-script-path directory) *ssh-asking-script* :mode #o700)
     (let ((question (pipe "question")) (made nil))
       (unwind-protect
-           (prog1 (make-ssh-asking host (ssh-jump program host) directory question (pipe "answer"))
+           (prog1 (make-ssh-asking host (and jump (ssh-jump program host)) directory question (pipe "answer"))
              (setf made t))
         (unless made (sb-posix:close question))))))
 
 (defun ssh-asking-script-path (directory)
   "Where the script ssh runs for a question is in DIRECTORY, the connection's."
   (tuatara.io:path-join directory "ask"))
+
+(defun ssh-error-path (directory)
+  "Where what ssh writes on its error output is kept, in DIRECTORY, the connection's."
+  (tuatara.io:path-join directory "e"))
+
+(defun ssh-error-octets (directory)
+  "What ssh wrote on its error output for the connection whose directory is
+DIRECTORY, the first *PROGRAM-SAID-LIMIT* octets at most; NIL when it cannot be read."
+  (ignoring-errors-reported ("reading what ssh said")
+                            (tuatara.io:file-octets (ssh-error-path directory) :limit tuatara.io:*program-said-limit*)))
 
 (defun close-ssh-asking (asking)
   "Take away ASKING's pipes and close them: a question asked later finds none
@@ -132,19 +139,16 @@ keys added to an agent); with none, nothing is asked at all."
        (list (format nil "SSH_ASKPASS=~a" (ssh-asking-script-path (ssh-asking-directory asking)))
              "SSH_ASKPASS_REQUIRE=force")))
 
-(defstruct (awaited-answer (:constructor make-awaited-answer ()) (:copier nil))
+(define-record (awaited-answer (:constructor make-awaited-answer ()) (:copier nil))
   "An answer waited for from the editor's thread: STATE is :WAITING, then
 :ANSWERED or, the job waiting having stopped, :ABANDONED; ANSWER, what was
 answered; LOCK held while either is looked at or changed."
-  (state :waiting)
-  (answer nil)
-  (lock (sb-thread:make-mutex :name "ssh answer") :read-only t))
+  (state :waiting :documentation "Whether AWAITED is :WAITING, :ANSWERED or :ABANDONED.")
+  (answer nil :documentation "What AWAITED was answered.")
+  (lock (sb-thread:make-mutex :name "ssh answer") :read-only t
+        :documentation "The lock held while AWAITED is looked at or changed."))
 
-(setf (documentation 'make-awaited-answer 'function) "An AWAITED-ANSWER, still waited for."
-      (documentation 'awaited-answer-p 'function) "True when OBJECT is an AWAITED-ANSWER."
-      (documentation 'awaited-answer-state 'function) "Whether AWAITED is :WAITING, :ANSWERED or :ABANDONED."
-      (documentation 'awaited-answer-answer 'function) "What AWAITED was answered."
-      (documentation 'awaited-answer-lock 'function) "The lock held while AWAITED is looked at or changed.")
+(setf (documentation 'make-awaited-answer 'function) "An AWAITED-ANSWER, still waited for.")
 
 (defun ask-for-awaited (awaited ask)
   "On the editor's thread, call ASK and keep its answer in AWAITED; ASK not
@@ -222,7 +226,8 @@ be for one of them."
                (typed (search "[fingerprint]" text)))
            (values (format nil "Accept this key (yes/no~:[~;/fingerprint~]): " typed)
                    kind
-                   (let ((found (nth-value 1 (cl-ppcre:scan-to-strings "key fingerprint is:? (\\S+?)\\.?(\\s|$)" words))))
+                   (let ((found (nth-value 1 (cl-ppcre:scan-to-strings "key fingerprint is:? (\\S+?)\\.?(\\s|$)"
+                                                                       words))))
                      (and found (aref found 0)))
                    (details (format nil "~a?~%~%Type yes~:[~; or the fingerprint~] to accept, anything else refuses."
                                     (subseq words 0 end) typed)))))
@@ -258,8 +263,7 @@ caller wipes, or NIL for none and for a question given up."
           details
           (lambda ()
             (if (eq kind :key)
-                (tuatara.command::call-asked-unasked
-                 prompt (lambda () (ssh-key-answer (read-string prompt) fingerprint)))
+                (ssh-key-answer (read-string prompt :fresh t) fingerprint)
                 (read-password prompt :fresh t)))))))))
 
 (defun ssh-said-parts (text)
@@ -277,10 +281,7 @@ the rest (a server's banner and instructions), cleaned, on one line."
 (defun ssh-new-said (asking)
   "What ASKING's ssh has written on its error output since this was last
 asked, as two values: its warnings to you and the rest (SSH-SAID-PARTS)."
-  (let ((octets (or (ignoring-errors-reported ("reading what ssh said")
-                      (tuatara.io:file-octets (tuatara.io:path-join (ssh-asking-directory asking) "e")
-                                              :limit tuatara.io:*program-said-limit*))
-                    (tuatara.text:make-octets 0))))
+  (let ((octets (or (ssh-error-octets (ssh-asking-directory asking)) (tuatara.text:make-octets 0))))
     (multiple-value-prog1 (ssh-said-parts (tuatara.text:lenient-string (subseq octets (min (ssh-asking-said asking)
                                                                                            (length octets)))))
       (setf (ssh-asking-said asking) (length octets)))))
@@ -314,6 +315,82 @@ was or too many have been asked, and the connection should end."
           (fill line 0)
           (fill reply 0))))))
 
+;;; Questions of ssh run by another program
+
+(defun answer-ssh-questions (asking done job)
+  "Put each question ASKING's ssh asks to you, and send back the answer
+\(ANSWER-SSH-QUESTION), until the car of DONE turns true or JOB, the job
+the ssh is run for, or NIL, stops. A refusal goes back to ssh, which ends or
+asks again; too many questions stop JOB, ending the program that ran ssh."
+  (let ((tuatara.runtime:*job* job))
+    (handler-case
+        (loop until (car done)
+              do (let ((ready (tuatara.io:wait-for-fds (list (ssh-asking-question asking)) 1/4)))
+                   (when (and (consp ready) (not (answer-ssh-question asking))
+                              (> (ssh-asking-asked asking) +ssh-most-questions+))
+                     (when job (setf (car (tuatara.runtime:job-cancel job)) t))
+                     (return))))
+      (tuatara.runtime:job-stopped () nil))))
+
+(defun call-answering-ssh (who function)
+  "Call FUNCTION, on a thread that is not the editor's, with what a program
+running ssh by itself (git) needs so that what ssh asks is put to you in the
+minibuffer while FUNCTION runs, as for a server's files: two values, the
+command running ssh as a list (its full path, then SSH-ASKING-OPTIONS), and
+the environment settings (NAME=VALUE) the program gives it. A key not seen
+before is then asked about, its fingerprint shown as ssh writes it, and ssh
+itself adds it to your known hosts on yes; a changed key is refused by ssh
+all the same, and a passphrase is read hidden. WHO names the server in the
+questions (the server of git fetch). FUNCTION gets NIL and NIL when nobody
+can be asked (SSH-CAN-ASK-P) or ssh is not installed. The questions stop,
+and their directory goes, once FUNCTION returns; its values are returned."
+  (let ((program (tuatara.io:system-program *ssh-program*)))
+    (if (not (and program (ssh-can-ask-p program)))
+        (funcall function nil nil)
+        (let ((directory (new-private-directory (private-cache-directory "remote/")))
+              (asking nil) (answering nil) (done (list nil)) (job tuatara.runtime:*job*))
+          (unwind-protect
+               (progn
+                 (setf asking (open-ssh-asking program directory who :jump nil)
+                       answering (tuatara.runtime:make-guarded-thread
+                                  (lambda () (answer-ssh-questions asking done job)) :name "ssh questions"))
+                 (funcall function (cons program (ssh-asking-options asking)) (ssh-asking-environment asking)))
+            (setf (car done) t)
+            (when answering (sb-thread:join-thread answering :default nil))
+            (when asking (close-ssh-asking asking))
+            (delete-private-directory directory))))))
+
+(defun ssh-refusal-words (said &optional host)
+  "What SAID, what ssh wrote on its error output, tells of a server it would
+not reach, in plain words, and its kind as a second value: :CHANGED, the
+server's host key differs from the one known for it, which may be an attack
+and is never offered for trust; :UNKNOWN, a key ssh does not know yet, not
+accepted; :HELPER, ssh could not run the program asking its questions. The
+host is the one ssh names, else HOST, else the server. NIL for anything else."
+  (flet ((named (pattern)
+           (let ((found (nth-value 1 (cl-ppcre:scan-to-strings pattern said))))
+             (or (and found (tuatara.frontend:shown-words (aref found 0))) host))))
+    (cond ((or (search "IDENTIFICATION HAS CHANGED" said) (search "has changed and you have requested strict" said))
+           (let ((host (named "Host key for (\\S+) has changed")))
+             (values (format nil "the host key of ~:[the server~;~:*~a~] differs from the one ssh knows, which may be ~
+                                  an attack (someone between you and the server): nothing was changed and nothing ~
+                                  connected; check with the machine's owner before removing the old key with ~
+                                  ssh-keygen -R~:*~@[ ~a~]"
+                             host)
+                     :changed)))
+          ((search "ssh_askpass" said)
+           (values (format nil "ssh could not run the small program that asks its questions, in the cache directory ~
+                                here (a directory programs may not be run from, mounted noexec?): ~a"
+                           (tuatara.frontend:shown-words (tuatara.text:one-line said)))
+                   :helper))
+          ((search "Host key verification failed" said)
+           (let ((host (named "host key is known for (\\S+?) and")))
+             (values (if host
+                         (format nil "ssh does not know ~a's key yet (Host key verification failed)" host)
+                         (concatenate 'string "the server's key was not accepted, so ssh does not know it yet "
+                                      "(Host key verification failed)"))
+                     :unknown))))))
+
 (defun say-connecting (host)
   "Say in the echo area, not in the record of messages, that a connection to
 HOST is being made; the words said, for UNSAY-CONNECTING."
@@ -328,4 +405,4 @@ HOST is being made; the words said, for UNSAY-CONNECTING."
     (defer-action (lambda ()
                     (when (equal words (editor-message *editor*))
                       (setf (editor-message *editor*) nil)))
-                  :without-screen t)))
+        :without-screen t)))

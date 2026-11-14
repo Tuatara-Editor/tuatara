@@ -221,18 +221,21 @@ It returns NIL when it could not write."
 (defun session-tick (editor)
   "Write the session now and then while the editor runs, every
 *KEEP-SESSION-INTERVAL* seconds when it has changed, on a thread of its own;
-the seconds until the next look."
+the seconds until the next look. Nothing is looked at while nothing has been
+done since the last look (*LAST-INPUT-TIME*): the editor sleeps then."
   (when *keep-session*
     (let* ((now (get-internal-real-time))
-           (due (if *session-looked* (+ *session-looked* (* *keep-session-interval* internal-time-units-per-second)) now)))
-      (if (< now due)
-          (/ (- due now) internal-time-units-per-second)
-          (let ((lines (ignoring-errors-reported ("gathering the session") (session-lines editor))))
-            (setf *session-looked* now)
-            (when (and lines (not (equal lines *session-written*)))
-              (setf *session-written* lines)
-              (tuatara.runtime:make-guarded-thread (session-writer lines) :name "tuatara session"))
-            *keep-session-interval*)))))
+           (due (if *session-looked*
+                    (+ *session-looked* (* *keep-session-interval* internal-time-units-per-second))
+                    now)))
+      (cond ((and *session-looked* (< *last-input-time* *session-looked*)) nil)
+            ((< now due) (values (ceiling (- due now) internal-time-units-per-second)))
+            (t (let ((lines (ignoring-errors-reported ("gathering the session") (session-lines editor))))
+                 (setf *session-looked* now)
+                 (when (and lines (not (equal lines *session-written*)))
+                   (setf *session-written* lines)
+                   (tuatara.runtime:make-guarded-thread (session-writer lines) :name "tuatara session"))
+                 *keep-session-interval*))))))
 
 (defun session-at-exit (editor)
   "Write the session as the editor stops (*KEEP-SESSION*)."
@@ -368,11 +371,18 @@ the frame worked in, then one for each frame more. BUFFERS is each window's
 buffer by its entry, and LINES the section's lines as written (NIL for the
 first).")
 
+(defun map-session-windows (function tree)
+  "Call FUNCTION with each window of TREE, a layout of the session, in order:
+each (:WINDOW SELECTED START ENTRY) as SESSION-LAYOUT reads it."
+  (if (eq (first tree) :split)
+      (dolist (child (cdddr tree)) (map-session-windows function child))
+      (funcall function tree)))
+
 (defun session-tree-entries (tree)
   "The entries of the windows of TREE, a layout of the session, that have one."
-  (if (eq (first tree) :split)
-      (mapcan #'session-tree-entries (cdddr tree))
-      (and (fourth tree) (list (fourth tree)))))
+  (let ((entries '()))
+    (map-session-windows (lambda (window) (when (fourth window) (push (fourth window) entries))) tree)
+    (nreverse entries)))
 
 (defmethod host-startup-buffer ((host defaults-host))
   "The buffer the editor starts with when it starts without files: with
@@ -402,16 +412,14 @@ The buffer the frame worked in shows, or NIL when there is no session."
         (loop for layout in (cons tree (subseq others 0 shown))
               for lines in (cons nil sections)
               do (let ((opened '()))
-                   (labels ((walk (node)
-                              (if (eq (first node) :split)
-                                  (mapc #'walk (cdddr node))
-                                  (destructuring-bind (chosen start entry) (rest node)
-                                    (declare (ignore start))
-                                    (let ((buffer (and entry (session-open entry))))
-                                      (when (and entry (null buffer)) (incf missing))
-                                      (push (cons node buffer) opened)
-                                      (when (and chosen buffer (eq layout tree)) (setf selected buffer)))))))
-                     (walk layout))
+                   (map-session-windows (lambda (window)
+                                          (destructuring-bind (chosen start entry) (rest window)
+                                            (declare (ignore start))
+                                            (let ((buffer (and entry (session-open entry))))
+                                              (when (and entry (null buffer)) (incf missing))
+                                              (push (cons window buffer) opened)
+                                              (when (and chosen buffer (eq layout tree)) (setf selected buffer)))))
+                                        layout)
                    (push (list layout opened lines) layouts)))
         (setf layouts (nreverse layouts)
               *session-layout* layouts
@@ -437,8 +445,7 @@ the other frames' sections as they were (*SESSION-SECTIONS-KEPT*)."
                                              (cons tree (subseq others 0 (min (length others) (1- *most-frames*))))))))
           (opened 0))
       (dolist (entry entries)
-        (unless (and (member (first entry) '(:file :safe :directory))
-                     (find-if (lambda (b) (equal (session-entry b) entry)) tuatara.buffer:*buffers*))
+        (unless (and (member (first entry) '(:file :safe :directory)) (session-entry-buffer entry))
           (when (session-open entry) (incf opened))))
       (when (plusp opened)
         (message "~d file~:p of the session kept opened again, behind those named" opened)))))
@@ -628,13 +635,12 @@ windows of its own is asked for those windows, laid out as they come
                  (lambda (frame)
                    (let* ((tree (session-layout lines))
                           (opened (let ((pairs '()))
-                                    (labels ((walk (node)
-                                               (if (eq (first node) :split)
-                                                   (mapc #'walk (cdddr node))
-                                                   (push (cons node (and (fourth node)
-                                                                         (session-entry-buffer (fourth node))))
-                                                         pairs))))
-                                      (walk tree))
+                                    (map-session-windows (lambda (window)
+                                                           (push (cons window (and (fourth window)
+                                                                                   (session-entry-buffer
+                                                                                    (fourth window))))
+                                                                 pairs))
+                                                         tree)
                                     pairs)))
                      (call-in-frame editor frame (lambda () (session-build-layout editor tree opened)))))))
           (when layouts

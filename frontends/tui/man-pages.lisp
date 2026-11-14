@@ -150,7 +150,7 @@ the text first names it."
                  (if group
                      (push symbol (cdr group))
                      (push (list area symbol) groups))))))
-      (with-input-from-string (in tuatara.defaults::*starter-config*)
+      (with-input-from-string (in tuatara.defaults:*starter-config*)
         (loop for line = (read-line in nil)
               while line
               do (let ((trimmed (string-left-trim " " line)))
@@ -188,7 +188,6 @@ sub-heading, then each setting with the first paragraph of its documentation."
     ("chosen-paths" . "the files and directories you chose in questions, offered again first")
     ("grammars" . "your answers about which grammars may run")
     ("look-only" . "the projects you looked at only, never trusted to run their own programs")
-    ("lsp-trusted" . "the projects whose language servers and tools you trusted")
     ("package-trust" . "the sources of packages you trusted")
     ("packages" . "the packages fetched, with their source and version")
     ("packages-removed" . "the packages removed, not loaded though the init file names them")
@@ -196,6 +195,7 @@ sub-heading, then each setting with the first paragraph of its documentation."
     ("places" . "where point was in the files you visited")
     ("recent-files" . "the files you visited lately")
     ("ssh-servers" . "the machines whose daemons you trusted with more than keys and the screen, and with what")
+    ("trusted" . "the projects you trusted to run their own programs: language servers, git's hooks, builds")
     ("user-grammars" . "the checksums of the grammars you added")
     ("init.lisp" . "your init file")
     ("snippets/" . "your snippets")
@@ -221,7 +221,9 @@ path in its directory).")
 where each is when the XDG directories are not set.")
 
 (defun kept-file-rows ()
-  "The rows of test/api/kept-files.sexp after the line that says the version."
+  "The rows of test/api/kept-files.sexp, the pin of the kept files, after the line
+that says the version. Building the manual pages reads it, so the directory
+test/ has to be there."
   (with-open-file (in (asdf:system-relative-pathname :tuatara "test/api/kept-files.sexp"))
     (read in)
     (loop for row = (read in nil in) until (eq row in) collect row)))
@@ -237,14 +239,15 @@ its name there."
   "The files of the pin as paragraphs, by their class: kept, remembered and
 rebuilt, each with where it is and what it is."
   (with-output-to-string (out)
-    (dolist (class '(:kept :remembered :rebuilt))
-      (format out ".SS ~a~%" (ecase class (:kept "Kept") (:remembered "Remembered") (:rebuilt "Rebuilt")))
-      (dolist (row (kept-file-rows))
-        (multiple-value-bind (directory name) (kept-file-place row)
-          (when (eq class (if (eq (first row) :state) (third row) (fourth row)))
-            (format out ".TP~%.B ~a~a~%~a" (cdr (assoc directory *kept-file-directories* :test #'string=))
-                    (roff-text name)
-                    (roff-fill (or (cdr (assoc name *kept-file-descriptions* :test #'string=)) "")))))))))
+    (loop with rows = (kept-file-rows)
+          for class in '(:kept :remembered :rebuilt)
+          do (format out ".SS ~a~%" (ecase class (:kept "Kept") (:remembered "Remembered") (:rebuilt "Rebuilt")))
+          (dolist (row rows)
+            (multiple-value-bind (directory name) (kept-file-place row)
+              (when (eq class (if (eq (first row) :state) (third row) (fourth row)))
+                (format out ".TP~%.B ~a~a~%~a" (cdr (assoc directory *kept-file-directories* :test #'string=))
+                        (roff-text name)
+                        (roff-fill (or (cdr (assoc name *kept-file-descriptions* :test #'string=)) "")))))))))
 
 ;;; Putting the pages together
 
@@ -282,7 +285,7 @@ not there), over those there. The names of the files."
 ;;; Completion of the options in bash
 
 (defparameter *completion-values*
-  '(("--frames" . ("1" "2" "3" "4" "5" "6" "7" "8" "9" "10" "11" "12" "13" "14" "15" "16"))
+  `(("--frames" . ,(loop for n from 1 to tuatara.command:*most-frames* collect (princ-to-string n)))
     ("--dynamic-space-size" . :none))
   "The values bash offers for an option taking one where it is not a file: the
 choices, or :NONE when nothing can be suggested.  Every other value an option

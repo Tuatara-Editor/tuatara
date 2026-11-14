@@ -43,6 +43,23 @@ the same way over its prompt; the boxes are laid over the screen's rows.")
       (is = width (tuatara.command:panel-columns (first (first rows))))
       (is = width (tuatara.command:panel-columns (first (second rows)))))))
 
+(define-test (in-text-completion list-made-once-for-each-change)
+  ;; drawn again with nothing changed, the list asks nothing more of its candidates
+  (let* ((asked 0)
+         (popup (tuatara.command::%make-popup :minibuffer 0 "" '()
+                                              (lambda (candidate) (declare (ignore candidate)) (incf asked) "note")
+                                              nil nil)))
+    (setf (tuatara.command::popup-candidates popup)
+          (map 'simple-vector #'tuatara.command:make-candidate '("one" "two" "three")))
+    (tuatara.command::popup-list-box popup 60)
+    (let ((once asked))
+      (tuatara.command::popup-list-box popup 60)
+      (is = once asked)
+      ;; another one chosen: made again
+      (setf (tuatara.command::popup-index popup) 1)
+      (tuatara.command::popup-list-box popup 60)
+      (is = (* 2 once) asked))))
+
 (define-test (in-text-completion lisp-names)
   (let ((user (find-package :tuatara-user)))
     (flet ((names (word context) (mapcar #'tuatara.command:candidate-string

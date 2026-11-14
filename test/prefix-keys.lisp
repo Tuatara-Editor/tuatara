@@ -216,3 +216,27 @@ the selection, and the last row of the screen."
           (session-text (nth-value 1 (run-keys "C-n C-x z C-p z" :text lines))))))
   (is equal '("C-x z") (loop for (keys command) in tuatara.defaults::*global-bindings*
                              when (eq command 'tuatara.defaults::repeat) collect keys)))
+
+(define-test (prefix-keys control-keys-as-the-letters)
+  ;; where h j k l do more than move, C-b C-n C-p C-f do the same
+  (run-keys "")
+  (let ((pairs '(("h" . "C-b") ("j" . "C-n") ("k" . "C-p") ("l" . "C-f"))))
+    (flet ((bound (keymap keys) (tuatara.command:lookup-key keymap (tuatara.frontend:parse-key-sequence keys))))
+      (dolist (keymap (list tuatara.defaults::*bookmarks-keymap* tuatara.defaults::*rimu-keymap*
+                            tuatara.defaults::*rimu-trash-keymap* tuatara.defaults::*buffers-keymap*
+                            tuatara.defaults::*pdf-view-keymap* tuatara.git::*git-status-keymap*
+                            tuatara.git::*git-log-keymap*
+                            (tuatara.modes:mode-keymap 'tuatara.git::git-refs-mode)
+                            (tuatara.modes:mode-keymap 'tuatara.git::git-blame-mode)
+                            (tuatara.modes:mode-keymap 'tuatara.defaults::man-mode)
+                            (tuatara.modes:mode-keymap 'tuatara.defaults::jobs-mode)
+                            (tuatara.modes:mode-keymap 'tuatara.defaults::face-list-mode)
+                            (tuatara.modes:mode-keymap 'tuatara.defaults::org-agenda-mode)))
+        (loop for (letter . control) in pairs
+              for command = (bound keymap letter)
+              when command
+                do (is eq command (bound keymap control) "~a and ~a" letter control)))
+      (dolist (keys (list tuatara.defaults::*org-date-choose-keys* tuatara.defaults::*mark-run-bindings*))
+        (loop for (letter . control) in pairs
+              do (is eq (second (assoc letter keys :test #'string=)) (second (assoc control keys :test #'string=))
+                     "~a and ~a" letter control))))))

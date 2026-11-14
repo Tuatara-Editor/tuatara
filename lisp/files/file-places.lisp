@@ -11,13 +11,15 @@
   "How many characters after a place it keeps, to find the place again once the
 text before it has changed.")
 
-(defstruct (file-place (:constructor make-file-place (path offset context safe)) (:copier nil))
+(define-record (file-place (:constructor make-file-place (path offset context safe)) (:copier nil))
   "A place in the file or directory at PATH: the octet OFFSET in it, the text that
 followed it (CONTEXT), and SAFE when the file was opened safely."
-  path offset context safe)
+  (path nil :documentation "The path of the file or directory FILE-PLACE is in.")
+  (offset nil :documentation "The octet offset of FILE-PLACE in its file.")
+  (context nil :documentation "The text that followed FILE-PLACE when it was taken.")
+  (safe nil :documentation "True when the file of FILE-PLACE was opened safely."))
 
-(setf (documentation 'make-file-place 'function) "Return a FILE-PLACE."
-      (documentation 'file-place-p 'function) "True when OBJECT is a FILE-PLACE.")
+(setf (documentation 'make-file-place 'function) "Return a FILE-PLACE.")
 
 (defun file-place-target (buffer)
   "What a place of BUFFER is in: its file, or the directory a directory list shows;
@@ -33,12 +35,16 @@ the text goes."
 
 (defun text-after-place (buffer position)
   "The text after POSITION of BUFFER a place keeps: *FILE-PLACE-CONTEXT-LENGTH*
-characters at most, up to a tab."
-  (let* ((start (character-start buffer position))
-         (limit (* 4 *file-place-context-length*))
-         (text (tuatara.buffer:buffer-string buffer :start start :end (character-start buffer (+ start limit))))
-         (text (subseq text 0 (min (length text) *file-place-context-length*))))
-    (subseq text 0 (or (position #\Tab text) (length text)))))
+characters at most, up to a tab. None of an encrypted file's text
+\(BUFFER-PLAINTEXT-P), which is kept nowhere: such a place is found again by
+its offset alone."
+  (if (tuatara.io:buffer-plaintext-p buffer)
+      ""
+      (let* ((start (character-start buffer position))
+             (limit (* 4 *file-place-context-length*))
+             (text (tuatara.buffer:buffer-string buffer :start start :end (character-start buffer (+ start limit))))
+             (text (subseq text 0 (min (length text) *file-place-context-length*))))
+        (subseq text 0 (or (position #\Tab text) (length text))))))
 
 (defun file-place-here (buffer &optional (position (tuatara.buffer:buffer-point buffer)))
   "The FILE-PLACE of POSITION (point by default) in BUFFER, safe when the buffer

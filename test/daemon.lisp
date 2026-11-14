@@ -91,9 +91,11 @@ and the client."
     (type-at local (tuatara.frontend:make-event :key :key (tuatara.frontend:spec-key spec)))))
 
 (defun showing-now (local text)
-  "True when the last frame LOCAL, a fake screen, painted shows TEXT on a row."
+  "True when the last frame LOCAL, a fake screen, painted shows TEXT, wrapped
+onto the next row or not (FAKE-SCREEN-ACROSS-ROWS): a question naming a file
+wraps where the length of the file's path says."
   (let ((screen (tuatara.frontend.fake:fake-screen local)))
-    (and screen (some (lambda (row) (search text row)) screen) t)))
+    (and screen (search text (tuatara.frontend.fake:fake-screen-across-rows screen)) t)))
 
 (defun shows (local text &optional (seconds 20))
   "Wait until LOCAL, a client's fake screen, shows TEXT in its last frame, at

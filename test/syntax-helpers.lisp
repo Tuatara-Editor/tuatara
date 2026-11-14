@@ -123,7 +123,7 @@
   ;; the file it really is, outside it
   (with-test-directory (trusted)
     (with-test-directory (elsewhere)
-      (let ((tuatara-user:*lsp-trusted-projects* (list (namestring trusted)))
+      (let ((tuatara-user:*trusted-projects* (list (namestring trusted)))
             (inside (namestring (merge-pathnames "inside.rs" trusted)))
             (outside (namestring (merge-pathnames "evidence.rs" elsewhere)))
             (link (namestring (merge-pathnames "link.rs" trusted))))
@@ -200,13 +200,13 @@
 (define-test (syntax no-sandbox-nothing-pending)
   ;; without the sandbox a grammar not yet loaded is not waited for: no
   ;; helper is started again and again, no thread made for each redraw
-  (let ((starts 0) (kept (gethash "toml" tuatara.syntax::*grammars*)))
+  (let ((starts 0) (kept (gethash "toml" tuatara.syntax::**grammars**)))
     (call-without-sandbox
      (lambda ()
        (tuatara.io:sandbox-status :again t)
        (sb-int:encapsulate 'tuatara.syntax::start-helper 'counted
                            (lambda (function &rest arguments) (incf starts) (apply function arguments)))
-       (remhash "toml" tuatara.syntax::*grammars*)
+       (remhash "toml" tuatara.syntax::**grammars**)
        (let ((buffer (tuatara.buffer:make-buffer "*pending.toml*" :text "a = 1"))
              (tuatara.syntax::*syntax-helper-unconfined* nil)
              (tuatara.runtime:*host* (make-answering-host 'tuatara.syntax:host-must-not-wait-p (this-thread-only))))
@@ -220,7 +220,7 @@
                 (true (<= (length (sb-thread:list-all-threads)) (+ threads 1))))
            (sb-int:unencapsulate 'tuatara.syntax::start-helper 'counted)
            (tuatara.buffer:kill-buffer buffer)))))
-    (if kept (setf (gethash "toml" tuatara.syntax::*grammars*) kept) (remhash "toml" tuatara.syntax::*grammars*))))
+    (if kept (setf (gethash "toml" tuatara.syntax::**grammars**) kept) (remhash "toml" tuatara.syntax::**grammars**))))
 
 (define-test (syntax grammar-ending-its-loader-given-up)
   ;; a grammar whose loading ends the program loading it is tried a few
@@ -248,7 +248,7 @@
              (true (<= rules (1+ tuatara.syntax::*grammar-load-deaths-most*)) "~d starts" rules)
              (false (tuatara.syntax:grammar-pending-p "crashy")))
         (sb-int:unencapsulate 'tuatara.syntax::start-helper 'counted)
-        (remhash "crashy" tuatara.syntax::*grammars*)
+        (remhash "crashy" tuatara.syntax::**grammars**)
         (remhash "crashy" tuatara.syntax::**grammar-load-deaths**)
         (dolist (helper (copy-list tuatara.syntax::**helpers**))
           (when (member (namestring directory) (tuatara.syntax::helper-directories helper) :test #'equal)
@@ -510,8 +510,8 @@
 (define-test (syntax grammar-unanswered-asked-again)
   ;; a grammar asked for while no connection to the helper loading grammars
   ;; can be had is asked for again later, not taken as missing
-  (let ((kept (gethash "toml" tuatara.syntax::*grammars*)))
-    (remhash "toml" tuatara.syntax::*grammars*)
+  (let ((kept (gethash "toml" tuatara.syntax::**grammars**)))
+    (remhash "toml" tuatara.syntax::**grammars**)
     (unwind-protect
          (progn
            (tuatara.syntax:kept-helper :rules)
@@ -519,9 +519,9 @@
                                (lambda (function helper) (declare (ignore function helper)) nil))
            (unwind-protect (false (tuatara.syntax:find-grammar "toml"))
              (sb-int:unencapsulate 'tuatara.syntax::take-call 'none))
-           (false (gethash "toml" tuatara.syntax::*grammars*))
+           (false (gethash "toml" tuatara.syntax::**grammars**))
            (true (tuatara.syntax:find-grammar "toml")))
-      (if kept (setf (gethash "toml" tuatara.syntax::*grammars*) kept) (remhash "toml" tuatara.syntax::*grammars*)))))
+      (if kept (setf (gethash "toml" tuatara.syntax::**grammars**) kept) (remhash "toml" tuatara.syntax::**grammars**)))))
 
 (define-test (syntax slow-grammar-load-not-counted)
   ;; a grammar slow to load is given up on this time, not counted against it
@@ -806,3 +806,61 @@
                     (tuatara.syntax:detach-syntax buffer)
                     (tuatara.buffer:kill-buffer buffer))))
            (setf (tuatara.syntax:grammar-faulted grammar) nil)))))))
+
+(define-test (syntax parse-ends-when-memory-runs-out-reading)
+  ;; memory running out as a reply is read finishes the parse, given up as memory
+  ;; running short, so the next is asked for and nothing waits for it
+  (let ((buffer (tuatara.buffer:make-buffer "*syntax-short*" :text "fn main() {}")))
+    (sb-int:encapsulate 'tuatara.syntax::parse-rope 'short
+                        (lambda (function &rest arguments)
+                          (declare (ignore function arguments))
+                          (error 'storage-condition)))
+    (unwind-protect
+         (let* ((syntax (tuatara.syntax:attach-syntax buffer (tuatara.syntax:find-grammar "rust")))
+                (tuatara.syntax:*syntax-wait* 5)
+                (began (get-internal-real-time)))
+           (false (tuatara.syntax:syntax-ready-tree syntax))
+           (true (< (- (get-internal-real-time) began) (* 4 internal-time-units-per-second)))
+           (false (tuatara.syntax::syntax-job syntax))
+           (is eq :short (tuatara.syntax:syntax-broken syntax)))
+      (sb-int:unencapsulate 'tuatara.syntax::parse-rope 'short)
+      (tuatara.syntax:detach-syntax buffer)
+      (tuatara.buffer:kill-buffer buffer))))
+
+(define-test (syntax connection-cut-short-not-used-again)
+  ;; a connection whose reply was not read whole is closed, not given to the next call,
+  ;; which would read the rest of that reply as its own
+  (let ((grammar (tuatara.syntax:find-grammar "rust"))
+        (failed nil))
+    (sb-int:encapsulate 'tuatara.syntax::transfer 'short
+                        (lambda (function fd sap size direction deadline)
+                          (if (and (eq direction :read) (>= size 16) (not failed))
+                              (progn (setf failed t) (error 'storage-condition))
+                              (funcall function fd sap size direction deadline))))
+    (unwind-protect
+         (handler-case (tuatara.syntax:compile-query grammar "(identifier) @cut.short")
+           (storage-condition () nil))
+      (sb-int:unencapsulate 'tuatara.syntax::transfer 'short))
+    (true failed)
+    (let ((helper (tuatara.syntax::kept-helper :rules)))
+      (true (notany #'tuatara.syntax::call-open (tuatara.syntax::helper-idle helper))))
+    (true (tuatara.syntax:compile-query grammar "(identifier) @read.whole"))))
+
+(define-test (syntax refresh-tick-asks-for-the-soonest-retry)
+  ;; with two buffers waiting for their grammar, the tick asks to be called at the nearer retry whichever it
+  ;; reads last
+  (let ((slow (tuatara.buffer:make-buffer "*slow*" :text "a"))
+        (quick (tuatara.buffer:make-buffer "*quick*" :text "a"))
+        (now (get-internal-real-time)))
+    (unwind-protect
+         (progn
+           (loop for (buffer seconds) in (list (list slow 100) (list quick 2))
+                 do (setf (tuatara.buffer:buffer-local buffer :syntax-pending) 'some-language
+                          (tuatara.buffer:buffer-local buffer :syntax-pending-next)
+                          (+ now (* seconds internal-time-units-per-second))))
+           (dolist (order (list (list slow quick) (list quick slow)))
+             (let ((wait (let ((tuatara.buffer:*buffers* order))
+                           (tuatara.defaults::syntax-refresh-tick nil))))
+               (true (and wait (< wait 3)) "~a" wait))))
+      (tuatara.buffer:kill-buffer slow)
+      (tuatara.buffer:kill-buffer quick))))

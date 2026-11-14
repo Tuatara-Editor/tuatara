@@ -38,8 +38,8 @@ width, height, depth, and the record of the box holding it.")
 place in the string: a box of a line and the void boxes, rules, kerns,
 glues, mathematics and points between them.")
 
-(defstruct (synctex (:constructor make-synctex (inputs records count pages index boxes scale x-offset y-offset))
-                    (:copier nil))
+(define-record (synctex (:constructor make-synctex (inputs records count pages index boxes scale x-offset y-offset))
+                       (:copier nil))
   "A SyncTeX file read (READ-SYNCTEX). INPUTS are the files it names, a hash
 table of each file's number to its path. RECORDS hold COUNT records,
 +SYNCTEX-STRIDE+ numbers each: the kind (its place in *SYNCTEX-KINDS*) times
@@ -50,9 +50,17 @@ records from FIRST below END. INDEX holds the records by input and line, in
 the order of the pages within each line (SYNCTEX-KEY). BOXES are the PDF's
 page boxes (PDF-PAGE-BOXES) or NIL. SCALE turns its units to points, after
 X-OFFSET and Y-OFFSET (in its units) are added."
-  inputs records count pages index boxes scale x-offset y-offset)
-
-(setf (documentation 'synctex-p 'function) "True when OBJECT is a SYNCTEX.")
+  (inputs nil :documentation "A hash table from the number of each file SYNCTEX names to its path.")
+  (records nil :documentation "The records of SYNCTEX, +SYNCTEX-STRIDE+ numbers each.")
+  (count nil :documentation "How many records SYNCTEX holds.")
+  (pages nil :documentation "The pages of SYNCTEX, each (PAGE FIRST END), its records from FIRST below END.")
+  (index nil
+         :documentation "The records of SYNCTEX by input and line, in the order of the pages within each line
+\(SYNCTEX-KEY).")
+  (boxes nil :documentation "The page boxes of the PDF (PDF-PAGE-BOXES), or NIL.")
+  (scale nil :documentation "The factor that turns the units of SYNCTEX to points, after the offsets are added.")
+  (x-offset nil :documentation "The horizontal offset, in the units of SYNCTEX, added before SCALE.")
+  (y-offset nil :documentation "The vertical offset, in the units of SYNCTEX, added before SCALE."))
 
 ;;; Reading
 
@@ -132,10 +140,14 @@ then its line."
 
 (defun sorted-synctex-records (records count)
   "The first COUNT records of RECORDS by input and line, those of one line in
-the order they were written, as a vector of record numbers."
-  (let ((index (make-array count :element-type '(unsigned-byte 32))))
-    (dotimes (i count) (setf (aref index i) i))
-    (stable-sort index #'< :key (lambda (record) (synctex-key records record)))))
+the order they were written, as a vector of record numbers. Each record's key
+is worked out once, not at every comparison."
+  (let ((index (make-array count :element-type '(unsigned-byte 32)))
+        (keys (make-array count :element-type '(unsigned-byte 64))))
+    (dotimes (i count)
+      (setf (aref index i) i
+            (aref keys i) (synctex-key records i)))
+    (stable-sort index #'< :key (lambda (record) (aref keys record)))))
 
 (defun read-synctex (octets &key boxes)
   "The SyncTeX file whose octets are OCTETS, read as a SYNCTEX, with BOXES,

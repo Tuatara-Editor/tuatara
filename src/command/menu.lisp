@@ -13,8 +13,8 @@
 
 (in-package #:tuatara.command)
 
-(defstruct (menu-entry (:constructor make-menu-entry (key label &key command switch option reader replace))
-                       (:copier nil))
+(define-record (menu-entry (:constructor make-menu-entry (key label &key command switch option reader replace))
+                          (:copier nil))
   "One line of a menu: KEY, as keys are written (- f), and LABEL, what it
 says; then either COMMAND, the action the key runs, or SWITCH, an argument
 the key turns on and off (--force), or OPTION, an argument given a value
@@ -22,27 +22,19 @@ the key turns on and off (--force), or OPTION, an argument given a value
 REPLACE true is asked again when it has a value, READER then given that
 value as well, and what it reads takes its place; an empty answer takes it
 away."
-  (key "" :type string :read-only t)
-  (label "" :type string :read-only t)
-  (command nil :read-only t)
-  (switch nil :read-only t)
-  (option nil :read-only t)
-  (reader nil :read-only t)
-  (replace nil :read-only t))
+  (key "" :type string :read-only t :documentation "The keys of the entry, as keys are written.")
+  (label "" :type string :read-only t :documentation "What the entry says in the menu.")
+  (command nil :read-only t :documentation "The command the entry runs, or NIL for a switch or an option.")
+  (switch nil :read-only t :documentation "The argument the entry turns on and off, or NIL.")
+  (option nil :read-only t :documentation "The argument the entry gives a value, ending in =, or NIL.")
+  (reader nil :read-only t :documentation "The function of a prompt reading an option's value.")
+  (replace nil :read-only t :documentation "True when the option is asked again, its value
+given, rather than taken away."))
 
 (setf (documentation 'make-menu-entry 'function) "A MENU-ENTRY of KEY and LABEL, with a COMMAND, a
-SWITCH or an OPTION, its READER and whether it is REPLACEd."
-      (documentation 'menu-entry-replace 'function) "True when the option is asked again, its value
-given, rather than taken away."
-      (documentation 'menu-entry-p 'function) "True when OBJECT is a MENU-ENTRY."
-      (documentation 'menu-entry-key 'function) "The keys of the entry, as keys are written."
-      (documentation 'menu-entry-label 'function) "What the entry says in the menu."
-      (documentation 'menu-entry-command 'function) "The command the entry runs, or NIL for a switch or an option."
-      (documentation 'menu-entry-switch 'function) "The argument the entry turns on and off, or NIL."
-      (documentation 'menu-entry-option 'function) "The argument the entry gives a value, ending in =, or NIL."
-      (documentation 'menu-entry-reader 'function) "The function of a prompt reading an option's value.")
+SWITCH or an OPTION, its READER and whether it is REPLACEd.")
 
-(defstruct (menu (:constructor make-menu (name title groups &key show note summary hold)) (:copier nil))
+(define-record (menu (:constructor make-menu (name title groups &key show note summary hold)) (:copier nil))
   "A menu called NAME, the command opening it, shown under TITLE. GROUPS are
 each (TITLE . ENTRIES), ENTRIES MENU-ENTRYs. SHOW, when given, is a function
 of an entry, and says whether the menu has it now (the key of one it leaves
@@ -51,24 +43,16 @@ out says so). NOTE, when given, is a function of the menu, and gives a line
 when given, is a function of the arguments on, and gives lines shown under the
 entries, what they come to. With HOLD true, a key not in the menu leaves it
 open, saying so, and \\`C-g' asks first when an argument was changed."
-  (name nil :read-only t)
-  (title "" :read-only t)
-  (groups '() :read-only t)
-  (show nil :read-only t)
-  (note nil :read-only t)
-  (summary nil :read-only t)
-  (hold nil :read-only t))
+  (name nil :read-only t :documentation "The name of the menu, the command opening it.")
+  (title "" :read-only t :documentation "What the menu is called at its top.")
+  (groups '() :read-only t :documentation "The groups of the menu, each (TITLE . ENTRIES).")
+  (show nil :read-only t :documentation "The function saying whether the menu has an entry now, or NIL for all.")
+  (note nil :read-only t :documentation "The function giving the line C-h says first, or NIL.")
+  (summary nil :read-only t :documentation "The function giving the lines under the entries, or NIL.")
+  (hold nil :read-only t :documentation "True when a key not in the menu leaves it open and
+\\`C-g' asks before leaving."))
 
-(setf (documentation 'make-menu 'function) "A MENU called NAME under TITLE with GROUPS, SHOW, NOTE, SUMMARY and HOLD."
-      (documentation 'menu-hold 'function) "True when a key not in the menu leaves it open and
-\\`C-g' asks before leaving."
-      (documentation 'menu-summary 'function) "The function giving the lines under the entries, or NIL."
-      (documentation 'menu-p 'function) "True when OBJECT is a MENU."
-      (documentation 'menu-name 'function) "The name of the menu, the command opening it."
-      (documentation 'menu-title 'function) "What the menu is called at its top."
-      (documentation 'menu-groups 'function) "The groups of the menu, each (TITLE . ENTRIES)."
-      (documentation 'menu-show 'function) "The function saying whether the menu has an entry now, or NIL for all."
-      (documentation 'menu-note 'function) "The function giving the line C-h says first, or NIL.")
+(setf (documentation 'make-menu 'function) "A MENU called NAME under TITLE with GROUPS, SHOW, NOTE, SUMMARY and HOLD.")
 
 (defvar *menus* (make-hash-table :test 'eq)
   "Every menu by its name, as DEFINE-MENU makes them.")
@@ -128,6 +112,17 @@ ones saying an entry is left out or cannot run here, and in a menu that
 holds, the one saying a key is not in it and the one asking whether to
 leave (which closes it itself).")
 
+(defvar *menu-stays* nil
+  "True when the action running now asked the menu open to stay open after it
+\(KEEP-MENU-OPEN).")
+
+(defun keep-menu-open ()
+  "Have the menu open stay open after the action running now, which would
+close it: for an action that cannot do what it was asked and says why, so
+that what was set in the menu is not lost."
+  (when (and *editor* (editor-menu *editor*))
+    (setf *menu-stays* t)))
+
 (defun open-menu (menu &key arguments)
   "Open MENU: its keys before every other while its switches and options are
 typed, its entries in the panel, its arguments ARGUMENTS to begin with (none
@@ -136,7 +131,8 @@ and keeps it open, never reaching the buffer behind it: an action's as the
 menu opens, a switch's or an option's as its key is typed. An action that
 cannot run here as the menu opens (MENU-REFUSALS) is shown dimmed, and its
 key says why and keeps the menu open. A menu that holds
-\(MENU-HOLD) takes every other key too, and \\`C-g' (MENU-LEAVE)."
+\(MENU-HOLD) takes every other key too, and \\`C-g' (MENU-LEAVE). An action
+that cannot do what it was asked may keep the menu open (KEEP-MENU-OPEN)."
   (let ((keymap (make-keymap :name (string-downcase (symbol-name (menu-name menu)))))
         (editor *editor*)
         (refused (menu-refusals menu)))
@@ -153,9 +149,10 @@ key says why and keeps the menu open. A menu that holds
     (when (menu-hold menu)
       (setf (keymap-default keymap) 'menu-key-not-here)
       (define-key keymap "C-g" 'menu-leave))
-    (setf (editor-menu editor) (list menu (reverse arguments) (reverse arguments) refused))
+    (setf (editor-menu editor) (list menu (reverse arguments) (reverse arguments) refused)
+          *menu-stays* nil)
     (set-transient-map editor keymap
-                       (lambda (command) (member command *menu-keeping-commands*))
+                       (lambda (command) (or (member command *menu-keeping-commands*) (shiftf *menu-stays* nil)))
                        (lambda () (setf (editor-menu editor) nil)))))
 
 (defun menu-refusals (menu)
@@ -205,11 +202,15 @@ now, or with ALL among every one; NIL when there is none."
   (declare (ignore buffer))
   (and *editor* (editor-menu *editor*) t))
 
+(defun menu-entry-typed-shown ()
+  "The entry of the open menu whose keys were just typed, when the menu shows
+it now; else NIL, having said that it is left out (MENU-ENTRY-LEFT-OUT)."
+  (or (menu-entry-typed) (progn (menu-entry-left-out) nil)))
+
 (define-command menu-toggle-switch ()
   "Turn the switch of the open menu whose key was typed on, or off, or say it
 is left out of the menu now; the menu stays open."
-  (let ((entry (menu-entry-typed)) (open (editor-menu *editor*)))
-    (unless entry (menu-entry-left-out))
+  (let ((entry (menu-entry-typed-shown)) (open (editor-menu *editor*)))
     (when entry
       (let ((argument (menu-entry-switch entry)))
         (setf (second open) (if (member argument (second open) :test #'string=)
@@ -221,24 +222,17 @@ is left out of the menu now; the menu stays open."
 or take its value away when it has one, or ask it again with that value when
 the option says so (MENU-ENTRY-REPLACE), or say it is left out of the menu
 now; the menu stays open."
-  (let ((entry (menu-entry-typed)) (open (editor-menu *editor*)))
-    (unless entry (menu-entry-left-out))
+  (let ((entry (menu-entry-typed-shown)) (open (editor-menu *editor*)))
     (when entry
       (let* ((argument (menu-entry-option entry))
              (given (menu-given entry (second open))))
-        (cond
-          ((and given (menu-entry-replace entry))
-           (let ((value (funcall (menu-entry-reader entry) (format nil "~a " (menu-entry-label entry))
-                                 (subseq given (length argument)))))
-             (setf (second open) (remove given (second open) :test #'string=))
-             (when (plusp (length value))
-               (push (concatenate 'string argument value) (second open)))))
-          (given
-            (setf (second open) (remove given (second open) :test #'string=)))
-          (t
-            (let ((value (funcall (menu-entry-reader entry) (format nil "~a " (menu-entry-label entry)))))
+        (if (and given (not (menu-entry-replace entry)))
+            (setf (second open) (remove given (second open) :test #'string=))
+            (let ((value (apply (menu-entry-reader entry) (format nil "~a " (menu-entry-label entry))
+                                (and given (list (subseq given (length argument)))))))
+              (setf (second open) (remove given (second open) :test #'string=))
               (when (plusp (length value))
-                (push (concatenate 'string argument value) (second open))))))))))
+                (push (concatenate 'string argument value) (second open)))))))))
 
 (defun menu-changed-p (open)
   "True when the menu OPEN, as EDITOR-MENU has it, has arguments on other than
@@ -300,6 +294,23 @@ switch or an option its argument in brackets, an option's with its value."
         (format nil "~a (~a)" (menu-entry-label entry) (or (menu-given entry arguments) argument))
         (menu-entry-label entry))))
 
+(defun menu-shown-groups (menu arguments)
+  "The groups of MENU with entries shown now (MENU-SHOWS-P), given the
+ARGUMENTS on, each (TITLE ENTRIES CELLS): CELLS are the entries as the panel
+shows them, each (KEY . TEXT) (MENU-ENTRY-TEXT)."
+  (loop for (title . all) in (menu-groups menu)
+        for entries = (remove-if-not (lambda (e) (menu-shows-p menu e)) all)
+        when entries
+          collect (list title entries
+                        (mapcar (lambda (e) (cons (menu-entry-key e) (menu-entry-text e arguments))) entries))))
+
+(defun menu-summary-rows (menu arguments width)
+  "The panel rows of MENU's summary, given the ARGUMENTS on, each cut to
+WIDTH; NIL for a menu with no summary."
+  (and (menu-summary menu)
+       (mapcar (lambda (line) (list (subseq line 0 (min (length line) width)) nil '()))
+               (funcall (menu-summary menu) (reverse arguments)))))
+
 (defun menu-panel-rows (editor width room)
   "The panel rows of EDITOR's open menu, at most ROOM. They are its title, then
 each group with entries shown, its title and its entries in columns, an
@@ -309,31 +320,33 @@ summary. Where they do not all fit, the last row says that \\`C-h' lists them
 all."
   (destructuring-bind (menu arguments opened &optional refused) (editor-menu editor)
     (declare (ignore opened))
-    (let* ((summary (and (menu-summary menu)
-                         (mapcar (lambda (line) (list (subseq line 0 (min (length line) width)) nil '()))
-                                 (funcall (menu-summary menu) (reverse arguments)))))
+    (let* ((summary (menu-summary-rows menu arguments width))
            (room (max 1 (- room (length summary))))
-           (rows (list (group-title-row (menu-title menu) width)))
+           (groups (menu-shown-groups menu arguments))
            ;; one column width for every group, so that they line up
-           (column (apply #'key-hint-column-width
-                          (loop for (nil . all) in (menu-groups menu)
-                                collect (loop for e in all
-                                              when (menu-shows-p menu e)
-                                                collect (cons (menu-entry-key e) (menu-entry-text e arguments)))))))
-      (loop for (title . all) in (menu-groups menu)
-            for entries = (remove-if-not (lambda (e) (menu-shows-p menu e)) all)
-            when entries
-              do (setf rows (append rows (list (list title nil (list (list 0 (length title) :completion-group-title))))
-                                    (mapcar (lambda (row) (menu-row-arguments row entries arguments))
-                                            (key-hint-rows (mapcar (lambda (e)
-                                                                     (cons (menu-entry-key e)
-                                                                           (menu-entry-text e arguments)))
-                                                                   entries)
-                                                           width (max 1 (- room (length rows) 1))
-                                                           :column-width column
-                                                           :unavailable (loop for (entry) in refused
-                                                                              collect (menu-entry-key entry)))))))
+           (column (apply #'key-hint-column-width (mapcar #'third groups)))
+           (unavailable (loop for (entry) in refused collect (menu-entry-key entry)))
+           (rows (list (group-title-row (menu-title menu) width))))
+      (loop for (title entries cells) in groups
+            do (setf rows (append rows (list (list title nil (list (list 0 (length title) :completion-group-title))))
+                                  (mapcar (lambda (row) (menu-row-arguments row entries arguments))
+                                          (key-hint-rows cells width (max 1 (- room (length rows) 1))
+                                                         :column-width column :unavailable unavailable)))))
       (append (subseq rows 0 (min (length rows) room)) summary))))
+
+(defun menu-panel-height (editor width room)
+  "How many rows MENU-PANEL-ROWS gives for the same WIDTH and ROOM, counted
+without laying the entries out."
+  (destructuring-bind (menu arguments &rest more) (editor-menu editor)
+    (declare (ignore more))
+    (let* ((summary (length (menu-summary-rows menu arguments width)))
+           (room (max 1 (- room summary)))
+           (groups (menu-shown-groups menu arguments))
+           (column (apply #'key-hint-column-width (mapcar #'third groups)))
+           (rows 1))
+      (loop for (nil nil cells) in groups
+            do (incf rows (1+ (key-hint-row-count cells width (max 1 (- room rows 1)) :column-width column))))
+      (+ (min rows room) summary))))
 
 (defun menu-keys-pending-p (editor)
   "True when the keys EDITOR has pending, if any, begin keys of its open menu's

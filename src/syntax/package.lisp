@@ -5,11 +5,11 @@
   (:use #:cl #:alexandria)
   (:import-from #:tuatara.io #:null-pointer #:null-pointer-p #:sap-octets #:with-foreign-memory #:poll-fd #:socket-pair
                 #:send-with-descriptors)
-  (:import-from #:tuatara.runtime #:define-setting)
+  (:import-from #:tuatara.runtime #:define-record #:define-setting)
   (:import-from #:tuatara-user #:*syntax-helper-unconfined*)
   (:documentation "The search and regex interface, the tree-sitter binding, parsing in the
 background, colouring and moving by syntax.")
-  (:export #:search-forward #:search-backward #:search-all #:case-fold-p #:*serial-window* #:*parallel-piece*
+  (:export #:url-pattern #:search-forward #:search-backward #:search-all #:case-fold-p #:*serial-window* #:*parallel-piece*
            #:compile-regex #:compile-pattern #:*regex-thorough* #:regex-search-forward #:regex-search-backward
            #:regex-search-all
            #:literal-pattern-p #:regex-case-fold-p #:map-regex-matches #:matched-text #:map-slice-matches #:make-decoder
@@ -25,13 +25,13 @@ background, colouring and moving by syntax.")
            #:host-buffer-shown-p #:host-must-not-wait-p #:helper-parsing #:helper-kind #:helper #:helper-p
            #:helper-alive #:helper-shared #:helper-ended #:stop-helpers #:tree #:tree-p #:parser #:parser-p
            #:*grammar-directories* #:grammar-directories #:forget-grammars #:user-grammar-directory #:user-grammar-store
-           #:store-refused-why #:user-grammar-file #:user-grammar-p #:regular-file-p #:grammar-name-p
+           #:store-refused-why #:user-grammar-file #:user-grammar-p #:grammar-name-p
            #:host-user-grammar-allowed-p
            #:make-parser #:delete-parser #:parse-rope #:delete-tree #:edit-tree #:tree-has-error-p
            #:compile-query #:query #:query-p #:query-grammar #:query-captures #:query-properties
            #:query-not-answered #:query-error #:query-error-kind #:query-error-line #:query-error-text
            #:query-error-grammar
-           #:map-query-matches #:query-non-local-patterns #:disable-query-pattern #:query-starts #:query-source
+           #:map-query-matches #:query-non-local #:disable-query-pattern #:query-starts #:query-source
            ;; syntax trees of buffers, and their colours
            #:syntax #:syntax-p #:syntax-buffer #:buffer-syntax #:attach-syntax #:detach-syntax #:syntax-tree
            #:syntax-grammar

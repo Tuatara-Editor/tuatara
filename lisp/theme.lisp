@@ -1,9 +1,10 @@
 ;;;; lisp/theme.lisp --- The default faces.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; Colours are the sixteen terminal colours by name, so the default theme
-;;;; follows the terminal's palette on dark and light backgrounds alike. An init
-;;;; file changes any face with SET-FACE-ATTRIBUTES.
+;;;; The faces below are written with the sixteen terminal colours by name, so
+;;;; that without a theme they follow the terminal's palette. The editor starts
+;;;; with the theme Ao (*STARTUP-THEME*), which gives them hex colours. An init
+;;;; file changes a face with SET-FACE and the theme with LOAD-THEME.
 
 (in-package #:tuatara.defaults)
 
@@ -198,9 +199,9 @@ edge (\\[hl-line-mode], \\[global-hl-line-mode])." :extend t)
 (define-face :soft-wrap-row "The row point is on, where long lines wrap (\\[soft-wrap-mode]),
 painted over the line's :hl-line: the same as it unless set apart, (set-face
 :soft-wrap-row :bg ...) in the init file." :inherit :hl-line :extend t)
-(define-face :visual-line "The line down the window at the fill column (\\[visual-line-mode]):
-its background, over a source block's or the selection's, under the line point
-is on (:hl-line)." :bg :bright-black)
+(define-face :display-fill-column "The line down the window at the fill column
+\(\\[display-fill-column-mode]): its background, over a source block's or the
+selection's, under the line point is on (:hl-line)." :bg :bright-black)
 (define-face :wrap-indicator "The mark in the gutter beside a row that goes on
 from the one above, where long lines wrap (\\[soft-wrap-mode])." :fg :bright-black)
 (define-face :vc-added "Gutter mark for lines added since the last commit." :fg :green :bold t)
@@ -399,7 +400,8 @@ say a note or give help: as information is marked in text." :inherit :info)
 (define-face :csv-column-5 "Delimited data: columns 5, 13, 21 ..." :fg :magenta)
 (define-face :csv-column-6 "Delimited data: columns 6, 14, 22 ..." :fg :cyan)
 (define-face :csv-column-7 "Delimited data: columns 7, 15, 23 ..." :fg :bright-black)
-(define-face :csv-separator "Delimited data coloured sparsely (set-colouring): the separators between fields." :fg :cyan)
+(define-face :csv-separator "Delimited data coloured sparsely (set-colouring): the separators between fields."
+  :fg :cyan)
 
 ;;; Folds
 
@@ -466,7 +468,8 @@ included: - State \"DONE\" from \"TODO\" [2026-10-01 Thu 18:00]." :dim t)
 (define-face :org-agenda-structure "The agenda's headers: Week-agenda (W40):, Global list of TODO items."
   :fg :blue
   :bold t)
-(define-face :org-agenda-date "A day's date in the agenda: Monday     28 September 2026." :inherit :org-agenda-structure)
+(define-face :org-agenda-date "A day's date in the agenda: Monday     28 September 2026."
+  :inherit :org-agenda-structure)
 (define-face :org-agenda-date-today "Today's date in the agenda." :inherit :org-agenda-date :underline t)
 (define-face :calendar-month-header "The months' titles in the calendar (October 2026)." :bold t)
 (define-face :calendar-weekday-header "The names of the weekdays over the calendar's columns (Mo Tu)." :fg :cyan)
@@ -492,7 +495,8 @@ colour as the cursor's character is (set as the cursor's colour changes)." :reve
 (define-face :org-upcoming-distant-deadline "A deadline early in its warning, in the agenda.")
 (define-face :org-imminent-deadline "A deadline today, or gone, in the agenda." :fg :red :bold t)
 (define-face :org-agenda-done "A task done, and what was closed, in the agenda." :fg :green)
-(define-face :org-agenda-calendar-event "An entry at a time or on a range of days, and what was clocked, in the agenda.")
+(define-face :org-agenda-calendar-event
+  "An entry at a time or on a range of days, and what was clocked, in the agenda.")
 (define-face :org-agenda-category "The category an agenda line begins with, the file's name or its CATEGORY (garden:)."
   :dim t)
 (define-face :org-agenda-time "The time of an agenda line, 9:30-10:15." :fg :cyan)
@@ -543,7 +547,7 @@ reports no colours."
   (:vc-added :bold t) (:vc-changed :bold t) (:vc-deleted :bold t)
   (:comment :dim t :italic t) (:keyword :bold t) (:escape :bold t) (:raw-byte :reverse t :bold nil)
   (:heading :bold t :underline t) (:link :underline t)
-  (:visual-line :reverse t) (:wrap-indicator :dim t) (:hint :dim t)
+  (:display-fill-column :reverse t) (:wrap-indicator :dim t) (:hint :dim t)
   (:diagnostic-error-ground :reverse t) (:diagnostic-warning-ground :reverse t :dim t)
   (:diagnostic-info-ground :underline t) (:diagnostic-hint-ground :dim t)
   (:job-waiting :italic t)
@@ -630,7 +634,7 @@ steel-blue mode line. From the Ao theme by the same author."
   (:diagnostic-error-ground :fg nil :bg error-ground) (:diagnostic-warning-ground :fg nil :bg yellow-subtle)
   (:diagnostic-info-ground :fg nil :bg blue-subtle) (:diagnostic-hint-ground :dim nil :bg ground-dim)
   (:wrap-indicator :fg comment)
-  (:visual-line :bg active-ground)
+  (:display-fill-column :bg active-ground)
   (:banked-line :fg selection-text :bg selection-secondary)
   (:split-place :fg nil :bg split-ground)
   (:split-cursor :reverse nil :fg mode-line-text :bg mode-line-ground)
@@ -774,7 +778,8 @@ from the Ao theme, the screen's pictures always from its dark side."
                   collect (cons name
                                 (tuatara.display:theme-role-colour theme (or (and (eq style :dark) dark-role) role))))
             (loop for (name light-role dark-role) in *web-page-screen-roles*
-                  collect (cons name (tuatara.display:theme-role-colour dark (if (eq style :dark) dark-role light-role)))))))
+                  collect (cons name (tuatara.display:theme-role-colour
+                                      dark (if (eq style :dark) dark-role light-role)))))))
 
 (defvar *startup-theme* 'ao-dark
   "The theme in force when the editor starts, before the init file runs; the
@@ -879,6 +884,5 @@ without one of these roles leaves that colour to the terminal's palette.")
 of a terminal (*TERMINAL-PALETTE-ROLES*); NIL when it gives none."
   (let ((theme (and tuatara.display:*current-theme* (tuatara.display:find-theme tuatara.display:*current-theme*))))
     (and theme (< -1 index 16)
-         (ignoring-errors-reported ("finding the terminal colour ~d" index)
-           (handler-case (tuatara.display:theme-role-colour theme (aref *terminal-palette-roles* index))
-             (simple-error () nil))))))
+         (handler-case (tuatara.display:theme-role-colour theme (aref *terminal-palette-roles* index))
+           (simple-error () nil)))))

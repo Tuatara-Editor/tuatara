@@ -86,7 +86,7 @@ force; *compile* killed afterwards."
   `(with-test-directory (,dir)
      (compile-project ,dir ,script)
      (let ((tuatara.defaults::*modal-editing* nil)
-           (tuatara-user:*lsp-trusted-projects* (if ,trusted (list (namestring ,dir)) '()))
+           (tuatara-user:*trusted-projects* (if ,trusted (list (namestring ,dir)) '()))
            (tuatara.compile::*compile-history* (list "sh out.sh"))
            (tuatara.defaults::*places-in-force* nil)
            (*places-reached* '()))
@@ -316,6 +316,27 @@ force; *compile* killed afterwards."
        :width 100 :height 30)
       (is = 2 (runs))
       (is equal '(("b.txt" 1 0)) *places-reached*))))
+
+(define-test (compiling stopping-list-keeps-entries-added-while-others-end)
+  ;; entries pushed by one thread while others take theirs off are all still there
+  (let ((before tuatara.compile::*compiles-stopping*)
+        (threads '()))
+    (unwind-protect
+         (progn
+           (setf tuatara.compile::*compiles-stopping* '())
+           (dotimes (n 8)
+             (push (sb-thread:make-thread
+                    (lambda ()
+                      (dotimes (i 2000)
+                        (let ((entry (cons n i)))
+                          (tuatara.compile::note-compile-stopping entry)
+                          (tuatara.compile::forget-compile-stopping entry)))))
+                   threads))
+           (dotimes (i 2000)
+             (tuatara.compile::note-compile-stopping (cons :kept i)))
+           (mapc #'sb-thread:join-thread threads)
+           (is = 2000 (length tuatara.compile::*compiles-stopping*)))
+      (setf tuatara.compile::*compiles-stopping* before))))
 
 (define-test (compiling places-where-make-went)
   ;; the names after make's Entering directory are taken from there; a Makefile is a place

@@ -106,7 +106,8 @@
   "C++ source and its headers."
   :lighter "C++"
   :comment "//"
-  :extensions ("cc" "hh" "c++" "cpp" "hpp" "ipp" "tpp" "cxx" "hxx" "ixx" "txx" "ino" "C" "H" "cu" "cuh" "cppm" "h++" "ii" "inl")
+  :extensions ("cc" "hh" "c++" "cpp" "hpp" "ipp" "tpp" "cxx" "hxx" "ixx" "txx" "ino" "C" "H" "cu" "cuh" "cppm" "h++"
+               "ii" "inl")
   :file-names (".hpp.in" ".h.in"))
 
 (define-language cpp
@@ -144,7 +145,9 @@
   :lighter "Ruby"
   :comment "#"
   :extensions ("rb" "rake" "irb" "gemspec" "rabl" "jbuilder" "jb" "podspec" "rjs" "rbi" "rbs" "Brewfile")
-  :file-names ("rakefile" "gemfile" "Rakefile" "Gemfile" "Podfile" "Vagrantfile" "Brewfile" "Guardfile" "Capfile" "Cheffile" "Hobofile" "Appraisals" "Rantfile" "Berksfile" "Berksfile.lock" "Thorfile" "Puppetfile" "Fastfile" "Appfile" "Deliverfile" "Matchfile" "Scanfile" "Snapfile" "Gymfile" ".irbrc")
+  :file-names ("rakefile" "gemfile" "Rakefile" "Gemfile" "Podfile" "Vagrantfile" "Brewfile" "Guardfile" "Capfile"
+               "Cheffile" "Hobofile" "Appraisals" "Rantfile" "Berksfile" "Berksfile.lock" "Thorfile" "Puppetfile"
+               "Fastfile" "Appfile" "Deliverfile" "Matchfile" "Scanfile" "Snapfile" "Gymfile" ".irbrc")
   :interpreters ("ruby"))
 
 (define-language ruby
@@ -384,7 +387,8 @@
 
 (define-language scheme
   "Scheme source, parsed with tree-sitter-scheme."
-  :grammar "scheme" :modes (scheme-mode) :indent 2 :queries "scheme" :injection-names "scheme" :definitions :textobjects)
+  :grammar "scheme" :modes (scheme-mode) :indent 2 :queries "scheme" :injection-names "scheme"
+  :definitions :textobjects)
 
 (define-major-mode racket-mode prog-mode
   "Racket source. Only read and coloured here: nothing of it is evaluated."
@@ -636,7 +640,8 @@
 
 (define-language pascal
   "Pascal and Delphi source, parsed with tree-sitter-pascal."
-  :grammar "pascal" :modes (pascal-mode) :indent 2 :queries "pascal" :injection-names "pascal" :definitions :textobjects)
+  :grammar "pascal" :modes (pascal-mode) :indent 2 :queries "pascal" :injection-names "pascal"
+  :definitions :textobjects)
 
 (define-major-mode matlab-mode prog-mode
   "MATLAB and Octave source."
@@ -1479,7 +1484,8 @@
 
 (define-language unison
   "Unison source, parsed with tree-sitter-unison."
-  :grammar "unison" :modes (unison-mode) :indent 4 :queries "unison" :injection-names "unison" :definitions :textobjects)
+  :grammar "unison" :modes (unison-mode) :indent 4 :queries "unison" :injection-names "unison"
+  :definitions :textobjects)
 
 (define-major-mode uxntal-mode prog-mode
   "Uxntal: the assembly of the Uxn virtual machine."

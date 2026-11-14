@@ -1,4 +1,4 @@
-;;;; lisp/org/formatted-blocks.lisp --- Dynamic blocks of files with formatted names: links, backlinks, their text, sequences.
+;;;; lisp/org/formatted-blocks.lisp --- Dynamic blocks of files with formatted names: links, backlinks, text, sequences.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; As Emacs's denote-org writes its dynamic blocks (by Protesilaos Stavrou,
@@ -89,11 +89,11 @@ syntax class not listed, a backslash at the end."
                         (#\< (emit "\\b(?=\\w)"))
                         (#\> (emit "\\b(?<=\\w)"))
                         (#\_ (when (>= i n) (fail))
-                         (case (char regex i)
-                           (#\< (emit "(?<![\\w_-])(?=[\\w_-])"))
-                           (#\> (emit "(?<=[\\w_-])(?![\\w_-])"))
-                           (t (fail)))
-                         (incf i))
+                             (case (char regex i)
+                               (#\< (emit "(?<![\\w_-])(?=[\\w_-])"))
+                               (#\> (emit "(?<=[\\w_-])(?![\\w_-])"))
+                               (t (fail)))
+                             (incf i))
                         (#\w (emit "\\w"))
                         (#\W (emit "\\W"))
                         ((#\s #\S)
@@ -115,16 +115,16 @@ syntax class not listed, a backslash at the end."
                     (when (and (< i n) (char= (char regex i) #\^)) (emit "^") (incf i))
                     (when (and (< i n) (char= (char regex i) #\])) (emit "\\]") (incf i))
                     (loop (when (>= i n) (fail))
-                          (let ((e (char regex i)))
-                            (cond ((char= e #\]) (incf i) (emit "]") (return))
-                                  ((and (char= e #\[) (< (1+ i) n) (char= (char regex (1+ i)) #\:))
-                                   (let* ((close (search ":]" regex :start2 (+ i 2)))
-                                          (class (and close (org-regexp-char-class (subseq regex (+ i 2) close)))))
-                                     (unless class (fail))
-                                     (emit class)
-                                     (setf i (+ close 2))))
-                                  ((find e "\\[") (emit (format nil "\\~c" e)) (incf i))
-                                  (t (emit (string e)) (incf i))))))
+                     (let ((e (char regex i)))
+                       (cond ((char= e #\]) (incf i) (emit "]") (return))
+                             ((and (char= e #\[) (< (1+ i) n) (char= (char regex (1+ i)) #\:))
+                              (let* ((close (search ":]" regex :start2 (+ i 2)))
+                                     (class (and close (org-regexp-char-class (subseq regex (+ i 2) close)))))
+                                (unless class (fail))
+                                (emit class)
+                                (setf i (+ close 2))))
+                             ((find e "\\[") (emit (format nil "\\~c" e)) (incf i))
+                             (t (emit (string e)) (incf i))))))
                    ((char= c #\^) (emit (if start "^" "\\^")) (setf next-start start))
                    ((char= c #\$)
                     (emit (if (or (= i n) (and (< (1+ i) n) (char= (char regex i) #\\) (find (char regex (1+ i)) ")|")))
@@ -141,8 +141,9 @@ syntax class not listed, a backslash at the end."
   "A scanner for the regular expression a dynamic block's PARAMS give under
 KEY: with DENOTE in Org's regexp syntax, case ignored; else as
 Tuatara's searches read it, case ignored unless it has a capital letter. NIL
-when there is none; :BAD, and said, when it is no regular expression or is
-not text (a list)."
+when there is none; :BAD, and said, when it is no regular expression, is not
+text (a list), or repeats a repeated part, which could take for ever: a
+pattern from a file is never run then."
   (let ((regex (formatted-param params key)))
     (cond ((null regex) nil)
           ((not (stringp regex))
@@ -151,9 +152,10 @@ not text (a list)."
           (t (let ((translated (if denote (org-regexp-to-ppcre regex) regex)))
                (or (and translated
                         (ignoring-errors-reported ("reading the pattern ~a" translated)
-                          (if denote
-                              (tuatara.syntax:compile-pattern translated :case-fold t)
-                              (tuatara.syntax:compile-pattern translated))))
+                                                  (if denote
+                                                      (tuatara.syntax:compile-pattern translated
+                                                                                      :case-fold t :untrusted t)
+                                                      (tuatara.syntax:compile-pattern translated :untrusted t))))
                    (progn (message "The block's ~(~s~) ~s is no regular expression" key regex)
                           :bad)))))))
 
@@ -182,9 +184,9 @@ RELATIVE the path from that directory. Each directory is listed as every walk
 lists it (DIRECTORY-LISTING)."
   (let ((count 0) (said nil))
     (labels ((walk (directory relative)
-               (declare (notinline index-directory-entries))
                (dblock-check-stop)
-               (let ((entries (sort (loop for (name kind) in (index-directory-entries (directory-listing directory :rules nil))
+               (let ((entries (sort (loop for (name kind) in (index-directory-entries
+                                                              (directory-listing directory :rules nil))
                                           collect (list (if (eq kind :directory) (concatenate 'string name "/") name)
                                                         name kind))
                                     #'string< :key #'car))
@@ -192,19 +194,19 @@ lists it (DIRECTORY-LISTING)."
                  (loop for (nil name kind) in entries
                        do (let ((path (concatenate 'string directory name))
                                 (inside (concatenate 'string relative name)))
-                              (case kind
-                                (:directory
-                                 (unless (and excluded (cl-ppcre:scan excluded inside))
-                                   (setf below (append below (walk (concatenate 'string path "/") (concatenate 'string inside "/"))))))
-                                (:regular
-                                 (when (name-parts name)
-                                   (if (>= count *formatted-block-most-files*)
-                                       (unless said
-                                         (setf said t)
-                                         (message "A dynamic block looks at the first ~:d files only"
-                                                  *formatted-block-most-files*))
-                                       (progn (incf count) (push (cons path inside) own))))))))
-                 (append below (nreverse own)))))
+                            (case kind
+                              (:directory
+                               (unless (and excluded (cl-ppcre:scan excluded inside))
+                                 (push (walk (concatenate 'string path "/") (concatenate 'string inside "/")) below)))
+                              (:regular
+                               (when (name-parts name)
+                                 (if (>= count *formatted-block-most-files*)
+                                     (unless said
+                                       (setf said t)
+                                       (message "A dynamic block looks at the first ~:d files only"
+                                                *formatted-block-most-files*))
+                                     (progn (incf count) (push (cons path inside) own))))))))
+                 (nconc (apply #'nconc (nreverse below)) (nreverse own)))))
       (walk (directory-name *formatted-file-directory*) ""))))
 
 (defun formatted-own-path ()
@@ -228,7 +230,7 @@ reads them, DENOTE saying how). :BAD when one of them is no regular expression."
               when (and (or (null matching) (cl-ppcre:scan matching (cdr file)))
                         (not (and own (string= own (car file))))
                         (not (and leaving (cl-ppcre:scan leaving (car file)))))
-                collect file))))
+              collect file))))
 
 ;;; Names, kinds and titles
 
@@ -280,18 +282,28 @@ title into another file."
     (unless (encrypted-file-p (car file) text)
       text)))
 
+(defun formatted-file-head (file)
+  "The start of the text of FILE, (PATH . RELATIVE), as FORMATTED-FILE-TEXT
+reads it, enough for its title and tags (DBLOCK-SOURCE-HEAD): a long note is
+never read whole for them. NIL as for FORMATTED-FILE-TEXT."
+  (let ((head (dblock-source-head (car file))))
+    (unless (encrypted-file-p (car file) head)
+      head)))
+
 (defun formatted-front-matter (text kind)
   "The title and the tags the front matter of TEXT gives, as two values, read
 as a note of KIND (FORMATTED-FILE-KIND) writes them (FRONT-MATTER)."
   (front-matter text (if (member kind '(:markdown-yaml :markdown-toml)) :markdown kind)))
 
-(defun formatted-title-or-name (file kind)
-  "The title of FILE, (PATH . RELATIVE), its front matter read as a note of KIND writes it: for a note of a
-kind notes are kept in, the title of its front matter, else of its name, else
-an empty string."
+(defun formatted-title-or-name (file kind &optional (text nil text-given))
+  "The title of FILE, (PATH . RELATIVE), its front matter read as a note of
+KIND writes it: for a note of a kind notes are kept in, the title of its front
+matter, else of its name, else an empty string. TEXT is the start of FILE's
+text when it is given (FORMATTED-FILE-HEAD), read when it is not."
   (let ((name-title (formatted-name-title file)))
     (if (formatted-file-kind file)
-        (or (and kind (let ((text (formatted-file-text file))) (and text (formatted-front-matter text kind))))
+        (or (and kind (let ((text (if text-given text (formatted-file-head file))))
+                        (and text (formatted-front-matter text kind))))
             name-title
             "")
         (or name-title ""))))
@@ -300,9 +312,10 @@ an empty string."
   "The label of a link to FILE, (PATH . RELATIVE): its
 signature, two spaces and its title when it has a signature, else its title;
 the title read as a note of KIND writes it (FORMATTED-TITLE-OR-NAME), of its
-own kind when KIND is NIL."
-  (let* ((kind (or kind (formatted-file-kind file (formatted-file-text file))))
-         (title (formatted-title-or-name file kind))
+own kind when KIND is NIL. Only the start of FILE is read, once."
+  (let* ((text (and (formatted-file-kind file) (formatted-file-head file)))
+         (kind (or kind (formatted-file-kind file text)))
+         (title (formatted-title-or-name file kind text))
          (signature (formatted-signature file)))
     (if signature (format nil "~a  ~a" signature title) title)))
 
@@ -323,14 +336,14 @@ the date of its identifier; with ID-ONLY the identifier alone."
     (loop for file in files
           for i from 0
           do (dblock-progress (/ i (max 1 (length files))))
-             (let ((description
-                     (cond (id-only nil)
-                           (include-date
-                            (let ((title (formatted-title-or-name file :org))
-                                  (date (formatted-identifier-date (formatted-identifier file))))
-                              (if date (format nil "~a (~a)" title date) title)))
-                           (t (formatted-link-description file :org)))))
-               (format out "- ~a~%" (formatted-denote-link file description id-only))))))
+          (let ((description
+                 (cond (id-only nil)
+                       (include-date
+                        (let ((title (formatted-title-or-name file :org))
+                              (date (formatted-identifier-date (formatted-identifier file))))
+                          (if date (format nil "~a (~a)" title date) title)))
+                       (t (formatted-link-description file :org)))))
+            (format out "- ~a~%" (formatted-denote-link file description id-only))))))
 
 ;;; Sorting
 
@@ -393,30 +406,24 @@ hash table."
 
 (defun formatted-backlinks (identifier files)
   "The FILES, (PATH . RELATIVE) each, that link to the note IDENTIFIER, in the
-order: by kind, Org, Markdown, then
-text; of each kind first those with a link to the note itself, then those
-with a link to a place in it (::), each in the order of FILES."
-  (let ((by-kind (make-hash-table)) (texts (make-hash-table :test 'eq)))
+order: by kind, Org, Markdown, then text; of each kind first those with a link
+to the note itself, then those with a link to a place in it (::), each in the
+order of FILES. Each file is read once, and its text let go."
+  (let ((whole (make-hash-table)) (place (make-hash-table)))
     (loop for file in files
           for i from 0
           do (dblock-progress (/ i (max 1 (length files))))
-             (let ((kind (formatted-file-kind file)))
-               (when kind
-                 (let* ((text (formatted-file-text file))
-                        (kind (and text (formatted-file-kind file text))))
-                   (when (and text (gethash identifier (formatted-linked-identifiers text kind)))
-                     (setf (gethash file texts) text)
-                     (push file (gethash kind by-kind)))))))
+          (let* ((text (and (formatted-file-kind file) (formatted-file-text file)))
+                 (kind (and text (formatted-file-kind file text))))
+            (when (and text (gethash identifier (formatted-linked-identifiers text kind)))
+              (let ((markdown (member kind '(:markdown-yaml :markdown-toml))))
+                (if (search (format nil (if markdown "(denote:~a)" "[denote:~a]") identifier) text)
+                    (push file (gethash kind whole))
+                    (when (search (format nil (if markdown "(denote:~a::" "[denote:~a::") identifier) text)
+                      (push file (gethash kind place))))))))
     (loop for kind in '(:org :markdown-yaml :markdown-toml :text)
-          for linking = (reverse (gethash kind by-kind))
-          for markdown = (member kind '(:markdown-yaml :markdown-toml))
-          for whole = (format nil (if markdown "(denote:~a)" "[denote:~a]") identifier)
-          for place = (format nil (if markdown "(denote:~a::" "[denote:~a::") identifier)
-          append (let ((first (remove-if-not (lambda (file) (search whole (gethash file texts))) linking)))
-                   (append first
-                           (remove-if-not (lambda (file)
-                                            (and (not (member file first)) (search place (gethash file texts))))
-                                          linking))))))
+          append (reverse (gethash kind whole))
+          append (reverse (gethash kind place)))))
 
 (defun formatted-heading-backlinks (identifier custom-id files)
   "The FILES, (PATH . RELATIVE) each, whose text links to the place CUSTOM-ID
@@ -427,7 +434,7 @@ of the note IDENTIFIER (IDENTIFIER::#CUSTOM-ID), in order."
           do (dblock-progress (/ i (max 1 (length files))))
           when (and (formatted-file-kind file)
                     (let ((text (formatted-file-text file))) (and text (search target text))))
-            collect file)))
+          collect file)))
 
 (defun formatted-own-custom-id ()
   "The CUSTOM_ID of the headline the block being made is under, or NIL."
@@ -459,7 +466,7 @@ indentation left out, and each line of spaces only made empty."
    text
    (lambda (match first &rest more)
      (declare (ignore match more))
-     (if (string= first "") "" (concatenate 'string (make-string column :initial-element #\Space) first)))
+     (if (string= first "") "" (concatenate 'string (spaces column) first)))
    :simple-calls t))
 
 (defun formatted-without-front-matter (text how)
@@ -470,7 +477,8 @@ text kept whole when it has none."
       (let ((at 0))
         (loop repeat how
               while (< at (length text))
-              do (setf at (let ((newline (position #\Newline text :start at))) (if newline (1+ newline) (length text)))))
+              do (setf at (let ((newline (position #\Newline text :start at)))
+                            (if newline (1+ newline) (length text)))))
         (subseq text at))
       (multiple-value-bind (start end) (cl-ppcre:scan "(?m)^$" text)
         (declare (ignore start))
@@ -479,10 +487,11 @@ text kept whole when it has none."
             text))))
 
 (defun formatted-file-contents (file no-front-matter add-links)
-  "The text of FILE, (PATH . RELATIVE), as a block of files' text holds it: its front matter left out as NO-FRONT-MATTER says; with ADD-LINKS a
-link to it first and its text indented by two, the link of its identifier
-alone when ADD-LINKS is id-only; each #+ beginning a line escaped. NIL when it
-cannot be read."
+  "The text of FILE, (PATH . RELATIVE), as a block of files' text holds it:
+its front matter left out as NO-FRONT-MATTER says; with ADD-LINKS a link to
+it first and its text indented by two, the link of its identifier alone when
+ADD-LINKS is id-only; each #+ beginning a line escaped. NIL when it cannot
+be read."
   (let ((text (formatted-file-text file)))
     (when text
       (let* ((text (if no-front-matter (formatted-without-front-matter text no-front-matter) text))
@@ -490,7 +499,9 @@ cannot be read."
         (concatenate 'string
                      (if add-links
                          (let ((id-only (equalp add-links "id-only")))
-                           (format nil "- ~a~%~%" (formatted-denote-link file (and (not id-only) (formatted-link-description file)) id-only)))
+                           (format nil "- ~a~%~%"
+                                   (formatted-denote-link file (and (not id-only) (formatted-link-description file))
+                                                          id-only)))
                          "")
                      (formatted-escape-code text))))))
 
@@ -507,7 +518,8 @@ with no title or no tags gets no headline. NIL when it cannot be read."
         (let* ((tags (cond (exclude-tags "") (tags (format nil ":~{~a:~}" tags))))
                (body (formatted-without-front-matter text t))
                (heading (cond ((not (and title tags)) "")
-                              (add-links (format nil "* [[denote:~a][~a]] ~a~%~%" (formatted-identifier file) title tags))
+                              (add-links (format nil "* [[denote:~a][~a]] ~a~%~%"
+                                                 (formatted-identifier file) title tags))
                               (t (format nil "* ~a ~a~%~%" title tags))))
                ;; the tags put in their column first, then the note's own headlines a level down
                (aligned (and title tags (not exclude-tags)))
@@ -534,7 +546,10 @@ said to be."
           (progn (message "The block holds the first ~:d characters of the files only" *formatted-block-most-text*)
                  (return))
           (push piece kept)))
-    (format nil (concatenate 'string "~{~a~^" (cl-ppcre:regex-replace-all "~" separator "~~") "~}") (nreverse kept))))
+    (with-output-to-string (out)
+      (loop for (piece . more) on (nreverse kept)
+            do (write-string piece out)
+            (when more (write-string separator out))))))
 
 (defun formatted-final-newline (text)
   "TEXT, a block's, ending with a line end unless it is empty."
@@ -590,9 +605,10 @@ is; NIL when there is none of the first."
     (and parent (cons parent children))))
 
 (defun formatted-sequence-lines (files depth)
-  "The lines of a sequence block of FILES with sequences: in the order of their sequences, those within DEPTH levels of the
-first (all with no DEPTH), each a list item indented by two for each level
-below it, its link labelled by its sequence, a colon and its label."
+  "The lines of a sequence block of FILES with sequences: in the order of
+their sequences, those within DEPTH levels of the first (all with no DEPTH),
+each a list item indented by two for each level below it, its link labelled
+by its sequence, a colon and its label."
   (let* ((sorted (stable-sort (copy-list files) #'string< :key (lambda (file)
                                                                  (formatted-sequence-key (formatted-signature file)))))
          (root (length (formatted-sequence-parts (formatted-signature (first sorted)))))
@@ -605,8 +621,9 @@ below it, its link labelled by its sequence, a colon and its label."
       (dolist (file kept)
         (let ((sequence (formatted-signature file)))
           (format out "~a- ~a~%"
-                  (make-string (* 2 (- (length (formatted-sequence-parts sequence)) root)) :initial-element #\Space)
-                  (formatted-denote-link file (format nil "~a: ~a" sequence (formatted-link-description file)) nil)))))))
+                  (spaces (* 2 (- (length (formatted-sequence-parts sequence)) root)))
+                  (formatted-denote-link file (format nil "~a: ~a" sequence (formatted-link-description file))
+                                         nil)))))))
 
 ;;; The writers
 
@@ -615,108 +632,153 @@ below it, its link labelled by its sequence, a colon and its label."
   (let ((name (formatted-param params :block-name)))
     (if name (format nil "#+name: ~a~%" name) "")))
 
+(defun formatted-files-asked (params denote &rest keys)
+  "The files a block's PARAMS name (FORMATTED-BLOCK-FILES, given KEYS); when
+one of its patterns is no regular expression the block is not made
+\(FORMATTED-BLOCK-TEXT)."
+  (let ((files (apply #'formatted-block-files params denote keys)))
+    (when (eq files :bad) (throw 'formatted-block-refused nil))
+    files))
+
+(defun formatted-sorted-as-asked (params files)
+  "FILES sorted as a block's PARAMS say with :sort-by-component and
+:reverse-sort (FORMATTED-BLOCK-SORTED)."
+  (formatted-block-sorted files (formatted-param params :sort-by-component) (formatted-param params :reverse-sort)))
+
+(defun formatted-links-of (params files)
+  "The lines of a block of links to FILES, as the block's PARAMS ask for them
+(FORMATTED-LINK-LINES): with :id-only the identifiers alone, with
+:include-date the dates of the notes."
+  (formatted-link-lines files (formatted-param params :id-only) (formatted-param params :include-date)))
+
+(defun formatted-links-text (params denote)
+  "The text of a block of links to the files its PARAMS name (DENOTE as
+FORMATTED-BLOCK-TEXT takes it)."
+  (concatenate 'string (formatted-block-name-line params)
+               (formatted-links-of params (formatted-sorted-as-asked params (formatted-files-asked params denote)))))
+
+(defun formatted-missing-links-text (params denote)
+  "The text of a block of links to the files its PARAMS name that the note
+does not link to yet; under its denote- name (DENOTE), none for a note that
+links to none of them."
+  (let* ((linked (formatted-linked-identifiers (org-parse-text *dblock-own*) :org))
+         (missing (remove-if (lambda (file) (gethash (formatted-identifier file) linked))
+                             (formatted-files-asked params denote))))
+    (concatenate 'string (formatted-block-name-line params)
+                 (formatted-links-of params (if (and denote (zerop (hash-table-count linked)))
+                                                '()
+                                                (formatted-sorted-as-asked params missing))))))
+
+(defun formatted-backlinks-text (params denote)
+  "The text of a block of links to the files that link to the note it is in,
+or with :this-heading-only to the headline it is under (its CUSTOM_ID); NIL,
+and said, when the note has no identifier or the headline no CUSTOM_ID."
+  (let* ((own (formatted-own-path))
+         (identifier (and own (values (name-parts (subseq own (1+ (or (position #\/ own :from-end t) -1))))))))
+    (cond ((null identifier)
+           (message "This file has no identifier in its name: nothing links to it")
+           nil)
+          ;; a file outside the directory has none
+          ((not (uiop:string-prefix-p (directory-name *formatted-file-directory*) own)) (string #\Newline))
+          (t
+           (let* ((heading (formatted-param params :this-heading-only))
+                  (custom-id (and heading (formatted-own-custom-id))))
+             (if (and heading (null custom-id))
+                 (progn (message "The headline of the block has no CUSTOM_ID to link to") nil)
+                 (let ((found (if heading
+                                  (formatted-heading-backlinks identifier custom-id
+                                                               (formatted-files-asked params denote :regexp nil))
+                                  (formatted-backlinks identifier
+                                                       (formatted-files-asked params denote :regexp nil :omit nil)))))
+                   (if found
+                       (formatted-links-of params (formatted-sorted-as-asked params found))
+                       (string #\Newline)))))))))
+
+(defun formatted-texts-text (params pieces separator)
+  "The text of a block of files' text: PIECES, each file's, joined with
+SEPARATOR (FORMATTED-JOINED), after the #+name: line PARAMS ask for."
+  (formatted-final-newline (concatenate 'string (formatted-block-name-line params)
+                                        (formatted-joined pieces separator))))
+
+(defun formatted-pieces (files function)
+  "What FUNCTION gives for each of FILES, an empty string where it gives NIL,
+the block's progress told as it goes."
+  (loop for file in files
+        for i from 0
+        do (dblock-progress (/ i (max 1 (length files))))
+        collect (or (funcall function file) "")))
+
+(defun formatted-files-text (params denote)
+  "The text of a block holding the text of the notes its PARAMS name (a
+:regexp needed), parted by its :file-separator, their front matter left out as
+:no-front-matter says, each with a link to it first with :add-links."
+  (if (null (formatted-param params :regexp))
+      ""
+      (let ((no-front-matter (formatted-param params :no-front-matter))
+            (add-links (formatted-param params :add-links))
+            (separator (let ((s (formatted-param params :file-separator)))
+                         (cond ((null s) "") ((stringp s) s) (t *formatted-separator*)))))
+        (formatted-texts-text params
+                              (formatted-pieces (remove-if-not #'formatted-file-kind
+                                                               (formatted-sorted-as-asked
+                                                                params (formatted-files-asked params denote)))
+                                                (lambda (file)
+                                                  (formatted-file-contents file no-front-matter add-links)))
+                              separator))))
+
+(defun formatted-files-as-headings-text (params denote)
+  "The text of a block holding the Org notes its PARAMS name (a :regexp
+needed), each under a headline of its title (FORMATTED-HEADING-CONTENTS)."
+  (if (null (formatted-param params :regexp))
+      ""
+      (let ((add-links (formatted-param params :add-links))
+            (exclude-tags (formatted-param params :exclude-tags)))
+        (formatted-texts-text params
+                              (formatted-pieces (remove-if-not (lambda (file) (eq (formatted-file-kind file) :org))
+                                                               (formatted-sorted-as-asked
+                                                                params (formatted-files-asked params denote)))
+                                                (lambda (file)
+                                                  (formatted-heading-contents file add-links exclude-tags)))
+                              ""))))
+
+(defun formatted-sequence-text (params denote)
+  "The text of a block of links to the notes in the sequence its :sequence
+names and those under it, within its :depth (FORMATTED-SEQUENCE-LINES); all
+the notes with sequences when it names none; NIL, and said, when no note has
+that sequence."
+  (let* ((sequence (let ((s (formatted-param params :sequence))) (if (stringp s) s (and s (princ-to-string s)))))
+         (all (formatted-sequence-files (formatted-files-asked params denote :regexp nil :omit nil)))
+         (named (not (or (null sequence) (string= sequence "") (string= sequence ".+"))))
+         (family (if named (formatted-sequence-family sequence all) all)))
+    (cond ((and named (null family))
+           (message "No file has the sequence ~a" sequence)
+           nil)
+          ((null family) (string #\Newline))
+          (t (concatenate 'string (formatted-block-name-line params)
+                          (formatted-sequence-lines family (formatted-param params :depth)))))))
+
+(defparameter *formatted-block-kinds*
+  '(("links" . formatted-links-text) ("missing-links" . formatted-missing-links-text)
+    ("backlinks" . formatted-backlinks-text) ("files" . formatted-files-text)
+    ("files-as-headings" . formatted-files-as-headings-text) ("sequence" . formatted-sequence-text))
+  "The kinds of dynamic blocks of files with formatted names, each with the
+function making its text: each kind is the writer formatted-KIND, and
+denote-KIND too.")
+
 (defun formatted-block-text (kind params denote)
-  "The text of a dynamic block of files with formatted names of KIND (links,
-missing-links, backlinks, files, files-as-headings, sequence) its PARAMS ask
-for; DENOTE when the block has its denote- name (its
-regular expressions in Org's regexp syntax). NIL, and said, when it cannot
-be made: the block is then left as it is."
-  (let ((sort (formatted-param params :sort-by-component))
-        (reverse (formatted-param params :reverse-sort))
-        (id-only (formatted-param params :id-only))
-        (include-date (formatted-param params :include-date)))
-    (flet ((files (&rest keys)
-             (let ((files (apply #'formatted-block-files params denote keys)))
-               (if (eq files :bad) (return-from formatted-block-text nil) files))))
-      (cond
-        ((string= kind "links")
-         (let ((files (formatted-block-sorted (files) sort reverse)))
-           (concatenate 'string (formatted-block-name-line params) (formatted-link-lines files id-only include-date))))
-        ((string= kind "missing-links")
-         (let* ((all (files))
-                (linked (formatted-linked-identifiers (org-parse-text *dblock-own*) :org))
-                (missing (remove-if (lambda (file) (gethash (formatted-identifier file) linked)) all)))
-           ;; under its denote- name, a note that links to none of them is given none
-           (when (and denote (zerop (hash-table-count linked)))
-             (setf missing '()))
-           (concatenate 'string (formatted-block-name-line params)
-                        (formatted-link-lines (formatted-block-sorted missing sort reverse) id-only include-date))))
-        ((string= kind "backlinks")
-         (let* ((own (formatted-own-path))
-                (identifier (and own (values (name-parts (subseq own (1+ (or (position #\/ own :from-end t) -1))))))))
-           (cond ((null identifier)
-                  (message "This file has no identifier in its name: nothing links to it")
-                  nil)
-                 ((not (uiop:string-prefix-p (directory-name *formatted-file-directory*) own))
-                  ;; a file outside the directory has none
-                  (string #\Newline))
-                 (t
-                  (let* ((heading (formatted-param params :this-heading-only))
-                         (custom-id (and heading (formatted-own-custom-id))))
-                    (when (and heading (null custom-id))
-                      (message "The headline of the block has no CUSTOM_ID to link to")
-                      (return-from formatted-block-text nil))
-                    (let ((found (if heading
-                                     (formatted-heading-backlinks identifier custom-id (files :regexp nil))
-                                     (formatted-backlinks identifier (files :regexp nil :omit nil)))))
-                      (if (null found)
-                          (string #\Newline)
-                          (let* ((leaving (formatted-block-scanner params :not-regexp denote))
-                                 (found (formatted-block-sorted found sort reverse))
-                                 (found (if (and leaving (not (eq leaving :bad)))
-                                            (remove-if (lambda (file) (cl-ppcre:scan leaving (car file))) found)
-                                            found)))
-                            (formatted-link-lines found id-only include-date)))))))))
-        ((string= kind "files")
-         (if (null (formatted-param params :regexp))
-             ""
-             (let* ((files (remove-if-not #'formatted-file-kind (formatted-block-sorted (files) sort reverse)))
-                    (separator (let ((s (formatted-param params :file-separator)))
-                                 (cond ((null s) "") ((stringp s) s) (t *formatted-separator*))))
-                    (no-front-matter (formatted-param params :no-front-matter))
-                    (add-links (formatted-param params :add-links))
-                    (pieces (loop for file in files
-                                  for i from 0
-                                  do (dblock-progress (/ i (max 1 (length files))))
-                                  collect (or (formatted-file-contents file no-front-matter add-links) ""))))
-               (formatted-final-newline
-                (concatenate 'string (formatted-block-name-line params) (formatted-joined pieces separator))))))
-        ((string= kind "files-as-headings")
-         (if (null (formatted-param params :regexp))
-             ""
-             (let* ((files (remove-if-not (lambda (file) (eq (formatted-file-kind file) :org))
-                                          (formatted-block-sorted (files) sort reverse)))
-                    (add-links (formatted-param params :add-links))
-                    (exclude-tags (formatted-param params :exclude-tags))
-                    (pieces (loop for file in files
-                                  for i from 0
-                                  do (dblock-progress (/ i (max 1 (length files))))
-                                  collect (or (formatted-heading-contents file add-links exclude-tags) ""))))
-               (formatted-final-newline
-                (concatenate 'string (formatted-block-name-line params) (formatted-joined pieces ""))))))
-        ((string= kind "sequence")
-         (let* ((sequence (let ((s (formatted-param params :sequence))) (if (stringp s) s (and s (princ-to-string s)))))
-                (depth (formatted-param params :depth))
-                (all (formatted-sequence-files (files :regexp nil :omit nil)))
-                (family (if (or (null sequence) (string= sequence "") (string= sequence ".+"))
-                            all
-                            (or (formatted-sequence-family sequence all)
-                                (progn (message "No file has the sequence ~a" sequence)
-                                       (return-from formatted-block-text nil))))))
-           (if (null family)
-               (string #\Newline)
-               (concatenate 'string (formatted-block-name-line params) (formatted-sequence-lines family depth)))))))))
+  "The text of a dynamic block of files with formatted names of KIND (one of
+*FORMATTED-BLOCK-KINDS*) its PARAMS ask for; DENOTE when the block has its
+denote- name (its regular expressions in Org's regexp syntax). NIL, and said,
+when it cannot be made: the block is then left as it is."
+  (catch 'formatted-block-refused
+    (funcall (cdr (assoc kind *formatted-block-kinds* :test #'string=)) params denote)))
 
-(defparameter *formatted-block-kinds* '("links" "missing-links" "backlinks" "files" "files-as-headings" "sequence")
-  "The kinds of dynamic blocks of files with formatted names: each is made by
-the writer formatted-KIND, and under the name denote-KIND too.")
-
-(dolist (kind *formatted-block-kinds*)
-  (let ((kind kind))
-    (setf (gethash (format nil "formatted-~a" kind) *dblock-writers*)
-          (lambda (params) (formatted-block-text kind params nil))
-          (gethash (format nil "denote-~a" kind) *dblock-writers*)
-          (lambda (params) (formatted-block-text kind params t)))))
+(loop for (kind) in *formatted-block-kinds*
+      do (let ((kind kind))
+           (setf (gethash (format nil "formatted-~a" kind) *dblock-writers*)
+                 (lambda (params) (formatted-block-text kind params nil))
+                 (gethash (format nil "denote-~a" kind) *dblock-writers*)
+                 (lambda (params) (formatted-block-text kind params t)))))
 
 ;;; Putting the blocks in
 
@@ -761,7 +823,8 @@ again; the parameters on its #+BEGIN: line say what more it does
   (let ((regex (read-formatted-block-regex "links to files whose names match")))
     (when regex
       (dblock-insert "formatted-links" (list :regexp regex :not-regexp nil :excluded-dirs-regexp nil
-                                             :sort-by-component nil :reverse-sort nil :id-only nil :include-date nil)))))
+                                             :sort-by-component nil :reverse-sort nil :id-only nil
+                                             :include-date nil)))))
 
 (define-command insert-formatted-missing-links-block ()
   "Put in a dynamic block of links to the files with formatted names whose

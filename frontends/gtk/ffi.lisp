@@ -19,7 +19,8 @@ window makes, loaded when a window is opened.")
            #:g-object-unref #:g-free
            #:g-settings-string #:g-object-class-find-property
            ;; gtk and gdk
-           #:gtk-init #:gtk-widget-get-frame-clock #:g-bytes-new #:g-bytes-unref #:gdk-memory-texture-new
+           #:gtk-init #:gtk-get-major-version #:gtk-get-minor-version #:gtk-widget-get-frame-clock
+           #:g-bytes-new #:g-bytes-unref #:gdk-memory-texture-new
            #:gdk-texture-download #:gtk-picture-new #:gtk-picture-set-paintable #:gtk-picture-set-content-fit
            #:gtk-widget-set-size-request #:gtk-widget-set-can-target #:gtk-widget-set-visible #:gtk-fixed-new
            #:gtk-fixed-put #:gtk-fixed-set-child-transform #:gsk-transform-unref #:gsk-transform-move #:gtk-fixed-remove
@@ -50,7 +51,8 @@ window makes, loaded when a window is opened.")
            #:pango-font-description-from-string #:pango-font-description-free #:pango-font-description-set-weight
            #:pango-font-description-set-style #:pango-font-description-get-size #:pango-font-description-set-size
            #:pango-font-description-get-family #:pango-font-description-to-string
-           #:pango-cairo-font-map-get-default #:pango-font-map-list-families #:pango-font-family-get-name
+           #:pango-cairo-font-map-get-default #:pango-font-map-list-families #:pango-font-map-get-family
+           #:pango-font-family-get-name
            #:pango-font-family-is-monospace #:pango-font-family-list-faces #:pango-font-face-get-face-name
            #:pango-font-face-describe #:pango-font-face-is-synthesized
            ;; cairo
@@ -192,6 +194,12 @@ is no such schema or key (GSettings would end the program on an unknown one)."
 
 (define-c-function ("gtk_init" gtk-init) :void
   "Start GTK: connect to the display.")
+
+(define-c-function ("gtk_get_major_version" gtk-get-major-version) :uint
+  "The major version number of the GTK library in use.")
+
+(define-c-function ("gtk_get_minor_version" gtk-get-minor-version) :uint
+  "The minor version number of the GTK library in use.")
 
 (define-c-function ("g_set_prgname" g-set-prgname) :void
   "Name the program NAME for the desktop, which matches its windows to the
@@ -596,6 +604,10 @@ icon themes' directories are (hicolor/48x48/apps/NAME.png)."
 (define-c-function ("pango_font_map_list_families" pango-font-map-list-families) :void
   "Store at FAMILIES an array of MAP's font families, to free with G-FREE, and their number at COUNT."
   (map :pointer) (families :pointer) (count :pointer))
+
+(define-c-function ("pango_font_map_get_family" pango-font-map-get-family) :pointer
+  "The font family of MAP named NAME, or a null pointer when there is none."
+  (map :pointer) (name :string))
 
 (define-c-function ("pango_font_family_get_name" pango-font-family-get-name) :string
   "The name of the font FAMILY."

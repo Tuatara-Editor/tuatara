@@ -47,7 +47,7 @@ nothing to undo; return it."
     (set-major-mode b mode)
     (setf (tuatara.buffer:buffer-point b) (tuatara.buffer:buffer-size b))
     ;; the first text is not a change you made
-    (setf (tuatara.buffer:buffer-undo-stack b) '())
+    (tuatara.buffer:forget-history b)
     b))
 
 (defun ensure-scratch-buffers ()

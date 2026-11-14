@@ -597,6 +597,26 @@ or :HUNG, so that each of several sessions in a test says how it ended."
              (true tuatara.defaults::*org-clock*))
         (when tuatara.defaults::*org-clock* (tuatara.defaults::org-clock-out-now))))))
 
+(define-test (narrowing clock-cancel-reaches-its-task)
+  ;; cancelling a clock whose line is outside the part shown takes the line away there, and only
+  ;; then lets the clock go
+  (with-test-directory (dir)
+    (let* ((path (put-file (merge-pathnames "clock.org" dir) (format nil "* Task~%body~%more~%")))
+           (editor (nth-value 1 (narrowing-keys (list "C-c C-x C-i"
+                                                      (lambda ()
+                                                        (let ((b (tuatara.command:current-buffer)))
+                                                          (tuatara.buffer:narrow-buffer b
+                                                                                        (- (tuatara.buffer:buffer-size b) 5)
+                                                                                        (tuatara.buffer:buffer-size b))))
+                                                      "C-c C-x C-q")
+                                                :file path :width 80))))
+      (unwind-protect
+           (let ((b (session-buffer editor)))
+             (false (search "CLOCK:" (tuatara.buffer:buffer-string b :start 0 :end (tuatara.buffer:buffer-size b))))
+             (true (tuatara.buffer:buffer-narrowed-p b))
+             (false tuatara.defaults::*org-clock*))
+        (setf tuatara.defaults::*org-clock* nil)))))
+
 (define-test (narrowing edits-at-the-end-stay-inside)
   ;; what a command puts after the last line of the part shown stays in it, or is refused: never
   ;; on the hidden line after it. A count comments as many lines, the last one too

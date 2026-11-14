@@ -8,6 +8,11 @@ editor or a release. It reads JSON on standard input and writes JSON:
   {"corpus": [line, ...], "queries": [text, ...], "top": 5}
   -> {"nearest": [[[score, index into corpus], ...], ...]}   one list per query
 
+  {"corpus": [line, ...], "pairs": 0.8, "limit": 20000}
+  -> {"pairs": [[score, index, index], ...]}   every two corpus lines alike by
+     at least the cosine given, best first, at most LIMIT of them; the lines
+     are compared with no task sentence, after the mean vector is taken off
+
 Each corpus line becomes a vector, once: the vectors are kept in the cache
 directory by the hash of the line, so a later run embeds only the lines that
 changed. A query is embedded in the form the model was trained on, with a
@@ -89,7 +94,7 @@ def command():
     if SERVER == "llama-server" and shutil.which(SERVER):
         return ["python3", "-I"] + me, None
     if shutil.which("toolbox"):
-        probe = subprocess.run(["toolbox", "run", "-c", TOOLBOX, "sh", "-c", f'command -v "{SERVER}"'],
+        probe = subprocess.run(["toolbox", "run", "-c", TOOLBOX, "sh", "-c", 'command -v "$1"', "sh", SERVER],
                                capture_output=True)
         if probe.returncode == 0:
             settings = [f"{k}={v}" for k, v in os.environ.items() if k.startswith("TUATARA_AI_")]
@@ -113,6 +118,35 @@ def nearest(corpus, queries, top):
         embedder.close()
 
 
+def pairs(corpus, threshold, limit):
+    """Every pair (score, i, j), i below j, of CORPUS lines whose cosine likeness is THRESHOLD or more, best first,
+    at most LIMIT of them. The matrix is multiplied in blocks of rows, so memory stays small."""
+    import numpy as np
+    embedder = Embedder(np)
+    try:
+        matrix = corpus_vectors(embedder, np, corpus)
+    finally:
+        embedder.close()
+    return pairs_of(np, matrix, threshold, limit)
+
+
+def pairs_of(np, matrix, threshold, limit, block=1024):
+    """The pairs of pairs() for the unit vectors in the rows of MATRIX. The mean vector is taken off first and the
+    rows made unit again: the model puts all texts of one kind close together, and without this the cosines of
+    unrelated definitions of one code base are all high."""
+    centred = matrix - matrix.mean(axis=0)
+    matrix = centred / np.linalg.norm(centred, axis=1, keepdims=True).clip(1e-9)
+    found = []
+    for start in range(0, len(matrix), block):
+        scores = matrix[start:start + block] @ matrix.T
+        rows, columns = np.nonzero(scores >= threshold)
+        for r, c in zip(rows.tolist(), columns.tolist()):
+            if start + r < c:
+                found.append((float(scores[r, c]), start + r, c))
+    found.sort(key=lambda f: (-f[0], f[1], f[2]))
+    return [list(f) for f in found[:limit]]
+
+
 class Embedder:
     """A llama-server running the embedding model on 127.0.0.1, ended when the object is closed."""
 
@@ -129,6 +163,9 @@ class Embedder:
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         deadline = time.time() + 120
         while time.time() < deadline:
+            # another process that took the port first makes the server end: nothing is asked of it then
+            if self.process.poll() is not None:
+                sys.exit("llama-server ended at its start: its port may have been taken")
             try:
                 with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/health", timeout=2) as r:
                     if r.status == 200:
@@ -192,6 +229,9 @@ def save(np, path, known):
 
 def main():
     request = json.load(sys.stdin)
+    if "pairs" in request:
+        json.dump({"pairs": pairs(request["corpus"], request["pairs"], request.get("limit", 20000))}, sys.stdout)
+        return
     json.dump({"nearest": nearest(request["corpus"], request["queries"], request.get("top", 5))}, sys.stdout)
 
 

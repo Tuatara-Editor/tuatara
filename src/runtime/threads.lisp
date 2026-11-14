@@ -35,6 +35,15 @@ between: what it returned, or NIL when the time ran out first."
   "The milliseconds since TIME, in internal time units, as a number with a fraction."
   (/ (* 1000.0 (- (get-internal-real-time) time)) internal-time-units-per-second))
 
+;;; The time of day
+
+(defun local-time-stamp (time &optional (between #\Space))
+  "The universal TIME, which is after 1900, in local time as year, month, day,
+then BETWEEN, then hours, minutes and seconds: 2026-10-04 10:30:00, or with
+BETWEEN #\\T, 2026-10-04T10:30:00."
+  (multiple-value-bind (second minute hour day month year) (decode-universal-time time)
+    (format nil "~4,'0d-~2,'0d-~2,'0d~c~2,'0d:~2,'0d:~2,'0d" year month day between hour minute second)))
+
 ;;; Threads
 
 (defmacro with-thread-guard ((name) &body body)
@@ -55,9 +64,10 @@ low, as a process takes the standing of the thread that starts it.")
 
 (defun stand-below-editor (niceness)
   "Have the calling thread stand NICENESS below the program's first thread
-\(where the editor runs, or the window), for the processor (setpriority for this thread alone, 19 at
-most), whichever thread started it; nothing where that cannot be done, as a
-thread may not stand higher than the one that started it without leave."
+\(where the editor runs, or the window), for the processor (setpriority for
+this thread alone, 19 at most), whichever thread started it; nothing where
+that cannot be done, as a thread may not stand higher than the one that
+started it without leave."
   (ignoring-errors-reported ("standing ~d below the editor" niceness)
     (let* ((tid (sb-alien:alien-funcall (sb-alien:extern-alien "gettid" (function sb-alien:int))))
            (getpriority (sb-alien:extern-alien "getpriority"
@@ -106,11 +116,18 @@ text to stop, once told to: work that does not stop in that time (a pattern
 that backtracks without end, a grammar that loops) is left to end on its own,
 the buffer's file kept mapped for it until nothing reads it.")
 
+(defun thread-result (thread seconds)
+  "Wait at most SECONDS for THREAD, made by MAKE-GUARDED-THREAD, to end: two
+values, what its function returned and T when it ended in time (NIL and T
+when its work went wrong), else NIL and NIL, THREAD still running."
+  (let* ((running '#:running)
+         (result (sb-thread:join-thread thread :timeout seconds :default running)))
+    (if (eq result running) (values nil nil) (values result t))))
+
 (defun join-within (thread &optional (seconds *stop-wait*))
   "Wait at most SECONDS for THREAD to end; true when it has ended, or when
 THREAD is NIL, work that never had one."
-  (or (null thread)
-      (not (eq :running (sb-thread:join-thread thread :timeout seconds :default :running)))))
+  (or (null thread) (nth-value 1 (thread-result thread seconds))))
 
 (defun left-running (thread what)
   "Report in the debug log that THREAD, doing WHAT, was told to stop and did

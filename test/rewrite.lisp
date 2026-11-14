@@ -193,7 +193,7 @@ checkpoints, so that a small text exercises all of the job's machinery."
   ;; once all is written, the list of jobs says the lines of the text written
   ;; are being counted; the mode line's one figure rises through both, writing
   ;; the first half and counting the second, and stops short of 100
-  (let ((job (tuatara.defaults::%make-rewrite :doing "Pasting")))
+  (let ((job (tuatara.defaults::%make-rows-rewrite :doing "Pasting")))
     (is string= "Pasting 100%" (tuatara.runtime:job-state-words job))
     (is = 50 (tuatara.runtime:job-percent job))
     (setf (tuatara.defaults::rewrite-counting job) (cons 50 200))
@@ -205,7 +205,7 @@ checkpoints, so that a small text exercises all of the job's machinery."
     (is string= "Pasting: counting lines 0%" (tuatara.runtime:job-state-words job))
     (is = 50 (tuatara.runtime:job-percent job)))
   ;; a count has no lines to count: its pieces are all of it
-  (is = 99 (tuatara.runtime:job-percent (tuatara.defaults::%make-rewrite :count-only t))))
+  (is = 99 (tuatara.runtime:job-percent (tuatara.defaults::%make-match-rewrite :count-only t))))
 
 (defun job-spans (spans-per-row)
   "The spans in SPANS-PER-ROW (a frame's spans, a vector of lists of (START END
@@ -227,11 +227,11 @@ FACE)) in a job's face, as (ROW START END FACE)."
   (let ((b (tuatara.buffer:make-buffer "*shading-test*" :text (format nil "aaaa~%bbbb~%cccc~%"))))
     (unwind-protect
          (let* ((pieces (vector (tuatara.defaults::make-rewrite-piece 0 5) (tuatara.defaults::make-rewrite-piece 5 15)))
-                (job (tuatara.defaults::%make-rewrite :buffer b :base (tuatara.buffer:buffer-version b)
-                                                      :rope (tuatara.buffer:buffer-text b)
-                                                      :low 0
-                                                      :high 15
-                                                      :pieces pieces)))
+                (job (tuatara.defaults::%make-line-rewrite :buffer b :base (tuatara.buffer:buffer-version b)
+                                                           :rope (tuatara.buffer:buffer-text b)
+                                                           :low 0
+                                                           :high 15
+                                                           :pieces pieces)))
            (setf (tuatara.defaults::rewrite-piece-done (aref pieces 0)) 3
                  (tuatara.defaults::rewrite-piece-done (aref pieces 1)) 5)
            ;; all of it till the result is taken in, where the workers have been too: the text
@@ -275,7 +275,7 @@ FACE)) in a job's face, as (ROW START END FACE)."
   ;; and the same while it waits its turn behind another job
   (let* ((b (tuatara.buffer:make-buffer "*split-shade-test*" :text (format nil "x0,y,a~%x1,y,a~%")))
          (shade (tuatara.defaults::scope-shade b '((0 . 14))
-                                               :matcher (tuatara.defaults::split-matcher "a" nil b))))
+                                               :matcher (tuatara.defaults::split-matcher "a" nil))))
     (unwind-protect (is equal '((5 6) (12 13)) (funcall shade '(0 14) 0 14))
       (tuatara.buffer:kill-buffer b))))
 
@@ -358,6 +358,15 @@ FACE)) in a job's face, as (ROW START END FACE)."
                 (setf (tuatara.buffer:buffer-point b) 0)
                 (tuatara.buffer:buffer-redo b)
                 (is = 6 (tuatara.buffer:buffer-point b)))
+      (tuatara.buffer:kill-buffer b))))
+
+(define-test (rewrite run-or-queue-starts-at-once-when-free)
+  ;; with no job in the buffer, the starter runs at once on the positions as they are
+  (let ((b (tuatara.buffer:make-buffer "*run or queue*" :text "abcdef")))
+    (unwind-protect
+         (is equal '(:started 1 4)
+             (tuatara.defaults::run-or-queue b "a test job" (list (cons 1 :before) (cons 4 :after))
+                                             (lambda (from to) (list :started from to))))
       (tuatara.buffer:kill-buffer b))))
 
 (define-modal-test (rewrite undo-stands-where-given-queued)
@@ -588,3 +597,21 @@ FACE)) in a job's face, as (ROW START END FACE)."
       ;; and the job ends by itself, without an error
       (when thread
         (true (tuatara.runtime:join-within thread 10))))))
+
+(define-test (rewrite rewrites-taken-in-together)
+  ;; a rewrite of lines that has ended soon is taken in with every other rewrite that has ended,
+  ;; a replacement among them, whatever its kind; work of another kind waits for the tick
+  (let ((lines (allocate-instance (find-class 'tuatara.defaults::line-rewrite)))
+        (matches (allocate-instance (find-class 'tuatara.defaults::match-rewrite)))
+        (count (allocate-instance (find-class 'tuatara.defaults::count-job)))
+        (asked nil))
+    (sb-int:encapsulate 'tuatara.runtime:take-in-jobs 'asked
+                        (lambda (function &optional test)
+                          (declare (ignore function))
+                          (setf asked test)
+                          '()))
+    (unwind-protect (tuatara.defaults::take-in-soon lines 0)
+      (sb-int:unencapsulate 'tuatara.runtime:take-in-jobs 'asked))
+    (true (funcall asked lines))
+    (true (funcall asked matches))
+    (false (funcall asked count))))

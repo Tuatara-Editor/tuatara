@@ -49,9 +49,9 @@ stand in one column."
 with spaces, or cut short with … when longer (TUATARA.DISPLAY:FIT-COLUMNS),
 wide characters counted as the columns they take."
   (let* ((width (max 3 *org-agenda-category-width*))
-         (shown (concatenate 'string (values (tuatara.display:fit-columns (princ-to-string category) '() (1- width))) ":")))
-    (concatenate 'string shown (make-string (max 0 (- width (tuatara.display:string-columns shown)))
-                                            :initial-element #\Space))))
+         (shown (concatenate 'string (values (tuatara.display:fit-columns (princ-to-string category) '() (1- width)))
+                             ":")))
+    (concatenate 'string shown (spaces (- width (tuatara.display:string-columns shown))))))
 
 (define-setting *org-agenda-untimed-text* "all day"
   "What the agenda's time column says, faint, on a line with no time of day.
@@ -179,7 +179,7 @@ first day (*ORG-AGENDA-START-ON-WEEKDAY*), the first of the month or the year."
 
 (defun org-time-text (time)
   "The time of day TIME (930) written as the agenda writes it: 9:30."
-  (multiple-value-bind (hour minute) (floor time 100)
+  (multiple-value-bind (hour minute) (org-time-hour-minute time)
     (format nil "~d:~2,'0d" hour minute)))
 
 (defun org-agenda-time-column (time end)
@@ -207,7 +207,7 @@ own, only those of its headline: :home:, nothing after them."
 keyword and priority, without its tags, its time taken out where the time
 column shows it."
   (let* ((entry (org-item-entry item))
-         (heading (string-right-trim '(#\Space #\Tab) (cl-ppcre:regex-replace "[ \\t]+:[\\w@#%:]+:[ \\t]*$" (agenda-entry-heading entry) "")))
+         (heading (org-headline-without-tags (agenda-entry-heading entry)))
          (raw (agenda-entry-title entry)))
     (cond ((org-item-type-in item "closed" "clock") heading)
           ;; a repeating task done that day, its keyword the done one it was given
@@ -273,7 +273,7 @@ after it; NIL for a part it lacks, the text after it all when it has no
 cookie."
   (let ((keyword (and todo (uiop:string-prefix-p (concatenate 'string todo " ") text) todo)))
     (let ((rest (if keyword (subseq text (length todo)) text)))
-      (multiple-value-bind (start end) (cl-ppcre:scan "\\[#[A-Z0-9]\\]" rest)
+      (multiple-value-bind (start end) (cl-ppcre:scan *org-priority-cookie-scanner* rest)
         (if start
             (values keyword (subseq rest 0 start) (subseq rest start end) (subseq rest end))
             (values keyword nil nil rest))))))
@@ -349,7 +349,7 @@ own, so that they are told apart, a line done faint throughout."
     (when tags
       (let ((used (text-columns (org-agenda-pieces-text pieces)))
             (column (- width 1 (text-columns tags))))
-        (push (cons (make-string (max 1 (- column used)) :initial-element #\Space) face) pieces)
+        (push (cons (spaces (max 1 (- column used))) face) pieces)
         (push (cons tags (or face :org-agenda-tags)) pieces)))
     (nreverse pieces)))
 
@@ -374,7 +374,7 @@ TODAY and the time of day now NOW (1427), in an agenda of DAYS days, as
   "The line of the time grid's ITEM as pieces: its time and the grid's line, or the time now."
   (let ((face (if (org-item-type-in item "now") :org-agenda-current-time :org-time-grid)))
     (list (cons "  " nil)
-          (cons (concatenate 'string (make-string 12 :initial-element #\Space)
+          (cons (concatenate 'string (spaces 12)
                              (org-agenda-time-column (org-item-time item) nil) (org-item-title item))
                 face))))
 
@@ -382,19 +382,16 @@ TODAY and the time of day now NOW (1427), in an agenda of DAYS days, as
   "The time of day of the universal time NOW as 1427."
   (multiple-value-bind (day hour minute) (time-day now)
     (declare (ignore day))
-    (+ (* 100 hour) minute)))
+    (org-time-number hour minute)))
 
 (defun org-agenda-todo-keywords (files)
   "The TODO keywords of FILES, each once, in the order of their sequences, the
-first file's first."
+first file's first, as the agenda keeps them (ORG-AGENDA-FILE-READ)."
   (let ((seen '()))
     (dolist (path files)
-      (multiple-value-bind (source) (org-agenda-file-source path)
-        (let ((text (org-agenda-source-text path source)))
-          (when text
-            (destructuring-bind (not-done . done) (org-todo-keywords-of text)
-              (dolist (word (append not-done done))
-                (pushnew word seen :test #'string=)))))))
+      (destructuring-bind (&optional not-done . done) (third (org-agenda-file-read path))
+        (dolist (word (append not-done done))
+          (pushnew word seen :test #'string=))))
     (nreverse seen)))
 
 (defun org-agenda-view-lines (view width)
@@ -415,11 +412,13 @@ the time grid, or NIL."
                 (count (org-agenda-span-days span start))
                 (items (org-agenda-span start count :log (getf view :log)))
                 (w1 (nth-value 1 (iso-week start))) (w2 (nth-value 1 (iso-week (+ start count -1)))))
-           (line (structure (format nil "~a-agenda (W~2,'0d~:[-W~2,'0d~;~*~]):" (org-agenda-span-name span) w1 (= w1 w2) w2)))
+           (line (structure (format nil "~a-agenda (W~2,'0d~:[-W~2,'0d~;~*~]):"
+                                    (org-agenda-span-name span) w1 (= w1 w2) w2)))
            (loop for day from start below (+ start count)
                  do (let* ((day-items (loop while (and items (eql (org-item-day (first items)) day))
                                             collect (pop items)))
-                           (all (org-agenda-sort (append (org-agenda-grid-items day day-items today now count) day-items) '(:time :urgency)))
+                           (grid (org-agenda-grid-items day day-items today now count))
+                           (all (org-agenda-sort (append grid day-items) '(:time :urgency)))
                            (weekend (member (weekday day) *calendar-weekend-days*)))
                       (line (list (cons (org-agenda-date-line day)
                                         (cond ((and weekend (= day today)) :org-agenda-date-weekend-today)
@@ -435,24 +434,18 @@ the time grid, or NIL."
          (let* ((keywords (org-agenda-todo-keywords files))
                 (keyword (let ((wanted (getf view :keyword)))
                            (if (integerp wanted) (and (plusp wanted) (nth (1- wanted) keywords)) wanted)))
-                (items (org-agenda-todo-list)))
-           (when keyword
-             (setf items (remove-if-not (lambda (item) (equal (agenda-entry-todo (org-item-entry item)) keyword))
-                                        (org-agenda-sort
-                                         (loop for path in files
-                                               append (loop for entry in (org-agenda-entries path)
-                                                            when (equal (agenda-entry-todo entry) keyword)
-                                                              collect (org-agenda-item entry nil "todo" "" :heading
-                                                                                       (1+ (agenda-entry-priority entry)) :keep-title t)))
-                                         '(:urgency)))))
+                (items (org-agenda-todo-list :files files :keyword keyword)))
            (line (structure (format nil "Global list of TODO items of type: ~a" (or keyword "ALL"))))
            ;; the keywords to choose from, wrapped at the window's edge
            (let ((text (with-output-to-string (out)
                          (let ((column 0))
                            (flet ((put (s) (write-string s out) (incf column (length s))))
-                             (put "Press ‘C-u N r’ (e.g. ‘C-u 0 r’) to search again:")
+                             (put (substitute-command-keys
+                                   (concatenate 'string "Press \\<org-agenda-mode>\\[universal-argument] N "
+                                                "\\[revert-buffer] (N 0 for all) to search again:")))
                              (loop for word in (cons (if keyword "ALL" "[ALL]")
-                                                     (mapcar (lambda (k) (if (equal k keyword) (format nil "[~a]" k) k)) keywords))
+                                                     (mapcar (lambda (k) (if (equal k keyword) (format nil "[~a]" k) k))
+                                                             keywords))
                                    for n from 0
                                    for s = (format nil "(~d)~a" n word)
                                    do (when (> (+ column (length s) 1) width)
@@ -468,7 +461,10 @@ the time grid, or NIL."
            (if header
                (line (structure header))
                (progn (line (structure (format nil "Headlines with TAGS match: ~a" (getf view :match))))
-                      (line (list (cons "Press ‘C-u r’ to search again" nil)))))
+                      (line (list (cons (substitute-command-keys
+                                         (concatenate 'string "Press \\<org-agenda-mode>\\[universal-argument] "
+                                                      "\\[revert-buffer] to search again"))
+                                        nil)))))
            (dolist (item items) (line (org-agenda-item-pieces item width today :times nil) item))))
         (:check
          (let ((items (org-agenda-date-check)))
@@ -549,21 +545,22 @@ date), :first on the first entry; a number puts it on that line."
                    (setf (gethash what texts) cells)
                    (unless first (setf first cells))))
       (keep-list-table buffer (coerce *org-agenda-columns* 'simple-vector) texts first))
-    (let* ((shown (tuatara.buffer:buffer-local buffer 'list-entries #()))
-           (first (tuatara.buffer:buffer-local buffer 'list-first-line 0))
-           (last (max 0 (1- (tuatara.buffer:buffer-line-count buffer))))
-           (line (if (integerp point)
-                     (min point last)
-                     (ecase point
-                       (:keep (min (or old-line 0) last))
-                       (:today (let ((today (position-if (lambda (what)
-                                                           (and (org-agenda-date-line-p what)
-                                                                (= (second what) (org-today))))
-                                                         shown)))
-                                 (if today (+ first today) (min (1+ first) last))))
-                       (:first (let ((item (position-if #'org-agenda-item-p shown)))
-                                 (if item (+ first item) 0)))))))
-      (setf (tuatara.buffer:buffer-point buffer) (tuatara.buffer:buffer-goto-line buffer line)))))
+    (multiple-value-bind (shown lines) (list-shown-entries buffer)
+      (let* ((last (max 0 (1- (tuatara.buffer:buffer-line-count buffer))))
+             (line (if (integerp point)
+                       (min point last)
+                       (ecase point
+                         (:keep (min (or old-line 0) last))
+                         (:today (let ((today (position-if (lambda (what)
+                                                             (and (org-agenda-date-line-p what)
+                                                                  (= (second what) (org-today))))
+                                                           shown)))
+                                   (if today
+                                       (aref lines today)
+                                       (min (1+ (tuatara.buffer:buffer-local buffer 'list-first-line 0)) last))))
+                         (:first (let ((item (position-if #'org-agenda-item-p shown)))
+                                   (if item (aref lines item) 0)))))))
+        (setf (tuatara.buffer:buffer-point buffer) (tuatara.buffer:buffer-goto-line buffer line))))))
 
 (defun org-agenda-render (buffer &key (point :keep))
   "Draw BUFFER's agenda again from its view and the agenda files, at once.
@@ -591,15 +588,17 @@ in the background is put in (ORG-AGENDA-START-REFRESH) is forgotten."
 it out in the background, and to the one marking its days in the calendar, as
 they are on the editor's (TUATARA.RUNTIME:CARRY-SETTINGS).")
 
-(defstruct (agenda-refresh (:include tuatara.runtime:job) (:constructor make-agenda-refresh (buffer view sources))
-                           (:copier nil))
+(define-record (agenda-refresh (:include tuatara.runtime:job) (:constructor make-agenda-refresh (buffer view sources))
+                              (:copier nil))
   "An agenda of BUFFER worked out again in the background, a job
 \(TUATARA.RUNTIME:JOB): VIEW the view it is worked out for, SOURCES the agenda
 files as it found them (ORG-AGENDA-SOURCES-KEY), known once it has looked; RESULT, once done, the text,
 spans and lines ORG-AGENDA-COMPOSE gives, NIL when it gave up."
-  view sources result)
-
-(setf (documentation 'agenda-refresh-p 'function) "True when OBJECT is an AGENDA-REFRESH.")
+  (view nil :documentation "The view AGENDA-REFRESH works the agenda out for.")
+  (sources nil :documentation "The agenda files as AGENDA-REFRESH found them, known once it has looked, or NIL.")
+  (result nil
+          :documentation "The text, spans and lines ORG-AGENDA-COMPOSE gave for AGENDA-REFRESH, or NIL while it is not
+done or when it gave up."))
 
 (tuatara.runtime:define-job-words agenda-refresh
   :doing "Working out the agenda"
@@ -699,7 +698,7 @@ narrowing the agenda (\\[search-filter-regex]) go."
   "Show VIEW (as ORG-AGENDA-VIEW has it) in *Org Agenda*, drawn afresh."
   (let ((buffer (org-agenda-buffer)))
     (org-agenda-set-view buffer view)
-    (unless (eq (tuatara.display:window-buffer (editor-window *editor*)) buffer)
+    (unless (eq (selected-window-buffer) buffer)
       (show-buffer buffer))
     (org-agenda-redraw buffer :point point)
     buffer))
@@ -720,7 +719,7 @@ window selected, the agenda being where you are, while the files are small
 in an agenda file beside it never waits for it."
   (when (org-agenda-view buffer)
     (if (and (eq window (editor-window *editor*)) (not (tuatara.buffer:buffer-local buffer 'org-agenda-refresh))
-             (org-agenda-files-small-p))
+             (org-agenda-files-small-p buffer))
         (org-agenda-render buffer)
         (org-agenda-start-refresh buffer))))
 
@@ -751,21 +750,24 @@ setting changes."
     (if (and kept (equal (car kept) files))
         (cdr kept)
         (let ((directories (loop for file in files
-                             for path = (ignoring-errors-reported ("naming the agenda file ~a" file)
-                                          (tuatara.io:native (tuatara.io:expand-path file)))
-                             when path
-                               collect (multiple-value-bind (parent name) (tuatara.io:path-directory-and-name path)
-                                         (if (and (string/= name "") (not (find-if (lambda (c) (find c "*?")) name))
-                                                  (eq :directory (tuatara.io:path-kind path)))
-                                             (concatenate 'string path "/")
-                                             parent)))))
+                                 for path = (agenda-file-native file)
+                                 when path
+                                   collect (multiple-value-bind (kind directory) (agenda-file-kind file path)
+                                             (case kind
+                                               (:directory (directory-name directory))
+                                               (:pattern directory)
+                                               (t (nth-value 0 (tuatara.io:path-directory-and-name path))))))))
           (setf directories (remove-duplicates directories :test #'string= :from-end t)
                 *org-agenda-directories-kept* (cons (copy-tree files) directories))
           directories))))
 
+(defvar *org-agenda-watched* '()
+  "The directories of the agenda files while an agenda is shown, NIL while none
+is, as ORG-AGENDA-REFRESH-TICK last found them.")
+
 (defun org-agenda-watched-directories ()
   "The directories of the agenda files, watched on disk while an agenda is shown."
-  (and *editor* (org-agenda-shown-window *editor*) (org-agenda-directories)))
+  *org-agenda-watched*)
 
 (defun org-agenda-directories-changed (changed)
   "Draw the agenda shown again when one of the directories CHANGED holds an agenda
@@ -799,9 +801,15 @@ itself (ORG-AGENDA-NEXT-REDRAW), worked out again only when DRAWN or
   "Tick function: draw the agenda a window of EDITOR shows again once its
 time comes (ORG-AGENDA-REDRAW-DUE), as when an agenda file changes
 \(ORG-AGENDA-FOLLOW), but not while a waiting question is about it
-\(BUFFER-HELD-BY-QUESTION-P). Wants a tick at that time; none with no agenda
+\(BUFFER-HELD-BY-QUESTION-P), and keep the directories watched for it
+\(*ORG-AGENDA-WATCHED*). Wants a tick at that time; none with no agenda
 shown."
   (multiple-value-bind (buffer window) (org-agenda-shown-window editor)
+    ;; the directories watched for it change as it is shown or not, and with the agenda files
+    (let ((watched (and buffer (org-agenda-directories))))
+      (unless (eq watched *org-agenda-watched*)
+        (setf *org-agenda-watched* watched)
+        (directories-followed-changed)))
     (when (and buffer (org-agenda-view buffer) (not (buffer-held-by-question-p buffer)))
       (let* ((now (org-now))
              (drawn (or (tuatara.buffer:buffer-local buffer 'org-agenda-drawn-at) now)))
@@ -813,6 +821,12 @@ shown."
 
 ;;; Commands
 
+(defparameter *org-agenda-views*
+  '((#\a "week" org-agenda-list) (#\t "TODO list" org-todo-list) (#\m "match" org-tags-view)
+    (#\c "check dates" org-agenda-check-dates))
+  "The views \\[org-agenda] offers, each (KEY WORDS COMMAND): the key that
+asks for it, the words the question shows for it and the command showing it.")
+
 (define-command org-agenda ()
   "Show the agenda, asking which view: \\`a' the agenda of the week (or
 *ORG-AGENDA-SPAN*), \\`t' the TODO list, \\`m' the headlines a match selects
@@ -820,21 +834,26 @@ shown."
 (*ORG-AGENDA-CUSTOM-COMMANDS*, \\`u' the tasks with no tag), or \\`c' the
 entries whose dates look wrong (\\[org-agenda-check-dates]), read from
 *ORG-AGENDA-FILES*."
-  (let* ((own (mapcar (lambda (c) (format nil "~a ~a" (first c) (second c))) *org-agenda-custom-commands*))
-         (key (read-key (format nil "Agenda: a week  t TODO list  m match  c check dates~{  ~a~}" own)))
+  (let* ((key (read-key (format nil "Agenda: ~{~a~^  ~}"
+                                (append (loop for (key words) in *org-agenda-views*
+                                              collect (format nil "~c ~a" key words))
+                                        (loop for (key words) in *org-agenda-custom-commands*
+                                              collect (format nil "~a ~a" key words))))))
          (char (progn (when (quit-key-p key) (keyboard-quit-signal))
                       (setf (editor-message *editor*) nil)
                       (tuatara.frontend:key-base key)))
-         (custom (and (characterp char) (find (string char) *org-agenda-custom-commands* :key #'first :test #'string=))))
-    (cond ((eql char #\a) (org-agenda-week))
-          ((eql char #\t) (org-agenda-show (list :kind :todo) :point :first))
-          ((eql char #\m) (org-tags-view))
-          ((eql char #\c) (org-agenda-check-dates))
+         (view (find char *org-agenda-views* :key #'first))
+         (custom (and (characterp char)
+                      (find (string char) *org-agenda-custom-commands* :key #'first :test #'string=))))
+    (cond (view (funcall (third view)))
           (custom (destructuring-bind (key description type match &key header) custom
                     (declare (ignore key))
                     (ecase type
-                      (:tags-todo (org-agenda-show (list :kind :match :match match :todo-only t :header (or header description)) :point :first))
-                      (:tags (org-agenda-show (list :kind :match :match match :header (or header description)) :point :first))
+                      (:tags-todo (org-agenda-show (list :kind :match :match match :todo-only t
+                                                         :header (or header description))
+                                                   :point :first))
+                      (:tags (org-agenda-show (list :kind :match :match match :header (or header description))
+                                              :point :first))
                       (:todo (org-agenda-show (list :kind :todo :keyword match) :point :first)))))
           (t (message "No agenda view on ~a" (tuatara.frontend:key-description (tuatara.frontend:key-spec key)))))))
 
@@ -877,13 +896,13 @@ TIME), or NIL; among the lines search filters leave, while they narrow it."
   (list-entry-at buffer))
 
 (defun org-agenda-day-at-point (buffer)
-  "The day of the agenda line at point in BUFFER: of its item or date, or of the date above it; NIL outside a day's lines."
-  (let ((whats (tuatara.buffer:buffer-local buffer 'list-entries #()))
-        (first (tuatara.buffer:buffer-local buffer 'list-first-line 0)))
-    (loop for index downfrom (- (tuatara.buffer:buffer-line-number buffer (tuatara.buffer:buffer-point buffer)) first) to 0
-          for what = (and (< index (length whats)) (svref whats index))
-          when (org-agenda-date-line-p what) return (second what)
-          when (and (org-agenda-item-p what) (org-item-day what)) return (org-item-day what))))
+  "The day of the agenda line at point in BUFFER: of its item or date, or of
+the date above it; NIL outside a day's lines."
+  (loop for line downfrom (tuatara.buffer:buffer-line-number buffer (tuatara.buffer:buffer-point buffer))
+          to (tuatara.buffer:buffer-local buffer 'list-first-line 0)
+        for what = (list-line-entry buffer line)
+        when (org-agenda-date-line-p what) return (second what)
+        when (and (org-agenda-item-p what) (org-item-day what)) return (org-item-day what)))
 
 (defun org-agenda-change-span (span)
   "Show the agenda in SPAN (:day, :week...): from the day at point in the
@@ -985,60 +1004,39 @@ again, return. Moving to another span (\\<org-agenda-mode>\\[org-agenda-later], 
         (progn (org-agenda-set-view buffer (car previous))
                (org-agenda-redraw buffer :point (cdr previous))))))
 
-(defun org-agenda-checkbox-start (buffer entry)
-  "Where ENTRY's list item begins in BUFFER, ENTRY a checkbox item's: the line
-it was on when the agenda read it when that line is still the item, else the
-nearest line that is an item with a checkbox and that title; NIL when none is."
-  (let* ((line (count #\Newline (agenda-entry-text entry) :end (agenda-entry-position entry)))
-         (scanner (cl-ppcre:create-scanner
-                   (format nil "^(?:[ \\t]*(?:[-+]|[0-9]+[.)])|[ \\t]+\\*)[ \\t]+\\[[ X-]\\][ \\t]*~a[ \\t]*\r?$"
-                           (cl-ppcre:quote-meta-chars (agenda-entry-title entry)))))
-         (guess (tuatara.buffer:buffer-goto-line buffer line)))
-    (flet ((holds-p (start)
-             (cl-ppcre:scan scanner (tuatara.buffer:buffer-string buffer :start start
-                                                                        :end (tuatara.buffer:buffer-line-end buffer start)))))
-      (if (holds-p guess)
-          guess
-          (let ((text (tuatara.buffer:buffer-string buffer)) (best nil) (best-distance nil) (here 0) (start 0))
-            (loop while (< start (length text))
-                  do (let ((end (string-line-end text start)))
-                       (when (cl-ppcre:scan scanner text :start start :end end)
-                         (let ((distance (abs (- here line))))
-                           (when (or (null best) (< distance best-distance))
-                             (setf best start best-distance distance))))
-                       (setf start (1+ end))
-                       (incf here)))
-            (and best (tuatara.buffer:buffer-goto-line buffer (count #\Newline text :end best))))))))
+(defun org-agenda-nearest-line (buffer line test)
+  "The start (an octet) of the line of BUFFER nearest LINE (from 0) whose
+text, its line end left out, TEST is true of: LINE itself, else the lines
+either side of it, the nearer first; NIL when none is."
+  (let ((last (1- (tuatara.buffer:buffer-line-count buffer))))
+    (flet ((holds-p (n)
+             (and (<= 0 n last)
+                  (let ((start (tuatara.buffer:buffer-goto-line buffer n)))
+                    (and (funcall test (string-right-trim '(#\Return) (tuatara.buffer:buffer-line-text buffer start)))
+                         start)))))
+      (loop for distance from 0 to (max line (- last line))
+            thereis (or (holds-p (- line distance)) (holds-p (+ line distance)))))))
+
+(defun org-agenda-entry-line (entry)
+  "The line ENTRY began on when the agenda read it, from 0."
+  (or (agenda-entry-line entry) (count #\Newline (agenda-entry-text entry) :end (agenda-entry-position entry))))
 
 (defun org-agenda-entry-start (buffer entry)
-  "Where ENTRY's headline starts in BUFFER, visiting its file: where it was
-when the agenda read it, else, the file changed since, the line holding that
-headline whole nearest to it; NIL when no line does (the headline itself was
-changed or taken away)."
-  (when (eq (agenda-entry-kind entry) :checkbox)
-    (return-from org-agenda-entry-start (org-agenda-checkbox-start buffer entry)))
-  (let* ((heading (format nil "~a ~a" (make-string (or (agenda-entry-level entry) 1) :initial-element #\*) (agenda-entry-heading entry)))
-         (line (count #\Newline (agenda-entry-text entry) :end (agenda-entry-position entry)))
-         (guess (tuatara.buffer:buffer-goto-line buffer line)))
-    (flet ((holds-p (start)
-             (string= heading (string-right-trim '(#\Return)
-                                                 (tuatara.buffer:buffer-string buffer :start start
-                                                                                      :end (tuatara.buffer:buffer-line-end buffer start))))))
-      (if (holds-p guess)
-          guess
-          ;; the file changed since: the nearest line that is that headline, whole
-          (let* ((text (tuatara.buffer:buffer-string buffer))
-                 (best nil) (best-distance nil))
-            (loop for at = (search heading text) then (search heading text :start2 (1+ at))
-                  while at
-                  do (let ((after (+ at (length heading))))
-                       (when (and (or (zerop at) (char= (char text (1- at)) #\Newline))
-                                  (or (= after (length text)) (member (char text after) '(#\Newline #\Return))))
-                         (let* ((here (count #\Newline text :end at))
-                                (distance (abs (- here line))))
-                           (when (or (null best) (< distance best-distance))
-                             (setf best here best-distance distance))))))
-            (and best (tuatara.buffer:buffer-goto-line buffer best)))))))
+  "Where ENTRY's headline, or its list item for a checkbox's, starts in BUFFER,
+visiting its file: on the line it was when the agenda read it, else, the file
+changed since, on the line nearest it holding that headline whole, or an item
+with a checkbox and that title (ORG-AGENDA-NEAREST-LINE); NIL when no line does
+\(it was changed or taken away)."
+  (org-agenda-nearest-line
+   buffer (org-agenda-entry-line entry)
+   (if (eq (agenda-entry-kind entry) :checkbox)
+       (let ((scanner (cl-ppcre:create-scanner
+                       (format nil "^~a[ \\t]+\\[[ X-]\\][ \\t]*~a[ \\t]*$" *org-bullet-re*
+                               (cl-ppcre:quote-meta-chars (agenda-entry-title entry))))))
+         (lambda (text) (cl-ppcre:scan scanner text)))
+       (let ((heading (format nil "~a ~a" (make-string (or (agenda-entry-level entry) 1) :initial-element #\*)
+                              (agenda-entry-heading entry))))
+         (lambda (text) (string= text heading))))))
 
 (defun org-agenda-visit-entry (item &key other)
   "Visit the file of ITEM's entry and put point on its headline, shown in the
@@ -1047,7 +1045,8 @@ selected window, or in another with OTHER."
          (buffer (visit-path (agenda-entry-file entry)
                              :show (lambda (b) (if other (pop-to-buffer b :other t) (show-buffer b)))))
          (start (or (org-agenda-entry-start buffer entry)
-                    (progn (message "That entry is no longer in its file as it was: \\<org-agenda-mode>\\[revert-buffer] draws the agenda again")
+                    (progn (message "That entry is no longer in its file as it was: ~
+                                    \\<org-agenda-mode>\\[revert-buffer] draws the agenda again")
                            (return-from org-agenda-visit-entry buffer)))))
     (goto-shown buffer start)
     buffer))
@@ -1097,63 +1096,82 @@ after changes made from the agenda."
     (org-save-soon buffer)))
 
 (defparameter *org-agenda-at-once* (* 256 1024)
-  "The most octets the agenda files may hold together for the agenda to be
-drawn again at once after a change made from it; past that it is worked out
-in the background, the change shown once that is done.")
+  "The most octets the agenda files may hold together for a week's agenda, or
+a list of tasks, to be drawn again at once after a change made from it; a
+longer span may hold as much less as it has more weeks. Past that it is
+worked out in the background, the change shown once that is done.")
 
-(defun org-agenda-files-small-p ()
-  "True when the agenda files hold at most *ORG-AGENDA-AT-ONCE* octets together."
-  (<= (loop for key in (org-agenda-sources-key)
-            sum (cond ((eq (first key) :buffer) (tuatara.buffer:buffer-size (second key)))
-                      ((eq (first key) :file) (or (third key) 0))
-                      (t 0)))
-      *org-agenda-at-once*))
+(defun org-agenda-files-small-p (buffer)
+  "True when the agenda files are small enough for BUFFER's agenda to be drawn
+at once: their octets together, times the weeks of its span, at most
+*ORG-AGENDA-AT-ONCE*."
+  (let* ((view (org-agenda-view buffer))
+         (weeks (if (eq (getf view :kind) :agenda)
+                    (max 1 (ceiling (org-agenda-span-days (getf view :span) (getf view :start)) 7))
+                    1)))
+    (<= (* weeks (loop for key in (org-agenda-sources-key)
+                       sum (cond ((eq (first key) :buffer) (tuatara.buffer:buffer-size (second key)))
+                                 ((eq (first key) :file) (or (third key) 0))
+                                 (t 0))))
+        *org-agenda-at-once*)))
 
 (defun org-agenda-redraw (buffer &key (point :keep))
   "Draw BUFFER's agenda again, of the view it is to show now: at once while
 the agenda files are small (*ORG-AGENDA-AT-ONCE*), else worked out in the
 background, the editor free meanwhile and the agenda shown once it is done.
 POINT as ORG-AGENDA-APPLY has it."
-  (if (org-agenda-files-small-p)
+  (if (org-agenda-files-small-p buffer)
       (org-agenda-render buffer :point point)
       (org-agenda-start-refresh buffer :point point)))
 
+(defparameter *org-agenda-headline-only*
+  '((org-schedule . "A list item's checkbox has no schedule: a headline's task has (~a)")
+    (org-deadline . "A list item's checkbox has no deadline: a headline's task has (~a)")
+    (org-set-tags-command . "A list item's checkbox has no tags: a headline's task has (~a)")
+    (org-refile . "A list item's checkbox is not refiled: it moves with its heading, refiled from its file (~a)"))
+  "The commands the agenda runs on a headline's task only, each with the words
+said when its line is a list item's checkbox, ~a its title.")
+
+(defun org-agenda-run-at (agenda buffer start command)
+  "Run COMMAND in BUFFER, point at START, as the agenda AGENDA runs it on an
+entry: in the whole buffer, the entry being perhaps outside the part shown,
+the change remembered for undo from the agenda (\\<org-agenda-mode>\\[org-agenda-undo])."
+  (let ((before (first (tuatara.buffer:buffer-undo-stack buffer))))
+    (let ((*current-buffer* buffer))
+      (tuatara.buffer:with-narrowing-lifted (buffer)
+        (setf (tuatara.buffer:buffer-point buffer) start)
+        (funcall command)))
+    (let ((group (first (tuatara.buffer:buffer-undo-stack buffer))))
+      (when (and group (not (eq group before)))
+        (push (cons buffer group) (tuatara.buffer:buffer-local agenda 'org-agenda-changes))))))
+
+(defun org-agenda-act-on (agenda item command)
+  "Run COMMAND on the entry of the agenda line ITEM of AGENDA, in its file's
+buffer (visited unseen when it is not open), point on its headline, and draw
+the agenda again; said instead when the entry is not there as it was, or is
+a checkbox the command is not for (*ORG-AGENDA-HEADLINE-ONLY*)."
+  (let* ((entry (org-item-entry item))
+         (buffer (tuatara.io:visit-file (agenda-entry-file entry)))
+         (refused (and (eq (agenda-entry-kind entry) :checkbox)
+                       (cdr (assoc command *org-agenda-headline-only*))))
+         (start (and (not refused) (org-agenda-entry-start buffer entry))))
+    (cond (refused (message refused (agenda-entry-title entry)))
+          ((null start)
+           (message "That entry is no longer in its file as it was: ~
+                    \\<org-agenda-mode>\\[revert-buffer] draws the agenda again, nothing changed"))
+          (t (org-agenda-run-at agenda buffer start command)
+             (org-agenda-autosave buffer)
+             (org-agenda-redraw agenda)))))
+
 (defun org-agenda-act (command &key elsewhere)
-  "Run the Org command COMMAND on the entry of the agenda's line at point, in
-its file's buffer (visited unseen when it is not open), point on its
-headline, and draw the agenda again; the buffer is left with the change, to
-be saved (\\<org-agenda-mode>\\[org-agenda-save-all-buffers]), or saved at once when it is
-one of *ORG-AGENDA-AUTOSAVE-FILES*. With ELSEWHERE, in an Org buffer COMMAND
-runs there as usual; in any other buffer it is said where it works."
+  "Run the Org command COMMAND on the entry of the agenda's line at point
+\(ORG-AGENDA-ACT-ON); the buffer is left with the change, to be saved
+\(\\<org-agenda-mode>\\[org-agenda-save-all-buffers]), or saved at once when it is one of
+*ORG-AGENDA-AUTOSAVE-FILES*. With ELSEWHERE, in an Org buffer COMMAND runs
+there as usual; in any other buffer it is said where it works."
   (cond ((org-agenda-here)
          (let ((agenda (current-buffer)) (item (org-agenda-item-at-point)))
-           (when item
-             (let* ((entry (org-item-entry item))
-                    (buffer (tuatara.io:visit-file (agenda-entry-file entry)))
-                    (start (org-agenda-entry-start buffer entry)))
-               (cond
-                 ((and (eq (agenda-entry-kind entry) :checkbox)
-                       (member command '(org-schedule org-deadline org-set-tags-command)))
-                  (message "A list item's checkbox has no ~a: a headline's task has (~a)"
-                           (case command (org-schedule "schedule") (org-deadline "deadline") (t "tags"))
-                           (agenda-entry-title entry)))
-                 ((and (eq (agenda-entry-kind entry) :checkbox) (eq command 'org-refile))
-                  (message "A list item's checkbox is not refiled: it moves with its heading, refiled from its file (~a)"
-                           (agenda-entry-title entry)))
-                 ((null start)
-                  (message "That entry is no longer in its file as it was: \\<org-agenda-mode>\\[revert-buffer] draws the agenda again, nothing changed"))
-                 (t (let ((before (first (tuatara.buffer:buffer-undo-stack buffer))))
-                      ;; the entry may be outside the part of its file shown
-                      (let ((*current-buffer* buffer))
-                        (tuatara.buffer:with-narrowing-lifted (buffer)
-                          (setf (tuatara.buffer:buffer-point buffer) start)
-                          (funcall command)))
-                      ;; the change remembered for undo from the agenda
-                      (let ((group (first (tuatara.buffer:buffer-undo-stack buffer))))
-                        (when (and group (not (eq group before)))
-                          (push (cons buffer group) (tuatara.buffer:buffer-local agenda 'org-agenda-changes)))))
-                    (org-agenda-autosave buffer)
-                    (org-agenda-redraw agenda)))))))
+           (when item (org-agenda-act-on agenda item command))))
         ((and elsewhere (typep (buffer-major-mode (current-buffer)) 'org-mode))
          (funcall command))
         (t (message "~(~a~) works on an entry of the agenda~:[~; or an Org file~]" command elsewhere))))
@@ -1212,7 +1230,9 @@ day asked for, \\`s' schedules the series."
   (let ((item (org-agenda-item-at-point)))
     (if (and item (org-item-type-in item "cancelled" "repeat-done" "moved") (not (prefix-argument)))
         (message "That line is of a time ~a: its own line, if any, is the one to move"
-                 (cond ((org-item-type-in item "cancelled") "cancelled") ((org-item-type-in item "moved") "moved away") (t "done")))
+                 (cond ((org-item-type-in item "cancelled") "cancelled")
+                       ((org-item-type-in item "moved") "moved away")
+                       (t "done")))
         (let ((*org-agenda-occurrence* (and item (org-agenda-item-occurrence item))))
           (org-agenda-act 'org-schedule)))))
 
@@ -1272,9 +1292,13 @@ so that the mode line shows the clock from the start. NIL: not again."
     (setf **org-clock-looked-for** t)
     (org-agenda-in-background "tuatara clocks left open" *org-agenda-carried-settings*
                               (lambda (snapshot)
-                                (let ((found (let ((*org-agenda-snapshot* snapshot)) (org-clocks-left-open))))
-                                  (when found
-                                    (defer-action (lambda () (org-clock-take-up found))))))))
+                                (let* ((*org-agenda-snapshot* snapshot)
+                                       (found (org-clocks-left-open))
+                                       (key (mapcar #'third snapshot)))
+                                  (defer-action (lambda ()
+                                                  (if found
+                                                      (org-clock-take-up found)
+                                                      (setf *org-clocks-none-open* key))))))))
   nil)
 
 (defun save-org-buffers-where (test words)
@@ -1315,6 +1339,7 @@ LAST the agenda lists entries on. NIL with no agenda files."
             (let* ((*org-agenda-snapshot* (org-agenda-snapshot-with open))
                    (*org-agenda-ts-memo* (make-hash-table :test 'equal))
                    (*org-agenda-time-memo* (make-hash-table :test 'equal))
+                   (*org-agenda-entries-memo* (make-hash-table :test 'eq))
                    (files (mapcar #'first *org-agenda-snapshot*))
                    (entries (mapcar #'org-agenda-entries files)))
               (loop for day from first to last
@@ -1325,11 +1350,11 @@ LAST the agenda lists entries on. NIL with no agenda files."
   "Show the agenda of the week holding the calendar's day at point, point on
 that day."
   (let* ((day (calendar-cursor-date))
-         (buffer (org-agenda-week :day day))
-         (whats (tuatara.buffer:buffer-local buffer 'list-entries #()))
-         (index (position-if (lambda (what) (and (org-agenda-date-line-p what) (= (second what) day))) whats)))
-    (when index
-      (goto-shown buffer (tuatara.buffer:buffer-goto-line buffer (+ index (tuatara.buffer:buffer-local buffer 'list-first-line 0)))))))
+         (buffer (org-agenda-week :day day)))
+    (multiple-value-bind (shown lines) (list-shown-entries buffer)
+      (let ((index (position-if (lambda (what) (and (org-agenda-date-line-p what) (= (second what) day))) shown)))
+        (when index
+          (goto-shown buffer (tuatara.buffer:buffer-goto-line buffer (aref lines index))))))))
 
 (define-command org-agenda-goto-calendar ()
   "Show the calendar on the day of the agenda line at point."
@@ -1347,14 +1372,14 @@ Tuatara starts, take up the clocks left running in the agenda files
   (dolist (key (cons "u" (where-is 'undo (list (editor-global-keymap editor)))))
     (define-key *org-agenda-keymap* key 'org-agenda-undo))
   (define-keys *org-agenda-keymap* '(("RET" org-agenda-switch-to) ("TAB" org-agenda-goto)
-                                     ("l" org-agenda-later) ("h" org-agenda-earlier) ("g h" org-agenda-goto-today)
+                                     ("l" org-agenda-later) ("h" org-agenda-earlier)
+                                     ("C-f" org-agenda-later) ("C-b" org-agenda-earlier) ("g h" org-agenda-goto-today)
                                      ("g g" beginning-of-buffer) ("g e" end-of-buffer) ("g l" org-agenda-previous-view)
                                      ;; the views, spans and changes to entries, a key each
                                      ("a" org-agenda) ("w" org-agenda-week-view) ("m" org-agenda-month-view)
                                      ("Y" org-agenda-year-view) ("D" org-agenda-day-view)
-                                     ("d" org-agenda-deadline) ("n" org-agenda-add-note) ("t" org-agenda-set-tags)
                                      ("I" org-agenda-clock-in) ("O" org-agenda-clock-out) ("C" org-agenda-clock-cancel)
-                                     ("T" org-agenda-todo) ("L" org-agenda-log-mode)
+                                     ("L" org-agenda-log-mode)
                                      ("C-c C-t" org-agenda-todo) ("C-c C-x C" org-agenda-cancel-task)
                                      ("C-c C-s" org-agenda-schedule) ("C-c C-d" org-agenda-deadline)
                                      ("C-c C-q" org-agenda-set-tags) ("C-c C-z" org-agenda-add-note)
@@ -1363,7 +1388,7 @@ Tuatara starts, take up the clocks left running in the agenda files
                                      ("i" org-capture-on-day)))
   (pushnew 'org-agenda-refresh-tick *tick-functions*)
   (pushnew 'org-clock-start-tick *tick-functions*)
-  (follow-directories-for 'org-agenda-watched-directories 'org-agenda-directories-changed)
+  (follow-directories-for 'org-agenda-watched-directories 'org-agenda-directories-changed :tells t)
   (pushnew 'org-calendar-mark-source *calendar-mark-functions*)
   (pushnew '(:calendar-marked org-calendar-goto-agenda "agenda") *calendar-day-openers* :test #'equal)
   (define-keys (mode-keymap 'calendar-mode) '(("a" org-calendar-goto-agenda) ("i" org-capture-on-day)))

@@ -527,11 +527,11 @@ macros besides."
 (define-test (docx-view hostile-documents)
   (with-test-directory (dir)
     (let ((w *docx-report-w*))
-      (false (tuatara.defaults::docx-safe-file-name-p "../x"))
-      (false (tuatara.defaults::docx-safe-file-name-p "/etc/passwd"))
-      (false (tuatara.defaults::docx-safe-file-name-p "a/./b"))
-      (false (tuatara.defaults::docx-safe-file-name-p "a\\b"))
-      (true (tuatara.defaults::docx-safe-file-name-p "word/media/image1.png"))
+      (false (tuatara.defaults::safe-part-name-p "../x"))
+      (false (tuatara.defaults::safe-part-name-p "/etc/passwd"))
+      (false (tuatara.defaults::safe-part-name-p "a/./b"))
+      (false (tuatara.defaults::safe-part-name-p "a\\b"))
+      (true (tuatara.defaults::safe-part-name-p "word/media/image1.png"))
       ;; a cell said to span four hundred million columns, a list four hundred million deep: read in a moment
       (let ((path (namestring (merge-pathnames "span.docx" dir))))
         (with-open-file (out path :direction :output :element-type '(unsigned-byte 8))
@@ -715,7 +715,7 @@ macros besides."
               (true (search "<w:drawing>" (part octets "word/header1.xml")))
               (true (search "relationships/image" (part octets "word/_rels/header1.xml.rels"))))
             ;; from elsewhere: left out, said so; the note's own link there too
-            (let ((tuatara.defaults::*org-latex* nil))
+            (let ((tuatara.defaults::*org-export* nil))
               (multiple-value-bind (octets file words)
                   (tuatara.defaults::org-docx-document (note (namestring (merge-pathnames "logo.png" elsewhere))
                                                              (format nil "~%* Pictures~%[[file:~a]]~%" (namestring (merge-pathnames "logo.png" elsewhere))))
@@ -734,12 +734,12 @@ macros besides."
                 (true (search (format nil "\\includegraphics{~alogo.png}" (namestring logos)) from-logos))
                 (false (search "includegraphics" from-elsewhere)))
               ;; one that is not there: left out, said so, the PDF still made
-              (multiple-value-bind (latex a b c notes)
+              (multiple-value-bind (latex a notes)
                   (tuatara.defaults::org-latex-document (format nil
                                                                 "#+template: ./plain.tex~%#+logo: gone.png~%~%Text~%")
                                                         :file note-path
                                                         :enhanced t)
-                (declare (ignore a b c))
+                (declare (ignore a))
                 (false (search "includegraphics" latex))
                 (true (find-if (lambda (n) (search "gone.png: no such picture, so left out" n)) notes))))))))))
 
@@ -802,6 +802,20 @@ macros besides."
         (true (search "#+caption: Counts " note) "~a" note)
         (false (cl-ppcre:scan "(?mi)^[ \\t]*#\\+include" note) "~a" note)))))
 
+(define-test (docx-view xml-elements-within-limits)
+  ;; elements found as text are held to the same depth and count as XML read whole
+  (flet ((nested (n) (format nil "~{~a~}~{~a~}" (make-list n :initial-element "<w:p>")
+                             (make-list n :initial-element "</w:p>")))
+         (siblings (n) (format nil "~{~a~}" (make-list n :initial-element "<w:p>x</w:p>"))))
+    (is equal '((0 . 33)) (tuatara.text:xml-elements (nested 3) "w:p"))
+    (is = 5 (length (tuatara.text:xml-elements (siblings 5) "w:p")))
+    (let ((tuatara.text:*xml-deepest* 20))
+      (true (tuatara.text:xml-elements (nested 10) "w:p"))
+      (fail (tuatara.text:xml-elements (nested 50) "w:p")))
+    (let ((tuatara.text:*xml-most-elements* 10))
+      (true (tuatara.text:xml-elements (siblings 10) "w:p"))
+      (fail (tuatara.text:xml-elements (siblings 20) "w:p")))))
+
 (define-test (docx-view names-escaped-in-word-xml)
   ;; a special block's name and a font's family with quotes and ampersands written as XML reads them
   (let* ((tuatara.defaults::*latex-main-font* "Kauri & \"Sons\"")
@@ -810,3 +824,80 @@ macros besides."
     (true (search (tuatara.defaults::xml-escape "Kauri & \"Sons\"") all))
     (false (search (string-capitalize "x&y\"z") all))
     (true (search (format nil "w:val=\"~a\"" (tuatara.defaults::xml-escape (string-capitalize "x&y\"z"))) all))))
+
+(define-test (docx-view words-never-footnote-references)
+  ;; words reading as a footnote reference stay words; a footnote's id never takes a comment's label;
+  ;; emphasis is kept on words holding its mark character
+  (with-test-directory (dir)
+    (let* ((path (namestring (merge-pathnames "notes.docx" dir)))
+           (z tuatara.defaults::*org-zero-width-space*))
+      (with-open-file (out path :direction :output :element-type '(unsigned-byte 8))
+        (write-sequence
+         (tuatara.defaults::zip-octets
+          `(("word/document.xml"
+             . ,(format nil "<w:document ~a><w:body><w:p><w:r><w:t>Words [fn:1] and [fn:c1] here</w:t></w:r><w:r><w:footnoteReference w:id=\"c1\"/></w:r></w:p><w:p><w:r><w:rPr><w:i/></w:rPr><w:t>and/or</w:t></w:r><w:r><w:t xml:space=\"preserve\"> on </w:t></w:r><w:r><w:rPr><w:b/></w:rPr><w:t>12/03</w:t></w:r></w:p></w:body></w:document>"
+                        *docx-report-w*))
+            ("word/footnotes.xml"
+             . ,(format nil "<w:footnotes ~a><w:footnote w:id=\"1\"><w:p><w:r><w:t>Never referred to.</w:t></w:r></w:p></w:footnote><w:footnote w:id=\"c1\"><w:p><w:r><w:t>A footnote.</w:t></w:r></w:p></w:footnote></w:footnotes>"
+                        *docx-report-w*))))
+         out))
+      (let ((note (tuatara.defaults::docx-read-note path)))
+        (true (search (format nil "Words [~afn:1] and [~afn:c1] here[fn:fc1]" z z) note) "~a" note)
+        (false (search "Never referred to" note) "~a" note)
+        (true (search "[fn:fc1] A footnote." note) "~a" note)
+        (true (search "/and/or/ on *12/03*" note) "~a" note)
+        (is string= "[fn:1]" (tuatara.defaults::org-safe-line-words (tuatara.defaults::org-safe-line "[fn:1]")))))))
+
+(define-test (docx-view parts-counted-once)
+  ;; a part read again is counted once against the limit on what a document's parts unpack to
+  (let* ((document (format nil "<w:document ~a><w:body><w:p><w:r><w:t>Kea</w:t></w:r></w:p></w:body></w:document>"
+                           *docx-report-w*))
+         (octets (tuatara.defaults::zip-octets `(("word/document.xml" . ,document))))
+         (tuatara.defaults::*docx-reading* (tuatara.defaults::docx-reading-of "kea.docx" octets))
+         (tuatara.defaults::*docx-largest-unpacked* (+ (length document) 10)))
+    (dotimes (i 3)
+      (true (tuatara.defaults::docx-reading-text "word/document.xml"))
+      (true (tuatara.defaults::docx-reading-octets-of "word/document.xml")))
+    (true (tuatara.defaults::docx-reading-part "word/document.xml"))))
+
+(define-test (docx-view picture-in-text-and-header)
+  ;; a picture shown in the text and in a header has its relation in each part's own relations
+  (with-test-directory (dir)
+    (let* ((source (write-docx-report (merge-pathnames "report.docx" dir)))
+           (note-path (namestring (merge-pathnames "note.org" dir)))
+           (logo (namestring (merge-pathnames "logo.png" dir))))
+      (with-open-file (out logo :direction :output :element-type '(unsigned-byte 8))
+        (write-sequence (png-octets 40 20) out))
+      (tuatara.defaults::docx-import source "pair" :directory (namestring (merge-pathnames "pair/" dir))
+                                                   :tex (namestring (merge-pathnames "pair.tex" dir))
+                                                   :note note-path)
+      (alexandria:write-string-into-file
+       "<w:hdr xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><w:p><w:r><w:t>{{{logo:path}}}</w:t></w:r></w:p></w:hdr>"
+       (merge-pathnames "pair/word/header1.xml" dir) :if-exists :supersede)
+      (flet ((part (octets name)
+               (let ((entry (zip-entry-named octets name)))
+                 (and entry (sb-ext:octets-to-string (tuatara.defaults::zip-entry-octets octets entry)
+                                                     :external-format :utf-8)))))
+        (let* ((octets (tuatara.defaults::org-docx-document
+                        (format nil "#+template: ./pair~%#+logo: ~a~%~%* Text~%[[file:~a]]~%" logo logo)
+                        :file note-path))
+               (header (part octets "word/header1.xml"))
+               (id (cl-ppcre:register-groups-bind (id) ("r:embed=\"([^\"]+)\"" header) id)))
+          (true id "~a" header)
+          (true (search (format nil "Id=\"~a\"" id) (or (part octets "word/_rels/header1.xml.rels") ""))))))))
+
+(define-test (docx-view template-without-content-types)
+  ;; a Word template with no [Content_Types].xml takes Tuatara's own types, a whole part
+  (with-test-directory (dir)
+    (let ((source (write-docx-report (merge-pathnames "report.docx" dir)))
+          (note-path (namestring (merge-pathnames "note.org" dir))))
+      (tuatara.defaults::docx-import source "bare" :directory (namestring (merge-pathnames "bare/" dir))
+                                                   :tex (namestring (merge-pathnames "bare.tex" dir))
+                                                   :note note-path)
+      (delete-file (uiop:parse-native-namestring (concatenate 'string (namestring dir) "bare/[Content_Types].xml")))
+      (let* ((octets (tuatara.defaults::org-docx-document (format nil "#+template: ./bare~%~%* Text~%Words~%")
+                                                          :file note-path))
+             (entry (zip-entry-named octets "[Content_Types].xml")))
+        (let ((types (and entry (sb-ext:octets-to-string (tuatara.defaults::zip-entry-octets octets entry)
+                                                         :external-format :utf-8))))
+          (true (and types (search "<Types" types) (search "word/numbering.xml" types)) "~a" types))))))

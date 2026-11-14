@@ -66,48 +66,53 @@ Returns the number replaced."
           (append (remove 'asked-match-highlights *highlight-functions*) (list 'asked-match-highlights)))
     (unwind-protect
         (flet ((past (m at)
-                 ;; after an empty match (^, $) the next is looked for a character on, so that it is never met again
+                 ;; after an empty match (^, $) the next is looked for a character on, never met again
                  (if (= (first m) (second m)) (tuatara.buffer:buffer-forward-char buffer at 1) at)))
-        (loop
-          (let ((m (and (<= pos (tuatara.buffer:buffer-size buffer)) (funcall next-match pos))))
-            (unless m (return))
-            (let ((folds (tuatara.display:folds-now buffer)))
-              (when (and folds (tuatara.display:folds-hiding folds (first m) (second m)))
-                (tuatara.display:unfold-region buffer (first m) (second m))))
-            (goto (second m))
-            (setf *asked-match* (list buffer (first m) (second m)))
-            (let* ((key (read-key (format nil (substitute-command-keys "Query replacing ~a with ~a: (\\`y' \\`n' \\`!' \\`.' \\`q')"
-                                                                        :marks t :for-format t)
-                                          from-description to-description)))
-                   (base (tuatara.frontend:key-base key)))
-              (setf *asked-match* nil)
-              (case base
-                ((#\y #\Space)
-                 (let ((after (tuatara.buffer:buffer-replace buffer (first m) (second m) (funcall replacement-for m))))
-                   (incf replaced) (goto after)
-                   (setf pos (if (= after (tuatara.buffer:buffer-size buffer)) (1+ after) (past m after)))))
-                ((#\n #\Backspace :backspace)
-                 (setf pos (if (= (second m) (tuatara.buffer:buffer-size buffer)) (1+ (second m)) (past m (second m)))))
-                (#\!
-                 (multiple-value-bind (remaining status count)
-                     (if rest
-                         (funcall rest (first m))
-                         (loop for match = (funcall next-match pos)
-                                 then (and (< (second match) (tuatara.buffer:buffer-size buffer))
-                                           (funcall next-match (past match (second match))))
-                               while match collect match))
-                   (when status
-                     ;; :background, the rest gone to a job of their own, which says how it ends
-                     (unless (eq status :background)
-                       (message "~:[Stopped~;Too many to replace in memory~] after ~:d more; ~:d replaced, the rest unchanged"
-                                (eq status :over) count replaced))
-                     (return-from query-replace-loop replaced))
-                   (incf replaced (replace-matches buffer remaining replacement-for))
-                   (return)))
-                (#\.
-                 (tuatara.buffer:buffer-replace buffer (first m) (second m) (funcall replacement-for m))
-                 (incf replaced) (return))
-                (t (return)))))))
+          (loop
+            (let ((m (and (<= pos (tuatara.buffer:buffer-size buffer)) (funcall next-match pos))))
+              (unless m (return))
+              (let ((folds (tuatara.display:folds-now buffer)))
+                (when (and folds (tuatara.display:folds-hiding folds (first m) (second m)))
+                  (tuatara.display:unfold-region buffer (first m) (second m))))
+              (goto (second m))
+              (setf *asked-match* (list buffer (first m) (second m)))
+              (let* ((key (read-key (format nil (substitute-command-keys
+                                                 "Query replacing ~a with ~a: (\\`y' \\`n' \\`!' \\`.' \\`q')"
+                                                 :marks t :for-format t)
+                                            from-description to-description)))
+                     (base (tuatara.frontend:key-base key)))
+                (setf *asked-match* nil)
+                (case base
+                  ((#\y #\Space)
+                   (let ((after (tuatara.buffer:buffer-replace buffer (first m) (second m)
+                                                               (funcall replacement-for m))))
+                     (incf replaced) (goto after)
+                     (setf pos (if (= after (tuatara.buffer:buffer-size buffer)) (1+ after) (past m after)))))
+                  ((#\n #\Backspace :backspace)
+                   (setf pos (if (= (second m) (tuatara.buffer:buffer-size buffer))
+                                 (1+ (second m))
+                                 (past m (second m)))))
+                  (#\!
+                   (multiple-value-bind (remaining status count)
+                       (if rest
+                           (funcall rest (first m))
+                           (loop for match = (funcall next-match pos)
+                                   then (and (< (second match) (tuatara.buffer:buffer-size buffer))
+                                             (funcall next-match (past match (second match))))
+                                 while match collect match))
+                     (when status
+                       ;; :background, the rest gone to a job of their own, which says how it ends
+                       (unless (eq status :background)
+                         (message "~:[Stopped~;Too many to replace in memory~] after ~:d more; ~
+~:d replaced, the rest unchanged"
+                                  (eq status :over) count replaced))
+                       (return-from query-replace-loop replaced))
+                     (incf replaced (replace-matches buffer remaining replacement-for))
+                     (return)))
+                  (#\.
+                   (tuatara.buffer:buffer-replace buffer (first m) (second m) (funcall replacement-for m))
+                   (incf replaced) (return))
+                  (t (return)))))))
       (setf *highlight-functions* (remove 'asked-match-highlights *highlight-functions*)))
     (message "~a" (replaced-words replaced))
     replaced))

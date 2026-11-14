@@ -84,25 +84,29 @@ with a hyphen nor longer than 63."
         (label "[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"))
     (format nil "(?<!~a)~a+@~a(?:\\.~a)*(?![A-Za-z0-9-]|\\.[A-Za-z0-9])" name name label label)))
 
-(defun url-pattern ()
-  "A web or FTP address, http, https, ftp or ftps (in any case), :// and the
-characters RFC 3986 lets a uniform resource identifier (URI) hold. Its end is
+(defun url-pattern (&key file)
+  "A web or FTP address, http, https, ftp or ftps (in any case), or with FILE
+a file:// address too, :// and the characters RFC 3986 lets a uniform
+resource identifier (URI) hold. Its end is
 not a dot, comma, semicolon, colon, mark, quote or bracket, which close a
 sentence rather than the address (RFC 3986, appendix C). The exception is a
-closing bracket whose opening one it holds: https://en.wikipedia.org/wiki/Kea_(bird)
-whole, (see https://x.nz/a) without the last bracket."
+closing bracket whose opening one it holds:
+https://en.wikipedia.org/wiki/Kea_(bird) whole, (see https://x.nz/a) without the
+last bracket."
   (let* ((inside "[A-Za-z0-9._~:/?#\\[\\]@!$&'*+,;=%-]")
          (last "[A-Za-z0-9_~/#@$&*+=%-]")
          (brackets (format nil "\\(~a*\\)" inside)))
-    (format nil "(?<![A-Za-z0-9+.-])(?:[Hh][Tt][Tt][Pp][Ss]?|[Ff][Tt][Pp][Ss]?)://(?:~a|~a)*(?:~a|~a)"
-            inside brackets last brackets)))
+    (format nil "(?<![A-Za-z0-9+.-])(?:[Hh][Tt][Tt][Pp][Ss]?|[Ff][Tt][Pp][Ss]?~:[~;|[Ff][Ii][Ll][Ee]~])://~
+                 (?:~a|~a)*(?:~a|~a)"
+            file inside brackets last brackets)))
 
 (defun uuid-pattern ()
   "A universally unique identifier (UUID) as RFC 9562 writes one: 8-4-4-4-12
 hex digits, its version (1 to 8) and variant (8, 9, a or b) where they
 stand; or the nil or max UUID."
   (let ((h "[0-9A-Fa-f]"))
-    (format nil "(?<![0-9A-Fa-f])(?:~a{8}-~a{4}-[1-8]~a{3}-[89ABab]~a{3}-~a{12}|0{8}-0{4}-0{4}-0{4}-0{12}|[Ff]{8}-[Ff]{4}-[Ff]{4}-[Ff]{4}-[Ff]{12})(?![0-9A-Fa-f])"
+    (format nil "(?<![0-9A-Fa-f])(?:~a{8}-~a{4}-[1-8]~a{3}-[89ABab]~a{3}-~a{12}~
+                 |0{8}-0{4}-0{4}-0{4}-0{12}|[Ff]{8}-[Ff]{4}-[Ff]{4}-[Ff]{4}-[Ff]{12})(?![0-9A-Fa-f])"
             h h h h h)))
 
 (defun guid-pattern ()
@@ -264,14 +268,20 @@ the Luhn check, and are followed by no digit."
                       (luhn-p digits length))
               return after))))
 
+(defun text-filter (function &rest arguments)
+  "A cl-ppcre filter that matches where FUNCTION says a match ends: FUNCTION
+is called with the text being matched, the position, the end of the text
+and ARGUMENTS, and gives the position after the match, or NIL when none
+stands there."
+  (lambda (position)
+    (apply function cl-ppcre::*string* position cl-ppcre::*end-pos* arguments)))
+
 (defun card-filter (&optional network)
   "A cl-ppcre filter that matches a card number of NETWORK (a name of
 *CARD-NUMBERS*), or of any network, where it stands (CARD-END)."
-  (let ((networks (if network
-                      (list (assoc network *card-numbers* :test #'string=))
-                      *card-numbers*)))
-    (lambda (position)
-      (card-end cl-ppcre::*string* position cl-ppcre::*end-pos* networks))))
+  (text-filter #'card-end (if network
+                              (list (assoc network *card-numbers* :test #'string=))
+                              *card-numbers*)))
 
 (defparameter *iban-lengths*
   '(("AD" . 24) ("AE" . 23) ("AL" . 28) ("AT" . 20) ("AZ" . 28) ("BA" . 20) ("BE" . 16) ("BG" . 22)
@@ -337,10 +347,11 @@ all small."
           '(simple-array (unsigned-byte 32) (64)))
   "SHA-256's round constants (FIPS 180-4).")
 
-(defun sha256 (octets end digest)
-  "The SHA-256 digest (FIPS 180-4) of the first END of OCTETS, at most 55,
-written into DIGEST, 32 octets, which it returns: for the few octets a check
-sums, as a Bitcoin address's. DIGEST may be OCTETS."
+(defun short-sha256 (octets end digest)
+  "The SHA-256 digest (FIPS 180-4) of the first END of OCTETS, a short
+message of at most 55 octets, which one block holds, written into DIGEST, 32
+octets, which it returns: for the few octets a check sums, as a Bitcoin
+address's. DIGEST may be OCTETS."
   (declare (optimize speed) (type (simple-array (unsigned-byte 8) (*)) octets digest) (type (integer 0 55) end))
   (let* ((k *sha256-constants*)
          (h (make-array 8 :element-type '(unsigned-byte 32)))
@@ -416,8 +427,9 @@ twice over the rest."
     ;; each leading 1 an octet of zero
     (and (loop for i below zeros always (zerop (aref octets i)))
          (member (aref octets 0) '(0 5))
-         (progn (sha256 octets 21 sum)
-                (sha256 sum 32 sum)
+         (progn (short-sha256 octets 21 sum)
+                (short-sha256 sum 32 sum)
+
                 (loop for i below 4 always (= (aref sum i) (aref octets (+ 21 i))))))))
 
 (defun bech32-step (check value)
@@ -747,17 +759,17 @@ taking it in."
                         finally (return (<= own width)))))))))
 
 (defun encoded-block-end (char-at run first start end table group padding least open)
-  "Where the block of RFC 4648 encoding that begins at START of a text
-\(before END), read by CHAR-AT and RUN from FIRST (CALL-WITH-TEXT-READER),
-ends, or NIL when none does: none begins on a line that goes on the block before it
-(CONTINUED-LINE-P). Its characters are those of TABLE (CHAR-TABLE), GROUP of
-them making whole octets, and the = PADDING allows after them (the counts of
-= it may hold); at least LEAST of them, a letter and a digit among them,
-followed by no letter, digit, +, /, -, _ or =. It may go on over lines of one
-length, a whole number of groups each and 16 or more, the last line no
-longer: the block is the most lines that make one. Cut by an END that is
-OPEN, a window's of a longer text, it is said to reach that end, so that the
-window grows and it is read whole."
+  "Where the block of RFC 4648 encoding that begins at START of a text (before
+END), read by CHAR-AT and RUN from FIRST (CALL-WITH-TEXT-READER), ends, or NIL
+when none does: none begins on a line that goes on the block before it
+\(CONTINUED-LINE-P). Its characters are those of TABLE (CHAR-TABLE), GROUP of
+them making whole octets, and the = PADDING allows after them (the counts of =
+it may hold); at least LEAST of them, a letter and a digit among them, followed
+by no letter, digit, +, /, -, _ or =. It may go on over lines of one length, a
+whole number of groups each and 16 or more, the last line no longer: the block
+is the most lines that make one. Cut by an END that is OPEN, a window's of a
+longer text, it is said to reach that end, so that the window grows and it is
+read whole."
   (declare (type function char-at run) (type fixnum first start end group least) (optimize speed))
   (when (continued-line-p char-at first start end table group)
     (return-from encoded-block-end nil))
@@ -851,15 +863,15 @@ from its first moment and before its last, when they are given."
             (utc (char= (char kinds 1) #\u))
             (low (bound low))
             (high (bound high)))
-        (lambda (position)
-          (multiple-value-bind (after day nanos zone)
-              (tuatara.dates:date-time-at cl-ppcre::*string* position cl-ppcre::*end-pos* format)
-            (when after
-              (when (and utc zone)
-                (setf (values day nanos) (tuatara.dates:utc-moment day nanos zone)))
-              (and (or (null low) (not (tuatara.dates:moment< day nanos (car low) (cdr low))))
-                   (or (null high) (tuatara.dates:moment< day nanos (car high) (cdr high)))
-                   after))))))))
+        (text-filter
+         (lambda (string position end)
+           (multiple-value-bind (after day nanos zone) (tuatara.dates:date-time-at string position end format)
+             (when after
+               (when (and utc zone)
+                 (setf (values day nanos) (tuatara.dates:utc-moment day nanos zone)))
+               (and (or (null low) (not (tuatara.dates:moment< day nanos (car low) (cdr low))))
+                    (or (null high) (tuatara.dates:moment< day nanos (car high) (cdr high)))
+                    after)))))))))
 
 (defun date-mark-spec (format utc low high)
   "The words a date filter's mark carries: FORMAT and UTC as *DATE-FAMILIES*
@@ -893,7 +905,8 @@ dates as written, cannot use."
                       name text (if utc "Z" "")))
     (when zone
       (unless utc
-        (refuse-pattern "invalid: [[:~a…:]] compares dates as they are written, with no offset: [[:~autc…:]] compares the moments in UTC"
+        (refuse-pattern "invalid: [[:~a…:]] compares dates as they are written, with no offset: ~
+                         [[:~autc…:]] compares the moments in UTC"
                         name name))
       (setf (values day nanos) (tuatara.dates:utc-moment day nanos zone)))
     (values day nanos unit)))
@@ -929,7 +942,9 @@ of that minute. Signals PATTERN-REFUSED for a bound that is no date."
                         ((char= (char words 0) #\:)
                          (let ((dots (search ".." words)))
                            (unless dots
-                             (refuse-pattern "invalid: [[:~a:A..B:]] wants two dots between its dates, either left out" name))
+                             (refuse-pattern "invalid: [[:~a:A..B:]] wants two dots between its dates, ~
+                                              either left out"
+                                             name))
                            (let ((a (subseq words 1 dots)) (b (subseq words (+ dots 2))))
                              (when (plusp (length a)) (setf low (start-of a)))
                              (when (plusp (length b)) (setf high (end-of b))))))
@@ -945,11 +960,11 @@ of that minute. Signals PATTERN-REFUSED for a bound that is no date."
 (defparameter *pattern-filters*
   (list* (cons "card" (lambda () (card-filter)))
          (cons "date" #'date-filter)
-         (cons "iban" (lambda () (lambda (position) (iban-end cl-ppcre::*string* position cl-ppcre::*end-pos*))))
-         (cons "bitcoin" (lambda () (lambda (position) (bitcoin-end cl-ppcre::*string* position cl-ppcre::*end-pos*))))
-         (cons "onion" (lambda () (lambda (position) (onion-end cl-ppcre::*string* position cl-ppcre::*end-pos*))))
-         (cons "base32" (lambda () (lambda (position) (base32-end cl-ppcre::*string* position cl-ppcre::*end-pos*))))
-         (cons "base64" (lambda () (lambda (position) (base64-end cl-ppcre::*string* position cl-ppcre::*end-pos*))))
+         (cons "iban" (lambda () (text-filter #'iban-end)))
+         (cons "bitcoin" (lambda () (text-filter #'bitcoin-end)))
+         (cons "onion" (lambda () (text-filter #'onion-end)))
+         (cons "base32" (lambda () (text-filter #'base32-end)))
+         (cons "base64" (lambda () (text-filter #'base64-end)))
          (loop for (name) in *card-numbers*
                collect (let ((name name)) (cons (format nil "card~a" name) (lambda () (card-filter name))))))
   "The filters a named pattern may hold (*FILTER-MARK*), each (NAME . MAKER),
@@ -996,7 +1011,9 @@ Luhn check digit right (ISO/IEC 7812)."
          collect (list name (format nil "a ~a card number, its check digit right" name) (card-pattern name)))
    (loop for (name format utc) in *date-families*
          collect (list name
-                       (format nil "a date~a~:[~;, a bound with an offset compared in UTC~], [[:~a<2026-07-01:]] and the like for a range"
+                       (format nil "a date~a~:[~;, a bound with an offset compared in UTC~], ~
+                                    [[:~a<2026-07-01:]] and the like for a range"
+
                                (ecase format
                                  (:iso " as RFC 3339 and ISO 8601 write it, 2026-06-30 or 2026-06-30T14:05:00+02:00")
                                  (:dmy ", day, month, year, 30.06.2026, 30/06/2026 or 30-06-2026 14:05")

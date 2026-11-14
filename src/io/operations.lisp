@@ -21,24 +21,18 @@ it is), as the system is given it: its octets, a null (NUL) after them."
   (terminated-octets (tuatara.text:string-octets (native path))))
 
 (defmacro with-path-sap ((sap path) &body body)
-  "Run BODY with SAP pointing at PATH's name as the system is given it."
-  (let ((octets (gensym "OCTETS")))
-    `(let ((,octets (path-octets ,path)))
-       (with-octets-sap (,sap ,octets) ,@body))))
+  "Run BODY with SAP pointing at PATH's name as the system is given it
+\(WITH-C-STRING: no garbage made); BODY must not keep SAP."
+  `(with-c-string (,sap (native ,path)) ,@body))
 
 (defun real-path (path)
   "PATH with every symbolic link in it followed and . and .. taken out, as
 the system finds it; NIL when it is not there."
   (with-path-sap (name path)
-    (let ((found (sb-alien:alien-funcall
-                  (sb-alien:extern-alien "realpath" (function sb-sys:system-area-pointer sb-sys:system-area-pointer
-                                                              sb-sys:system-area-pointer))
-                  name (sb-sys:int-sap 0))))
+    (let ((found (%realpath name (sb-sys:int-sap 0))))
       (unless (null-pointer-p found)
         (unwind-protect (tuatara.text:octets-string (sap-octets found))
-          (sb-alien:alien-funcall (sb-alien:extern-alien "free"
-                                                         (function sb-alien:void
-                                                                   sb-sys:system-area-pointer)) found))))))
+          (%free found))))))
 
 (defun real-path-so-far (path)
   "PATH with every link in it followed and . and .. taken out as far as it is
@@ -66,12 +60,7 @@ is /etc/file."
   "Renameat2: the entry named at OLD (a pointer to a name ending in null
 (NUL)) of the directory open as FROM-DIRFD named NEW in TO-DIRFD's, with
 FLAGS (1 never over one there already). 0 when done, else -1 and the errno."
-  (if (zerop (sb-alien:alien-funcall
-              (sb-alien:extern-alien "renameat2" (function sb-alien:int sb-alien:int sb-sys:system-area-pointer
-                                                           sb-alien:int
-                                                           sb-sys:system-area-pointer
-                                                           sb-alien:unsigned-int))
-              from-dirfd old to-dirfd new flags))
+  (if (zerop (%renameat2 from-dirfd old to-dirfd new flags))
       0
       (values -1 (sb-alien:get-errno))))
 
@@ -93,18 +82,9 @@ TO is on another file system."
             (fail "rename" path errno)))
         (let ((stamp (or (values (statx-octets from-dirfd from #x100)) (fail "rename" path))))
           (unless (eq (stamp-kind stamp) :directory)
-            (if (zerop (sb-alien:alien-funcall
-                        (sb-alien:extern-alien "linkat" (function sb-alien:int sb-alien:int sb-sys:system-area-pointer
-                                                                  sb-alien:int sb-sys:system-area-pointer sb-alien:int))
-                        from-dirfd old-sap to-dirfd new-sap 0))
+            (if (zerop (%linkat from-dirfd old-sap to-dirfd new-sap 0))
                 (return-from rename-without-replacing
-                  (check-call (sb-alien:alien-funcall
-                               (sb-alien:extern-alien "unlinkat"
-                                                      (function sb-alien:int
-                                                                sb-alien:int
-                                                                sb-sys:system-area-pointer
-                                                                sb-alien:int))
-                               from-dirfd old-sap 0)
+                  (check-call (%unlinkat from-dirfd old-sap 0)
                               "rename" path))
                 (let ((errno (sb-alien:get-errno)))
                   (unless (member errno (list sb-posix:eperm sb-posix:eopnotsupp sb-posix:emlink))
@@ -193,6 +173,14 @@ refused (WRITING-REFUSED) where nothing may be written, told by the directory it
 is in, held open."
   (call-with-parent path (lambda (dirfd name) (remove-entry-at dirfd name (native path) nil)) :writing "delete"))
 
+(defun remove-file-if-there (path)
+  "Take away the name PATH of a file or a symbolic link as REMOVE-FILE does,
+and return true; NIL, nothing done, when nothing is there. Other failures
+signal as REMOVE-FILE's do."
+  (handler-case (progn (remove-file path) t)
+    (file-system-error (condition)
+      (if (eql (file-system-error-errno condition) sb-posix:enoent) nil (error condition)))))
+
 (defun touch-path (path)
   "Set the access and modification times of the file or directory at PATH to
 now; a symbolic link's own times, not those of where it leads. Refused
@@ -209,10 +197,7 @@ which may be there."
                                                  "it has ~d names, and one may be in an evidence directory"
                                                  (stamp-nlink stamp)))))
      (with-octets-sap (sap (terminated-octets name))
-       (check-call (sb-alien:alien-funcall
-                    (sb-alien:extern-alien "utimensat" (function sb-alien:int sb-alien:int sb-sys:system-area-pointer
-                                                                 sb-sys:system-area-pointer sb-alien:int))
-                    dirfd sap (sb-sys:int-sap 0) #x100)                ; AT_SYMLINK_NOFOLLOW
+       (check-call (%utimensat dirfd sap (sb-sys:int-sap 0) #x100)  ; AT_SYMLINK_NOFOLLOW
                    "touch" path)))
    :writing "touch"))
 
@@ -223,14 +208,16 @@ may be written, told by the directory it is made in, held open."
   (call-with-parent
    path
    (lambda (dirfd name)
-     (with-path-sap (to target)
-       (with-octets-sap (sap (terminated-octets name))
-         (check-call (sb-alien:alien-funcall
-                      (sb-alien:extern-alien "symlinkat" (function sb-alien:int sb-sys:system-area-pointer
-                                                                   sb-alien:int sb-sys:system-area-pointer))
-                      to dirfd sap)
-                     "make the link" path))))
+     (symbolic-link-at (tuatara.text:string-octets (native target)) dirfd name path))
    :writing "make the link"))
+
+(defun symbolic-link-at (target dirfd name path)
+  "Make the entry NAME (octets) of the directory open as DIRFD a symbolic link
+holding TARGET (octets), as it is written in the link; a FILE-SYSTEM-ERROR,
+PATH named, when NAME is taken or it cannot be made."
+  (with-octets-sap (to (terminated-octets target))
+    (with-octets-sap (sap (terminated-octets name))
+      (check-call (%symlinkat to dirfd sap) "make the link" path))))
 
 (defun make-hard-link (from path)
   "Give the file at FROM the second name PATH, on the same drive: one file,
@@ -245,10 +232,7 @@ changes (its count of names, its time of change)."
    (lambda (dirfd name)
      (with-path-sap (old from)
        (with-octets-sap (sap (terminated-octets name))
-         (check-call (sb-alien:alien-funcall
-                      (sb-alien:extern-alien "linkat" (function sb-alien:int sb-alien:int sb-sys:system-area-pointer
-                                                                sb-alien:int sb-sys:system-area-pointer sb-alien:int))
-                      +at-fdcwd+ old dirfd sap 0)
+         (check-call (%linkat +at-fdcwd+ old dirfd sap 0)
                      "make the link" path))))
    :writing "make the link"))
 
@@ -306,7 +290,7 @@ phrase, refused (WRITING-REFUSED) when nothing may be written at PATH, told
 by where the directory opened really is."
   (multiple-value-bind (parent name) (path-directory-and-name (string-right-trim "/" (native path)))
     (let ((own (tuatara.text:string-octets name)))
-      (when (or (zerop (length own)) (equalp own #(46)) (equalp own #(46 46)))
+      (when (or (zerop (length own)) (dot-entry-name-p own))
         (error 'file-system-error :operation "change" :path path :reason "it names no entry of a directory"))
       ;; O_PATH: a directory you may write in but not list (-wx) is opened all the same
       (let ((dirfd (handler-case (sb-posix:open parent (logior +o-path+ +o-directory+ +o-cloexec+))
@@ -320,7 +304,7 @@ by where the directory opened really is."
 (FD), but . and .., sorted; FD stays open."
   (let ((names '()))
     (map-directory-fd (lambda (octets)
-                        (unless (or (equalp octets #(46)) (equalp octets #(46 46)))
+                        (unless (dot-entry-name-p octets)
                           (push octets names)))
                       fd path)
     (sort names (lambda (a b) (minusp (octets-compare a b))))))
@@ -342,26 +326,15 @@ symbolic link not followed; a FILE-SYSTEM-ERROR when it is not there."
 as the umask allows; a FILE-SYSTEM-ERROR, PATH named, when it cannot be made."
   (let ((held (terminated-octets name)))
     (with-octets-sap (sap held)
-      (check-call (sb-alien:alien-funcall
-                   (sb-alien:extern-alien "mkdirat"
-                                          (function sb-alien:int
-                                                    sb-alien:int
-                                                    sb-sys:system-area-pointer
-                                                    sb-alien:unsigned-int))
-                   dirfd sap mode)
+      (check-call (%mkdirat dirfd sap mode)
                   "make the directory" path))))
 
 (defun remove-entry-at (dirfd name path directory)
   "Take away the entry NAME (octets) of the directory open as DIRFD: an empty
 directory when DIRECTORY, else a file or a symbolic link; a FILE-SYSTEM-ERROR,
 PATH named, when it cannot be."
-  (let ((held (terminated-octets name)))
-    (with-octets-sap (sap held)
-      (check-call (sb-alien:alien-funcall
-                   (sb-alien:extern-alien "unlinkat"
-                                          (function sb-alien:int sb-alien:int sb-sys:system-area-pointer sb-alien:int))
-                   dirfd sap (if directory #x200 0))                     ; AT_REMOVEDIR
-                  "delete" path))))
+  (multiple-value-bind (done errno) (unlink-entry-at dirfd name :directory directory)
+    (unless done (fail "delete" path errno))))
 
 (defun set-fd-modification-time (fd nanoseconds)
   "Give the file open as file descriptor (FD) the modification time
@@ -375,9 +348,7 @@ left as it is."
             (sb-sys:sap-ref-64 sap 8) (- (ash 1 30) 2)
             (sb-sys:signed-sap-ref-64 sap 16) (if now 0 (floor nanoseconds 1000000000))
             (sb-sys:sap-ref-64 sap 24) (if now (- (ash 1 30) 1) (mod nanoseconds 1000000000)))
-      (sb-alien:alien-funcall
-       (sb-alien:extern-alien "futimens" (function sb-alien:int sb-alien:int sb-sys:system-area-pointer))
-       fd sap))))
+      (%futimens fd sap))))
 
 (defun regular-fd-stamp (in path)
   "The stamp of the file open as IN, PATH's; a FILE-SYSTEM-ERROR when it is
@@ -492,14 +463,7 @@ their paths, for messages), DEPTH directories down the tree (CHECK-TREE-DEPTH)."
                                                           (setf last done))))))
       (:symlink
        (let ((target (or (link-octets from-dirfd from-name) (fail "read the link" path))))
-         (let ((held-target (terminated-octets target)) (held-name (terminated-octets to-name)))
-           (with-octets-sap (target-sap held-target)
-             (with-octets-sap (name-sap held-name)
-               (check-call (sb-alien:alien-funcall
-                            (sb-alien:extern-alien "symlinkat" (function sb-alien:int sb-sys:system-area-pointer
-                                                                         sb-alien:int sb-sys:system-area-pointer))
-                            target-sap to-dirfd name-sap)
-                           "make the link" to-path)))))
+         (symbolic-link-at target to-dirfd to-name to-path))
        t)
       (:directory
        (check-tree-depth depth path)
@@ -542,7 +506,8 @@ leaves is a hidden .tuatara-copy-... name."
                         (lambda (from-dirfd from-name)
                           (call-with-parent scratch
                             (lambda (to-dirfd to-name)
-                              (copy-entry-at from-dirfd from-name to-dirfd to-name (native from) scratch cancel progress skipped))
+                              (copy-entry-at from-dirfd from-name to-dirfd to-name (native from) scratch
+                                             cancel progress skipped))
                             :writing "copy")))))
            (unless (and cancel (car cancel))
              (check-writing to "copy")
@@ -585,6 +550,93 @@ deleting goes on: only what is in PATH is deleted."
   (check-tree-writing path "delete")
   (call-with-parent path (lambda (dirfd name) (delete-entry-at dirfd name (native path) cancel)) :writing "delete")
   t)
+
+(defun walk-directory (root function &key list breadth-first max-depth same-device follow-links cancel limit)
+  "Go through the directory ROOT (a native name ending in /) and the directories under
+it, ROOT first, calling FUNCTION with three arguments. On entering a directory,
+they are the directory (a native name ending in /), its path from ROOT (\"\" for
+ROOT, else ending in /) and NIL. Then, for each entry of it by name, they are
+the directory, its path from ROOT and the entry, a list as
+TUATARA.IO:DIRECTORY-ENTRIES gives it with stamps, as (NAME KIND SIZE OWN
+STAMP). A directory among the entries is entered when FUNCTION returns true for
+it: depth first, just after its entry, or with BREADTH-FIRST once every directory
+nearer ROOT has been gone through. A link to a directory is entered only with
+FOLLOW-LINKS, and never when it leads to a directory above it, which would be
+entered round and round. With MAX-DEPTH, no directory more than MAX-DEPTH
+below ROOT is entered. With SAME-DEVICE, no directory of another file system
+than ROOT's is entered (a drive mounted below it, /proc), nor one that could
+not be examined. LIST, a function of a directory, gives its entries in place
+of TUATARA.IO:DIRECTORY-ENTRIES (NIL for a directory that cannot be read); an
+entry of only (NAME KIND) counts as no link. CANCEL, a cons, ends the walk
+when its car turns true, looked at as each directory is entered; LIMIT ends it
+once that many directories were entered. True when every directory wanted was
+gone through, NIL when CANCEL or LIMIT ended it."
+  (let ((device (and same-device (let ((stamp (path-stamp root :failure nil)))
+                                   (and stamp (stamp-dev stamp)))))
+        (entered 0)
+        (waiting '()) (last nil))
+    (labels ((entries (directory)
+               (if list
+                   (funcall list directory)
+                   (tuatara.runtime:ignoring-errors-reported ("listing ~a" directory)
+                     (directory-entries directory :stamps t))))
+             (key (stamp)
+               (and stamp (cons (stamp-dev stamp) (stamp-ino stamp))))
+             (enter (directory relative depth above)
+               (when (or (and cancel (car cancel)) (and limit (>= entered limit)))
+                 (return-from walk-directory nil))
+               (incf entered)
+               (funcall function directory relative nil)
+               (dolist (entry (entries directory))
+                 (destructuring-bind (name kind &optional size (own kind) stamp) entry
+                   (declare (ignore size))
+                   (when (and (funcall function directory relative entry)
+                              (eq kind :directory)
+                              (or follow-links (eq own kind))
+                              (or (null max-depth) (< depth max-depth))
+                              (or (not same-device) (and stamp (eql device (stamp-dev stamp))))
+                              ;; a link to a directory above it would be entered round and round
+                              (not (and follow-links stamp (member (key stamp) above :test #'equal))))
+                     (let ((dir (list (concatenate 'string directory name "/")
+                                      (concatenate 'string relative name "/")
+                                      (1+ depth)
+                                      (and follow-links (cons (key stamp) above)))))
+                       (cond ((not breadth-first) (apply #'enter dir))
+                             (last (setf (cdr last) (list dir) last (cdr last)))
+                             (t (setf waiting (list dir) last waiting)))))))))
+      (enter (directory-name root) "" 0 (and follow-links (list (key (path-stamp root :failure nil)))))
+      (loop while waiting
+            do (let ((dir (pop waiting)))
+                 (unless waiting (setf last nil))
+                 (apply #'enter dir))))
+    t))
+
+(defun tree-size (directory &key (seen (make-hash-table :test 'equal)) wanted)
+  "The octets the files in DIRECTORY (a native name ending in /) and under it
+take, hidden ones too: each file once however many names it has (SEEN, a
+table of those counted), links not followed, and directories of another file
+system (a drive mounted below it, /proc) left out. WANTED, a function of no
+arguments, is asked every 64 directories whether the sum is still wanted: NIL is
+given when it says no."
+  (let ((total 0) (dirs 0))
+    (walk-directory directory
+                    (lambda (dir relative entry)
+                      (declare (ignore dir relative))
+                      (if (null entry)
+                          (when (and wanted (zerop (mod (incf dirs) 64)) (not (funcall wanted)))
+                            (return-from tree-size nil))
+                          (destructuring-bind (name kind size own &optional stamp) entry
+                            (declare (ignore name))
+                            (when (and (eq kind :regular) (eq own kind))
+                              ;; only a file with several names can be met twice
+                              (let ((key (and stamp (> (stamp-nlink stamp) 1)
+                                              (cons (stamp-dev stamp) (stamp-ino stamp)))))
+                                (unless (and key (gethash key seen))
+                                  (when key (setf (gethash key seen) t))
+                                  (incf total (or size 0)))))
+                            t)))
+                    :same-device t)
+    total))
 
 (defun check-tree-writing (path operation)
   "Signal WRITING-REFUSED for OPERATION on PATH when nothing may be written
@@ -629,7 +681,8 @@ COPY-PATH-TREE has it."
                 (when (path-stamp to :follow nil)
                   (tuatara.runtime:ignoring-errors-reported ("taking away what was copied to ~a" to) (delete-tree to)))
                 (error 'file-system-error :operation "move" :path from
-                                          :reason (format nil "not all of it could be copied to ~a; it is left where it was" to))))
+                                          :reason (format nil "not all of it could be copied to ~a; it is left where ~
+                                                               it was" to))))
           (error e))))
   to)
 
@@ -731,17 +784,46 @@ when neither is."
                        (drive-trash-sound-p trash top))
               (return (values trash top))))))))
 
-(defun clean-path (path &key strict)
+(defun clean-path (path &key strict relative)
   "PATH, a native name taken from the root, with . and .. taken away as they
 would lead and every / doubled or at its end left out: /a/b/../c/./ is /a/c,
 and the root is /. A .. at the root stays there, as the system has it; with
-STRICT, NIL then instead."
+STRICT, NIL then instead. With RELATIVE, PATH is taken from a directory it
+does not name: no / goes before it, a .. climbing above that directory is
+kept (a/../../b is ../b), and \"\" is the directory itself."
   (let ((parts '()))
     (dolist (part (uiop:split-string path :separator "/"))
       (cond ((or (string= part "") (string= part ".")))
-            ((string= part "..") (if parts (pop parts) (when strict (return-from clean-path nil))))
+            ((string= part "..")
+             (cond ((and parts (string/= (first parts) "..")) (pop parts))
+                   (relative (push part parts))
+                   (strict (return-from clean-path nil))))
             (t (push part parts))))
-    (format nil "/~{~a~^/~}" (reverse parts))))
+    (format nil "~:[/~;~]~{~a~^/~}" relative (reverse parts))))
+
+(defun dot-entry-name-p (name)
+  "True when NAME, a string or the octets of a name, is . or .., the entries
+of every directory that name it and the one above, no file of its own."
+  (if (stringp name)
+      (or (string= name ".") (string= name ".."))
+      (or (equalp name #(46)) (equalp name #(46 46)))))
+
+(defun fit-name (name &key (most 255))
+  "NAME, a file name, cut to take at most MOST octets in UTF-8 (255, the most
+a name may take on Linux file systems), never within a character: what comes
+before its ending is shortened, the ending (from its last full stop, when that
+is among its last 16 characters) kept. NAME itself when it fits."
+  (if (<= (tuatara.text:string-octet-length name) most)
+      name
+      (let* ((dot (position #\. name :from-end t))
+             (ending (if (and dot (plusp dot) (> dot (- (length name) 17))) (subseq name dot) ""))
+             (room (max 0 (- most (tuatara.text:string-octet-length ending))))
+             (end (loop with used = 0
+                        for i from 0 below (- (length name) (length ending))
+                        do (incf used (tuatara.text:char-octet-length (char name i)))
+                        when (> used room) return i
+                        finally (return i))))
+        (concatenate 'string (subseq name 0 end) ending))))
 
 (defun path-within-p (path top)
   "True when PATH, its . and .. taken as written, is the directory TOP or
@@ -770,6 +852,15 @@ PATH is not there yet: what a file or a program may have the editor read or
 write is checked so."
   (let ((top (clean-path (real-path-so-far directory) :strict t)))
     (and top (path-within-p (real-path-so-far path) top))))
+
+(defun path-in-directories-p (path directories)
+  "True when the file at PATH (native) is in one of DIRECTORIES or under it,
+links followed (REALLY-WITHIN-P); DIRECTORIES are directory names, ~ standing
+for your home directory."
+  (some (lambda (directory)
+          (let ((directory (native (expand-path directory))))
+            (and directory (really-within-p path directory))))
+        directories))
 
 (defun percent-encoded (text &key (safe ""))
   "TEXT's octets in UTF-8, those other than ASCII letters, digits and the
@@ -857,7 +948,7 @@ trash for it."
                (write-octets fd (tuatara.text:string-octets
                                  (format nil "[Trash Info]~%Path=~a~%DeletionDate=~a~%"
                                          (url-path (trash-info-path path top))
-                                         (tuatara.dates:format-time "%FT%T" time)))
+                                         (tuatara.runtime:local-time-stamp time #\T)))
                              :path info)
             (sb-posix:close fd))
           (handler-case (rename-checked path (target n))
@@ -869,10 +960,15 @@ trash for it."
 (defun numbered-name (name n &optional (style :brackets))
   "NAME for the Nth try at a name not taken: NAME itself, then NAME with
 \(2), (3) and so on before its ending, as report (2).pdf; with STYLE
-:DASH, -2, -3 and so on, as report-2.pdf, for a name with no space."
-  (cond ((= n 1) name)
-        ((eq style :dash) (format nil "~a-~d~@[.~a~]" (native-file-stem name) n (native-file-type name)))
-        (t (format nil "~a (~d)~@[.~a~]" (native-file-stem name) n (native-file-type name)))))
+:DASH, -2, -3 and so on, as report-2.pdf, for a name with no space. What
+comes before the number is shortened where the whole would take more than
+the 255 octets a name may (FIT-NAME)."
+  (if (= n 1)
+      name
+      (let ((tail (format nil (if (eq style :dash) "-~d~@[.~a~]" " (~d)~@[.~a~]") n (native-file-type name))))
+        (concatenate 'string
+                     (fit-name (native-file-stem name) :most (max 1 (- 255 (tuatara.text:string-octet-length tail))))
+                     tail))))
 
 (defun create-free-file (directory name-of &key (mode #o600) (usable (constantly t)))
   "A new, empty file in DIRECTORY, made with MODE under the first name that
@@ -891,13 +987,7 @@ written, told by DIRECTORY, held open."
            for name = (funcall name-of n)
            for path = (path-join directory name)
            do (when (funcall usable n)
-                (multiple-value-bind (fd errno)
-                    (openat-octets dirfd (tuatara.text:string-octets name)
-                                   (logior sb-posix:o-wronly
-                                           sb-posix:o-creat
-                                           sb-posix:o-excl
-                                           +o-nofollow+
-                                           +o-cloexec+) mode)
+                (multiple-value-bind (fd errno) (open-new-entry dirfd name mode)
                   (cond (fd (return (values fd path n)))
                         ((/= errno sb-posix:eexist) (fail "make" path errno)))))
            finally (error 'file-system-error :operation "find a free name in" :path directory
@@ -969,13 +1059,15 @@ octets overwritten so far, all passes counted. Returns T once it is gone."
                 (let ((hidden (tuatara.text:string-octets (concatenate 'string "." (random-name)))))
                   (flet ((same-file-p (name)
                            (let ((now (entry-stamp dirfd name native)))
-                             (and (= (stamp-dev now) (stamp-dev stamp)) (= (stamp-ino now) (stamp-ino stamp))))))
-                    (unless (same-file-p own)
-                      (error 'file-system-error :operation "wipe" :path native :reason "its name was given to another file meanwhile"))
+                             (and (= (stamp-dev now) (stamp-dev stamp)) (= (stamp-ino now) (stamp-ino stamp)))))
+                         (taken ()
+                           (error 'file-system-error :operation "wipe" :path native
+                                                     :reason "its name was given to another file meanwhile")))
+                    (unless (same-file-p own) (taken))
                     (rename-entry-at dirfd own hidden native)
                     (if (same-file-p hidden)
                         (remove-entry-at dirfd hidden native nil)
-                        (error 'file-system-error :operation "wipe" :path native :reason "its name was given to another file meanwhile"))))
+                        (taken))))
                 (sync-directory (parent-path native)))
            (sb-posix:close fd)
            (when random (sb-posix:close random))

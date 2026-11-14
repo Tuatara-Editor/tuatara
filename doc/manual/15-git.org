@@ -743,8 +743,23 @@ the remote. Of the two, ~- f~ is the careful one: it refuses if the remote
 has something you have not seen. ~- n~ only tries, and reports what a push
 would send.
 
-Tuatara does not ask for passwords itself. With an address that uses ssh,
-your keys come from the ssh agent of your system. If the server refuses,
+With an address that uses ssh, your keys come from the ssh agent of your
+system. What ssh asks comes to the minibuffer, as it does for a file on a
+server (chapter 9). The first time you reach a server, ssh asks whether to
+accept its key and shows the key's type and fingerprint. Compare the
+fingerprint with the one the server's owner publishes, such as the page of
+fingerprints of a hosting service, then type =yes=. ssh adds the key to your
+known hosts and git goes on. Anything else refuses, and the echo area says
+=git pull: the server's key was not accepted, so ssh does not know it yet=.
+A key with a passphrase the agent does not hold is asked for the same way,
+and stays on your computer.
+
+A key that has changed since ssh last saw it is never offered. The echo area
+says the server's key differs from the one ssh knows, that this may be an
+attack, and that nothing was changed. Ask the person who runs the server.
+With no frame to ask in, as a daemon with no client, ssh asks nothing. A
+server whose key it does not know is refused, and the echo area names it:
+=git fetch: ssh does not know github.com's key yet=. For any other refusal
 Tuatara shows git's own words.
 
 The remote menu looks after the remotes themselves: ~M a~ adds one and ~M u~

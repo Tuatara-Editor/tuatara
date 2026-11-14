@@ -35,9 +35,10 @@ TEXT), or with BY-DIRECTORY, those of the directories in it, each (DIRECTORY-NAM
 FILE-NAME TEXT); in order of their names. With TYPE, only the files with that
 ending (\"tex\")."
   (let ((root (merge-pathnames dir *data-directory*)))
-    `',(loop for file in (sort (directory (merge-pathnames (make-pathname :directory (if by-directory '(:relative :wild) nil)
-                                                                          :name :wild :type (or type :wild))
-                                                           root))
+    `',(loop for file in (sort (directory (merge-pathnames
+                                            (make-pathname :directory (if by-directory '(:relative :wild) nil)
+                                                           :name :wild :type (or type :wild))
+                                            root))
                                #'string< :key #'namestring)
              when (pathname-name file)
                collect (append (and by-directory (list (car (last (pathname-directory file)))))
@@ -81,7 +82,8 @@ cannot be read as NIL. A directory that is not there has none."
         append (loop for (name kind) in (tuatara.io:directory-entries place)
                      when (and (eq kind :regular) (own-file-name-p name))
                        collect (cons name (handler-case (tuatara.io:file-text (concatenate 'string place name)
-                                                                              :limit (* 1024 1024) :too-large (constantly nil))
+                                                                              :limit (* 1024 1024)
+                                                                              :too-large (constantly nil))
                                             (tuatara.io:file-system-error () nil))))))
 
 (defun in-place-of-own (yours own key)
@@ -101,7 +103,8 @@ already is visited as it is, never written over."
         (progn (tuatara.io:ensure-directories place)
                (tuatara.io:write-private-file path text)
                (visit-path path)
-               (message "Copied the ~a ~a to ~a: yours takes the place of Tuatara's" what file-name (abbreviated-path path))))))
+               (message "Copied the ~a ~a to ~a: yours takes the place of Tuatara's"
+                        what file-name (abbreviated-path path))))))
 
 (defun copy-chosen-own-file (prompt candidates directories what)
   "Ask with PROMPT for one of CANDIDATES, each one of Tuatara's own WHAT

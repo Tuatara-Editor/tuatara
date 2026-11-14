@@ -225,6 +225,13 @@
         (let ((bytes (consed text)))
           (true (< bytes 8000) "~d bytes to read ~s" bytes text))))))
 
+(define-test (dates file-date-running-into-digits-is-none)
+  ;; a date as a file writes it, followed by more digits, names no date
+  (is equal '(nil) (multiple-value-list (tuatara.dates:iso-date-time "2024-03-011")))
+  (is equal '(nil) (multiple-value-list (tuatara.dates:iso-date-time "2024-03-0123")))
+  (is equal (list (encode-universal-time 0 0 0 1 3 2024 0) nil)
+      (multiple-value-list (tuatara.dates:iso-date-time "2024-03-01 and more"))))
+
 (define-test (dates written-in-files-read-where-they-stand)
   ;; dates as XMP, ISO 8601 and PDF write them, read by the readers the search reads dates with
   (flet ((iso (text) (multiple-value-list (tuatara.dates:iso-date-time text))))

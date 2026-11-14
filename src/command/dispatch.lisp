@@ -41,19 +41,25 @@ fallback map, and the global map.
 For KEY, when given and a mouse key over a window's text, the buffer is that
 window's rather than the current one, so that a click acts as that buffer's
 keys say at once."
-  (if (editor-minibuffer-active editor)
-      (remove nil (list (popup-keys editor) *minibuffer-question-keymap* (editor-minibuffer-keymap editor)))
-      (let* ((window (or (and key (mouse-key-window editor key)) (editor-window editor)))
-             (buffer (and window (tuatara.display:window-buffer window))))
-        (remove nil (list* (popup-keys editor)
-                           (editor-transient-map editor)
-                           (and buffer (buffer-override-keymap buffer))
-                           (append (and buffer (editor-state-keymap editor)
-                                        (host-state-keymaps tuatara.runtime:*host* buffer (editor-state-keymap editor)))
-                                   (list (editor-state-keymap editor)
-                                         (and buffer (tuatara.buffer:buffer-local buffer :keymap))
-                                         (editor-fallback-keymap editor)
-                                         (editor-global-keymap editor))))))))
+  (let ((maps '()))
+    (flet ((add (map) (when map (push map maps))))
+      (add (popup-keys editor))
+      (if (editor-minibuffer-active editor)
+          (progn (add *minibuffer-question-keymap*)
+                 (add (editor-minibuffer-keymap editor)))
+          (let* ((window (or (and key (mouse-key-window editor key)) (editor-window editor)))
+                 (buffer (and window (tuatara.display:window-buffer window)))
+                 (state (editor-state-keymap editor)))
+            (add (editor-transient-map editor))
+            (when buffer
+              (add (buffer-override-keymap buffer))
+              (when state
+                (dolist (map (host-state-keymaps tuatara.runtime:*host* buffer state)) (add map))))
+            (add state)
+            (when buffer (add (tuatara.buffer:buffer-local buffer :keymap)))
+            (add (editor-fallback-keymap editor))
+            (add (editor-global-keymap editor)))))
+    (nreverse maps)))
 
 (defgeneric host-show-prefix-help (host editor prefix)
   (:documentation "List every key under PREFIX, a prefix key's specs, when \\`C-h'
@@ -97,8 +103,7 @@ Escape as itself.
   "True when the current buffer wants keys as they were typed, Escape as
 Escape: its :KEYS-AS-TYPED local, a function of the buffer saying so (a
 terminal while it is typed into)."
-  (let* ((window (and *editor* (editor-window *editor*)))
-         (buffer (and window (tuatara.display:window-buffer window)))
+  (let* ((buffer (selected-window-buffer))
          (wants (and buffer (tuatara.buffer:buffer-local buffer :keys-as-typed))))
     (and wants (funcall wants buffer))))
 
@@ -113,29 +118,33 @@ are not read as typed, nor wanted so where they are typed); any other event as i
 
 ;;; Keys recorded and played back
 
-(defstruct (recording (:constructor make-recording ()) (:copier nil))
+(define-record (recording (:constructor make-recording ()) (:copier nil))
   "Keys being recorded: EVENTS, the key events read so far, in order, and
 COMMAND-START, how many of them came before the keys of the command running
 now."
-  (events (make-array 64 :adjustable t :fill-pointer 0) :read-only t)
-  (command-start 0 :type fixnum))
+  (events (make-array 64 :adjustable t :fill-pointer 0) :read-only t
+          :documentation "The key events RECORDING has read so far, in order.")
+  (command-start 0 :type fixnum
+                 :documentation "How many of RECORDING's events came before the keys of the command running now."))
 
-(setf (documentation 'make-recording 'function) "A RECORDING with no keys in it yet."
-      (documentation 'recording-p 'function) "True when OBJECT is a RECORDING.")
+(setf (documentation 'make-recording 'function) "A RECORDING with no keys in it yet.")
 
-(defstruct (playing (:constructor make-playing (events)) (:copier nil))
+(define-record (playing (:constructor make-playing (events)) (:copier nil))
   "Recorded keys being played once: EVENTS, a vector of key events; NEXT, the
 index of the next one to give; FAILED, once a command among them failed, the
 words it left in the echo area (or T); RAN-OUT, when the keys had all been
 given while a question still waited on work in the background, the time
 they had."
-  (events #() :type simple-vector :read-only t)
-  (next 0 :type fixnum)
-  (failed nil)
-  (ran-out nil))
+  (events #() :type simple-vector :read-only t :documentation "The key events PLAYING gives, a vector.")
+  (next 0 :type fixnum :documentation "The index in PLAYING's events of the next one to give.")
+  (failed nil
+          :documentation "The words a failed command left in the echo area, or T, once one of PLAYING's commands failed;
+:QUIT when it was quit; else NIL.")
+  (ran-out nil
+           :documentation "The time, in internal time units, at which PLAYING's keys had all been given while a question
+still waited on work in the background, or NIL."))
 
-(setf (documentation 'make-playing 'function) "A PLAYING of EVENTS from their first."
-      (documentation 'playing-p 'function) "True when OBJECT is a PLAYING.")
+(setf (documentation 'make-playing 'function) "A PLAYING of EVENTS from their first.")
 
 (defparameter *played-keys-wait* 10
   "The most seconds a question may go on waiting for work in the background
@@ -232,11 +241,9 @@ back, the question asking then shown and answered by you."
                 (< (tuatara.runtime:milliseconds-since (or (playing-ran-out playing)
                                                              (setf (playing-ran-out playing) (get-internal-real-time))))
                    (* 1000 *played-keys-wait*)))
-           (let ((frontend (frame-frontend (editor-frame editor))))
-             (if (tuatara.frontend:frontend-input-pending-p frontend)
-                 (when (keep-or-quit-event editor (tuatara.frontend:frontend-read-event-timeout frontend 1/100))
-                   (keyboard-quit-signal))
-                 (sleep (min (or timeout 1/20) 1/20))))
+           (if (tuatara.frontend:frontend-input-pending-p (frame-frontend (editor-frame editor)))
+               (when (pending-quit-p editor) (keyboard-quit-signal))
+               (sleep (min (or timeout 1/20) 1/20)))
            (tuatara.frontend:make-event :tick))
           (t (refuse "The recorded keys ended before the question they were answering")))))
 
@@ -387,6 +394,15 @@ frame waits for its turn there (TAKE-TO-ITS-FRAME): \\`C-g' there stops nothing 
      (setf (editor-deferred editor) (append (editor-deferred editor) (list event)))
      nil)
     (t nil)))
+
+(defun pending-quit-p (editor)
+  "Read what is waiting to be read from EDITOR's frontend while EDITOR is busy
+with work of its own: true when \\`C-g' is among it, the other events dealt
+with as KEEP-OR-QUIT-EVENT deals with them. NIL at once when nothing waits."
+  (let ((frontend (frame-frontend (editor-frame editor))))
+    (loop repeat 64
+          while (tuatara.frontend:frontend-input-pending-p frontend)
+            thereis (keep-or-quit-event editor (tuatara.frontend:frontend-read-event-timeout frontend 1/100)))))
 
 (defun read-event (editor &key timeout ticks pastes between-commands)
   "Read the next event from the frontend, handling a resize here: the screen is
@@ -581,11 +597,8 @@ as a secret at hand: the debug log gets no strings of it."
   (let ((trace nil)
         (secret-then nil)
         (tuatara.runtime:*secret-at-hand* (or tuatara.runtime:*secret-at-hand*
-                                              (let ((editor *editor*))
-                                                (tuatara.runtime:secret-buffer-p
-                                                 (or *current-buffer*
-                                                     (and editor (editor-window editor)
-                                                          (tuatara.display:window-buffer (editor-window editor)))))))))
+                                              (tuatara.runtime:secret-buffer-p
+                                               (or *current-buffer* (selected-window-buffer))))))
     (flet ((what () (if naming (funcall naming) what)))
       (handler-case
           (handler-bind ((error (lambda (e)
@@ -644,7 +657,8 @@ a refusal) stops recorded keys that are playing."
   (unless (eq command (editor-self-insert-command editor))
     (tuatara.runtime:debug-report :command "~(~a~)~@[ (~a)~]" command
                                   (cond (*minibuffer-hidden* "keys of a secret not noted")
-                                        (*this-command-keys* (tuatara.frontend:key-sequence-description *this-command-keys*)))))
+                                        (*this-command-keys*
+                                         (tuatara.frontend:key-sequence-description *this-command-keys*)))))
   (dolist (f (editor-pre-command-functions editor)) (call-guarded f f editor command))
   (let* ((function (find-command command))
          ;; a mouse key's command is one of the buffer under the mouse
@@ -693,7 +707,7 @@ a refusal) stops recorded keys that are playing."
       (setf (editor-repeat-map editor) (car entry))
       (unless (editor-message editor)
         (echo "~a" (repeat-hint command)))))
-  (note-selected-buffer (tuatara.display:window-buffer (editor-window editor)))
+  (note-selected-buffer (selected-window-buffer editor))
   (dolist (f (editor-post-command-functions editor)) (call-guarded f f editor))
   ;; a command may have set what the frontends read (M-: (setf *gui-padding* 12))
   (dolist (frame (editor-frames editor))
@@ -734,21 +748,21 @@ or count is begun; NIL otherwise."
       (let ((binding (lookup-key map (list (tuatara.frontend:key-spec key)))))
         (and binding (not (keymap-p binding)) binding)))))
 
-(defun key-handler-takes (editor key)
+(defun key-handler-takes (editor key repeat)
   "True when the current buffer's :KEY-HANDLER local, a function of the editor
 and a key, took KEY. It is asked first for a key that begins no sequence,
 while the minibuffer is not reading and no list of completions is shown,
 before any keymap (a terminal's keys go to the program in it so). It is not
-asked for a key that repeats the command just run (REPEAT-BINDING)."
-  (let* ((window (editor-window editor))
-         (buffer (and window (tuatara.display:window-buffer window)))
+asked for a key that repeats the command just run, REPEAT being the command
+it repeats or NIL (REPEAT-BINDING)."
+  (let* ((buffer (selected-window-buffer editor))
          (handler (and buffer (tuatara.buffer:buffer-local buffer :key-handler))))
     (and handler
          (null (editor-pending editor))
          (not (editor-collecting-prefix editor))
          (not (editor-minibuffer-active editor))
          (null (popup-keys editor))
-         (null (repeat-binding editor key))
+         (null repeat)
          (funcall handler editor key))))
 
 (defun handle-key (editor key)
@@ -766,11 +780,11 @@ count, and does nothing else."
       (setf (recording-command-start recording) (max 0 (1- (fill-pointer (recording-events recording)))))))
   (when (and (editor-collecting-prefix editor) (collect-prefix-key editor key))
     (return-from handle-key nil))
-  (when (key-handler-takes editor key)
-    (setf (editor-this-key editor) key
-          (editor-repeat-map editor) nil)
-    (return-from handle-key nil))
   (let ((binding (repeat-binding editor key)))
+    (when (key-handler-takes editor key binding)
+      (setf (editor-this-key editor) key
+            (editor-repeat-map editor) nil)
+      (return-from handle-key nil))
     (when (and (editor-repeat-map editor) (null (editor-pending editor)) (not (editor-collecting-prefix editor)))
       (setf (editor-repeat-map editor) nil))
     (when binding

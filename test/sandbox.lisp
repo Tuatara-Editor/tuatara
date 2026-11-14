@@ -187,7 +187,10 @@ as text, how it went, and what it said on its error output."
       (is string= program (tuatara.io:find-program name absolute))
       (true (eql 0 (ignore-errors (sb-posix:access (format nil "~a/~a" relative name) sb-posix:x-ok))))
       (false (tuatara.io:find-program name relative))
-      (false (tuatara.io:find-program name (format nil ":~a" relative)))))
+      (false (tuatara.io:find-program name (format nil ":~a" relative)))
+      ;; nor taken by a path with a slash not from the root, found from wherever the editor is
+      (false (tuatara.io:find-program (format nil "~a/~a" relative name)))
+      (is string= program (tuatara.io:find-program program))))
   ;; a program started in a session of its own: through setsid when it is there, its flags before the program
   (multiple-value-bind (run arguments) (tuatara.io:setsid-command "true" '("x") "-w")
     (if (tuatara.io:find-program "setsid")
@@ -581,6 +584,44 @@ except OSError as e: print(e.errno)'")))
                      :environment '(("GIVEN" "value")))
     (is eq :done outcome)
     (is string= (format nil "given text value~%") text)))
+
+(define-test (sandbox file-given-as-a-sealed-copy)
+  ;; a file given by its descriptor: the program reads and seeks in a copy at the path given, never the file, its
+  ;; name or what is beside it, and the file's access time stays as it was
+  (with-test-directory (dir)
+    (let ((path (namestring (merge-pathnames "archive.bin" dir)))
+          (beside (namestring (merge-pathnames "beside.txt" dir))))
+      (alexandria:write-string-into-file "0123456789" path)
+      (alexandria:write-string-into-file "other evidence" beside)
+      (sb-posix:utimes path 946681200 946681200)
+      (let ((fd (tuatara.io:open-for-reading path t)))
+        (unwind-protect
+             (multiple-value-bind (text outcome said)
+                 (sandbox-shell (format nil "tail -c 3 /tmp/archive.bin; echo; echo x >> /tmp/archive.bin 2>/dev/null ~
+                                             && echo written; ls '~a' 2>/dev/null || echo unseen"
+                                        (namestring dir))
+                                :files (list (cons "/tmp/archive.bin" fd)))
+               (is eq :done outcome "~a" said)
+               (is equal '("789" "unseen") (remove "" (uiop:split-string text :separator '(#\Newline)) :test #'string=)))
+          (sb-posix:close fd)))
+      (is = 946681200 (sb-posix:stat-atime (sb-posix:stat path)))
+      (is string= "0123456789" (alexandria:read-file-into-string path)))))
+
+(define-test (sandbox places-reaching-outside-refused)
+  ;; /tmp and the sandbox's other own directories, and the directory of your programs' sockets or one holding
+  ;; it, are never shown: through a socket there a program outside the sandbox would act for the one shut in
+  (let ((sockets (format nil "/run/user/~d" (sb-posix:getuid))))
+    (dolist (place (list "/tmp/" "/tmp" "/etc" "/dev" sockets "/run" "/run/user"))
+      (fail (tuatara.io::mount-arguments (list place) '() '()) tuatara.io:file-system-error "~a" place)
+      (fail (tuatara.io::mount-arguments '() (list place) '()) tuatara.io:file-system-error "~a to write" place))
+    (fail (tuatara.io::mount-arguments (list (cons "/tmp" "/shown")) '() '()) tuatara.io:file-system-error)
+    (fail (tuatara.io:sandbox-run "true" '() :directories '("/tmp/")) tuatara.io:file-system-error))
+  ;; a directory within /tmp, a single file, and the root (never shown, and no error) are let by
+  (true (search '("--ro-bind-try" "/tmp/tuatara-test-dir" "/tmp/tuatara-test-dir")
+                (tuatara.io::mount-arguments '("/tmp/tuatara-test-dir") '() '()) :test #'equal))
+  (true (search '("--ro-bind-try" "/etc/hostname" "/etc/hostname")
+                (tuatara.io::mount-arguments '("/etc/hostname") '() '()) :test #'equal))
+  (is equal '() (tuatara.io::mount-arguments '("/") '() '())))
 
 (define-test (sandbox imagemagick-policy)
   ;; ImageMagick reads the image formats it is told and nothing else, and starts no program

@@ -39,6 +39,24 @@
     (servers-session (typed-command "server-list") (list :wait 0.1) "D" (list :wait 0.1) "y" (list :wait 0.1))
     (false (tuatara.defaults::server-permissions "me@build.example"))))
 
+(define-test (daemon servers-agent-destinations-none-means-any)
+  ;; the word none, as the prompt says, names no machine: the agent may be used for any
+  (with-fresh-state
+    (trust-server "build.example" :agent t :destinations '("github.com"))
+    (servers-session (typed-command "server-list") (list :wait 0.1) "H" "C-a C-k" (typed-keys "None") "RET"
+                     (list :wait 0.1))
+    (is equal '() (getf (tuatara.defaults::server-permissions "build.example") :destinations))))
+
+(define-test (daemon servers-changed-together-or-not-at-all)
+  ;; a refused answer for one of the marked servers leaves the others as they were
+  (with-fresh-state
+    (trust-server "one.example" :agent t)
+    (trust-server "two.example" :agent t)
+    (servers-session (typed-command "server-list") (list :wait 0.1) "m" "m" "H" "C-a C-k"
+                     (typed-keys "github.com") "RET" "C-a C-k" (typed-keys "-evil") "RET" (list :wait 0.1))
+    (dolist (host '("one.example" "two.example"))
+      (is equal '() (getf (tuatara.defaults::server-permissions host) :destinations) "~a" host))))
+
 (define-test (daemon servers-list-fails-closed)
   ;; a line of the list not understood in every field gives nothing, never a permission; a field a later
   ;; release adds is passed over

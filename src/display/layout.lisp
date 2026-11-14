@@ -12,12 +12,14 @@
 (defparameter *fold-ellipsis* "..."
   "What a window shows in place of a fold.")
 
-(defstruct (row (:constructor %make-row (start columns &key (room 0)
-                                         &aux (string (make-array room :element-type 'character :adjustable t :fill-pointer 0))
-                                              (faces (make-array room :adjustable t :fill-pointer 0))
-                                              (char-bytes (make-array room :element-type 'fixnum :adjustable t :fill-pointer 0))
-                                              (bytes (make-array room :element-type 'fixnum :adjustable t :fill-pointer 0))))
-                (:copier nil))
+(define-record (row (:constructor %make-row
+                       (start columns
+                        &key (room 0)
+                        &aux (string (make-array room :element-type 'character :adjustable t :fill-pointer 0))
+                             (faces (make-array room :adjustable t :fill-pointer 0))
+                             (char-bytes (make-array room :element-type 'fixnum :adjustable t :fill-pointer 0))
+                             (bytes (make-array room :element-type 'fixnum :adjustable t :fill-pointer 0))))
+                   (:copier nil))
   "One screen row of a window. STRING is what to print. BYTES holds, for each of
 the COLUMNS columns, the byte offset of the character shown there (a wide
 character fills two columns with the same offset). START and END delimit the
@@ -37,60 +39,43 @@ PAD-FROM below PAD-TO are the indices of STRING of the blanks that set a line
 written from right to left against the right edge. FLOAT-START, when not NIL,
 is the start of the line above beside which something the text goes round
 begins at this row, that line taking no row of its own."
-  (string (make-array 0 :element-type 'character :adjustable t :fill-pointer 0) :type string)
-  (faces (make-array 0 :adjustable t :fill-pointer 0))
-  (char-bytes (make-array 0 :element-type 'fixnum :adjustable t :fill-pointer 0))
-  (bytes (make-array 0 :element-type 'fixnum :adjustable t :fill-pointer 0))
-  (start 0 :type fixnum)
-  (end 0 :type fixnum)
-  (shown-end 0 :type fixnum)
-  (columns 0 :type fixnum)
-  (continuation-p nil :type boolean)
-  (truncated-p nil :type boolean)
-  (last-p nil :type boolean)
-  (mixed nil :type (member nil t :visual))
-  (end-column nil :type (or null fixnum))
-  (pad-from 0 :type fixnum)
-  (pad-to 0 :type fixnum)
-  (extend nil)
-  (scale 1 :type rational)
-  (set-in '() :type list)
-  (float-start nil :type (or null fixnum)))
-
-(setf (documentation 'row-p 'function) "True when OBJECT is a ROW."
-      (documentation 'row-string 'function) "The text to print for ROW."
-      (documentation 'row-bytes 'function) "Byte offset behind each column of ROW, -1 for none."
-      (documentation 'row-faces 'function) "The face of each character of ROW's string: NIL, a face
-name, or a list of face names with the highest priority first."
-      (documentation 'row-char-bytes 'function) "The byte offset of the source character behind each
-character of ROW's string; never decreasing."
-      (documentation 'row-start 'function) "Byte offset where ROW's text starts."
-      (documentation 'row-end 'function) "Byte offset just after ROW's text (after its newline, if any)."
-      (documentation 'row-shown-end 'function) "Byte offset after the last character ROW actually
-shows: its newline, a wrap point, or where truncation began."
-      (documentation 'row-truncated-p 'function) "True when ROW's line was cut off at the right edge."
-      (documentation 'row-columns 'function) "Number of columns ROW uses."
-      (documentation 'row-continuation-p 'function) "True when ROW continues a wrapped line."
-      (documentation 'row-last-p 'function) "True when ROW holds the end of the text."
-      (documentation 'row-mixed 'function) "True when ROW's characters stand for offsets not in
+  (string (make-array 0 :element-type 'character :adjustable t :fill-pointer 0) :type string
+          :documentation "The text to print for ROW.")
+  (faces (make-array 0 :adjustable t :fill-pointer 0)
+         :documentation "The face of each character of ROW's string: NIL, a face
+name, or a list of face names with the highest priority first.")
+  (char-bytes (make-array 0 :element-type 'fixnum :adjustable t :fill-pointer 0)
+              :documentation "The byte offset of the source character behind each
+character of ROW's string; never decreasing.")
+  (bytes (make-array 0 :element-type 'fixnum :adjustable t :fill-pointer 0)
+         :documentation "Byte offset behind each column of ROW, -1 for none.")
+  (start 0 :type fixnum :documentation "Byte offset where ROW's text starts.")
+  (end 0 :type fixnum :documentation "Byte offset just after ROW's text (after its newline, if any).")
+  (shown-end 0 :type fixnum :documentation "Byte offset after the last character ROW actually
+shows: its newline, a wrap point, or where truncation began.")
+  (columns 0 :type fixnum :documentation "Number of columns ROW uses.")
+  (continuation-p nil :type boolean :documentation "True when ROW continues a wrapped line.")
+  (truncated-p nil :type boolean :documentation "True when ROW's line was cut off at the right edge.")
+  (last-p nil :type boolean :documentation "True when ROW holds the end of the text.")
+  (mixed nil :type (member nil t :visual) :documentation "True when ROW's characters stand for offsets not in
 order: T in the hex view, :VISUAL where they are in the order right-to-left text
-is read."
-      (documentation 'row-end-column 'function) "The column where the end of ROW's line is shown
-left of its text (a line written from right to left), or NIL: after it."
-      (documentation 'row-pad-from 'function) "The first index of ROW's string of the blanks that
-set it against the right edge."
-      (documentation 'row-pad-to 'function) "The index of ROW's string after the blanks that set it
-against the right edge."
-      (documentation 'row-extend 'function) "The face, or faces with the highest priority first,
+is read.")
+  (end-column nil :type (or null fixnum) :documentation "The column where the end of ROW's line is shown
+left of its text (a line written from right to left), or NIL: after it.")
+  (pad-from 0 :type fixnum :documentation "The first index of ROW's string of the blanks that
+set it against the right edge.")
+  (pad-to 0 :type fixnum :documentation "The index of ROW's string after the blanks that set it
+against the right edge.")
+  (extend nil :documentation "The face, or faces with the highest priority first,
 painted from the end of ROW's line to the window's edge: those of highlights
-covering its newline that extend; NIL for none."
-      (documentation 'row-set-in 'function) "The runs of ROW's characters shown where no text of the
+covering its newline that extend; NIL for none.")
+  (scale 1 :type rational :documentation "How many rows' height ROW is drawn in, its letters as
+many times as wide: 1, or more for a line drawn large (5/4, 3/2, 2).")
+  (set-in '() :type list :documentation "The runs of ROW's characters shown where no text of the
 buffer is, each (FROM . TO) of indices into its string; highlights leave them
-alone."
-      (documentation 'row-scale 'function) "How many rows' height ROW is drawn in, its letters as
-many times as wide: 1, or more for a line drawn large (5/4, 3/2, 2)."
-      (documentation 'row-float-start 'function) "The start of the line above ROW, taking no row of its
-own, beside which something the text goes round begins at ROW; or NIL.")
+alone.")
+  (float-start nil :type (or null fixnum) :documentation "The start of the line above ROW, taking no row of its
+own, beside which something the text goes round begins at ROW; or NIL."))
 
 (defun text-scale (scale)
   "How many times as large the characters of a row SCALE rows tall are drawn:
@@ -164,10 +149,6 @@ when there was none, otherwise a list with NEW first (it has higher priority)."
         ((listp old) (if (member new old) old (cons new old)))
         (t (list new old))))
 
-(defun first-index-at-or-after (vector value)
-  "The first index of VECTOR (never decreasing fixnums) whose element is at least VALUE; its length when none."
-  (tuatara.runtime:bisect (mid 0 (length vector)) (< (aref vector mid) value)))
-
 (defun apply-highlights (rows &rest layers)
   "Paint each of LAYERS, lists of (START END FACE) byte ranges, onto the
 characters of ROWS, the ranges of a list and the lists themselves given lowest
@@ -189,7 +170,9 @@ log rows + characters painted)."
             ;; the first row that ends after START (rows are in byte order)
             (let ((lo (tuatara.runtime:bisect (mid 0 n) (and (<= (row-end (aref rows mid)) start)
                                                             (not (row-last-p (aref rows mid))))))
-                  (last-old '#:none) (last-merged nil))
+                  (last-old '#:none) (last-merged nil)
+                  ;; whether FACE reaches past a line's end: asked once for the range, when a row needs it
+                  (extend :unknown))
               (flet ((paint (old)
                        (if (eq old last-old)
                            last-merged
@@ -206,7 +189,9 @@ log rows + characters painted)."
                                             ;; a row a wrapped line goes on from, covered to its end
                                             (t (and (< start (row-end row)) (<= (row-end row) end))))
                                       (not (eq (row-mixed row) t))
-                                      (symbolp face) (face-attribute face :extend))
+                                      (if (eq extend :unknown)
+                                          (setf extend (and (symbolp face) (face-attribute face :extend)))
+                                          extend))
                              (setf (row-extend row) (paint (row-extend row)))
                              ;; and before the text of a line set against the right edge
                              (loop with faces = (row-faces row)
@@ -221,7 +206,7 @@ log rows + characters painted)."
                                  (when (<= start (aref bytes i) (1- end))
                                    (setf (aref faces i) (paint (aref faces i)))))
                                (let ((set-in (row-set-in row)))
-                                 (loop for i from (first-index-at-or-after bytes start) below count
+                                 (loop for i from (tuatara.runtime:first-index-at-or-after bytes start) below count
                                        while (< (aref bytes i) end)
                                        unless (and set-in (loop for (from . below) in set-in
                                                                   thereis (and (<= from i) (< i below))))
@@ -248,13 +233,13 @@ where the next glyph stands when there is none before it in the row."
                                  when column return column))))
              (and (not (row-mixed row))
                   (let* ((chars (row-char-bytes row))
-                         (i (first-index-at-or-after chars byte)))
+                         (i (tuatara.runtime:first-index-at-or-after chars byte)))
                     ;; a character the row holds without a column
                     (and (< i (length chars)) (= (aref chars i) byte)
                          (let* ((bytes (row-bytes row))
-                                (after (first-index-at-or-after bytes byte)))
+                                (after (tuatara.runtime:first-index-at-or-after bytes byte)))
                            (if (and (plusp after) (>= (aref bytes (1- after)) 0))
-                               (first-index-at-or-after bytes (aref bytes (1- after)))
+                               (tuatara.runtime:first-index-at-or-after bytes (aref bytes (1- after)))
                                after)))))))
         ((and (= byte (row-shown-end row))
               (not (row-truncated-p row))
@@ -269,7 +254,8 @@ none (a gutter's, the blanks setting a line against the right edge), it is the
 nearest character to its left, else to its right. Left of a line's text where
 its end is shown (ROW-END-COLUMN), and past the text, it is the line's end.
 Past the text of a row the line goes on from (wrapped or cut off), it is its
-last character, the one written last."
+last character, the one written last. On a row showing none of its text (a
+picture drawn over its line), it is the row's start."
   (let ((bytes (row-bytes row)) (columns (row-columns row)) (end-column (row-end-column row)))
     (flet ((mapped (from to step)
              ;; the first column from FROM towards TO showing a character
@@ -278,6 +264,7 @@ last character, the one written last."
                    when (>= (aref bytes i) 0) return (aref bytes i))))
       (cond ((and end-column (<= column end-column)) (row-shown-end row))
             ((< column columns) (or (mapped column -1 -1) (mapped column columns 1) (row-start row)))
+            ((not (mapped 0 columns 1)) (row-start row))
             ((and (plusp columns)
                   (or (row-truncated-p row) (and (not (row-last-p row)) (= (row-shown-end row) (row-end row)))))
              (if (eq (row-mixed row) :visual)
@@ -285,18 +272,16 @@ last character, the one written last."
                  (or (mapped (1- columns) -1 -1) (row-shown-end row))))
             (t (row-shown-end row))))))
 
-(defstruct (reader (:constructor %make-reader (rope position end chunk)) (:copier nil))
+(define-record (reader (:constructor %make-reader (rope position end chunk)) (:copier nil))
   "A sequential UTF-8 reader over a rope: decodes characters from POSITION below
 END, reading the text into CHUNK +READER-CHUNK+ octets at a time."
-  (rope nil :type tuatara.text:rope :read-only t)
-  (position 0 :type fixnum)
-  (end 0 :type fixnum :read-only t)
-  (chunk (make-array 0 :element-type '(unsigned-byte 8)) :type tuatara.text:octets)
-  (chunk-start 0 :type fixnum)
-  (chunk-end 0 :type fixnum))
-
-(setf (documentation 'reader-p 'function) "True when OBJECT is a READER."
-      (documentation 'reader-position 'function) "Byte offset the READER will decode next.")
+  (rope nil :type tuatara.text:rope :read-only t :documentation "The rope READER reads.")
+  (position 0 :type fixnum :documentation "Byte offset the READER will decode next.")
+  (end 0 :type fixnum :read-only t :documentation "The byte offset READER stops decoding at.")
+  (chunk (make-array 0 :element-type '(unsigned-byte 8)) :type tuatara.text:octets
+         :documentation "The octets of READER's text read last, starting at CHUNK-START.")
+  (chunk-start 0 :type fixnum :documentation "The byte offset in READER's rope of the first octet of its chunk.")
+  (chunk-end 0 :type fixnum :documentation "The byte offset in READER's rope just after the last octet of its chunk."))
 
 (defconstant +reader-chunk+ 4096 "Octets a READER fetches from the rope at a time.")
 
@@ -373,6 +358,11 @@ character itself cannot be shown there, and the next row goes on after it.")
   "Octets of a line read to tell a column on the screen; past them, each
 character is counted one column (each octet while the text's characters are
 still being counted), so that a line of a gigabyte costs no wait.")
+
+(defparameter *direction-reach* (* 64 1024)
+  "Octets of a line looked through for its first letter, to tell the direction
+it is written in, where its rows shown hold none; a line with no letter that
+near its start is taken as written from left to right.")
 
 (defconstant +scan-block+ 65536 "Octets SCAN-COLUMNS reads from the text at a time.")
 
@@ -702,9 +692,9 @@ the text keeps at least half."
     (vector-push-extend (if (plusp (length bytes)) (aref bytes (1- (length bytes))) byte) bytes)
     (incf (row-columns row))))
 
-(defun layout (rope start width height &key (wrap nil) wrap-column word-wrap (tab-width 8) (hscroll 0) highlights crlf hidden
-                                             prefix scale float floating until invisible spares text-end direction
-                                             bidi)
+(defun layout (rope start width height &key (wrap nil) wrap-column word-wrap (tab-width 8) (hscroll 0) highlights
+                                             crlf hidden prefix scale float floating until invisible spares text-end
+                                             direction bidi)
   "Lay out ROPE from byte START into at most HEIGHT rows of WIDTH columns.
 WRAP true wraps long lines at the column, WRAP-COLUMN when given (no further
 than WIDTH). With WORD-WRAP, lines wrap at a word's edge: a row ends after the
@@ -759,8 +749,8 @@ a paragraph written from left to right (:LEFT-TO-RIGHT), right to left
 written from right to left is set against the right edge unless scrolled
 sideways. A line with none of that text is laid out as with NIL. Under :AUTO
 a line's direction is its first letter's, looked for past the rows shown when
-they hold none. A line longer than twice *WRAP-STRETCH* is worked out a
-stretch at a time. A stretch after an embedding, override or isolate on its
+they hold none, no further than *DIRECTION-REACH* octets into the line. A
+line longer than twice *WRAP-STRETCH* is worked out a stretch at a time. A stretch after an embedding, override or isolate on its
 line, or beginning more than *SCREEN-COLUMN-REACH* octets into it, is shown in
 the order stored, its right-to-left letters in :stored-order.
 BIDI, a BIDI-CACHE, keeps what is worked out for right-to-left text from one
@@ -863,7 +853,7 @@ O(WIDTH × HEIGHT), and for each row scrolled sideways O(*SCREEN-COLUMN-REACH*
                          (setf (reader-position reader) to skipped column before -1))))
                    ;; what of a wide character or a tab the left edge cuts off is left blank
                    (when (> skipped hscroll)
-                     (row-add row (make-string (- skipped hscroll) :initial-element #\Space) -1 (- skipped hscroll))
+                     (row-add row (tuatara.text:spaces (- skipped hscroll)) -1 (- skipped hscroll))
                      (setf skipped hscroll))
                    ;; a fold: its ellipsis, then on after it
                    (let ((at (reader-position reader)))
@@ -949,7 +939,7 @@ O(WIDTH × HEIGHT), and for each row scrolled sideways O(*SCREEN-COLUMN-REACH*
                                             ;; character
                                             (let ((room (max 1 (- limit (row-columns row)))))
                                               (row-add row (if (char= char #\Tab)
-                                                               (make-string room :initial-element #\Space)
+                                                               (tuatara.text:spaces room)
                                                                *cut-glyph*)
                                                        byte (if (char= char #\Tab) room 1) shown))
                                             (setf (row-end row) (reader-position reader)
@@ -999,14 +989,13 @@ O(WIDTH × HEIGHT), and for each row scrolled sideways O(*SCREEN-COLUMN-REACH*
                      (progn
                        (setf (row-float-start row) (shiftf float-start nil))
                        (vector-push-extend row rows)
-                       ;; a line whose rows so far hold no letter: its direction from its first one, wherever
-                       ;; it is
+                       ;; a line whose rows so far hold no letter: its direction from its first one, near
+                       ;; its start
                        (when (and (eq direction :auto) (not right-to-left) (not strong)
                                   (or wrapped (row-truncated-p row)))
                          (setf strong t
                                right-to-left (eq :r (first-strong-direction
-                                                     rope line-start
-                                                     (min total (+ line-start *screen-column-reach*))))))
+                                                     rope line-start (min total (+ line-start *direction-reach*))))))
                        ;; the line's rows, those before its first right-to-left character too, in the order
                        ;; they are read
                        (when (and direction (or right-to-left (eq direction :right-to-left)))

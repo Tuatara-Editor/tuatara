@@ -54,14 +54,17 @@ keyword lines (<s, <q, <e ...).")
 
 ;;; Snippets and where they are
 
-(defstruct (snippet (:constructor make-snippet (name key body)) (:copier nil))
+(define-record (snippet (:constructor make-snippet (name key body)) (:copier nil))
   "A snippet: NAME, what it is called; KEY, what typed before the cursor and
 \\`TAB' put it in (NIL for none); BODY, its text as written; MODE, the name of
 the mode whose directory it is in, FILE its file's name there and OWN true for
 one of Tuatara's (NIL for one of yours)."
-  name key body mode file own)
-
-(setf (documentation 'snippet-p 'function) "True when OBJECT is a SNIPPET.")
+  (name nil :documentation "What SNIPPET is called.")
+  (key nil :documentation "What typed before the cursor and TAB put SNIPPET in, NIL for none.")
+  (body nil :documentation "The text of SNIPPET as written.")
+  (mode nil :documentation "The name of the mode whose directory SNIPPET is in.")
+  (file nil :documentation "The name of the file of SNIPPET in that directory.")
+  (own nil :documentation "True for a snippet of Tuatara's, NIL for one of yours."))
 
 (defun read-snippet (file-name text)
   "The snippet a file called FILE-NAME holding TEXT is: its name and key from the lines before # -- (# name:, #
@@ -81,25 +84,37 @@ TEXT is (READ-SNIPPET), OWN true for one of Tuatara's."
     s))
 
 (defvar *snippets-read-by-directory* (make-hash-table :test 'equal)
-  "Your snippets as read from each directory of them: its native name to the
-names and stamps of its files then, and the snippets read from them.")
+  "Your snippets as read from each directory of them: its native name to a
+list (LOOKED FILES SNIPPETS), when its entries were last looked at (internal
+real time), the names and stamps of its files then, and the snippets read
+from them.")
+
+(defun snippet-files-stamps (place)
+  "The names and stamps of the snippet files in the directory at PLACE, a
+native name, each (NAME . STAMP)."
+  (loop for (name kind nil nil stamp) in (tuatara.io:directory-entries place :stamps t)
+        when (and (eq kind :regular) (own-file-name-p name))
+          collect (cons name stamp)))
 
 (defun user-snippets-of (mode-name)
   "Your snippets for the mode called MODE-NAME, as SNIPPETs: those of its
-directory in each of *SNIPPET-DIRECTORIES*, read again only from a directory whose
-files have changed, come or gone since (DIRECTORY-FILES)."
-  (loop for directory in (snippet-directories)
+directory in each of *SNIPPET-DIRECTORIES*, read again only from a directory
+whose files have changed, come or gone since (DIRECTORY-FILES). A directory's
+entries are looked at no more than once a second."
+  (loop with now = (get-internal-real-time)
+        for directory in (snippet-directories)
         for place = (tuatara.io:native (own-subdirectory directory mode-name))
-        for files = (loop for (name kind nil nil stamp) in (tuatara.io:directory-entries place :stamps t)
-                          when (and (eq kind :regular) (own-file-name-p name))
-                            collect (cons name stamp))
-        append (let ((kept (gethash place *snippets-read-by-directory*)))
-                 (if (and kept (equalp (car kept) files))
-                     (cdr kept)
-                     (let ((snippets (loop for (file . text) in (directory-files (list directory) mode-name)
-                                           when text collect (read-snippet-of mode-name file text nil))))
-                       (setf (gethash place *snippets-read-by-directory*) (cons files snippets))
-                       snippets)))))
+        for kept = (gethash place *snippets-read-by-directory*)
+        append (cond ((and kept (< (- now (first kept)) internal-time-units-per-second))
+                      (third kept))
+                     (t
+                      (let ((files (snippet-files-stamps place)))
+                        (if (and kept (equalp (second kept) files))
+                            (progn (setf (first kept) now) (third kept))
+                            (let ((snippets (loop for (file . text) in (directory-files (list directory) mode-name)
+                                                  when text collect (read-snippet-of mode-name file text nil))))
+                              (setf (gethash place *snippets-read-by-directory*) (list now files snippets))
+                              snippets)))))))
 
 (defvar *built-in-snippets-read* nil
   "Tuatara's own snippets as read: (LIST . TABLE), TABLE from each mode's name
@@ -245,14 +260,23 @@ NIL for a name it does not know."
 
 ;;; Fields
 
-(defstruct (snippet-field (:constructor make-snippet-field (number start choices outer index)) (:copier nil))
+(define-record (snippet-field (:constructor make-snippet-field (number start choices outer index)) (:copier nil))
   "A place in a snippet that is filled in. NUMBER is its number ($1 is 1). START
 and END are where it begins and ends, octets of the snippet's text as it is
 made, then anchors in the buffer. CHOICES is a choice's options. OUTER is the
 field it is within, or NIL. INDEX is how many fields come before it in the text.
 MIRRORS is the other places its number stands, when it is the one \\`TAB' goes
 to. GONE is true once the text it was in was replaced."
-  number start (end 0) choices outer index (mirrors '()) (gone nil))
+  (number nil :documentation "The number of FIELD, 1 for $1.")
+  (start nil
+         :documentation "Where FIELD begins, an octet of the snippet's text as it is made, then an anchor in the
+buffer.")
+  (end 0 :documentation "Where FIELD ends, an octet of the snippet's text as it is made, then an anchor in the buffer.")
+  (choices nil :documentation "The options of FIELD when it is a choice.")
+  (outer nil :documentation "The field FIELD is within, or NIL.")
+  (index nil :documentation "How many fields come before FIELD in the text.")
+  (mirrors '() :documentation "The other places the number of FIELD stands, when it is the one TAB goes to.")
+  (gone nil :documentation "True once the text FIELD was in was replaced."))
 
 (defun field-within-p (field other)
   "True when FIELD is within OTHER, however deep."
@@ -307,7 +331,7 @@ it or holding it. A snippet with no 0 ends after its text."
 
 ;;; A snippet being filled in
 
-(defstruct (snippet-session (:constructor make-snippet-session (buffer fields order start end)) (:copier nil))
+(define-record (snippet-session (:constructor make-snippet-session (buffer fields order start end)) (:copier nil))
   "A snippet put in BUFFER whose fields are being filled in. FIELDS is its
 SNIPPET-FIELDs in the order of the text. ORDER is those \\`TAB' goes to, in turn
 \(ORDER-FIELDS). START and END are anchors at the ends of all of it. AT is the
@@ -315,7 +339,18 @@ index in ORDER of the field the cursor went to. FRESH is true while that field's
 text is as the snippet gave it, typing replacing it. KEPT is the buffer's
 override keymap before. UNDO-SINCE is the buffer's undo stack before a field's
 text was replaced, so that the replacing is one change to undo."
-  buffer fields order start end (at -1) (fresh nil) (kept nil) (undo-since nil))
+  (buffer nil :documentation "The buffer SESSION put its snippet in.")
+  (fields nil :documentation "The fields of the snippet of SESSION, in the order of the text.")
+  (order nil :documentation "The fields of SESSION that TAB goes to, in turn.")
+  (start nil :documentation "An anchor at the start of the snippet of SESSION.")
+  (end nil :documentation "An anchor at the end of the snippet of SESSION.")
+  (at -1 :documentation "The index in its ORDER of the field of SESSION the cursor went to, -1 before the first.")
+  (fresh nil
+         :documentation "True while the text of that field of SESSION is as the snippet gave it, typing replacing it.")
+  (kept nil :documentation "The override keymap of the buffer of SESSION before it.")
+  (undo-since nil
+              :documentation "The undo stack of the buffer of SESSION before a field's text was replaced, so that the
+replacing is one change to undo."))
 
 (defvar *snippet-keymap*
   (let ((map (make-keymap :name "snippet")))
@@ -420,7 +455,7 @@ or the selection, SELECTED its text), one change to undo, and go to its first
 field."
   (multiple-value-bind (text fields)
       (render-snippet (parse-snippet-body (snippet-body snippet)) buffer selected (snippet-indent buffer start))
-    (tuatara.buffer:buffer-edit buffer (vector (tuatara.text:make-edit start end (and (plusp (length text)) (tuatara.text:string-octets text)))))
+    (tuatara.buffer:buffer-replace buffer start end text)
     (let ((version (tuatara.buffer:buffer-version buffer))
           (after (+ start (tuatara.text:string-octet-length text)))
           (old (buffer-snippet buffer)))
@@ -467,7 +502,7 @@ are gone; undoing ends the snippet, its fields no longer following the text."
                  (when (< start end)
                    (setf (tuatara.buffer:buffer-mark-active-p buffer) nil
                          (snippet-session-undo-since session) (tuatara.buffer:buffer-undo-stack buffer))
-                   (tuatara.buffer:buffer-edit buffer (vector (tuatara.text:make-edit start end nil)))
+                   (tuatara.buffer:buffer-delete buffer start end)
                    (drop-fields-within session field)
                    (goto start)))))))))
 
@@ -484,8 +519,7 @@ is now; the fields within a place filled in are gone."
               (multiple-value-bind (start end) (snippet-field-bounds session mirror)
                 (unless (string= text (tuatara.buffer:buffer-string buffer :start start :end end))
                   (aim-fields session mirror)
-                  (tuatara.buffer:buffer-edit buffer (vector (tuatara.text:make-edit start end (and (plusp (length text)) (tuatara.text:string-octets text))))
-                                              :group t)
+                  (tuatara.buffer:buffer-replace buffer start end text :group t)
                   (drop-fields-within session mirror)
                   (setf changed t))))))))
     (let ((current (current-field session)))
@@ -582,13 +616,14 @@ you have already is visited as it is."
                         (loop for (mode file text) in *built-in-snippets*
                               collect (snippet-candidate (read-snippet-of mode file text t) (list mode file text)))
                         (snippet-directories)
-                        "snippet"))
+                        "snippet")
+  (clrhash *snippets-read-by-directory*))
 
 (defun install-snippets (editor)
-  "Bind \\`C-c y' to \\[insert-snippet], but in the buffers made by commands
-\(special-mode and those made from it: lists, help, the terminal), where
-nothing is typed; keep snippets' fields filled in as they are typed."
-  (define-key *global-keymap* "C-c y" 'insert-snippet)
-  (define-key (mode-keymap 'special-mode) "C-c y" :undefined)
+  "Bind \\`C-c y' to \\[insert-snippet] in text-mode and prog-mode, so in every
+mode for text or code made from them; keep snippets' fields filled in as they
+are typed."
+  (dolist (mode '(text-mode prog-mode))
+    (define-key (mode-keymap mode) "C-c y" 'insert-snippet))
   (pushnew 'snippet-before-command (editor-pre-command-functions editor))
   (pushnew 'snippet-after-command (editor-post-command-functions editor)))

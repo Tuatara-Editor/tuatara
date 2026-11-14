@@ -381,4 +381,7 @@ work there too: ~h~, ~j~, ~k~, ~l~, ~w~, ~W~, ~b~, ~B~, ~g g~, ~g e~, ~g h~,
 A list that a command made, such as the list of buffers or of the files in a
 directory, may use some of these letters for its own purposes. In a list ~h~
 closes the window, and ~g~ starts a move, so the list is made again with ~r~.
-The chapter for each list says what its keys do.
+The chapter for each list says what its keys do. Wherever ~h~, ~j~, ~k~ or ~l~
+does something of its own (a list, git, rimu, a manual page, a PDF, the
+agenda, the date question), ~C-b~, ~C-n~, ~C-p~ and ~C-f~ do the same, with or
+without modal editing.

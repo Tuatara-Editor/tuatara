@@ -33,6 +33,16 @@
     (is equalp #(4 23 29) (tuatara.syntax:search-all rope "needle" :case-fold nil :threads 2))
     (is equalp #(4 15) (tuatara.syntax:search-all rope "needle" :limit 2))))
 
+(define-test (search backward-range-narrower-than-needle)
+  ;; a match starting before START and running past it is found whatever END is,
+  ;; as long as it starts at or after END, as the regex search finds it
+  (let ((rope (tuatara.text:string->rope "abcdef")))
+    (is eql 2 (tuatara.syntax:search-backward rope "cde" :start 3 :end 0))
+    (is eql 2 (tuatara.syntax:search-backward rope "cde" :start 3 :end 2))
+    (is eql 2 (tuatara.syntax:regex-search-backward rope "cde" :start 3 :end 2))
+    (false (tuatara.syntax:search-backward rope "cde" :start 3 :end 3))
+    (false (tuatara.syntax:search-backward rope "bcd" :start 3 :end 2))))
+
 (define-test (search across-boundaries)
   ;; a needle straddling leaf and chunk boundaries in a long text, against the oracle
   (let* ((piece "xx needle yy ")
@@ -121,6 +131,110 @@ newlines and some multibyte characters."
 
 (defun triples (matches) "MATCHES without their groups." (mapcar (lambda (m) (subseq m 0 3)) matches))
 
+(define-test (search newline-matches-a-line-end-as-dollar-does)
+  ;; \n matches one line end of whichever kind $ stops before; [\n] the newline alone
+  (let ((crlf (tuatara.text:string->rope (format nil "one~c~%two~c~%three~c~%" #\Return #\Return #\Return)))
+        (lone (tuatara.text:string->rope (format nil "a~cb~%c" #\Return))))
+    (flet ((found (rope pattern)
+             (mapcar (lambda (m) (subseq m 0 2)) (tuatara.syntax:regex-search-all rope pattern))))
+      (is equal '((0 3)) (found crlf "one$"))
+      (is equal '((2 7)) (found crlf "e\\ntw"))
+      (is equal '((2 7)) (found crlf "e\\r\\ntw"))
+      (is equal '((2 7)) (found crlf (format nil "e~%tw")))
+      (is equal '() (found crlf "e[\\n]tw"))
+      (is equal '((5 8)) (found crlf "(?<=\\n)two"))
+      (is equal '((0 3)) (found lone "\\w\\n\\w"))
+
+      (is equal '((2 4)) (found lone "b\\n"))
+      (is equal '((2 3)) (found lone "(?<=\\n)b")))
+    (multiple-value-bind (start end) (tuatara.syntax:search-forward crlf (format nil "e~%tw"))
+      (is eql 2 start)
+      (is eql 7 end))
+    (is eql 2 (tuatara.syntax:search-backward crlf (format nil "e~%tw")))
+    (is equalp #(2) (tuatara.syntax:search-all crlf (format nil "e~%tw")))))
+
+(define-test (search folded-letters-past-ascii-skip-by-shape)
+  ;; a lowercase needle past ASCII is skipped to by the octets of both its cases,
+  ;; and finds what a whole-text scan finds
+  (let* ((s (with-output-to-string (o)
+              (dotimes (i 3000)
+                (write-line (case (mod i 4) (0 "привет мир") (1 "ПРИВЕТ café") (2 "Привет CAFÉ über") (t "nothing")) o))))
+         (rope (tuatara.text:string->rope s)))
+    (dolist (needle '("привет" "café" "über"))
+      (let ((scanner (tuatara.syntax::literal-scanner needle t)))
+        (true (tuatara.syntax::regex-traits-shape (gethash scanner tuatara.syntax::**regex-traits**)) "~a" needle)
+        (is equal (regex-oracle s scanner) (triples (tuatara.syntax:regex-search-all rope scanner)) "~a" needle)
+        (is equalp (coerce (mapcar #'first (regex-oracle s scanner)) '(vector fixnum))
+            (tuatara.syntax:search-all rope needle :threads 3) "~a, all" needle)))))
+
+(define-test (search case-octet-sets-hold-every-case)
+  ;; every character CHAR-EQUAL takes for a letter is written in the octets its shape allows
+  (let ((groups (make-hash-table)))
+    (dotimes (code char-code-limit)
+      (let ((c (code-char code)))
+        (when c
+          (push c (gethash (char-downcase c) groups))
+
+          (push c (gethash (char-upcase c) groups)))))
+    (let ((bad '()))
+      (maphash (lambda (key members)
+                 (declare (ignore key))
+                 (dolist (c members)
+                   (let ((sets (and (both-case-p c) (tuatara.syntax::case-octet-sets c))))
+
+                     (when sets
+                       (dolist (x members)
+                         (when (char-equal x c)
+                           (let ((octets (tuatara.text:string-octets (string x))))
+                             (unless (and (= (length octets) (length sets))
+                                          (every (lambda (set octet) (= 1 (sbit set octet))) sets octets))
+                               (push (list (char-code c) (char-code x)) bad)))))))))
+               groups)
+      (is equal '() bad))))
+
+(define-test (search backward-regex-keeps-no-text-per-match)
+  ;; a backward search through a piece of many matches makes about the garbage a
+  ;; count of them does, not a text and a list for each
+  (let* ((rope (tuatara.text:string->rope
+                (with-output-to-string (o) (loop repeat 3000 do (write-line "e e e e e e e e e e e e e e e e e e e e" o)))))
+
+         (total (tuatara.text:rope-octet-length rope))
+         (scanner (tuatara.syntax:compile-regex "e")))
+    (flet ((consed (function)
+             (funcall function)
+             (let ((before (sb-ext:get-bytes-consed)))
+               (funcall function)
+               (- (sb-ext:get-bytes-consed) before))))
+      (let ((counting (consed (lambda ()
+                                (tuatara.syntax:map-regex-matches (lambda (s e m g) (declare (ignore s e m g)) nil)
+                                                                  rope scanner (- total 65536) total :texts nil))))
+            (backward (consed (lambda () (tuatara.syntax:regex-search-backward rope scanner :threads 1)))))
+        (true (<= backward (+ (* 2 counting) 100000)) "backward ~d octets, counting ~d" backward counting)))))
+
+(define-test (search control-letter-leaves-case-ignored)
+  ;; the letter of \cA names a control character, no capital, so case stays ignored
+  (true (tuatara.syntax::regex-case-fold-p "a\\cA"))
+  (false (tuatara.syntax::regex-case-fold-p "A\\ca"))
+  (is = 2 (length (tuatara.syntax:regex-search-all (tuatara.text:string->rope (format nil "x~cB X~cb" (code-char 1) (code-char 1)))
+                                                    "x\\cA[b]"))))
+
+(define-test (search scripts-of-several-words-known)
+  ;; a script whose name has several words is found however they are joined
+  (let ((rope (tuatara.text:string->rope (format nil "a~cb" (code-char #x10300)))))
+    (dolist (name '("Old_Italic" "OldItalic" "Greek"))
+      (finish (tuatara.syntax:compile-regex (format nil "\\p{~a}" name)) "~a" name))
+    (is = 1 (length (tuatara.syntax:regex-search-all rope "\\p{Old_Italic}")))))
+
+(define-test (search long-lookbehind-sees-its-text)
+
+  ;; a lookbehind looking further back than a window's usual context finds every
+  ;; match, where the scan jumps to the text a match starts with as well
+  (let* ((line (format nil "~ayz~%" (make-string 100 :initial-element #\x)))
+         (s (with-output-to-string (o) (loop repeat 2000 do (write-string line o) (write-string "é kea" o))))
+         (rope (tuatara.text:string->rope s)))
+    (dolist (p '("(?<=x{100}y)z" "(?<!a{90}y)z" "(?<=(?<=x{60})x{40}y)z"))
+      (is equal (regex-oracle s p) (triples (tuatara.syntax:regex-search-all rope p)) "pattern ~s" p))))
+
 (define-test (search regex-windows)
   ;; ^, \b and lookbehind see the character before a window: a line longer than one
   (let* ((s (concatenate 'string (make-string 65536 :initial-element #\a) "xyz xyz" (string #\Newline) "xyz"))
@@ -197,14 +311,14 @@ newlines and some multibyte characters."
 
 (define-test (search regex-prefilter)
   ;; the text every match holds, which scans skip ahead to at literal speed
-  (is equal '("1999-13" t) (multiple-value-list (tuatara.syntax::required-literal "^1999-13")))
-  (is equal '("foobar" t) (multiple-value-list (tuatara.syntax::required-literal "(foo)bar")))
-  (is equal '("zzz" nil) (multiple-value-list (tuatara.syntax::required-literal "\\d+zzz")))
-  (is equal '("abc" t) (multiple-value-list (tuatara.syntax::required-literal "a(?:bc)+d")))
-  (is equal "word" (tuatara.syntax::required-literal "\\bword\\b"))
-  (false (tuatara.syntax::required-literal "x|y"))
-  (false (tuatara.syntax::required-literal "(?i)abc"))
-  (false (tuatara.syntax::required-literal "[xyz]{9}"))
+  (is equal '("1999-13" t) (multiple-value-list (tuatara.syntax::required-literal (cl-ppcre:parse-string "^1999-13"))))
+  (is equal '("foobar" t) (multiple-value-list (tuatara.syntax::required-literal (cl-ppcre:parse-string "(foo)bar"))))
+  (is equal '("zzz" nil) (multiple-value-list (tuatara.syntax::required-literal (cl-ppcre:parse-string "\\d+zzz"))))
+  (is equal '("abc" t) (multiple-value-list (tuatara.syntax::required-literal (cl-ppcre:parse-string "a(?:bc)+d"))))
+  (is equal "word" (tuatara.syntax::required-literal (cl-ppcre:parse-string "\\bword\\b")))
+  (false (tuatara.syntax::required-literal (cl-ppcre:parse-string "x|y")))
+  (false (tuatara.syntax::required-literal (cl-ppcre:parse-string "(?i)abc")))
+  (false (tuatara.syntax::required-literal (cl-ppcre:parse-string "[xyz]{9}")))
   ;; which patterns keep every match (and what they look at) within a line
   (flet ((crosses (pattern) (tuatara.syntax::crosses-lines-p (cl-ppcre:parse-string pattern))))
     (false (crosses "a+"))
@@ -253,7 +367,11 @@ newlines and some multibyte characters."
     (is equal '(nil nil) (shape "\\d{4}"))
     (is equal '(nil nil) (shape ".{4}"))
     (is equal '(nil nil) (shape "[^,]{4}"))
-    (is equal '(nil nil) (shape "é{4}" t))
+    ;; a letter past ASCII, case ignored: both cases' octets at each place, unless they
+    ;; are written in different numbers of octets
+    (is equal '(8 t) (shape "é{4}" t))
+    (is equal '(nil nil) (shape (format nil "~c{4}" (code-char #x23F)) t))
+
     (is equal '(1 t) (shape "a\\nb"))
     ;; a scanner looks for a shape only when it tells more than the text every match holds
     (true (scanner-shape "[[:uuid:]]"))
@@ -283,20 +401,28 @@ newlines and some multibyte characters."
   (let ((scanner (tuatara.syntax:compile-regex "kea error")))
     (is eq scanner (tuatara.syntax:compile-regex (copy-seq "kea error")))
     (isnt eq scanner (tuatara.syntax:compile-regex "kea error" :case-fold nil))
-    ;; lines end the same way in every text: CRLF makes no other scanner
-    (is eq scanner (tuatara.syntax:compile-regex "kea error" :crlf t))
     (let ((consed (loop repeat 3
                         minimize (let ((before (tuatara.bench::bytes-consed)))
                                    (tuatara.syntax:compile-regex "kea error")
                                    (- (tuatara.bench::bytes-consed) before)))))
       (true (< consed 4096) "compiling it again consed ~:d octets" consed))))
 
+(define-test (search file-patterns-repeating-repeats-refused)
+  ;; a pattern from a file that repeats a repeated part without bound is refused, or read as text
+  (dolist (pattern '("(a+)+$" "(x*y)*z" "(?:\\w+\\s?)*!"))
+    (fail (tuatara.syntax:compile-pattern pattern :untrusted t) 'tuatara.syntax::pattern-refused)
+    (true (tuatara.syntax:compile-pattern pattern) "~s typed is run" pattern))
+  (dolist (pattern '("a+b*" "(ab)+" "[0-9]{4}-[0-9]{2}" "(foo|bar)*"))
+    (true (tuatara.syntax:compile-pattern pattern :untrusted t) "~s from a file is run" pattern))
+  (is equal '("(a+)+")
+      (cl-ppcre:all-matches-as-strings (tuatara.syntax:compile-pattern "(a+)+" :untrusted t :or-text t) "x(a+)+")))
+
 (define-test (search crlf-plain-text-kept-plain)
   ;; a pattern of plain text alone, its special characters escaped, means the same in CRLF text
   (let ((text (format nil "~c[1m 1.5 1x5 (a+b) aab~c~%" (code-char 27) #\Return)))
     (dolist (pattern '("\\e\\[" "1\\.5" "\\(a\\+b\\)" "\\Q(a+b)\\E"))
       (is equal (cl-ppcre:all-matches-as-strings (tuatara.syntax:compile-regex pattern) text)
-          (cl-ppcre:all-matches-as-strings (tuatara.syntax:compile-regex pattern :crlf t) text)
+          (cl-ppcre:all-matches-as-strings (tuatara.syntax:compile-regex pattern) text)
           "~s, CRLF" pattern))))
 
 (define-test (search regex-tries-lines-holding-text)
@@ -501,5 +627,8 @@ newlines and some multibyte characters."
          (is = 0 (tuatara.syntax:pattern-group-count "a(b"))
          (is = 0 (tuatara.syntax:pattern-group-count "[[:nosuchclass:]]"))
          (is = 1 (tuatara.syntax:pattern-group-count "a(b)"))
-         (true (sb-concurrency:queue-empty-p tuatara.runtime:*debug-reports*)))
+         ;; only this thread's reports: work of earlier tests may still report from its own
+         (false (find (sb-thread:thread-name sb-thread:*current-thread*)
+                      (sb-concurrency:list-queue-contents tuatara.runtime:*debug-reports*)
+                      :key #'second :test #'equal)))
     (drain-debug-reports)))

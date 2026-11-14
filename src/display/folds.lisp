@@ -6,7 +6,7 @@
 ;;;; are anchors, so that it stays where it was through edits elsewhere; a
 ;;;; fold an edit empties goes. The text itself is never changed by folding,
 ;;;; and point is kept out of folds: moved into one, it goes to its start or,
-;;;; going forward, its end. Org's subtrees fold with them.
+;;;; going forward, its end. A mode's outline folds with them.
 ;;;;
 ;;;; The lines search filters hide are folds too, but of a kind of their own
 ;;;; (HIDE-RANGES): there may be millions of them, so they are kept in one
@@ -74,20 +74,17 @@ one pass over the folds, each range found by halving."
 
 ;;; Lines hidden by search filters
 
-(defstruct (hidden-ranges (:constructor make-hidden-ranges (version bounds)) (:copier nil))
+(define-record (hidden-ranges (:constructor make-hidden-ranges (version bounds)) (:copier nil))
   "The stretches of a buffer's text that search filters hide: BOUNDS, a
 vector of fixnums holding the start and end of each in turn, in order and
 apart, as offsets into the text of VERSION. Each starts at the newline ending
 the line shown before it and ends at the newline ending its last line, or at
 the end of the text. TOUCHED is true once a change reached into one of them,
 or replaced the whole text, which shows everything again."
-  version (bounds nil :type (simple-array fixnum (*))) (touched nil))
-
-(setf (documentation 'hidden-ranges-p 'function) "True when OBJECT is a HIDDEN-RANGES."
-      (documentation 'hidden-ranges-version 'function) "The version of a text HIDDEN-RANGES' bounds are offsets into."
-      (documentation 'hidden-ranges-bounds 'function) "The start and end of each stretch hidden, in
-turn, a vector of fixnums."
-      (documentation 'hidden-ranges-touched 'function) "True once a change reached into what HIDDEN-RANGES hides.")
+  (version nil :documentation "The version of a text HIDDEN-RANGES' bounds are offsets into.")
+  (bounds nil :type (simple-array fixnum (*)) :documentation "The start and end of each stretch hidden, in
+turn, a vector of fixnums.")
+  (touched nil :documentation "True once a change reached into what HIDDEN-RANGES hides."))
 
 (defun hide-ranges (buffer bounds &key version)
   "Hide from BUFFER's windows the stretches of its text BOUNDS gives, a vector
@@ -129,8 +126,9 @@ edits made to ROPE: a new vector, BOUNDS left as they were, and true as a
 second value when an edit reached into one of them (HIDDEN-EDIT-P). A
 stretch whose first newline was deleted with the whole lines shown before it
 starts at the newline before those lines; stretches meeting are made one,
-those emptied go. Only the stretches about the edits are mapped one by one:
-O(stretches + edits × log edits)."
+those emptied go. The stretches before the first edit are copied as they
+are, those after the last moved by what the edits add, and only those about
+the edits mapped one by one: O(stretches + edits × log edits)."
   (declare (type (simple-array fixnum (*)) bounds))
   (let* ((edits (tuatara.text:batch-edits batch))
          (n (length edits)))
@@ -141,8 +139,10 @@ O(stretches + edits × log edits)."
                (deltas (tuatara.text:batch-deltas batch))
                (delta (aref deltas (1- (length deltas))))
                (out (make-array (length bounds) :element-type 'fixnum))
-               (w 0) (k 0) (touched nil))
+               (w (* 2 (hidden-index bounds (lambda (s e) (declare (ignore s)) (>= e low)))))
+               (k 0) (touched nil))
           (declare (type fixnum low high delta w k))
+          (replace out bounds :end2 w)
           (flet ((put (s e)
                    (declare (type fixnum s e))
                    (cond ((>= s e))
@@ -150,7 +150,7 @@ O(stretches + edits × log edits)."
                           (setf (aref out (1- w)) (max e (aref out (1- w)))))
                          (t (setf (aref out w) s (aref out (1+ w)) e)
                             (incf w 2)))))
-            (loop for i of-type fixnum from 0 below (length bounds) by 2
+            (loop for i of-type fixnum from w below (length bounds) by 2
                   for s of-type fixnum = (aref bounds i)
                   for e of-type fixnum = (aref bounds (1+ i))
                   do (cond ((< e low) (put s e))
@@ -167,7 +167,7 @@ O(stretches + edits × log edits)."
                                                      (= (tuatara.text:edit-end edit) (1+ s)))
                                                 (setf ns (1- ns)))))
                                 (put ns ne))))))
-          (values (subseq out 0 w) touched)))))
+          (values (if (= w (length out)) out (subseq out 0 w)) touched)))))
 
 (defun hidden-bounds (buffer)
   "The stretches search filters hide of BUFFER's text (HIDE-RANGES), as
@@ -177,19 +177,25 @@ when next asked for (MAP-HIDDEN-BOUNDS); a change of the whole text shows
 everything again."
   (let ((hidden (tuatara.buffer:buffer-local buffer :hidden-ranges)))
     (when hidden
-      (let ((now (tuatara.buffer:buffer-version buffer)))
-        (loop until (eq (hidden-ranges-version hidden) now)
-              do (let* ((before (hidden-ranges-version hidden))
-                        (next (tuatara.text:version-next before))
-                        (batch (tuatara.text:version-batch next)))
-                   (if (tuatara.text:batch-swap batch)
-                       (setf (hidden-ranges-bounds hidden) (make-array 0 :element-type 'fixnum)
-                             (hidden-ranges-touched hidden) t)
-                       (multiple-value-bind (bounds touched)
-                           (map-hidden-bounds (hidden-ranges-bounds hidden) batch (tuatara.text:version-rope before))
-                         (setf (hidden-ranges-bounds hidden) bounds)
-                         (when touched (setf (hidden-ranges-touched hidden) t))))
-                   (setf (hidden-ranges-version hidden) next)))
+      (let* ((now (tuatara.buffer:buffer-version buffer))
+             (before (hidden-ranges-version hidden))
+             (batches (tuatara.text:version-batches before now)))
+        (cond ((eq batches :whole)
+               (setf (hidden-ranges-bounds hidden) (make-array 0 :element-type 'fixnum)
+                     (hidden-ranges-touched hidden) t))
+              (batches
+               ;; the text each batch was made to: the first, the text the bounds were of; the others made
+               ;; again from the text now back, as no version holds a later text
+               (let ((ropes (let ((rope (tuatara.text:version-rope now)) (ropes '()))
+                              (dolist (batch (reverse (rest batches)) (cons (tuatara.text:version-rope before) ropes))
+                                (push (setf rope (tuatara.text:batch-rope-before batch rope)) ropes)))))
+                 (loop for batch in batches
+                       for rope in ropes
+                       do (multiple-value-bind (bounds touched)
+                              (map-hidden-bounds (hidden-ranges-bounds hidden) batch rope)
+                            (setf (hidden-ranges-bounds hidden) bounds)
+                            (when touched (setf (hidden-ranges-touched hidden) t)))))))
+        (setf (hidden-ranges-version hidden) now)
         (let ((bounds (hidden-ranges-bounds hidden)))
           (and (plusp (length bounds)) bounds))))))
 
@@ -231,7 +237,7 @@ in the rows and between them is left out (SHOWN-PARTS, UNFOLDED-PARTS)."
     (loop for row across rows
           for bytes = (row-bytes row)
           ;; the first character shown, past what a line scrolled sideways hides and
-          ;; what stands for no character before it (Org's indented view)
+          ;; what stands for no character before it (an indentation that is no text)
           for start = (if (row-mixed row)
                           (loop for byte across bytes when (>= byte 0) minimize byte into low
                                 finally (return (if (< low most-positive-fixnum) low (row-start row))))
@@ -290,6 +296,13 @@ one after one it holds for; the number of stretches when none. O(log n)."
 (defun hidden-stretch (bounds k)
   "Stretch K of BOUNDS as (START . END), or NIL past the last."
   (and (< (* 2 k) (length bounds)) (cons (aref bounds (* 2 k)) (aref bounds (1+ (* 2 k))))))
+
+(defun hidden-stretch-at (bounds position)
+  "The stretch of BOUNDS, the stretches search filters hide as HIDDEN-BOUNDS
+gives them, that hides POSITION, as (START . END): its start hidden, its end
+not. NIL when none does. O(log n)."
+  (let ((stretch (hidden-stretch bounds (hidden-index bounds (lambda (s e) (declare (ignore s)) (> e position))))))
+    (and stretch (<= (car stretch) position) stretch)))
 
 (defun hidden-around (buffer position)
   "The stretch hidden by search filters (HIDE-RANGES) that POSITION of
@@ -362,11 +375,26 @@ then. O(log n) in the folds."
         (let* ((folds (fold-vector buffer))
                (i (fold-index folds (lambda (fold) (> (cdr fold) position)))))
           (and (< i (length folds)) (<= (car (svref folds i)) position) (svref folds i))))
-      (let ((bounds (and hidden (hidden-bounds buffer))))
-        (when bounds
-          (let ((stretch (hidden-stretch bounds
-                                         (hidden-index bounds (lambda (s e) (declare (ignore s)) (> e position))))))
-            (and stretch (<= (car stretch) position) (values stretch t)))))))
+      (let* ((bounds (and hidden (hidden-bounds buffer)))
+             (stretch (and bounds (hidden-stretch-at bounds position))))
+        (and stretch (values stretch t)))))
+
+(defun range-folded-p (buffer start end)
+  "True when one fold of BUFFER hides the whole of the octets from START to
+END: the last fold starting at or before START, when it reaches END. O(log n)
+in the folds."
+  (when (tuatara.buffer:buffer-local buffer :folds)
+    (let* ((folds (fold-vector buffer))
+           (i (fold-index folds (lambda (fold) (> (car fold) start)))))
+      (and (plusp i) (>= (cdr (svref folds (1- i))) end)))))
+
+(defun nearer-stretch (fold stretch later)
+  "Of FOLD and STRETCH, each (START . END) or NIL, the one starting first, or
+with LATER the one starting last; the other when one is NIL."
+  (cond ((null fold) stretch)
+        ((null stretch) fold)
+        ((if later (> (car stretch) (car fold)) (< (car stretch) (car fold))) stretch)
+        (t fold)))
 
 (defun fold-from (buffer position)
   "The first fold of BUFFER starting at POSITION or after it, as (START .
@@ -379,7 +407,7 @@ END), or NIL; the lines search filters hide count as folds."
                    (and bounds
                         (hidden-stretch bounds
                                         (hidden-index bounds (lambda (s e) (declare (ignore e)) (>= s position))))))))
-    (if (and fold stretch) (if (< (car stretch) (car fold)) stretch fold) (or fold stretch))))
+    (nearer-stretch fold stretch nil)))
 
 (defun fold-before (buffer position)
   "The last fold of BUFFER starting before POSITION, as (START . END), or
@@ -392,18 +420,15 @@ NIL; the lines search filters hide count as folds."
                    (when bounds
                      (let ((k (hidden-index bounds (lambda (s e) (declare (ignore e)) (>= s position)))))
                        (and (plusp k) (hidden-stretch bounds (1- k))))))))
-    (if (and fold stretch) (if (> (car stretch) (car fold)) stretch fold) (or fold stretch))))
+    (nearer-stretch fold stretch t)))
 
-(defstruct (fold-set (:constructor make-fold-set (folds bounds rope)) (:copier nil))
+(define-record (fold-set (:constructor make-fold-set (folds bounds rope)) (:copier nil))
   "A buffer's folds as they stand at a moment (FOLDS-NOW): FOLDS, a vector of (START
 . END) in order; BOUNDS, the stretches search filters hide, as HIDE-RANGES
 takes them, or NIL; ROPE, the text they are in."
-  (folds #() :type simple-vector) bounds rope)
-
-(setf (documentation 'fold-set-p 'function) "True when OBJECT is a FOLD-SET."
-      (documentation 'fold-set-folds 'function) "The folds of a FOLD-SET, a vector of (START . END) in order."
-      (documentation 'fold-set-bounds 'function) "The stretches search filters hide in a FOLD-SET, or NIL."
-      (documentation 'fold-set-rope 'function) "The text a FOLD-SET's folds are in.")
+  (folds #() :type simple-vector :documentation "The folds of a FOLD-SET, a vector of (START . END) in order.")
+  (bounds nil :documentation "The stretches search filters hide in a FOLD-SET, or NIL.")
+  (rope nil :documentation "The text a FOLD-SET's folds are in."))
 
 (defun folds-cut (now start end)
   "The first fold of NOW, a FOLD-SET as FOLDS-NOW gives it, that deleting the
@@ -431,9 +456,10 @@ in the folds."
 
 (defun folds-hiding (now start end)
   "The first fold of NOW, a FOLD-SET as FOLDS-NOW gives it, that hides any of
-the octets from START below END, as (START . END), the lines search filters hide counted too; for
-an empty stretch, START equal to END, the fold START is inside of (not at its
-start). NIL when all of the stretch is shown. O(log n) in the folds."
+the octets from START below END, as (START . END), the lines search filters
+hide counted too; for an empty stretch, START equal to END, the fold START is
+inside of (not at its start). NIL when all of the stretch is shown. O(log n)
+in the folds."
   (let* ((folds (fold-set-folds now))
          (i (fold-index folds (lambda (fold) (> (cdr fold) start)))))
     (or (and (< i (length folds)) (< (car (svref folds i)) end) (svref folds i))

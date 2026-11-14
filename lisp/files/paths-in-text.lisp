@@ -2,13 +2,13 @@
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; Typing a slash in a path in a buffer (/etc/, ~/notes/, ./src/) lists the
-;;;; entries of its directory beside the cursor, an idea taken from Helix's
-;;;; path completion. The directory is read on a thread of its own, so a
-;;;; slow drive never holds typing up, and the list opens when it is read, if
-;;;; the path is still being typed. The list is the one completion at point
-;;;; shows (COMPLETE-IN-TEXT), its candidates those of the questions for a file
-;;;; (DIRECTORY-CANDIDATES). C-x C-p opens the path at the cursor as C-x C-f
-;;;; would: a directory in a list of it, a file in its buffer.
+;;;; entries of its directory beside the cursor. The directory is read on a
+;;;; thread of its own, so a slow drive never holds typing up, and the list
+;;;; opens when it is read, if the path is still being typed. The list is the
+;;;; one completion at point shows (COMPLETE-IN-TEXT), its candidates those of
+;;;; the questions for a file (DIRECTORY-CANDIDATES). C-x C-p opens the path at
+;;;; the cursor as C-x C-f would: a directory in a list of it, a file in its
+;;;; buffer.
 
 (in-package #:tuatara.defaults)
 
@@ -57,6 +57,10 @@ stand around a path in a program or in prose.")
 a path (PATH-PART-P) other than a slash."
   (and (char/= char #\/) (path-part-p char)))
 
+(defun without-file-scheme (word)
+  "WORD, a path as written in text, without the file: of a file: link."
+  (if (and (> (length word) 5) (string= "file:" word :end2 5)) (subseq word 5) word))
+
 (defun path-at-point (buffer position)
   "The path being typed at POSITION of BUFFER, as four values: where it
 starts, where the name after its last slash starts and ends (octets), and its
@@ -65,7 +69,7 @@ slash before POSITION. A file: link's path is the part after file:."
   (let ((start (word-bounds-at buffer position #'path-part-p *popup-reach*)))
     (when (< start position)
       (let* ((typed (tuatara.buffer:buffer-string buffer :start start :end position))
-             (skip (if (and (> (length typed) 5) (string= "file:" typed :end2 5)) 5 0))
+             (skip (- (length typed) (length (without-file-scheme typed))))
              (slash (position #\/ typed :from-end t :start skip)))
         (when slash
           (let ((name-start (+ start (tuatara.text:string-octet-length typed :end (1+ slash)))))
@@ -167,8 +171,7 @@ made of what a path is made of (PATH-PART-P), a file: link's without its
 file:; NIL when there is none."
   (multiple-value-bind (start end) (word-bounds-at buffer position #'path-part-p *popup-reach*)
     (when (< start end)
-      (let ((word (tuatara.buffer:buffer-string buffer :start start :end end)))
-        (if (and (> (length word) 5) (string= "file:" word :end2 5)) (subseq word 5) word)))))
+      (without-file-scheme (tuatara.buffer:buffer-string buffer :start start :end end)))))
 
 (defun existing-path (typed buffer)
   "The native name of what TYPED, a path in the text of BUFFER, names, with
@@ -211,3 +214,18 @@ typed in a buffer (*COMPLETE-PATHS*, *COMPLETE-PATHS-MODES*), and bind
   (pushnew 'start-path-listing (editor-post-command-functions editor))
   (pushnew 'path-completion-tick *tick-functions*)
   (define-key *global-keymap* "C-x C-p" 'open-path-at-point))
+
+(defun attachment-file-name (name &optional (fallback "attachment"))
+  "NAME, as an attachment or an embedded file calls itself, made a file's name
+alone; what follows its last / or \\, control characters and those a name
+cannot hold on the drives other systems use (: * ? \" < > |) left out, spaces
+and full stops trimmed from its ends, cut to the most a name may take
+\(TUATARA.IO:FIT-NAME), its ending kept; FALLBACK for one with nothing left,
+or no NAME."
+  (let* ((name (or name ""))
+         (name (subseq name (1+ (or (position-if (lambda (c) (member c '(#\/ #\\))) name :from-end t) -1))))
+         (name (remove-if (lambda (c) (or (< (char-code c) 32) (= (char-code c) 127) (<= #xD800 (char-code c) #xDFFF)
+                                          (find c ":*?\"<>|")))
+                          name))
+         (name (string-trim " ." name)))
+    (if (zerop (length name)) fallback (tuatara.io:fit-name name))))

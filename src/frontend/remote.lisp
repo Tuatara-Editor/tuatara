@@ -22,6 +22,10 @@ in the editor, for what the client's screen is.")
 its packages: how long tuatara --daemon waits for it to say it is ready, and a
 client that connected meanwhile for its hello.")
 
+(defparameter *missed-answer-seconds* 5
+  "Seconds a client that gave no answer in time is not asked again
+\(ASK-CLIENT), its answer taken to be none.")
+
 (defparameter *answer-seconds* 1/5
   "The seconds the editor waits for a client to answer a question (the text
 of its clipboard) before taking it as having none.")
@@ -88,13 +92,14 @@ STALL-SECONDS, however little at a time it took; NIL when the socket failed."
                             (t (return-from send-outbox :stalled)))))
            t)
       (close-descriptors (mapcar #'cdr (outbox-descriptors box)))
-      (setf (outbox-fill box) 0 (outbox-descriptors box) '()))))
+      (empty-outbox box)
+      (setf (outbox-descriptors box) '()))))
 
 (defun shown-words (text)
   "TEXT, from the other end of a connection, without its control characters
 and the invisible characters that change the direction text is drawn in or
 draw nothing (TUATARA.DISPLAY:HIDING-CODE-P), to be shown or put in a
-log."
+log; TUATARA.DISPLAY:ESCAPE-CONTROLS writes them out instead."
   (remove-if (lambda (c)
                (let ((code (char-code c)))
                  (or (tuatara.text:control-code-p code) (tuatara.display:hiding-code-p code))))
@@ -234,6 +239,8 @@ it, what the client sends is not read until the editor has taken some.")
                    :documentation "What the question awaiting its answer asks (*QUESTIONS*).")
    (answer :initform :none :accessor remote-answer
            :documentation "The answer that came, or :NONE.")
+   (missed :initform nil :accessor remote-missed
+           :documentation "When the client last gave no answer in time, an internal real time, or NIL.")
    (pieces :initform '() :accessor remote-pieces
            :documentation "The pieces of a text answer come so far, as GATHER-TEXT keeps them.")
    (pasted :initform '() :accessor remote-pasted
@@ -277,6 +284,8 @@ as it attached (REQUEST)."
       (documentation 'remote-pid 'function) "The process the client of the remote frontend F connected from, or NIL.")
 
 (defmethod initialize-instance :after ((f remote-frontend) &key)
+  "Give the remote frontend F the test its threads stop by: once it is closing or
+closed."
   (setf (remote-stopping f) (lambda () (or (remote-closing f) (remote-closed f)))))
 
 (defun settings-now ()
@@ -496,11 +505,15 @@ was put."
 (defun ask-client (remote question &optional argument (seconds *answer-seconds*))
   "Ask REMOTE's client QUESTION (*QUESTIONS*), with ARGUMENT, a font's name,
 font steps or words to show, and wait at most SECONDS (*ANSWER-SECONDS*) for
-its answer; NIL when it gives none. An answer read only after the client's events waiting to be
-handled (the most, +MOST-WAITING-EVENTS+, while the editor is busy) comes
-too late, and is NIL too."
+its answer; NIL when it gives none. An answer read only after the client's
+events waiting to be handled (the most, +MOST-WAITING-EVENTS+, while the
+editor is busy) comes too late, and is NIL too. A client that gave no answer
+in time is not asked again for *MISSED-ANSWER-SECONDS*, the answer NIL at
+once, so that one that answers nothing holds the editor up once."
   (sb-thread:with-mutex ((remote-lock remote))
-    (unless (or (remote-ended remote) (remote-closing remote))
+    (unless (or (remote-ended remote) (remote-closing remote)
+                (let ((missed (remote-missed remote)))
+                  (and missed (< (tuatara.runtime:seconds-since missed) *missed-answer-seconds*))))
       (let ((box (remote-unsent remote)) (request (incf (remote-requests remote))))
         (setf (remote-asked remote) request (remote-asked-question remote) question
               (remote-answer remote) :none (remote-pieces remote) '())
@@ -519,6 +532,7 @@ too late, and is NIL too."
                                           (max 0.001 (tuatara.runtime:seconds-left deadline))))
         (setf (remote-asked remote) nil)
         (let ((answer (shiftf (remote-answer remote) :none)))
+          (setf (remote-missed remote) (and (eq answer :none) (get-internal-real-time)))
           (if (eq answer :none) nil answer))))))
 
 (defun send-faces (remote)
@@ -548,9 +562,12 @@ after the names they use; a face whose name has no number (past the
               (put-octets box (gethash name (remote-faces-sent remote))))
             (end-message box at)))))))
 
-(defmethod frontend-start ((f remote-frontend)) nil)
+(defmethod frontend-start ((f remote-frontend))
+  "Nothing: the remote frontend F is going once its client has said hello."
+  nil)
 
 (defmethod frontend-stop ((f remote-frontend))
+  "Stop the remote frontend F, unless it is stopped already (FRONTEND-STOP-ONCE)."
   (unless (remote-closed f)
     (frontend-stop-once f)))
 
@@ -577,71 +594,95 @@ while its client takes it, the client told to exit, and its socket closed."
   nil)
 
 (defmethod frontend-frame ((f remote-frontend))
+  "The editor's frame the remote frontend F paints."
   (remote-frame f))
 
 (defmethod (setf frontend-frame) (frame (f remote-frontend))
+  "Have the remote frontend F paint FRAME, named in its events."
   (setf (remote-frame f) frame))
 
 (defmethod frontend-size ((f remote-frontend))
+  "The columns and rows of the client's screen, as two values."
   (let ((facts (remote-facts f)))
     (values (facts-width facts) (facts-height facts))))
 
 (defmethod frontend-read-event ((f remote-frontend))
+  "The next event of F's queue, waiting for one."
   (queue-pop (remote-queue f) nil))
 
 (defmethod frontend-read-event-timeout ((f remote-frontend) seconds)
+  "The next event of F's queue, or a :TICK when none comes in SECONDS."
   (or (queue-pop (remote-queue f) seconds) (make-event :tick)))
 
 (defmethod frontend-wake ((f remote-frontend))
+  "Wake the editor reading F's queue, a :TICK put in it."
   (queue-push (remote-queue f) (make-event :tick)))
 
 (defmethod frontend-input-pending-p ((f remote-frontend))
+  "True when F's queue holds an event of input."
   (queue-input-p (remote-queue f)))
 
 (defmethod frontend-colour-count ((f remote-frontend))
+  "How many colours the client's screen shows."
   (facts-colours (remote-facts f)))
 
 (defmethod frontend-description ((f remote-frontend))
+  "The words the client gave for its screen."
   (facts-description (remote-facts f)))
 
 (defmethod frontend-health ((f remote-frontend))
+  "What the client said of how its screen fares."
   (facts-health (remote-facts f)))
 
 (defmethod frontend-images-p ((f remote-frontend))
+  "True when the client's screen shows pictures."
   (facts-images (remote-facts f)))
 
 (defmethod frontend-reorders-text-p ((f remote-frontend))
+  "True when the client's screen puts right-to-left text in order itself."
   (facts-reorders (remote-facts f)))
 
 (defmethod frontend-cell-pixels ((f remote-frontend))
+  "The width and height in pixels of a cell of the client's screen, as two
+values, or NIL."
   (let ((facts (remote-facts f)))
     (and (facts-cell-width facts) (values (facts-cell-width facts) (facts-cell-height facts)))))
 
 (defmethod frontend-desktop-style ((f remote-frontend))
+  "The desktop's light or dark style, as the client last said it."
   (facts-style (remote-facts f)))
 
 (defmethod frontend-font-steps ((f remote-frontend))
+  "How many steps larger or smaller than its own the client's window draws its
+font."
   (facts-font-steps (remote-facts f)))
 
 (defmethod (setf frontend-font-steps) (steps (f remote-frontend))
+  "Ask the client's window to draw its font STEPS larger or smaller; the steps it
+took."
   (if (facts-window (remote-facts f))
       (or (ask-client f :font-steps steps) (facts-font-steps (remote-facts f)))
       steps))
 
 (defmethod frontend-fonts ((f remote-frontend))
+  "The fonts the client's window can draw."
   (facts-fonts (remote-facts f)))
 
 (defmethod frontend-font-faces ((f remote-frontend))
+  "The faces of the fonts the client's window can draw."
   (facts-font-faces (remote-facts f)))
 
 (defmethod frontend-set-font ((f remote-frontend) name)
+  "Ask the client's window to draw in the font NAME; true when it did."
   (and (facts-window (remote-facts f)) (stringp name) (<= (tuatara.text:string-octet-length name) 1024)
        (ask-client f :font name)))
 
 (defmethod frontend-clipboard ((f remote-frontend))
+  "The text of the client's clipboard (ASK-CLIENT), or NIL."
   (ask-client f :clipboard))
 
 (defmethod frontend-primary-selection ((f remote-frontend))
+  "The text of the client's primary selection (ASK-CLIENT), or NIL."
   (ask-client f :primary))
 
 (defun send-selection (remote which text)
@@ -652,27 +693,35 @@ client takes (+MOST-TEXT+), or left out."
        (queue-message remote :selection (lambda (box) (put-number box which 1) (put-text box text)) :needed nil)))
 
 (defmethod frontend-set-clipboard ((f remote-frontend) text)
+  "Have the client make TEXT its clipboard (SEND-SELECTION)."
   (send-selection f 0 text))
 
 (defmethod frontend-set-primary-selection ((f remote-frontend) text)
+  "Have the client make TEXT its primary selection (SEND-SELECTION)."
   (send-selection f 1 text))
 
 (defmethod frontend-set-title ((f remote-frontend) title)
+  "Have the client show TITLE as its window's title, unless it is too long to
+send."
   (when (<= (tuatara.text:string-octet-length title) 60000)
     (queue-message f :title (lambda (box) (put-text box title)) :needed nil)))
 
 (defmethod frontend-toggle-state ((f remote-frontend) state)
+  "Have the client's window go full screen or maximised (STATE), or back."
   (and (facts-window (remote-facts f)) (member state '(:fullscreen :maximised))
        (queue-message f :toggle (lambda (box) (put-number box (if (eq state :fullscreen) 0 1) 1)) :needed nil)))
 
 (defmethod frontend-raise ((f remote-frontend))
+  "Have the client bring its window to the front."
   (queue-message f :raise (lambda (box) (declare (ignore box))) :needed nil))
 
 (defmethod frontend-scales-rows-p ((f remote-frontend))
+  "True when the client draws rows large, as a window of its own does."
   (facts-window (remote-facts f)))
 
 (defmethod frontend-settings-changed ((f remote-frontend))
-  ;; told again only when one of them has another value than the client was told
+  "Tell the client the display settings, when one has another value than it was
+told."
   (unless (loop for (name) in *display-settings*
                 for sent in (remote-settings-sent f)
                 always (equal sent (if (boundp name) (symbol-value name) :unset)))
@@ -691,8 +740,10 @@ time past which it is no longer waited for.")
   "Held while *WINDOWS-ASKED-FOR* changes.")
 
 (defmethod frontend-ask-another ((f remote-frontend) what windows)
-  ;; a client in a window opens another, a connection of its own attached with the word it is given; held to
-  ;; its most windows, and to a few asked for at once
+  "Ask the client, shown in a window, to open another, a connection of its own
+attached with the word it is given, WHAT kept for it; WINDOWS is how many it
+shows now. Held to its most windows and to a few asked for at once: the words
+why not, or NIL when it is asked."
   (when (and (facts-window (remote-facts f)) (not (remote-ended f)) (not (remote-closing f)))
     (let ((word (tuatara.io:random-name)))
       (or (sb-thread:with-mutex (*windows-asked-lock*)
@@ -746,6 +797,7 @@ word it was not asked."
                                   :text (format nil "No other window was opened: ~a" (shown-words words))))))
 
 (defmethod frontend-terminal-device ((f remote-frontend))
+  "The terminal the client runs in, or NIL for one in a window of its own."
   (and (not (facts-window (remote-facts f))) (request-terminal (remote-request f))))
 
 (defparameter *lend-seconds* 2
@@ -753,7 +805,8 @@ word it was not asked."
 lent to a program before the program runs without it.")
 
 (defmethod frontend-lend-terminal ((f remote-frontend) function &key words)
-  ;; the client gives its terminal back and shows WORDS there; told to take it again whatever it answered
+  "Call FUNCTION with the client's terminal given back to be lent to a program,
+WORDS shown there; the client takes it again afterwards whatever it answered."
   (if (frontend-terminal-device f)
       (let ((lent (eql 1 (ask-client f :lend (shown-words (or words "")) *lend-seconds*))))
         (unwind-protect (funcall function)
@@ -762,10 +815,12 @@ lent to a program before the program runs without it.")
       (funcall function)))
 
 (defmethod frontend-begin-frame ((f remote-frontend))
+  "Begin a frame for the client: the faces changed sent first, the painting of
+the last frame let go."
   (unless (= (remote-faces-generation f) tuatara.display:*face-generation*)
     (send-faces f))
-  (setf (outbox-fill (remote-painting f)) 0
-        (fill-pointer (remote-kept-calls f)) 0
+  (empty-outbox (remote-painting f))
+  (setf (fill-pointer (remote-kept-calls f)) 0
         (remote-frame-pictures f) '())
   (when (remote-far-pictures f)
     (sb-thread:with-mutex ((remote-lock f))
@@ -784,9 +839,12 @@ left out, with room kept for every row to say so.")
     (tuatara.runtime:debug-report :remote "a frame too large for the client: rows sent without colours, or left out")
     (queue-push (remote-queue remote)
                 (make-event :said :frame (remote-frame remote)
-                                  :text "This screen is too large to send whole: some rows show without colours or are left out"))))
+                                  :text (concatenate 'string "This screen is too large to send whole: some rows "
+                                                     "show without colours or are left out")))))
 
 (defmethod frontend-put-row ((f remote-frontend) row string &key face spans scales over parts)
+  "Paint ROW of the frame with STRING in FACE and SPANS, as FRONTEND-PUT-ROW
+says, kept as the client is to be sent it."
   (when (< -1 row +most-rows+)
     (let* ((box (remote-painting f)) (start (outbox-fill box)))
       (put-row-call box (remote-names f) row string face spans scales over parts)
@@ -812,6 +870,7 @@ left out, with room kept for every row to say so.")
                    (setf (aref (remote-kept-lengths f) row) length)))))))
 
 (defmethod frontend-set-cursor ((f remote-frontend) row column shape &optional colour)
+  "Put the frame's cursor at ROW and COLUMN in SHAPE and COLOUR."
   (put-cursor-call (remote-painting f) row column shape colour))
 
 (defun send-picture (remote image)
@@ -837,6 +896,8 @@ than +MOST-UNSENT+ octets not yet sent, the pictures' pixels counted."
           t)))))
 
 (defmethod frontend-put-image ((f remote-frontend) image row column columns rows &optional offset)
+  "Show IMAGE in the frame over COLUMNS by ROWS cells from ROW and COLUMN, from
+OFFSET, as the client takes pictures."
   (when (and (facts-images (remote-facts f))
              (<= 1 (image-width image) 65535) (<= 1 (image-height image) 65535) (<= 3 (image-channels image) 4)
              (<= (* (image-width image) (image-height image) (image-channels image)) +most-picture-octets+)
@@ -864,6 +925,7 @@ painted as before written out in full."
     (end-message box at)))
 
 (defmethod frontend-end-frame ((f remote-frontend))
+  "Send the client the frame painted."
   (sb-thread:with-mutex ((remote-lock f))
     (unless (or (remote-ended f) (remote-closing f))
       (let ((box (remote-unsent f)) (whole nil))
@@ -881,8 +943,8 @@ painted as before written out in full."
 ;;; Pictures for a client on another machine, sent as bytes
 ;;; (a descriptor does not cross ssh) by a thread of their own
 
-(defstruct (far-picture (:constructor make-far-picture (source width height channels image shown-at))
-                        (:copier nil))
+(define-record (far-picture (:constructor make-far-picture (source width height channels image shown-at))
+                           (:copier nil))
   "A picture of an editor's for its client on another machine. It is a copy of
 the picture numbered SOURCE, the size it is shown at or its own (WIDTH by
 HEIGHT pixels of CHANNELS octets, sent as number ID, given when the copy is
@@ -890,29 +952,19 @@ made). IMAGE is the picture it is made of, until it is sent. STATE is :WANTED,
 :SENDING, :READY once the client has it all, :REFUSED when it cannot be sent,
 or :CANCELLED. SHOWN-AT is the frame that last asked for it. TAKEN is the
 octets of TOTAL the client has said it has."
-  (source 0 :type fixnum :read-only t)
-  (id 0 :type (unsigned-byte 32))
-  (width 0 :type fixnum :read-only t)
-  (height 0 :type fixnum :read-only t)
-  (channels 0 :type fixnum :read-only t)
-  (image nil)
-  (state :wanted :type (member :wanted :sending :ready :refused :cancelled))
-  (shown-at 0 :type fixnum)
-  (taken 0 :type fixnum)
-  (total 0 :type fixnum))
+  (source 0 :type fixnum :read-only t :documentation "The number of the picture this is a copy of.")
+  (id 0 :type (unsigned-byte 32) :documentation "The number the client knows this picture by.")
+  (width 0 :type fixnum :read-only t :documentation "The width in pixels of the copy sent.")
+  (height 0 :type fixnum :read-only t :documentation "The height in pixels of the copy sent.")
+  (channels 0 :type fixnum :read-only t :documentation "The octets of each pixel of the copy sent.")
+  (image nil :documentation "The picture this is a copy of, until it has been sent.")
+  (state :wanted :type (member :wanted :sending :ready :refused :cancelled)
+         :documentation "How far this picture has got (FAR-PICTURE).")
+  (shown-at 0 :type fixnum :documentation "The frame that last asked for this picture.")
+  (taken 0 :type fixnum :documentation "How many octets the client has said it has of this picture.")
+  (total 0 :type fixnum :documentation "How many packed octets this picture goes in."))
 
-(setf (documentation 'make-far-picture 'function) "A FAR-PICTURE wanted of IMAGE, the copy to send, by frame SHOWN-AT."
-      (documentation 'far-picture-p 'function) "True when OBJECT is a FAR-PICTURE."
-      (documentation 'far-picture-source 'function) "The number of the picture this is a copy of."
-      (documentation 'far-picture-id 'function) "The number the client knows this picture by."
-      (documentation 'far-picture-width 'function) "The width in pixels of the copy sent."
-      (documentation 'far-picture-height 'function) "The height in pixels of the copy sent."
-      (documentation 'far-picture-channels 'function) "The octets of each pixel of the copy sent."
-      (documentation 'far-picture-image 'function) "The picture this is a copy of, until it has been sent."
-      (documentation 'far-picture-state 'function) "How far this picture has got (FAR-PICTURE)."
-      (documentation 'far-picture-shown-at 'function) "The frame that last asked for this picture."
-      (documentation 'far-picture-taken 'function) "How many octets the client has said it has of this picture."
-      (documentation 'far-picture-total 'function) "How many packed octets this picture goes in.")
+(setf (documentation 'make-far-picture 'function) "A FAR-PICTURE wanted of IMAGE, the copy to send, by frame SHOWN-AT.")
 
 (defun far-picture-octets (far)
   "How many octets of pixels FAR's copy has."
@@ -948,27 +1000,24 @@ IMAGE's own size will do."
   (multiple-value-bind (width height) (picture-size-for-client remote image columns rows offset)
     (sb-thread:with-mutex ((remote-lock remote))
       (unless (or (remote-ended remote) (remote-closing remote))
-        (let* ((number (remote-frame-number remote))
-               (same (remove (image-id image) (remote-far-pictures remote) :key #'far-picture-source :test-not #'=))
-               (ready (let ((ready (remove-if-not (lambda (far)
-                                                    (and (eq (far-picture-state far) :ready)
-                                                         (or (not offset) (= (far-picture-width far) width))))
-                                                  same)))
-                        (and ready
-                             (reduce (lambda (a b) (if (>= (far-picture-width a) (far-picture-width b)) a b)) ready))))
-               (enough (and ready
-                            (or (>= (* 5 (far-picture-width ready)) (* 4 width))
-                                (= (far-picture-width ready) (image-width image))))))
+        (let ((number (remote-frame-number remote))
+              ;; of the copies of IMAGE the size wanted takes, the largest the client has and one coming
+              (ready nil) (coming nil))
+          (dolist (far (remote-far-pictures remote))
+            (when (and (= (far-picture-source far) (image-id image))
+                       (or (not offset) (= (far-picture-width far) width)))
+              (case (far-picture-state far)
+                (:ready (when (or (null ready) (> (far-picture-width far) (far-picture-width ready)))
+                          (setf ready far)))
+                ((:wanted :sending :refused) (unless coming (setf coming far))))))
           (when ready (setf (far-picture-shown-at ready) number))
-          (unless enough
-            (let ((coming (find-if (lambda (far)
-                                     (and (member (far-picture-state far) '(:wanted :sending :refused))
-                                          (or (not offset) (= (far-picture-width far) width))))
-                                   same)))
-              (if coming
-                  (setf (far-picture-shown-at coming) number)
-                  (want-far-picture remote image width height number))
-              (start-far-sender remote)))
+          (unless (and ready
+                       (or (>= (* 5 (far-picture-width ready)) (* 4 width))
+                           (= (far-picture-width ready) (image-width image))))
+            (if coming
+                (setf (far-picture-shown-at coming) number)
+                (want-far-picture remote image width height number))
+            (start-far-sender remote))
           ready)))))
 
 (defun want-far-picture (remote image width height number)
@@ -1161,7 +1210,7 @@ what came of it, and FAR forgotten here."
 
 ;;; The client's side: a frontend painted as the editor says
 
-(defstruct (remote-client (:constructor %make-remote-client (fd frontend inbox)) (:copier nil))
+(define-record (remote-client (:constructor %make-remote-client (fd frontend inbox)) (:copier nil))
   "A client of an editor at the other end of the socket FD, painting what the
 editor sends on FRONTEND and sending it FRONTEND's events.
 INBOX is what the editor sends. OUT is the messages being sent. ARRIVED is
@@ -1184,62 +1233,43 @@ dropped file is named to it, but what ALLOW lets through. ALLOW is a plist of
 :CLIPBOARD, true for the clipboard shared, as text with no control characters
 taken (FAR-TEXT), and :DROP, a function sending the files dropped to that
 machine (see MAKE-REMOTE-CLIENT)."
-  (fd -1 :type fixnum :read-only t)
-  (frontend nil :read-only t)
-  (inbox nil :read-only t)
-  (out (make-outbox) :read-only t)
-  (lock (sb-thread:make-mutex :name "remote client") :read-only t)
-  (moved (sb-thread:make-waitqueue :name "remote client") :read-only t)
-  (exit-words nil)
-  (arrived '())
-  (names (make-array (1+ +most-names+) :initial-element nil) :read-only t)
-  (kept (make-array +most-rows+ :initial-element nil) :read-only t)
-  (pictures '())
-  (arriving nil)
-  (unpacking '())
-  (painting '())
-  (closing nil)
-  (ended nil)
-  (exit-code nil)
-  (facts (make-outbox) :read-only t)
-  (reader nil)
-  (settings '())
-  (another nil)
-  (painted nil)
-  (far nil)
-  (allow '()))
+  (fd -1 :type fixnum :read-only t :documentation "The socket to the editor, a file descriptor.")
+  (frontend nil :read-only t :documentation "The frontend CLIENT paints on and reads events from.")
+  (inbox nil :read-only t :documentation "What the editor sends CLIENT, as it is read.")
+  (out (make-outbox) :read-only t :documentation "Where CLIENT's messages are written to be sent.")
+  (lock (sb-thread:make-mutex :name "remote client") :read-only t
+        :documentation "Held while what CLIENT has read and not
+painted, or its end, change.")
+  (moved (sb-thread:make-waitqueue :name "remote client") :read-only t
+         :documentation "Signalled when something has arrived for
+CLIENT or its editor is gone.")
+  (exit-words nil :documentation "What the editor said as it told CLIENT to exit, or NIL.")
+  (arrived '() :documentation "What CLIENT has read and not yet painted, newest first.")
+  (names (make-array (1+ +most-names+) :initial-element nil) :read-only t
+         :documentation "The face names the editor gave CLIENT, by their numbers.")
+  (kept (make-array +most-rows+ :initial-element nil) :read-only t
+        :documentation "Each row as CLIENT last painted it, by row.")
+  (pictures '() :documentation "The pictures CLIENT keeps, newest first.")
+  (arriving nil :documentation "The picture coming to CLIENT in pieces, or NIL.")
+  (unpacking '() :documentation "The pictures CLIENT has whole and is unpacking.")
+  (painting '() :documentation "What CLIENT is painting now, in the order it came.")
+  (closing nil :documentation "True once CLIENT's connection is being closed here.")
+  (ended nil :documentation "True once the editor CLIENT paints for is gone.")
+  (exit-code nil :documentation "The code the editor told CLIENT to exit with, or NIL.")
+  (facts (make-outbox) :read-only t :documentation "The facts CLIENT last sent of its screen, as octets.")
+  (reader nil :documentation "The thread reading what the editor sends CLIENT.")
+  (settings '() :documentation "The settings CLIENT's editor last said, each (NAME . VALUE).")
+  (another nil
+           :documentation "The function of CLIENT and a word that opens another window for CLIENT's editor, or NIL.")
+  (painted nil
+           :documentation "True once CLIENT's editor has painted a frame on it: a
+window asked for and let go before is not.")
+  (far nil :documentation "True when CLIENT's editor is on another machine, reached over ssh.")
+  (allow '()
+         :documentation "What CLIENT's editor on another machine is given all
+the same: a plist of :CLIPBOARD and :DROP."))
 
-(setf (documentation '%make-remote-client 'function) "A REMOTE-CLIENT of the editor at FD painting on FRONTEND."
-      (documentation 'remote-client-p 'function) "True when OBJECT is a REMOTE-CLIENT."
-      (documentation 'remote-client-fd 'function) "The socket to the editor, a file descriptor."
-      (documentation 'remote-client-frontend 'function) "The frontend CLIENT paints on and reads events from."
-      (documentation 'remote-client-inbox 'function) "What the editor sends CLIENT, as it is read."
-      (documentation 'remote-client-out 'function) "Where CLIENT's messages are written to be sent."
-      (documentation 'remote-client-lock 'function) "Held while what CLIENT has read and not
-painted, or its end, change."
-      (documentation 'remote-client-arrived 'function) "What CLIENT has read and not yet painted, newest first."
-      (documentation 'remote-client-names 'function) "The face names the editor gave CLIENT, by their numbers."
-      (documentation 'remote-client-kept 'function) "Each row as CLIENT last painted it, by row."
-      (documentation 'remote-client-pictures 'function) "The pictures CLIENT keeps, newest first."
-      (documentation 'remote-client-arriving 'function) "The picture coming to CLIENT in pieces, or NIL."
-      (documentation 'remote-client-unpacking 'function) "The pictures CLIENT has whole and is unpacking."
-      (documentation 'remote-client-painting 'function) "What CLIENT is painting now, in the order it came."
-      (documentation 'remote-client-closing 'function) "True once CLIENT's connection is being closed here."
-      (documentation 'remote-client-ended 'function) "True once the editor CLIENT paints for is gone."
-      (documentation 'remote-client-exit-code 'function) "The code the editor told CLIENT to exit with, or NIL."
-      (documentation 'remote-client-facts 'function) "The facts CLIENT last sent of its screen, as octets."
-      (documentation 'remote-client-reader 'function) "The thread reading what the editor sends CLIENT."
-      (documentation 'remote-client-moved 'function) "Signalled when something has arrived for
-CLIENT or its editor is gone."
-      (documentation 'remote-client-exit-words 'function) "What the editor said as it told CLIENT to exit, or NIL."
-      (documentation 'remote-client-settings 'function) "The settings CLIENT's editor last said, each (NAME . VALUE)."
-      (documentation 'remote-client-another 'function)
-      "The function of CLIENT and a word that opens another window for CLIENT's editor, or NIL."
-      (documentation 'remote-client-painted 'function)
-      "True once CLIENT's editor has painted a frame on it: a window asked for and let go before is not."
-      (documentation 'remote-client-far 'function) "True when CLIENT's editor is on another machine, reached over ssh."
-      (documentation 'remote-client-allow 'function)
-      "What CLIENT's editor on another machine is given all the same: a plist of :CLIPBOARD and :DROP.")
+(setf (documentation '%make-remote-client 'function) "A REMOTE-CLIENT of the editor at FD painting on FRONTEND.")
 
 (defun send-to-editor (client write)
   "Send CLIENT's editor the messages WRITE, a function of the box, writes;
@@ -1497,15 +1527,22 @@ painted before reading more waits for them.")
   "True when more waits to be painted on CLIENT than may: +MOST-UNPAINTED+
 things, or the pictures CLIENT keeps and those only frames not yet painted
 still name, past +MOST-FAR-PICTURES-KEPT+ octets of pixels. CLIENT's lock is held."
-  (let ((waiting (append (remote-client-arrived client) (remote-client-painting client))))
-    (or (> (length waiting) +most-unpainted+)
-        (let ((images (copy-list (remote-client-pictures client))))
-          (dolist (item waiting)
-            (when (eq (first item) :frame)
-              (dolist (call (rest item))
-                (when (eq (first call) :picture) (pushnew (second call) images :test #'eq)))))
-          (> (reduce #'+ images :key (lambda (image) (length (image-pixels image))))
-             +most-far-pictures-kept+)))))
+  (let ((kept (remote-client-pictures client)))
+    (or (> (+ (length (remote-client-arrived client)) (length (remote-client-painting client))) +most-unpainted+)
+        (let ((octets (loop for image in kept sum (length (image-pixels image))))
+              (others '()))
+          ;; the pictures only frames not yet painted name, each counted once
+          (flet ((count-named (items)
+                   (dolist (item items)
+                     (when (eq (first item) :frame)
+                       (dolist (call (rest item))
+                         (let ((image (and (eq (first call) :picture) (second call))))
+                           (when (and image (not (member image kept :test #'eq)) (not (member image others :test #'eq)))
+                             (push image others)
+                             (incf octets (length (image-pixels image))))))))))
+            (count-named (remote-client-arrived client))
+            (count-named (remote-client-painting client)))
+          (> octets +most-far-pictures-kept+)))))
 
 (defun wait-for-painting (client)
   "Wait, on the thread reading CLIENT's editor, while more waits to be painted
@@ -1560,8 +1597,8 @@ past those."
   "Make the faces here as FACES, each (NAME . ATTRIBUTES), say, those already
 so left as they are."
   (loop for (name . attributes) in faces
-        for face = (tuatara.display:find-face name)
-        unless (and face (equal attributes (face-now face)))
+        for face = (and (symbolp name) (tuatara.display:find-face name))
+        unless (or (not (symbolp name)) (and face (equal attributes (face-now face))))
           do (apply #'tuatara.display:set-face-attributes name attributes)))
 
 (defun lend-terminal (client request words later)
@@ -1793,35 +1830,51 @@ only to stop the editor, with no terminal, has one."))
   "A frontend with no screen whose events come from QUEUE (NULL-FRONTEND)."
   (make-instance 'null-frontend :queue queue))
 
-(defmethod frontend-start ((f null-frontend)) nil)
-(defmethod frontend-stop ((f null-frontend)) nil)
+(defmethod frontend-start ((f null-frontend))
+  "Nothing: a frontend with no screen has nothing to start."
+  nil)
+(defmethod frontend-stop ((f null-frontend))
+  "Nothing: a frontend with no screen has nothing to stop."
+  nil)
 
 (defmethod frontend-size ((f null-frontend))
+  "Eighty columns and twenty-four rows, as two values."
   (values 80 24))
 
 (defmethod frontend-colour-count ((f null-frontend))
+  "256 colours."
   256)
 
 (defmethod frontend-read-event ((f null-frontend))
+  "The next event of F's queue, waiting for one."
   (queue-pop (null-queue f) nil))
 
 (defmethod frontend-read-event-timeout ((f null-frontend) seconds)
+  "The next event of F's queue, or a :TICK when none comes in SECONDS."
   (or (queue-pop (null-queue f) seconds) (make-event :tick)))
 
 (defmethod frontend-wake ((f null-frontend))
+  "Wake the editor reading F's queue, a :TICK put in it."
   (queue-push (null-queue f) (make-event :tick)))
 
 (defmethod frontend-input-pending-p ((f null-frontend))
+  "True when F's queue holds an event of input."
   (queue-input-p (null-queue f)))
 
-(defmethod frontend-begin-frame ((f null-frontend)) nil)
+(defmethod frontend-begin-frame ((f null-frontend))
+  "Nothing: no screen is painted."
+  nil)
 
 (defmethod frontend-put-row ((f null-frontend) row string &key face spans scales over parts)
+  "Nothing: no screen is painted."
   (declare (ignore row string face spans scales over parts))
   nil)
 
 (defmethod frontend-set-cursor ((f null-frontend) row column shape &optional colour)
+  "Nothing: no screen is painted."
   (declare (ignore row column shape colour))
   nil)
 
-(defmethod frontend-end-frame ((f null-frontend)) nil)
+(defmethod frontend-end-frame ((f null-frontend))
+  "Nothing: no screen is painted."
+  nil)

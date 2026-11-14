@@ -66,7 +66,8 @@ text) a line."
                (let ((at (+ (org-part-start parts index) (pop offsets))))
                  (when (>= at from)
                    (return (values (tuatara.text:byte->line rope at)
-                                   (tuatara.text:rope-string rope :start at :end (tuatara.text:rope-line-end rope at)))))))
+                                   (tuatara.text:rope-string rope :start at
+                                                             :end (tuatara.text:rope-line-end rope at)))))))
               ((< (incf index) (org-parts-count parts))
                (setf offsets (org-part-code-lines (org-part-at parts index))))
               (t (return nil)))))))
@@ -96,6 +97,38 @@ one."
       (when tree (walk tree)))
     found))
 
+(define-record (code-block (:constructor make-code-block (first last octets &optional name)) (:copier nil))
+  "A stretch of a note's lines that is the code of a source block: the
+0-based lines FIRST below LAST; OCTETS, a vector of the octets left out at
+the start of each line in what a document shows of it, NIL for a block of
+another language, or one read again whose language is not looked at yet;
+NAME, for one read again, the language as its header names it."
+  (first nil :documentation "The first line of CODE-BLOCK, counted from 0, the line of its code below its header.")
+  (last nil :documentation "The last line of CODE-BLOCK, counted from 0, below the last line of its code.")
+  (octets nil
+          :documentation "A vector of the octets left out at the start of each line of CODE-BLOCK in what a document
+shows of it; NIL for a block of another language or one read again whose language is not looked at yet.")
+  (name nil :documentation "The language of CODE-BLOCK as its header names it, for a block read again."))
+
+(define-record (line-stretch (:constructor make-line-stretch (old-first old-last new-first new-last)))
+  "Lines of a note changed since its text was last sent: OLD-FIRST to
+OLD-LAST of the text then, NEW-FIRST to NEW-LAST of the text now, each the
+last of them in it."
+  (old-first nil :documentation "The first line of LINE-STRETCH in the text of the note when it was last sent.")
+  (old-last nil :documentation "The last line of LINE-STRETCH in the text of the note when it was last sent.")
+  (new-first nil :documentation "The first line of LINE-STRETCH in the text of the note now.")
+  (new-last nil :documentation "The last line of LINE-STRETCH in the text of the note now."))
+
+(setf (documentation 'copy-line-stretch 'function) "A LINE-STRETCH like STRETCH, apart from it.")
+
+(defun stretch-first (stretch side)
+  "The first line of STRETCH in the text then (SIDE :OLD) or now (:NEW)."
+  (if (eq side :old) (line-stretch-old-first stretch) (line-stretch-new-first stretch)))
+
+(defun stretch-last (stretch side)
+  "The last line of STRETCH in the text then (SIDE :OLD) or now (:NEW)."
+  (if (eq side :old) (line-stretch-old-last stretch) (line-stretch-new-last stretch)))
+
 (defun org-block-shown (rope first last)
   "The code of the block of ROPE's lines FIRST below LAST as its document
 shows it, its indentation and Org's escaping commas left out: a list of the
@@ -103,7 +136,7 @@ text of its lines, and a vector of the octets left out at the start of each."
   (let* ((lines (loop for n from first below last collect (rope-line-text rope n)))
          (indent (loop for line in lines
                        unless (zerop (length (string-trim '(#\Space #\Tab) line)))
-                         minimize (or (position-if-not (lambda (c) (member c '(#\Space #\Tab))) line) 0)))
+                       minimize (or (position-if-not (lambda (c) (member c '(#\Space #\Tab))) line) 0)))
          (skipped (make-array (length lines))))
     (values (loop for line in lines
                   for n from 0
@@ -121,15 +154,15 @@ written to, the lines between them empty; return the number of the last."
   (loop for line in lines
         for n from first
         do (loop repeat (- n at) do (write-char #\Newline out))
-           (write-string line out)
-           (setf at n))
+        (write-string line out)
+        (setf at n))
   at)
 
 (defun org-blocks-shadow (buffer language &optional doc stretches)
   "The code of LANGUAGE's source blocks of BUFFER, a note, line for line with
-it, and the stretches of its lines that are code, each (FIRST LAST OCTETS),
-OCTETS the octets left out at the start of each line of LANGUAGE's blocks,
-NIL for another's: as ORG-BLOCK-DOC-SPECS's documents show it. Given DOC, the
+it, and the stretches of its lines that are code, CODE-BLOCKs, their OCTETS
+the octets left out at the start of each line of LANGUAGE's blocks, NIL for
+another's: as ORG-BLOCK-DOC-SPECS's documents show it. Given DOC, the
 document as last sent, and STRETCHES, what changed since, what changed in
 that code instead (ORG-BLOCKS-SHADOW-CHANGES). Complexity: O(blocks, their
 code and the lines of the note)."
@@ -143,95 +176,157 @@ code and the lines of the note)."
                         do (if (eq (org-src-language name) language)
                                (multiple-value-bind (shown skipped) (org-block-shown rope first last)
                                  (setf at (write-code-lines shown first at out))
-                                 (push (list first last skipped) kept))
-                               (push (list first last nil) kept)))
+                                 (push (make-code-block first last skipped) kept))
+                               (push (make-code-block first last nil) kept)))
                   (loop repeat (- lines 1 at) do (write-char #\Newline out)))
                 (coerce (nreverse kept) 'simple-vector)))))
 
 (defun stretches-lines (stretches before after)
   "STRETCHES, as CHANGED-STRETCHES gives them, as the lines they are on: a
-list in order of (OLD-FIRST OLD-LAST NEW-FIRST NEW-LAST), 0-based lines of
-BEFORE, the text then, and of AFTER, the text now, the last of each in it;
-stretches on a line in common made one. A stretch just after a carriage
-return takes in its line too: what follows the return decides whether it
-ends a line."
+list in order of LINE-STRETCH, of BEFORE, the text then, and of AFTER, the
+text now; stretches on a line in common made one. A stretch just after a
+carriage return takes in its line too: what follows the return decides
+whether it ends a line."
   (let ((lines '()))
     (flet ((first-line (rope start)
              (tuatara.text:byte->line rope (if (and (plusp start) (= 13 (tuatara.text:rope-octet rope (1- start))))
                                                (1- start)
                                                start))))
       (loop for (old-start old-end new-start new-end) in stretches
-            do (let ((line (list (first-line before old-start) (tuatara.text:byte->line before old-end)
-                                 (first-line after new-start) (tuatara.text:byte->line after new-end)))
-                   (last (first lines)))
-                 (if (and last (<= (first line) (second last)))
-                     (setf (second last) (second line) (fourth last) (fourth line))
+            do (let ((line (make-line-stretch (first-line before old-start) (tuatara.text:byte->line before old-end)
+                                              (first-line after new-start) (tuatara.text:byte->line after new-end)))
+                     (last (first lines)))
+                 (if (and last (<= (line-stretch-old-first line) (line-stretch-old-last last)))
+                     (setf (line-stretch-old-last last) (line-stretch-old-last line)
+                           (line-stretch-new-last last) (line-stretch-new-last line))
                      (push line lines)))))
     (nreverse lines)))
 
+(defun reading-start (old i line)
+  "The line of the note, as it was, to read its blocks again from for a change
+beginning at LINE, OLD being its blocks then and I the first of them not yet
+kept: the line beginning the block LINE is in, else LINE itself, or after the
+last block when it is past them all."
+  (let* ((count (length old))
+         (k (+ i (tuatara.runtime:bisect (mid 0 (- count i)) (< (code-block-last (svref old (+ i mid))) line)))))
+    (cond ((and (< k count) (<= (1- (code-block-first (svref old k))) line)) (1- (code-block-first (svref old k))))
+          ((< k count) line)
+          ((plusp count) (1+ (code-block-last (svref old (1- count)))))
+          (t 0))))
+
 (defun org-blocks-read-again (buffer old lines)
   "The source blocks of BUFFER, a note, now, from OLD, those of its text as
-last sent (each (FIRST LAST ...) as ORG-BLOCKS-SHADOW keeps them), and LINES,
-the lines changed since (STRETCHES-LINES). The result is a vector in order of
-OLD's blocks moved by the lines added and taken away before them, each
-\(FIRST LAST OCTETS), and of those read again, each (FIRST LAST NIL NAME).
-Only the lines that may begin or end a block are read, from the block a
-change begins in until a block begins where one began before. Complexity:
-O(blocks, and the lines read again)."
+last sent (CODE-BLOCKs), and LINES, the lines changed since (STRETCHES-LINES).
+The result is a vector in order of OLD's blocks moved by the lines added and
+taken away before them, and of those read again, which have a NAME. Only the
+lines that may begin or end a block are read, from the block a change begins
+in until a block begins where one began before. Complexity: O(blocks, and
+the lines read again)."
   (let* ((count (length old))
          (out (make-array count :fill-pointer 0 :adjustable t))
          (i 0) (shift 0))
-    (flet ((keep-before (line)
-             ;; OLD's blocks ending before LINE of the text then, moved
-             (loop while (and (< i count) (< (second (svref old i)) line))
-                   do (destructuring-bind (first last octets &rest name) (svref old i)
-                        (declare (ignore name))
-                        (vector-push-extend (if (zerop shift) (svref old i) (list (+ first shift) (+ last shift) octets)) out))
-                      (incf i))))
+    (labels ((keep-before (line)
+               ;; OLD's blocks ending before LINE of the text then, moved by SHIFT
+               (loop while (and (< i count) (< (code-block-last (svref old i)) line))
+                     do (let ((block (svref old i)))
+                          (vector-push-extend (if (zerop shift)
+                                                  block
+                                                  (make-code-block (+ (code-block-first block) shift)
+                                                                   (+ (code-block-last block) shift)
+                                                                   (code-block-octets block)))
+                                              out))
+                     (incf i)))
+             (old-block-at (line)
+               ;; the index of OLD's block beginning on the line after LINE of the text then, or NIL
+               (let ((j (+ i (tuatara.runtime:bisect (mid 0 (- count i))
+                                                     (< (code-block-first (svref old (+ i mid))) (1+ line))))))
+                 (and (< j count) (= (code-block-first (svref old j)) (1+ line)) j)))
+             (read-from (start covered)
+               ;; the blocks from START now, the changes met taken in, until one begins past them
+               ;; where one began before (the rest kept as it was) or the end is read
+               (let ((next (org-code-line-reader buffer start)) (open nil))
+                 (loop
+                   (multiple-value-bind (n text) (funcall next)
+                     (unless n
+                       (setf i count lines '())
+                       (return))
+                     (loop while (and lines (<= (line-stretch-new-first (first lines)) n))
+                           do (let ((line (pop lines)))
+                                (setf covered (line-stretch-new-last line)
+                                      shift (- (line-stretch-new-last line) (line-stretch-old-last line)))))
+                     (if open
+                         (when (org-source-block-edge text t)
+                           (vector-push-extend (make-code-block (second open) n nil (first open)) out)
+                           (setf open nil))
+                         (let ((name (org-source-block-edge text nil)))
+                           (when name
+                             (let ((again (and (> n covered) (old-block-at (- n shift)))))
+                               (when again
+                                 (setf i again)
+                                 (return)))
+                             (setf open (list name (1+ n)))))))))))
       (loop while lines
-            do (destructuring-bind (old-first old-last new-first new-last) (pop lines)
-                 (declare (ignore new-first))
-                 (let* ((k (+ i (tuatara.runtime:bisect (mid 0 (- count i)) (< (second (svref old (+ i mid))) old-first))))
-                        ;; read from the line beginning the block it is in, or from it outside one,
-                        ;; or after the last block when it is past it
-                        (start (cond ((and (< k count) (<= (1- (first (svref old k))) old-first)) (1- (first (svref old k))))
-                                     ((< k count) old-first)
-                                     ((plusp count) (1+ (second (svref old (1- count)))))
-                                     (t 0)))
-                        (next (progn (keep-before start)
-                                     (org-code-line-reader buffer (+ start shift))))
-                        (covered new-last) (open nil))
-                   (setf shift (- new-last old-last))
-                   (loop
-                     (multiple-value-bind (n text) (funcall next)
-                       (unless n
-                         ;; read to the end: none of OLD's blocks after where it began stays
-                         (setf i count lines '())
-                         (return))
-                       ;; the changes the reading has come to, taken in
-                       (loop while (and lines (<= (third (first lines)) n))
-                             do (destructuring-bind (a0 a1 b0 b1) (pop lines)
-                                  (declare (ignore a0 b0))
-                                  (setf covered b1 shift (- b1 a1))))
-                       (if open
-                           (when (org-source-block-edge text t)
-                             (vector-push-extend (list (second open) n nil (first open)) out)
-                             (setf open nil))
-                           (let ((name (org-source-block-edge text nil)))
-                             (when name
-                               ;; a block beginning past the changes where one began before: the
-                               ;; rest as it was
-                               (let ((again (and (> n covered)
-                                                 (let* ((line (- n shift))
-                                                        (j (+ i (tuatara.runtime:bisect (mid 0 (- count i))
-                                                                                        (< (first (svref old (+ i mid))) (1+ line))))))
-                                                   (and (< j count) (= (first (svref old j)) (1+ line)) j)))))
-                                 (when again
-                                   (setf i again)
-                                   (return)))
-                               (setf open (list name (1+ n)))))))))))
+            do (let* ((line (pop lines))
+                      (start (reading-start old i (line-stretch-old-first line))))
+                 (keep-before start)
+                 (let ((from (+ start shift)))
+                   (setf shift (- (line-stretch-new-last line) (line-stretch-old-last line)))
+                   (read-from from (line-stretch-new-last line)))))
       (keep-before most-positive-fixnum))
     out))
+
+(defun stretch-holding (changed line side)
+  "The lines of CHANGED, LINE-STRETCHes in order, that hold LINE of the text
+then (SIDE :OLD) or now (:NEW), a new LINE-STRETCH: those whole when LINE is
+among them, else LINE and where it is in the other text."
+  (let* ((at (1- (tuatara.runtime:bisect (mid 0 (length changed)) (<= (stretch-first (svref changed mid) side) line))))
+         (span (and (>= at 0) (svref changed at))))
+    (cond ((null span) (make-line-stretch line line line line))
+          ((<= line (stretch-last span side)) (copy-line-stretch span))
+          (t (let ((other (+ line (- (stretch-last span (if (eq side :old) :new :old)) (stretch-last span side)))))
+               (if (eq side :old)
+                   (make-line-stretch line line other other)
+                   (make-line-stretch other other line line)))))))
+
+(defun stretch-between (changed begin end side)
+  "The lines from BEGIN to END of the text then (SIDE :OLD) or now (:NEW), and
+those of CHANGED they reach into, as a LINE-STRETCH (STRETCH-HOLDING)."
+  (let ((low (stretch-holding changed begin side))
+        (high (stretch-holding changed end side)))
+    (make-line-stretch (line-stretch-old-first low) (line-stretch-old-last high)
+                       (line-stretch-new-first low) (line-stretch-new-last high))))
+
+(defun widen-over-blocks (changed line blocks side)
+  "Grow LINE, a LINE-STRETCH, over the blocks of BLOCKS, CODE-BLOCKs of the
+text then (SIDE :OLD) or now (:NEW), that reach into it, as CHANGED has their
+lines; true when it grew."
+  (let* ((low (stretch-first line side))
+         (high (stretch-last line side))
+         (at (tuatara.runtime:bisect (mid 0 (length blocks)) (< (code-block-last (svref blocks mid)) low)))
+         (grown nil))
+    (loop for i from at below (length blocks)
+          for block = (svref blocks i)
+          while (<= (1- (code-block-first block)) high)
+          do (let ((span (stretch-between changed (1- (code-block-first block)) (code-block-last block) side)))
+               (when (or (< (line-stretch-old-first span) (line-stretch-old-first line))
+                         (> (line-stretch-old-last span) (line-stretch-old-last line)))
+                 (setf (line-stretch-old-first line) (min (line-stretch-old-first line) (line-stretch-old-first span))
+                       (line-stretch-new-first line) (min (line-stretch-new-first line) (line-stretch-new-first span))
+                       (line-stretch-old-last line) (max (line-stretch-old-last line) (line-stretch-old-last span))
+                       (line-stretch-new-last line) (max (line-stretch-new-last line) (line-stretch-new-last span))
+                       grown t))))
+    grown))
+
+(defun merged-stretches (lines)
+  "LINES, LINE-STRETCHes, in order, those that meet made one."
+  (loop with out = '()
+        for line in (sort lines #'< :key #'line-stretch-old-first)
+        for last = (first out)
+        do (if (and last (<= (line-stretch-old-first line) (line-stretch-old-last last)))
+               (setf (line-stretch-old-last last) (max (line-stretch-old-last last) (line-stretch-old-last line))
+                     (line-stretch-new-last last) (max (line-stretch-new-last last) (line-stretch-new-last line)))
+               (push line out))
+        finally (return (nreverse out))))
 
 (defun widen-to-blocks (lines old new read-again)
   "LINES, as STRETCHES-LINES gives them, with the lines of READ-AGAIN, blocks
@@ -239,57 +334,21 @@ of NEW read again (ORG-BLOCKS-READ-AGAIN). Each is widened until it holds
 whole every block of OLD, the blocks as last sent, and of NEW, those now, that
 it reaches into: from the line beginning one to the line ending it, then and
 now alike. Those that come to meet are made one."
-  (let ((changed (coerce lines 'simple-vector)))
-    (labels ((place (line from)
-               ;; LINE of the text then (FROM 0) or now (FROM 2) as (OLD-FIRST OLD-LAST NEW-FIRST
-               ;; NEW-LAST): the lines changed it is in, whole, or where it is in each
-               (let* ((at (1- (tuatara.runtime:bisect (mid 0 (length changed)) (<= (nth from (svref changed mid)) line))))
-                      (span (and (>= at 0) (svref changed at))))
-                 (cond ((null span) (list line line line line))
-                       ((<= line (nth (1+ from) span)) (copy-list span))
-                       (t (let ((other (+ line (- (nth (- 3 from) span) (nth (1+ from) span)))))
-                            (if (zerop from) (list line line other other) (list other other line line)))))))
-             (span-of (begin end from)
-               (let ((low (place begin from)) (high (place end from)))
-                 (list (first low) (second high) (third low) (fourth high))))
-             (widen (line blocks from)
-               ;; LINE grown over the blocks of BLOCKS, of the text FROM says, that reach into it
-               (let* ((low (nth from line))
-                      (high (nth (1+ from) line))
-                      (at (tuatara.runtime:bisect (mid 0 (length blocks)) (< (second (svref blocks mid)) low)))
-                      (grown nil))
-                 (loop for i from at below (length blocks)
-                       for block = (svref blocks i)
-                       while (<= (1- (first block)) high)
-                       do (let ((span (span-of (1- (first block)) (second block) from)))
-                            (when (or (< (first span) (first line)) (> (second span) (second line)))
-                              (setf (first line) (min (first line) (first span))
-                                    (third line) (min (third line) (third span))
-                                    (second line) (max (second line) (second span))
-                                    (fourth line) (max (fourth line) (fourth span))
-                                    grown t))))
-                 grown))
-             (merged (lines)
-               ;; in order, those that meet made one
-               (loop with out = '()
-                     for line in (sort lines #'< :key #'first)
-                     for last = (first out)
-                     do (if (and last (<= (first line) (second last)))
-                            (setf (second last) (max (second last) (second line))
-                                  (fourth last) (max (fourth last) (fourth line)))
-                            (push line out))
-                     finally (return (nreverse out)))))
-      (let ((lines (merged (append (mapcar #'copy-list lines)
-                                   (loop for (first last) in read-again collect (span-of (1- first) last 2))))))
-        (loop
-          (let ((grown nil))
-            (dolist (line lines)
-              (when (widen line old 0) (setf grown t))
-              (when (widen line new 2) (setf grown t)))
-            (let ((count (length lines)))
-              (setf lines (merged lines))
-              (unless (or grown (/= count (length lines)))
-                (return lines)))))))))
+  (let* ((changed (coerce lines 'simple-vector))
+         (lines (merged-stretches
+                 (append (mapcar #'copy-line-stretch lines)
+                         (loop for block in read-again
+                               collect (stretch-between changed (1- (code-block-first block)) (code-block-last block)
+                                                        :new))))))
+    (loop
+      (let ((grown nil))
+        (dolist (line lines)
+          (when (widen-over-blocks changed line old :old) (setf grown t))
+          (when (widen-over-blocks changed line new :new) (setf grown t)))
+        (let ((count (length lines)))
+          (setf lines (merged-stretches lines))
+          (unless (or grown (/= count (length lines)))
+            (return lines)))))))
 
 (defun org-blocks-shadow-changes (buffer language doc stretches)
   "What changed in the code of LANGUAGE's source blocks of BUFFER, a note,
@@ -305,36 +364,37 @@ the lines of the blocks changed)."
          (old (lsp-doc-skipped doc))
          (spans (stretches-lines stretches before after))
          (new (coerce (org-blocks-read-again buffer old spans) 'simple-vector))
-         (lines (widen-to-blocks spans old new (loop for block across new when (fourth block) collect block)))
+         (lines (widen-to-blocks spans old new (loop for block across new when (code-block-name block) collect block)))
          (ours (make-hash-table :test 'equal))
          (changes '()))
     (flet ((ours-p (block)
-             (destructuring-bind (first last octets &optional name) block
-               (declare (ignore first last))
+             (let ((name (code-block-name block)))
                (if (null name)
-                   (and octets t)
+                   (and (code-block-octets block) t)
                    (multiple-value-bind (known found) (gethash name ours)
                      (if found known (setf (gethash name ours) (eq (org-src-language name) language))))))))
       (dolist (line lines)
-        (destructuring-bind (old-first old-last new-first new-last) line
-          ;; the code of these lines now, the blocks in them read again
-          (let* ((j (tuatara.runtime:bisect (mid 0 (length new)) (< (first (aref new mid)) new-first)))
-                 (text (with-output-to-string (out)
-                         (let ((at new-first))
-                           (loop while (and (< j (length new)) (<= (first (aref new j)) new-last))
-                                 do (let ((block (aref new j)))
-                                      (destructuring-bind (first last &rest rest) block
-                                        (declare (ignore rest))
-                                        (setf (aref new j)
-                                              (if (ours-p block)
-                                                  (multiple-value-bind (code skipped) (org-block-shown after first last)
-                                                    (setf at (write-code-lines code first at out))
-                                                    (list first last skipped))
-                                                  (list first last nil)))))
-                                    (incf j))
-                           (loop repeat (- new-last at) do (write-char #\Newline out)))))
-                 (change (trimmed-change shown (tuatara.text:line->byte shown old-first) (line-end-byte shown old-last) text)))
-            (when change (push change changes))))))
+        ;; the code of these lines now, the blocks in them read again
+        (let* ((new-first (line-stretch-new-first line))
+               (new-last (line-stretch-new-last line))
+               (j (tuatara.runtime:bisect (mid 0 (length new)) (< (code-block-first (aref new mid)) new-first)))
+               (text (with-output-to-string (out)
+                       (let ((at new-first))
+                         (loop while (and (< j (length new)) (<= (code-block-first (aref new j)) new-last))
+                               do (let* ((block (aref new j))
+                                         (first (code-block-first block))
+                                         (last (code-block-last block)))
+                                    (setf (aref new j)
+                                          (if (ours-p block)
+                                              (multiple-value-bind (code skipped) (org-block-shown after first last)
+                                                (setf at (write-code-lines code first at out))
+                                                (make-code-block first last skipped))
+                                              (make-code-block first last nil))))
+                               (incf j))
+                         (loop repeat (- new-last at) do (write-char #\Newline out)))))
+               (change (trimmed-change shown (tuatara.text:line->byte shown (line-stretch-old-first line))
+                                       (line-end-byte shown (line-stretch-old-last line)) text)))
+          (when change (push change changes)))))
     (values (coerce (nreverse changes) 'simple-vector) new)))
 
 (defun trimmed-change (rope start end text)
@@ -363,7 +423,9 @@ else the note's own name with LANGUAGE's ending."
                                        (or (cdr (assoc name *code-file-extensions* :test #'string=))
                                            (language-extension language))))
                               (t tangle)))))
-         (path (and target (tuatara.io:clean-path (tuatara.io:native (tuatara.io:expand-path target :directory (tuatara.io:parent-path file)))))))
+         (path (and target (tuatara.io:clean-path
+                            (tuatara.io:native
+                             (tuatara.io:expand-path target :directory (tuatara.io:parent-path file)))))))
     (path-uri (if (and path
                        (tuatara.io:really-within-p path (lsp-project-of buffer language))
                        (not (buffer-visiting path)))
@@ -409,7 +471,7 @@ lines, their indentation counted. Complexity: O(blocks x log of the text)."
     (+ (tuatara.text:rope-lines rope)
        (loop for (name first last) in blocks
              when (eq (org-src-language name) language)
-               sum (- (tuatara.text:line->byte rope last) (tuatara.text:line->byte rope first))))))
+             sum (- (tuatara.text:line->byte rope last) (tuatara.text:line->byte rope first))))))
 
 (defun org-block-doc-specs (buffer)
   "What servers see of BUFFER when it is a note with source blocks of a

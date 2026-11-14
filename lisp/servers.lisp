@@ -157,10 +157,42 @@ not for the editor's own thread."
 (defvar *servers-kept* 200
   "How many trusted servers are remembered.")
 
+(defparameter *server-fields* '(:host :agent :destinations :gpg :clipboard :files :added :program)
+  "The fields of an entry of the list of trusted servers, in the order of the
+entry: the machine, whether the ssh agent is forwarded, the machines its keys
+may be used for from there, whether gpg-agent is forwarded and the clipboard
+shared, the directory dropped files go to, the day it was trusted, and the
+tuatara to run there, which an entry may leave out.")
+
+(defun server-plist (entry)
+  "The fields of ENTRY, an entry of the list of trusted servers, as a plist
+named by *SERVER-FIELDS*."
+  (loop for field in *server-fields*
+        for rest = entry then (cdr rest)
+        append (list field (car rest))))
+
+(defun server-field (entry field)
+  "The FIELD (one of *SERVER-FIELDS*) of ENTRY, an entry of the list of trusted servers."
+  (getf (server-plist entry) field))
+
+(defun server-entry-with (entry field value)
+  "A copy of ENTRY, an entry of the list of trusted servers, with its FIELD
+(one of *SERVER-FIELDS*) VALUE; a tuatara to run there of NIL is left out."
+  (let* ((fields (server-plist entry))
+         (changed (loop for (name old) on fields by #'cddr collect (if (eq name field) value old))))
+    (if (null (car (last changed)))
+        (butlast changed)
+        changed)))
+
+(defun server-entry (host agent destinations gpg clipboard files added &optional program)
+  "An entry of the list of trusted servers: the fields of *SERVER-FIELDS* in
+order, the last left out when NIL."
+  (append (list host agent destinations gpg clipboard files added) (and program (list program))))
+
 (defun server-line (entry)
-  "The line of the list of trusted servers for ENTRY, (HOST AGENT
-DESTINATIONS GPG CLIPBOARD FILES ADDED [PROGRAM])."
-  (destructuring-bind (host agent destinations gpg clipboard files added &optional program) entry
+  "The line of the list of trusted servers for ENTRY, as *SERVER-FIELDS* names
+its fields."
+  (destructuring-bind (&key host agent destinations gpg clipboard files added program) (server-plist entry)
     (format nil "~a~c~:[no~;yes~]~c~:[-~;~:*~{~a~^,~}~]~c~:[no~;yes~]~c~:[no~;yes~]~c~:[-~;~:*~a~]~c~a~@[~c~a~]"
             host #\Tab agent #\Tab destinations #\Tab gpg #\Tab clipboard #\Tab files #\Tab added
             (and program #\Tab) program)))
@@ -190,9 +222,9 @@ be understood, or the line gives nothing; fields after them are passed over
                  (or (string= files "-") (plain-path-p files :relative t))
                  (cl-ppcre:scan "^\\d{4}-\\d\\d-\\d\\d$" added)
                  (or (member program '("-" "") :test #'string=) (plain-path-p program :relative t))
-                 (append (list host (yes agent) destinations (yes gpg) (yes clipboard)
-                               (and (string/= files "-") files) added)
-                         (and (not (member program '("-" "") :test #'string=)) (list program))))))))))
+                 (server-entry host (yes agent) destinations (yes gpg) (yes clipboard)
+                               (and (string/= files "-") files) added
+                               (and (not (member program '("-" "") :test #'string=)) program)))))))))
 
 (define-state-list *trusted-servers* "ssh-servers" 'parse-server-line 'server-line '*servers-kept*
   :header (format nil "# The machines whose daemons are trusted with more than keys and the screen, the latest~%~
@@ -211,17 +243,10 @@ or NIL. :PROGRAM is the tuatara to run there, or NIL for the one on its PATH.
 NIL for a machine not on the list, which is given nothing."
   (let ((entry (state-list-find *trusted-servers* host)))
     (and entry
-         (destructuring-bind (host agent destinations gpg clipboard files added &optional program) entry
-           (declare (ignore host added))
+         (destructuring-bind (&key agent destinations gpg clipboard files program &allow-other-keys)
+             (server-plist entry)
            (list* :agent agent :destinations destinations :gpg gpg :clipboard clipboard :files files
                   (and program (list :program program)))))))
-
-(defun change-server (host change)
-  "Change what HOST, a trusted server, is trusted with: CHANGE, a function of
-its entry giving the changed one, its place in the list kept."
-  (let ((entry (state-list-find *trusted-servers* host)))
-    (when entry
-      (state-list-replace *trusted-servers* (list (funcall change (copy-list entry)))))))
 
 ;;; The list's buffer
 
@@ -250,10 +275,10 @@ marked, \\[list-delete-marked] the marked ones or the one on the line, after ask
                                   ("Trusted" :width 10)
                                   ("Tuatara there"))
   "The columns of the list of trusted servers, as TABLE-HEADING-PIECES takes
-them: the mark, the machine, whether the ssh agent is forwarded and the
-machines its keys may be used for from there, whether gpg-agent is
-forwarded and the clipboard shared, the directory dropped files go to, and the
-day it was trusted.")
+them: the mark, the machine, whether the ssh agent is forwarded, the machines
+its keys may be used for from there, whether gpg-agent is forwarded, whether
+the clipboard is shared, the directory dropped files go to, the day it was
+trusted, and the tuatara to run there.")
 
 (defun servers-show (buffer &optional (point 2))
   "Fill BUFFER, the list of trusted servers, point on line POINT, or with
@@ -263,13 +288,13 @@ day it was trusted.")
      buffer *servers-columns* entries
      (lambda (entry mark section)
        (declare (ignore section))
-       (destructuring-bind (host agent destinations gpg clipboard files added &optional program) entry
+       (destructuring-bind (&key host agent destinations gpg clipboard files added program) (server-plist entry)
          (flet ((yes (on) (if on "yes" (cons "no" :list-dim))))
            (list (list-mark-sign mark) (cons host (list-mark-face mark)) (yes agent)
                  (if destinations (format nil "~{~a~^, ~}" destinations) (if agent "any" ""))
                  (yes gpg) (yes clipboard) (or files (cons "no" :list-dim)) (cons added :list-date)
                  (or program "")))))
-     :marked-by (lambda (entry section) (declare (ignore section)) (first entry))
+     :marked-by (lambda (entry section) (declare (ignore section)) (server-field entry :host))
      :after (list (if entries
                       (format nil "~%   ~[No servers~;1 server~:;~:*~d servers~] trusted; a machine not listed is ~
                                    given nothing~%" (length entries))
@@ -303,7 +328,7 @@ thing then turned on there by itself."
     (cond ((host-refusal host) (message "~a" (host-refusal host)))
           ((state-list-find *trusted-servers* host) (message "~a is trusted already" host))
           (t (state-list-put *trusted-servers*
-                             (list (list host nil '() nil nil nil (format-time "%F" (get-universal-time)))))
+                             (list (server-entry host nil '() nil nil nil (format-time "%F" (get-universal-time)))))
              (refill-open-list "*Servers*" 'servers-mode)
              (message "~a is trusted, with nothing given yet: \\[server-list] turns each thing on" host)))))
 
@@ -314,32 +339,35 @@ before the change, or NIL for none, and CHANGE, a function of the entry, the
 changed one; NOUN says what changed, for the message."
   (act-on-list (current-buffer)
                (lambda (list hosts)
-                 (let ((changed 0))
-                   (dolist (host hosts)
-                     (let* ((entry (state-list-find *trusted-servers* host))
-                            (question (and entry (funcall ask host entry))))
-                       (when (and entry (or (null question) (y-or-n-p* question)))
-                         (change-server host change)
-                         (incf changed))))
-                   (unmark-list list)
-                   (servers-show list :keep)
-                   (message "~a: ~d server~:p changed" noun changed)))
+                 (unwind-protect
+                      (let ((changed '()))
+                        ;; every answer is given before any server is changed
+                        (dolist (host hosts)
+                          (let* ((entry (state-list-find *trusted-servers* host))
+                                 (question (and entry (funcall ask host entry))))
+                            (when (and entry (or (null question) (y-or-n-p* question)))
+                              (push (funcall change entry) changed))))
+                        (state-list-replace *trusted-servers* (nreverse changed))
+                        (unmark-list list)
+                        (message "~a: ~d server~:p changed" noun (length changed)))
+                   (servers-show list :keep)))
                "server"))
 
-(defun toggle-server (index noun gives)
-  "Turn the permission at INDEX of the entries of the marked servers, or the
-line's, on where it is off and off where it is on, asking before turning it
+(defun toggle-server (field noun gives)
+  "Turn the permission FIELD (one of *SERVER-FIELDS*) of the marked servers, or
+the line's, on where it is off and off where it is on, asking before turning it
 on, GIVES saying what the server is then given (a format of the host)."
   (change-servers noun
-                  (lambda (host entry) (and (not (nth index entry)) (format nil "~?: turn it on?" gives (list host))))
-                  (lambda (entry) (setf (nth index entry) (not (nth index entry))) entry)))
+                  (lambda (host entry)
+                    (and (not (server-field entry field)) (format nil "~?: turn it on?" gives (list host))))
+                  (lambda (entry) (server-entry-with entry field (not (server-field entry field))))))
 
 (define-command server-toggle-agent ()
   "Forward your ssh agent to the server on the line, or those marked, or no
 longer: on, the programs there can sign with your keys while a client
 shows its daemon, each use asked about here, and only for the machines
 named by \\<servers-mode>\\[server-agent-destinations] where OpenSSH can limit them. Asked before it is turned on."
-  (toggle-server 1 "ssh agent" "~a may then use your ssh keys, each use confirmed here"))
+  (toggle-server :agent "ssh agent" "~a may then use your ssh keys, each use confirmed here"))
 
 (define-command server-toggle-gpg ()
   "Forward gpg-agent to the server on the line, or those marked, or no
@@ -348,7 +376,7 @@ and cannot export or change them. The passphrase is asked here; while
 gpg-agent here keeps it (up to its max-cache-ttl, as much as 8 hours), the
 server can sign and decrypt with that key again without asking you. Asked
 before it is turned on."
-  (toggle-server 3 "gpg-agent" "~a may then sign and decrypt with your GnuPG keys, without asking you again while ~
+  (toggle-server :gpg "gpg-agent" "~a may then sign and decrypt with your GnuPG keys, without asking you again while ~
                                 gpg-agent keeps the passphrase (up to its max-cache-ttl, as much as 8 hours)"))
 
 (define-command server-toggle-clipboard ()
@@ -356,7 +384,7 @@ before it is turned on."
 longer: on, what is copied there reaches the clipboard here, as text with
 no control characters, and the daemon there may read what is copied here.
 Asked before it is turned on."
-  (toggle-server 4 "clipboard" "~a may then read your clipboard and copy into it"))
+  (toggle-server :clipboard "clipboard" "~a may then read your clipboard and copy into it"))
 
 (define-command server-toggle-files ()
   "Send the files dropped on a window showing the daemon of the server on
@@ -366,16 +394,17 @@ copied there, its size checked first, and nothing of it run."
   (change-servers "dropped files"
                   (lambda (host entry) (declare (ignore host entry)) nil)
                   (lambda (entry)
-                    (setf (nth 5 entry)
-                          (and (not (nth 5 entry))
-                               (let ((directory (string-trim " " (read-string (format nil "Files dropped go on ~a to ~
-                                                                                         the directory: " (first entry))
-                                                                           :initial "Dropped"))))
-                                 (if (plain-path-p directory :relative t)
-                                     directory
-                                     (refuse "~a: a directory is letters, digits, /, ., _ and -, no part .. or ~
-                                              starting with -" directory)))))
-                    entry)))
+                    (server-entry-with
+                     entry :files
+                     (and (not (server-field entry :files))
+                          (let ((directory (string-trim " " (read-string
+                                                             (format nil "Files dropped go on ~a to the directory: "
+                                                                     (server-field entry :host))
+                                                             :initial "Dropped"))))
+                            (if (plain-path-p directory :relative t)
+                                directory
+                                (refuse "~a: a directory is letters, digits, /, ., _ and -, no part .. or ~
+                                         starting with -" directory))))))))
 
 (define-command server-agent-destinations ()
   "Name, in the minibuffer, the machines the keys of your ssh agent may be
@@ -386,15 +415,15 @@ later here, which refuses a key's use for any other machine."
                   (lambda (host entry) (declare (ignore host entry)) nil)
                   (lambda (entry)
                     (let* ((typed (read-string (format nil "Keys used from ~a for (commas between, none for any): "
-                                                       (first entry))
-                                               :initial (format nil "~{~a~^, ~}" (third entry))))
-                           (hosts (remove "" (mapcar (lambda (h) (string-trim " " h))
-                                                     (uiop:split-string typed :separator ","))
-                                          :test #'string=))
+                                                       (server-field entry :host))
+                                               :initial (format nil "~{~a~^, ~}" (server-field entry :destinations))))
+                           (hosts (and (string-not-equal (string-trim " " typed) "none")
+                                       (remove "" (mapcar (lambda (h) (string-trim " " h))
+                                                          (uiop:split-string typed :separator ","))
+                                               :test #'string=)))
                            (bad (find-if #'host-refusal hosts)))
                       (when bad (refuse "~a" (host-refusal bad)))
-                      (setf (third entry) hosts)
-                      entry))))
+                      (server-entry-with entry :destinations hosts)))))
 
 (define-command server-tuatara-program ()
   "Name, in the minibuffer, the tuatara to run on the server on the line, or
@@ -407,12 +436,12 @@ shell on that machine."
                   (lambda (entry)
                     (let ((program (string-trim " " (read-string
                                                      (format nil "Tuatara to run on ~a (empty for its PATH's): "
-                                                             (first entry))
-                                                     :initial (or (nth 7 entry) "")))))
+                                                             (server-field entry :host))
+                                                     :initial (or (server-field entry :program) "")))))
                       (unless (or (string= program "") (plain-path-p program :relative t))
                         (refuse "~a: a program is letters, digits, /, ., _ and -, no part .. or starting with -"
                                 program))
-                      (append (subseq entry 0 7) (and (string/= program "") (list program)))))))
+                      (server-entry-with entry :program (and (string/= program "") program))))))
 
 (defmethod list-entry-noun ((mode servers-mode))
   "A trusted server."

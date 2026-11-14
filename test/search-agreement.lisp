@@ -169,8 +169,8 @@ in parallel (LINE-MATCHES)."
              (rope (tuatara.text:string->rope text))
              (size (tuatara.text:rope-octet-length rope)))
         (dolist (pattern *agreement-patterns*)
-          (let* ((matcher (tuatara.defaults::make-pattern-matcher pattern :regex t :crlf (eq crlf t)))
-                 (scanner (tuatara.syntax:compile-regex pattern :crlf (eq crlf t)))
+          (let* ((matcher (tuatara.defaults::make-pattern-matcher pattern :regex t))
+                 (scanner (tuatara.syntax:compile-regex pattern))
                  (oracle (mapcar (lambda (m) (subseq m 0 2)) (regex-oracle text scanner))))
             (true matcher "~a compiles" pattern)
             (dolist (sizes (agreement-sizes))
@@ -326,7 +326,7 @@ character on after an empty one going forward."
       (let* ((text (if crlf (cl-ppcre:regex-replace-all "\n" text (format nil "~c~c" #\Return #\Newline)) text))
              (rope (tuatara.text:string->rope text)))
         (dolist (pattern '("^$" "^" "$" "\\b" "(?=k)" "a*" "\\s*" "(?<=a)"))
-          (let ((matcher (tuatara.defaults::make-pattern-matcher pattern :regex t :crlf crlf))
+          (let ((matcher (tuatara.defaults::make-pattern-matcher pattern :regex t))
                 (counted '()))
             (tuatara.defaults::stretch-matches (lambda (s e m g) (declare (ignore m g)) (push (list s e) counted) nil)
                                                rope matcher 0 (tuatara.text:rope-octet-length rope) t nil nil)
@@ -450,7 +450,7 @@ worked out in pieces.")
 left, or with KEEP false those it does not find it on."
   (let* ((rope (tuatara.text:string->rope text))
          (starts (scan-kept-starts rope (tuatara.defaults::search-filter-matcher
-                                         (tuatara.defaults::make-search-filter pattern :crlf crlf))
+                                         (tuatara.defaults::make-search-filter pattern))
                                    crlf)))
     ;; each line's start counted in octets, as the oracle gives them
     (with-output-to-string (o)

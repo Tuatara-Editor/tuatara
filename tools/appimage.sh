@@ -37,6 +37,7 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
 . tools/containers.sh
 . tools/inside.sh
+. tools/fetch.sh
 tools_dir="$root/build/appimage-tools"
 appdir="$root/build/appimage/Tuatara.AppDir"
 out="$root/build/Tuatara-x86_64.AppImage"
@@ -50,17 +51,7 @@ appimagetool_sha256=ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb38
 runtime_url=https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-x86_64
 runtime_sha256=2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d
 
-fetch() {  # download $1 to $2 unless it is there with SHA-256 $3; a download that differs is not kept
-  if ! echo "$3  $2" | sha256sum -c --status 2>/dev/null; then
-    curl -sSfL -o "$2.part" "$1"
-    if ! echo "$3  $2.part" | sha256sum -c --status; then
-      rm -f "$2.part"
-      echo "$1 is not the file expected: not used" >&2
-      exit 1
-    fi
-    mv "$2.part" "$2"
-  fi
-}
+fetch() { checked_download "$@" || exit 1; }
 mkdir -p "$tools_dir"
 fetch "$excludelist_url" "$tools_dir/excludelist" "$excludelist_sha256"
 fetch "$appimagetool_url" "$tools_dir/appimagetool-x86_64.AppImage" "$appimagetool_sha256"

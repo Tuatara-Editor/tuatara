@@ -27,7 +27,7 @@ invisible characters that set the direction text is drawn in (:LRE :RLE :LRO
 letter written from right to left (Hebrew, Arabic and the others), an Arabic
 digit, or one of the invisible characters that set the direction text is
 drawn in. Every such character is at U+0590 or above, so any below is
-answered at once. Complexity: O(1)."
+answered at once."
   (declare (type fixnum code))
   (and (>= code #x590)
        (or (<= code #x8FF) (<= #x200F code #x2069) (<= #xFB1D code #xFEFE)
@@ -38,7 +38,7 @@ answered at once. Complexity: O(1)."
 (declaim (inline strong-code-p))
 (defun strong-code-p (code)
   "True when the character of CODE is a letter, one whose direction is its
-own: a Latin letter, or any of class :L, :R or :AL. Complexity: O(1)."
+own: a Latin letter, or any of class :L, :R or :AL."
   (declare (type fixnum code))
   (if (< code 128)
       (or (<= 65 code 90) (<= 97 code 122))
@@ -82,14 +82,13 @@ neutrals (:BN)."
 :EN and :AN, NIL for any other."
   (case class (:l :l) ((:r :al :en :an) :r)))
 
-
 (defun direction-of-level (level)
   "The direction of embedding LEVEL: :R when it is odd, :L when it is even."
   (if (oddp level) :r :l))
 
 ;;; Scratch room, kept and used again
 
-(defstruct (bidi-scratch (:constructor make-bidi-scratch ()) (:copier nil))
+(define-record (bidi-scratch (:constructor make-bidi-scratch ()) (:copier nil))
   "The room the levels of a paragraph are worked out in, kept from one
 paragraph to the next so that working them out makes no garbage once it is
 large enough.
@@ -104,52 +103,46 @@ characters (SEQUENCE), their classes (TS) and each opening bracket's closing
 one (PARTNER).
 For a line, it holds the levels it is shown at (LINE) and the order (ORDER).
 The embeddings' stack and the brackets' are of fixed size."
-  (size 0 :type fixnum)
-  (classes #() :type simple-vector)
-  (types #() :type simple-vector)
-  (codes (make-array 0 :element-type '(signed-byte 32)) :type (simple-array (signed-byte 32) (*)))
-  (levels (make-array 0 :element-type '(unsigned-byte 8)) :type (simple-array (unsigned-byte 8) (*)))
-  (explicit (make-array 0 :element-type '(unsigned-byte 8)) :type (simple-array (unsigned-byte 8) (*)))
-  (match (make-array 0 :element-type '(signed-byte 32)) :type (simple-array (signed-byte 32) (*)))
-  (run-of (make-array 0 :element-type '(signed-byte 32)) :type (simple-array (signed-byte 32) (*)))
-  (stack (make-array 0 :element-type '(signed-byte 32)) :type (simple-array (signed-byte 32) (*)))
-  (run-first (make-array 0 :element-type '(signed-byte 32)) :type (simple-array (signed-byte 32) (*)))
-  (run-last (make-array 0 :element-type '(signed-byte 32)) :type (simple-array (signed-byte 32) (*)))
-  (sequence (make-array 0 :element-type '(signed-byte 32)) :type (simple-array (signed-byte 32) (*)))
-  (ts #() :type simple-vector)
-  (partner (make-array 0 :element-type '(signed-byte 32)) :type (simple-array (signed-byte 32) (*)))
-  (line (make-array 0 :element-type '(unsigned-byte 8)) :type (simple-array (unsigned-byte 8) (*)))
-  (order (make-array 0 :element-type '(signed-byte 32)) :type (simple-array (signed-byte 32) (*)))
-  (stack-level (make-array (+ 2 +bidi-max-depth+) :element-type 'fixnum) :type (simple-array fixnum (*)))
-  (stack-override (make-array (+ 2 +bidi-max-depth+) :initial-element nil) :type simple-vector)
-  (stack-isolate (make-array (+ 2 +bidi-max-depth+) :initial-element nil) :type simple-vector)
-  (open-code (make-array +bracket-pairs-most+ :element-type 'fixnum) :type (simple-array fixnum (*)))
-  (open-at (make-array +bracket-pairs-most+ :element-type 'fixnum) :type (simple-array fixnum (*))))
-
-(setf (documentation 'bidi-scratch-p 'function) "True when OBJECT is a BIDI-SCRATCH."
-      (documentation 'bidi-scratch-size 'function) "How many characters the SCRATCH has room for."
-      (documentation 'bidi-scratch-classes 'function) "The classes of the characters as written."
-      (documentation 'bidi-scratch-types 'function) "The classes of the characters as the rules change them."
-      (documentation 'bidi-scratch-codes 'function) "The codes of the characters."
-      (documentation 'bidi-scratch-levels 'function) "The levels worked out for the characters."
-      (documentation 'bidi-scratch-explicit 'function) "The levels the embeddings give the characters."
-      (documentation 'bidi-scratch-match 'function) "For each isolate's beginning or end, the index
-of the other; -1 for none."
-      (documentation 'bidi-scratch-run-of 'function) "For each character, the level run it is in."
-      (documentation 'bidi-scratch-stack 'function) "Room for a stack of indices."
-      (documentation 'bidi-scratch-run-first 'function) "For each level run, its first character."
-      (documentation 'bidi-scratch-run-last 'function) "For each level run, its last character."
-      (documentation 'bidi-scratch-sequence 'function) "The indices of the characters of the sequence worked on."
-      (documentation 'bidi-scratch-ts 'function) "The classes of the characters of the sequence worked on."
-      (documentation 'bidi-scratch-partner 'function) "For each opening bracket of the sequence, its
-closing one's place; -1 else."
-      (documentation 'bidi-scratch-line 'function) "The levels a line's characters are shown at."
-      (documentation 'bidi-scratch-order 'function) "The order a line's characters are shown in."
-      (documentation 'bidi-scratch-stack-level 'function) "The embeddings' stack: levels."
-      (documentation 'bidi-scratch-stack-override 'function) "The embeddings' stack: overrides."
-      (documentation 'bidi-scratch-stack-isolate 'function) "The embeddings' stack: whether each is an isolate."
-      (documentation 'bidi-scratch-open-code 'function) "The brackets' stack: the closing bracket awaited."
-      (documentation 'bidi-scratch-open-at 'function) "The brackets' stack: where the opening one is.")
+  (size 0 :type fixnum :documentation "How many characters the SCRATCH has room for.")
+  (classes #() :type simple-vector :documentation "The classes of the characters as written.")
+  (types #() :type simple-vector :documentation "The classes of the characters as the rules change them.")
+  (codes (make-array 0 :element-type '(signed-byte 32)) :type (simple-array (signed-byte 32) (*))
+         :documentation "The codes of the characters.")
+  (levels (make-array 0 :element-type '(unsigned-byte 8)) :type (simple-array (unsigned-byte 8) (*))
+          :documentation "The levels worked out for the characters.")
+  (explicit (make-array 0 :element-type '(unsigned-byte 8)) :type (simple-array (unsigned-byte 8) (*))
+            :documentation "The levels the embeddings give the characters.")
+  (match (make-array 0 :element-type '(signed-byte 32)) :type (simple-array (signed-byte 32) (*))
+         :documentation "For each isolate's beginning or end, the index
+of the other; -1 for none.")
+  (run-of (make-array 0 :element-type '(signed-byte 32)) :type (simple-array (signed-byte 32) (*))
+          :documentation "For each character, the level run it is in.")
+  (stack (make-array 0 :element-type '(signed-byte 32)) :type (simple-array (signed-byte 32) (*))
+         :documentation "Room for a stack of indices.")
+  (run-first (make-array 0 :element-type '(signed-byte 32)) :type (simple-array (signed-byte 32) (*))
+             :documentation "For each level run, its first character.")
+  (run-last (make-array 0 :element-type '(signed-byte 32)) :type (simple-array (signed-byte 32) (*))
+            :documentation "For each level run, its last character.")
+  (sequence (make-array 0 :element-type '(signed-byte 32)) :type (simple-array (signed-byte 32) (*))
+            :documentation "The indices of the characters of the sequence worked on.")
+  (ts #() :type simple-vector :documentation "The classes of the characters of the sequence worked on.")
+  (partner (make-array 0 :element-type '(signed-byte 32)) :type (simple-array (signed-byte 32) (*))
+           :documentation "For each opening bracket of the sequence, its
+closing one's place; -1 else.")
+  (line (make-array 0 :element-type '(unsigned-byte 8)) :type (simple-array (unsigned-byte 8) (*))
+        :documentation "The levels a line's characters are shown at.")
+  (order (make-array 0 :element-type '(signed-byte 32)) :type (simple-array (signed-byte 32) (*))
+         :documentation "The order a line's characters are shown in.")
+  (stack-level (make-array (+ 2 +bidi-max-depth+) :element-type 'fixnum) :type (simple-array fixnum (*))
+               :documentation "The embeddings' stack: levels.")
+  (stack-override (make-array (+ 2 +bidi-max-depth+) :initial-element nil) :type simple-vector
+                  :documentation "The embeddings' stack: overrides.")
+  (stack-isolate (make-array (+ 2 +bidi-max-depth+) :initial-element nil) :type simple-vector
+                 :documentation "The embeddings' stack: whether each is an isolate.")
+  (open-code (make-array +bracket-pairs-most+ :element-type 'fixnum) :type (simple-array fixnum (*))
+             :documentation "The brackets' stack: the closing bracket awaited.")
+  (open-at (make-array +bracket-pairs-most+ :element-type 'fixnum) :type (simple-array fixnum (*))
+           :documentation "The brackets' stack: where the opening one is."))
 
 (defun bidi-scratch-room (scratch n &optional (keep 0))
   "Make SCRATCH large enough for N characters, its arrays made anew, half as
@@ -671,7 +664,7 @@ O(TO - FROM)."
 
 ;;; Paragraphs worked out, kept for the next layout
 
-(defstruct (bidi-paragraph (:constructor make-bidi-paragraph ()) (:copier nil))
+(define-record (bidi-paragraph (:constructor make-bidi-paragraph ()) (:copier nil))
   "A stretch of a line worked out for showing right-to-left text, its arrays
 used again for another once ROPE is not the text shown. It holds the octets
 from START below END of ROPE, as DIRECTION (:AUTO, :LEFT-TO-RIGHT,
@@ -680,65 +673,48 @@ their bidirectional CLASSES and resolved LEVELS, and the LEVEL of the
 paragraph, 1 for a line written from right to left. STORED is true when the
 stretch, far into a long line, is shown in the order stored, as what comes
 before it cannot be told."
-  (rope nil)
-  (start 0 :type fixnum)
-  (end 0 :type fixnum)
-  (direction nil)
-  (count 0 :type fixnum)
-  (bytes (make-array 0 :element-type 'fixnum) :type (simple-array fixnum (*)))
-  (classes #() :type simple-vector)
-  (levels (make-array 0 :element-type '(unsigned-byte 8)) :type (simple-array (unsigned-byte 8) (*)))
-  (level 0 :type fixnum)
-  (stored nil))
+  (rope nil :documentation "The text the PARAGRAPH was worked out of, or NIL when free.")
+  (start 0 :type fixnum :documentation "Where the text of the PARAGRAPH worked out begins.")
+  (end 0 :type fixnum :documentation "Where the text of the PARAGRAPH worked out ends.")
+  (direction nil :documentation "The direction the PARAGRAPH was worked out for.")
+  (count 0 :type fixnum :documentation "How many characters the PARAGRAPH holds.")
+  (bytes (make-array 0 :element-type 'fixnum) :type (simple-array fixnum (*))
+         :documentation "The offset each character of the PARAGRAPH begins at, in order.")
+  (classes #() :type simple-vector :documentation "The bidirectional class of each character of the PARAGRAPH.")
+  (levels (make-array 0 :element-type '(unsigned-byte 8)) :type (simple-array (unsigned-byte 8) (*))
+          :documentation "The level each character of the PARAGRAPH is shown at.")
+  (level 0 :type fixnum :documentation "The level of the PARAGRAPH: 0 from left to
+right, 1 from right to left.")
+  (stored nil :documentation "True when the PARAGRAPH is shown in the order stored."))
 
-(setf (documentation 'bidi-paragraph-p 'function) "True when OBJECT is a BIDI-PARAGRAPH."
-      (documentation 'bidi-paragraph-rope 'function) "The text the PARAGRAPH was worked out of, or NIL when free."
-      (documentation 'bidi-paragraph-start 'function) "Where the text of the PARAGRAPH worked out begins."
-      (documentation 'bidi-paragraph-end 'function) "Where the text of the PARAGRAPH worked out ends."
-      (documentation 'bidi-paragraph-direction 'function) "The direction the PARAGRAPH was worked out for."
-      (documentation 'bidi-paragraph-count 'function) "How many characters the PARAGRAPH holds."
-      (documentation 'bidi-paragraph-bytes 'function) "The offset each character of the PARAGRAPH begins at, in order."
-      (documentation 'bidi-paragraph-classes 'function) "The bidirectional class of each character of the PARAGRAPH."
-      (documentation 'bidi-paragraph-levels 'function) "The level each character of the PARAGRAPH is shown at."
-      (documentation 'bidi-paragraph-level 'function) "The level of the PARAGRAPH: 0 from left to
-right, 1 from right to left."
-      (documentation 'bidi-paragraph-stored 'function) "True when the PARAGRAPH is shown in the order stored.")
-
-(defstruct (bidi-cache (:constructor make-bidi-cache ()) (:copier nil))
+(define-record (bidi-cache (:constructor make-bidi-cache ()) (:copier nil))
   "What a window keeps of right-to-left text from one layout to the next.
 PARAGRAPHS are those worked out of ROPE, the text it last showed, and those of
 a text before free to be filled again (NEXT, the one to fill when none is).
 SCRATCH is the room they are worked out in. SCAN-FOUND is whether
 right-to-left text was found between SCAN-FROM and SCAN-TO of SCAN-ROPE. The
 rest is the room a row is put in order in, with its STRING, FACES, CHARS and
-BYTES copied, and UNITS, five numbers for each character shown with the marks
+BYTES copied, and UNITS, six numbers for each character shown with the marks
 on it."
-  (rope nil)
-  (paragraphs (make-array 0 :adjustable t :fill-pointer 0) :type vector)
-  (next 0 :type fixnum)
-  (scratch (make-bidi-scratch) :type bidi-scratch)
-  (scan-rope nil) (scan-from 0 :type fixnum) (scan-to 0 :type fixnum) (scan-found nil)
-  (string (make-string 0) :type simple-string)
-  (faces #() :type simple-vector)
-  (chars (make-array 0 :element-type 'fixnum) :type (simple-array fixnum (*)))
-  (bytes (make-array 0 :element-type 'fixnum) :type (simple-array fixnum (*)))
-  (units (make-array 0 :element-type 'fixnum) :type (simple-array fixnum (*))))
+  (rope nil :documentation "The text the CACHE's paragraphs were worked out of.")
+  (paragraphs (make-array 0 :adjustable t :fill-pointer 0) :type vector
+              :documentation "The paragraphs the CACHE keeps.")
+  (next 0 :type fixnum :documentation "Which of the CACHE's paragraphs is filled next when none is free.")
+  (scratch (make-bidi-scratch) :type bidi-scratch :documentation "The room the CACHE's paragraphs are worked out in.")
+  (scan-rope nil :documentation "The text the CACHE last looked through for right-to-left text.")
+  (scan-from 0 :type fixnum :documentation "Where that look began.")
+  (scan-to 0 :type fixnum :documentation "Where that look ended.")
+  (scan-found nil :documentation "Whether that look found right-to-left text.")
+  (string (make-string 0) :type simple-string :documentation "Room for a row's string while it is put in order.")
+  (faces #() :type simple-vector :documentation "Room for a row's faces while it is put in order.")
+  (chars (make-array 0 :element-type 'fixnum) :type (simple-array fixnum (*))
+         :documentation "Room for a row's characters' offsets while it is put in order.")
+  (bytes (make-array 0 :element-type 'fixnum) :type (simple-array fixnum (*))
+         :documentation "Room for a row's columns' offsets while it is put in order.")
+  (units (make-array 0 :element-type 'fixnum) :type (simple-array fixnum (*))
+         :documentation "Room for a row's characters shown, six numbers each."))
 
-(setf (documentation 'bidi-cache-p 'function) "True when OBJECT is a BIDI-CACHE."
-      (documentation 'make-bidi-cache 'function) "A new BIDI-CACHE, holding nothing yet."
-      (documentation 'bidi-cache-rope 'function) "The text the CACHE's paragraphs were worked out of."
-      (documentation 'bidi-cache-paragraphs 'function) "The paragraphs the CACHE keeps."
-      (documentation 'bidi-cache-next 'function) "Which of the CACHE's paragraphs is filled next when none is free."
-      (documentation 'bidi-cache-scratch 'function) "The room the CACHE's paragraphs are worked out in."
-      (documentation 'bidi-cache-scan-rope 'function) "The text the CACHE last looked through for right-to-left text."
-      (documentation 'bidi-cache-scan-from 'function) "Where that look began."
-      (documentation 'bidi-cache-scan-to 'function) "Where that look ended."
-      (documentation 'bidi-cache-scan-found 'function) "Whether that look found right-to-left text."
-      (documentation 'bidi-cache-string 'function) "Room for a row's string while it is put in order."
-      (documentation 'bidi-cache-faces 'function) "Room for a row's faces while it is put in order."
-      (documentation 'bidi-cache-chars 'function) "Room for a row's characters' offsets while it is put in order."
-      (documentation 'bidi-cache-bytes 'function) "Room for a row's columns' offsets while it is put in order."
-      (documentation 'bidi-cache-units 'function) "Room for a row's characters shown, five numbers each.")
+(setf (documentation 'make-bidi-cache 'function) "A new BIDI-CACHE, holding nothing yet.")
 
 (defconstant +paragraphs-kept+ 256 "The most paragraphs a BIDI-CACHE keeps.")
 

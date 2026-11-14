@@ -5,9 +5,10 @@
 # defparameter) that the changes from BASE to HEAD add, and under each the
 # five entries of test/api/reuse-index.txt nearest to it: those whose
 # docstring's first sentence shares meaningful words with the new one, or
-# whose name shares parts (split at "-") with the new name; rarer words weigh more, and one the docstring names outright more still.
-# The definition itself (same name, same file) is left out. Only the diff, the changed files
-# and the index are read; nothing is loaded.
+# whose name shares parts (split at "-") with the new name; rarer words weigh
+# more, and one the docstring names outright more still. The definition itself
+# (same name, same file) is left out. Only the diff, the changed files and the
+# index are read; nothing is loaded.
 # Two more reports read the whole tree (lisp/, src/ and frontends/):
 #   --bodies         the pairs of definitions whose bodies are alike. A body
 #                    is read with its local variables numbered by first use
@@ -22,13 +23,26 @@
 # the two lists are labelled. Without the model it says so in one line and gives the word list alone.
 #   --where TEXT...  the ten definitions nearest by meaning to each description TEXT, for finding where code that does
 #                    something already lives.
+#   --alike-meaning  the pairs of definitions whose names and docstrings are alike by meaning (the same model), the
+#                    tree's candidates for a merge. Each pair gives both names, files and lines, the cosine and, where
+#                    both are functions, the --bodies score; pairs alike in both come first. Left out as noise: the
+#                    methods of one generic function, a function and its setf, two definitions of the
+#                    same name, two names that differ only by parts naming a direction or an end
+#                    (forward, next, start, day) or by the order of a conversion (byte->char, char->byte), pairs where
+#                    one docstring or body names the other, pairs of one file with bodies too short to compare, and
+#                    the pairs listed in test/api/kept-apart.txt. Each line of that file is
+#                    "NAME-A NAME-B reason": two names as written in the code, either order, then the reason the
+#                    two were read and judged distinct. Lines starting with ; are comments. Without the model it
+#                    prints one line saying so and ends well. The vectors are cached (see tools/meaning.py), so a
+#                    later run embeds only what changed.
 # Usage: tools/possible-copies.sh [--meaning] BASE [HEAD]
 #        tools/possible-copies.sh --where "what the code would do" ...
 #        tools/possible-copies.sh --bodies [--packages] [--threshold SCORE]
 #        tools/possible-copies.sh --pass-through [--packages]
+#        tools/possible-copies.sh --alike-meaning [--packages] [--threshold COSINE] [--top N]
 #   HEAD is a commit; without it the working tree is compared, new files included.
 #   --packages adds the package repositories in ../tuatara-packages/*/.
-#   SCORE is a percentage, 60 unless given.
+#   SCORE is a percentage, 60 unless given. COSINE is 0.85 unless given; N, the pairs shown, 100.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 exec python3 -I - "$@" <<'PYTHON'
@@ -216,35 +230,48 @@ def signature(text, start):
     return re.sub(r"\s+", " ", found)
 
 
-def meaning_corpus():
-    """A list of (file, name, line) for each definition of the tree, LINE being its name, its lambda list, its whole
-    docstring with whitespace collapsed and its file, cut at MEANING_LONGEST characters: the text the model reads."""
+def meaning_corpus(packages=False, plain=False):
+    """A list of (file, name, line, number) for each definition of the tree, LINE being its name, its lambda list, its
+    whole docstring with whitespace collapsed and its file, cut at MEANING_LONGEST characters: the text the model
+    reads; NUMBER is the line of the file the definition starts on. With PLAIN, LINE is only the name and the docstring
+    (and a definition without a docstring is left out), so that file and arguments do not make definitions alike."""
     found = []
     pattern = re.compile(r"^\((" + "|".join(MEANING_DEFINERS) + r")\s+(\(setf\s+\S+?\)|[^\s()]+)", re.M)
-    for path in source_files(False):
+    for path in source_files(packages):
         text = open(path, encoding="utf-8", errors="replace").read()
         for match in pattern.finditer(text):
             doc = re.sub(r"\s+", " ", docstring(text, match.start())).strip()
             name = match.group(2).lower()
+            number = text.count("\n", 0, match.start()) + 1
+            if plain:
+                if doc:
+                    found.append((path, name, f"{name}: {doc}"[:MEANING_LONGEST], number))
+                continue
             line = f"{name}  {signature(text, match.start())}  {doc}"
-            found.append((path, name, f"{line[:MEANING_LONGEST - len(path) - 2]}  {path}"))
+            found.append((path, name, f"{line[:MEANING_LONGEST - len(path) - 2]}  {path}", number))
     return found
+
+
+def ask_model(request, fallback):
+    """The answer of tools/meaning.py to REQUEST, a dict, as a dict; or None after a line on standard error saying
+    why the model could not be used and what FALLBACK, a phrase, follows instead."""
+    run_with, reason = meaning_module().command()
+    if not run_with:
+        print(f"meaning: {reason}; {fallback}", file=sys.stderr)
+        return None
+    done = subprocess.run(run_with, input=json.dumps(request), stdout=subprocess.PIPE, text=True)
+    if done.returncode != 0:
+        print(f"meaning: the model could not be run (see above); {fallback}", file=sys.stderr)
+        return None
+    return json.loads(done.stdout)
 
 
 def by_meaning(corpus, queries, top):
     """For each of QUERIES a list of (score, index into CORPUS), TOP long, from tools/meaning.py; or None after a
     line on standard error saying why the model could not be used."""
-    meaning = meaning_module()
-    run_with, reason = meaning.command()
-    if not run_with:
-        print(f"meaning: {reason}; the word list alone follows", file=sys.stderr)
-        return None
-    request = json.dumps({"corpus": [line for _, _, line in corpus], "queries": queries, "top": top})
-    done = subprocess.run(run_with, input=request, stdout=subprocess.PIPE, text=True)
-    if done.returncode != 0:
-        print("meaning: the model could not be run (see above); the word list alone follows", file=sys.stderr)
-        return None
-    return json.loads(done.stdout)["nearest"]
+    answer = ask_model({"corpus": [c[2] for c in corpus], "queries": queries, "top": top},
+                       "the word list alone follows")
+    return answer["nearest"] if answer else None
 
 
 def report_where(descriptions):
@@ -423,6 +450,120 @@ def alike_bodies(packages, threshold):
     return sorted(found, key=lambda f: (-f[0], f[1], f[2]))
 
 
+KEPT_APART = "test/api/kept-apart.txt"
+# The most pairs asked of the model; the filters below take some away.
+PAIR_LIMIT = 50000
+
+
+def kept_apart():
+    """The pairs of names KEPT_APART lists as judged distinct, as a set of frozensets of two names."""
+    if not os.path.exists(KEPT_APART):
+        return set()
+    pairs = set()
+    for line in open(KEPT_APART, encoding="utf-8"):
+        words = line.split()
+        if len(words) >= 2 and not line.startswith(";"):
+            pairs.add(frozenset((words[0].lower(), words[1].lower())))
+    return pairs
+
+
+# Name parts that say opposite ends of one thing: a pair differing only by such parts is two directions or two
+# ends of one job, written twice on purpose.
+MIRRORS = (("forward", "backward", "forwards", "backwards"), ("next", "previous", "prev"),
+           ("start", "end", "begin", "beginning", "stop"), ("before", "after"),
+           ("up", "down", "upward", "downward"), ("left", "right"), ("first", "second", "last"),
+           ("open", "close", "opening", "closing"), ("encode", "decode"), ("get", "set"), ("push", "pop"),
+           ("in", "out"), ("top", "bottom"), ("enable", "disable"), ("show", "hide", "leave"),
+           ("add", "remove"), ("save", "load", "restore"), ("min", "max"), ("increase", "decrease"),
+           ("later", "earlier"), ("clockwise", "anticlockwise"), ("here", "elsewhere"),
+           ("day", "week", "month", "year"),
+           ("yes", "no"), ("on", "off"), ("lf", "cr", "crlf"), ("inner", "outer"), ("more", "less"))
+MIRROR_OF = {word for group in MIRRORS for word in group}
+
+
+def mirrored(a, b):
+    """True when the names A and B are the same once the parts that name an end or a direction (forward, next,
+    start, day) are taken out, and whatever the order of the rest (byte->char, char->byte)."""
+    def parts(name):
+        return sorted(p for p in re.split(r"[-:>*+/<=\s]+", name.split(":")[-1]) if p and p not in MIRROR_OF)
+    return parts(a) == parts(b)
+
+
+def same_thing(a, b):
+    """True when definitions A and B, (file, name, ...) tuples, are no pair worth a look: the same name (the methods
+    of a generic function), a function and its setf, or two mirrored names."""
+    unwrap = lambda name: re.sub(r"^\(setf\s+(\S+?)\)$", r"\1", name)
+    return unwrap(a[1]) == unwrap(b[1]) or mirrored(unwrap(a[1]), unwrap(b[1]))
+
+
+def body_facts(packages, wanted):
+    """A dict of ((file, name), (file, name)) to (score, linked) for each pair in WANTED, a list of two such keys:
+    SCORE is the --bodies score (a percentage), or None where a body is too short to compare; LINKED is true when
+    the body of one names the other (a caller and what it calls are layers, not copies). Where a name has several
+    methods the best score counts."""
+    keys = {key for pair in wanted for key in pair}
+    runs, called = {}, {}
+    for path, name, parameters, body in tree_definitions(packages):
+        if (path, name) in keys:
+            tokens = normalised(parameters, body)
+            if len(tokens) >= SHORTEST_BODY:
+                runs.setdefault((path, name), []).append(runs_of(tokens))
+            called.setdefault((path, name), set()).update(
+                t.lower().lstrip("#'").rsplit(":", 1)[-1] for t in tokens_of(" ".join(body)))
+    facts = {}
+    for a, b in wanted:
+        best = max((100.0 * len(x & y) / len(x | y) for x in runs.get(a, []) for y in runs.get(b, [])), default=None)
+        facts[(a, b)] = (best, b[1] in called.get(a, ()) or a[1] in called.get(b, ()))
+    return facts
+
+
+def mentions(line, name):
+    """True when the corpus LINE (a name and a docstring) names NAME as a word, whatever the case."""
+    return re.search(r"(?<![\w*+<>=/-])" + re.escape(name) + r"(?![\w*+<>=/-])", line, re.I) is not None
+
+
+def alike_meaning(corpus, found, apart, packages):
+    """The pairs of FOUND, a list of (cosine, i, j) over CORPUS, that stay after the noise filters and APART, a set
+    of frozensets of names, as a list of (rank, cosine, body score or None, definition, definition) with the
+    definitions as (file, name, line); best first. Left out as well: pairs where one docstring or body names the
+    other definition (layers, not copies) and pairs of one file whose bodies are too short to compare."""
+    kept = []
+    for cosine, i, j in found:
+        a, b = corpus[i], corpus[j]
+        if (same_thing(a, b) or frozenset((a[1], b[1])) in apart or mentions(a[2].split(": ", 1)[-1], b[1])
+                or mentions(b[2].split(": ", 1)[-1], a[1])):
+            continue
+        kept.append((cosine, (a[0], a[1], a[3]), (b[0], b[1], b[3])))
+    facts = body_facts(packages, [[(a[0], a[1]), (b[0], b[1])] for _, a, b in kept])
+    ranked = []
+    for cosine, a, b in kept:
+        body, linked = facts[((a[0], a[1]), (b[0], b[1]))]
+        # two short definitions of one file are sibling commands or accessors: little to merge
+        if not linked and (body is not None or a[0] != b[0]):
+            ranked.append((cosine + 0.2 * (body or 0) / 100, cosine, body, a, b))
+    return sorted(ranked, key=lambda r: (-r[0], r[3], r[4]))
+
+
+def report_alike_meaning(packages, threshold, top):
+    """Print the pairs of definitions alike in name and docstring by meaning, TOP of them, the count first."""
+    meaning = meaning_module()
+    if meaning.command()[0] is None:
+        print(f"no meaning model here: {meaning.command()[1]}")
+        return
+    corpus = meaning_corpus(packages, plain=True)
+    answer = ask_model({"corpus": [c[2] for c in corpus], "pairs": threshold, "limit": PAIR_LIMIT},
+                       "the alike-by-meaning list is left out")
+    if answer is None:
+        print("no meaning model here: it could not be run")
+        return
+    ranked = alike_meaning(corpus, answer["pairs"], kept_apart(), packages)
+    print(f"{len(ranked)} pairs of definitions alike by meaning (cosine {threshold:g} or more), "
+          f"{min(top, len(ranked))} shown")
+    for _, cosine, body, (file_a, name_a, line_a), (file_b, name_b, line_b) in ranked[:top]:
+        shown = "body  - " if body is None else f"body {body:3.0f}"
+        print(f"  {cosine:.3f}  {shown}  {name_a}  {file_a}:{line_a}  {name_b}  {file_b}:{line_b}")
+
+
 def pass_throughs(packages):
     """A list of (file, name, target) for each function whose one body form calls TARGET with its required and
     optional parameters in the order given, or with apply and its rest parameter after them."""
@@ -471,12 +612,19 @@ def report_pass_through(packages):
 def main(argv):
     if argv[:1] == ["--where"]:
         return report_where(argv[1:]) if argv[1:] else sys.exit("usage: --where DESCRIPTION...")
-    options = {a for a in argv if a in ("--bodies", "--pass-through", "--packages", "--meaning")}
-    threshold = 60.0
-    if "--threshold" in argv:
-        at = argv.index("--threshold")
-        threshold = float(argv[at + 1])
-        argv = argv[:at] + argv[at + 2:]
+    options = {a for a in argv if a in ("--bodies", "--pass-through", "--packages", "--meaning", "--alike-meaning")}
+    threshold = 0.85 if "--alike-meaning" in options else 60.0
+    top = 100
+    for flag in ("--threshold", "--top"):
+        if flag in argv:
+            at = argv.index(flag)
+            if flag == "--top":
+                top = int(argv[at + 1])
+            else:
+                threshold = float(argv[at + 1])
+            argv = argv[:at] + argv[at + 2:]
+    if "--alike-meaning" in options:
+        return report_alike_meaning("--packages" in options, threshold, top)
     argv = [a for a in argv if a not in options]
     if "--bodies" in options:
         return report_alike("--packages" in options, threshold)
@@ -484,7 +632,8 @@ def main(argv):
         return report_pass_through("--packages" in options)
     if not 1 <= len(argv) <= 2:
         sys.exit("usage: tools/possible-copies.sh [--meaning] BASE [HEAD] | --bodies [--packages] [--threshold SCORE] "
-                 "| --pass-through [--packages] | --where DESCRIPTION...")
+                 "| --pass-through [--packages] | --where DESCRIPTION... "
+                 "| --alike-meaning [--packages] [--threshold COSINE] [--top N]")
     base, head = argv[0], (argv[1] if len(argv) > 1 else None)
     entries = read_index()
     frequency = {}
@@ -517,7 +666,7 @@ def main(argv):
             print(f"  {points:5.1f}  {entry['name']}  {entry['file']}")
         if close:
             print("  by meaning:")
-            for points, (file, other, _) in close:
+            for points, (file, other, *_) in close:
                 print(f"  {points:5.3f}  {other}  {file}")
 
 

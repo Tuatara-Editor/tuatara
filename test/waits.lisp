@@ -129,6 +129,20 @@ it took."
              (true (tuatara.frontend.fake:fake-frame-showing f "Stopped; what was under way did not end at once")))
         (end-thread thread)))))
 
+(define-test (waits waiting-woken-by-the-work)
+  ;; work that says when it may be ready is asked only then, not fifty times a second
+  (let* ((asked 0)
+         (ready nil)
+         (wake (sb-thread:make-semaphore))
+         (worker (sb-thread:make-thread (lambda ()
+                                          (sleep 1/2)
+                                          (setf ready t)
+                                          (sb-thread:signal-semaphore wake)))))
+    (true (let ((tuatara.command:*editor* nil))
+            (tuatara.command:wait-until-interruptibly (lambda () (incf asked) ready) :wake wake)))
+    (sb-thread:join-thread worker)
+    (true (< asked 15) "asked ~d times" asked)))
+
 (define-test (waits waiting-for-lines-counted)
   (with-test-directory (dir)
     (let ((path (namestring (put-file (merge-pathnames "big.txt" dir) (sample-lines 5000))))
@@ -318,6 +332,22 @@ most the seconds given for it to end."
       (setf tuatara.defaults::*character-names* kept
             tuatara.defaults::*character-names-thread* nil))))
 
+(define-test (waits character-names-listed-again-after-a-dead-listing)
+  ;; a listing that ended without names does not stop the next one
+  (let ((kept tuatara.defaults::*character-names*)
+        (dead (sb-thread:make-thread (lambda ()))))
+    (sb-thread:join-thread dead)
+    (unwind-protect
+         (progn
+           (setf tuatara.defaults::*character-names* nil
+                 tuatara.defaults::*character-names-thread* dead)
+           (multiple-value-bind (f editor result)
+               (waiting-session (lambda (e) (declare (ignore e)) (tuatara.defaults::character-names)) "")
+             (declare (ignore f editor))
+             (true result)))
+      (setf tuatara.defaults::*character-names* kept
+            tuatara.defaults::*character-names-thread* nil))))
+
 (define-modal-test (waits held-key-frames)
   ;; a key held down: the keys waiting are handled before a frame is drawn, the last one shown
   (flet ((frames (pending)
@@ -349,3 +379,26 @@ most the seconds given for it to end."
     (false (tuatara.defaults::org-await-parse state (list 7)))
     ;; no wait was begun for that version
     (false (tuatara.defaults::org-state-waited state))))
+(define-test (waits thread-result-within-a-time)
+  ;; a guarded thread's answer, taken within a time: what it returned, or that it is still running
+  (is equal '(42 t) (multiple-value-list
+                     (tuatara.runtime:thread-result (tuatara.runtime:make-guarded-thread (lambda () 42)) 10)))
+  (is equal '(nil t) (multiple-value-list
+                      (tuatara.runtime:thread-result (tuatara.runtime:make-guarded-thread (lambda () (error "no")))
+                                                     10)))
+  (let* ((gate (sb-thread:make-semaphore))
+         (thread (tuatara.runtime:make-guarded-thread (lambda () (sb-thread:wait-on-semaphore gate) :done))))
+    (is equal '(nil nil) (multiple-value-list (tuatara.runtime:thread-result thread 1/20)))
+    (sb-thread:signal-semaphore gate)
+    (is equal '(:done t) (multiple-value-list (tuatara.runtime:thread-result thread 10)))))
+
+(define-test (waits first-index-at-or-after)
+  ;; the one search of a run of integers that never decrease: the first index at or after a value (the layout's
+  ;; character rows), and with the value one more, the first above one (an Org table's rows after a rule)
+  (let ((run (vector 2 4 4 7)))
+    (is = 0 (tuatara.runtime:first-index-at-or-after run 0))
+    (is = 1 (tuatara.runtime:first-index-at-or-after run 3))
+    (is = 1 (tuatara.runtime:first-index-at-or-after run 4))
+    (is = 3 (tuatara.runtime:first-index-at-or-after run (1+ 4)))
+    (is = 4 (tuatara.runtime:first-index-at-or-after run 8))
+    (is = 0 (tuatara.runtime:first-index-at-or-after #() 1))))

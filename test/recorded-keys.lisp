@@ -370,6 +370,15 @@ queued: keys typed meanwhile."
 that keys played until one fails end in a test whatever the code does."
   (lambda (f) (declare (ignore f)) (when (> (length *plays-noted*) n) (error "Not stopped")) t))
 
+(define-test (recorded-keys plays-stop-at-a-read-only-buffer)
+  ;; a word expanded in a buffer that cannot be changed fails the play, as every other change does
+  (let ((tuatara.defaults::*modal-editing* nil))
+    (multiple-value-bind (f editor)
+        (recorded-keys-session "C-x ( C-c y M-/ C-x ) C-x C-q C-u 0 C-x e" :text "apple ap"
+                                                                         :note (stopped-within 5))
+      (declare (ignore f))
+      (true (search "until: Buffer is read-only" (session-message editor)) "~s" (session-message editor)))))
+
 (define-test (recorded-keys plays-stop-at-the-ends)
   ;; with 0, a move down on the last line, or up on the first, fails the play and ends them
   (let ((tuatara.defaults::*modal-editing* nil))

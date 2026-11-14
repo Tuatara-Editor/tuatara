@@ -32,7 +32,7 @@ in LATEX-TEMPLATES-DIRECTORY, then the built-in ones none of yours takes the
 place of (IN-PLACE-OF-OWN)."
   (in-place-of-own (loop for (file . text) in (directory-files (list (latex-templates-directory)))
                          when (and text (string-equal (name-extension file) ".tex"))
-                           collect (cons (subseq file 0 (- (length file) 4)) text))
+                         collect (cons (subseq file 0 (- (length file) 4)) text))
                    *built-in-latex-templates*
                    #'car))
 
@@ -80,7 +80,8 @@ Signals, saying what there is, when there is no such template."
               (t (values (tuatara.io:file-text path :limit *org-file-read-limit*) path))))
       (or (find-latex-template value)
           (refuse "There is no LaTeX template called ~:[~a~;what #+template: says~*~] (#+template:): yours are in ~a, ~
-                   and there are ~{~a~^, ~}; a file of its own is named by its path (./report.tex, ~~/Templates/report.tex)"
+                   and there are ~{~a~^, ~}; a file of its own is named by its path ~
+                   (./report.tex, ~~/Templates/report.tex)"
                   *secret-at-hand* value (abbreviated-path (latex-templates-directory)) (latex-template-names)))))
 
 (defun fill-latex-template (template field)

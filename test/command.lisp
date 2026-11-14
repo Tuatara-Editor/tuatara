@@ -85,6 +85,17 @@ lines would move the text under an offset taken before."
        (flet ((,said () (tuatara.buffer:buffer-string ,log :start (min ,start (tuatara.buffer:buffer-size ,log)))))
          ,@body))))
 
+(defmacro counting-calls ((function &key (stub nil stubbed)) &body body)
+  "Run BODY with calls of FUNCTION counted, the count following BODY's value as
+a second value. With STUB, a call gives that value and does nothing else."
+  (let ((calls (gensym "CALLS")))
+    `(let ((,calls 0))
+       (sb-int:encapsulate ',function 'counting-calls
+                           (lambda (original &rest arguments)
+                             (incf ,calls)
+                             ,(if stubbed `(progn original arguments ,stub) '(apply original arguments))))
+       (values (unwind-protect (progn ,@body) (sb-int:unencapsulate ',function 'counting-calls)) ,calls))))
+
 (defvar *grammar-questions-wanted* nil
   "True while a test looks at the question whether to turn a grammar on
 \(WITH-GRAMMAR-ANSWERS-FORGOTTEN); otherwise a session asks none, as a key typed
@@ -283,6 +294,19 @@ TEXTS with the mode line's sign of work, P, lit in :mode-line-sign."
       ;; only the change right before: a move after it is what . repeats
       (is string= "three|four|five|six|" (after "V J d j ." lines)))
     (is string= "cdef|ef|cdef|abcdef|" (after "m v j l d ." (format nil "abcdef~%abcdef~%abcdef~%abcdef~%")))))
+
+(define-test (command text-objects-follow-normal-keys)
+  ;; the text objects . makes again are the SELECT- commands NORMAL state binds under m, as its keymap
+  ;; stands: a key added there counts, and stops counting when it goes
+  (flet ((counted-p (command) (member command (tuatara.defaults::selection-object-commands))))
+    (true (counted-p 'tuatara.defaults::select-word))
+    (false (counted-p 'tuatara.defaults::select-next-sibling))
+    (unwind-protect
+         (progn (tuatara.command:define-key tuatara.defaults::*tuatara-normal-keymap* "m z"
+                  'tuatara.defaults::select-next-sibling)
+                (true (counted-p 'tuatara.defaults::select-next-sibling)))
+      (tuatara.command:define-key tuatara.defaults::*tuatara-normal-keymap* "m z" nil))
+    (false (counted-p 'tuatara.defaults::select-next-sibling))))
 
 (define-modal-test (command insert-undoes-at-once)
   ;; one INSERT session is one step to undo, line breaks and all, with what the
@@ -711,16 +735,16 @@ TEXTS with the mode line's sign of work, P, lit in :mode-line-sign."
 (define-test (command messages-buffer)
   ;; every message is kept in *Messages*, a repeat counted; the keys of a sequence being typed are not
   (let ((old (tuatara.buffer:find-buffer "*Messages*"))) (when old (tuatara.buffer:kill-buffer old)))
-  (multiple-value-bind (f editor) (run-keys "C-c C-c C-c C-c C-h e" :text "abc" :height 10)
+  (multiple-value-bind (f editor) (run-keys "C-c C-c C-h e" :text "abc" :height 10)
     (let ((messages (tuatara.buffer:find-buffer "*Messages*")))
       (true messages)
-      (true (search "C-c C-c is undefined [2 times]" (tuatara.buffer:buffer-string messages)))
+      (true (search "C-c is undefined [2 times]" (tuatara.buffer:buffer-string messages)))
       (false (search "C-h-" (tuatara.buffer:buffer-string messages)))
       (false (tuatara.buffer:buffer-modified-p messages))
       (true (tuatara.buffer:buffer-local messages :read-only))
       ;; C-h e shows it
       (is string= "*Messages*" (tuatara.buffer:buffer-name (session-buffer editor)))
-      (true (tuatara.frontend.fake:fake-frame-showing f "C-c C-c is undefined [2 times]"))))
+      (true (tuatara.frontend.fake:fake-frame-showing f "C-c is undefined [2 times]"))))
   ;; it keeps *MESSAGE-LOG-MAX* lines, the oldest going first
   (let ((tuatara.command:*message-log-max* 3))
     (let ((old (tuatara.buffer:find-buffer "*Messages*"))) (when old (tuatara.buffer:kill-buffer old)))
@@ -1245,6 +1269,19 @@ the terminal's reads and waits stood in for, with kitty's keyboard on when KITTY
       (true (tuatara.frontend.fake:fake-frame-showing f "(y or n)"))
       (is string= "y" answer))))
 
+(define-test (command message-and-prompt-write-out-controls)
+  ;; a name with a line end or a direction mark in it is written out in a message and a question
+  (let ((name (format nil "a~cb~cexe.txt" #\Newline (code-char #x202E))) (said nil))
+    (multiple-value-bind (f editor)
+        (run-keys (list (lambda ()
+                          (setf said (tuatara.command:message "Wrote ~a" name))
+                          (tuatara.defaults::read-string (format nil "Delete ~a? " name)))
+                        "y RET")
+                  :text "" :width 80 :height 12)
+      (declare (ignore editor))
+      (is string= "Wrote a^Jb<202E>exe.txt" said)
+      (true (tuatara.frontend.fake:fake-frame-showing f "Delete a^Jb<202E>exe.txt? ")))))
+
 (define-test (command long-key-question-read-whole)
   ;; a question of one key wider than its row shows its start on rows above while it
   ;; waits, as the minibuffer's does, the cursor after its end
@@ -1604,6 +1641,41 @@ TUATARA: what a job of its own would take from a buffer before it starts.")
     (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults)
     (is string= "from the desk" answer)))
 
+(define-test (command pasted-passphrase-copy-wiped)
+  ;; the copy C-y makes of a secret without its line ending is wiped once in the answer; the
+  ;; clipboard's own text is the frontend's and stays
+  (let ((given '())
+        (clipboard (format nil "long secret~%"))
+        (f (tuatara.frontend.fake:make-fake-frontend :width 40 :height 8)))
+    (setf (tuatara.frontend.fake:fake-clipboard f) clipboard)
+    (sb-int:encapsulate 'tuatara.command::minibuffer-take-pasted 'keeping-pasted
+                        (lambda (function text) (push text given) (funcall function text)))
+    (unwind-protect
+         (progn
+           (tuatara.frontend.fake:fake-queue-action f (lambda () (tuatara.command:read-password "Passphrase: ")))
+           (tuatara.frontend.fake:fake-queue-keys f "C-y RET")
+           (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults))
+      (sb-int:unencapsulate 'tuatara.command::minibuffer-take-pasted 'keeping-pasted))
+    (is = 1 (length given))
+    (true (every (lambda (c) (char= c (code-char 0))) (first given)) "the trimmed copy wiped")
+    (is string= (format nil "long secret~%") clipboard)))
+
+(define-test (command tick-functions-called-when-due)
+  ;; a tick function that asked to look again in a minute is not called for the keys typed meanwhile, only
+  ;; when the editor is woken (as each action queued here wakes it)
+  (let* ((calls 0)
+         (tick (lambda (editor) (declare (ignore editor)) (incf calls) 60))
+         (seen '()))
+    (flet ((note () (push calls seen)))
+      (push tick tuatara.command:*tick-functions*)
+      (unwind-protect (run-keys (list "a b c d" #'note #'note "e f" #'note))
+        (setf tuatara.command:*tick-functions* (remove tick tuatara.command:*tick-functions*))))
+    (destructuring-bind (after-more-keys after-wake after-keys) seen
+      ;; once as the editor starts, then once for each wake, never for a key
+      (is = 1 after-keys)
+      (is = 2 after-wake)
+      (is = 3 after-more-keys))))
+
 (define-test (command typed-passphrase-characters-wiped)
   ;; each character of a passphrase typed is left in the answer alone
   (let ((inserted '()))
@@ -1730,7 +1802,7 @@ TUATARA: what a job of its own would take from a buffer before it starts.")
 
 (define-test (command quit-after-a-prefix-key)
   ;; C-g after a prefix key gives the sequence up, as it does alone, in every prefix map
-  (dolist (keys '("C-x C-g" "C-x 5 C-g" "C-c C-g" "C-x w C-g"))
+  (dolist (keys '("C-x C-g" "C-x 5 C-g" "C-x w C-g"))
     (let ((f (run-keys keys :text "" :width 60 :height 8)))
       (true (tuatara.frontend.fake:fake-frame-showing f "Quit") "~a" keys)
       (false (tuatara.frontend.fake:fake-frame-showing f "is undefined") "~a" keys))))
@@ -1754,3 +1826,33 @@ TUATARA: what a job of its own would take from a buffer before it starts.")
                              "y"))
     (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults)
     (false said)))
+
+(define-test (command view-change-functions-called-when-the-view-moves)
+  ;; a function of *VIEW-CHANGE-FUNCTIONS* is called as a window comes to show other lines, not on every frame
+  (flet ((calls (keys)
+           (let* ((calls 0)
+                  (tuatara.command:*view-change-functions*
+                    (list (lambda (editor window rows) (declare (ignore editor window rows)) (incf calls)))))
+             (run-keys keys :text (format nil "~{line ~d~%~}" (loop for i below 50 collect i)) :height 8)
+             calls)))
+    (let ((still (calls "C-f")))
+      (true (plusp still))
+      (is = still (calls "C-f C-f C-n C-f"))
+      (true (> (calls "C-v") still)))))
+
+(define-test (command later-answer-taken-while-the-question-stands)
+  ;; an answer given now is taken at once; one to come, when it comes, unless the buffer changed meanwhile
+  (with-test-buffer (b "*later*" :text "abc")
+    (let ((tuatara.command::*current-buffer* b) (taken '()) (then nil))
+      (flet ((take (&rest values) (push values taken))
+             (ask () (tuatara.command:later (lambda (answer) (setf then answer)))))
+        (tuatara.command:take-answer b #'take 1 2)
+        (is equal '((1 2)) taken)
+        (tuatara.command:take-answer b #'take (ask))
+        (is equal '((1 2)) taken)
+        (funcall then 3 4)
+        (is equal '((3 4) (1 2)) taken)
+        (tuatara.command:take-answer b #'take (ask))
+        (tuatara.buffer:buffer-insert b 0 "x")
+        (funcall then 5)
+        (is equal '((3 4) (1 2)) taken)))))

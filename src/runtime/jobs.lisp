@@ -13,7 +13,7 @@
 
 (in-package #:tuatara.runtime)
 
-(defstruct (job (:constructor nil) (:copier nil))
+(define-record (job (:constructor nil) (:copier nil))
   "Work in the background for BUFFER, the buffer it belongs to (NIL for none),
 running on THREAD. STATUS is :RUNNING, then :DONE, :STOPPED or :FAILED, with
 ERROR saying why in words. The car of CANCEL turning true asks it to stop.
@@ -25,22 +25,26 @@ Each kind of job is a structure including this one, and says how it differs
 through generic functions: JOB-PERCENT, JOB-DOING, JOB-DESCRIPTION, JOB-VERB,
 JOB-LEFT-WORDS, JOB-CONSEQUENCE, JOB-STOP, JOB-HOLDS-QUEUE-P,
 JOB-SHOWS-PROCESSING-P, JOB-AT-EXIT, JOB-GUARDED-SPANS and JOB-TAKE-IN."
-  buffer (status :running) error (cancel (list nil)) thread (started (get-internal-real-time)) wake frame process)
+  (buffer nil :documentation "The buffer a job belongs to, or NIL.")
+  (status :running :documentation "A job's status: :RUNNING, :DONE, :STOPPED or :FAILED.")
+  (error nil :documentation "Why a job failed, in words, or NIL.")
+  (cancel (list nil) :documentation "A cons whose car turning true asks a job to stop.")
+  (thread nil :documentation "The thread a job runs on.")
+  (started (get-internal-real-time) :documentation "The internal real time a job began.")
+  (wake nil :documentation "The function a job's thread calls to wake the editor, or NIL.")
+  (frame nil :documentation "The editor's frame a job was begun in, where what it says is shown, or NIL.")
+  (process nil :documentation "The program a job runs, ended when it is stopped, or NIL."))
 
-(setf (documentation 'job-p 'function) "True when OBJECT is a JOB, of any kind."
-      (documentation 'job-buffer 'function) "The buffer a job belongs to, or NIL."
-      (documentation 'job-status 'function) "A job's status: :RUNNING, :DONE, :STOPPED or :FAILED."
-      (documentation 'job-error 'function) "Why a job failed, in words, or NIL."
-      (documentation 'job-cancel 'function) "A cons whose car turning true asks a job to stop."
-      (documentation 'job-thread 'function) "The thread a job runs on."
-      (documentation 'job-started 'function) "The internal real time a job began."
-      (documentation 'job-wake 'function) "The function a job's thread calls to wake the editor, or NIL."
-      (documentation 'job-frame 'function) "The editor's frame a job was begun in, where what it says is shown, or NIL."
-      (documentation 'job-process 'function) "The program a job runs, ended when it is stopped, or NIL.")
+(setf (documentation 'job-p 'function) "True when OBJECT is a JOB, of any kind.")
 
 (defvar *jobs* '()
   "The jobs in the background, running or ended and not yet taken in, the
-oldest first.")
+oldest first. The list is never changed in place: one is added or taken out
+under **JOBS-LOCK**, so that a reader may walk the list it took.")
+
+(sb-ext:defglobal **jobs-lock** (sb-thread:make-mutex :name "tuatara jobs")
+  "Held while a job is added to *JOBS* or taken out of it, which a job's own
+thread may do as well as the editor's.")
 
 (defvar *job* nil
   "On the thread of a job, the job its work is for (START-JOB-THREAD); NIL elsewhere.")
@@ -113,20 +117,16 @@ it has been asked to stop. Elsewhere, nothing."
   (funcall *job-buffer-name* (job-buffer job)))
 
 (defun condition-words (condition &key headline)
-  "CONDITION in words on one line, as an error is said: its report, each line
-end and run of spaces in it one space; a few words of its kind when it cannot
-be printed (a lack of memory may leave none to print with). With HEADLINE,
-only its first words, up to its first stop, colon or parenthesis, in lower
-case: \"control stack exhausted\"."
-  (let* ((text (or (ignoring-errors-reported ("printing ~(~a~)" (type-of condition)) (princ-to-string condition))
-                   (string-downcase (type-of condition))))
-         (blank nil)
-         (words (string-trim " " (with-output-to-string (out)
-                                   (loop for c across text
-                                         do (if (member c '(#\Space #\Tab #\Newline #\Return))
-                                                (setf blank t)
-                                                (progn (when blank (write-char #\Space out) (setf blank nil))
-                                                       (write-char c out))))))))
+  "CONDITION in words on one line, as an error is said: its report as ONE-LINE
+gives it, each run of spaces its printer laid out one space; a few words of its
+kind when it cannot be printed (a lack of memory may leave none to print with).
+With HEADLINE, only its first words, up to its first stop, colon or
+parenthesis, in lower case: \"control stack exhausted\"."
+  (let ((words (cl-ppcre:regex-replace-all
+                "  +" (one-line (or (ignoring-errors-reported ("printing ~(~a~)" (type-of condition))
+                                      (princ-to-string condition))
+                                    (string-downcase (type-of condition))))
+                " ")))
     (if headline
         (string-downcase (string-trim " "
                                       (subseq words 0 (or (position-if (lambda (c) (find c ".:(")) words)
@@ -382,7 +382,7 @@ it :STOPPED; and the editor is woken as it ends. WORK is the job's stoppable
 work (STOPPABLE-WORK): JOB-STOP ends it even inside a call that never looks,
 and background work (CALL-AS-LONG-WORK). Returns JOB."
   (host-job-started *host* job)
-  (setf *jobs* (append *jobs* (list job)))
+  (remember-job job)
   (report-job job "started" details)
   (flet ((run ()
            (unwind-protect
@@ -417,9 +417,15 @@ and background work (CALL-AS-LONG-WORK). Returns JOB."
         (job-wake-editor job))))
   job)
 
+(defun remember-job (job)
+  "Add JOB to the end of *JOBS*."
+  (sb-thread:with-mutex (**jobs-lock**)
+    (setf *jobs* (append *jobs* (list job)))))
+
 (defun forget-job (job)
   "Take JOB out of *JOBS*, never to be taken in."
-  (setf *jobs* (remove job *jobs*)))
+  (sb-thread:with-mutex (**jobs-lock**)
+    (setf *jobs* (remove job *jobs*))))
 
 (defun take-in-jobs (&optional (test (constantly t)))
   "Take in the jobs that have ended and pass TEST, a function of a job, on the

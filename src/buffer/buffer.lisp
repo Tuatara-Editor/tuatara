@@ -89,8 +89,8 @@ read; it is modified when its content number differs.")
   "All live buffers, most recently created first.")
 
 (defvar *find-file-functions* '()
-  "Functions called with a buffer that FIND-FILE-BUFFER has just created for a
-file: this is where the defaults choose its major mode.")
+  "Functions called with a buffer just made for a file it visits: this is
+where the defaults choose its major mode.")
 
 (defvar *kill-buffer-functions* '()
   "Functions called with a buffer just before KILL-BUFFER removes it, to release
@@ -276,7 +276,8 @@ mark, ordered, or NIL when no mark is set."
   "Signal an error unless BYTE is a character boundary inside BUFFER."
   (let ((rope (buffer-text buffer)))
     (unless (and (typep byte 'fixnum) (<= 0 byte (tuatara.text:rope-octet-length rope)))
-      (refuse "Position ~a is outside buffer ~s (0..~a)." byte (buffer-name buffer) (tuatara.text:rope-octet-length rope)))
+      (refuse "Position ~a is outside buffer ~s (0..~a)." byte (buffer-name buffer)
+              (tuatara.text:rope-octet-length rope)))
     (unless (tuatara.text:char-boundary-p rope byte)
       (refuse "Position ~a in buffer ~s is inside a character." byte (buffer-name buffer)))))
 
@@ -420,9 +421,11 @@ BUFFER shown (OUTSIDE-NARROWING-WORDS)."
 
 (defun check-within-narrowing (buffer start end)
   "Signal an error when an edit of BUFFER from octet START to END reaches
-outside the part it is narrowed to while a command runs in BUFFER. A job
-taken in is not refused, whenever it is taken in: one begun while BUFFER
-was narrowed works within the bounds it was given."
+outside the part it is narrowed to (BUFFER-START, BUFFER-END) while a command
+runs in BUFFER, unless inside WITH-NARROWING-LIFTED. The offsets of an edit
+are of the whole text, narrowed or not. A job taken in is not refused,
+whenever it is taken in: one begun while BUFFER was narrowed works within the
+bounds it was given."
   (when (and (eq *narrowing-in-force* buffer) (null tuatara.runtime:*job-taken-in*) (buffer-narrowing buffer)
              (or (< start (buffer-start buffer)) (> end (buffer-end buffer))))
     (refuse-outside-narrowing buffer)))
@@ -472,6 +475,11 @@ record and its place in the change it belongs to.")
 (defmethod (setf buffer-redo-stack) :after ((value null) (buffer buffer))
   "An emptied redo stack holds nothing."
   (setf (buffer-redo-held buffer) 0))
+
+(defun forget-history (buffer)
+  "Let go of BUFFER's undo and redo history: nothing done to it so far can be
+undone or redone, and the memory the history held is free."
+  (setf (buffer-undo-stack buffer) '() (buffer-redo-stack buffer) '()))
 
 (defun swap-held-octets (swap)
   "The octets of memory SWAP, a swap of a whole text, keeps for undo: those of
@@ -586,11 +594,10 @@ batch joins the newest undo group instead of starting one, so that characters
 typed one after another undo together. *BEFORE-EDIT-FUNCTIONS* see EDITS
 first, and may refuse them; the change functions run after. An error when the
 buffer is read-only (BUFFER-READ-ONLY-P), in the hex view (HEX-VIEW-P) for
-edits that would change the buffer's size
-\(CHECK-HEX-VIEW-SIZE), and, while a command runs in BUFFER, for edits
-outside the part of it shown when it is narrowed. A text whose lines are still being counted is edited
-at once: the count is made again around the edits once it ends
-\(TUATARA.IO:FINISH-INDEXING)."
+edits that would change the buffer's size (CHECK-HEX-VIEW-SIZE), and outside
+a narrowing as CHECK-WITHIN-NARROWING says. A text whose lines are still being
+counted is edited at once: the count is made again around the edits once it
+ends (TUATARA.IO:FINISH-INDEXING)."
   (when (buffer-read-only-p buffer)
     (refuse "Buffer ~a is read-only." (buffer-name buffer)))
   (when (hex-view-p buffer)
@@ -618,10 +625,8 @@ copies none of them.")
   "Insert TEXT (a string, an octet vector or a rope) at byte offset BYTE of
 BUFFER and return the byte offset just after it. GROUP is passed to
 BUFFER-EDIT. A rope of more than *LARGE-EDIT-OCTETS* goes in as one splice
-(BUFFER-SPLICE), sharing its leaves. Offsets are of the whole text, narrowed
-or not;
-while a command runs in a narrowed BUFFER an edit reaching outside the part shown
-(BUFFER-START, BUFFER-END) is refused, unless inside WITH-NARROWING-LIFTED."
+\(BUFFER-SPLICE), sharing its leaves. Refused outside a narrowing as
+CHECK-WITHIN-NARROWING says."
   (check-position buffer byte)
   (if (and (tuatara.text:rope-p text) (> (tuatara.text:rope-octet-length text) *large-edit-octets*))
       (buffer-splice buffer byte byte text)
@@ -636,9 +641,8 @@ of BUFFER as one undoable step that copies nothing: the text is spliced
 (TUATARA.TEXT:SPLICE-ROPE), and undo swaps the old one back. Positions before
 START stay, those after END move with the text, those between go to START.
 Refused in the hex view when it would change the size (CHECK-HEX-VIEW-SIZE),
-and, while a command runs in BUFFER, outside the part of it shown when it is
-narrowed.
-Returns the offset just after the text put in."
+and outside a narrowing as CHECK-WITHIN-NARROWING says. Returns the offset
+just after the text put in."
   (check-position buffer start) (check-position buffer end)
   (when (< end start) (rotatef start end))
   (check-hex-view-size buffer (- (if rope (tuatara.text:rope-octet-length rope) 0) (- end start)))
@@ -667,10 +671,10 @@ each (START . END), in order and apart, and take the others away, as one
 undoable step that copies nothing, as BUFFER-SPLICE does for one stretch.
 Positions in a span go to its start (in the first, after ROPE when their bias
 is :AFTER), those after it move with the text. Refused in the hex view when
-it would change the size (CHECK-HEX-VIEW-SIZE), while a command runs in
-BUFFER outside the part of it shown when it is narrowed, and when a span's edge is not
-a character's (CHECK-POSITION) or the spans are out of order. Returns the
-offset just after ROPE; NIL, nothing done, for no SPANS."
+it would change the size (CHECK-HEX-VIEW-SIZE), outside a narrowing as
+CHECK-WITHIN-NARROWING says, and when a span's edge is not a character's
+\(CHECK-POSITION) or the spans are out of order. Returns the offset just after
+ROPE; NIL, nothing done, for no SPANS."
   (when (null spans) (return-from buffer-splice-spans nil))
   (let ((before 0))
     (map nil (lambda (span)
@@ -720,23 +724,21 @@ offset just after ROPE; NIL, nothing done, for no SPANS."
 (defun buffer-delete (buffer start end &key group)
   "Delete the octets from START below END of BUFFER. Returns START. More than
 *LARGE-EDIT-OCTETS* go as one splice (BUFFER-SPLICE). With GROUP true, the
-deletion joins the newest undo group, as BUFFER-EDIT says. Offsets are of the
-whole text, narrowed or not;
-while a command runs in a narrowed BUFFER an edit reaching outside the part shown
-(BUFFER-START, BUFFER-END) is refused, unless inside WITH-NARROWING-LIFTED."
+deletion joins the newest undo group, as BUFFER-EDIT says. Refused outside a
+narrowing as CHECK-WITHIN-NARROWING says."
   (check-position buffer start) (check-position buffer end)
   (when (< end start) (rotatef start end))
   (cond ((> (- end start) *large-edit-octets*) (buffer-splice buffer start end nil))
         ((< start end) (buffer-edit buffer (vector (tuatara.text:make-edit start end)) :group group)))
   start)
 
-(defun buffer-replace (buffer start end text)
+(defun buffer-replace (buffer start end text &key group)
   "Replace the octets from START below END of BUFFER with TEXT (a string, an
 octet vector or a rope) and return the byte offset just after the new text.
-More than *LARGE-EDIT-OCTETS* going or coming as a rope make one splice
-(BUFFER-SPLICE). Offsets are of the whole text, narrowed or not;
-while a command runs in a narrowed BUFFER an edit reaching outside the part shown
-(BUFFER-START, BUFFER-END) is refused, unless inside WITH-NARROWING-LIFTED."
+With GROUP true, the change joins the newest undo group (BUFFER-EDIT). More
+than *LARGE-EDIT-OCTETS* going or coming as a rope make one splice
+\(BUFFER-SPLICE), an undo step of its own. Refused outside a narrowing as
+CHECK-WITHIN-NARROWING says."
   (check-position buffer start) (check-position buffer end)
   (when (< end start) (rotatef start end))
   (if (or (> (- end start) *large-edit-octets*)
@@ -744,7 +746,9 @@ while a command runs in a narrowed BUFFER an edit reaching outside the part show
       (buffer-splice buffer start end (text-rope text))
       (let ((octets (text-octets text)))
         (aref (buffer-edit buffer
-                           (vector (tuatara.text:make-edit start end (if (plusp (length octets)) octets nil)))) 0))))
+                           (vector (tuatara.text:make-edit start end (if (plusp (length octets)) octets nil)))
+                           :group group)
+              0))))
 
 (defun commit-without-record (buffer edits)
   "Commit EDITS to BUFFER without touching the undo stacks; return the batch.
@@ -824,19 +828,15 @@ it. Returns the new batch."
 reached outside the stretch from START to END of the text of BEFORE, the
 stretch followed through each change. A swap of the whole text ends the
 looking."
-  (loop with version = before
-        for next = (tuatara.text:version-next version)
-        while next
-        do (let ((batch (tuatara.text:version-batch next)))
-             (when (tuatara.text:batch-swap batch) (return nil))
-             (when (some (lambda (edit)
-                           (or (< (tuatara.text:edit-start edit) start) (> (tuatara.text:edit-end edit) end)))
-                         (tuatara.text:batch-edits batch))
-               (return t))
-             (setf start (tuatara.text:map-position start batch :before)
-                   end (tuatara.text:map-position end batch :after)
-                   version next))
-        until (eq version (buffer-version buffer))))
+  (let ((batches (tuatara.text:version-batches before (buffer-version buffer))))
+    (unless (eq batches :whole)
+      (dolist (batch batches nil)
+        (when (some (lambda (edit)
+                      (or (< (tuatara.text:edit-start edit) start) (> (tuatara.text:edit-end edit) end)))
+                    (tuatara.text:batch-edits batch))
+          (return t))
+        (setf start (tuatara.text:map-position start batch :before)
+              end (tuatara.text:map-position end batch :after))))))
 
 (defun buffer-undo (buffer)
   "Undo the newest undo group of BUFFER. Returns the group undone (a list of
@@ -960,18 +960,20 @@ no longer has the shape one edit makes of STACK."
            (undo-back-to buffer (cdr (buffer-undo-stack buffer)))
            t))))
 
-(defstruct (carry-piece (:constructor make-carry-piece (start linear move shift)) (:copier nil))
+(define-record (carry-piece (:constructor make-carry-piece (start linear move shift)) (:copier nil))
   "A stretch of a text edited while work in the background ran, from START up
 to the next piece's START, and where it stands in the work's result with the
 edits made there again (CARRIED-POSITION): with LINEAR, text the edits put,
 START + MOVE on, at that offset; else the work's map at the position less
 MOVE, plus SHIFT."
-  (start 0 :type fixnum)
-  (linear nil)
-  (move 0 :type fixnum)
-  (shift 0 :type fixnum))
-
-(setf (documentation 'carry-piece-p 'function) "True when OBJECT is a CARRY-PIECE.")
+  (start 0 :type fixnum :documentation "The offset where CARRY-PIECE starts.")
+  (linear nil :documentation "True when CARRY-PIECE is text the edits put, standing MOVE on from its offsets.")
+  (move 0 :type fixnum
+        :documentation "The amount added to a position in CARRY-PIECE when it is LINEAR, else taken from it before the
+work's map is used.")
+  (shift 0 :type fixnum
+         :documentation "The amount added to what the work's map gives for a position in CARRY-PIECE, when it is not
+LINEAR."))
 
 (defun carry-pieces ()
   "The pieces (CARRY-PIECE) of a text no edit has touched yet: one, from 0 on,
@@ -1019,9 +1021,8 @@ pieces after them, not the batches carried before."
                ;; PIECE from FROM on, after the edits passed so far
                (if (carry-piece-linear piece)
                    (make-carry-piece (+ from delta) t (+ (carry-piece-move piece) (- delta) shift) 0)
-                   (make-carry-piece (+ from
-                                        delta) nil (+ (carry-piece-move piece)
-                                                      delta) (+ (carry-piece-shift piece) shift))))
+                   (make-carry-piece (+ from delta) nil (+ (carry-piece-move piece) delta)
+                                     (+ (carry-piece-shift piece) shift))))
              (keep (from below)
                ;; the old pieces over FROM up to BELOW, in the text before the edits
                (loop for i from first to last
@@ -1091,9 +1092,10 @@ whole text, or the changes carried over do not lead to FINAL; true otherwise."
                     (tuatara.text:edits-batch
                      text (map 'simple-vector
                                (lambda (e)
-                                 (tuatara.text:make-edit (carried-position pieces forward (tuatara.text:edit-start e) :before)
-                                                         (carried-position pieces forward (tuatara.text:edit-end e) :after)
-                                                         (tuatara.text:edit-insert e)))
+                                 (tuatara.text:make-edit
+                                  (carried-position pieces forward (tuatara.text:edit-start e) :before)
+                                  (carried-position pieces forward (tuatara.text:edit-end e) :after)
+                                  (tuatara.text:edit-insert e)))
                                edits))
                   (setf text next)
                   (when (plusp (length edits)) (carry-pieces-past pieces forward edits))
@@ -1346,6 +1348,17 @@ carriage return and the newline after it are one step."
               do (setf byte next)))
     byte))
 
+(defun buffer-char-before (buffer position)
+  "The character before POSITION in BUFFER, or NIL at its start."
+  (and (plusp position) (buffer-char-at buffer (buffer-forward-char buffer position -1))))
+
+(defun next-line-start (buffer position)
+  "The start of the line after the one POSITION of BUFFER is on, or the end of
+the text when that is the last; in a :CRLF buffer past the carriage return and
+the newline both."
+  (let ((end (buffer-line-end buffer position)))
+    (if (< end (buffer-size buffer)) (buffer-forward-char buffer end) end)))
+
 (defun buffer-line-start (buffer byte)
   "Byte offset of the start of the line containing BYTE."
   (tuatara.text:rope-line-start (buffer-text buffer) byte))
@@ -1504,4 +1517,3 @@ does."
             for name = (format nil "~a<~a>" base i)
             unless (find-buffer name) return name)
       base))
-

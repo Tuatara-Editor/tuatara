@@ -13,7 +13,9 @@
 (in-package #:tuatara.syntax)
 
 (defconstant +search-chunk+ 65536 "Octets searched per chunk.")
-(defconstant +regex-overlap+ 4096 "Octets of overlap between regex chunks; the longest match found across a chunk edge.")
+(defconstant +regex-overlap+ 4096
+  "Octets of overlap between regex chunks; the longest match found across a
+chunk edge.")
 
 (sb-ext:defglobal *fold-table*
     (let ((table (make-array 256 :element-type '(unsigned-byte 8))))
@@ -33,19 +35,21 @@
   "True when STRING has no upper-case letter, so a search for it ignores case."
   (notany #'upper-case-p string))
 
-(defun folds-past-ascii-p (string case-fold)
-  "True when a search for STRING ignoring case (CASE-FOLD) must fold letters
-past ASCII, as é with É, which the octets alone cannot: such a search goes
-by the pattern of STRING's text (LITERAL-SCANNER)."
-  (and case-fold (some (lambda (c) (and (>= (char-code c) 128) (both-case-p c))) string)))
+(defun by-pattern-p (string case-fold)
+  "True when a search for STRING goes by the pattern of its text
+\(LITERAL-SCANNER), not by its octets alone: when, ignoring case (CASE-FOLD),
+it must fold letters past ASCII, as é with É; or when STRING holds a newline,
+which matches a line end of either kind, as \\n in a pattern does."
+  (some (lambda (c) (or (char= c #\Newline) (and case-fold (>= (char-code c) 128) (both-case-p c)))) string))
 
 (defun character-start-from (rope byte)
   "The first character's start of ROPE at or after BYTE."
   (if (tuatara.text:char-boundary-p rope byte) byte (tuatara.text:rope-next-boundary rope byte)))
 
-(defun literal-scanner (string)
-  "A scanner for STRING's text, nothing in it special, ignoring case (COMPILE-REGEX)."
-  (compile-regex (cl-ppcre:quote-meta-chars string) :case-fold t))
+(defun literal-scanner (string case-fold)
+  "A scanner for STRING's text, nothing in it special, ignoring case when
+CASE-FOLD (COMPILE-REGEX)."
+  (compile-regex (cl-ppcre:quote-meta-chars string) :case-fold case-fold))
 
 (declaim (inline needle-at-p))
 (defun needle-at-p (chunk i needle case-fold)
@@ -161,46 +165,82 @@ little and keep every thread busy on a file of tens of megabytes; a slow regex
 scans a piece in a few tens of milliseconds, which bounds how long a search
 takes to notice STOP.")
 
-(defun search-pieces (count function stop threads)
-  "The result of FUNCTION, called with a piece index and a HALT function, for
-the lowest index below COUNT that gives one, or NIL when none does. The pieces
-run as one batch on the worker pool and the calling thread, taken in index
-order, on up to THREADS threads; once a piece gives a result the pieces after
-it are skipped. HALT answers true once the search is to give up: STOP, when
-given, is asked through it on the calling thread only, and when STOP answers
-true every piece's HALT does, pieces not yet begun are skipped, and the values
-are NIL and :STOPPED, a piece inside one long stoppable call cut short
-\(TUATARA.RUNTIME:STOPPABLE). A piece should ask HALT every few milliseconds
-of work. STOP is also asked once before the pieces start, so it is heard even when the
-pool's workers take every piece."
+(defun run-pieces (count function stop threads)
+  "Call FUNCTION with each piece index below COUNT and a HALT function, as
+one batch on the worker pool and the calling thread, taken in index order, on
+up to THREADS threads, and return the vector of what it gave for each. HALT
+answers true once the work is to give up: STOP, when given, is asked through
+it on the calling thread only, and when STOP answers true every piece's HALT
+does, pieces not yet begun are skipped, a piece inside one long stoppable call
+is cut short (TUATARA.RUNTIME:STOPPABLE), and the values are NIL and
+:STOPPED. A piece should ask HALT every few milliseconds of work. STOP is also
+asked once before the pieces start, so it is heard even when the pool's
+workers take every piece."
   (when (and stop (funcall stop))
-    (return-from search-pieces (values nil :stopped)))
-  (let* ((best (list count)) (cancel (list nil)) (caller sb-thread:*current-thread*)
+    (return-from run-pieces (values nil :stopped)))
+  (let* ((cancel (list nil)) (caller sb-thread:*current-thread*)
          (halt (lambda ()
                  (or (car cancel)
                      (and stop (eq sb-thread:*current-thread* caller) (funcall stop)
-                          ;; a piece inside one long call is cut short too
                           (tuatara.runtime:stop-work cancel)))))
          (tasks (make-array count)))
     (dotimes (k count)
-      (setf (aref tasks k)
-            (let ((k k))
-              (lambda ()
-                (cond ((or (> k (car best)) (funcall halt)) nil)
-                      (t (let ((result (funcall function k halt)))
-                           (when result
-                             ;; lower the index pieces must stay below to be worth running
-                             (loop for old = (car best)
-                                   while (< k old)
-                                   until (eql old (sb-ext:compare-and-swap (car best) old k))))
-                           result)))))))
+      (setf (aref tasks k) (let ((k k)) (lambda () (funcall function k halt)))))
     (let ((results (tuatara.runtime:stoppable-work (cancel)
-                     ;; a search through much of a large file reads it through once
+                     ;; work through much of a large file reads it through once
                      (tuatara.text:with-read-pass ()
                        (tuatara.runtime:run-tasks tasks :parallelism (max 1 threads))))))
-      (if (car cancel)
+      (if (car cancel) (values nil :stopped) results))))
+
+(defun search-pieces (count function stop threads)
+  "The result of FUNCTION, called with a piece index and a HALT function, for
+the lowest index below COUNT that gives one, or NIL when none does. The pieces
+run as RUN-PIECES runs them, STOP and HALT as there; once a piece gives a
+result the pieces after it are skipped. When STOP answers true the values are
+NIL and :STOPPED."
+  (let ((best (list count)))
+    (multiple-value-bind (results stopped)
+        (run-pieces count
+                    (lambda (k halt)
+                      (unless (or (> k (car best)) (funcall halt))
+                        (let ((result (funcall function k halt)))
+                          (when result
+                            ;; lower the index pieces must stay below to be worth running
+                            (loop for old = (car best)
+                                  while (< k old)
+                                  until (eql old (sb-ext:compare-and-swap (car best) old k))))
+                          result)))
+                    stop threads)
+      (if stopped
           (values nil :stopped)
           (find-if-not #'null results)))))
+
+(defun directional-search (start end serial scan &key backward stop threads)
+  "What SCAN finds first going from START towards END, forward or, when
+BACKWARD, back (START then above END); NIL when it finds nothing, NIL and
+:STOPPED when STOP answers true. SCAN is a function of (FROM TO HALT) giving
+the first match starting in [FROM, TO) when going forward, the last when
+going back, or NIL; it gives up when HALT answers true. The first SERIAL
+octets are scanned on the calling thread, STOP asked through HALT; the rest in
+pieces of *PARALLEL-PIECE* octets run in order on THREADS threads
+\(SEARCH-PIECES)."
+  (declare (type fixnum start end serial) (type function scan))
+  (let* ((halted nil)
+         (halt (and stop (lambda () (or halted (setf halted (and (funcall stop) t))))))
+         (serial-end (if backward (max end (- start serial)) (min end (+ start serial))))
+         (hit (if backward (funcall scan serial-end start halt) (funcall scan start serial-end halt))))
+    (cond (hit hit)
+          (halted (values nil :stopped))
+          ((= serial-end end) nil)
+          (t (let ((piece *parallel-piece*))
+               (search-pieces (ceiling (abs (- end serial-end)) piece)
+                              (lambda (k halt)
+                                (if backward
+                                    (let ((b (- serial-end (* k piece))))
+                                      (funcall scan (max end (- b piece)) b halt))
+                                    (let ((a (+ serial-end (* k piece))))
+                                      (funcall scan a (min end (+ a piece)) halt))))
+                              stop threads))))))
 
 (defconstant +halt-chunks+ 16
   "Chunks a scan reads between asking whether to give up: a megabyte, a
@@ -259,49 +299,38 @@ sets, stands whole, reading through CHUNK; NIL when none."
     (declare (dynamic-extent #'look))
     (scan-chunks-forward rope start end chunk (length shape) #'look)))
 
-(defun search-forward (rope string &key (start 0) (end (tuatara.text:rope-octet-length rope)) (case-fold (case-fold-p string))
-                                        (threads (tuatara.runtime:cpu-count)) stop)
+(defun search-forward (rope string &key (start 0) (end (tuatara.text:rope-octet-length rope))
+                                        (case-fold (case-fold-p string)) (threads (tuatara.runtime:cpu-count)) stop)
   "Byte offset of the first occurrence of STRING in ROPE starting at or after
 START and ending at or before END, and the offset after it, as two values; NIL
 when there is none. CASE-FOLD ignores case (the default when STRING has no
 upper-case letter): ASCII case on the octets, and for a STRING with letters
-past ASCII, case of every letter, through the pattern of its text. The first *SERIAL-WINDOW* octets are scanned on the
-calling thread; beyond that the range is cut into pieces of *PARALLEL-PIECE*
-octets run in order on THREADS threads (SEARCH-PIECES), so a rare needle costs
-O(distance / THREADS). STOP, when given, is asked every megabyte or so
-\(+HALT-CHUNKS+); when it answers true the search gives up and returns NIL
-and :STOPPED.
+past ASCII, case of every letter, through the pattern of its text. A newline
+in STRING matches a line end of either kind (BY-PATTERN-P). The first
+*SERIAL-WINDOW* octets are scanned on the calling thread; beyond that the
+range is cut into pieces of *PARALLEL-PIECE* octets run in order on THREADS
+threads (DIRECTIONAL-SEARCH), so a rare needle costs O(distance / THREADS).
+STOP, when given, is asked every megabyte or so (+HALT-CHUNKS+); when it
+answers true the search gives up and returns NIL and :STOPPED.
 Complexity: O(distance scanned)."
   (declare (type fixnum start end))
-  (when (folds-past-ascii-p string case-fold)
+  (when (by-pattern-p string case-fold)
     (return-from search-forward
-      (multiple-value-bind (found after) (regex-search-forward rope (literal-scanner string) :start (character-start-from rope start)
-                                                                    :end end :bound end
-                                                                    :threads threads :stop stop)
+      (multiple-value-bind (found after)
+          (regex-search-forward rope (literal-scanner string case-fold) :start (character-start-from rope start)
+                                                                        :end end :bound end :threads threads :stop stop)
         (values found after))))
   (let* ((needle (needle-octets string case-fold)) (n (length needle))
          (end (- end (1- n))))              ; last position a match may start at, exclusive
     (when (and (plusp n) (< start end))
-      (let ((serial-end (min end (+ start *serial-window*))))
-        (multiple-value-bind (hit stopped)
-            (tuatara.text:with-octet-block (chunk (+ +search-chunk+ n))
-              (scan-range-forward rope needle case-fold start serial-end chunk stop))
-          (cond (hit (values hit (+ hit n)))
-                (stopped (values nil :stopped))
-                ((>= serial-end end) nil)
-                (t (let ((piece *parallel-piece*))
-                     (multiple-value-bind (found stopped)
-                         (search-pieces (ceiling (- end serial-end) piece)
-                                        (lambda (k halt)
-                                          (let ((a (+ serial-end (* k piece))))
-                                            (tuatara.text:with-octet-block (chunk (+ +search-chunk+ n))
-                                              (scan-range-forward rope needle case-fold a (min end
-                                                                                               (+ a
-                                                                                                  piece)) chunk halt))))
-                                        stop threads)
-                       (cond (stopped (values nil :stopped))
-                             (found (values found (+ found n)))
-                             (t nil)))))))))))
+      (multiple-value-bind (hit stopped)
+          (directional-search start end *serial-window*
+                              (lambda (from to halt)
+                                (tuatara.text:with-octet-block (chunk (+ +search-chunk+ n))
+                                  (scan-range-forward rope needle case-fold from to chunk halt)))
+                              :stop stop :threads threads)
+        (cond (hit (values hit (+ hit n)))
+              (stopped (values nil :stopped)))))))
 
 (defun scan-range-backward (rope needle case-fold start end chunk &optional halt)
   "Last occurrence of NEEDLE starting in [END, START) of ROPE, scanning backward
@@ -320,67 +349,67 @@ every +HALT-CHUNKS+ chunks, answers true."
                  (when hit (return (+ pos hit)))
                  (when (= pos end) (return nil)))))))
 
-(defun search-backward (rope string &key (start (tuatara.text:rope-octet-length rope)) (end 0) (case-fold (case-fold-p string))
-                                         (threads (tuatara.runtime:cpu-count)) stop)
+(defun search-backward (rope string &key (start (tuatara.text:rope-octet-length rope)) (end 0)
+                                         (case-fold (case-fold-p string)) (threads (tuatara.runtime:cpu-count)) stop)
   "Byte offset of the last occurrence of STRING in ROPE that starts before START
 and at or after END, and the offset after it, as two values; NIL when none.
 Serial for the first *SERIAL-WINDOW* octets, then pieces going back, in
-parallel, and STOP, as SEARCH-FORWARD."
+parallel, case and STOP as for SEARCH-FORWARD."
   (declare (type fixnum start end))
-  (when (folds-past-ascii-p string case-fold)
+  (when (by-pattern-p string case-fold)
     (return-from search-backward
-      (multiple-value-bind (found after) (regex-search-backward rope (literal-scanner string) :start start :end end
-                                                                     :threads threads :stop stop)
+      (multiple-value-bind (found after)
+          (regex-search-backward rope (literal-scanner string case-fold) :start start :end end
+                                                                         :threads threads :stop stop)
         (values found after))))
   (let* ((needle (needle-octets string case-fold)) (n (length needle)))
-    (when (and (plusp n) (<= (+ end n) start))
-      (let ((serial-start (max end (- start *serial-window*))))
-        (multiple-value-bind (hit stopped)
-            (tuatara.text:with-octet-block (chunk (+ +search-chunk+ n))
-              (scan-range-backward rope needle case-fold start serial-start chunk stop))
-          (cond (hit (values hit (+ hit n)))
-                (stopped (values nil :stopped))
-                ((<= serial-start end) nil)
-                (t (let ((piece *parallel-piece*))
-                     (multiple-value-bind (found stopped)
-                         (search-pieces (ceiling (- serial-start end) piece)
-                                        (lambda (k halt)
-                                          (let ((b (- serial-start (* k piece))))
-                                            (tuatara.text:with-octet-block (chunk (+ +search-chunk+ n))
-                                              (scan-range-backward rope needle case-fold b (max end (- b piece)) chunk halt))))
-                                        stop threads)
-                       (cond (stopped (values nil :stopped))
-                             (found (values found (+ found n)))
-                             (t nil)))))))))))
+    (when (and (plusp n) (< end start))
+      (multiple-value-bind (hit stopped)
+          (directional-search start end *serial-window*
+                              (lambda (from to halt)
+                                (tuatara.text:with-octet-block (chunk (+ +search-chunk+ n))
+                                  (scan-range-backward rope needle case-fold to from chunk halt)))
+                              :backward t :stop stop :threads threads)
+        (cond (hit (values hit (+ hit n)))
+              (stopped (values nil :stopped)))))))
 
-(defun search-all (rope string &key (start 0) (end (tuatara.text:rope-octet-length rope)) (case-fold (case-fold-p string))
-                                    (threads (tuatara.runtime:cpu-count)) (limit most-positive-fixnum))
+(defun search-all (rope string &key (start 0) (end (tuatara.text:rope-octet-length rope))
+                                    (case-fold (case-fold-p string)) (threads (tuatara.runtime:cpu-count))
+                                    (limit most-positive-fixnum))
   "All non-overlapping occurrences of STRING in ROPE between START and END as a
 sorted vector of byte offsets (fixnums), searched in parallel on up to THREADS
-threads, at most LIMIT of them, as one scan from START finds them: a piece
-whose first occurrence overlaps the last of the piece before is searched
-again from where that one ends. Matches are collected in number vectors, not
-lists, so parallel threads do not contend for the allocator.
+threads, at most LIMIT of them, as one scan from START finds them: a piece the
+last occurrence of the piece before runs into is searched again from where
+that one ends (JOIN-PIECES). Matches are collected in number vectors, not
+lists, so parallel threads do not contend for the allocator. A STRING that
+goes by the pattern of its text (BY-PATTERN-P) is searched as COLLECT-MATCHES
+searches.
 Complexity: O((END - START) / THREADS)."
   (declare (type fixnum start end))
-  (when (folds-past-ascii-p string case-fold)
+  (when (by-pattern-p string case-fold)
     (return-from search-all
-      (let ((found (make-array 16 :element-type 'fixnum :adjustable t :fill-pointer 0)))
-        (map-regex-matches (lambda (s e m g)
-                             (declare (ignore e m g))
-                             (vector-push-extend s found)
-                             (>= (fill-pointer found) limit))
-                           rope (literal-scanner string) (character-start-from rope start) end :bound end :texts nil)
-        (coerce found '(simple-array fixnum (*))))))
+      (let ((scanner (literal-scanner string case-fold)))
+        (multiple-value-bind (matches stopped count)
+            (collect-matches (lambda (function from to halt)
+                               (map-regex-matches function rope scanner from to :bound end :halt halt :texts nil))
+                             (character-start-from rope start) end :threads threads)
+          (declare (ignore stopped))
+          (let ((found (make-array (min count limit) :element-type 'fixnum)))
+            (loop for match in matches
+                  for k below (length found)
+                  do (setf (aref found k) (first match)))
+            found)))))
   (let* ((needle (needle-octets string case-fold)) (n (length needle)))
     (if (or (zerop n) (< (- end start) n))
         (make-array 0 :element-type 'fixnum)
         (let* ((span (- end start))
                ;; eight pieces a thread: the fast cores take more of them than the slow ones
                (pieces (max 1 (min (* 8 threads) (ceiling span (* 4 +search-chunk+)))))
-               (piece (ceiling span pieces))
-               (tasks (make-array pieces)))
-          (labels ((piece-matches (a b)
+               (piece (ceiling span pieces)))
+          (labels ((grown (vector)
+                     (let ((bigger (make-array (* 2 (length vector)) :element-type 'fixnum)))
+                       (replace bigger vector)))
+                   (piece-matches (a b)
                      ;; matches starting in [a, b), as (VECTOR . COUNT); reading may
                      ;; extend past b by the needle, through a kept chunk
                      (let ((found (make-array 256 :element-type 'fixnum)) (count 0) (pos a))
@@ -397,10 +426,7 @@ Complexity: O((END - START) / THREADS)."
                                       (let ((hit (and (< count limit)
                                                       (scan-chunk chunk needle case-fold i below filled other-case))))
                                         (unless hit (return))
-                                        (when (= count (length found))
-                                          (let ((bigger (make-array (* 2 (length found)) :element-type 'fixnum)))
-                                            (replace bigger found)
-                                            (setf found bigger)))
+                                        (when (= count (length found)) (setf found (grown found)))
                                         (setf (aref found count) (+ pos hit))
                                         (incf count)
                                         (setf i (+ hit n))))
@@ -409,32 +435,28 @@ Complexity: O((END - START) / THREADS)."
                        (cons found count)))
                    (piece-bounds (i)
                      (values (+ start (* i piece)) (min end (+ start (* (1+ i) piece))))))
-            (dotimes (i pieces)
-              (multiple-value-bind (a b) (piece-bounds i)
-                (setf (aref tasks i) (lambda () (piece-matches a b)))))
-            (let* ((results (tuatara.runtime:run-tasks tasks :parallelism threads))
-                   (out (make-array 256 :element-type 'fixnum))
-                   (k 0) (last (- n)))
-              (declare (type fixnum k last) (type (simple-array fixnum (*)) out))
-              ;; pieces come back in order; one whose first match overlaps the last kept is
-              ;; searched again from where that ends, as the scan from START goes on
-              (dotimes (i pieces)
-                (destructuring-bind (found . count) (aref results i)
-                  (declare (type (simple-array fixnum (*)) found) (type fixnum count))
-                  (when (and (plusp count) (< (aref found 0) (+ last n)))
-                    (multiple-value-bind (a b) (piece-bounds i)
-                      (destructuring-bind (again . many) (piece-matches (max a (+ last n)) b)
-                        (setf found again count many))))
-                  (loop for j of-type fixnum from 0 below count
-                        for p of-type fixnum = (aref found j)
-                        while (< k limit)
-                        do (when (>= p (+ last n))
-                             (when (= k (length out))
-                               (let ((bigger (make-array (* 2 (length out)) :element-type 'fixnum)))
-                                 (replace bigger out)
-                                 (setf out bigger)))
-                             (setf (aref out k) p last p)
-                             (incf k)))))
+            (let ((results (run-pieces pieces
+                                       (lambda (i halt)
+                                         (declare (ignore halt))
+                                         (multiple-value-call #'piece-matches (piece-bounds i)))
+                                       nil threads))
+                  (out (make-array 256 :element-type 'fixnum))
+                  (k 0))
+              (declare (type fixnum k) (type (simple-array fixnum (*)) out))
+              (join-pieces pieces #'piece-bounds
+                           (lambda (i from)
+                             (destructuring-bind (found . count) (aref results i)
+                               (declare (type (simple-array fixnum (*)) found) (type fixnum count))
+                               (when (and from (plusp count) (< (aref found 0) from))
+                                 (multiple-value-bind (a b) (piece-bounds i)
+                                   (destructuring-bind (again . many) (piece-matches (max a from) b)
+                                     (setf found again count many))))
+                               (loop for j of-type fixnum from 0 below count
+                                     while (< k limit)
+                                     do (when (= k (length out)) (setf out (grown out)))
+                                        (setf (aref out k) (aref found j))
+                                        (incf k))
+                               (and (plusp count) (+ (aref found (1- count)) n)))))
               (subseq out 0 k)))))))
 
 ;;; Regular expressions
@@ -450,8 +472,9 @@ Complexity: O((END - START) / THREADS)."
 ;;; so that a pattern can name them (\xA9) and they match only themselves.
 
 (defconstant +regex-context+ 64
-  "Octets of text before a regex window's range decoded with it, so that ^, \b
-and short lookbehinds see the characters before the range.")
+  "Octets of text before a regex window's range decoded with it, at the
+least, so that ^ and \b see the characters before the range; a pattern with
+a longer lookbehind has as many as it looks back (REGEX-TRAITS-CONTEXT).")
 
 (defvar *regex-longest-match* (* 1024 1024)
   "Octets a regular-expression window may grow to so that a long match is found
@@ -468,8 +491,9 @@ matches."
 (defun regex-case-fold-p (pattern)
   "True when a search for PATTERN ignores case (smart case). That is when it
 has no upper-case letter outside an escape such as \\W or \\S, a character's
-code (\\x4A, \\x{1F600}), the name of a group ((?<Year>...), \\k<Year>) and the
-name of a character property (\\pL, \\p{Greek}). It must name no case either:
+code (\\x4A, \\x{1F600}), a control character (\\cA), the name of a group
+\((?<Year>...), \\k<Year>) and the name of a character property (\\pL,
+\\p{Greek}). It must name no case either:
 no [:upper:] or [:lower:] (or [:^upper:], [:^lower:]) in a set, no \\p{Lu},
 \\p{Ll} or \\p{Lt} (written in any case, or by its long name,
 Uppercase_Letter), which ask for case as a capital letter does."
@@ -489,6 +513,9 @@ Uppercase_Letter), which ask for case as a capital letter does."
                                (loop repeat 2 while (and (< i n) (digit-char-p (char pattern i) 16)) do (incf i)))
                               ((and (eql d #\k) (< (+ i 2) n) (char= (char pattern (+ i 2)) #\<))
                                (setf i (past #\> i)))
+                              ((eql d #\c)
+                               ;; a control character, which has no case, by the letter after \c
+                               (incf i 3))
                               ((not (and (< (+ i 2) n) (find d "pP"))) (incf i 2))
                               ((char= (char pattern (+ i 2)) #\{)
                                (let ((close (or (position #\} pattern :start i) n)))
@@ -707,6 +734,25 @@ when \\Q...\\E quotes nothing."
     (when (> to (+ i 2))
       (if (alphanumericp (char regex (1- to))) 1 2))))
 
+(defun set-class-members (name closed)
+  "The members, as written inside a set, of the POSIX class NAME standing in
+a set, [:alpha:] or turned round, [:^alpha:]. A named pattern there is
+refused, but in a set not CLOSED yet, still being typed, which is left for
+cl-ppcre to say so. Signals PATTERN-REFUSED for a name no class has."
+  (if (char= (char name 0) #\^)
+      (let ((name (subseq name 1)))
+        (or (cdr (assoc name *posix-negations* :test #'string=))
+            (posix-complement name)
+            (and (named-pattern-p name)
+                 (refuse-pattern "invalid: a named pattern is not turned round: [[:^~a:]]" name))
+            (refuse-pattern "invalid: no POSIX class [:~a:]" name)))
+      (or (cdr (assoc name *posix-classes* :test #'string=))
+          (and (named-pattern-p name)
+               (if closed
+                   (refuse-pattern "invalid: [:~a:] stands alone in its brackets: [[:~a:]]" name name)
+                   "x"))
+          (refuse-pattern "invalid: no POSIX class [:~a:]" name))))
+
 (defun engine-pattern (regex)
   "REGEX as cl-ppcre is given it. A named pattern alone in its brackets
 \([[:ipv4:]], *NAMED-PATTERNS*) becomes the group it stands for, and a date
@@ -726,7 +772,10 @@ pattern in a set with other members or turned round."
   (let ((n (length regex)) (i 0) (set-end -1) (set-closed nil)
         (out-text (make-array 0 :element-type 'character :adjustable t :fill-pointer 0))
         ;; where the output of what a quantifier would repeat begins, and of each group open
-        (repeat-from nil) (groups '()))
+        (repeat-from nil) (groups '())
+        ;; what DATE-PATTERN-AT gave for the set opening here, when one does
+        (date nil))
+
     (with-output-to-string (out out-text)
       (loop while (< i n)
             do (let ((c (char regex i)) (in-set (< i set-end)) (start (fill-pointer out-text)))
@@ -742,25 +791,12 @@ pattern in a set with other members or turned round."
                     (multiple-value-bind (after name) (posix-class-at regex i)
                       (if (null after)
                           (progn (write-char c out) (incf i))
-                          (let ((members (if (char= (char name 0) #\^)
-                                             (or (cdr (assoc (subseq name 1) *posix-negations* :test #'string=))
-                                                 (posix-complement (subseq name 1))
-                                                 (and (named-pattern-p (subseq name 1))
-                                                      (refuse-pattern "invalid: a named pattern is not turned round: [[:~a:]]" name))
-                                                 (refuse-pattern "invalid: no POSIX class [:~a:]" (subseq name 1)))
-                                             (or (cdr (assoc name *posix-classes* :test #'string=))
-                                                 (and (named-pattern-p name)
-                                                      (if set-closed
-                                                          (refuse-pattern "invalid: [:~a:] stands alone in its brackets: [[:~a:]]" name name)
-                                                          ;; [[:ipv4:] still being typed: a set not closed yet, as
-                                                          ;; cl-ppcre says
-                                                          "x"))
-                                                 (refuse-pattern "invalid: no POSIX class [:~a:]" name)))))
-                            (write-string members out)
-                            (setf i after)))))
-                   ((and (char= c #\[) (not in-set) (date-pattern-at regex i))
+                          (progn (write-string (set-class-members name set-closed) out)
+                                 (setf i after)))))
+                   ((and (char= c #\[) (not in-set) (setf date (multiple-value-list (date-pattern-at regex i)))
+                         (first date))
                     ;; a date, with its bounds or not: what it stands for, as a group
-                    (multiple-value-bind (after pattern) (date-pattern-at regex i)
+                    (destructuring-bind (after pattern) date
                       (format out "(?:~a)" pattern)
                       (setf repeat-from start
                             i after)))
@@ -822,16 +858,22 @@ pattern in a set with other members or turned round."
     (coerce out-text 'simple-string)))
 
 (sb-ext:defglobal **scripts** nil
-  "The names of the Unicode scripts, as keywords, once looked for.")
+  "The Unicode scripts, as keywords, by their names in small letters without
+spaces, - or _, once looked for.")
 
-(defun unicode-scripts ()
-  "The names of the Unicode scripts, as keywords: every character's, found once."
-  (or **scripts**
-      (setf **scripts**
-            (let ((names '()))
-              (dotimes (code char-code-limit names)
-                (let ((char (code-char code)))
-                  (when char (pushnew (sb-unicode:script char) names))))))))
+(defun unicode-script (key)
+  "The Unicode script KEY names, in small letters without spaces, - or _
+\(PROPERTY-KEY), as a keyword (:OLD-ITALIC for olditalic); NIL when none
+does. Every character's script is found once, the first time."
+  (gethash key (or **scripts**
+                   (setf **scripts**
+                         (let ((scripts (make-hash-table :test 'eq)) (names (make-hash-table :test 'equal)))
+                           (dotimes (code char-code-limit)
+                             (let ((char (code-char code)))
+                               (when char (setf (gethash (sb-unicode:script char) scripts) t))))
+                           (loop for script being the hash-keys of scripts
+                                 do (setf (gethash (property-key (symbol-name script)) names) script))
+                           names)))))
 
 (defparameter *property-names*
   '(("letter" . "l") ("mark" . "m") ("number" . "n") ("punctuation" . "p") ("symbol" . "s") ("separator" . "z")
@@ -876,8 +918,8 @@ PATTERN-REFUSED for a name it does not know."
           ((member key *general-categories* :test #'string=)
            (let ((category (intern (string-upcase key) :keyword)))
              (lambda (c) (eq category (sb-unicode:general-category c)))))
-          (t (let ((script (find key (unicode-scripts) :key (lambda (s) (remove #\_ (string-downcase (symbol-name s))))
-                                                       :test #'string=)))
+          (t (let ((script (unicode-script key)))
+
                (unless script (refuse-pattern "invalid: no character property \\p{~a}" name))
                (lambda (c) (eq script (sb-unicode:script c))))))))
 
@@ -937,14 +979,19 @@ example, commented out."
   "Three values for a cl-ppcre parse TREE: the text of every match when TREE
 matches exactly one text (\"\" for an assertion, which matches none), else NIL;
 a list of texts each of which every match contains; and the text every match
-starts with, or NIL. Forms not understood contribute nothing, which is always
-safe."
+starts with, or NIL. A newline is no known text, since it matches a line end
+of either kind (LINE-TREE). Forms not understood contribute nothing, which is
+always safe."
   (flet ((zero-width-p (x)
            (or (member x '(:start-anchor :end-anchor :modeless-start-anchor :modeless-end-anchor
                            :modeless-end-anchor-no-newline :word-boundary :non-word-boundary :void))
                (and (consp x) (member (first x) '(:positive-lookahead :negative-lookahead
                                                   :positive-lookbehind :negative-lookbehind))))))
-    (cond ((stringp tree) (values tree (list tree) tree))
+    (cond ((and (stringp tree) (find #\Newline tree))
+           ;; a newline matches a line end of one or two octets: no text of it is known
+           (literal-runs (cons :sequence (coerce tree 'list))))
+          ((stringp tree) (values tree (list tree) tree))
+          ((eql tree #\Newline) (values nil '() nil))
           ((characterp tree) (let ((s (string tree))) (values s (list s) s)))
           ((zero-width-p tree) (values "" '() ""))
           ((atom tree) (values nil '() nil))
@@ -980,26 +1027,25 @@ safe."
                       (values nil '() nil))))
                (t (values nil '() nil)))))))
 
-(defun required-literal (regex)
-  "Two values: the text every match of the pattern REGEX contains, or NIL when
-there is none, the pattern sets its own flags or the text holds raw bytes'
-characters; and true when every match starts with that text. A
-prefix of three octets or more, or as long as the longest text, is preferred."
-  (let ((tree (cl-ppcre:parse-string regex)))
-    (labels ((has-flags (x) (or (eq x :flags) (and (consp x) (or (has-flags (car x)) (has-flags (cdr x))))))
-             (octets (text) (tuatara.text:string-octet-length text)))
-      (unless (has-flags tree)
-        (multiple-value-bind (whole runs prefix) (literal-runs tree)
-          (declare (ignore whole))
-          (let ((best nil) (best-length 0))
-            (dolist (run runs)
-              (when (> (octets run) best-length) (setf best run best-length (octets run))))
-            (multiple-value-bind (text prefix-p)
-                (if (and prefix (plusp (length prefix)) (>= (octets prefix) (min 3 best-length)))
-                    (values prefix t)
-                    (values best nil))
-              (when (and text (notany (lambda (c) (tuatara.text:raw-byte-code-p (char-code c))) text))
-                (values text prefix-p)))))))))
+(defun required-literal (tree)
+  "Two values: the text every match of the cl-ppcre parse TREE contains, or
+NIL when there is none, the pattern sets its own flags or the text holds raw
+bytes' characters; and true when every match starts with that text. A prefix
+of three octets or more, or as long as the longest text, is preferred."
+  (labels ((has-flags (x) (or (eq x :flags) (and (consp x) (or (has-flags (car x)) (has-flags (cdr x))))))
+           (octets (text) (tuatara.text:string-octet-length text)))
+    (unless (has-flags tree)
+      (multiple-value-bind (whole runs prefix) (literal-runs tree)
+        (declare (ignore whole))
+        (let ((best nil) (best-length 0))
+          (dolist (run runs)
+            (when (> (octets run) best-length) (setf best run best-length (octets run))))
+          (multiple-value-bind (text prefix-p)
+              (if (and prefix (plusp (length prefix)) (>= (octets prefix) (min 3 best-length)))
+                  (values prefix t)
+                  (values best nil))
+            (when (and text (notany (lambda (c) (tuatara.text:raw-byte-code-p (char-code c))) text))
+              (values text prefix-p))))))))
 
 ;;; Shapes: what every match holds when no text does, a run of places each of
 ;;; which is one of a few octets ([0-9A-Fa-f]{8}- in a UUID), found at the speed
@@ -1010,19 +1056,48 @@ prefix of three octets or more, or as long as the longest text, is preferred."
   (let ((set (make-array 256 :element-type 'bit :initial-element 0)))
     (dolist (code codes set) (setf (sbit set code) 1))))
 
+(sb-ext:defglobal **odd-cases** nil
+  "The letters that are neither the lower case they have nor its upper case,
+as the title case letters ǅ and ǈ, by that lower case, once looked for.")
+
+(defun odd-cases (char)
+  "The letters whose lower case is CHAR that are neither CHAR nor its upper
+case, as ǅ is for ǆ: found once for every character."
+  (gethash char (or **odd-cases**
+                    (setf **odd-cases**
+                          (let ((table (make-hash-table)))
+                            (dotimes (code char-code-limit table)
+                              (let* ((c (code-char code)) (down (and c (char-downcase c))))
+                                (unless (or (null c) (char= c down) (char= c (char-upcase down)))
+                                  (push c (gethash down table))))))))))
+
+(defun case-octet-sets (char)
+  "The sets of octets (OCTET-SET) that CHAR and the characters it matches
+ignoring case are written in, one for each octet, when all of them take as
+many octets; else NIL. Those characters are the ones CHAR-EQUAL takes as the
+same letter: its upper and lower case, theirs, and the title case letters of
+its lower case (ODD-CASES)."
+  (let* ((cases (list* char (char-upcase char) (char-downcase char)
+                       (char-upcase (char-downcase char)) (char-downcase (char-upcase char))
+                       (append (odd-cases (char-downcase char)) (odd-cases (char-downcase (char-upcase char))))))
+
+         (forms (mapcar (lambda (c) (tuatara.text:string-octets (string c)))
+                        (remove-duplicates (remove-if-not (lambda (c) (char-equal c char)) cases))))
+         (n (length (first forms))))
+    (when (every (lambda (form) (= (length form) n)) forms)
+      (loop for k below n
+            collect (apply #'octet-set (mapcar (lambda (form) (aref form k)) forms))))))
+
 (defun char-octet-sets (char case-fold)
   "The sets of octets (OCTET-SET) CHAR is written in, one for each of its
-octets, an ASCII letter's other case in its set when CASE-FOLD. NIL when CHAR
-cannot be told by its octets. That is a newline, which a carriage return and
-line feed (CR LF) text writes otherwise, a raw octet's character, or a letter
-beyond ASCII whose case is folded."
+octets, the octets of its other case in them when CASE-FOLD
+\(CASE-OCTET-SETS). NIL when CHAR cannot be told by its octets. That is a
+newline, which matches a carriage return and line feed (CR LF) too, a raw
+octet's character, or a letter whose cases are written in different numbers
+of octets."
   (let ((code (char-code char)))
     (cond ((or (char= char #\Newline) (tuatara.text:raw-byte-code-p code)) nil)
-          ((< code 128)
-           (list (if (and case-fold (both-case-p char))
-                     (octet-set (char-code (char-upcase char)) (char-code (char-downcase char)))
-                     (octet-set code))))
-          ((and case-fold (both-case-p char)) nil)
+          ((and case-fold (both-case-p char)) (case-octet-sets char))
           (t (map 'list #'octet-set (tuatara.text:string-octets (string char)))))))
 
 (defun class-octet-set (items case-fold)
@@ -1191,9 +1266,9 @@ crossing."
   (labels ((walk (x) (or (and (symbolp x) (member x keywords)) (and (consp x) (or (walk (car x)) (walk (cdr x)))))))
     (and (walk tree) t)))
 
-(defstruct (regex-traits (:constructor make-regex-traits
-                                       (&key needle shape fold prefix line-bound end-anchored reach plain))
-                         (:copier nil))
+(define-record (regex-traits (:constructor make-regex-traits
+                                          (&key needle shape fold prefix line-bound end-anchored reach context plain))
+                            (:copier nil))
   "What COMPILE-REGEX learnt about a pattern for scanning a rope. NEEDLE is the
 octets of text every match holds (ASCII case folded when FOLD), or NIL. SHAPE,
 when it tells more than NEEDLE, is a vector of octet sets (REQUIRED-SHAPE)
@@ -1202,31 +1277,26 @@ with the one or the other. LINE-BOUND is true when every match lies within a
 line. END-ANCHORED is true when the pattern uses \\z or \\Z, which only match
 at the end of the text. REACH is the octets past the stretch a match starts in
 that a scan looks, +REGEX-OVERLAP+ or for a thorough scanner
-*REGEX-LONGEST-MATCH*."
-  (needle nil)
-  (shape nil)
-  (fold nil)
-  (prefix nil)
-  (line-bound nil)
-  (end-anchored nil)
-  (reach +regex-overlap+)
-  (plain nil))
+*REGEX-LONGEST-MATCH*. CONTEXT is the octets before a window's range decoded
+with it, enough for the longest lookbehind. PLAIN is the scanner for text
+without a carriage return, or NIL when it is the same."
+  (needle nil :documentation "The octets of text every match of the pattern holds, or NIL.")
+  (shape nil :documentation "The octet sets every match of the pattern holds
+in their place, or NIL.")
+  (fold nil :documentation "True when the needle is ASCII case folded and is looked for so.")
+  (prefix nil :documentation "True when every match of the pattern starts
+with its needle or shape.")
+  (line-bound nil :documentation "True when every match of the pattern lies within a line.")
+  (end-anchored nil :documentation "True when the pattern matches only at
+the end of the text (\\z, \\Z).")
+  (reach +regex-overlap+ :documentation "Octets past the stretch a match starts in that
+a scan for the pattern looks.")
+  (context +regex-context+ :documentation "Octets before a window's range a scan for the
+pattern decodes with it, for its lookbehinds to see.")
+  (plain nil :documentation "The pattern's scanner for text without a
+carriage return, or NIL when it is the same."))
 
-(setf (documentation 'make-regex-traits 'function) "Return the REGEX-TRAITS of a pattern from what its keys say."
-      (documentation 'regex-traits-p 'function) "True when OBJECT is a REGEX-TRAITS."
-      (documentation 'regex-traits-needle 'function) "The octets of text every match of the pattern holds, or NIL."
-      (documentation 'regex-traits-shape 'function) "The octet sets every match of the pattern holds
-in their place, or NIL."
-      (documentation 'regex-traits-fold 'function) "True when the needle is ASCII case folded and is looked for so."
-      (documentation 'regex-traits-prefix 'function) "True when every match of the pattern starts
-with its needle or shape."
-      (documentation 'regex-traits-line-bound 'function) "True when every match of the pattern lies within a line."
-      (documentation 'regex-traits-end-anchored 'function) "True when the pattern matches only at
-the end of the text (\\z, \\Z)."
-      (documentation 'regex-traits-reach 'function) "Octets past the stretch a match starts in that
-a scan for the pattern looks."
-      (documentation 'regex-traits-plain 'function) "The pattern's scanner for text without a
-carriage return, or NIL when it is the same.")
+(setf (documentation 'make-regex-traits 'function) "Return the REGEX-TRAITS of a pattern from what its keys say.")
 
 (defvar *regex-thorough* nil
   "True while a thorough command runs (regex-search-forward-thorough and the
@@ -1245,15 +1315,19 @@ matches may cross lines; the same for one kept within a line.")
 its carriage return and line feed (CRLF) mode. ^ matches after a newline and
 after a carriage return no newline follows. $ matches before a newline no
 carriage return comes before and before a carriage return, neither between a
-carriage return and its newline. . matches neither a carriage return nor a
-newline, but in single-line mode ((?s)). Where (?-m) makes ^ and $ the text's
-ends, they are left as they are. Plain text stays plain: a tree that is a
-string alone is given as a sequence."
+carriage return and its newline. A newline in the pattern outside a set (\n)
+matches one line end as $ sees it: a carriage return and its newline
+together, a newline, or a carriage return no newline follows; in a lookbehind,
+which looks back over a fixed length, a newline or a carriage return no
+newline follows. In a set it is the newline alone. . matches neither a
+carriage return nor a newline, but in single-line mode ((?s)). Where (?-m)
+makes ^ and $ the text's ends, they are left as they are. Plain text stays
+plain: a tree that is a string alone is given as a sequence."
   (labels ((mode-after (flags mode on off)
              (cond ((member on flags) t)
                    ((member off flags) nil)
                    (t mode)))
-           (walk (node single multi)
+           (walk (node single multi behind)
              (cond ((and multi (eq node :end-anchor))
                     '(:alternation (:positive-lookahead #\Return)
                       (:sequence (:negative-lookbehind #\Return) (:positive-lookahead #\Newline))
@@ -1262,6 +1336,13 @@ string alone is given as a sequence."
                     '(:alternation :modeless-start-anchor (:positive-lookbehind #\Newline)
                       (:sequence (:positive-lookbehind #\Return) (:negative-lookahead #\Newline))))
                    ((eq node :everything) (if single node '(:inverted-char-class #\Return #\Newline)))
+                   ((eql node #\Newline)
+                    (if behind
+                        '(:alternation #\Newline (:sequence #\Return (:negative-lookahead #\Newline)))
+                        '(:alternation (:sequence #\Return #\Newline) #\Newline
+                          (:sequence #\Return (:negative-lookahead #\Newline)))))
+                   ((and (stringp node) (find #\Newline node))
+                    (walk (cons :sequence (coerce node 'list)) single multi behind))
                    ((atom node) node)
                    ((eq (first node) :sequence)
                     ;; inline flags change the mode for the rest of the sequence
@@ -1269,21 +1350,26 @@ string alone is given as a sequence."
                       (cons :sequence
                             (loop for child in (rest node)
                                   collect (if (and (consp child) (eq (first child) :flags))
-                                              (progn (setf single (mode-after (rest child) single :single-line-mode-p :not-single-line-mode-p)
-                                                           multi (mode-after (rest child) multi :multi-line-mode-p :not-multi-line-mode-p))
+                                              (progn (setf single (mode-after (rest child) single :single-line-mode-p
+                                                                              :not-single-line-mode-p)
+                                                           multi (mode-after (rest child) multi :multi-line-mode-p
+                                                                             :not-multi-line-mode-p))
                                                      child)
-                                              (walk child single multi))))))
+                                              (walk child single multi behind))))))
                    ((eq (first node) :group)
                     (let ((flags (butlast (rest node))))
                       (append (list :group) flags
                               (list (walk (car (last node))
                                           (mode-after flags single :single-line-mode-p :not-single-line-mode-p)
-                                          (mode-after flags multi :multi-line-mode-p :not-multi-line-mode-p))))))
+                                          (mode-after flags multi :multi-line-mode-p :not-multi-line-mode-p)
+                                          behind)))))
+                   ((member (first node) '(:positive-lookbehind :negative-lookbehind))
+                    (list (first node) (walk (second node) single multi t)))
                    ((member (first node)
                             '(:char-class :inverted-char-class :property :inverted-property :back-reference :filter))
                     node)
-                   (t (cons (first node) (mapcar (lambda (child) (walk child single multi)) (rest node)))))))
-    (let ((walked (walk tree nil t)))
+                   (t (cons (first node) (mapcar (lambda (child) (walk child single multi behind)) (rest node)))))))
+    (let ((walked (walk tree nil t nil)))
       (if (stringp walked) (list :sequence walked) walked))))
 
 (defun tree-max-octets (tree)
@@ -1323,6 +1409,17 @@ repetition with no most, a back-reference)."
                         (t nil))))))
     (walk tree)))
 
+(defun lookbehind-octets (tree)
+  "The most octets the lookbehinds of TREE, a cl-ppcre parse tree, look back
+from where they stand, a lookbehind inside one adding to it, counting four
+for each character (TREE-MAX-OCTETS); 0 when it has none."
+  (labels ((walk (node)
+             (cond ((atom node) 0)
+                   ((member (first node) '(:positive-lookbehind :negative-lookbehind))
+                    (+ (or (tree-max-octets (second node)) *regex-longest-match*) (walk (second node))))
+                   (t (reduce #'max (rest node) :key #'walk :initial-value 0)))))
+    (walk tree)))
+
 (sb-ext:defglobal **compiled-regexes** (make-hash-table :test 'equal :weakness :value :synchronized t)
   "The scanners COMPILE-REGEX made that are still in use, by the pattern and
 how it was compiled (case folding, CRLF, thoroughness): the same pattern is
@@ -1342,25 +1439,23 @@ soon after, as a prompt is drawn again, is not compiled anew.")
     (clrhash **compiled-regexes**)
     (fill **recent-regexes** nil)))
 
-(defun compile-regex (regex &key (case-fold (regex-case-fold-p regex)) crlf (thorough *regex-thorough*))
-  "A cl-ppcre scanner for REGEX (PCRE-style syntax) in which ^ and $ match
-at line boundaries. CASE-FOLD ignores case; by default when REGEX has no
-upper-case letter outside an escape. What cl-ppcre lacks is put in first
-\(ENGINE-PATTERN): named patterns ([[:ipv4:]], [[:creditcard:]], whose card
-numbers must pass the Luhn check), POSIX classes in a set, \\Q...\\E, \\h, \\v, \\R,
-\\xNN from 80 to FF the octet NN standing on its own; named groups and
-character properties (\\p{L}) are read too (WITH-PATTERN-SYNTAX). Lines end
-as they do in every text: ^ and $ match at a newline, at a carriage return
-and a newline, and at a carriage return alone, and . matches neither a
-carriage return nor a newline (LINE-TREE); carriage return and line feed
-(CRLF) changes nothing. THOROUGH, by default *REGEX-THOROUGH*, has a scan find
-every match of up to *REGEX-LONGEST-MATCH* octets whole, looking as far as the
-pattern can reach (TREE-MAX-OCTETS). What the pattern allows a scan to skip
-(REGEX-TRAITS) is registered with the scanner. The same REGEX compiled the
-same way gives the same scanner while one is kept, or soon after. Signals
-PATTERN-REFUSED, or cl-ppcre's syntax error, for a pattern that cannot be used
-(REGEX-PROBLEM words why)."
-  (declare (ignore crlf))
+(defun compile-regex (regex &key (case-fold (regex-case-fold-p regex)) (thorough *regex-thorough*))
+  "A cl-ppcre scanner for REGEX (PCRE-style syntax) in which ^ and $ match at
+line boundaries. CASE-FOLD ignores case; by default when REGEX has no upper-case
+letter outside an escape. What cl-ppcre lacks is put in first (ENGINE-PATTERN):
+named patterns ([[:ipv4:]], [[:creditcard:]], whose card numbers must pass the
+Luhn check), POSIX classes in a set, \\Q...\\E, \\h, \\v, \\R, \\xNN from 80 to
+FF the octet NN standing on its own; named groups and character properties
+\(\\p{L}) are read too (WITH-PATTERN-SYNTAX). Lines end as they do in every
+text: ^ and $ match at a newline, at a carriage return and a newline, and at a
+carriage return alone; \\n matches any one of those line ends, [\\n] the newline
+alone; and . matches neither a carriage return nor a newline (LINE-TREE).
+THOROUGH, by default *REGEX-THOROUGH*, has a scan find every match of up to
+*REGEX-LONGEST-MATCH* octets whole, looking as far as the pattern can reach
+\(TREE-MAX-OCTETS). What the pattern allows a scan to skip (REGEX-TRAITS) is
+registered with the scanner. The same REGEX compiled the same way gives the same
+scanner while one is kept, or soon after. Signals PATTERN-REFUSED, or cl-ppcre's
+syntax error, for a pattern that cannot be used (REGEX-PROBLEM words why)."
   (let ((key (list regex (and case-fold t) (and thorough t))))
     (or (gethash key **compiled-regexes**)
         (let ((scanner (with-pattern-syntax
@@ -1389,17 +1484,14 @@ PATTERN-REFUSED, or cl-ppcre's syntax error, for a pattern that cannot be used
          ;; pattern as written does the same, and quicker
          (plain (and tree (not (equal (if (stringp tree) (list :sequence tree) tree) lines))
                      (let ((cl-ppcre:*use-bmh-matchers* t))
-                       (cl-ppcre:create-scanner (if filtered (filter-tree tree) regex)
+                       (cl-ppcre:create-scanner (if filtered (filter-tree tree) tree)
                                                 :case-insensitive-mode case-fold :multi-line-mode t)))))
     (when tree
       ;; (?i) and the like, and a group's own, (?i:a): what a match must hold, and
       ;; whether it stays within a line, cannot be read from the text then
       (let ((flags (tree-has tree :flags :case-insensitive-p :case-sensitive-p :multi-line-mode-p
                              :not-multi-line-mode-p :single-line-mode-p :not-single-line-mode-p)))
-        (multiple-value-bind (literal prefix-p)
-            (and (not flags)
-                 (tuatara.runtime:ignoring-errors-reported ("finding the text every match of ~s holds" regex)
-                   (required-literal regex)))
+        (multiple-value-bind (literal prefix-p) (and (not flags) (required-literal tree))
           ;; octet folding knows ASCII only: letters beyond it keep the full scan
           (unless (or (not case-fold)
                       (every (lambda (c) (or (< (char-code c) 128) (not (both-case-p c)))) (or literal "")))
@@ -1420,6 +1512,7 @@ PATTERN-REFUSED, or cl-ppcre's syntax error, for a pattern that cannot be used
                                      :prefix (and (or literal shape) prefix-p)
                                      :line-bound line-bound
                                      :end-anchored (tree-has tree :modeless-end-anchor :modeless-end-anchor-no-newline)
+                                     :context (max +regex-context+ (lookbehind-octets lines))
                                      :reach (let ((most (and thorough (not line-bound) (tree-max-octets tree))))
                                               (cond ((or (not thorough) line-bound) +regex-overlap+)
                                                     (most (min *regex-longest-match* (max +regex-overlap+ most)))
@@ -1439,18 +1532,36 @@ groups among them; 0 for a pattern that cannot be used."
                 ((or cl-ppcre:ppcre-syntax-error pattern-refused) () nil)))))
     count))
 
-(defun compile-pattern (pattern &key (regex t) (case-fold nil fold-given) or-text)
+(defun nested-repeat-p (pattern)
+  "True when PATTERN, a regular expression, repeats without bound a part that
+itself repeats, as (a+)+ or (x*y)* do: a scan of such a pattern can take time
+growing exponentially with the text it fails on."
+  (labels ((repeat-p (x) (and (consp x) (member (first x) '(:greedy-repetition :non-greedy-repetition))))
+           (holds-repeat-p (x)
+             (and (consp x) (or (and (repeat-p x) (not (eql (third x) 1))) (some #'holds-repeat-p (rest x)))))
+           (walk (x)
+             (and (consp x)
+                  (or (and (repeat-p x) (null (third x)) (holds-repeat-p (fourth x)))
+                      (some #'walk (rest x))))))
+    (walk (handler-case (with-pattern-syntax (cl-ppcre:parse-string (engine-pattern pattern)))
+            ((or cl-ppcre:ppcre-syntax-error pattern-refused) () nil)))))
+
+(defun compile-pattern (pattern &key (regex t) (case-fold nil fold-given) or-text untrusted)
   "A scanner for PATTERN as every search reads it (COMPILE-REGEX): a regular
 expression when REGEX is true, else literal text, nothing in it special.
 CASE-FOLD ignores case; when it is not given, case is ignored while PATTERN
 has no upper-case letter (for a regular expression, outside an escape, and
 naming no case: REGEX-CASE-FOLD-P). With OR-TEXT, a PATTERN that is no
 regular expression is taken as literal text; otherwise that signals, as
-COMPILE-REGEX does."
+COMPILE-REGEX does. With UNTRUSTED, for a pattern from a file, a regular
+expression that repeats a repeated part without bound (NESTED-REPEAT-P) is
+refused as one that is no regular expression is."
   (flet ((text ()
            (compile-regex (cl-ppcre:quote-meta-chars pattern)
                           :case-fold (if fold-given case-fold (case-fold-p pattern))))
          (regex ()
+           (when (and untrusted (nested-repeat-p pattern))
+             (refuse-pattern "not run from a file: a part repeated in a repeat, which can take for ever"))
            (compile-regex pattern :case-fold (if fold-given case-fold (regex-case-fold-p pattern)))))
     (cond ((not regex) (text))
           (or-text (or (tuatara.runtime:ignoring-errors-reported ("reading ~s as a regular expression" pattern)
@@ -1459,24 +1570,23 @@ COMPILE-REGEX does."
                        (text)))
           (t (regex)))))
 
-(defstruct (decoder (:constructor make-decoder ()) (:copier nil))
+(define-record (decoder (:constructor make-decoder ()) (:copier nil))
   "Buffers reused while decoding windows of a rope for a regex scan: the OCTETS
 read, the decoded text in BASE (a base string, for ASCII windows) or WIDE (for
 the rest), TABLE from character index to octet offset for WIDE, and SKIP for
 the literal scan that skips ahead to a pattern's required text."
-  (octets (tuatara.text:make-octets 0) :type tuatara.text:octets)
-  (skip (tuatara.text:make-octets 0) :type tuatara.text:octets)
-  (base (make-string 0 :element-type 'base-char) :type simple-base-string)
-  (wide (make-string 0 :element-type 'character) :type (simple-array character (*)))
-  (table (make-array 0 :element-type '(unsigned-byte 32)) :type (simple-array (unsigned-byte 32) (*))))
+  (octets (tuatara.text:make-octets 0) :type tuatara.text:octets
+          :documentation "A DECODER's buffer of the octets last read.")
+  (skip (tuatara.text:make-octets 0) :type tuatara.text:octets
+        :documentation "A DECODER's buffer for skipping ahead to a pattern's fixed text.")
+  (base (make-string 0 :element-type 'base-char) :type simple-base-string
+        :documentation "A DECODER's text decoded from an ASCII window, a base string.")
+  (wide (make-string 0 :element-type 'character) :type (simple-array character (*))
+        :documentation "A DECODER's text decoded from a window past ASCII.")
+  (table (make-array 0 :element-type '(unsigned-byte 32)) :type (simple-array (unsigned-byte 32) (*))
+         :documentation "A DECODER's octet offset of each character of its wide text."))
 
-(setf (documentation 'make-decoder 'function) "Return a decoder with empty buffers; they grow on first use."
-      (documentation 'decoder-p 'function) "True when OBJECT is a DECODER."
-      (documentation 'decoder-octets 'function) "A DECODER's buffer of the octets last read."
-      (documentation 'decoder-skip 'function) "A DECODER's buffer for skipping ahead to a pattern's fixed text."
-      (documentation 'decoder-base 'function) "A DECODER's text decoded from an ASCII window, a base string."
-      (documentation 'decoder-wide 'function) "A DECODER's text decoded from a window past ASCII."
-      (documentation 'decoder-table 'function) "A DECODER's octet offset of each character of its wide text.")
+(setf (documentation 'make-decoder 'function) "Return a decoder with empty buffers; they grow on first use.")
 
 (sb-ext:defglobal **spare-decoders**
     (tuatara.runtime:make-spares (lambda ()
@@ -1651,7 +1761,8 @@ new buffers."
   (unless decoder
     (return-from map-regex-matches
       (with-decoder (spare)
-        (map-regex-matches function rope scanner start end :bound bound :decoder spare :halt halt :texts texts :empty empty))))
+        (map-regex-matches function rope scanner start end
+                           :bound bound :decoder spare :halt halt :texts texts :empty empty))))
   (let* ((total (tuatara.text:rope-octet-length rope))
          (bound (if bound (tuatara.text:rope-char-start rope (min bound total)) total))
          (end (min end bound))
@@ -1667,6 +1778,7 @@ new buffers."
          ;; each match lies within a line holding NEEDLE: only those lines are tried
          (lines (and needle line-bound (not prefix-p) (plusp (length needle))))
          (overlap (if traits (regex-traits-reach traits) +regex-overlap+))
+         (context (if traits (regex-traits-context traits) +regex-context+))
          ;; the window a filter may read the rope around (*WINDOW-ROPE*): one list, set for each window
          (window (list rope 0 0 bound))
          (chunk (and (or needle shape)
@@ -1674,7 +1786,7 @@ new buffers."
                        (when (< (length (decoder-skip decoder)) size)
                          (setf (decoder-skip decoder) (tuatara.text:make-octets size)))
                        (decoder-skip decoder)))))
-    (declare (type fixnum total bound end pos last-end overlap))
+    (declare (type fixnum total bound end pos last-end overlap context))
     (when (and traits (regex-traits-end-anchored traits))
       ;; \z and \Z match only at the end: look there alone, in one window reaching BOUND
       (setf pos (max pos (tuatara.text:rope-char-start rope (max 0 (- bound *regex-longest-match*))))))
@@ -1705,7 +1817,7 @@ new buffers."
                          (progn (when (> to (+ pos overlap)) (setf range (max overlap (- (1+ q) to))))
                                 (setf pos (max pos to)))))
                    (when (>= pos end) (return))))
-             (let* ((context-start (tuatara.text:rope-char-start rope (max 0 (- pos +regex-context+))))
+             (let* ((context-start (tuatara.text:rope-char-start rope (max 0 (- pos context))))
                     (limit (let ((l (tuatara.text:rope-char-start rope (min end (+ pos range)))))
                              (if (> l pos) l (min bound (tuatara.text:rope-next-boundary rope pos)))))
                     (reach (cond ((and traits (regex-traits-end-anchored traits)) bound)
@@ -1759,7 +1871,8 @@ new buffers."
                                                   (result (funcall function bs reached
                                                                    (and whole
                                                                         (matched-text texts whole 0 (length whole)))
-                                                                   (matched-groups texts string group-starts group-ends))))
+                                                                   (matched-groups texts string
+                                                                                   group-starts group-ends))))
                                              (when result (return-from map-regex-matches result))
                                              (setf last-end reached)
                                              (return t)))
@@ -1772,12 +1885,16 @@ new buffers."
                                          (if (= ms me)
                                              (progn ; an empty match: reported when asked for, then look further on
                                                (when empty
-                                                 (let ((result (funcall function bs bs (matched-text texts "" 0 0) nil)))
+                                                 (let ((result (funcall function bs bs
+                                                                        (matched-text texts "" 0 0) nil)))
                                                    (when result (return-from map-regex-matches result))))
                                                (setf from (1+ ms)))
                                              (let* ((be (+ context-start (index-octet table me)))
-                                                    (result (funcall function bs be (matched-text texts string ms me)
-                                                                     (matched-groups texts string group-starts group-ends))))
+                                                    (result (funcall function bs be
+                                                                     (matched-text texts string ms me)
+                                                                     (matched-groups texts string
+                                                                                     group-starts group-ends))))
+
                                                (when result (return-from map-regex-matches result))
                                                (setf last-end be from me))))))))
                          (return))))))
@@ -1824,22 +1941,33 @@ POSITION (REGEX-TRAITS). It is never before FLOOR."
 backward, stopping at the first piece with a match; a piece with one is
 scanned again from further back (REGEX-RESYNC-START, never before FLOOR), so
 that of a run the pattern matches whole the start of the run is found, as a
-forward scan finds it. HALT and EMPTY as for MAP-REGEX-MATCHES."
-  (loop for b of-type fixnum = end then a
-        for a of-type fixnum = (max start (- b +search-chunk+))
-        while (< a b)
-        do (let ((last nil))
-             (map-regex-matches (lambda (s e m g) (setf last (list s e m g)) nil) rope scanner a b
-                                :bound bound :decoder decoder :halt halt :empty empty)
-             (when (and halt (funcall halt)) (return nil))
-             (when last
-               (let ((from (regex-resync-start rope scanner a floor)))
-                 (when (< from a)
-                   (setf last nil)
-                   (map-regex-matches (lambda (s e m g) (when (>= s a) (setf last (list s e m g))) nil)
-                                      rope scanner from b :bound bound :decoder decoder :halt halt :empty empty)))
-               (when last (return last))))
-        until (= a start)))
+forward scan finds it. The pieces are scanned without the texts of their
+matches; the text and groups of the one kept are taken after. HALT and EMPTY
+as for MAP-REGEX-MATCHES."
+  (let ((last -1) (last-end -1))
+    (declare (type fixnum last last-end))
+    (flet ((keep (s e m g)
+             (declare (ignore m g))
+             (setf last s last-end e)
+             nil))
+      (loop for b of-type fixnum = end then a
+            for a of-type fixnum = (max start (- b +search-chunk+))
+            while (< a b)
+            do (map-regex-matches #'keep rope scanner a b
+                                  :bound bound :decoder decoder :halt halt :empty empty :texts nil)
+               (when (and halt (funcall halt)) (return-from last-regex-match nil))
+               (when (>= last a)
+                 (let ((from (regex-resync-start rope scanner a floor)))
+                   (when (< from a)
+                     (setf last -1)
+                     (map-regex-matches (lambda (s e m g) (when (>= s a) (keep s e m g)))
+                                        rope scanner from b :bound bound :decoder decoder :halt halt :empty empty
+                                                            :texts nil)))
+                 (when (>= last a)
+                   (return-from last-regex-match
+                     (or (first-regex-match rope scanner last (1+ last) bound decoder :empty empty)
+                         (list last last-end nil nil)))))
+            until (= a start)))))
 
 (defun regex-serial-window ()
   "Octets a regex search scans on the calling thread before going parallel: at
@@ -1853,78 +1981,57 @@ a second."
   "The first match of REGEX (a pattern string or a compiled scanner) in ROPE
 that starts at or after START and before END and ends by BOUND (the text end by
 default; the pattern sees nothing past it): values match start and end (byte
-offsets), the matched string and its groups (as MAP-REGEX-MATCHES); NIL when none.
-With EMPTY, an empty match counts too (^ at a line start, for one).
-A pattern without upper-case letters ignores case. The first
-REGEX-SERIAL-WINDOW octets are scanned on the calling thread, the rest in
-pieces run in order on THREADS threads (SEARCH-PIECES). STOP, when given, is
-asked on the calling thread between windows of the scan, every few
-milliseconds; when it answers true the search gives up and returns NIL and
-:STOPPED."
-  (let* ((scanner (regex-scanner regex case-fold))
-         (end (min end (or bound end)))
-         (serial-end (min end (+ start (regex-serial-window))))
-         (halted nil)
-         (halt (and stop (lambda () (or halted (setf halted (and (funcall stop) t))))))
-         (hit (with-decoder (decoder)
-                (first-regex-match rope scanner start serial-end bound decoder :halt halt :empty empty))))
-    (cond (hit (values-list hit))
-          (halted (values nil :stopped))
-          ((>= serial-end end) nil)
-          (t (let ((piece *parallel-piece*))
-               (multiple-value-bind (found stopped)
-                   (search-pieces (ceiling (- end serial-end) piece)
-                                  (lambda (k halt)
-                                    (let ((a (+ serial-end (* k piece))))
-                                      (with-decoder (decoder)
-                                        (first-regex-match rope scanner a (min end (+ a piece)) bound decoder :halt halt :empty empty))))
-                                  stop threads)
-                 (cond (stopped (values nil :stopped))
-                       (found (values-list found))
-                       (t nil))))))))
+offsets), the matched string and its groups (as MAP-REGEX-MATCHES); NIL when
+none. With EMPTY, an empty match counts too (^ at a line start, for one). A
+pattern without upper-case letters ignores case. The first REGEX-SERIAL-WINDOW
+octets are scanned on the calling thread, the rest in pieces run in order on
+THREADS threads (DIRECTIONAL-SEARCH). STOP, when given, is asked on the calling
+thread between windows of the scan, every few milliseconds; when it answers true
+the search gives up and returns NIL and :STOPPED."
+  (let ((scanner (regex-scanner regex case-fold)))
+    (multiple-value-bind (hit stopped)
+        (directional-search start (min end (or bound end)) (regex-serial-window)
+                            (lambda (from to halt)
+                              (with-decoder (decoder)
+                                (first-regex-match rope scanner from to bound decoder :halt halt :empty empty)))
+                            :stop stop :threads threads)
+      (if hit (values-list hit) (values nil stopped)))))
 
 (defun regex-search-backward (rope regex &key (start (tuatara.text:rope-octet-length rope)) (end 0) bound
                                                (case-fold (and (stringp regex) (regex-case-fold-p regex)))
                                                (threads (tuatara.runtime:cpu-count)) stop empty)
   "The last match of REGEX in ROPE that starts before START and at or after END
-and ends by BOUND: values as REGEX-SEARCH-FORWARD, EMPTY too; NIL when none. Matches are
-found as a forward scan finds them, so of a run that a pattern matches whole
-the start of the run is found. Scans back from START a REGEX-SERIAL-WINDOW on
-the calling thread, then pieces going back, in parallel; STOP as for
-SEARCH-FORWARD."
-  (let* ((scanner (regex-scanner regex case-fold))
-         (serial-start (max end (- start (regex-serial-window))))
-         (halted nil)
-         (halt (and stop (lambda () (or halted (setf halted (and (funcall stop) t))))))
-         (hit (with-decoder (decoder)
-                (last-regex-match rope scanner serial-start start bound decoder :halt halt :floor end :empty empty))))
-    (cond (hit (values-list hit))
-          (halted (values nil :stopped))
-          ((<= serial-start end) nil)
-          (t (let ((piece *parallel-piece*))
-               (multiple-value-bind (found stopped)
-                   (search-pieces (ceiling (- serial-start end) piece)
-                                  (lambda (k halt)
-                                    (let ((b (- serial-start (* k piece))))
-                                      (with-decoder (decoder)
-                                        (last-regex-match rope scanner (max end (- b piece)) b bound decoder :halt halt :floor end :empty empty))))
-                                  stop threads)
-                 (cond (stopped (values nil :stopped))
-                       (found (values-list found))
-                       (t nil))))))))
+and ends by BOUND: values as REGEX-SEARCH-FORWARD, EMPTY too; NIL when none.
+Matches are found as a forward scan finds them, so of a run that a pattern
+matches whole the start of the run is found. Scans back from START a
+REGEX-SERIAL-WINDOW on the calling thread, then pieces going back, in parallel;
+STOP as for SEARCH-FORWARD."
+  (let ((scanner (regex-scanner regex case-fold)))
+    (multiple-value-bind (hit stopped)
+        (directional-search start end (regex-serial-window)
+                            (lambda (from to halt)
+                              (with-decoder (decoder)
+                                (last-regex-match rope scanner from to bound decoder
+                                                  :halt halt :floor end :empty empty)))
+                            :backward t :stop stop :threads threads)
+      (if hit (values-list hit) (values nil stopped)))))
 
 (defun regex-search-all (rope regex &key (start 0) (end (tuatara.text:rope-octet-length rope)) bound
                                           (case-fold (and (stringp regex) (regex-case-fold-p regex)))
-                                          (limit most-positive-fixnum))
+                                          (limit most-positive-fixnum) halt)
   "All non-empty, non-overlapping matches of REGEX in ROPE that start at or
 after START and before END and end by BOUND, as a list of (START END STRING
-GROUPS) in order (GROUPS as for MAP-REGEX-MATCHES), at most LIMIT of them."
-  (let ((scanner (regex-scanner regex case-fold)) (matches '()) (count 0))
+GROUPS) in order (GROUPS as for MAP-REGEX-MATCHES), at most LIMIT of them. It
+runs on the calling thread, for a range of the size of a screen; for more,
+COLLECT-MATCHES runs in parallel and can be stopped. HALT, when given, is
+asked before each window; once it answers true the matches found so far are
+returned, and :STOPPED as a second value."
+  (let ((scanner (regex-scanner regex case-fold)) (matches '()) (count 0) (halted nil))
     (map-regex-matches (lambda (s e m g)
                          (push (list s e m g) matches)
                          (>= (incf count) limit))
-                       rope scanner start end :bound bound)
-    (nreverse matches)))
+                       rope scanner start end :bound bound :halt (and halt (lambda () (setf halted (funcall halt)))))
+    (values (nreverse matches) (and halted :stopped))))
 
 ;;; Collecting every match, for replacing and counting
 ;;;
@@ -1946,9 +2053,10 @@ new ones. A match's text is taken from that chunk, and given again as it was
 for a match of the same octets as the one before, so that billions of matches
 of a few texts make nothing each."
   (declare (type fixnum start end))
-  (when (folds-past-ascii-p string case-fold)
+  (when (by-pattern-p string case-fold)
     (return-from map-literal-matches
-      (map-regex-matches function rope (literal-scanner string) (character-start-from rope start) end
+      (map-regex-matches function rope (literal-scanner string case-fold) (character-start-from rope start) end
+
                          :bound bound :halt halt :texts texts)))
   (with-decoder (decoder)
     (let* ((needle (needle-octets string case-fold)) (n (length needle))
@@ -2012,52 +2120,45 @@ heard even when the pool's workers take every piece.
 With KEEP false the matches are only counted, the list always NIL. Nothing is
 kept for each, so counting a hundred million costs no more memory than one."
   (declare (type fixnum start end))
-  (when (and stop (funcall stop))
-    (return-from collect-matches (values nil :stopped 0)))
   (let* ((piece *parallel-piece*)
          (count (max 0 (ceiling (- end start) piece)))
-         (cost (list 0)) (found (list 0)) (over (list nil)) (cancel (list nil))
-         (caller sb-thread:*current-thread*)
-         (tasks (make-array count)))
-    (dotimes (k count)
-      (setf (aref tasks k)
-            (let ((a (+ start (* k piece))) (b (min end (+ start (* (1+ k) piece)))))
-              (lambda ()
-                (let ((acc '()) (local 0) (published 0) (matches 0) (last-block -1) (last-end -1))
-                  (declare (type fixnum local published matches last-block last-end))
-                  (labels ((publish ()
-                             (when (> local published)
-                               (let ((delta (- local published)))
-                                 (setf published local)
-                                 (when (and cost-limit (> (+ (sb-ext:atomic-incf (car cost) delta) delta) cost-limit))
-                                   (setf (car over) t)))))
-                           (halt ()
-                             (publish)
-                             (or (car over) (car cancel)
-                                 (and stop (eq sb-thread:*current-thread* caller) (funcall stop)
-                                      ;; a piece inside one long call is cut short too
-                                      (tuatara.runtime:stop-work cancel)))))
-                    (unless (halt)
-                      (funcall mapper
-                               (lambda (s e m g)
-                                 (declare (type fixnum s e))
-                                 (when (or keep (< matches +counted-firsts+))
-                                   (push (list s e m g) acc))
-                                 (setf last-end e)
-                                 (incf matches)
-                                 (incf local match-cost)
-                                 (let ((blk (floor s block-size)))
-                                   (unless (= blk last-block) (setf last-block blk) (incf local block-size)))
-                                 nil)
-                               a b #'halt))
-                    (publish)
-                    (sb-ext:atomic-incf (car found) matches)
-                    (list (nreverse acc) matches last-end)))))))
-    (let ((results (tuatara.runtime:stoppable-work (cancel)
-                     ;; a search through much of a large file reads it through once
-                     (tuatara.text:with-read-pass ()
-                       (tuatara.runtime:run-tasks tasks :parallelism (max 1 threads))))))
-      (cond ((car cancel) (values nil :stopped (car found)))
+         (cost (list 0)) (found (list 0)) (over (list nil)))
+    (multiple-value-bind (results stopped)
+        (run-pieces count
+                    (lambda (k stopping)
+                      (let ((a (+ start (* k piece))) (b (min end (+ start (* (1+ k) piece))))
+                            (acc '()) (local 0) (published 0) (matches 0) (last-block -1) (last-end -1))
+                        (declare (type fixnum local published matches last-block last-end))
+                        (labels ((publish ()
+                                   (when (> local published)
+                                     (let ((delta (- local published)))
+                                       (setf published local)
+                                       (when (and cost-limit
+                                                  (> (+ (sb-ext:atomic-incf (car cost) delta) delta) cost-limit))
+                                         (setf (car over) t)))))
+                                 (halt ()
+                                   (publish)
+                                   (or (car over) (funcall stopping))))
+                          (unless (halt)
+                            (funcall mapper
+                                     (lambda (s e m g)
+                                       (declare (type fixnum s e))
+                                       (when (or keep (< matches +counted-firsts+))
+                                         (push (list s e m g) acc))
+                                       ;; a kept text costs its length: a Base64 block may be long
+                                       (when (and keep m) (incf local (- e s)))
+                                       (setf last-end e)
+                                       (incf matches)
+                                       (incf local match-cost)
+                                       (let ((blk (floor s block-size)))
+                                         (unless (= blk last-block) (setf last-block blk) (incf local block-size)))
+                                       nil)
+                                     a b #'halt))
+                          (publish)
+                          (sb-ext:atomic-incf (car found) matches)
+                          (list (nreverse acc) matches last-end))))
+                    stop threads)
+      (cond (stopped (values nil :stopped (car found)))
             ((car over) (values nil :over (car found)))
             (t (multiple-value-bind (matches total) (join-collected-pieces mapper results start end piece keep)
                  (values matches nil total)))))))

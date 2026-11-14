@@ -853,13 +853,13 @@ thread (*rewrite-threshold* 0)."
     (is = (length (format nil "* Head~%Text under it~%more~%")) (session-point editor))
     (false (search "outside buffer" (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*Messages*"))))))
 
-(define-modal-test (simple visual-line-mode)
+(define-modal-test (simple display-fill-column-mode)
   (let ((tuatara-user:*fill-column* 8)
         (text (format nil "aaa bbb ccc~%x~%")))
     (flet ((ruled (f row)
-             ;; the screen columns of ROW in :visual-line, whatever faces are over it
+             ;; the screen columns of ROW in :display-fill-column, whatever faces are over it
              (loop for (start end face) in (aref (tuatara.frontend.fake:fake-spans f) row)
-                   when (member :visual-line (if (listp face) face (list face)))
+                   when (member :display-fill-column (if (listp face) face (list face)))
                      append (loop for c from start below end collect c)))
            (face-at (f row column)
              (loop for (start end face) in (aref (tuatara.frontend.fake:fake-spans f) row)
@@ -871,18 +871,19 @@ thread (*rewrite-threshold* 0)."
         (is equal '(7) (ruled f 1))
         (is equal '(7) (ruled f 4))
         (true (search "aaa bbb ccc" (tuatara.frontend.fake:fake-screen-line f 0)))
-        (true (tuatara.frontend.fake:fake-frame-showing f "Visual line on"))
+        (true (tuatara.frontend.fake:fake-frame-showing f "Fill column line on"))
         (is string= text (session-text editor)))
-      ;; again, and it is gone; M-x visual-line-mode the same
+      ;; again, and it is gone; M-x display-fill-column-mode the same
       (is equal '() (ruled (run-keys "SPC t v SPC t v" :text text :width 40 :height 8) 1))
-      (is equal '(7) (ruled (run-keys "M-x v i s u a l - l i n e - m o d e RET" :text text :width 40 :height 8) 1))
+      (is equal '(7) (ruled (run-keys "M-x d i s p l a y - f i l l - c o l u m n - m o d e RET" :text text
+                                       :width 40 :height 8) 1))
       ;; it goes with the fill column
       (is equal '(3) (ruled (run-keys "SPC t v C-u 4 C-x f" :text text :width 40 :height 8) 1))
       ;; under the line point is on, and over every other face
       (let ((tuatara-user:*global-hl-line-mode* t))
         (let ((face (face-at (run-keys "SPC t v" :text text :width 40 :height 8) 0 7)))
           (is eq :hl-line (first face))
-          (is eq :visual-line (second face))))
+          (is eq :display-fill-column (second face))))
       ;; over a source block's background, in the block's lines and past their ends
       (let ((tuatara-user:*global-hl-line-mode* nil)
             (block (format nil "#+begin_src sh~%echo hello world~%e~%#+end_src~%")))
@@ -890,7 +891,7 @@ thread (*rewrite-threshold* 0)."
           (dolist (row '(1 2))
             (let ((face (face-at f row 7)))
               (true (listp face))
-              (is eq :visual-line (first face))
+              (is eq :display-fill-column (first face))
               (true (member :org-block face))))))
       ;; with long lines wrapped at the fill column, beside the rows the gutter
       ;; marks, the rows ending by it
@@ -911,10 +912,10 @@ thread (*rewrite-threshold* 0)."
             (true (> hscroll 29))
             (is equal '() columns))))
       ;; the settings: by major mode before the global one
-      (let ((tuatara-user:*global-visual-line-mode* t))
+      (let ((tuatara-user:*global-display-fill-column-mode* t))
         (is equal '(7) (ruled (run-keys "" :text text :width 40 :height 8) 1))
-        (let ((tuatara-user:*visual-line-modes* '((tuatara.defaults::lisp-interaction-mode . nil)
-                                                  (tuatara.defaults::fundamental-mode . nil))))
+        (let ((tuatara-user:*display-fill-column-modes* '((tuatara.defaults::lisp-interaction-mode . nil)
+                                                          (tuatara.defaults::fundamental-mode . nil))))
           (is equal '() (ruled (run-keys "" :text text :width 40 :height 8) 1))
           ;; a buffer's own choice before both
           (is equal '(7) (ruled (run-keys "SPC t v" :text text :width 40 :height 8) 1)))))))
@@ -985,6 +986,44 @@ stands around takes it off).")
          (is equal '((0 . 0) (3 . 2)) (tuatara.defaults::lines-with-text buffer 0 (tuatara.buffer:buffer-size buffer)))
       (tuatara.buffer:kill-buffer buffer))))
 
+(define-test (simple comment-lines-in-crlf-text)
+  ;; lines ended by a carriage return and a newline are each commented once, and uncommented again
+  (let ((buffer (tuatara.buffer:make-buffer "commented crlf lines"
+                                            :text (format nil "a=1~c~%b=2~c~%c=3~c~%" #\Return #\Return #\Return))))
+    (unwind-protect
+         (progn
+           (setf (tuatara.buffer:buffer-local buffer :line-ending) :crlf)
+           (tuatara.modes:set-major-mode buffer 'tuatara.defaults::bash-mode)
+           (is equal '(0 5 10) (tuatara.defaults::line-bounds buffer 0 12))
+           (is eq :commented (tuatara.defaults::comment-or-uncomment-lines buffer 0 12))
+           (is string= (format nil "# a=1~c~%# b=2~c~%# c=3~c~%" #\Return #\Return #\Return)
+               (tuatara.buffer:buffer-string buffer))
+           (is eq :uncommented (tuatara.defaults::comment-or-uncomment-lines buffer 0 18))
+           (is string= (format nil "a=1~c~%b=2~c~%c=3~c~%" #\Return #\Return #\Return)
+               (tuatara.buffer:buffer-string buffer)))
+      (tuatara.buffer:kill-buffer buffer))))
+
+(define-test (simple buffer-edges-said-beside-a-secret)
+  ;; a motion past the text's edge says where it stopped though a decrypted buffer is current
+  (let ((buffer (tuatara.buffer:make-buffer "edges" :text "ab"))
+        (tuatara.runtime:*secret-at-hand* t))
+    (unwind-protect
+         (flet ((said (function &rest arguments)
+                  (tuatara.runtime:failure-words (nth-value 1 (ignore-errors (apply function arguments))) :said t)))
+           (is string= "Beginning of buffer" (said 'tuatara.defaults::char-mover buffer 0 -1))
+           (is string= "End of buffer" (said 'tuatara.defaults::char-mover buffer 2 1)))
+      (tuatara.buffer:kill-buffer buffer))))
+
+(define-test (simple pairs-read-once-per-setting)
+  ;; the pairs and the openers typed are read again only when a setting changes, not at each key
+  (tuatara.defaults::pair-typing-openers)
+  (let ((before (sb-ext:get-bytes-consed)))
+    (dotimes (i 10000) (tuatara.defaults::pair-typing-openers) (tuatara.defaults::pair-closer #\())
+    (let ((made (- (sb-ext:get-bytes-consed) before)))
+      (true (< made 262144) "~:d octets made by 10,000 keys" made)))
+  (let ((tuatara.defaults::*electric-pair-typing* '(#\[)))
+    (is equal '(#\[) (tuatara.defaults::pair-typing-openers))))
+
 (define-test (simple comment-key-stays-on-the-line)
   ;; C-z C comments the line and stays; the command that moves on has no key, and is one that works at every cursor
   (is string= (format nil ";; a<POINT>~%b~%")
@@ -1052,7 +1091,7 @@ stands around takes it off).")
       (let ((tuatara-user:*fill-column* 8))
         (let ((f (run-keys "SPC t | SPC t v C-f C-f" :text text :width 40 :height 9)))
           (is equal '(2) (marked f 1))
-          (true (member :visual-line (let ((face (face-at f 1 7))) (if (listp face) face (list face)))))))
+          (true (member :display-fill-column (let ((face (face-at f 1 7))) (if (listp face) face (list face)))))))
       ;; only in the selected window: another showing the buffer has none
       (let ((tuatara-user:*global-cursor-column-mode* t))
         (let ((f (run-keys "C-x 2 C-f C-f" :text text :width 40 :height 16)))

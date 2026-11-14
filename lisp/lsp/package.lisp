@@ -8,23 +8,24 @@
   (:use #:cl #:tuatara.command #:tuatara.modes #:tuatara.dates #:tuatara-user)
   (:shadowing-import-from #:tuatara.defaults #:point)
   (:import-from #:tuatara.buffer #:buffer-read-only-p)
-  (:import-from #:tuatara.runtime #:reporting-errors #:ignoring-errors-reported #:refusal #:refuse
+  (:import-from #:tuatara.runtime #:define-record #:reporting-errors #:ignoring-errors-reported #:refusal #:refuse
                 #:run-hook-until-success #:define-setting)
   (:import-from #:tuatara.defaults
-                #:*after-save-functions* #:*before-save-functions* #:*code-file-extensions* #:*lsp-trusted*
+                #:*after-save-functions* #:*before-save-functions* #:*code-file-extensions* #:*trusted*
                 #:*outside-work-functions* #:*places-in-force* #:*save-path* #:*save-then*
                 #:*selection-ranges-functions*
                 #:add-gutter-provider #:buffer-in-mode #:buffer-indent-tabs-p #:buffer-tab-width #:buffer-visiting
-                #:commands-for-mode #:follow-directories-for #:glob-alternatives #:glob-match #:go-to-definition
+                #:commands-for-mode #:directories-followed-changed #:follow-directories-for #:glob-alternatives
+                #:glob-match #:go-to-definition
                 #:goto #:goto-shown #:indent-lines #:indent-region #:language-modes #:language-name #:language-p
-                #:list-entry-noun #:list-visit #:make-definition #:make-snippet #:marked-directory #:mode-language
-                #:mode-completion-at-point #:mode-find-definitions #:mode-name-at-point #:mode-outline
+                #:keep-shown-current #:list-entry-noun #:list-visit #:make-definition #:make-snippet #:marked-directory
+                #:mode-completion-at-point #:mode-language #:mode-find-definitions #:mode-name-at-point #:mode-outline
                 #:org-block-header-arguments #:org-blocks-key #:org-buffer-parse #:org-buffer-parts
                 #:org-commented-p #:org-mode #:org-node-children #:org-node-type #:org-parse-current-p
                 #:org-parse-tree #:org-part-at #:org-part-code-lines #:org-part-index #:org-part-start
                 #:org-parts-count #:org-property #:org-src-language #:path-uri #:places-buffer #:places-name
                 #:prog-mode #:project-root #:project-trusted-p #:push-xref-marker #:put-snippet #:put-text-by-lines
-                #:real-directory #:refill-open-list #:render-pieces #:safe-directory-of #:save-buffer-with-care
+                #:real-directory #:render-pieces #:safe-directory-of #:save-buffer-with-care
                 #:say-places-end #:show-definitions #:show-help #:special-mode #:src-block #:state-list-drop
                 #:step-place #:trusted-when-asked-p #:uri-path #:use-places #:visit-entry #:visit-path
                 #:walk-directory #:word-bounds-at #:xref-find-definitions #:xref-go-back)

@@ -177,6 +177,10 @@ nav.toc .tools a { color: var(--accent); }
 button.theme { font-size: 13px; padding: 2px 10px; color: var(--fg); background: var(--bg);
   border: 1px solid var(--rule); border-radius: 4px; cursor: pointer; }
 section.chapter + section.chapter { border-top: 1px solid var(--rule); margin-top: 48px; padding-top: 8px; }
+.site { max-width: none; }
+main article { max-width: none; }
+main article td:not(:last-child) { overflow-wrap: normal; }
+main article td:not(:last-child) kbd, main article td:not(:last-child) code { white-space: nowrap; }
 @media (min-width: 761px) {
   nav.toc { position: sticky; top: 0; align-self: start; max-height: 100vh; overflow-y: auto; box-sizing: border-box;
     border-right: 0; }
@@ -189,14 +193,17 @@ section.chapter + section.chapter { border-top: 1px solid var(--rule); margin-to
   section.chapter + section.chapter { break-before: page; border-top: 0; margin-top: 0; }
 }
 "
-  "The manual's own rules after the export's stylesheet: every text in a monospaced font, the
-headings, the contents column and the captions too, the first of these the reader has, as the pages
-load no font from elsewhere. The lines of a paragraph or list item sit as close as a terminal's
-rows. Links in the contents are not underlined. The headings of the text are
-bold, and a section's has a rule in the link colour under it, to be found while scrolling. The
-section being read is marked in the column as the current chapter is, and on the whole manual its
-chapter too. The contents column is kept in view on a wide screen, and so is the colour button. On
-paper the text is alone, each chapter of the whole manual from a new page.")
+  "The manual's own rules after the export's stylesheet: every text in a monospaced font, the headings,
+the contents column and the captions too, the first of these the reader has, as the pages load no
+font from elsewhere. The lines of a paragraph or list item sit as close as a terminal's rows. The
+pages use the window's whole width, the text beside the contents column with no narrower measure of
+its own. In a table every column but the last keeps each key and name whole, breaking only between
+them, so a long description takes the room it needs from its own column, never from the keys and
+names beside it. Links in the contents are not underlined. The headings of the text are bold, and a
+section's has a rule in the link colour under it, to be found while scrolling. The section being
+read is marked in the column as the current chapter is, and on the whole manual its chapter too. The
+contents column is kept in view on a wide screen, and so is the colour button. On paper the text is
+alone, each chapter of the whole manual from a new page.")
 
 (defparameter *one-page-ids* (cl-ppcre:create-scanner "\\b(id|href)=\"(#?)([^\"]*)\"")
   "An id or href attribute of a chapter's HTML, with any # its value begins with.")

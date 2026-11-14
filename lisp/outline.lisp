@@ -1,14 +1,13 @@
-;;;; lisp/search/outline.lisp --- Going to a heading or a definition: buffer-outline.
+;;;; lisp/outline.lisp --- Going to a heading or a definition: buffer-outline.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; M-x buffer-outline (M-g o) lists the headings of the
-;;;; buffer and goes to the one chosen, as consult-outline does in Emacs: Org's
-;;;; headings, Lisp's ;;; comments and top-level forms, and in a language parsed
-;;;; with tree-sitter the definitions and headings its rules name (syntax/tags/,
-;;;; Helix's), else its functions and types.
-;;;; Each shows as its line, coloured as in the buffer, after its number, in the
-;;;; order of the text; moving among them shows each in the window, RET stays
-;;;; there and C-g goes back. The headings are found in the background.
+;;;; M-x buffer-outline (M-g o) lists the headings of the buffer and goes to the
+;;;; one chosen: Org's headings, Lisp's ;;; comments and top-level forms, and in
+;;;; a language parsed with tree-sitter the definitions and headings its rules
+;;;; name (syntax/tags/), else its functions and types. Each shows as its line,
+;;;; coloured as in the buffer, after its number, in the order of the text;
+;;;; moving among them shows each in the window, RET stays there and C-g goes
+;;;; back. The headings are found in the background.
 
 (in-package #:tuatara.defaults)
 
@@ -305,7 +304,8 @@ top of the window, the text under it in the rows below."
                  (< position (tuatara.display:row-end (aref rows (1- seen)))))
       (let ((rope (tuatara.buffer:buffer-text (tuatara.display:window-buffer window))))
         (setf (tuatara.display:window-start window)
-              (tuatara.display:scroll-lines rope (tuatara.text:rope-line-start rope position) (- *outline-lines-above*)))))))
+              (tuatara.display:scroll-lines rope (tuatara.text:rope-line-start rope position)
+                                            (- *outline-lines-above*)))))))
 
 (defun outline-input (input)
   "The depth INPUT asks for, when it begins with a digit from 1 to 9 and a
@@ -350,7 +350,8 @@ was; or, when the choosing is given up, go back as things were."
          (lowest (reduce #'min entries :key #'second))
          (candidates (loop for (position level number text spans) in entries
                            collect (make-candidate text :value (list position level)
-                                                        :columns (list (list (format nil "~vd" digits number) :line-number)
+                                                        :columns (list (list (format nil "~vd" digits number)
+                                                                             :line-number)
                                                                        (list text spans)))))
          (depth (prefix-argument))
          (chosen nil))
@@ -402,7 +403,8 @@ In a narrowed buffer, the headings of the part shown."
          (entries (multiple-value-bind (low high) (tuatara.buffer:buffer-bounds buffer)
                     ;; of a narrowed buffer, the headings of the part shown
                     (remove-if-not (lambda (entry) (and (<= low (first entry)) (< (first entry) high)))
-                                   (outline-collect finder rope tree colours faces (tuatara.display:tab-width-of buffer) buffer)))))
+                                   (outline-collect finder rope tree colours faces
+                                                    (tuatara.display:tab-width-of buffer) buffer)))))
     (if entries
         (outline-choose buffer (current-window) entries)
         (message "No headings~:[~; in the part shown~]" (tuatara.buffer:buffer-narrowed-p buffer)))))

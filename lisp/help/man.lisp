@@ -1,11 +1,11 @@
 ;;;; lisp/help/man.lisp --- M-x man: the system's manual pages, read in a buffer.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; As Emacs's M-x man does, with man-db and groff. A page is asked for with the
+;;;; The pages are formatted by man-db and groff. A page is asked for with the
 ;;;; names of the system's pages to complete on, formatted in the background to
 ;;;; the width of the window, and shown read-only, its headings, bold and
 ;;;; underlined text in faces and its references to other pages (ls(1)) as
-;;;; links.  man runs in the sandbox (TUATARA.IO:SANDBOX-RUN), seeing only the
+;;;; links. man runs in the sandbox (TUATARA.IO:SANDBOX-RUN), seeing only the
 ;;;; system's pages and its own configuration, with an environment of Tuatara's
 ;;;; making: no pager, no shell, nothing of the person's.
 
@@ -81,16 +81,6 @@ not got)."
 
 ;;; Reading what man printed
 
-(defun man-sgr-codes (text from end)
-  "The numbers between FROM and END of TEXT, separated by semicolons (an empty
-one is 0), as a list: the parameters of a control sequence for graphics."
-  (loop with code = 0
-        for i from from to end
-        for char = (if (< i end) (char text i) #\;)
-        if (char= char #\;) collect code and do (setf code 0)
-        else do (let ((digit (digit-char-p char)))
-                  (when digit (setf code (min 1000 (+ (* code 10) digit)))))))
-
 (defun man-formatting (text)
   "TEXT, what man printed, as two values: its plain text, and a vector holding,
 for each character of it, 1 for bold, 2 for underlined, 3 for both, 0 for
@@ -110,13 +100,14 @@ payload."
                  (cond ((or (char= c #\Escape) (tuatara.text:c1-control-p c))
                         (multiple-value-bind (stop final from to) (tuatara.text:escape-sequence-end text i :c1 t)
                           (when (eql final #\m)
-                            (dolist (code (man-sgr-codes text from to))
-                              (case code
-                                (0 (setf mark 0))
-                                (1 (setf mark (logior mark 1)))
-                                ((3 4) (setf mark (logior mark 2)))
-                                (22 (setf mark (logandc2 mark 1)))
-                                ((23 24) (setf mark (logandc2 mark 2))))))
+                            ;; italic is shown as underlined
+                            (tuatara.text:sgr-changes
+                             (lambda (what value)
+                               (case what
+                                 (:reset (setf mark 0))
+                                 (:bold (setf mark (if value (logior mark 1) (logandc2 mark 1))))
+                                 ((:italic :underline) (setf mark (if value (logior mark 2) (logandc2 mark 2))))))
+                             text from to))
                           (setf i (1- stop))))
                        ((and (char= c #\Backspace) (plusp count) (< (1+ i) end))
                         (let ((before (schar out (1- count))) (next (char text (1+ i))))
@@ -128,7 +119,7 @@ payload."
                        ((or (char= c #\Newline) (char= c #\Tab) (and (>= (char-code c) 32) (/= (char-code c) 127)))
                         (setf (schar out count) c (aref marks count) mark)
                         (incf count))))
-               (incf i)))
+            (incf i)))
     (if (= count end)
         (values out marks)
         (values (subseq out 0 count) (subseq marks 0 count)))))
@@ -163,7 +154,7 @@ besides the pieces is a few octets for each character."
                  ;; the page's own name in its first and last line is not a link
                  (unless (or (zerop line-start) (>= line-start footer))
                    (cl-ppcre:do-scans (from to starts ends *man-reference-pattern* plain nil
-                                       :start line-start :end line-end)
+                                            :start line-start :end line-end)
                      (push (vector from to (svref starts 1) (svref ends 1)) links))))
             while (< line-end size))
       (setf links (nreverse links))
@@ -209,8 +200,9 @@ candidate for each."
               (let ((section (subseq line (1+ open) close))
                     (about (subseq line (+ dash 3))))
                 (dolist (name (uiop:split-string (subseq line 0 open) :separator ","))
-                  (let ((shown (format nil "~a(~a)" (string-trim " " name) section)))
-                    (unless (or (< (length name) 1) (gethash shown seen))
+                  (let* ((name (string-trim " " name))
+                         (shown (format nil "~a(~a)" name section)))
+                    (unless (or (zerop (length name)) (gethash shown seen))
                       (setf (gethash shown seen) t)
                       (push (make-candidate shown :annotation about) found))))))))))
     (nreverse found)))
@@ -233,12 +225,15 @@ there is no man."
                      (lambda (give cancel)
                        (handler-case
                            (reporting-errors ("listing the manual pages")
-                             (let ((candidates (man-page-candidates (man-run (list "--apropos" ".") :cancel cancel))))
-                               (setf *man-pages* (cons (get-universal-time) candidates))
-                               (funcall give candidates)))
+                                             (let ((candidates (man-page-candidates
+                                                                (man-run (list "--apropos" ".") :cancel cancel))))
+                                               (setf *man-pages* (cons (get-universal-time) candidates))
+                                               (funcall give candidates)))
                          (error (problem)
                            (setf *man-pages* (cons (get-universal-time) '()))
-                           (funcall give (format nil "The pages' names are not listed (~a); mandb makes the index (an administrator runs it). A page can still be asked for by name."
+                           (funcall give (format nil "The pages' names are not listed (~a); mandb makes the index ~
+(an administrator runs it). ~
+A page can still be asked for by name."
                                                  problem))))))))
 
 (defun man-file-p (path)
@@ -274,7 +269,7 @@ ways to name a page and its section. A name with a slash in it, or beginning
 with a dash, is refused: man would take it for a file or an option."
   (multiple-value-bind (all groups)
       (cl-ppcre:scan-to-strings (concatenate 'string "^\\s*(?:([^\\s/()]+)\\(([0-9][A-Za-z0-9]*)\\)"
-                                                    "|([0-9][A-Za-z0-9]*)\\s+([^\\s/()]+)|([^\\s/()]+))\\s*$")
+                                             "|([0-9][A-Za-z0-9]*)\\s+([^\\s/()]+)|([^\\s/()]+))\\s*$")
                                 asked)
     (unless all (refuse "~a is not the name of a manual page" (tuatara.display:shorten-string asked 40)))
     (let ((name (or (aref groups 0) (aref groups 3) (aref groups 4)))
@@ -287,20 +282,19 @@ with a dash, is refused: man would take it for a file or an option."
   "The name of the buffer for the page ASKED for, or the manual page source at FILE."
   (format nil "*Man ~a*" (if file (tuatara.io:native-file-name file) (string-trim " " asked))))
 
-(defstruct (man-job (:include tuatara.runtime:job) (:constructor make-man-job (buffer asked))
-                    (:copier nil))
+(define-record (man-job (:include tuatara.runtime:job) (:constructor make-man-job (buffer asked))
+                       (:copier nil))
   "A page being formatted for BUFFER, a job: ASKED, the page named; PIECES, the
 page as text and links (MAN-PIECES) once it is."
-  asked pieces)
-
-(setf (documentation 'man-job-p 'function) "True when OBJECT is a MAN-JOB.")
+  (asked nil :documentation "The manual page MAN-JOB was asked for, as typed.")
+  (pieces nil :documentation "The page of MAN-JOB as text and links (MAN-PIECES) once it is formatted."))
 
 (tuatara.runtime:define-job-words man-job
-  :doing "Formatting"
-  :description (format nil "Formatting the manual page ~a" (man-job-asked job))
-  :verb "format"
-  :left-words "no page formatted"
-  :at-exit :quiet)
+    :doing "Formatting"
+    :description (format nil "Formatting the manual page ~a" (man-job-asked job))
+    :verb "format"
+    :left-words "no page formatted"
+    :at-exit :quiet)
 
 (defun man-width (buffer)
   "The columns to format a page for BUFFER in: those of the window showing it,
@@ -423,8 +417,8 @@ was not reached by a link."
         (quit-window))))
 
 (defun install-man ()
-  "Bind the keys of manual pages: \\`l' follows the link at point, \\`h' goes back (\\[man-back]),
-\\`n' and \\`p' go to the next section and the one before."
-  (define-keys (mode-keymap 'man-mode) '(("l" push-button) ("h" man-back)
+  "Bind the keys of manual pages: \\`l' or \\`C-f' follows the link at point, \\`h' or \\`C-b' goes
+back (\\[man-back]), \\`n' and \\`p' go to the next section and the one before."
+  (define-keys (mode-keymap 'man-mode) '(("l" push-button) ("C-f" push-button) ("h" man-back) ("C-b" man-back)
                                          ("n" man-next-section) ("p" man-previous-section)))
   (commands-for-mode 'man-mode "a manual page (\\[man])" 'man-back 'man-next-section 'man-previous-section))

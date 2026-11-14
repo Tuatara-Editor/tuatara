@@ -6,7 +6,8 @@
 ;;;; on (M-x lsp-semantic-tokens-mode), each is coloured in the face
 ;;;; *LSP-SEMANTIC-FACES* gives its kind, over the colours the mode gives the
 ;;;; syntax; off, the mode's colours alone. Asked for each time the text is sent
-;;;; to the server, and moved with the text typed meanwhile.
+;;;; to the server, read in the background, and moved with the text typed
+;;;; meanwhile.
 
 (in-package #:tuatara.lsp)
 
@@ -42,30 +43,50 @@ kind not listed keeps the mode's colour.
   "The kinds of name a server is told the editor colours (*LSP-SEMANTIC-FACES*), as a vector."
   (map 'vector #'car *lsp-semantic-faces*))
 
+(defun token-faces (server)
+  "The face of each kind of SERVER's semantic tokens, by the kind's number, as
+a vector: NIL for a kind of no face in *LSP-SEMANTIC-FACES*."
+  (map 'vector (lambda (kind)
+                 (let ((face (cdr (assoc kind *lsp-semantic-faces* :test #'equal))))
+                   (and face (tuatara.display:find-face face) face)))
+       (tuatara.text:json-items (lsp-server-capabilities server) "semanticTokensProvider" "legend" "tokenTypes")))
+
 (defun lsp-ask-tokens (doc)
   "Ask DOC's server that gives semantic tokens for those of all it shows, kept
-to colour the code once they come while its buffer's text is still as asked of."
+to colour the code once they come while its buffer's text is still as asked
+of. They are read in the background (DECODE-TOKENS), against the text as it
+was sent, and moved with the text typed meanwhile as they are shown."
   (let ((server (and *lsp-semantic-tokens* (doc-server-offers doc "semanticTokensProvider")))
         (buffer (lsp-doc-buffer doc)))
     (when (and server (tuatara.text:json-get (lsp-server-capabilities server) "semanticTokensProvider" "full"))
       (let ((version (lsp-doc-version doc)))
-        (lsp-request server "textDocument/semanticTokens/full"
-                     (tuatara.text:json-object "textDocument" (doc-identifier doc))
-                     (lambda (result error)
-                       (when (and (null error) (doc-unchanged-p doc version))
-                         (keep-placed buffer 'lsp-tokens doc (decode-tokens doc server (tuatara.text:json-items result "data"))))))))))
+        (lsp-ask-anew doc :tokens server "textDocument/semanticTokens/full"
+                      (tuatara.text:json-object "textDocument" (doc-identifier doc))
+                      (lambda (result error)
+                        (when (and (null error) (doc-unchanged-p doc version))
+                          (let ((data (tuatara.text:json-items result "data"))
+                                (faces (token-faces server))
+                                (encoding (lsp-server-encoding server))
+                                (sent (lsp-doc-sent doc))
+                                (shadow (and (lsp-doc-shadow doc) (lsp-doc-rope doc)))
+                                (skipped (lsp-doc-skipped doc)))
+                            (lsp-in-background
+                             (lambda ()
+                               (decode-tokens data faces encoding (tuatara.text:version-rope sent) shadow skipped))
+                             (lambda (tokens)
+                               (when (doc-unchanged-p doc version)
+                                 (keep-placed buffer 'lsp-tokens doc tokens sent))))))))))))
 
-(defun decode-tokens (doc server data)
-  "DATA, the numbers of SERVER's semantic tokens for DOC, five a token (its
-line and start, each from the token before, its length, kind and modifiers),
-as a vector of (START END FACE) in DOC's buffer, in order, the kinds of no
-face in *LSP-SEMANTIC-FACES* left out; none when DATA holds anything but
-whole numbers."
-  (let* ((kinds (tuatara.text:json-items (lsp-server-capabilities server) "semanticTokensProvider" "legend" "tokenTypes"))
-         (faces (map 'vector (lambda (kind) (let ((face (cdr (assoc kind *lsp-semantic-faces* :test #'equal))))
-                                              (and face (tuatara.display:find-face face) face)))
-                     kinds))
-         (line 0) (character 0) (tokens '()))
+(defun decode-tokens (data faces encoding rope shadow skipped)
+  "DATA, the numbers of a server's semantic tokens, five a token (its line and
+start, each from the token before, its length, kind and modifiers), as a
+vector of (START END FACE) in order, FACES giving the face of each kind
+\(TOKEN-FACES), those of no face left out; none when DATA holds anything but
+whole numbers. The places are in ROPE, the text as sent to the server, which
+counts characters in ENCODING, SHADOW and SKIPPED as SENT-LINE-BYTE takes
+them. *LSP-MOST-TOKENS* at most. It reads nothing but its arguments, so that
+it runs on any thread."
+  (let ((line 0) (character 0) (tokens '()))
     (loop for i from 0 below (if (every #'integerp data) (min (- (length data) 4) (* 5 *lsp-most-tokens*)) 0) by 5
           do (let ((delta-line (aref data i)) (delta-start (aref data (+ i 1))) (length (aref data (+ i 2)))
                    (kind (aref data (+ i 3))))
@@ -74,7 +95,9 @@ whole numbers."
                    (setf line (+ line delta-line) character delta-start))
                (let ((face (and (< -1 kind (length faces)) (aref faces kind))))
                  (when face
-                   (push (list (doc-line-byte doc server line character :after) (doc-line-byte doc server line (+ character length)) face)
+                   (push (list (sent-line-byte encoding rope shadow skipped line character)
+                               (sent-line-byte encoding rope shadow skipped line (+ character length))
+                               face)
                          tokens)))))
     (coerce (nreverse tokens) 'simple-vector)))
 
@@ -83,14 +106,15 @@ whole numbers."
   (declare (ignore editor))
   (let ((buffer (tuatara.display:window-buffer window)))
     (when (and (tuatara.buffer:buffer-local buffer 'lsp-tokens) (plusp (length rows)))
-      (loop for (from . to) in (tuatara.display:shown-ranges rows :buffer buffer)
-            nconc (loop for (nil . placed) in (tuatara.buffer:buffer-local buffer 'lsp-tokens)
-                        ;; from the first token ending past FROM: they are in order and apart
-                        append (loop for i from (placed-first placed buffer (lambda (token) (> (second token) from)))
-                                       below (length (placed-items placed))
-                                     for (start end face) = (placed-item placed i buffer)
-                                     while (< start to)
-                                     when (< start end) collect (list start end face)))))))
+      (list (loop for (from . to) in (tuatara.display:shown-ranges rows :buffer buffer)
+                  nconc (loop for (nil . placed) in (tuatara.buffer:buffer-local buffer 'lsp-tokens)
+                              ;; from the first token ending past FROM: they are in order and apart
+                              append (loop for i from (placed-first placed buffer
+                                                                    (lambda (token) (> (second token) from)))
+                                           below (length (placed-items placed))
+                                           for (start end face) = (placed-item placed i buffer)
+                                           while (< start to)
+                                           when (< start end) collect (list start end face))))))))
 
 (defun forget-tokens (buffer)
   "BUFFER no longer coloured as its servers see it."

@@ -231,6 +231,26 @@ integers (SHORT, LONG) or of fractions (N . D) (RATIONAL), or octets."
 
 ;;; PDF
 
+(define-test (metadata png-packed-text-bounded)
+  ;; many small packed texts standing for a great deal each: each inflated to a bound, all of them to another
+  (let* ((bomb (tuatara.io::deflate (make-array (* 1024 1024) :element-type '(unsigned-byte 8) :initial-element 0)))
+         (octets (apply #'octets-of #x89 "PNG" 13 10 26 10
+                        (png-chunk "IHDR" (octets-of (be-octets 1 4) (be-octets 1 4) 8 6 0 0 0))
+                        (png-chunk "zTXt" (octets-of "Kept" 0 0 (tuatara.io::deflate (octets-of "Ana Timaru"))))
+                        (append (loop repeat 300 collect (png-chunk "zTXt" (octets-of "Bomb" 0 0 bomb)))
+                                (list (png-chunk "IEND" (octets-of))))))
+         (limits '()))
+    (sb-int:encapsulate 'tuatara.defaults::zlib-octets 'limits
+                        (lambda (function octets start end &rest keys)
+                          (push (getf keys :limit) limits)
+                          (apply function octets start end keys)))
+    (unwind-protect
+         (let ((note (format nil "~{~a~}" (tuatara.defaults::png-metadata octets))))
+           (true (search "- Kept :: Ana Timaru" note))
+           (true (every (lambda (limit) (and limit (<= limit (* 64 1024)))) limits))
+           (true (<= (reduce #'+ limits) (* 16 1024 1024))))
+      (sb-int:unencapsulate 'tuatara.defaults::zlib-octets 'limits))))
+
 (define-test (metadata pdf-read)
   (with-test-directory (dir)
     (let* ((pdf (write-test-octets-file
@@ -387,6 +407,52 @@ AFTER (text) after that."
             (true (search "- Title :: Real" note))
             (false (search "Planted" note))))))))
 
+(define-test (metadata pdf-actions-in-object-streams)
+  ;; an action kept in a packed object stream, its name written with #xx escapes, is still told of
+  (let* ((packed "<< /Type /Catalog /OpenAction << /S /Java#53cript /J#53 (app.alert\\(1\\)) >> >>")
+         (header "1 0 ")
+         (data (tuatara.io::deflate (octets-of header packed)))
+         (octets (octets-of "%PDF-1.7" 10
+                            (format nil "2 0 obj~%<< /Type /ObjStm /N 1 /First ~d /Filter /FlateDecode /Length ~d >>~%stream~%"
+                                    (length header) (length data))
+                            data (format nil "~%endstream~%endobj~%%%EOF~%"))))
+    (false (search "JavaScript" (tuatara.text:octets-latin-1 octets)))
+    (true (search "- Holds :: JavaScript, an action on opening (none run here)"
+                  (first (tuatara.defaults::pdf-metadata octets))))))
+
+(define-test (metadata large-file-read-in-part-said)
+  ;; a file read only at its start and end says so: its counts and searches cover those parts only
+  (with-test-directory (dir)
+    (let* ((tuatara.defaults::*metadata-largest-read* 4096)
+           (path (write-test-octets-file (merge-pathnames "big.pdf" dir)
+                                         (octets-of "%PDF-1.7" 10 (make-string 20000 :initial-element #\Space)
+                                                    "%%EOF" 10)))
+           (note (metadata-of path)))
+      (true (search "- Read :: its first and last " note) "~a" note))))
+
+(define-test (metadata read-from-one-opening)
+  ;; the sum and the facts come from the same opening of the file, never a second one that may be another file
+  (with-test-directory (dir)
+    (let ((path (write-test-octets-file (merge-pathnames "plain.pdf" dir) (octets-of "%PDF-1.7" 10 "%%EOF" 10)))
+          (opened 0))
+      (tuatara.defaults::install-metadata)
+      (sb-int:encapsulate 'tuatara.io:open-for-reading 'count
+                          (lambda (function &rest arguments) (incf opened) (apply function arguments)))
+      (unwind-protect (tuatara.defaults::file-metadata-note path)
+        (sb-int:unencapsulate 'tuatara.io:open-for-reading 'count))
+      (is = 1 opened))))
+
+(define-test (metadata armour-end-looked-for-within-bound)
+  ;; armour with no end line: looked for only as far as it is decoded, whatever the size of the file
+  (flet ((seconds (size)
+           (let ((octets (octets-of (format nil "-----BEGIN PGP MESSAGE-----~%~%")
+                                    (make-array size :element-type '(unsigned-byte 8) :initial-element 65)))
+                 (start (get-internal-real-time)))
+             (dotimes (k 4) (tuatara.defaults::openpgp-armour-octets octets))
+             (/ (- (get-internal-real-time) start) internal-time-units-per-second))))
+    (let ((small (seconds (* 1024 1024))) (large (seconds (* 32 1024 1024))))
+      (true (< large (+ 0.1 (* 4 small))) "1 MB in ~,3f s, 32 MB in ~,3f s" small large))))
+
 (define-test (metadata pdf-cross-reference-stream-read)
   ;; a cross-reference stream's entries: types, fields, defaults, and one cut short
   (let ((rows '()))
@@ -530,6 +596,28 @@ endobj"))))
          (seconds (/ (- (get-internal-real-time) start) internal-time-units-per-second)))
     (true (search "- Title :: Kept" (first sections)))
     (true (< seconds 2) "read in ~,2f seconds" seconds)))
+
+(define-test (metadata pdf-long-literal-string-read-whole)
+  ;; a string longer than what is kept ends at its own closing bracket: nothing in it is read as keys
+  (let* ((inside (format nil "~a /Author (Planted)" (make-string 70000 :initial-element #\a)))
+         (octets (octets-of "(" inside ") /Next" 10)))
+    (multiple-value-bind (text end) (tuatara.defaults::pdf-literal-string-at octets 0)
+      (is = 65536 (length text))
+      (is = (+ 2 (length inside)) end)))
+  ;; a backslash before a CR LF line end passes over both
+  (is string= "ab" (tuatara.defaults::pdf-literal-string-at (octets-of "(a\\" 13 10 "b)") 0)))
+
+(define-test (metadata pdf-streams-without-end-read-in-step)
+  ;; streams with no endstream after them: the file is read in a time in step with its size, not its square
+  (flet ((seconds (count)
+           (let ((octets (octets-of (with-output-to-string (out)
+                                      (format out "%PDF-1.7~%")
+                                      (dotimes (k count) (format out "~d 0 obj<<>>stream~%" (1+ k))))))
+                 (start (get-internal-real-time)))
+             (tuatara.defaults::pdf-objects-written octets)
+             (/ (- (get-internal-real-time) start) internal-time-units-per-second))))
+    (let ((small (seconds 5000)) (large (seconds 20000)))
+      (true (< large (+ 0.5 (* 8 small))) "5,000 in ~,3f s, 20,000 in ~,3f s" small large))))
 
 (define-test (metadata octets-search-agrees)
   ;; the quick search finds what SEARCH finds, from the start or the end, within bounds, in any vector
@@ -728,6 +816,14 @@ OPERANDS FROM END), and how many it counted, as two values."
   (is = 1 (nth-value 1 (content-operators "BI /W  "))))
 
 ;;; Sound and video
+
+(define-test (metadata id3-v2.4-extended-header)
+  ;; version 2.4: the extended header's synchsafe size takes in its own four octets
+  (let* ((frame (octets-of "TIT2" 0 0 0 9 0 0 3 "Kea call"))
+         (tag (octets-of 0 0 0 6 1 0 frame))
+         (size (length tag))
+         (octets (octets-of "ID3" 4 0 #x40 0 0 (ldb (byte 7 7) size) (ldb (byte 7 0) size) tag)))
+    (true (search "- Title :: Kea call" (format nil "~{~a~}" (tuatara.defaults::id3-metadata octets))))))
 
 (define-test (metadata sound-and-video-read)
   (with-test-directory (dir)

@@ -3,17 +3,18 @@
 ;;;;
 ;;;; As Emacs's visual-line-mode, wrapping at the fill column as the
 ;;;; visual-fill-column package does, and as Helix's soft wrap with its
-;;;; wrap-at-text-width: a line longer than the window is shown on as many rows as
-;;;; it needs, broken at a word's edge, at the fill column (or the window's edge
-;;;; when that is nearer); the text itself is not changed. The rows that go on
-;;;; from the one above are marked in the gutter, where line numbers stand. On
-;;;; where the buffer says so, else where its major mode says (*SOFT-WRAP-MODES*),
-;;;; else help (the documentation commands' buffers, the health report, the
-;;;; credits), which wraps unless the list says otherwise, else as
-;;;; *GLOBAL-SOFT-WRAP-MODE* says. Views laid out in fixed columns or by the
-;;;; row (the agenda, the calendar, a terminal) never wrap. While it is on, the
-;;;; keys that move up and down go by rows, and the row point is on is painted in :soft-wrap-row
-;;;; over the line's :hl-line, each of which the init file may colour.
+;;;; wrap-at-text-width: a line longer than the window is shown on as many rows
+;;;; as it needs, broken at a word's edge, at the fill column (or the window's
+;;;; edge when that is nearer); the text itself is not changed. The rows that go
+;;;; on from the one above are marked in the gutter, where line numbers stand.
+;;;; On where the buffer says so, else where its major mode says
+;;;; (*SOFT-WRAP-MODES*), else help (the documentation commands' buffers, the
+;;;; health report, the credits), which wraps unless the list says otherwise,
+;;;; else as *GLOBAL-SOFT-WRAP-MODE* says. Views laid out in fixed columns or by
+;;;; the row (the agenda, the calendar, a terminal) never wrap. While it is on,
+;;;; the keys that move up and down go by rows, and the row point is on is
+;;;; painted in :soft-wrap-row over the line's :hl-line, each of which the init
+;;;; file may colour.
 
 (in-package #:tuatara.defaults)
 

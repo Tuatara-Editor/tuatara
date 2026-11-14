@@ -423,13 +423,18 @@ says why. Commands that would change the repository are refused.
 ~M-x trust-project~ asks again, whatever you answered before. Use it to move a
 project from look-only to trusted once you have read what is in it, or the other
 way. A project can also be trusted in your init file. The setting
-=*lsp-trusted-projects*= lists directories whose projects run their own programs
+=*trusted-projects*= lists directories whose projects run their own programs
 without asking. A link from a trusted directory to another does not give the
-other any trust: a project is known by where it really is.
+other any trust: a project is known by where it really is. The setting was
+called =*lsp-trusted-projects*= before; an init file that still sets that name,
+or adds to it with =push=, keeps working for now, and Tuatara says to rename
+it. The projects you trusted when asked are kept in the file =trusted= of the
+state directory, which an earlier release called =lsp-trusted=; that file is
+moved over the first time.
 
 A repository that is, is inside, or holds an evidence directory is never
 trusted, and it is never asked about. It is look-only for as long as the
-evidence is there, even if it is in =*lsp-trusted-projects*=.
+evidence is there, even if it is in =*trusted-projects*=.
 
 What this does not cover: it is a decision about Tuatara's own work. If you open
 a terminal inside the repository and run its build script, you have trusted it.
@@ -450,6 +455,6 @@ a terminal inside the repository and run its build script, you have trusted it.
 
 #+table: commands trust-project
 
-#+table: settings *lsp-trusted-projects*
+#+table: settings *trusted-projects*
 
 #+table: faces :mode-line-look-only :git-look-only

@@ -32,9 +32,11 @@ directory among yours (DOCX-TEMPLATES-DIRECTORY), never . or .., or for a path
 without .tex, DIRECTORY the note's own, where TEMPLATE-PATH-ALLOWED-P lets it
 be."
   (let ((dir (if (latex-template-path-p value)
-                    (let ((path (org-export-path value directory)))
-                      (concatenate 'string (if (uiop:string-suffix-p (string-downcase path) ".tex") (subseq path 0 (- (length path) 4)) path) "/"))
-                    (concatenate 'string (docx-templates-directory) value "/"))))
+                 (let ((path (org-export-path value directory)))
+                   (concatenate 'string
+                                (if (uiop:string-suffix-p (string-downcase path) ".tex")
+                                    (subseq path 0 (- (length path) 4)) path) "/"))
+                 (concatenate 'string (docx-templates-directory) value "/"))))
     (and (not (member value '("." "..") :test #'string=))
          (eq :regular (tuatara.io:path-kind (concatenate 'string dir "word/document.xml")))
          (or (not (latex-template-path-p value)) (template-path-allowed-p dir directory))
@@ -52,7 +54,7 @@ its raw byte's character, so that it is written back as it was), or NIL."
   "The text of the runs in XML, the w:t elements' joined."
   (with-output-to-string (s)
     (cl-ppcre:do-register-groups (text) ("<w:t(?:\\s[^>]*)?>([^<]*)</w:t>" xml)
-      (write-string (xml-text-value text) s))))
+                                 (write-string (xml-text-value text) s))))
 
 ;;; The values of places
 
@@ -65,12 +67,12 @@ d MMMM yyyy), or NIL: a date given for it is written so.")
 stands for in the note being written, as runs; NIL when it has no value. A
 picture is as HEIGHT or WIDTH (twentieths of a point) say, when given."
   (let* ((key (string-upcase name))
-         (values (cond ((string= name "title") (list (org-latex-title)))
-                       ((string= name "author") (let ((author (org-latex-author))) (and author (list author))))
-                       ((string= name "date") (and (org-latex-option "date" t) (org-latex-keyword-all "DATE")))
-                       ((string= name "created") (list (org-latex-created)))
-                       (t (org-latex-keyword-all key))))
-         (values (remove-if (lambda (v) (or (null v) (zerop (length (string-trim " 	" v))))) values))
+         (values (cond ((string= name "title") (list (org-export-title)))
+                       ((string= name "author") (let ((author (org-export-author))) (and author (list author))))
+                       ((string= name "date") (and (org-export-option "date" t) (org-export-keyword-all "DATE")))
+                       ((string= name "created") (list (org-export-created)))
+                       (t (org-export-keyword-all key))))
+         (values (remove-if (lambda (v) (or (null v) (zerop (length (string-trim '(#\Space #\Tab) v))))) values))
          ;; a date control's place: a date given written as the control asks
          (values (if *docx-date-format*
                      (mapcar (lambda (v) (multiple-value-bind (y m d) (docx-date-parts v)
@@ -79,20 +81,25 @@ picture is as HEIGHT or WIDTH (twentieths of a point) say, when given."
                      values)))
     (org-refuse-hidden-as-written name way values)
     ;; a picture the note names from where it may not come: its place and its conditions empty
-    (when (member name (org-latex-refused *org-latex*) :test #'string=)
+    (when (member name (org-export-refused *org-export*) :test #'string=)
       (setf values '()))
     (when values
       (ecase way
-        (:text (format nil "~{~a~^<w:r><w:br/></w:r>~}" (mapcar (lambda (v) (docx-string (string-trim " 	" v))) values)))
-        (:raw (format nil "~{~a~^<w:r><w:br/></w:r>~}" (mapcar (lambda (v) (docx-run (string-trim " 	" v))) values)))
+        (:text (format nil "~{~a~^<w:r><w:br/></w:r>~}"
+                       (mapcar (lambda (v) (docx-string (string-trim '(#\Space #\Tab) v))) values)))
+        (:raw (format nil "~{~a~^<w:r><w:br/></w:r>~}"
+                      (mapcar (lambda (v) (docx-run (string-trim '(#\Space #\Tab) v))) values)))
         (:path (let* ((path (template-picture-path (first values)))
                       (written (and path (format nil "[[file:~a]]" path)))
                       (link (and written
                                  (first (org-node-children
                                          (let ((tree (org-parse written)) (found nil))
-                                           (org-walk-tree tree (lambda (n) (when (and (null found) (eq (org-node-type n) 'paragraph)) (setf found n))))
+                                           (org-walk-tree tree
+                                                          (lambda (n)
+                                                            (when (and (null found) (eq (org-node-type n) 'paragraph))
+                                                              (setf found n))))
                                            found))))))
-                 (and link (let ((*org-latex-text* written))
+                 (and link (let ((*org-export-text* written))
                              (docx-picture link '() :height height :width width :asked t)))))))))
 
 (defparameter *template-place-re*
@@ -112,7 +119,7 @@ the conditions on them, are filled as if the note gave none."
       (when (and (aref group-starts 2) (string-equal "path" (subseq text (aref group-starts 2) (aref group-ends 2))))
         (pushnew (string-downcase (subseq text (aref group-starts 1) (aref group-ends 1))) names :test #'string=)))
     (remove-if (lambda (name)
-                 (let ((value (org-latex-keyword (string-upcase name))))
+                 (let ((value (org-export-keyword (string-upcase name))))
                    ;; one holding a macro is refused whole, as hidden text where it cannot be hidden
                    (or (null value) (search "{{{" value) (template-picture-path value))))
                names)))
@@ -166,8 +173,12 @@ value the paragraph's opening tag and properties, as a third its closing tag."
          (items (loop for (name . element) in (xml-top-elements paragraph start close)
                       collect (let* ((xml (subseq paragraph (car element) (cdr element)))
                                      (rpr (let ((r (xml-element xml "w:rPr"))) (and r (subseq xml (car r) (cdr r)))))
-                                     (inner (and (string= name "w:r") (cl-ppcre:regex-replace-all "<w:rPr>.*?</w:rPr>|<w:rPr/>|<w:lastRenderedPageBreak/>" xml ""))))
-                                (if (and inner (cl-ppcre:scan "^<w:r(?:\\s[^>]*)?>(?:<w:t(?:\\s[^>]*)?>[^<]*</w:t>|<w:t/>)*</w:r>$" inner))
+                                     (inner (and (string= name "w:r")
+                                                 (cl-ppcre:regex-replace-all
+                                                  "<w:rPr>.*?</w:rPr>|<w:rPr/>|<w:lastRenderedPageBreak/>" xml ""))))
+                                (if (and inner
+                                         (cl-ppcre:scan
+                                          "^<w:r(?:\\s[^>]*)?>(?:<w:t(?:\\s[^>]*)?>[^<]*</w:t>|<w:t/>)*</w:r>$" inner))
                                     (list :text xml (docx-xml-text xml) rpr)
                                     (list :other xml "" nil))))))
     (values items (subseq paragraph 0 start) "</w:p>")))
@@ -185,32 +196,33 @@ looking as PROPERTIES says."
   (with-output-to-string (out)
     (let ((p 0))
       (loop
-        (let ((at (search "{{{" text :start2 p)))
-          (write-string (docx-with-properties (docx-run (subseq text p (or at (length text)))) properties) out)
-          (unless at (return))
-          (let ((close (search "}}}" text :start2 at)))
-            (unless close (write-string (docx-with-properties (docx-run (subseq text at)) properties) out) (return))
-            (let ((token (subseq text at (+ close 3))))
-              (let ((place (template-place token :whole t)))
-                (if (member (getf place :condition) '(#\# #\^))
-                    ;; a condition: what is up to its end, kept or not
-                    (let* ((name (getf place :name))
-                           (end-token (format nil "{{{/~a}}}" name))
-                           (end (search end-token text :start2 (+ close 3) :test #'char-equal)))
-                      ;; one whose end is in another cell or paragraph, kept or not by its row or run
-                      ;; of paragraphs already (DOCX-FILL-ROWS): the mark alone goes
-                      (if (null end)
-                          (setf p (+ close 3))
-                          (progn
-                            (when (eq (char= (getf place :condition) #\#) (docx-has-value-p name))
-                              (write-string (docx-fill-text (subseq text (+ close 3) end) properties) out))
-                            (setf p (+ end (length end-token))))))
-                    (progn
-                      (multiple-value-bind (name way size date) (docx-place token)
-                        (when name
-                          (let ((*docx-date-format* (or date *docx-date-format*)))
-                            (write-string (docx-with-properties (or (apply #'docx-field name way size) "") properties) out))))
-                      (setf p (+ close 3))))))))))))
+       (let ((at (search "{{{" text :start2 p)))
+         (write-string (docx-with-properties (docx-run (subseq text p (or at (length text)))) properties) out)
+         (unless at (return))
+         (let ((close (search "}}}" text :start2 at)))
+           (unless close (write-string (docx-with-properties (docx-run (subseq text at)) properties) out) (return))
+           (let ((token (subseq text at (+ close 3))))
+             (let ((place (template-place token :whole t)))
+               (if (member (getf place :condition) '(#\# #\^))
+                   ;; a condition: what is up to its end, kept or not
+                   (let* ((name (getf place :name))
+                          (end-token (format nil "{{{/~a}}}" name))
+                          (end (search end-token text :start2 (+ close 3) :test #'char-equal)))
+                     ;; one whose end is in another cell or paragraph, kept or not by its row or run
+                     ;; of paragraphs already (DOCX-FILL-ROWS): the mark alone goes
+                     (if (null end)
+                         (setf p (+ close 3))
+                         (progn
+                           (when (eq (char= (getf place :condition) #\#) (docx-has-value-p name))
+                             (write-string (docx-fill-text (subseq text (+ close 3) end) properties) out))
+                           (setf p (+ end (length end-token))))))
+                   (progn
+                     (multiple-value-bind (name way size date) (docx-place token)
+                       (when name
+                         (let ((*docx-date-format* (or date *docx-date-format*)))
+                           (write-string (docx-with-properties (or (apply #'docx-field name way size) "") properties)
+                                         out))))
+                     (setf p (+ close 3))))))))))))
 
 (defun docx-date-parts (text)
   "The date TEXT gives, 2026-09-30 or <2026-09-30 Wed> or [2026-09-30 Wed 10:00],
@@ -310,8 +322,9 @@ away."
 
 ;;; Filling a template's XML
 
-(defparameter *docx-body-mark* (format nil "~c~cBODY~c" (code-char #xE000) (code-char #xE001) (code-char #xE000))
-  "What stands for the note's text in a template's XML until the rest is filled.")
+(defparameter *docx-body-mark* (format nil "~c~cBODY~c" (code-char #xD800) (code-char #xD801) (code-char #xD800))
+  "What stands for the note's text in a template's XML until the rest is
+filled: lone surrogates around a word, which no text read from a file holds.")
 
 (defun docx-condition-of (text)
   "The condition TEXT, a paragraph's or a row's text, opens alone or holds
@@ -337,7 +350,8 @@ with its {{{/NAME}}}, kept when it holds or taken away."
 {{{#NAME}}} (or {{{^NAME}}}) and one holding only {{{/NAME}}} kept when
 it holds or taken away, the two marks' paragraphs taken away."
   (let* ((paragraphs (xml-elements xml "w:p"))
-         (texts (mapcar (lambda (p) (string-trim " 	" (docx-xml-text (subseq xml (car p) (cdr p))))) paragraphs))
+         (texts (mapcar (lambda (p) (string-trim '(#\Space #\Tab) (docx-xml-text (subseq xml (car p) (cdr p)))))
+                        paragraphs))
          (drop '()))
     (loop for (p . rest) on paragraphs
           for text in texts
@@ -368,7 +382,7 @@ holding only {{{NAME:path}}} as that picture."
   (xml-replace-elements
    (docx-fill-paragraph-blocks (docx-fill-rows xml)) "w:p"
    (lambda (paragraph-xml)
-     (let ((text (string-trim " 	" (docx-xml-text paragraph-xml))))
+     (let ((text (string-trim '(#\Space #\Tab) (docx-xml-text paragraph-xml))))
        (concatenate
         'string
         ;; the note's text and contents begin a page when the paragraph that held them did
@@ -380,7 +394,7 @@ holding only {{{NAME:path}}} as that picture."
           (cond ((string= text "{{{body}}}") *docx-body-mark*)
                 ;; the contents, unless #+OPTIONS: toc:nil leaves them out
                 ((string= text "{{{contents}}}")
-                 (let ((toc (org-latex-option "toc" 3))) (if toc (docx-contents (if (integerp toc) toc 3)) "")))
+                 (let ((toc (org-export-option "toc" 3))) (if toc (docx-contents (if (integerp toc) toc 3)) "")))
                 ((and name (eq way :path))
                  (let ((picture (apply #'docx-field name :path size)))
                    (if picture
@@ -405,7 +419,7 @@ where its places are."
   (format nil "~{~a~^ ~}"
           (loop for (name) in parts
                 when (cl-ppcre:scan "^word/(document|header\\d*|footer\\d*)\\.xml$" name)
-                  collect (docx-xml-text (docx-part-text parts name)))))
+                collect (docx-xml-text (docx-part-text parts name)))))
 
 (defun docx-template-places (parts)
   "The names of the places the template PARTS hold, in its document, headers
@@ -430,8 +444,13 @@ way, but those only LaTeX has use for (*LATEX-ONLY-PLACES*)."
              (word (remove "contents" (docx-template-places parts) :test #'string=))
              (only-tex (sort (set-difference tex word :test #'string=) #'string<))
              (only-word (sort (set-difference word tex :test #'string=) #'string<)))
-        (remove nil (list (and only-tex (format nil "The template ~a's Word half has no place for ~{{{{~a}}}~^, ~}, which its LaTeX half has" name only-tex))
-                          (and only-word (format nil "The template ~a's LaTeX half has no place for ~{{{{~a}}}~^, ~}, which its Word half has" name only-word))))))))
+        (remove nil
+                (list (and only-tex
+                           (format nil "The template ~a's Word half has no place for ~{{{{~a}}}~^, ~}, which its ~
+LaTeX half has" name only-tex))
+                      (and only-word
+                           (format nil "The template ~a's LaTeX half has no place for ~{{{{~a}}}~^, ~}, which its ~
+Word half has" name only-word))))))))
 
 ;;; The template's parts with what the note needs
 
@@ -468,16 +487,19 @@ and numbered lists take; table position, left, centre or right. Made by
 
 (defun docx-template-design (parts)
   "What the Word template PARTS says of its design (*DOCX-TEMPLATE-DESIGN-FILE*),
-a plist: :TABLE-STYLE, :TABLE-POSITION, :BULLETS, :NUMBERS."
+a plist: :TABLE-STYLE, :TABLE-POSITION, :BULLETS, :NUMBERS; bullets and numbers
+only when they are digits."
   (let ((text (docx-part-text parts *docx-template-design-file*)) (design '()))
     (dolist (line (and text (uiop:split-string text :separator '(#\Newline))) design)
       (let ((colon (position #\: line)))
         (when colon
-          (let ((name (string-downcase (string-trim " 	" (subseq line 0 colon))))
-                (value (string-trim " 	" (subseq line (1+ colon)))))
+          (let ((name (string-downcase (string-trim '(#\Space #\Tab) (subseq line 0 colon))))
+                (value (string-trim '(#\Space #\Tab) (subseq line (1+ colon)))))
             (when (plusp (length value))
               (cond ((string= name "table style") (setf (getf design :table-style) value))
                     ((string= name "table position") (setf (getf design :table-position) value))
+                    ;; an abstract numbering's id, which goes into the document as it is
+                    ((not (every #'digit-char-p value)))
                     ((string= name "bullets") (setf (getf design :bullets) value))
                     ((string= name "numbers") (setf (getf design :numbers) value))))))))))
 
@@ -495,7 +517,10 @@ the template's."
               (or (loop for id in (list (getf design :table-style) "TableNormal")
                         for at = (search (format nil "w:styleId=\"~a\"" id) styles)
                         for end = (and at (search "</w:style>" styles :start2 at))
-                        for found = (and end (nth-value 1 (cl-ppcre:scan-to-strings "<w:tblCellMar>.*?<w:(?:left|start) w:w=\"(\\d+)\"" (subseq styles at end))))
+                        for found = (and end
+                                         (nth-value 1 (cl-ppcre:scan-to-strings
+                                                       "<w:tblCellMar>.*?<w:(?:left|start) w:w=\"(\\d+)\""
+                                                       (subseq styles at end))))
                         when found return (parse-integer (aref found 0)))
                   108))))
     ;; the levels its bullets and numbers define: a list deeper than they go numbered by Tuatara
@@ -506,7 +531,10 @@ the template's."
             (let* ((at (search (format nil "w:abstractNumId=\"~a\"" id) numbering))
                    (end (and at (search "</w:abstractNum>" numbering :start2 at))))
               (setf (getf design (if (eq key :bullets) :bullet-levels :number-levels))
-                    (and end (mapcar #'parse-integer (cl-ppcre:all-matches-as-strings "(?<=<w:lvl w:ilvl=\")\\d+" (subseq numbering at end))))))))))
+                    (and end
+                         (mapcar #'parse-integer
+                                 (cl-ppcre:all-matches-as-strings "(?<=<w:lvl w:ilvl=\")\\d+"
+                                                                  (subseq numbering at end))))))))))
     (setf (getf (docx-section *docx*) :design) design))
   ;; its text's size, what the sizes of tables and code are parts of
   (let ((size (nth-value 1
@@ -521,7 +549,7 @@ the template's."
   (let ((numbering (docx-part-text parts "word/numbering.xml")) (top 2))
     (when numbering
       (cl-ppcre:do-register-groups (id) ("w:(?:abstractNumId|numId)=\"(\\d+)\"" numbering)
-        (setf top (max top (parse-integer id)))))
+                                   (setf top (max top (parse-integer id)))))
     (setf (docx-list-base *docx*) (1+ top)
           ;; named apart from the template's own pictures, when it has any
           (docx-media-prefix *docx*) (if (find-if (lambda (part) (uiop:string-prefix-p "word/media/" (car part))) parts)
@@ -551,7 +579,8 @@ the first section's, and what follows columns going on on their page."
                              (if (and section final (not (cl-ppcre:scan "<w:p[\\s>]" (subseq after 0 final))))
                                  (let ((end (+ (search "</w:sectPr>" after :start2 final) (length "</w:sectPr>"))))
                                    (setf last t)
-                                   (concatenate 'string (subseq document 0 at) folded (subseq after 0 final) section (subseq after end)))
+                                   (concatenate 'string (subseq document 0 at) folded (subseq after 0 final) section
+                                                (subseq after end)))
                                  (concatenate 'string (subseq document 0 at) body after))))
                          document))))
     ;; sections in the text: the first page is the first section's, not the last's, and the text
@@ -560,12 +589,14 @@ the first section's, and what follows columns going on on their page."
     (if (and (getf (docx-section *docx*) :broken) (not last))
         (let* ((last (search "<w:sectPr" document :from-end t))
                (section (cl-ppcre:regex-replace-all "<w:type(?:\\s[^>]*)?/>"
-                                                    (cl-ppcre:regex-replace "<w:titlePg(?:\\s[^>]*)?/>" (subseq document last) "")
+                                                    (cl-ppcre:regex-replace "<w:titlePg(?:\\s[^>]*)?/>"
+                                                                            (subseq document last) "")
                                                     ""))
                (at (or (search "<w:pgSz" section) (search "</w:sectPr>" section))))
           (concatenate 'string (subseq document 0 last)
                        (subseq section 0 at)
-                       (if (eq (getf (docx-section *docx*) :start :continuous) :continuous) "<w:type w:val=\"continuous\"/>" "")
+                       (if (eq (getf (docx-section *docx*) :start :continuous) :continuous)
+                           "<w:type w:val=\"continuous\"/>" "")
                        (subseq section at)))
         document)))
 
@@ -582,7 +613,7 @@ Tuatara's added where it has none of that name."
                                        for style = (subseq ours s e)
                                        for id = (nth-value 1 (cl-ppcre:scan-to-strings "w:styleId=\"([^\"]+)\"" style))
                                        unless (and id (search (format nil "w:styleId=\"~a\"" (aref id 0)) theirs))
-                                         collect style))))))
+                                       collect style))))))
 
 (defun docx-template-numbering (parts)
   "The lists of a Word document made from the template PARTS: its own with
@@ -592,10 +623,13 @@ the note's."
         ours
         (let ((abstracts (format nil "~{~a~}" (mapcar (lambda (e) (subseq ours (car e) (cdr e)))
                                                       (xml-elements ours "w:abstractNum"))))
-              (nums (format nil "~{~a~}" (mapcar (lambda (e) (subseq ours (car e) (cdr e))) (xml-elements ours "w:num")))))
+              (nums (format nil "~{~a~}"
+                            (mapcar (lambda (e) (subseq ours (car e) (cdr e))) (xml-elements ours "w:num")))))
           ;; Word wants every abstractNum before the first num
           (let* ((first-num (search "<w:num " theirs))
-                 (with-abstracts (if first-num (concatenate 'string (subseq theirs 0 first-num) abstracts (subseq theirs first-num))
+                 (with-abstracts (if first-num
+                                     (concatenate 'string (subseq theirs 0 first-num) abstracts
+                                                  (subseq theirs first-num))
                                      (docx-merge-into theirs "</w:numbering>" abstracts))))
             (docx-merge-into with-abstracts "</w:numbering>" nums))))))
 
@@ -629,18 +663,26 @@ and the pictures and links the note adds."
 
 (defun docx-template-types (parts)
   "The content types of a Word document made from the template PARTS: its
-own, with those of the pictures and parts Tuatara adds."
-  (let ((theirs (docx-part-text parts "[Content_Types].xml")))
-    (docx-merge-into theirs "</Types>"
-                     (format nil "~{~a~}"
-                             (remove nil
-                                     (list (and (not (search "Extension=\"png\"" theirs))
-                                                "<Default Extension=\"png\" ContentType=\"image/png\"/>")
-                                           (and (not (search "Extension=\"jpeg\"" theirs))
-                                                "<Default Extension=\"jpeg\" ContentType=\"image/jpeg\"/>")
-                                           (and (not (search "/word/numbering.xml" theirs)) "<Override PartName=\"/word/numbering.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml\"/>")
-                                           (and (not (search "/word/footnotes.xml" theirs)) "<Override PartName=\"/word/footnotes.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml\"/>")
-                                           (and (not (search "/docProps/core.xml" theirs)) "<Override PartName=\"/docProps/core.xml\" ContentType=\"application/vnd.openxmlformats-package.core-properties+xml\"/>")))))))
+own (Tuatara's own template's when it has none), with those of the pictures and
+parts Tuatara adds."
+  (let ((theirs (or (docx-part-text parts "[Content_Types].xml")
+                    (docx-part-text (built-in-docx-template) "[Content_Types].xml"))))
+    (flet ((missing (part type)
+             ;; a part's type, unless the template has one for it
+             (unless (search part theirs)
+               (format nil "<Override PartName=\"~a\" ~
+ContentType=\"application/vnd.openxmlformats-~a+xml\"/>"
+                       part type))))
+      (docx-merge-into theirs "</Types>"
+                       (format nil "~{~a~}"
+                               (remove nil
+                                       (list (and (not (search "Extension=\"png\"" theirs))
+                                                  "<Default Extension=\"png\" ContentType=\"image/png\"/>")
+                                             (and (not (search "Extension=\"jpeg\"" theirs))
+                                                  "<Default Extension=\"jpeg\" ContentType=\"image/jpeg\"/>")
+                                             (missing "/word/numbering.xml" "officedocument.wordprocessingml.numbering")
+                                             (missing "/word/footnotes.xml" "officedocument.wordprocessingml.footnotes")
+                                             (missing "/docProps/core.xml" "package.core-properties"))))))))
 
 (defun docx-template-other-parts (parts)
   "The parts of the template PARTS a Word document made from it takes as they
@@ -670,7 +712,7 @@ note adds pictures to it; the template's design for Tuatara left out."
 text written: the template's document filled, its styles with Tuatara's
 added where it has none of that name, its lists and footnotes with the
 note's, its relations and types with the pictures and links the note adds."
-  (setf (org-latex-refused *org-latex*) (template-refused-pictures (docx-template-text parts)))
+  (setf (org-export-refused *org-export*) (template-refused-pictures (docx-template-text parts)))
   ;; in this order: filling the document names its pictures in the relations, filling the headers adds theirs
   (let* ((document (docx-template-document parts body))
          (styles (docx-template-styles parts))
@@ -685,8 +727,9 @@ note's, its relations and types with the pictures and links the note adds."
                          (cons "word/numbering.xml" numbering)
                          (cons "word/footnotes.xml" footnotes)
                          (cons "word/_rels/document.xml.rels" relations)
-                         (cons "docProps/core.xml" (docx-core (org-latex-plain (org-latex-title))
-                                                              (org-latex-plain (or (org-latex-keyword "AUTHOR") "")))))))
+                         (cons "docProps/core.xml"
+                               (docx-core (org-export-plain (org-export-title))
+                                          (org-export-plain (or (org-export-keyword "AUTHOR") "")))))))
     ;; the content types first, as Word writes them; the template's other parts as they are; the note's pictures
     (append (list (first replaced))
             (rest replaced)

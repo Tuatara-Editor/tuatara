@@ -1,4 +1,4 @@
-;;;; lisp/org/export-settings.lisp --- The :EXPORT: drawer: how a heading, table, list, block or picture is laid out in the PDF and the Word document, in plain words.
+;;;; lisp/org/export-settings.lisp --- The :EXPORT: drawer: how the exports lay a part of a note out, in plain words.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; A drawer named EXPORT holds settings for the PDF the enhanced export
@@ -15,14 +15,15 @@
 ;;;; before a table, a list, a block or a picture it sets that. Tuatara's
 ;;;; exports never print the drawer; Org's own do, unless the note's
 ;;;; #+options: say d:(not "EXPORT" "LOGBOOK"), which
-;;;; M-x org-insert-export-drawer adds. *ORG-LATEX-SETTINGS* lists every setting,
+;;;; M-x org-insert-export-drawer adds. *ORG-EXPORT-SETTINGS* lists every setting,
 ;;;; and M-x describe-export-settings shows them.
 
 (in-package #:tuatara.defaults)
 
-(defparameter *org-latex-settings*
+(defparameter *org-export-settings*
   '(("numbered" (:heading) "no prints the heading without a number, as :UNNUMBERED: t does; yes, as standard, with one")
-    ("annex" (:heading) "yes begins the annexes at this heading, on a page of their own, numbered anew, as the :appendix: tag does")
+    ("annex" (:heading) #.(concatenate 'string "yes begins the annexes at this heading, on a page of their own, "
+                           "numbered anew, as the :appendix: tag does"))
     ("contents" (:heading) "no leaves the heading out of the table of contents; yes, as standard, in it")
     ("new page"
      (:heading :paragraph :list :block :table :picture)
@@ -39,21 +40,37 @@
     ("columns"
      (:heading :paragraph :list :block :table)
      "a number: the text set in that many columns (for a heading, all under it, the heading across them)")
-    ("page" (:heading :paragraph :list :block :table :picture) "landscape: on pages turned sideways, from a page of their own (for a heading, it and all under it; side by side, they share the pages); portrait, as standard")
+    ("page" (:heading :paragraph :list :block :table :picture) #.(concatenate 'string "landscape: on pages turned "
+                                                                  "sideways, from a page of "
+                                                                  "their own (for a heading, it "
+                                                                  "and all under it; side by "
+                                                                  "side, they share the pages); "
+                                                                  "portrait, as standard"))
     ("font"
      (:heading :paragraph :list :block :table)
      "tiny, scriptsize, footnote, small, normal, large or larger: the size of the type")
     ("indent" (:paragraph :list :block :table :picture) "a length (2em, 1cm): set in from the left by that much")
-    ("width" (:picture :table) "a share of the page (60%) or a length (8cm); for a table, full: from margin to margin, its columns sharing the width as their text does")
-    ("widths" (:table) "each column's width in turn: a share of the page (30%), a length (5cm, 22em), * for an equal share of what is left, or auto")
-    ("align" (:paragraph :table) "a paragraph takes left, right, centre or justify; a table takes each column in turn, left, right, centre or auto (numbers right, words left)")
+    ("width" (:picture :table) #.(concatenate 'string "a share of the page (60%) or a length (8cm); for a table, "
+                                  "full: from margin to margin, its columns sharing the width as "
+                                  "their text does"))
+    ("widths" (:table) #.(concatenate 'string "each column's width in turn: a share of the page (30%), a length "
+                          "(5cm, 22em), * for an equal share of what is left, or auto"))
+    ("align" (:paragraph :table) #.(concatenate 'string "a paragraph takes left, right, centre or justify; a table "
+                                    "takes each column in turn, left, right, centre or auto "
+                                    "(numbers right, words left)"))
     ("position"
      (:table :picture)
      "left or right: the table or picture against that margin; centre, as standard, in the middle")
-    ("repeat header" (:table) "yes, as standard: the rows above the first rule again at the top of each page; no, only once")
-    ("lines" (:table) "the lines printed, any of: top (above the table), header (under the header), rules (where the table's own |---| lines are), bottom, left, right (down its sides), columns (between the columns), rows (between every row); box (top bottom left right), all, or none; top header rules bottom, as standard")
+    ("repeat header" (:table) #.(concatenate 'string "yes, as standard: the rows above the first rule again at the "
+                                 "top of each page; no, only once"))
+    ("lines" (:table) #.(concatenate 'string "the lines printed, any of: top (above the table), header (under the "
+                         "header), rules (where the table's own |---| lines are), bottom, left, "
+                         "right (down its sides), columns (between the columns), rows (between "
+                         "every row); box (top bottom left right), all, or none; top header "
+                         "rules bottom, as standard"))
     ("style" (:list) "bullets, none (no bullets), numbers, letters (a), Letters (A), roman (i), Roman (I)")
-    ("place" (:picture) "here puts a picture with a caption exactly where it is written; anywhere, where it fits best, as LaTeX chooses")
+    ("place" (:picture) #.(concatenate 'string "here puts a picture with a caption exactly where it is written; "
+                           "anywhere, where it fits best, as LaTeX chooses"))
     ("beside" (:picture) "left or right: the picture beside the paragraph after it, on that side, as two columns"))
   "The settings an :EXPORT: drawer may hold: each its name, what it may set
 \(:heading, :paragraph, :list, :block, :table, :picture) and what it does.
@@ -68,9 +85,9 @@ Any of them may be auto, which leaves it as the export would have it.")
         ((or (string-equal word "centre") (string-equal word "center")) :centre)
         ((string-equal word "justify") :justify)))
 
-(defun org-latex-setting-name-p (name)
-  "True when NAME, in any case, is a setting an :EXPORT: drawer may hold (*ORG-LATEX-SETTINGS*)."
-  (and (assoc name *org-latex-settings* :test #'string-equal) t))
+(defun org-export-setting-name-p (name)
+  "True when NAME, in any case, is a setting an :EXPORT: drawer may hold (*ORG-EXPORT-SETTINGS*)."
+  (and (assoc name *org-export-settings* :test #'string-equal) t))
 
 (defparameter *org-latex-font-sizes*
   '(("tiny" . "\\tiny")
@@ -86,7 +103,7 @@ Any of them may be auto, which leaves it as the export would have it.")
     ("page" "landscape" "portrait") ("align" "left" "right" "centre" "center" "justify" "auto")
     ("position" "left" "right" "centre" "center") ("repeat header" "yes" "no")
     ("style" "bullets" "none" "numbers" "letters" "roman") ("place" "here" "anywhere") ("beside" "left" "right"))
-  "The words each setting of *ORG-LATEX-SETTINGS* that takes words is given,
+  "The words each setting of *ORG-EXPORT-SETTINGS* that takes words is given,
 in any case; align one for each column of a table.")
 
 (defun export-setting-fault (name value)
@@ -112,7 +129,7 @@ lines are looked at where they are read."
   "True when NODE is an :EXPORT: drawer."
   (and (eq (org-node-type node) 'drawer) (string-equal (org-property node :drawer-name) "EXPORT")))
 
-(defun org-latex-node-kind (node)
+(defun org-export-node-kind (node)
   "What NODE is, as the settings name it: :heading, :paragraph, :picture (a
 paragraph that is a picture alone), :list, :table or :block; NIL for what
 takes no settings."
@@ -124,37 +141,37 @@ takes no settings."
     (table :table)
     ((src-block example-block fixed-width quote-block center-block special-block verse-block) :block)))
 
-(defun org-latex-note-at (node format &rest arguments)
+(defun org-export-note-at (node format &rest arguments)
   "Say, after the document is made, FORMAT with ARGUMENTS, of the :EXPORT:
 drawer NODE, naming its line."
-  (export-note "Line ~d, an :EXPORT: drawer: ~?" (1+ (count #\Newline *org-latex-text* :end (org-node-begin node)))
+  (export-note "Line ~d, an :EXPORT: drawer: ~?" (1+ (count #\Newline *org-export-text* :end (org-node-begin node)))
                format arguments))
 
 (defun org-export-drawer-settings (drawer)
   "The settings the :EXPORT: DRAWER holds, ((NAME . VALUE) ...) in order, names
 in lower case; a line that is no NAME: VALUE, or names no setting, said
-\(ORG-LATEX-NOTE-AT) and left out. A value of auto is left out too; a value
+\(ORG-EXPORT-NOTE-AT) and left out. A value of auto is left out too; a value
 the setting does not take is said (EXPORT-SETTING-FAULT), and has no effect."
   (let ((begin (org-node-contents-begin drawer)) (end (org-node-contents-end drawer)) (found '()))
     (when (and begin end)
-      (dolist (line (uiop:split-string (subseq *org-latex-text* begin end) :separator '(#\Newline)))
-        (let* ((line (string-trim " 	" line))
+      (dolist (line (uiop:split-string (subseq *org-export-text* begin end) :separator '(#\Newline)))
+        (let* ((line (string-trim '(#\Space #\Tab) line))
                (colon (position #\: line)))
           (cond ((zerop (length line)))
-                ((null colon) (org-latex-note-at drawer "~s is not NAME: VALUE; left out" line))
-                (t (let ((name (string-downcase (string-trim " 	" (subseq line 0 colon))))
-                         (value (string-trim " 	" (subseq line (1+ colon)))))
-                     (cond ((not (assoc name *org-latex-settings* :test #'string=))
-                            (org-latex-note-at drawer "~a is no setting; there are ~{~a~^, ~}"
-                                               name (mapcar #'first *org-latex-settings*)))
+                ((null colon) (org-export-note-at drawer "~s is not NAME: VALUE; left out" line))
+                (t (let ((name (string-downcase (string-trim '(#\Space #\Tab) (subseq line 0 colon))))
+                         (value (string-trim '(#\Space #\Tab) (subseq line (1+ colon)))))
+                     (cond ((not (assoc name *org-export-settings* :test #'string=))
+                            (org-export-note-at drawer "~a is no setting; there are ~{~a~^, ~}"
+                                                name (mapcar #'first *org-export-settings*)))
                            ;; nothing given, or auto: the standard
                            ((or (string= value "") (string-equal value "auto")))
                            (t (let ((fault (export-setting-fault name value)))
-                                (when fault (org-latex-note-at drawer "~a" fault)))
+                                (when fault (org-export-note-at drawer "~a" fault)))
                               (push (cons name value) found)))))))))
     (nreverse found)))
 
-(defun org-latex-gather-settings (tree)
+(defun org-export-gather-settings (tree)
   "Every node of TREE the :EXPORT: drawers set, in a table by node: its
 settings, ((NAME . VALUE) ...). A drawer right under a heading (only its
 properties, planning or other such drawers before it) gives the heading its
@@ -162,11 +179,12 @@ settings for a heading; one just before an element gives that element the
 others. A setting where it cannot apply is said and left out."
   (let ((table (make-hash-table :test 'eq)))
     (labels ((give (node settings drawer)
-               (let ((kind (org-latex-node-kind node)))
+               (let ((kind (org-export-node-kind node)))
                  (dolist (setting settings)
-                   (if (member kind (second (assoc (car setting) *org-latex-settings* :test #'string=)))
+                   (if (member kind (second (assoc (car setting) *org-export-settings* :test #'string=)))
                        (setf (gethash node table) (append (gethash node table) (list setting)))
-                       (org-latex-note-at drawer "~a does not apply to ~(~a~); left out" (car setting) (or kind "what follows it"))))))
+                       (org-export-note-at drawer "~a does not apply to ~(~a~); left out" (car setting)
+                                           (or kind "what follows it"))))))
              (walk (node)
                (let ((children (org-node-children node)))
                  (loop for (child . rest) on children
@@ -180,7 +198,7 @@ others. A setting where it cannot apply is said and left out."
                                                  (org-node-parent node)))
                                    (for-heading (remove-if-not (lambda (s)
                                                                  (member :heading (second (assoc (car s)
-                                                                                                 *org-latex-settings*
+                                                                                                 *org-export-settings*
                                                                                                  :test #'string=))))
                                                                settings))
                                    (next (find-if-not #'org-export-drawer-p rest)))
@@ -190,27 +208,27 @@ others. A setting where it cannot apply is said and left out."
                                          ;; first under it
                                          (setf settings (set-difference settings for-heading :test #'equal)))
                                   (when (and for-heading (not next))
-                                    (org-latex-note-at child
-                                                       "~{~a~^, ~} set~:[s~;~] a heading: put the drawer right under it"
-                                                       (mapcar #'car for-heading) (rest for-heading))))
+                                    (org-export-note-at child "~{~a~^, ~} set~:[s~;~] a heading: ~
+put the drawer right under it"
+                                                        (mapcar #'car for-heading) (rest for-heading))))
                               (when settings
                                 (if next
                                     (give next settings child)
-                                    (org-latex-note-at child "nothing follows it to set; left out")))))
-                          (walk child)))))
+                                    (org-export-note-at child "nothing follows it to set; left out")))))
+                       (walk child)))))
       (walk tree))
     table))
 
-(defun org-latex-setting (node name)
+(defun org-export-setting (node name)
   "The value of the setting NAME the :EXPORT: drawers give NODE in the enhanced
 export, or NIL."
-  (let ((table (org-latex-settings *org-latex*)))
+  (let ((table (org-export-settings *org-export*)))
     (and table (cdr (assoc name (gethash node table) :test #'string=)))))
 
 (defun export-new-page (node)
   "Whether a new page begins before NODE and after it, as its new page
 setting says: two values, each true or NIL."
-  (let ((value (org-latex-setting node "new page")))
+  (let ((value (org-export-setting node "new page")))
     (values (and value (or (string-equal value "before") (string-equal value "both")) t)
             (and value (or (string-equal value "after") (string-equal value "both")) t))))
 
@@ -221,8 +239,8 @@ reads a length setting as the export takes it, NIL for none. PAGE writes a new
 page to OUT, and SPACE such a length's space, each called with OUT (SPACE with
 the length after it)."
   (multiple-value-bind (page-before page-after) (export-new-page node)
-    (let ((space-before (funcall length (org-latex-setting node "space before")))
-          (space-after (funcall length (org-latex-setting node "space after"))))
+    (let ((space-before (funcall length (org-export-setting node "space before")))
+          (space-after (funcall length (org-export-setting node "space after"))))
       (when page-before (funcall page out))
       (when space-before (funcall space out space-before))
       (funcall body out)
@@ -233,7 +251,7 @@ the length after it)."
   "The space between the lines NODE's spacing setting asks for, as a word
 processor counts it (1 single, 1.5, 2 double); NIL when it asks for none or
 for what is no number."
-  (spacing-number (org-latex-setting node "spacing")))
+  (spacing-number (org-export-setting node "spacing")))
 
 (defun spacing-number (value)
   "VALUE, what a spacing setting says, as a word processor counts the space
@@ -246,32 +264,32 @@ between lines (1 single, 1.5, 2 double); NIL for none, or what is no number."
 (defun export-paragraph-align (node)
   "How the paragraph NODE's align setting sets its lines: :LEFT, :RIGHT,
 :CENTRE or :JUSTIFY; NIL when it says none of them."
-  (export-side (org-latex-setting node "align")))
+  (export-side (org-export-setting node "align")))
 
 (defun export-position (node)
   "The margin the table or picture NODE's position setting puts it against:
 :LEFT or :RIGHT; NIL for the middle."
-  (let ((side (export-side (org-latex-setting node "position"))))
+  (let ((side (export-side (org-export-setting node "position"))))
     (and (member side '(:left :right)) side)))
 
 (defun export-columns (node)
   "How many columns NODE's columns setting sets its text in, two or more;
 NIL for one."
-  (let* ((value (org-latex-setting node "columns"))
+  (let* ((value (org-export-setting node "columns"))
          (n (and value (whole-number value))))
     (and n (> n 1) n)))
 
 (defun export-setting-no-p (node name)
   "True when NODE's setting NAME says no."
-  (string-equal (org-latex-setting node name) "no"))
+  (string-equal (org-export-setting node name) "no"))
 
 (defun picture-attributes (node &key latex)
-  "The picture NODE's #+ATTR_LATEX: line as a plist (ORG-LATEX-ATTRIBUTES),
+  "The picture NODE's #+ATTR_LATEX: line as a plist (ORG-EXPORT-ATTRIBUTES),
 its width setting over the line's :width: as a LaTeX length with LATEX, as
 written without; with LATEX, its place setting too, as :placement."
-  (let ((attributes (copy-list (org-latex-attributes node "latex")))
-        (width (org-latex-setting node "width"))
-        (place (and latex (org-latex-setting node "place"))))
+  (let ((attributes (copy-list (org-export-attributes node "latex")))
+        (width (org-export-setting node "width"))
+        (place (and latex (org-export-setting node "place"))))
     (let ((width (if latex (org-latex-length width) width)))
       (when width (setf (getf attributes :width) width)))
     (when place (setf (getf attributes :placement) (if (string-equal place "here") "H" "htbp")))
@@ -287,14 +305,15 @@ written without; with LATEX, its place setting too, as :placement."
   "The lines the table NODE's lines setting prints, as keywords of
 *TABLE-LINES*: top header rules bottom when it has none; a word that names
 none of them said and left out. The one reading of it for both exports."
-  (let ((words (tuatara.text:split-words (org-latex-setting node "lines"))))
+  (let ((words (tuatara.text:split-words (org-export-setting node "lines"))))
     (if (null words)
         '(:top :header :rules :bottom)
         (remove-duplicates
          (loop for word in words
                for entry = (assoc word *table-lines* :test #'string-equal)
                unless entry
-                 do (export-note "A table's lines: ~a is none of ~{~a~^, ~}; left out" word (mapcar #'first *table-lines*))
+               do (export-note "A table's lines: ~a is none of ~{~a~^, ~}; left out" word
+                               (mapcar #'first *table-lines*))
                append (rest entry))))))
 
 (defun export-table-header (rows)
@@ -313,7 +332,7 @@ read once."
     (dolist (row (if cookies (cons cookies standard) standard))
       (loop for cell in (nthcdr skip (org-node-children row))
             for column below columns
-            do (push (org-latex-cell-text cell) (aref fields column))))
+            do (push (org-export-cell-text cell) (aref fields column))))
     (map 'vector (lambda (texts) (org-column-alignment (nreverse texts))) fields)))
 
 (defun export-column-alignments (node columns special standard cookies)
@@ -322,7 +341,7 @@ read once."
 as its numbers or words are (TABLE-COLUMN-ALIGNMENTS); SPECIAL true when the
 first column, only marking rows, is not counted."
   (let ((sides (table-column-alignments columns (if special 1 0) standard cookies)))
-    (loop for word in (tuatara.text:split-words (org-latex-setting node "align"))
+    (loop for word in (tuatara.text:split-words (org-export-setting node "align"))
           for column below columns
           do (let ((side (export-side word)))
                (when (member side '(:left :right :centre))
@@ -332,27 +351,27 @@ first column, only marking rows, is not counted."
 (defun export-table-measure (columns special standard)
   "How the COLUMNS of a table print, as four values, each a list with one entry
 a column: the lengths of its cells in STANDARD, the rows of cells, as they print
-\(ORG-LATEX-VISIBLE-LENGTH). Its widest, at least 1. Whether it has words to
+\(ORG-EXPORT-VISIBLE-LENGTH). Its widest, at least 1. Whether it has words to
 wrap, wider than 20 characters with a space in a cell. And the longest part of a
-cell that cannot go on to the next line \(ORG-LATEX-LONGEST-PIECE). SPECIAL true
+cell that cannot go on to the next line \(ORG-EXPORT-LONGEST-PIECE). SPECIAL true
 when the first column, only marking rows, is left out. The one measure of a
 table's columns for both exports."
   (flet ((cell (row i) (nth i (nthcdr (if special 1 0) (org-node-children row)))))
     (let* ((lengths (loop for i below columns
                           collect (loop for row in standard
                                         for cell = (cell row i)
-                                        collect (if cell (org-latex-visible-length (org-latex-cell-text cell)) 0))))
+                                        collect (if cell (org-export-visible-length (org-export-cell-text cell)) 0))))
            (widest (mapcar (lambda (l) (reduce #'max l :initial-value 1)) lengths)))
       (values lengths widest
               (loop for i below columns
                     collect (and (> (nth i widest) 20)
                                  (some (lambda (row) (let ((cell (cell row i)))
-                                                       (and cell (find #\Space (org-latex-cell-text cell)))))
+                                                       (and cell (find #\Space (org-export-cell-text cell)))))
                                        standard)))
               (loop for i below columns
                     collect (or (loop for row in standard
                                       for cell = (cell row i)
-                                      maximize (if cell (org-latex-longest-piece (org-latex-cell-text cell)) 0))
+                                      maximize (if cell (org-export-longest-piece (org-export-cell-text cell)) 0))
                                 0))))))
 
 (defun export-table-widths (node columns)
@@ -360,7 +379,7 @@ table's columns for both exports."
 :SHARE for *, an equal share of what the others leave, :AUTO for auto or
 none given, as wide as its text, else the length as written; NIL when the
 setting is not given. The one reading of it for both exports."
-  (let ((words (tuatara.text:split-words (org-latex-setting node "widths"))))
+  (let ((words (tuatara.text:split-words (org-export-setting node "widths"))))
     (and words
          (loop for i below columns
                for word = (or (nth i words) "auto")
@@ -396,7 +415,8 @@ as a LaTeX length, or a share of one of LaTeX's widths as written
     (cond ((null value) nil)
           ((eq unit :share) (format nil "~,3f\\linewidth" (/ n 100)))
           (n (format nil "~a~(~a~)" (points-text n) unit))
-          ((cl-ppcre:scan "^[0-9]*\\.?[0-9]*\\\\(?:linewidth|textwidth|columnwidth|textheight|baselineskip)$" value) value)
+          ((cl-ppcre:scan "^[0-9]*\\.?[0-9]*\\\\(?:linewidth|textwidth|columnwidth|textheight|baselineskip)$" value)
+           value)
           (t (export-note "~a is no length (6pt, 1em, 1cm, 30%); left out" value)))))
 
 (defparameter *org-page-run-types*
@@ -406,7 +426,7 @@ as a LaTeX length, or a share of one of LaTeX's widths as written
 
 (defun org-page-setting (node)
   "The page NODE's :EXPORT: drawer gives it: :LANDSCAPE, or NIL as standard."
-  (and node (string-equal (or (org-latex-setting node "page") "") "landscape") :landscape))
+  (and node (string-equal (or (org-export-setting node "page") "") "landscape") :landscape))
 
 (defun org-page-run (node)
   "NODE's page (ORG-PAGE-SETTING), and as second and third values whether a
@@ -499,10 +519,10 @@ and double spacing have it."
 
 (defun org-latex-with-settings (node out writer)
   "Call WRITER with a stream, NODE's LaTeX written to it, and write that to OUT
-in what NODE's settings for any element say (ORG-LATEX-SETTING): indent, its
+in what NODE's settings for any element say (ORG-EXPORT-SETTING): indent, its
 font, the space between its lines and its columns."
-  (let ((indent (org-latex-length (org-latex-setting node "indent")))
-        (font (let ((size (org-latex-font-command (org-latex-setting node "font")))
+  (let ((indent (org-latex-length (org-export-setting node "indent")))
+        (font (let ((size (org-latex-font-command (org-export-setting node "font")))
                     (spacing (export-line-spacing node)))
                 (if spacing
                     (format nil "~@[~a~]\\linespread{~,3f}\\selectfont" size (latex-line-stretch spacing))
@@ -535,7 +555,8 @@ font, the space between its lines and its columns."
     "#+caption: and #+name:" "above a table or picture: Table N or Figure N, and [[name]] a link to it"
     "[[*Heading]]" "a link to that heading, by its number"
     "|---| under the top rows" "a table's header: those rows, in bold, again on each page")
-  "What writes the same in the PDF and the Word document, each what is written and what it does, for \\[describe-export-settings].")
+  "What writes the same in the PDF and the Word document, each what is written
+and what it does, for \\[describe-export-settings].")
 
 (defparameter *export-tips-latex*
   '("\\newline" "a line break (\\\\ at the end of a line works in both)"
@@ -565,9 +586,9 @@ that fit what point is on."
        (format s "~@(~a~)~%" (case kind (:heading "A heading") (:table "A table") (:list "A list")
                                    (:block "A block (code, example, quote)") (:paragraph "A paragraph")
                                    (:picture "A picture")))
-       (loop for (name kinds words) in *org-latex-settings*
+       (loop for (name kinds words) in *org-export-settings*
              when (member kind kinds)
-               do (write-filled s (format nil "  ~a:" name) words :indent 6))
+             do (write-filled s (format nil "  ~a:" name) words :indent 6))
        (terpri s))
      (format s "A table's lines~%")
      (loop for (example words) on '("lines: none" "no line at all"
@@ -586,23 +607,23 @@ that fit what point is on."
      (loop for (written words) on *export-tips-latex* by #'cddr
            do (write-filled s (format nil "  ~26a " written) words)))))
 
-(defun org-latex-settings-target (tree position)
+(defun org-export-settings-target (tree position)
   "What an :EXPORT: drawer written for the character POSITION of TREE would
 set: the innermost table, list, block or picture holding it, else the
 heading it is under; NIL when it is under none. As a second value its
-kind (ORG-LATEX-NODE-KIND)."
+kind (ORG-EXPORT-NODE-KIND)."
   (let ((found nil))
     (labels ((walk (node)
                (when (and (<= (org-node-begin node) position) (< position (org-node-end node)))
-                 (let ((kind (org-latex-node-kind node)))
+                 (let ((kind (org-export-node-kind node)))
                    (when (and kind (not (member kind '(:heading :paragraph))))
                      (setf found node)))
                  (mapc #'walk (org-node-children node)))))
       (walk tree))
     (let ((node (or found (org-current-headline tree position))))
-      (values node (and node (org-latex-node-kind node))))))
+      (values node (and node (org-export-node-kind node))))))
 
-(defparameter *org-latex-hidden-drawers-option* "d:(not \"EXPORT\" \"LOGBOOK\")"
+(defparameter *org-export-hidden-drawers-option* "d:(not \"EXPORT\" \"LOGBOOK\")"
   "The #+options: word that has other programs exporting the note leave :EXPORT: drawers out.")
 
 (define-command org-insert-export-drawer ()
@@ -615,10 +636,10 @@ so that other programs exporting the note as Org leave the drawers out too."
          (parse (org-parse-now buffer))
          (text (and parse (org-parse-text parse))))
     (multiple-value-bind (node kind)
-        (and parse (org-latex-settings-target (org-parse-tree parse) (org-parse-point parse)))
+        (and parse (org-export-settings-target (org-parse-tree parse) (org-parse-point parse)))
       (if (null node)
           (message "Nothing here an :EXPORT: drawer sets: a heading, a table, a list, a block or a picture")
-          (let* ((names (loop for (name kinds) in *org-latex-settings* when (member kind kinds) collect name))
+          (let* ((names (loop for (name kinds) in *org-export-settings* when (member kind kinds) collect name))
                  (drawer (format nil ":EXPORT:~%~{~a: auto~%~}:END:~%" names))
                  (at (if (eq kind :heading)
                          ;; under the heading, after its planning and properties
@@ -630,17 +651,18 @@ so that other programs exporting the note as Org leave the drawers out too."
                            (if leading
                                (org-node-end (car (last leading)))
                                (min (length text)
-                                    (1+ (or (position #\Newline text :start (org-node-begin node)) (1- (length text)))))))
+                                    (1+ (or (position #\Newline text :start (org-node-begin node))
+                                            (1- (length text)))))))
                          (org-node-begin node))))
             (org-replace-chars parse at at drawer :point (+ at (length ":EXPORT:") 1))
-            (let ((said (org-latex-hide-drawers-option buffer)))
+            (let ((said (org-export-hide-drawers-option buffer)))
               (message "An :EXPORT: drawer for this ~(~a~): change auto to what you want ~
                         (M-x describe-export-settings)~@[; ~a~]"
                        kind said)))))))
 
-(defun org-latex-hide-drawers-option (buffer)
+(defun org-export-hide-drawers-option (buffer)
   "Have BUFFER's #+options: leave :EXPORT: drawers out when other programs export it
-\(*ORG-LATEX-HIDDEN-DRAWERS-OPTION*), unless they say something of drawers
+\(*ORG-EXPORT-HIDDEN-DRAWERS-OPTION*), unless they say something of drawers
 already; a sentence saying what was done, or NIL."
   (let* ((parse (org-text-now buffer))
          (text (org-parse-text parse)))
@@ -648,10 +670,10 @@ already; a sentence saying what was done, or NIL."
           (t (multiple-value-bind (start end) (cl-ppcre:scan "(?im)^[ \\t]*#\\+options:[^\\n]*" text)
                (if start
                    (progn
-                     (org-replace-chars parse end end (format nil " ~a" *org-latex-hidden-drawers-option*))
+                     (org-replace-chars parse end end (format nil " ~a" *org-export-hidden-drawers-option*))
                      "#+options: gained d:(not \"EXPORT\" \"LOGBOOK\") for other programs' exports")
                    ;; after the keyword lines at the top, else at the very top
                    (let ((after (or (nth-value 1 (cl-ppcre:scan "^(?:[ \\t]*#\\+[^\\n]*\\n)+" text)) 0)))
                      (org-replace-chars parse after after
-                                        (format nil "#+options: ~a~%" *org-latex-hidden-drawers-option*))
+                                        (format nil "#+options: ~a~%" *org-export-hidden-drawers-option*))
                      "a #+options: line keeps them out of other programs' exports")))))))

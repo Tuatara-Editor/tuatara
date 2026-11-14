@@ -10,31 +10,38 @@
 
 (in-package #:tuatara.defaults)
 
-(defstruct (register (:constructor make-register (kind value &optional sources)) (:copier nil))
+(define-record (register (:constructor make-register (kind value &optional sources)) (:copier nil))
   "What a register keeps: KIND :POSITION, :TEXT, :BLOCK or :NUMBER, and VALUE,
 a REGISTER-PLACE, a string or a rope (as the kill ring holds), a rectangle
 \(what *KILLED-RECTANGLE* holds) or a whole number; SOURCES, the buffers of
 decrypted text its text or block came from, with which it goes
 \(FORGET-PLAINTEXT-COPIES)."
-  kind value sources)
+  (kind nil :documentation "What REGISTER keeps: :POSITION, :TEXT, :BLOCK or :NUMBER.")
+  (value nil
+         :documentation "What REGISTER keeps: a REGISTER-PLACE, a string or a rope, a rectangle or a whole number, as
+its kind says.")
+  (sources nil
+           :documentation "The buffers of decrypted text the text or block of REGISTER came from, with which it goes."))
 
 (setf (documentation 'make-register 'function)
-      "Return a REGISTER of KIND keeping VALUE, taken from the buffers of decrypted text SOURCES."
-      (documentation 'register-p 'function) "True when OBJECT is a REGISTER.")
+      "Return a REGISTER of KIND keeping VALUE, taken from the buffers of decrypted text SOURCES.")
 
 (defun plaintext-sources (buffer &optional sources)
   "SOURCES, buffers of decrypted text something kept came from, with BUFFER
 when its text is decrypted (TUATARA.IO:BUFFER-PLAINTEXT-P)."
   (if (tuatara.io:buffer-plaintext-p buffer) (adjoin buffer sources) sources))
 
-(defstruct (register-place (:constructor make-register-place (buffer anchor place)) (:copier nil))
+(define-record (register-place (:constructor make-register-place (buffer anchor place)) (:copier nil))
   "A place a register keeps: in BUFFER, at ANCHOR, which follows the text through
 edits, and PLACE, the FILE-PLACE to go back to once BUFFER is closed (NIL for a
 buffer with no file). BUFFER is NIL once it is closed."
-  buffer anchor place)
+  (buffer nil :documentation "The buffer REGISTER-PLACE is in, or NIL once it is closed.")
+  (anchor nil :documentation "The anchor of REGISTER-PLACE in its buffer, which follows the text through edits.")
+  (place nil
+         :documentation "The FILE-PLACE to go back to once the buffer of REGISTER-PLACE is closed, or NIL for a
+buffer with no file."))
 
-(setf (documentation 'make-register-place 'function) "Return a REGISTER-PLACE."
-      (documentation 'register-place-p 'function) "True when OBJECT is a REGISTER-PLACE.")
+(setf (documentation 'make-register-place 'function) "Return a REGISTER-PLACE.")
 
 (defvar *registers* (make-hash-table)
   "The registers, each known by the character that names it, as a REGISTER.
@@ -178,9 +185,7 @@ killed, and as its client ends."
             (remove-if (lambda (kill) (member buffer (gethash kill *plaintext-kills*))) (editor-kill-ring editor)))))
   (loop for name in (register-names)
         when (member buffer (register-sources (gethash name *registers*)))
-          do (remhash name *registers*)))
-
-(pushnew 'forget-plaintext-copies tuatara.buffer:*kill-buffer-functions*)
+        do (remhash name *registers*)))
 
 ;;; Using
 
@@ -274,10 +279,10 @@ a place, the start of a text and how long it is, a block's size, a number."
     (ecase (register-kind register)
       (:position (let ((buffer (register-place-buffer value)))
                    (format nil "~a, octet ~:d" (if (live-buffer-p buffer)
-                                                    (tuatara.buffer:buffer-name buffer)
-                                                    (if (register-place-place value)
-                                                        (abbreviated-path (file-place-path (register-place-place value)))
-                                                        "buffer closed"))
+                                                   (tuatara.buffer:buffer-name buffer)
+                                                   (if (register-place-place value)
+                                                       (abbreviated-path (file-place-path (register-place-place value)))
+                                                       "buffer closed"))
                            (or (and buffer (anchor-in buffer (register-place-anchor value)))
                                (and (register-place-place value) (file-place-offset (register-place-place value)))
                                0))))
@@ -357,6 +362,8 @@ others, say what they keep and how to put it in."
 
 (defun install-registers ()
   "Have a register's place follow its buffer's file once the buffer is closed,
-and give the register list its keys."
+the copies of a decrypted buffer's text forgotten then, and give the register
+list its keys."
+  (pushnew 'forget-plaintext-copies tuatara.buffer:*kill-buffer-functions*)
   (pushnew 'keep-registered-places tuatara.buffer:*kill-buffer-functions*)
   (entry-list-keys 'registers-mode "the register list (\\[register-list])"))

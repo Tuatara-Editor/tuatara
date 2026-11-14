@@ -84,15 +84,25 @@ always shown by search filters and never deleted by \\[list-keep-records]: as
         (plusp (record-header-lines (buffer-major-mode buffer) buffer))
         said)))
 
-(defstruct (record-fields (:constructor make-record-fields (&key each names keys)) (:copier nil))
+(define-record (record-fields (:constructor make-record-fields (&key each names keys)) (:copier nil))
   "How the records of a file are cut into fields, for a filter to try its
 pattern on one."
-  each names keys)
+  (each nil :documentation "A function of the text of a record, its length, a field and a function FN:
+calls FN with a string and where a value of the field stands in it (its start
+and end), for each value till FN returns true, returning what it returned; NIL
+when there is no such value. Makes nothing where it can.")
+  (names nil :documentation "The names of the fields in order, a field being its number from 0; those past
+the last named go by their numbers.")
+  (keys nil :documentation "NIL when a field is its number; else a function of the buffer giving the names
+its records' fields go by, a field being its name (JSON Lines' keys)."))
 
-(setf (documentation 'make-record-fields 'function) "Make how a mode cuts its records into fields, for MODE-RECORD-FIELDS to give. EACH is a function of a record's text, its length, a field and a function FN, calling FN with a string and where a value of the field stands in it for each value till FN returns true. NAMES is the fields' names in order, a field being its number from 0. Or KEYS is a function of the buffer giving the names its fields go by, a field being its name."
-      (documentation 'record-fields-each 'function) "A function of the text of a record, its length, a field and a function FN: calls FN with a string and where a value of the field stands in it (its start and end), for each value till FN returns true, returning what it returned; NIL when there is no such value. Makes nothing where it can."
-      (documentation 'record-fields-names 'function) "The names of the fields in order, a field being its number from 0; those past the last named go by their numbers."
-      (documentation 'record-fields-keys 'function) "NIL when a field is its number; else a function of the buffer giving the names its records' fields go by, a field being its name (JSON Lines' keys).")
+(setf (documentation 'make-record-fields 'function)
+      "Make how a mode cuts its records into fields, for MODE-RECORD-FIELDS to give.
+EACH is a function of a record's text, its length, a field and a function FN,
+calling FN with a string and where a value of the field stands in it for each
+value till FN returns true. NAMES is the fields' names in order, a field being
+its number from 0. Or KEYS is a function of the buffer giving the names its
+fields go by, a field being its name.")
 
 (defgeneric mode-record-fields (mode buffer)
   (:documentation "How the records of BUFFER, in major mode MODE, are cut into fields (a

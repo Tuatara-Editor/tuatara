@@ -24,20 +24,18 @@ A file open with changes of yours not saved is never saved by it.
   look at and save (\\[save-buffer])."
   :values boolean)
 
-(defstruct (result-line (:constructor make-result-line (path line prefix text
-                                                        &aux (prefix-octets (tuatara.text:string-octet-length prefix))))
-                        (:copier nil))
+(define-record (result-line (:constructor make-result-line
+                                (path line prefix text
+                                 &aux (prefix-octets (tuatara.text:string-octet-length prefix))))
+                            (:copier nil))
   "A line a search of files found, as listed, with the file's PATH, its LINE number from 1, the PREFIX
 shown before it (path:line: ), and its TEXT as found without the white space before it, NIL for a
 line that is not changed (cut short where it was listed, or holding a line break)."
-  path line prefix text (prefix-octets 0 :type fixnum))
-
-(setf (documentation 'result-line-p 'function) "True when OBJECT is a RESULT-LINE."
-      (documentation 'result-line-path 'function) "The file a RESULT-LINE was found in."
-      (documentation 'result-line-line 'function) "The number, from 1, of the line a RESULT-LINE stands for."
-      (documentation 'result-line-prefix 'function) "The path:line: shown before a RESULT-LINE's text."
-      (documentation 'result-line-text 'function) "A RESULT-LINE's text as found or last written, or NIL."
-      (documentation 'result-line-prefix-octets 'function) "The octets of a RESULT-LINE's prefix.")
+  (path nil :documentation "The file a RESULT-LINE was found in.")
+  (line nil :documentation "The number, from 1, of the line a RESULT-LINE stands for.")
+  (prefix nil :documentation "The path:line: shown before a RESULT-LINE's text.")
+  (text nil :documentation "A RESULT-LINE's text as found or last written, or NIL.")
+  (prefix-octets 0 :type fixnum :documentation "The octets of a RESULT-LINE's prefix."))
 
 (define-major-mode search-results-mode special-mode
   "The lines a search of files found (\\[search-files-list]), one each as path:line: text.
@@ -126,15 +124,13 @@ the search may find, or NIL, heads the list and its header and is said in the ec
     (show-buffer buffer)
     (when cut (message "~a" cut))))
 
-(defmethod visit-entry ((mode search-results-mode) list entry other)
-  "Open the file ENTRY, a line found, is of, at its line."
-  (declare (ignore list))
-  (show-file-line (result-line-path entry) (result-line-line entry) :other other))
-
-(defmethod visit-entry ((mode search-results-editing-mode) list entry other)
-  "Open the file ENTRY, a line found, is of, at its line."
-  (declare (ignore list))
-  (show-file-line (result-line-path entry) (result-line-line entry) :other other))
+(macrolet ((places-in (&rest modes)
+             `(progn
+                ,@(loop for mode in modes
+                        collect `(defmethod entry-place ((mode ,mode) entry)
+                                   "The file ENTRY, a line found, is of, and its line."
+                                   (values (result-line-path entry) (result-line-line entry)))))))
+  (places-in search-results-mode search-results-editing-mode))
 
 ;;; Changing the lines
 
@@ -187,10 +183,9 @@ revert or leave are typed text meanwhile."
 (defun results-changes (buffer)
   "The lines of BUFFER, lines found, whose text was changed, each (ENTRY . NEW-TEXT), in the order
 listed."
-  (let ((entries (tuatara.buffer:buffer-local buffer 'list-entries))
-        (first (tuatara.buffer:buffer-local buffer 'list-first-line 0)))
-    (loop for entry across entries
-          for index from first
+  (multiple-value-bind (entries lines) (list-shown-entries buffer)
+    (loop for entry in entries
+          for index across lines
           for original = (result-line-text entry)
           for start = (and original (tuatara.buffer:buffer-goto-line buffer index))
           for now = (and start (tuatara.buffer:buffer-string
@@ -217,18 +212,26 @@ entries, TEXT :CONFLICT when the two were changed to different text."
 
 ;;; Writing them back
 
-(defstruct (write-back-job (:include tuatara.runtime:job) (:constructor make-write-back-job (buffer files))
-                           (:copier nil))
+(define-record (write-back-job (:include tuatara.runtime:job) (:constructor make-write-back-job (buffer files))
+                              (:copier nil))
   "The lines changed in BUFFER, lines found, being written back into their files, a job
 \(TUATARA.RUNTIME:JOB). FILES is each (PATH . LINES) not handed over yet (CHANGES-BY-FILE). TOTAL is
 files in all. REQUEST is the file handed to the editor, and ANSWERED says when it has dealt with it.
 ROOTS is what is known of whether the projects are looked at only. SAVING is the buffers being
 saved, each (BUFFER LINES MADE DONE). WRITTEN is lines written in FILES-WRITTEN files, REFUSED the
 reasons the others were not, and LEFT what else is to say of a file, each a sentence."
-  files (total (length files)) request (answered (sb-thread:make-semaphore))
-  (roots (make-hash-table :test 'equal)) (saving '()) (written 0) (files-written 0) (refused '()) (left '()))
-
-(setf (documentation 'write-back-job-p 'function) "True when OBJECT is a WRITE-BACK-JOB.")
+  (files nil :documentation "The files of JOB, each (PATH . LINES),, not handed over yet.")
+  (total (length files) :documentation "How many files in all JOB writes back.")
+  (request nil :documentation "The file JOB handed to the editor, NIL when none waits.")
+  (answered (sb-thread:make-semaphore)
+            :documentation "A semaphore signalled when the editor has dealt with the request of JOB.")
+  (roots (make-hash-table :test 'equal)
+         :documentation "A table from each project root to what is known of whether it is looked at only.")
+  (saving '() :documentation "The buffers JOB is saving, each (BUFFER LINES MADE DONE).")
+  (written 0 :documentation "How many lines JOB has written.")
+  (files-written 0 :documentation "How many files JOB has written lines in.")
+  (refused '() :documentation "The reasons JOB did not write the other lines, latest first.")
+  (left '() :documentation "What else JOB has to say of a file, each a sentence, latest first."))
 
 (tuatara.runtime:define-job-words write-back-job
   :doing "Writing lines"
@@ -248,8 +251,8 @@ the directories under it are looked through for evidence directories; NIL when i
     (if found
         (and (stringp kept) kept)
         (let ((reason (loop repeat 1200
-                            for reason = (project-look-only-reason root)
-                            while (and reason (search "is being looked through" reason))
+                            for (reason pending) = (multiple-value-list (project-look-only-reason root))
+                            while (eq pending :pending)
                             do (tuatara.runtime:job-check-stop) (sleep 0.05)
                             finally (return reason))))
           (setf (gethash root (write-back-job-roots job)) (or reason :none))

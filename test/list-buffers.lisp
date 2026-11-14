@@ -306,6 +306,22 @@ is filled again only when the jobs have changed.")
 
 (tuatara.defaults::entry-preview-keys 'test-previewed-list-mode "a list made by the tests")
 
+(define-test (list-buffers entries-by-line)
+  ;; a list's entries found by line, and those it shows with the line each is on
+  (let ((list (tuatara.buffer:make-buffer "*Entries by line*")))
+    (unwind-protect
+         (progn
+           (tuatara.defaults::render-pieces list (list (format nil "Title~%alpha~%~%beta~%"))
+                                            :entries '("alpha" nil "beta") :first-line 1)
+           (is equal "alpha" (tuatara.defaults::list-line-entry list 1))
+           (false (tuatara.defaults::list-line-entry list 0))
+           (false (tuatara.defaults::list-line-entry list 2))
+           (is equal "beta" (tuatara.defaults::list-entry-at list (tuatara.buffer:buffer-goto-line list 3)))
+           (multiple-value-bind (entries lines) (tuatara.defaults::list-shown-entries list)
+             (is equal '("alpha" "beta") entries)
+             (is equalp #(1 3) lines)))
+      (tuatara.buffer:kill-buffer list))))
+
 (define-test (list-buffers previewed-beside)
   ;; a list whose major mode has a preview-entry method shows the entry on its line
   ;; beside it as the cursor moves; P turns that off and on, the notes made for it going
@@ -364,3 +380,24 @@ is filled again only when the jobs have changed.")
       (is string= "plainfacedbuttonmade" text)
       (is equal '((5 10 :heading) (10 16 :button) (16 20 :list-dim)) spans)
       (is equal (list (list 10 16 action)) buttons))))
+
+(define-test (list-buffers preview-method-added-later-is-seen)
+  ;; a list's mode that gains a method of preview-entry after it was asked about is a previewed list from then on
+  (let ((list (tuatara.buffer:make-buffer "*later*" :text "x")))
+    (unwind-protect
+         (progn
+           (tuatara.modes:set-major-mode list 'tuatara.defaults::xref-mode)
+           (setf (tuatara.defaults::list-preview-p list) t)
+           (false (tuatara.defaults::entry-preview-list-p list))
+           (let ((method (make-instance 'standard-method
+                                        :specializers (list (find-class 'tuatara.defaults::xref-mode)
+                                                            (find-class t) (find-class t))
+                                        :qualifiers '()
+                                        :lambda-list '(mode list entry)
+                                        :function (lambda (arguments next)
+                                                    (declare (ignore arguments next))
+                                                    nil))))
+             (add-method #'tuatara.defaults::preview-entry method)
+             (unwind-protect (true (tuatara.defaults::entry-preview-list-p list))
+               (remove-method #'tuatara.defaults::preview-entry method))))
+      (tuatara.buffer:kill-buffer list))))

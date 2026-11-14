@@ -3,17 +3,20 @@
 # Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 """List lines longer than the set columns in the files a repository tracks.
 
-Usage: tools/line-check.py [--summary] [ROOT]
+Usage: tools/line-check.py [--summary] [--packages] [ROOT...]
 
-ROOT is a repository (the current directory when left out). Code files (Lisp,
+Each ROOT is a repository (the current directory when left out). With
+--packages the package repositories next to this one (../tuatara-packages/*/)
+are looked at as well. Code files (Lisp,
 C, shell, Python, Emacs Lisp, JavaScript, Rust, workflows) are held to 120
 columns. Documents (Org, Markdown) are held to 80; their tables, lines that
 are only a link, and source, example and quote blocks are left out. Vendored
 grammar queries (syntax/), patches, expected outputs and data files are not
 looked at.
 
-Prints one line per long line as FILE:LINE: LENGTH, then the total. With
---summary it prints the count for each file instead. The columns are
+Prints one line per long line as FILE:LINE: LENGTH (the file name starts with
+the repository's name when there are several), then the total. With --summary
+it prints the count for each file instead. The columns are
 targets, so this only lists: it always exits with 0 when it could read ROOT.
 """
 import re
@@ -55,14 +58,14 @@ def long_lines(path, text):
     return found
 
 
-def main(argv):
-    """Run the check for the command line ARGV; return the exit status."""
-    summary = "--summary" in argv
-    roots = [a for a in argv if a != "--summary"]
-    root = Path(roots[0] if roots else ".")
-    if not root.is_dir():
-        print(f"line-check: {root} is not a directory", file=sys.stderr)
-        return 2
+def package_roots():
+    """The package repositories that sit beside this checkout, in name order."""
+    beside = Path(__file__).resolve().parent.parent.parent / "tuatara-packages"
+    return sorted(p for p in beside.glob("tuatara-*") if (p / ".git").exists() and not p.name.endswith("-pc10"))
+
+
+def count_long_lines(root, label, summary):
+    """Print the long lines of repository ROOT, their names starting with LABEL; return how many there are."""
     total = 0
     for name in tracked_files(root):
         path = Path(name)
@@ -75,10 +78,26 @@ def main(argv):
         found = long_lines(path, text)
         total += len(found)
         if summary and found:
-            print(f"{len(found):6d} {name}")
+            print(f"{len(found):6d} {label}{name}")
         elif not summary:
             for number, length in found:
-                print(f"{name}:{number}: {length}")
+                print(f"{label}{name}:{number}: {length}")
+    return total
+
+
+def main(argv):
+    """Run the check for the command line ARGV; return the exit status."""
+    summary = "--summary" in argv
+    roots = [Path(a) for a in argv if not a.startswith("--")]
+    if "--packages" in argv:
+        roots = (roots or [Path(".")]) + package_roots()
+    roots = roots or [Path(".")]
+    total = 0
+    for root in roots:
+        if not root.is_dir():
+            print(f"line-check: {root} is not a directory", file=sys.stderr)
+            return 2
+        total += count_long_lines(root, f"{root.resolve().name}/" if len(roots) > 1 else "", summary)
     print(f"{total} lines past the column (code {CODE_COLUMN}, documents {DOCUMENT_COLUMN})")
     return 0
 

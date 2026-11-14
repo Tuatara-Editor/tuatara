@@ -49,14 +49,14 @@ changed, a fold left after a line that no longer folds is opened
 
 (defun org-child-headlines (headline)
   "The headlines right under HEADLINE."
-  (remove 'headline (org-node-children headline) :key #'org-node-type :test-not #'eq))
+  (org-children-of headline 'headline))
 
 (defun org-last-content-end (text from to)
   "Where the text from FROM below TO ends, the blank lines after it left out:
 the newline ending its last line that is not blank (or TO)."
-  (let ((last (loop for i downfrom (1- to) to from
-                    unless (member (char text i) '(#\Space #\Tab #\Newline #\Return)) return i)))
-    (if last (string-line-end text last) from)))
+  (let* ((*org-text* text)
+         (last (org-skip-blanks-backward to from)))
+    (if (= last from) from (org-line-end (1- last)))))
 
 (defun org-fold-chars (parse from to)
   "Fold the characters FROM below TO of PARSE (an ORG-PARSE) in its buffer."
@@ -81,10 +81,8 @@ headline, (START . END) as ORG-FOLD-RANGE has them; NIL when there is none."
 (defun org-folded-p (parse range)
   "True when the folds of PARSE's buffer hide the whole of RANGE, characters
 \(START . END) of PARSE (an ORG-PARSE)."
-  (let* ((start (org-parse-octet parse (car range)))
-         (end (org-parse-octet parse (cdr range))))
-    (find-if (lambda (fold) (and (<= (car fold) start) (>= (cdr fold) end)))
-             (tuatara.display:buffer-folds (org-parse-buffer parse)))))
+  (tuatara.display:range-folded-p (org-parse-buffer parse)
+                                 (org-parse-octet parse (car range)) (org-parse-octet parse (cdr range))))
 
 (define-setting *org-cycle-hide-drawers* t
   "Whether drawers and a task's notes stay folded as \\`TAB' shows the rest.
@@ -101,13 +99,15 @@ What is kept is its drawers (:PROPERTIES:, :LOGBOOK:) and its notes (- State
 \"DONE\" ..., - Note taken on ..., CLOCK: lines), of headings and list items
 alike; its SCHEDULED: and DEADLINE: are shown either way. A file's #+STARTUP:
 showdrawers keeps them open, hidedrawers folds them whatever this says.
-- t: each folded to one line; \\`TAB' on the line opens it.
+- t: each folded to one line; \\`TAB' on the line opens it. A file larger
+  than *org-fold-metadata-most* opens with them shown all the same.
 - nil: every file opens with them shown."
   :values boolean)
 
 (defparameter *org-note-line-re*
   (cl-ppcre:create-scanner
-   "^[ \\t]*(?:- (?:State \"|Note taken on |Rescheduled from |Not scheduled, was |New deadline from |Removed deadline, was |Refiled on |CLOSING NOTE )|CLOCK: )")
+   (concatenate 'string "^[ \\t]*(?:- (?:State \"|Note taken on |Rescheduled from |Not scheduled, was |"
+                "New deadline from |Removed deadline, was |Refiled on |CLOSING NOTE )|CLOCK: )"))
   "A line a task's log keeps: a note of a change of state, a reschedule or a
 note taken, or a clock's line.")
 
@@ -121,12 +121,12 @@ value, the line after them."
          (size (tuatara.text:rope-octet-length rope))
          (head (buffer-line-head buffer line)))
     (when (cl-ppcre:scan *org-note-line-re* head)
-      (let ((indent (or (position-if-not (lambda (c) (member c '(#\Space #\Tab))) head) 0))
+      (let ((indent (or (position-if-not #'space-or-tab-char-p head) 0))
             (last line))
         (loop for next = (1+ (tuatara.text:rope-line-end rope last))
               while (< next size)
               do (let* ((text (buffer-line-head buffer next))
-                        (own (position-if-not (lambda (c) (member c '(#\Space #\Tab))) text)))
+                        (own (position-if-not #'space-or-tab-char-p text)))
                    (if (or (cl-ppcre:scan *org-note-line-re* text)
                            (and own (> own indent) (not (eql (char text own) #\-))))
                        (setf last next)
@@ -187,8 +187,7 @@ LINE begins either."
          (range (or drawer (org-notes-range buffer line)))
          (what (if drawer "Drawer" "Notes")))
     (when range
-      (if (find-if (lambda (fold) (and (<= (car fold) (car range)) (>= (cdr fold) (cdr range))))
-                   (tuatara.display:buffer-folds buffer))
+      (if (tuatara.display:range-folded-p buffer (car range) (cdr range))
           (progn (tuatara.display:unfold-region buffer (car range) (cdr range)) (message "~a shown" what))
           (progn (tuatara.display:fold-region buffer (car range) (cdr range)) (message "~a folded" what)))
       t)))
@@ -198,35 +197,28 @@ LINE begins either."
 folds CHILDREN (a list, NIL for a child with nothing under it), all (START .
 END) in octets: folded, then its own text and its children folded, then all
 of it, then folded again."
-  (let ((folds (coerce (tuatara.display:buffer-folds buffer) 'simple-vector)))
-    (flet ((folded-p (r)
-             ;; the folds are apart and in order: the last one starting at or before R holds it, or none does
-             (let ((lo -1) (hi (length folds)))
-               (loop while (< (1+ lo) hi)
-                     do (let ((mid (ash (+ lo hi) -1)))
-                          (if (<= (car (aref folds mid)) (car r)) (setf lo mid) (setf hi mid))))
-               (and (>= lo 0) (>= (cdr (aref folds lo)) (cdr r)))))
-           (fold (r) (tuatara.display:fold-region buffer (car r) (cdr r)))
-           (unfold (r) (tuatara.display:unfold-region buffer (car r) (cdr r))))
-      (cond
-        ((null range) (message "Empty entry"))
-        ((folded-p range)
-         (unfold range)
-         (when *org-cycle-hide-drawers* (org-fold-drawers-in buffer (car range) (cdr range)))
-         (if children
-             (progn (dolist (child children) (when child (fold child)))
-                    (message "Children"))
-             (message "Subtree")))
-        ((and children
-              (every (lambda (child) (or (null child) (folded-p child))) children)
-              (some #'identity children))
-         (unfold range)
-         (when *org-cycle-hide-drawers* (org-fold-drawers-in buffer (car range) (cdr range)))
-         (message "Subtree"))
-        (t
-         (unfold range)
-         (fold range)
-         (message "Folded"))))))
+  (flet ((folded-p (r) (tuatara.display:range-folded-p buffer (car r) (cdr r)))
+         (fold (r) (tuatara.display:fold-region buffer (car r) (cdr r)))
+         (unfold (r) (tuatara.display:unfold-region buffer (car r) (cdr r))))
+    (cond
+      ((null range) (message "Empty entry"))
+      ((folded-p range)
+       (unfold range)
+       (when *org-cycle-hide-drawers* (org-fold-drawers-in buffer (car range) (cdr range)))
+       (if children
+           (progn (dolist (child children) (when child (fold child)))
+                  (message "Children"))
+           (message "Subtree")))
+      ((and children
+            (every (lambda (child) (or (null child) (folded-p child))) children)
+            (some #'identity children))
+       (unfold range)
+       (when *org-cycle-hide-drawers* (org-fold-drawers-in buffer (car range) (cdr range)))
+       (message "Subtree"))
+      (t
+       (unfold range)
+       (fold range)
+       (message "Folded")))))
 
 (defun org-octet-range (parse range)
   "RANGE, characters (START . END) of PARSE (an ORG-PARSE), as octets of its
@@ -259,7 +251,7 @@ folds: a headline, a list item or a drawer; only its first 512 octets read."
                buffer :start line :end (min (tuatara.buffer:buffer-line-end buffer line) (+ line 512)))))
     (or (org-stars (tuatara.buffer:buffer-text buffer) line)
         (cl-ppcre:scan *org-drawer-line-re* text)
-        (cl-ppcre:scan (concatenate 'string "^" (org-item-re)) text))))
+        (cl-ppcre:scan (org-item-line-scanner) text))))
 
 (defun open-stale-org-folds (buffer previous)
   "Show again what is folded after the line point is on, or the one it was on
@@ -405,8 +397,9 @@ to the next field. After a snippet's key (<s for a source block), the snippet
          (start (tuatara.buffer:buffer-line-start buffer (point)))
          ;; the line's beginning tells what it is: a line of a million characters is not read whole
          (line (buffer-line-head buffer start))
-         (bare (string-left-trim " 	" line)))
-    ;; a line that is no headline, table, template or list item to fold: indented, the file not parsed for it
+         (bare (string-left-trim *org-blanks* line))
+         (headline-table-or-template (or (uiop:string-prefix-p "*" line) (uiop:string-prefix-p "|" bare)
+                                         (uiop:string-prefix-p "<" bare))))
     ;; a drawer's first line, the drawer folded or opened, found by its lines
     (when (and (or (uiop:string-prefix-p ":" bare)
                    (uiop:string-prefix-p "- " bare)
@@ -416,13 +409,12 @@ to the next field. After a snippet's key (<s for a source block), the snippet
     ;; planning lines and a drawer's lines: left as Org writes them
     (when (org-line-kept-from-tab-p buffer start line)
       (return-from org-cycle))
-    (unless (or (uiop:string-prefix-p "*" line) (uiop:string-prefix-p "|" bare) (uiop:string-prefix-p "<" bare)
-                (and *org-cycle-include-plain-lists* (cl-ppcre:scan (concatenate 'string "^" (org-item-re)) line)))
+    ;; a line that is no headline, table, template or list item to fold: indented, the file not parsed for it
+    (unless (or headline-table-or-template
+                (and *org-cycle-include-plain-lists* (cl-ppcre:scan (org-item-line-scanner) line)))
       (return-from org-cycle (indent-for-tab-command)))
     ;; a list item of a large file whose parse is not ready: said, the parse under way
-    (when (and (not (uiop:string-prefix-p "*" line))
-               (not (uiop:string-prefix-p "|" bare))
-               (not (uiop:string-prefix-p "<" bare))
+    (when (and (not headline-table-or-template)
                (> (tuatara.buffer:buffer-size buffer) *org-parse-at-once*)
                (progn (org-buffer-parse buffer)
                       (not (org-parse-current-p buffer))))
@@ -493,13 +485,21 @@ file parsed only when one of the first two does."
               (progn (org-overview parse)
                      (setf (tuatara.buffer:buffer-local buffer 'org-global-view) :overview))))))))
 
+(defparameter *org-fold-metadata-most* (* 4 1024 1024)
+  "The largest Org file, in octets, whose drawers and notes are folded as it
+opens (*ORG-FOLD-METADATA*): each of its lines is looked at then. A larger
+one opens at once with them shown, each folded by \\`TAB' on its line.")
+
 (defun org-startup-metadata (buffer options)
   "Fold the drawers and notes of BUFFER's tasks (ORG-FOLD-DRAWERS-IN) as its
 #+STARTUP: words OPTIONS ask, hidedrawers or showdrawers, the last of them
-saying; with neither, as *ORG-FOLD-METADATA* says."
-  (let ((choice (org-startup-choice options '("hidedrawers" "showdrawers"))))
-    (when (if choice (string= choice "hidedrawers") *org-fold-metadata*)
-      (org-fold-drawers-in buffer 0 (tuatara.text:rope-octet-length (tuatara.buffer:buffer-text buffer))))))
+saying; with neither, as *ORG-FOLD-METADATA* says. A file larger than
+*ORG-FOLD-METADATA-MOST* is left as it is."
+  (let ((choice (org-startup-choice options '("hidedrawers" "showdrawers")))
+        (size (tuatara.buffer:buffer-size buffer)))
+    (when (and (if choice (string= choice "hidedrawers") *org-fold-metadata*)
+               (<= size *org-fold-metadata-most*))
+      (org-fold-drawers-in buffer 0 size))))
 
 (defmethod mode-enter ((mode org-mode) buffer)
   "Show BUFFER as its #+STARTUP: lines say: folded or open, indented or not,
@@ -516,14 +516,20 @@ the drawers and notes of its tasks folded (*ORG-FOLD-METADATA*)."
     (ignoring-errors-reported ("showing the pictures of ~a" (tuatara.buffer:buffer-name buffer))
       (org-startup-pictures buffer options))))
 
+(defparameter *org-mode-locals*
+  '(:line-scale-function :line-prefix-function :folds :inline-pictures-function :row-pictures-function
+    :tall-lines-function :line-float-function :float-before-function inline-picture-blocks
+    org-indent org-links-literal org-state org-parts org-fresh-returns org-hidden org-hidden-anchors
+    org-src-colours org-laid-out-ranges org-formula-preamble org-global-view)
+  "The buffer-locals Org mode gives a buffer, each let go of as it leaves the
+mode: its view (indentation, signs, folds, large headlines, pictures), its
+parse and its parts, and what is kept from them.")
+
 (defmethod mode-exit ((mode org-mode) buffer)
-  "Let go of the view Org mode gave BUFFER (indentation, signs, folds, large
-headlines) and of its parse, so that the mode that follows shows the text as
-it is."
-  (dolist (local '(:line-scale-function :line-prefix-function :folds :inline-pictures-function :row-pictures-function
-                   :tall-lines-function :line-float-function :float-before-function inline-picture-blocks
-                   org-indent org-links-literal org-state org-fresh-returns org-hidden org-hidden-anchors
-                   org-src-colours))
+  "Let go of the view Org mode gave BUFFER and of its parse
+\(*ORG-MODE-LOCALS*), so that the mode that follows shows the text as it is
+and the parse is not kept."
+  (dolist (local *org-mode-locals*)
     (setf (tuatara.buffer:buffer-local buffer local) nil))
   (setf (tuatara.display:buffer-replacements-function buffer) nil)
   (call-next-method))

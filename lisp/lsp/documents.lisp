@@ -3,14 +3,14 @@
 ;;;;
 ;;;; A language server runs the project's code and reads its settings: a build
 ;;;; script, a plugin, a macro. So it starts by itself only for a project you
-;;;; trust (trust.lisp: M-x lsp asks, once, and remembers; *LSP-TRUSTED-PROJECTS*),
-;;;; and never for a file opened safely, in *SAFE-DIRECTORIES*, the text of an
-;;;; encrypted file, or one not all UTF-8. A buffer of a project that has one
-;;;; is opened in it, and each change sent once typing pauses (*TYPING-PAUSE*):
-;;;; only what changed, to a server that takes changes so, else its whole
-;;;; text. What a server says of a place is moved with the text typed
-;;;; meanwhile (PLACED), so that nothing it marks jumps about or stands in the
-;;;; wrong place.
+;;;; trust (trust.lisp: M-x lsp asks, once, and remembers;
+;;;; *TRUSTED-PROJECTS*), and never for a file opened safely, in
+;;;; *SAFE-DIRECTORIES*, the text of an encrypted file, or one not all UTF-8. A
+;;;; buffer of a project that has one is opened in it, and each change sent once
+;;;; typing pauses (*TYPING-PAUSE*): only what changed, to a server that takes
+;;;; changes so, else its whole text. What a server says of a place is moved
+;;;; with the text typed meanwhile (PLACED), so that nothing it marks jumps
+;;;; about or stands in the wrong place.
 
 (in-package #:tuatara.lsp)
 
@@ -36,14 +36,14 @@ FORMAT-PROJECT-DIRECTORY finds it, a native name ending in /."
 
 ;;; Documents: what a server sees of a buffer
 
-(defstruct (lsp-doc (:constructor make-lsp-doc (buffer language uri &optional shadow)) (:copier nil))
+(define-record (lsp-doc (:constructor make-lsp-doc (buffer language uri &optional shadow)) (:copier nil))
   "What servers of LANGUAGE see of BUFFER, by the address uniform resource
 identifier (URI): its whole text, or, with SHADOW, the code of its LANGUAGE
 alone (a note's source blocks). SHADOW is then a function of the buffer. It
 returns that text, line for line with the buffer (the lines of no such code
 empty). It also returns the stretches of the buffer's lines that are code, a
-vector in order of (FIRST LAST OCTETS): the lines FIRST below LAST, OCTETS the
-octets left out at the start of each, or NIL for code of another language.
+vector in order of CODE-BLOCKs: the lines FIRST below LAST, OCTETS the octets
+left out at the start of each, or NIL for code of another language.
 SHADOW is also called with the document and the stretches of the buffer
 changed since it was last sent (CHANGED-STRETCHES). Then it returns what
 changed in that text instead, as DOC-CHANGES does, and that vector as it is
@@ -56,8 +56,29 @@ the texts last sent that a server may yet speak of, the newest first, each
 number of the newest text each server has said what it found in, each (SERVER
 . VERSION). SAVED is the one of KEPT that was last sent when the file was last
 saved, kept while KEPT has room for what a check of the file saved says of
-it."
-  buffer language uri shadow rope skipped sent (servers '()) (version 0) (kept '()) (heard '()) (saved nil))
+it. ASKING is the questions of each kind asked of it and not yet answered,
+each (KIND SERVER . ID), so that one asked anew lets the last go
+\(LSP-ASK-ANEW). HINT-LINES is the lines whose inlay hints were last asked
+for, (FIRST . LAST), or NIL."
+  (buffer nil :documentation "The buffer LSP-DOC shows to servers.")
+  (language nil :documentation "The language of the servers that see LSP-DOC.")
+  (uri nil :documentation "The address (URI) of LSP-DOC.")
+  (shadow nil
+          :documentation "A function of the buffer giving the code of LANGUAGE alone, as described above, or NIL when
+servers see the whole text.")
+  (rope nil :documentation "The text of SHADOW as last sent.")
+  (skipped nil :documentation "The vector of stretches of code of SHADOW as last sent, the octets left out of each.")
+  (sent nil :documentation "The text of the buffer as last sent (a TUATARA.TEXT:VERSION).")
+  (servers '() :documentation "The servers LSP-DOC is open in.")
+  (version 0 :documentation "The number of the text of LSP-DOC last sent.")
+  (kept '()
+        :documentation "The texts last sent that a server may yet speak of, newest first, each (VERSION SENT ROPE
+SKIPPED).")
+  (heard '()
+         :documentation "The number of the newest text each server has said what it found in, each (SERVER . VERSION).")
+  (saved nil :documentation "The one of KEPT last sent when the file was last saved.")
+  (asking '() :documentation "The questions asked of LSP-DOC and not yet answered, each (KIND SERVER . ID).")
+  (hint-lines nil :documentation "The lines whose inlay hints were last asked for, (FIRST . LAST), or NIL."))
 
 (setf (documentation 'lsp-doc-p 'function) "True when OBJECT is an LSP-DOC.")
 
@@ -105,15 +126,25 @@ NIL when there is no such buffer."
                               0))))))
 
 (defun lsp-doc-text (doc)
-  "DOC's text as it is now, its ROPE, SKIPPED and SENT made from it."
+  "DOC's text as it is now, its ROPE, SKIPPED and SENT made from it: a rope
+when DOC is its buffer's text as it is (a string is made of it where it is
+written, LSP-TEXT-STRING), else a string."
   (let ((buffer (lsp-doc-buffer doc)))
     (setf (lsp-doc-sent doc) (tuatara.buffer:buffer-version buffer))
     (if (null (lsp-doc-shadow doc))
-        (tuatara.text:rope-string (tuatara.buffer:buffer-text buffer))
+        (tuatara.buffer:buffer-text buffer)
         (multiple-value-bind (text skipped) (funcall (lsp-doc-shadow doc) buffer)
           (setf (lsp-doc-rope doc) (tuatara.text:string->rope text)
                 (lsp-doc-skipped doc) skipped)
           text))))
+
+(defun lsp-text-string (text)
+  "TEXT, what LSP-DOC-TEXT gives, as a string."
+  (if (stringp text) text (tuatara.text:rope-string text)))
+
+(defun lsp-text-octets (text)
+  "The octets TEXT, what LSP-DOC-TEXT gives, comes to in UTF-8."
+  (if (stringp text) (tuatara.text:string-octet-length text) (tuatara.text:rope-octet-length text)))
 
 (defun lsp-doc-sent-rope (doc)
   "DOC's buffer's text as it was last sent, which what its servers say is of."
@@ -182,20 +213,28 @@ kept (NOTE-SENT); NIL when it is not."
       (let ((then (find version (lsp-doc-kept doc) :key #'first)))
         (when then
           (destructuring-bind (version sent rope skipped) then
-            (let ((copy (make-lsp-doc (lsp-doc-buffer doc) (lsp-doc-language doc) (lsp-doc-uri doc) (lsp-doc-shadow doc))))
+            (let ((copy (make-lsp-doc (lsp-doc-buffer doc) (lsp-doc-language doc) (lsp-doc-uri doc)
+                                      (lsp-doc-shadow doc))))
               (setf (lsp-doc-version copy) version (lsp-doc-sent copy) sent
                     (lsp-doc-rope copy) rope (lsp-doc-skipped copy) skipped)
               copy))))))
+
+(defun skipped-octets (blocks line)
+  "The octets left out at the start of the 0-based LINE of a note in what a
+document shows of its source blocks, BLOCKS being the document's SKIPPED; NIL
+for a line of no such code. Complexity: O(log blocks)."
+  (let ((at (and blocks (1- (tuatara.runtime:bisect (mid 0 (length blocks))
+                                                     (<= (code-block-first (svref blocks mid)) line))))))
+    (when (and at (>= at 0))
+      (let ((block (svref blocks at)))
+        (and (code-block-octets block) (< line (code-block-last block))
+             (aref (code-block-octets block) (- line (code-block-first block))))))))
 
 (defun doc-skipped (doc line)
   "The octets left out at the start of the 0-based LINE of DOC's buffer in
 what DOC shows of a note's source blocks; NIL for a line of no such code.
 Complexity: O(log blocks)."
-  (let* ((blocks (lsp-doc-skipped doc))
-         (at (and blocks (1- (tuatara.runtime:bisect (mid 0 (length blocks)) (<= (first (svref blocks mid)) line))))))
-    (when (and at (>= at 0))
-      (destructuring-bind (first last octets) (svref blocks at)
-        (and octets (< line last) (aref octets (- line first)))))))
+  (skipped-octets (lsp-doc-skipped doc) line))
 
 (defun lsp-doc-covers-p (doc byte)
   "True when BYTE of DOC's buffer is in what DOC shows: anywhere for a whole
@@ -240,22 +279,44 @@ as two values; NIL when it is none (either missing, or not a whole number)."
   "The byte offset of ROPE at POSITION, a position SERVER sent (LSP-POSITION):
 one past a line's end or the text's end kept to it; NIL when POSITION is none."
   (multiple-value-bind (line character) (position-line-character position)
-    (and line (lsp-line-byte server rope line character))))
+    (and line (rope-line-byte (lsp-server-encoding server) rope line character))))
 
-(defun lsp-line-byte (server rope line character)
-  "The byte offset of ROPE at the 0-based LINE and CHARACTER as SERVER counts
-them (LSP-BYTE): within that line, at the start of a character."
+(defun rope-line-byte (encoding rope line character)
+  "The byte offset of ROPE at the 0-based LINE and CHARACTER, characters counted
+in ENCODING (:UTF-8 octets or :UTF-16 units), as LSP-BYTE finds it: within that
+line, at the start of a character."
   (let* ((line (max 0 (min line (tuatara.text:rope-lines rope))))
          (start (tuatara.text:line->byte rope line))
          ;; before the line's end, a carriage return and a line feed taken as one
          (end (tuatara.text:rope-line-text-end rope start (tuatara.text:rope-line-end rope start) t))
          (character (max 0 character)))
-    (if (eq (lsp-server-encoding server) :utf-8)
+    (if (eq encoding :utf-8)
         (tuatara.text:rope-char-start rope (min end (+ start character)))
         (let ((unit (+ (tuatara.text:byte->utf16 rope start) character)))
           (if (>= unit (tuatara.text:byte->utf16 rope end))
               end
               (tuatara.text:utf16->byte rope unit))))))
+
+(defun lsp-line-byte (server rope line character)
+  "The byte offset of ROPE at the 0-based LINE and CHARACTER as SERVER counts
+them (ROPE-LINE-BYTE)."
+  (rope-line-byte (lsp-server-encoding server) rope line character))
+
+(defun sent-line-byte (encoding rope shadow skipped line character)
+  "The byte of ROPE, a buffer's text as sent to a server counting characters
+in ENCODING, at the 0-based LINE and CHARACTER the server gave. For a note's
+source blocks, SHADOW is the text the server was sent of them, and SKIPPED
+the blocks as the document keeps them; else SHADOW is NIL. It depends on
+nothing but its arguments, so that any thread may call it with a document's
+texts as they were sent."
+  (if (null shadow)
+      (rope-line-byte encoding rope line character)
+      (let* ((at (rope-line-byte encoding shadow line character))
+             (line (tuatara.text:byte->line shadow at))
+             (column (- at (tuatara.text:line->byte shadow line)))
+             (line (min line (tuatara.text:rope-lines rope))))
+        (min (line-end-byte rope line)
+             (+ (tuatara.text:line->byte rope line) (or (skipped-octets skipped line) 0) column)))))
 
 (defun lsp-range (server rope start end)
   "The range of ROPE from byte START to END, as SERVER counts it."
@@ -279,8 +340,10 @@ at its start."
                (shadow (lsp-doc-rope doc))
                (line (min line (tuatara.text:rope-lines shadow)))
                (skipped (or (doc-skipped doc line) 0))
-               (column (max 0 (- byte (tuatara.text:line->byte rope (min line (tuatara.text:rope-lines rope))) skipped))))
-          (lsp-position server shadow (min (line-end-byte shadow line) (+ (tuatara.text:line->byte shadow line) column)))))))
+               (start (tuatara.text:line->byte rope (min line (tuatara.text:rope-lines rope))))
+               (column (max 0 (- byte start skipped))))
+          (lsp-position server shadow
+                        (min (line-end-byte shadow line) (+ (tuatara.text:line->byte shadow line) column)))))))
 
 (defun doc-byte (doc server position &optional (bias :before))
   "The byte of DOC's buffer at POSITION, a position of DOC SERVER sent
@@ -293,21 +356,29 @@ POSITION is none."
 (defun doc-line-byte (doc server line character &optional (bias :before))
   "The byte of DOC's buffer at the 0-based LINE and CHARACTER of DOC as SERVER
 counts them, as DOC-BYTE finds it."
-  (let* ((rope (lsp-doc-sent-rope doc))
-         (at (if (null (lsp-doc-shadow doc))
-                 (lsp-line-byte server rope line character)
-                 (let* ((shadow (lsp-doc-rope doc))
-                        (at (lsp-line-byte server shadow line character))
-                        (line (tuatara.text:byte->line shadow at))
-                        (column (- at (tuatara.text:line->byte shadow line)))
-                        (line (min line (tuatara.text:rope-lines rope)))
-                        (skipped (or (doc-skipped doc line) 0)))
-                   (min (line-end-byte rope line) (+ (tuatara.text:line->byte rope line) skipped column)))))
-         (sent (lsp-doc-sent doc))
-         (now (tuatara.buffer:buffer-version (lsp-doc-buffer doc))))
+  (let ((at (sent-line-byte (lsp-server-encoding server) (lsp-doc-sent-rope doc)
+                            (and (lsp-doc-shadow doc) (lsp-doc-rope doc)) (lsp-doc-skipped doc) line character))
+        (sent (lsp-doc-sent doc))
+        (now (tuatara.buffer:buffer-version (lsp-doc-buffer doc))))
     (if (and sent (not (eq sent now)))
         (tuatara.text:map-forward at sent now bias)
         at)))
+
+(defun doc-byte-function (doc server)
+  "A function of a position of DOC SERVER sent giving the byte of DOC's buffer
+there, as DOC-BYTE does, or NIL for no position, for any thread to call: it
+reads DOC's texts as they are now, whatever is sent or typed later."
+  (let ((encoding (lsp-server-encoding server))
+        (rope (lsp-doc-sent-rope doc))
+        (shadow (and (lsp-doc-shadow doc) (lsp-doc-rope doc)))
+        (skipped (lsp-doc-skipped doc))
+        (sent (lsp-doc-sent doc))
+        (now (tuatara.buffer:buffer-version (lsp-doc-buffer doc))))
+    (lambda (position)
+      (multiple-value-bind (line character) (position-line-character position)
+        (when line
+          (let ((at (sent-line-byte encoding rope shadow skipped line character)))
+            (if (and sent (not (eq sent now))) (tuatara.text:map-forward at sent now :before) at)))))))
 
 (defun doc-range (doc server start end)
   "The range of DOC's buffer from START to END as SERVER counts it in DOC."
@@ -323,16 +394,21 @@ when it is no range."
 
 ;;; Places that follow the text
 
-(defstruct (placed (:constructor make-placed (version items)) (:copier nil))
+(define-record (placed (:constructor make-placed (version items)) (:copier nil))
   "What a server said of places in a buffer, kept where the text typed since
 puts them. ITEMS is a list or a vector of lists each beginning with the byte
 offsets it starts and ends at in the text of VERSION (a TUATARA.TEXT:VERSION),
 as PLACED-ITEMS-NOW moves them on. VERSIONS is, once items of a vector have
 been moved on one by one (PLACED-ITEM), the version each item's offsets are
 in."
-  version (items '()) (versions nil))
-
-(setf (documentation 'placed-p 'function) "True when OBJECT is a PLACED.")
+  (version nil
+           :documentation "The version of the text that the items of PLACED are placed in (a TUATARA.TEXT:VERSION).")
+  (items '()
+         :documentation "The items of PLACED, a list or a vector of lists each beginning with the byte offsets it
+starts and ends at.")
+  (versions nil
+            :documentation "The version each item of PLACED has its offsets in, once the items have been moved on one
+by one, or NIL."))
 
 (defun move-placed-item (item then now)
   "Move ITEM's offsets from the text of version THEN to that of NOW: text
@@ -383,19 +459,42 @@ Only the items looked at are moved on (PLACED-ITEM). Complexity: O(log items)."
   (tuatara.runtime:bisect (mid 0 (length (placed-items placed)))
                           (not (funcall test (placed-item placed mid buffer)))))
 
-(defun keep-placed (buffer local key items)
+(defun keep-placed (buffer local key items &optional (version (tuatara.buffer:buffer-version buffer)))
   "Keep ITEMS, what a server said of places in BUFFER as PLACED keeps them,
+their offsets in the text of VERSION (BUFFER's as it is, unless given),
 under KEY in the buffer's LOCAL list of (KEY . PLACED), in place of what was
 kept so before; with no ITEMS, only that let go."
   (let ((others (remove key (tuatara.buffer:buffer-local buffer local) :key #'car :test #'equal)))
     (setf (tuatara.buffer:buffer-local buffer local)
-          (if items (acons key (make-placed (tuatara.buffer:buffer-version buffer) items) others) others))))
+          (if items (acons key (make-placed version items) others) others))))
 
 (defun doc-unchanged-p (doc version)
   "True when DOC is still open in its buffer and its text is still that of
 VERSION, the number of the text sent: an answer asked of it then still holds."
   (let ((buffer (lsp-doc-buffer doc)))
     (and (live-buffer-p buffer) (member doc (buffer-docs buffer)) (eql version (lsp-doc-version doc)))))
+
+(defun lsp-ask-anew (doc kind server method params then &key seconds)
+  "Ask SERVER METHOD with PARAMS of DOC, as LSP-REQUEST asks, THEN called with
+the answer's result and error, SECONDS the longest it is waited for when
+given: a question of the same KIND (:HINTS, (:DIAGNOSTICS SERVER), a method's
+name) of DOC not yet answered no longer wanted (LSP-CANCEL), so that the
+server does not work out answers that would be let go."
+  (let ((before (assoc kind (lsp-doc-asking doc) :test #'equal)))
+    (when before
+      (lsp-cancel (cadr before) (cddr before))
+      (setf (lsp-doc-asking doc) (remove before (lsp-doc-asking doc)))))
+  (let* ((entry (list* kind server nil))
+         (id (lsp-request server method params
+                          (lambda (result error)
+                            (setf (lsp-doc-asking doc) (remove entry (lsp-doc-asking doc)))
+                            (funcall then result error))
+                          :seconds seconds)))
+    (setf (cddr entry) id)
+    ;; an answer at once (the server not running) has left it no question to keep
+    (when (gethash id (lsp-server-waiting server))
+      (push entry (lsp-doc-asking doc)))
+    id))
 
 (defun doc-identifier (doc)
   "The JSON object naming DOC for a server."
@@ -423,27 +522,35 @@ the text as it is now."
       (setf (lsp-doc-servers doc) (remove server servers))
       (unwind-protect (lsp-send-doc doc)
         (setf (lsp-doc-servers doc) servers))))
-  (lsp-notify server "textDocument/didOpen"
-              (tuatara.text:json-object "textDocument"
-                                        (tuatara.text:json-object "uri" (lsp-doc-uri doc)
-                                                                  "languageId"
-                                                                  (language-server-id (lsp-doc-language doc))
-                                                                  "version" (incf (lsp-doc-version doc))
-                                                                  "text" (lsp-doc-text doc))))
+  (let ((text (lsp-doc-text doc))
+        (version (incf (lsp-doc-version doc))))
+    (lsp-notify server "textDocument/didOpen"
+                (lambda ()
+                  (tuatara.text:json-object
+                   "textDocument" (tuatara.text:json-object "uri" (lsp-doc-uri doc)
+                                                            "languageId" (language-server-id (lsp-doc-language doc))
+                                                            "version" version
+                                                            "text" (lsp-text-string text))))
+                :size (+ *lsp-message-size* (lsp-text-octets text))))
   (note-sent doc)
   (lsp-ask-all doc))
 
 (defun lsp-ask-all (doc)
   "Ask DOC's servers for what they show of its text as it was last sent:
-inlay hints, colours, code lenses and what they find wrong."
+inlay hints, colours, code lenses and what they find wrong. The windows
+showing its buffer look again at what they show (LOOK-AT-VIEWS-AGAIN), for the
+hints of the lines in sight."
+  (look-at-views-again (lsp-doc-buffer doc))
   (lsp-ask-hints doc)
   (lsp-ask-tokens doc)
   (lsp-ask-lenses doc)
   (lsp-pull-diagnostics doc))
 
 ;; a server that asks for what it shows again: asked of each of its documents
-(dolist (entry '(("workspace/inlayHint/refresh" . lsp-ask-hints) ("workspace/semanticTokens/refresh" . lsp-ask-tokens)
-                 ("workspace/codeLens/refresh" . lsp-ask-lenses) ("workspace/diagnostic/refresh" . lsp-pull-diagnostics)))
+(dolist (entry '(("workspace/inlayHint/refresh" . lsp-ask-hints)
+                 ("workspace/semanticTokens/refresh" . lsp-ask-tokens)
+                 ("workspace/codeLens/refresh" . lsp-ask-lenses)
+                 ("workspace/diagnostic/refresh" . lsp-pull-diagnostics)))
   (let ((ask (cdr entry)))
     (define-lsp-request (car entry) (server params)
       (mapc ask (lsp-server-documents server))
@@ -495,7 +602,7 @@ more than it and one such range (DOC-CHANGES).")
 \(DOC-CHANGES), ROPE the text as it is now."
   (coerce (loop for (old-start old-end new-start new-end) in stretches
                 unless (and (= old-start old-end) (= new-start new-end))
-                  collect (list old-start old-end (tuatara.text:rope-string rope :start new-start :end new-end)))
+                collect (list old-start old-end (tuatara.text:rope-string rope :start new-start :end new-end)))
           'simple-vector))
 
 (defun changes-off-line-ends (rope changes)
@@ -576,10 +683,12 @@ what it showed and SKIPPED what SKIPPED is now."
           (if (zerop (length changes))
               (lsp-doc-rope doc)
               (tuatara.text:apply-edits (lsp-doc-rope doc)
-                                        (map 'simple-vector (lambda (change)
-                                                              (destructuring-bind (start end text) change
-                                                                (tuatara.text:make-edit start end (and (plusp (length text))
-                                                                                                       (tuatara.text:string-octets text)))))
+                                        (map 'simple-vector
+                                             (lambda (change)
+                                               (destructuring-bind (start end text) change
+                                                 (tuatara.text:make-edit start end
+                                                                         (and (plusp (length text))
+                                                                              (tuatara.text:string-octets text)))))
                                              changes)))
           (lsp-doc-skipped doc) skipped))
   (setf (lsp-doc-sent doc) (tuatara.buffer:buffer-version (lsp-doc-buffer doc))))
@@ -668,12 +777,16 @@ nothing either when its text is as last sent."
               (return-from lsp-send-doc (lsp-close-too-large doc)))
             (setf (lsp-doc-version doc) version)
             (loop for server in servers
-                  do (lsp-notify server "textDocument/didChange"
-                                 (tuatara.text:json-object "textDocument" (tuatara.text:json-object "uri" (lsp-doc-uri doc) "version" version)
-                                                           "contentChanges"
-                                                           (if (and changes (= 2 (lsp-sync-kind server)))
-                                                               (changes-json server shown changes)
-                                                               (vector (tuatara.text:json-object "text" text))))))
+                  do (flet ((params (contents)
+                              (tuatara.text:json-object "textDocument" (tuatara.text:json-object "uri" (lsp-doc-uri doc)
+                                                                                                 "version" version)
+                                                        "contentChanges" contents)))
+                       (if (and changes (= 2 (lsp-sync-kind server)))
+                           (lsp-notify server "textDocument/didChange" (params (changes-json server shown changes)))
+                           (lsp-notify server "textDocument/didChange"
+                                       (lambda ()
+                                         (params (vector (tuatara.text:json-object "text" (lsp-text-string text)))))
+                                       :size (+ *lsp-message-size* (lsp-text-octets text))))))
             (unless text
               (take-changes doc changes skipped))))
         (note-sent doc)
@@ -762,12 +875,12 @@ see closed. Returns the servers."
     (loop for (language uri shadow) in specs
           for running = (lsp-servers-for buffer language :start start)
           when running
-            do (let ((doc (or (find uri (buffer-docs buffer) :key #'lsp-doc-uri :test #'equal)
-                              (car (push (make-lsp-doc buffer language uri shadow)
-                                         (tuatara.buffer:buffer-local buffer 'lsp-docs))))))
-                 (dolist (server running)
-                   (lsp-attach server doc)
-                   (pushnew server servers))))
+          do (let ((doc (or (find uri (buffer-docs buffer) :key #'lsp-doc-uri :test #'equal)
+                            (car (push (make-lsp-doc buffer language uri shadow)
+                                       (tuatara.buffer:buffer-local buffer 'lsp-docs))))))
+               (dolist (server running)
+                 (lsp-attach server doc)
+                 (pushnew server servers))))
     servers))
 
 (defun lsp-installed-servers (buffer)
@@ -777,7 +890,7 @@ a list of (ROOT LANGUAGE SPEC...)."
         for installed = (remove-if-not (lambda (s) (installed-program (getf s :command)))
                                        (language-server-commands language))
         when installed
-          collect (list* (lsp-project-of buffer language) language installed)))
+        collect (list* (lsp-project-of buffer language) language installed)))
 
 (defvar *lsp-offered* '()
   "The projects whose language servers \\[lsp] has been offered for this session, not to say so again.")
@@ -787,19 +900,20 @@ a list of (ROOT LANGUAGE SPEC...)."
 language servers, started when the project is trusted; else, when one is
 installed, say once that \\[lsp] starts them."
   (defer-action
-   (lambda ()
-     (when (live-buffer-p buffer)
-       (dolist (entry (lsp-installed-servers buffer))
-         (destructuring-bind (root language &rest installed) entry
-           (declare (ignore language))
-           (cond ((project-trusted-p root) (lsp-connect buffer :start t))
-                 ((not (member root *lsp-offered* :test #'string=))
-                  (push root *lsp-offered*)
-                  (message "~{~a~^, ~} can serve ~a: ~a starts ~:[it~;them~] (~:*~:[it runs~;they run~] the project's code)"
-                           (mapcar (lambda (s) (getf s :name)) installed) (abbreviated-path root)
-                           (substitute-command-keys "\\[lsp]") (rest installed))))))
-       ;; servers already running for its project see it too
-       (lsp-connect buffer)))))
+      (lambda ()
+        (when (live-buffer-p buffer)
+          (dolist (entry (lsp-installed-servers buffer))
+            (destructuring-bind (root language &rest installed) entry
+              (declare (ignore language))
+              (cond ((project-trusted-p root) (lsp-connect buffer :start t))
+                    ((not (member root *lsp-offered* :test #'string=))
+                     (push root *lsp-offered*)
+                     (message "~{~a~^, ~} can serve ~a: ~a starts ~:[it~;them~] ~
+                               (~:*~:[it runs~;they run~] the project's code)"
+                              (mapcar (lambda (s) (getf s :name)) installed) (abbreviated-path root)
+                              (substitute-command-keys "\\[lsp]") (rest installed))))))
+          ;; servers already running for its project see it too
+          (lsp-connect buffer)))))
 
 (defun lsp-unserved-words (buffer installed)
   "Why no language server can start for BUFFER, in words, INSTALLED being
@@ -818,7 +932,8 @@ its servers installed (LSP-INSTALLED-SERVERS); NIL when one can."
            (format nil "No language server is installed for ~{~(~a~)~^, ~}~@[: ~{~a~^, ~} would serve it~]"
                    (mapcar (lambda (spec) (language-name (first spec))) specs)
                    (loop for (language) in specs
-                         append (mapcar (lambda (s) (first (getf s :command))) (language-server-commands language))))))))
+                         append (mapcar (lambda (s) (first (getf s :command)))
+                                        (language-server-commands language))))))))
 
 (define-command lsp ()
   "Start the language servers of the current buffer's language for its project,
@@ -852,10 +967,10 @@ no longer start by themselves."
     (if (null roots)
         (message "~a is no file of a project" (tuatara.buffer:buffer-name buffer))
         (dolist (root roots)
-          (state-list-drop *lsp-trusted* (list (or (real-directory root) root)))
+          (state-list-drop *trusted* (list (or (real-directory root) root)))
           (dolist (server (copy-list *lsp-servers*))
             (when (string= (lsp-server-root server) root) (lsp-stop server)))
-          (message "~a is trusted no more~:[~;; it is in *lsp-trusted-projects*, which still trusts it~]"
+          (message "~a is trusted no more~:[~;; it is in *trusted-projects*, which still trusts it~]"
                    (abbreviated-path root) (project-trusted-p root))))))
 
 (define-command lsp-shutdown ()

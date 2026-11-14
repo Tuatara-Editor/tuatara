@@ -12,15 +12,18 @@
 
 (in-package #:tuatara.defaults)
 
-(defstruct (side-preview (:constructor make-side-preview (list-window &optional (list-width 40))) (:copier nil))
+(define-record (side-preview (:constructor make-side-preview (list-window &optional (list-width 40))) (:copier nil))
   "What a list shows of the entry on its current line in a window beside it
 (rimu's preview, the package manager's README). LIST-WINDOW is the window
 showing the list. LIST-WIDTH is the columns the list needs to show whole.
 WINDOW is the one beside it, showing BUFFER. OWN is true when BUFFER was made
 for the preview and goes with it. SHOWN is what is shown or being made ready."
-  list-window (list-width 40) window buffer own shown)
-
-(setf (documentation 'side-preview-p 'function) "True when OBJECT is a SIDE-PREVIEW.")
+  (list-window nil :documentation "The window showing the list of SIDE-PREVIEW.")
+  (list-width 40 :documentation "The columns the list of SIDE-PREVIEW needs to show whole.")
+  (window nil :documentation "The window beside the list, showing the BUFFER of SIDE-PREVIEW.")
+  (buffer nil :documentation "The buffer the preview of SIDE-PREVIEW shows.")
+  (own nil :documentation "True when the BUFFER of SIDE-PREVIEW was made for the preview and goes with it.")
+  (shown nil :documentation "What SIDE-PREVIEW shows, or is being made ready to show."))
 
 (defun side-preview-follow (editor place &key list-p make close held follow inside)
   "After each command, have the preview held in the variable PLACE (a
@@ -101,8 +104,9 @@ only one, and its buffer when that was made for it."
 
 (defun side-preview-note (name text)
   "A buffer for the preview of NAME saying TEXT, made for the preview."
-  (let ((buffer (tuatara.buffer:make-buffer (tuatara.buffer:unique-buffer-name (format nil "~a (preview)" (escape-controls name)))
-                                            :text (format nil "~a~%" text))))
+  (let ((buffer (tuatara.buffer:make-buffer
+                 (tuatara.buffer:unique-buffer-name (format nil "~a (preview)" (escape-controls name)))
+                 :text (format nil "~a~%" text))))
     (setf (buffer-read-only-p buffer) t)
     buffer))
 
@@ -146,16 +150,21 @@ true; not when it is NIL."
 
 (defvar *previewing-modes* (make-hash-table :test 'eq)
   "For each class of major mode asked about, whether its lists have a method
-of PREVIEW-ENTRY of their own, :YES or :NO.")
+of PREVIEW-ENTRY of their own, as (ANSWER . METHODS): ANSWER :YES or :NO, found
+while PREVIEW-ENTRY had METHODS methods, so that a method added since is seen.")
 
 (defun entry-preview-list-p (buffer)
   "True when BUFFER is a list whose entries are previewed by PREVIEW-ENTRY,
 with its preview on (\\[list-toggle-preview])."
   (and (list-preview-p buffer)
-       (let ((mode (buffer-major-mode buffer)))
-         (eq :yes (or (gethash (class-of mode) *previewing-modes*)
-                      (setf (gethash (class-of mode) *previewing-modes*)
-                            (if (rest (compute-applicable-methods #'preview-entry (list mode buffer nil))) :yes :no)))))))
+       (let* ((mode (buffer-major-mode buffer))
+              (methods (length (sb-mop:generic-function-methods #'preview-entry)))
+              (known (gethash (class-of mode) *previewing-modes*)))
+         (unless (and known (= methods (cdr known)))
+           (setf known (cons (if (rest (compute-applicable-methods #'preview-entry (list mode buffer nil))) :yes :no)
+                             methods)
+                 (gethash (class-of mode) *previewing-modes*) known))
+         (eq :yes (car known)))))
 
 (defun entry-preview-again (&optional now)
   "Have the preview beside a list show the entry on its line anew after this

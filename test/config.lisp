@@ -358,7 +358,7 @@ commented inside another one commented (;;   ;; (setf ...) in a load-package's
            (is string= ";; mine" (uiop:read-file-string file)))
       (if old (sb-posix:setenv "XDG_CONFIG_HOME" old 1) (sb-posix:unsetenv "XDG_CONFIG_HOME"))
       (setf tuatara.defaults::*mode-indent-tabs* tabs)
-      (uiop:delete-directory-tree home :validate (lambda (p) (search "/tuatara/config-" (namestring p)))))))
+      (uiop:delete-directory-tree home :validate (lambda (p) (uiop:subpathp p *test-cache-directory*))))))
 
 (define-test (config bind-key-a-mode-either-way)
   ;; :map 'csv-mode and :map :global :mode 'csv are the same keys: the mode's own
@@ -559,10 +559,32 @@ commented inside another one commented (;;   ;; (setf ...) in a load-package's
           (tuatara-user:*export-trusted-directories* '()))
       (alexandria:write-string-into-file (format nil "(setf *export-trusted-folders* '(\"~~/latex/\"))~%") file)
       (unwind-protect
-           (let ((tuatara.defaults:*config-file* file))
+           (let ((tuatara.defaults:*config-file* file)
+                 (compiler (make-string-output-stream)))
              (with-messages-said (said)
-               (run-keys "" :text "")
+               (let ((*error-output* compiler))
+                 (run-keys "" :text ""))
                (is equal '("~/latex/") tuatara-user:*export-trusted-directories*)
-               (true (search "*export-trusted-folders*, now called *export-trusted-directories*" (said)) "~a" (said))))
+               (true (search "*export-trusted-folders*, now called *export-trusted-directories*" (said)) "~a" (said))
+               ;; and without a warning of an undefined variable
+               (let ((warned (get-output-stream-string compiler)))
+                 (false (search "undefined variable" warned) "~a" warned))))
         (let ((old (find-symbol "*EXPORT-TRUSTED-FOLDERS*" :tuatara-user)))
           (when old (makunbound old)))))))
+
+(define-test (config renamed-setting-added-to)
+  ;; a list setting added to by its name before a rename gets what was added, and the name to
+  ;; write instead is said; a setting the init file left alone keeps its value
+  (with-test-directory (dir)
+    (let ((file (merge-pathnames "init.lisp" dir))
+          (tuatara-user:*trusted-projects* (list "/kept/"))
+          (tuatara-user:*evidence-directories* (list "/cases/")))
+      (alexandria:write-string-into-file (format nil "(push \"/srv/code/\" *lsp-trusted-projects*)~%") file)
+      (let ((tuatara.defaults:*config-file* file))
+        (with-messages-said (said)
+          (run-keys "" :text "")
+          (is equal '("/srv/code/" "/kept/") tuatara-user:*trusted-projects*)
+          (is equal '("/cases/") tuatara-user:*evidence-directories*)
+          (true (search "*lsp-trusted-projects*, now called *trusted-projects*" (said)) "~a" (said))
+          (false (search "*evidence-folders*" (said)) "~a" (said))
+          (false (boundp (find-symbol "*LSP-TRUSTED-PROJECTS*" :tuatara-user))))))))

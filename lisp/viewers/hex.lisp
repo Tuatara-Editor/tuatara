@@ -192,24 +192,28 @@ that a search through gigabytes gives way to \\`C-g'."
       (key-waiting-p))))
 
 (defun hex-search (backward)
-  "Ask for octets in hex and move the hex view's cursor to the next place
-after it that holds them, or with BACKWARD the last before it."
+  "Ask for octets in hex and, in the background, move the hex view's cursor to
+the next place after it that holds them, or with BACKWARD the last before it;
+\\[keyboard-quit] stops the search."
   (let* ((b (current-buffer))
-         (octets (parse-octets (read-string (format nil "Search ~:[forward~;backward~] for octets (hex): " backward)))))
+         (typed (read-string (format nil "Search ~:[forward~;backward~] for octets (hex): " backward)))
+         (octets (parse-octets typed)))
     (if (null octets)
         (message "Not octets in hex, such as de ad be ef")
-        (let* ((rope (tuatara.buffer:buffer-text b)) (p (tuatara.display:hex-point b))
-               (needle (octets-needle octets)) (stop (octets-stopper)))
-          (multiple-value-bind (hit end)
-              (if backward
-                  (tuatara.syntax:search-backward rope needle :start p :case-fold nil :stop stop)
-                  (tuatara.syntax:search-forward rope needle :start (min (1+ p) (tuatara.text:rope-octet-length rope))
-                                                             :case-fold nil :stop stop))
-            (cond ((eq end :stopped) (message "Search stopped"))
-                  (hit (setf (tuatara.display:hex-view-p b) t
-                             (tuatara.display:hex-point b) hit)
-                       (message "Found at 0x~(~x~) (~:d)" hit hit))
-                  (t (message "Not found"))))))))
+        (let ((rope (tuatara.buffer:buffer-text b)) (p (tuatara.display:hex-point b)) (needle (octets-needle octets)))
+          (start-viewer-search
+           b (format nil "the octets ~a" (string-trim " " typed))
+           (lambda (stop)
+             (if backward
+                 (tuatara.syntax:search-backward rope needle :start p :case-fold nil :stop stop)
+                 (tuatara.syntax:search-forward rope needle :start (min (1+ p) (tuatara.text:rope-octet-length rope))
+                                                            :case-fold nil :stop stop)))
+           (lambda (&optional hit end)
+             (cond ((eq end :stopped) (message "Search stopped"))
+                   (hit (setf (tuatara.display:hex-view-p b) t
+                              (tuatara.display:hex-point b) hit)
+                        (message "Found at 0x~(~x~) (~:d)" hit hit))
+                   (t (message "Not found")))))))))
 
 (define-command hex-search-forward ()
   "Find the next place after the cursor that holds the octets asked for in hex

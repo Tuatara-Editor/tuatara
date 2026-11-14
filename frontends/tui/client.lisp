@@ -61,7 +61,7 @@ keeps (*DAEMON-VARIABLES*)."
                      ((string= line "ready")
                       (unless quiet
                         (format t "The Tuatara daemon ~a runs: tuatara --client~:[=~a~;~*~] shows it~%"
-                                name (string= name tuatara.defaults::*daemon-default-name*) name))
+                                name (string= name tuatara.defaults:*daemon-default-name*) name))
                       (return 0))
                      (t (format *error-output* "~a~%" (shown line)))))))
       (close out)
@@ -86,7 +86,7 @@ no one asked (END-DAEMON-ON-TERMINATE). The exit code: 0 once it has stopped,
   (sb-sys:enable-interrupt sb-unix:sighup :ignore)
   (let* ((options (read-options arguments))
          (config (getf options :config))
-         (daemon (handler-case (tuatara.defaults::open-daemon name)
+         (daemon (handler-case (tuatara.defaults:open-daemon name)
                    (tuatara.runtime:refusal (condition)
                      (format t "tuatara: ~a~%" condition)
                      (finish-output)
@@ -96,19 +96,19 @@ no one asked (END-DAEMON-ON-TERMINATE). The exit code: 0 once it has stopped,
       ;; it holds no directory busy
       (tuatara.runtime:ignoring-errors-reported ("going to the home directory")
         (sb-posix:chdir (tuatara.io:native (user-homedir-pathname))))
-      (tuatara.defaults::set-collection-policy)
+      (tuatara.defaults:set-collection-policy)
       (when config
-        (setf tuatara.defaults::*config-file* (pathname (tuatara.io:expand-path config))))
+        (setf tuatara.defaults:*config-file* (pathname (tuatara.io:expand-path config))))
       ;; logout, or kill: its changes kept as auto-saved copies, then it ends
-      (tuatara.defaults::end-daemon-on-terminate daemon)
-      (tuatara.defaults::run-daemon-editor
+      (tuatara.defaults:end-daemon-on-terminate daemon)
+      (tuatara.defaults:run-daemon-editor
        daemon :ready (lambda ()
                        (unwind-protect
                             (tuatara.runtime:ignoring-errors-reported ("saying the daemon is ready")
                               (format t "ready~%")
                               (finish-output))
                          (sb-posix:dup2 log 1)
-                         (sb-posix:close log)))))
+                         (tuatara.runtime:close-fd-quietly log "the daemon's log")))))
     0))
 
 (defun report-daemon-socket (name start)
@@ -120,8 +120,8 @@ not run. A client of a daemon on this machine asked ssh to run tuatara
 --daemon-socket here. The exit code is 0 once said, 1 when the daemons' directory
 is not safe or a daemon could not be started, why said on the error output."
   (handler-case
-      (let* ((socket (tuatara.defaults::daemon-path name "socket"))
-             (lock (tuatara.defaults::daemon-path name "lock"))
+      (let* ((socket (tuatara.defaults:daemon-path name "socket"))
+             (lock (tuatara.defaults:daemon-path name "lock"))
              (runs (lambda () (tuatara.io:lock-file-held-p lock))))
         (when (and start (not (funcall runs)))
           (unless (zerop (start-daemon name nil :quiet t))
@@ -196,7 +196,7 @@ what its connection said, to be shown in its frame."
   "A connection to the daemon NAME, as a descriptor; with START, the daemon
 started first when none runs (START-DAEMON). NIL, why said on the error
 output unless QUIET, when there is none."
-  (let ((path (handler-case (tuatara.defaults::daemon-path name "socket")
+  (let ((path (handler-case (tuatara.defaults:daemon-path name "socket")
                 (tuatara.runtime:refusal (condition)
                   (format *error-output* "tuatara: ~a~%" condition)
                   (return-from connect-to-daemon nil)))))
@@ -205,7 +205,7 @@ output unless QUIET, when there is none."
         (progn (unless quiet
                  (format *error-output* "tuatara: no daemon named ~a runs: tuatara --daemon~:[=~a~;~*~] starts one~
                                        ~@[, or tuatara --client --start~]~%"
-                         name (string= name tuatara.defaults::*daemon-default-name*) name (not start)))
+                         name (string= name tuatara.defaults:*daemon-default-name*) name (not start)))
                nil))))
 
 (defun refusal-words (condition name &optional host)
@@ -217,7 +217,7 @@ TUATARA.FRONTEND:REMOTE-REFUSED, says why."
         (format nil "the daemon ~a~@[ on ~a~] runs ~a; this is ~a: stop it (M-x daemon-quit, or ~
                      tuatara --stop~:[=~a~;~*~]) and start it again"
                 name host other (tuatara:version-line)
-                (and (not host) (string= name tuatara.defaults::*daemon-default-name*))
+                (and (not host) (string= name tuatara.defaults:*daemon-default-name*))
                 (if host (format nil "~a:~a" host name) name))
         (tuatara.frontend:remote-refused-words condition))))
 
@@ -286,10 +286,10 @@ is closed."
            (let ((all (window-lines (append (list "Tuatara could not show the daemon:" "") lines
                                             (list "" "Any key closes this window."))
                                     width)))
-           (tuatara.frontend:frontend-begin-frame frontend)
-           (loop for row below height
-                 do (tuatara.frontend:frontend-put-row frontend row (or (nth row all) "")))
-           (tuatara.frontend:frontend-end-frame frontend)))
+             (tuatara.frontend:frontend-begin-frame frontend)
+             (loop for row below height
+                   do (tuatara.frontend:frontend-put-row frontend row (or (nth row all) "")))
+             (tuatara.frontend:frontend-end-frame frontend)))
          (when (member (tuatara.frontend:event-kind (tuatara.frontend:frontend-read-event frontend))
                        '(:key :close :quit))
            (return)))
@@ -323,10 +323,10 @@ is one; its exit code, or :FALLBACK, as RUN-CLIENT gives them."
                (connect-to-daemon name start :quiet (getf options :fallback)))))
     (let ((fd (connect (getf options :start)))
           (input (and (find '(:standard-input) (getf options :files) :test #'equal)
-                      (sb-posix:fcntl 0 +f-dupfd-cloexec+ 3)))
+                      (tuatara.io:duplicate-fd 0 :lowest 3)))
           (code nil) (words nil) (refused nil))
       (unless fd
-        (when input (sb-posix:close input))
+        (tuatara.runtime:close-fd-quietly input "the copy of the input")
         (return-from run-client-of (if (getf options :fallback) :fallback 1)))
       (unwind-protect
            (handler-case
@@ -346,7 +346,7 @@ is one; its exit code, or :FALLBACK, as RUN-CLIENT gives them."
              (tuatara.frontend:remote-refused (condition)
                (setf refused (refusal-words condition name (and link (ssh-link-host link))))
                (tuatara.frontend:shut-and-close fd)))
-        (when input (sb-posix:close input)))
+        (tuatara.runtime:close-fd-quietly input "the copy of the input"))
       (cond (refused (format *error-output* "tuatara: ~a~%" (shown refused)) 1)
             ((null code)
              (format *error-output* "tuatara: the daemon ~a~@[ on ~a~] ended; its log is ~:[~;there, ~]~a~%"

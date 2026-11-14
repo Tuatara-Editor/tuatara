@@ -132,7 +132,7 @@ Words ~a ~~~a~~ =~a=.[fn:1]
       (tuatara.defaults::org-html-contents '((1 nil "A" "a") (2 nil "B" "b")) :depth 1)))
 
 (define-test (html-export ids-are-unique-and-plain)
-  (let ((tuatara.defaults::*org-latex* (tuatara.defaults::make-org-latex "" nil nil))
+  (let ((tuatara.defaults::*org-export* (tuatara.defaults::make-org-export "" nil nil))
         (tuatara.defaults::*org-html* (tuatara.defaults::make-org-html)))
     (is string= "the-screen" (tuatara.defaults::org-html-new-id "The Screen"))
     (is string= "the-screen-2" (tuatara.defaults::org-html-new-id "The Screen"))
@@ -512,6 +512,12 @@ Text.
       (true (search "monospace" (alexandria:read-file-into-string (merge-pathnames "build/manual/manual.css" dir))))
       (true (search "--head: var(--mono);" (alexandria:read-file-into-string (merge-pathnames "build/manual/manual.css" dir)))
             "the headings and the contents column monospaced too")
+      (true (search "td:not(:last-child) kbd, main article td:not(:last-child) code { white-space: nowrap; }"
+                    (alexandria:read-file-into-string (merge-pathnames "build/manual/manual.css" dir)))
+            "keys and names in a table kept whole, a long description taking its own column's room")
+      (true (search "main article { max-width: none; }"
+                    (alexandria:read-file-into-string (merge-pathnames "build/manual/manual.css" dir)))
+            "the text as wide as the window leaves it beside the contents column")
       (false (search "Not a chapter" index)))))
 
 (define-test (html-export the-manual-filter-searches-the-text)
@@ -623,13 +629,13 @@ Text.
 
 (define-test (html-export table-cells-read-once-for-alignment)
   (let ((calls 0) (body nil))
-    (sb-int:encapsulate 'tuatara.defaults::org-latex-cell-text 'cells-read
+    (sb-int:encapsulate 'tuatara.defaults::org-export-cell-text 'cells-read
                         (lambda (function &rest arguments)
                           (incf calls)
                           (apply function arguments)))
     (unwind-protect
          (setf body (html-body-of (format nil "~{~a~}" (loop repeat 300 collect (format nil "| a | 1 | b |~%")))))
-      (sb-int:unencapsulate 'tuatara.defaults::org-latex-cell-text 'cells-read))
+      (sb-int:unencapsulate 'tuatara.defaults::org-export-cell-text 'cells-read))
     (true (<= calls (* 5 300 3)) "each cell read a few times, not once for every cell written")
     (true (search "<td class=\"right\">1</td>" body))))
 
@@ -648,7 +654,7 @@ Text.
 
 (define-test (html-export footnotes-numbered-at-once)
   (tuatara.defaults::with-org-note-keywords ("" nil)
-    (tuatara.defaults::org-latex-read-options tuatara.defaults::*org-latex*)
+    (tuatara.defaults::org-export-read-options tuatara.defaults::*org-export*)
     (let* ((tuatara.defaults::*org-html* (tuatara.defaults::make-org-html))
            (out (make-string-output-stream))
            (labels (loop for n below 30000 collect (format nil "n~d" n))))
@@ -710,3 +716,41 @@ Text.
             (unless (search name prose)
               (push (format nil "~a: ~a" (pathname-name file) name) missing))))))
     (is equal '() (sort missing #'string<) "settings listed in a table but not named in the chapter's text")))
+
+(define-test (html-export toc-lists-left-out-said)
+  ;; a #+TOC: of tables or figures, which a web page does not make, is said to be left out
+  (let ((notes (getf (html-parts-of (format nil "#+TOC: tables~%~%* Head~%Text~%")) :notes)))
+    (true (find-if (lambda (n) (search "#+TOC: tables line left out" n)) notes) "~s" notes)))
+
+(define-test (html-export names-only-tuatara-acts-on-are-in-the-source)
+  ;; each name the manual's table "What Tuatara adds to Org" lists is found in the source: a name
+  ;; renamed or dropped there is changed in the manual as well
+  (let* ((manual (merge-pathnames "doc/manual/14-org.org" tuatara.runtime:*source-tree*))
+         (lines (uiop:read-file-lines manual))
+         (start (position "*** What Tuatara adds to Org" lines :test #'string=))
+         (end (position-if (lambda (line) (uiop:string-prefix-p "*** " line)) lines :start (1+ start)))
+         (names '())
+         (sources (format nil "~{~a~%~}"
+                          (loop for pattern in '("lisp/**/*.lisp" "src/**/*.lisp")
+                                append (loop for file in (directory (merge-pathnames pattern tuatara.runtime:*source-tree*))
+                                             collect (alexandria:read-file-into-string file :external-format :utf-8)))))
+         (missing '()))
+    (true start "the section is in the manual")
+    (dolist (line (subseq lines start end))
+      (when (uiop:string-prefix-p "| =" line)
+        (let ((cell (string-trim " " (second (cl-ppcre:split "\\|" line)))))
+          (cl-ppcre:do-register-groups (shown) ("=([^=]+)=" cell)
+            (let ((name (cl-ppcre:regex-replace "_[0-9].*$" (first (cl-ppcre:split "[ :(]" (string-left-trim "{#+:" shown)))
+                                                ""))) ; :TOC_3_gh: names the :TOC: tag
+              (when (> (length name) 2) (pushnew name names :test #'string=)))))))
+    (true names "the table names something")
+    (dolist (name names)
+      (unless (search name sources :test #'char-equal) (push name missing)))
+    (is equal '() (sort missing #'string<) "names in the manual's table but not in the source")))
+
+(define-test (html-export the-org-chapter-of-the-manual-exports)
+  ;; the chapter that tells of the redact and protect macros writes none of their calls, which an export
+  ;; refuses where Org reads no macro, so that it is made as a page
+  (let* ((file (merge-pathnames "doc/manual/14-org.org" tuatara.runtime:*source-tree*))
+         (body (html-body-of (alexandria:read-file-into-string file :external-format :utf-8))))
+    (true (search "Org differs" body))))

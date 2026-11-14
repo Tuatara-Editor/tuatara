@@ -74,6 +74,101 @@ letters, digits and _."
 the empty ones left out; NIL for NIL."
   (and string (remove "" (uiop:split-string string :separator separators) :test #'string=)))
 
+(defun command-words (text &key (backslash :shell))
+  "TEXT split into a program's arguments as a shell splits a command line,
+though no shell runs. It is split at spaces, tabs and line ends, but within
+'...', which keeps all it holds as it is, or \"...\", either quote holding the
+other.
+BACKSLASH says what a backslash does. With :SHELL, outside quotes it keeps the
+character after it as it is. Within \"...\" it keeps the \" or \\ after it, and
+is itself before any other. With :ESCAPES, outside quotes it is itself (a
+Windows path comes through whole). Within \"...\" it begins one of \\t \\n \\r
+\\\\ and \\\", a tab, a line end, a carriage return, a backslash and a quote,
+and any other is refused.
+Two values, the words and T; or NIL, NIL and why as a third when a quote is
+left open or an escape is refused."
+  (let ((words '()) (word (make-string-output-stream)) (in-word nil) (quote-char nil) (i 0) (n (length text)))
+    (flet ((end-word () (when in-word (push (get-output-stream-string word) words) (setf in-word nil)))
+           (next () (and (< (1+ i) n) (char text (1+ i)))))
+      (loop while (< i n)
+            do (let ((c (char text i)))
+                 (cond ((eql quote-char #\')
+                        (if (char= c #\') (setf quote-char nil) (write-char c word)))
+                       ((eql quote-char #\")
+                        (cond ((char= c #\") (setf quote-char nil))
+                              ((char/= c #\\) (write-char c word))
+                              ((eq backslash :escapes)
+                               (let ((escaped (case (next)
+                                                (#\t #\Tab)
+                                                (#\n #\Newline)
+                                                (#\r #\Return)
+                                                (#\\ #\\)
+                                                (#\" #\"))))
+                                 (unless escaped
+                                   (return-from command-words
+                                     (values nil nil (format nil "within double quotes a backslash begins an escape, ~
+                                                                  and only \\t \\n \\r \\\\ \\\" are taken: ~a; ~
+                                                                  single quotes take a backslash as it is"
+                                                             (subseq text i (min n (+ i 2)))))))
+                                 (incf i) (write-char escaped word)))
+                              ((member (next) '(#\" #\\)) (incf i) (write-char (char text i) word))
+                              (t (write-char c word))))
+                       ((member c '(#\Space #\Tab #\Newline #\Return #\Page #.(code-char 11))) (end-word))
+                       ((member c '(#\' #\")) (setf quote-char c in-word t))
+                       ((and (char= c #\\) (eq backslash :shell) (next)) (incf i) (write-char (char text i) word)
+                        (setf in-word t))
+                       (t (write-char c word) (setf in-word t))))
+               (incf i))
+      (if quote-char
+          (values nil nil "a quote is left open")
+          (progn (end-word) (values (nreverse words) t))))))
+
+(defun version-numbers (text &optional (after ""))
+  "The numbers of the first version written in TEXT after AFTER, a regular
+expression, as a list: (0 11 0) for \"bubblewrap 0.11.0\", (9 9) for
+\"OpenSSH_9.9p1, OpenSSL 3.2.2\" after \"OpenSSH_\"; NIL when there is none.
+A pre-release after a -, alpha, beta or rc and its number, adds -3, -2 or -1
+and that number, so that it comes before its release (VERSION-AT-LEAST-P):
+0.90.13-rc1 is (0 90 13 -1 1)."
+  (multiple-value-bind (match parts)
+      (cl-ppcre:scan-to-strings (concatenate 'string after "(\\d+(?:\\.\\d+)*)(?:-(alpha|beta|rc)\\.?(\\d*))?") text)
+    (when match
+      (append (mapcar #'parse-integer (uiop:split-string (aref parts 0) :separator "."))
+              (let ((label (aref parts 1)))
+                (and label (list (cond ((string= label "alpha") -3) ((string= label "beta") -2) (t -1))
+                                 (or (parse-integer (aref parts 2) :junk-allowed t) 0))))))))
+
+(defun version-at-least-p (version needed)
+  "True when VERSION, a list of numbers as VERSION-NUMBERS gives, is NEEDED,
+another, or later: each number compared in turn, one left out counted 0."
+  (loop for i below (max (length version) (length needed))
+        for have = (or (nth i version) 0) and need = (or (nth i needed) 0)
+        when (> have need) return t
+        when (< have need) return nil
+        finally (return t)))
+
+(defun spaces (count)
+  "A new string of COUNT spaces; an empty one when COUNT is not above zero."
+  (make-string (max 0 count) :initial-element #\Space))
+
+(defun search-count (needle text &key (end (length text)))
+  "How many times NEEDLE stands in TEXT below END, none overlapping."
+  (loop with start = 0
+        for at = (search needle text :start2 start :end2 end)
+        while at count t do (setf start (+ at (length needle)))))
+
+(defun nul-fields (octets &key (start 0) (end (length octets)))
+  "The fields of OCTETS from START below END, a program's output with a null
+\(NUL) after each field (git's -z, find's -print0), as strings, decoded as
+OCTETS-STRING decodes them; text after the last NUL is a field too, an empty
+one left out. Empty fields between NULs are kept, for records of a fixed
+number of fields."
+  (loop for from = start then (1+ at)
+        for at = (or (position 0 octets :start from :end end) end)
+        when (or (< at end) (< from at))
+          collect (octets-string octets :start from :end at)
+        while (< at end)))
+
 (defun whole-number (text &key (start 0) end (radix 10))
   "TEXT, a string, or its part from START to END, read as a whole number in
 RADIX: digits, a + or - right before them, and spaces, tabs or line breaks
@@ -153,26 +248,22 @@ from the hash of the pieces before it."
         do (setf hash (ldb (byte 64 0) (* (logxor hash (aref octets i)) +fnv-prime+))))
   hash)
 
+(declaim (inline rope-hash))
+(defun rope-hash (rope start end &optional (hash +fnv-offset+))
+  "The 64-bit FNV-1a hash of ROPE's octets from START below END, carried on
+from HASH, as OCTETS-HASH gives it for the same octets: the same for the same
+text however the rope holds it. Nothing is copied to the heap."
+  (declare (type (unsigned-byte 64) hash))
+  (do-rope-windows (block low high) (rope start end)
+    (setf hash (octets-hash block :end (- high low) :hash hash)))
+  hash)
+
 (defun string-hash (text)
   "A hash of the string TEXT: FNV-1a over its octets in UTF-8, as a fixnum,
 the same in every version of Tuatara and of the Lisp it runs on."
   (ldb (byte 62 0) (octets-hash (string-octets text))))
 
 ;;; Text on one line
-
-(defun one-line (text)
-  "TEXT on one line: each run of line ends, tabs and other control
-characters in it one space, and the spaces at its ends left out, so that it
-can be shown or written where a line is expected (a name, a value, a reason
-given by a program). NIL for NIL."
-  (and text
-       (let ((out (make-string-output-stream)) (blank nil))
-         (loop for c across text
-               do (if (control-code-p (char-code c))
-                      (setf blank t)
-                      (progn (when blank (write-char #\Space out) (setf blank nil))
-                             (write-char c out))))
-         (string-trim " " (get-output-stream-string out)))))
 
 ;;; Lines of a string
 
@@ -243,19 +334,19 @@ over *NUMBER-WIDTH-MOST*."
               (destructuring-bind (width left zeros) part
                 (let* ((digits (princ-to-string number))
                        (pad (max 0 (- width (length digits)))))
-                  (cond (left (write-string digits out) (write-string (make-string pad :initial-element #\Space) out))
+                  (cond (left (write-string digits out) (write-string (spaces pad) out))
                         (zeros (when (minusp number) (write-char #\- out) (setf digits (subseq digits 1)))
                                (write-string (make-string pad :initial-element #\0) out)
                                (write-string digits out))
-                        (t (write-string (make-string pad :initial-element #\Space) out)
+                        (t (write-string (spaces pad) out)
                            (write-string digits out)))))))))))
 
 (defun natural-string-lessp (a b)
   "True when the string A comes before B in the order people sort names in:
 letters alphabetically whatever their case, and a run of digits by the number
-it writes (file2 before file10, Notes before notes.txt); two
-names alike but for case, or for zeros before a number, in the order their
-characters' codes give. Complexity: O(length of the shorter), nothing made."
+it writes (file2 before file10, Notes before notes.txt); two names alike but
+for case, or for zeros before a number, in the order their characters' codes
+give. Complexity: O(length of the shorter), nothing made."
   (declare (type string a b) (optimize speed))
   (let ((la (length a)) (lb (length b)) (i 0) (j 0))
     (declare (type fixnum la lb i j))

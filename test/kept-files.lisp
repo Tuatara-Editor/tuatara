@@ -56,7 +56,7 @@ state, data or cache; PATH within it, a directory's ending in /; CLASS :KEPT,
      ("Findings" "/cases/report.org" 120 "* Findings" ("work" "court") t)
      ("Unmapped" "/mnt/server-not-mapped/evidence/disk.img" 0 "" () t)
      ("Plain" "/notes/plain.txt" 7 ,(format nil "text~%after") () nil))
-    (tuatara.defaults::*lsp-trusted*
+    (tuatara.defaults::*trusted*
      "/projects/one/" "/projects/two three/")
     (tuatara.defaults::*look-only*
      "/cases/2026-0001/seized repo/" "/cases/2026-0002/")
@@ -184,28 +184,44 @@ pinned at, and write the sample files of that version (WRITE-KEPT-FILE-SAMPLES).
   (remove-if (lambda (line) (or (zerop (length line)) (char= (char line 0) #\#)))
              (uiop:split-string text :separator '(#\Newline))))
 
-(defun put-state-file (list text)
-  "Make TEXT the file of LIST, a list kept between sessions, in the state directory now in force."
+(defun put-state-file (list text &key former)
+  "Make TEXT the file of LIST, a list kept between sessions, in the state directory now in force;
+with FORMER, under the name its file had before (STATE-LIST-FORMERLY)."
   (ensure-directories-exist (tuatara.io:state-directory))
-  (tuatara.io:write-private-file (tuatara.defaults::state-list-path list) text))
+  (tuatara.io:write-private-file (if former
+                                     (tuatara.io:native (merge-pathnames (tuatara.defaults::state-list-formerly list)
+                                                                         (tuatara.io:state-directory)))
+                                     (tuatara.defaults::state-list-path list))
+                                 text))
+
+(defun list-sample-file (list directory)
+  "The sample file of LIST, a list kept between sessions, in DIRECTORY, under
+its name or the one it had before, and as a second value whether it is the
+one it had before; NIL when there is neither."
+  (let ((own (merge-pathnames (tuatara.defaults::state-list-name list) directory))
+        (formerly (tuatara.defaults::state-list-formerly list)))
+    (cond ((probe-file own) (values own nil))
+          ((and formerly (probe-file (merge-pathnames formerly directory)))
+           (values (merge-pathnames formerly directory) t)))))
 
 (define-test (kept-files samples-read)
   ;; each release's files read by this one to the same entries, and written back with their
-  ;; lines as they were, under the line saying the version
+  ;; lines as they were, under the line saying the version; a file of a list renamed since, under
+  ;; the name it had then, is moved over to its name now
   (let ((directories (kept-sample-directories)))
     (true directories "there are sample files")
     (dolist (directory directories)
       (dolist (list tuatara.defaults::*state-lists*)
-        (let ((sample (merge-pathnames (tuatara.defaults::state-list-name list) directory)))
-          (when (probe-file sample)
+        (multiple-value-bind (sample former) (list-sample-file list directory)
+          (when sample
             (with-fresh-state
+              (put-state-file list (file-text sample) :former former)
               (let ((text (file-text sample))
                     (path (tuatara.defaults::state-list-path list))
                     (where (format nil
                                    "~a of ~a"
                                    (tuatara.defaults::state-list-name list)
                                    (car (last (pathname-directory directory))))))
-                (put-state-file list text)
                 (is equal (kept-file-entries list) (tuatara.defaults::read-state-file list path) "~a read" where)
                 (is equal (kept-file-entries list) (tuatara.defaults::state-list-entries list) "~a listed" where)
                 ;; a change to nothing in it: written back, its lines as they were
@@ -251,7 +267,7 @@ pinned at, and write the sample files of that version (WRITE-KEPT-FILE-SAMPLES).
           (when (tuatara.defaults::state-list-trust list)
             (is eql (tuatara.defaults::state-list-fields list) (getf more :fields) "~a's fields pinned" name)))
         (true (kept-file-entries list) "~a has sample entries" name)
-        (true (some (lambda (directory) (probe-file (merge-pathnames name directory))) (kept-sample-directories))
+        (true (some (lambda (directory) (list-sample-file list directory)) (kept-sample-directories))
               "~a has a sample file" name)))
     ;; bookmarks are made by hand: kept
     (is eq :kept (tuatara.defaults::state-list-class tuatara.defaults::*bookmarks*))
@@ -332,9 +348,9 @@ those left out written empty, then a field of its own."
       (is equal (list (format nil "yaml~coff" #\Tab) (format nil "nix~coff" #\Tab))
           (file-lines-but-comments (file-text (tuatara.defaults::state-list-path list))))))
   (with-fresh-state
-    (let ((list tuatara.defaults::*lsp-trusted*))
+    (let ((list tuatara.defaults::*trusted*))
       (put-state-file list
-                      (format nil "# tuatara lsp-trusted 2~%/projects/one/~conly some days~%/projects/two/~%" #\Tab))
+                      (format nil "# tuatara trusted 2~%/projects/one/~conly some days~%/projects/two/~%" #\Tab))
       (is equal '("/projects/two/") (tuatara.defaults::state-list-entries list))
       (tuatara.defaults::state-list-drop list '("/projects/one/"))
       (tuatara.defaults::finish-state-writes)
@@ -481,7 +497,7 @@ those left out written empty, then a field of its own."
 (define-test (kept-files forgotten-while-unreadable)
   ;; a trust taken back while the file cannot be read stays taken back, however many changes follow
   (with-fresh-state
-    (let* ((list tuatara.defaults::*lsp-trusted*)
+    (let* ((list tuatara.defaults::*trusted*)
            (path (tuatara.defaults::state-list-path list)))
       (tuatara.defaults::state-list-put list (list "/t/"))
       (tuatara.defaults::finish-state-writes)
@@ -536,9 +552,9 @@ those left out written empty, then a field of its own."
   ;; the version of a file is that of its version line wherever it stands, so a list of trust
   ;; reads none of a later version's longer lines, those before that line included
   (with-fresh-state
-    (put-state-file tuatara.defaults::*lsp-trusted*
-                    (format nil "/a/~cX~%# tuatara lsp-trusted 2~%/b/~cY~%/c/~%" #\Tab #\Tab))
-    (is equal '("/c/") (tuatara.defaults::state-list-entries tuatara.defaults::*lsp-trusted*))))
+    (put-state-file tuatara.defaults::*trusted*
+                    (format nil "/a/~cX~%# tuatara trusted 2~%/b/~cY~%/c/~%" #\Tab #\Tab))
+    (is equal '("/c/") (tuatara.defaults::state-list-entries tuatara.defaults::*trusted*))))
 
 (define-test (kept-files past-limit-counted-cheaply)
   ;; how many bookmarks there will be is counted from those shown, not by making the list again:

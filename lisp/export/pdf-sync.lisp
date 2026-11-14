@@ -84,10 +84,10 @@ where it came from."
                (loop for line in lines
                      for origin across origins
                      always (and (<= 1 origin count)
-                            (let ((start (tuatara.buffer:buffer-goto-line buffer (1- origin))))
-                              (string= line (tuatara.buffer:buffer-string
-                                             buffer :start start
-                                                    :end (tuatara.buffer:buffer-line-end buffer start)))))))))))
+                                 (let ((start (tuatara.buffer:buffer-goto-line buffer (1- origin))))
+                                   (string= line (tuatara.buffer:buffer-string
+                                                  buffer :start start
+                                                  :end (tuatara.buffer:buffer-line-end buffer start)))))))))))
 
 (defun pdf-sync-take-in (synctex stamp pdf pdf-stamp result then)
   "Take in RESULT, what reading the SyncTeX file SYNCTEX beside PDF gave (a
@@ -143,8 +143,8 @@ asked. THEN runs on the editor's thread."
                            view buffer (format nil "Reading where the lines are in ~a" name)
                            (lambda (fd)
                              (handler-case
-                                 (let ((octets (tuatara.io:fd-octets fd pdf
-                                                                     (tuatara.io:stamp-size (tuatara.io:fd-stamp fd pdf))
+                                 (let ((octets (tuatara.io:fd-octets fd pdf (tuatara.io:stamp-size
+                                                                             (tuatara.io:fd-stamp fd pdf))
                                                                      *pdf-sync-pdf-largest* (constantly nil))))
                                    (or (read-synctex (tuatara.io:file-octets synctex :limit *synctex-largest*)
                                                      :boxes (or (and octets (pdf-page-boxes octets)) first-page))
@@ -187,14 +187,14 @@ within the element (the way back from what ERROR-PLACE does)."
          (position (loop with p = 0
                          repeat (1- at)
                          do (setf p (or (position #\Newline text :start p) (length text)))
-                            (when (< p (length text)) (incf p))
+                         (when (< p (length text)) (incf p))
                          finally (return p)))
          (map (pdf-export-map job))
          (entry (or (let ((inner nil))
                       (loop for e across map
                             when (and (<= (second e) position) (< position (third e))
                                       (or (null inner) (< (- (third e) (second e)) (- (third inner) (second inner)))))
-                              do (setf inner e))
+                            do (setf inner e))
                       inner)
                     (find-if (lambda (e) (<= (second e) position)) map :from-end t))))
     (if (null entry)
@@ -271,7 +271,8 @@ are not shown, the PDF's text is turned to the page."
                         when (equal (pdf-export-source job) file) return job)))
          (cond ((null job)
                 (message "~a was not made into a PDF in this session: ~a makes it"
-                         (tuatara.io:native-file-name file) (substitute-command-keys "\\[org-export-latex-pdf-buffer]")))
+                         (tuatara.io:native-file-name file)
+                         (substitute-command-keys "\\[org-export-latex-pdf-buffer]")))
                (t (flet ((show (job)
                            (show-line-in-pdf-at (format nil "~a line ~d" (tuatara.io:native-file-name file) line)
                                                 (pdf-export-tex job) (org-latex-line job line) (pdf-export-pdf job)
@@ -307,8 +308,9 @@ file beside the PDF, or the Org file it was exported from in this session."
                           (if source
                               (progn (show-file-line source at :other t)
                                      (message "Page ~d: ~a line ~d" page (tuatara.io:native-file-name source) at))
-                              (message "Page ~d comes from ~a line ~d, not opened: only files in the directory of ~a are"
-                                       page (escape-controls file) line (tuatara.io:native-file-name tex)))))))))))))
+                              (message "Page ~d comes from ~a line ~d, not opened: ~
+only files in the directory of ~a are"
+                                       page file line (tuatara.io:native-file-name tex)))))))))))))
 
 (define-command pdf-view-show-source ()
   "Show the line of the LaTeX file that made the part of the page shown, in

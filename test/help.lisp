@@ -336,11 +336,11 @@
                      (mapcar #'length
                              (uiop:split-string (tuatara.defaults::pieces-text pieces :keys t)
                                                 :separator '(#\Newline))))))
-      (true (<= (widest (tuatara.defaults::describe-function-pieces 'tuatara.defaults::org-insert-link))
+      (true (<= (widest (tuatara.defaults::describe-function-pieces 'tuatara.defaults::insert-link))
               tuatara.defaults::*help-column*))
       (true (<= (widest (tuatara.defaults::describe-variable-pieces 'tuatara-user::*auto-save-directory*))
               tuatara.defaults::*help-column*))
-      (true (search "C-x a l" (tuatara.defaults::pieces-text (tuatara.defaults::describe-function-pieces 'tuatara.defaults::org-insert-link) :keys t)))))
+      (true (search "C-x a l" (tuatara.defaults::pieces-text (tuatara.defaults::describe-function-pieces 'tuatara.defaults::insert-link) :keys t)))))
   ;; a list item's lines filled under its words; a line set in kept as written
   (is string= (format nil "Text one two.~%- an item that~%  goes on~%    | kept |  as is~%")
       (with-output-to-string (out)
@@ -565,3 +565,15 @@ second when that row does not go on from it."
             "~s" lines))
     (false (search "Values:" (tuatara.defaults::pieces-text
                               (tuatara.defaults::describe-variable-pieces 'tuatara.defaults::*help-column*))))))
+
+(define-test (help summary-costs-the-first-sentence-only)
+  ;; the one line beside a candidate is made from the first sentence, however long the documentation
+  (flet ((seconds (size)
+           (let ((doc (format nil "First sentence with \\[find-file].~%~%~a"
+                              (apply #'concatenate 'string
+                                     (loop repeat size collect "More words, and the key \\[save-buffer] again. ")))))
+             (let ((start (get-internal-real-time)))
+               (dotimes (i 5) (tuatara.defaults::documentation-field doc 1/2))
+               (/ (- (get-internal-real-time) start) internal-time-units-per-second 1.0)))))
+    (let ((small (seconds 200)) (large (seconds 20000)))
+      (true (< large (+ 0.005 (* 10 small))) "~,4f s for 20000 repeats, ~,4f s for 200" large small))))

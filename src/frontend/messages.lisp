@@ -79,20 +79,17 @@ bounds; the connection is ended."))
 
 ;;; Writing
 
-(defstruct (outbox (:constructor make-outbox (&optional (size 4096) &aux (octets (tuatara.text:make-octets size))))
-                   (:copier nil))
+(define-record (outbox (:constructor make-outbox (&optional (size 4096) &aux (octets (tuatara.text:make-octets size))))
+                      (:copier nil))
   "Messages written and not yet sent: the first FILL octets of OCTETS, and
 DESCRIPTORS, each (AT . FD), the open file descriptor (FD) passed with the
 octet at AT."
-  (octets nil :type tuatara.text:octets)
-  (fill 0 :type fixnum)
-  (descriptors '() :type list))
+  (octets nil :type tuatara.text:octets
+          :documentation "The octets of BOX's messages, the first OUTBOX-FILL of them written.")
+  (fill 0 :type fixnum :documentation "How many octets of messages BOX holds.")
+  (descriptors '() :type list :documentation "The descriptors BOX passes, each (AT . FD), newest first."))
 
-(setf (documentation 'make-outbox 'function) "An empty OUTBOX with room for SIZE octets before it grows."
-      (documentation 'outbox-p 'function) "True when OBJECT is an OUTBOX."
-      (documentation 'outbox-octets 'function) "The octets of BOX's messages, the first OUTBOX-FILL of them written."
-      (documentation 'outbox-fill 'function) "How many octets of messages BOX holds."
-      (documentation 'outbox-descriptors 'function) "The descriptors BOX passes, each (AT . FD), newest first.")
+(setf (documentation 'make-outbox 'function) "An empty OUTBOX with room for SIZE octets before it grows.")
 
 (declaim (inline outbox-room))
 (defun outbox-room (box count)
@@ -105,6 +102,17 @@ octet at AT."
         (setf (outbox-octets box) larger)))
     (setf (outbox-fill box) (+ at count))
     at))
+
+(defconstant +roomy-box+ (* 1024 1024)
+  "Octets past which the room of a box grown for one large message (a frame,
+a paste) is given back once it is empty.")
+
+(defun empty-outbox (box)
+  "Make BOX empty, giving back the room a large message made it take
+\(+ROOMY-BOX+)."
+  (setf (outbox-fill box) 0)
+  (when (> (length (outbox-octets box)) +roomy-box+)
+    (setf (outbox-octets box) (tuatara.text:make-octets 65536))))
 
 (defun put-number (box value count)
   "Put the integer VALUE in COUNT octets of BOX, least significant first, a
@@ -170,9 +178,9 @@ down, and the descriptors to be passed with them, closed."
 
 ;;; Reading
 
-(defstruct (inbox (:constructor make-inbox (fd side &key (octets (tuatara.text:make-octets 65536))
-                                                      (end 0) deadline))
-                  (:copier nil))
+(define-record (inbox (:constructor make-inbox (fd side &key (octets (tuatara.text:make-octets 65536))
+                                                         (end 0) deadline))
+                     (:copier nil))
   "What the other end of a connection has sent, read from FD (NIL when
 OCTETS hold all there is) by SIDE, :EDITOR for the editor reading a client
 and :CLIENT for a client reading the editor: OCTETS from START below END not
@@ -180,29 +188,22 @@ yet read as messages; the message being read has its next field at AT and
 ends at STOP. DESCRIPTORS are those passed and not yet taken, at most
 MOST-DESCRIPTORS of them (NIL: as SIDE takes them); DEADLINE, an internal
 real time past which waiting for more is given up (NIL: none)."
-  (fd nil)
-  (side :editor :type (member :editor :client))
-  (octets (tuatara.text:make-octets 65536) :type tuatara.text:octets)
-  (start 0 :type fixnum) (end 0 :type fixnum)
-  (at 0 :type fixnum) (stop 0 :type fixnum)
-  (descriptors '() :type list)
-  (most-descriptors nil)
-  (deadline nil))
+  (fd nil :documentation "The socket INBOX reads, or NIL when its octets are all there is.")
+  (side :editor :type (member :editor :client)
+        :documentation "Who reads INBOX: :EDITOR, from a client, or :CLIENT, from the editor.")
+  (octets (tuatara.text:make-octets 65536) :type tuatara.text:octets :documentation "The octets INBOX has read.")
+  (start 0 :type fixnum :documentation "Where INBOX's octets not yet read as messages begin.")
+  (end 0 :type fixnum :documentation "Where INBOX's octets read so far end.")
+  (at 0 :type fixnum :documentation "Where the next field of the message being read is in INBOX's octets.")
+  (stop 0 :type fixnum :documentation "Where the message being read ends in INBOX's octets.")
+  (descriptors '() :type list :documentation "The descriptors passed to INBOX and not yet taken, oldest first.")
+  (most-descriptors nil
+                    :documentation "The most descriptors INBOX takes passed and not yet
+taken, or NIL for as many as its side takes.")
+  (deadline nil :documentation "When INBOX gives up waiting for more, an internal real time, or NIL."))
 
 (setf (documentation 'make-inbox 'function)
-      "An INBOX reading what FD sends, for SIDE (:EDITOR or :CLIENT); with FD NIL, OCTETS below END are all there is."
-      (documentation 'inbox-p 'function) "True when OBJECT is an INBOX."
-      (documentation 'inbox-fd 'function) "The socket INBOX reads, or NIL when its octets are all there is."
-      (documentation 'inbox-side 'function) "Who reads INBOX: :EDITOR, from a client, or :CLIENT, from the editor."
-      (documentation 'inbox-octets 'function) "The octets INBOX has read."
-      (documentation 'inbox-start 'function) "Where INBOX's octets not yet read as messages begin."
-      (documentation 'inbox-end 'function) "Where INBOX's octets read so far end."
-      (documentation 'inbox-at 'function) "Where the next field of the message being read is in INBOX's octets."
-      (documentation 'inbox-stop 'function) "Where the message being read ends in INBOX's octets."
-      (documentation 'inbox-descriptors 'function) "The descriptors passed to INBOX and not yet taken, oldest first."
-      (documentation 'inbox-most-descriptors 'function)
-      "The most descriptors INBOX takes passed and not yet taken, or NIL for as many as its side takes."
-      (documentation 'inbox-deadline 'function) "When INBOX gives up waiting for more, an internal real time, or NIL.")
+      "An INBOX reading what FD sends, for SIDE (:EDITOR or :CLIENT); with FD NIL, OCTETS below END are all there is.")
 
 (defun close-descriptors (descriptors)
   "Close each of DESCRIPTORS, open file descriptors."
@@ -216,10 +217,17 @@ descriptors passed than its side takes are malformed."
   (loop while (< (- (inbox-end inbox) (inbox-start inbox)) wanted)
         do (let ((fd (inbox-fd inbox)) (octets (inbox-octets inbox)))
              (unless fd (return-from fill-inbox nil))
-             ;; what is not yet read moved to the front, and room made for the rest
+             ;; what is not yet read moved to the front, and room made for the rest; the room a large
+             ;; message took given back once it is read
              (when (plusp (inbox-start inbox))
-               (replace octets octets :start2 (inbox-start inbox) :end2 (inbox-end inbox))
-               (setf (inbox-end inbox) (- (inbox-end inbox) (inbox-start inbox)) (inbox-start inbox) 0))
+               (let ((left (- (inbox-end inbox) (inbox-start inbox))))
+                 (when (and (> (length octets) +roomy-box+) (<= (max left wanted) 65536))
+                   (setf octets (setf (inbox-octets inbox) (replace (tuatara.text:make-octets 65536) octets
+                                                                     :start2 (inbox-start inbox)
+                                                                     :end2 (inbox-end inbox)))
+                         (inbox-start inbox) 0 (inbox-end inbox) left))
+                 (replace octets octets :start2 (inbox-start inbox) :end2 (inbox-end inbox))
+                 (setf (inbox-end inbox) left (inbox-start inbox) 0)))
              (when (< (length octets) wanted)
                (let ((larger (tuatara.text:make-octets wanted)))
                  (replace larger octets :end2 (inbox-end inbox))
@@ -244,9 +252,10 @@ descriptors passed than its side takes are malformed."
                       (let ((deadline (inbox-deadline inbox)))
                         (when (and deadline (tuatara.runtime:deadline-passed-p deadline))
                           (malformed "nothing said in time"))
-                        (tuatara.io:poll-fd fd 1 (if deadline
-                                                     (max 1 (ceiling (* 1000 (tuatara.runtime:seconds-left deadline))))
-                                                     1000))))
+                        ;; with no deadline, woken only by what comes or by the socket shut
+                        (tuatara.io:poll-fd fd 1 (and deadline
+                                                      (max 1 (ceiling (* 1000 (tuatara.runtime:seconds-left
+                                                                               deadline))))))))
                      (t (return-from fill-inbox nil))))))
   t)
 
@@ -337,7 +346,7 @@ runs in words as a second value."
 
 ;;; Facts: what a client's screen is, for the editor's questions
 
-(defstruct (facts (:constructor make-facts ()) (:copier copy-facts))
+(define-record (facts (:constructor make-facts ()) (:copier copy-facts))
   "What a client said of its screen, from which the editor's questions to a
 remote frontend are answered. WINDOW is true for a window of its own, else a
 terminal. WIDTH and HEIGHT are in cells. COLOURS is what it can show.
@@ -347,28 +356,25 @@ STYLE is the desktop's, :dark, :light or NIL. FONT-STEPS is a number, or NIL.
 DESCRIPTION is words for where it shows the editor. HEALTH is (LABEL . TEXT)
 pairs. FONTS and FONT-FACES are as FRONTEND-FONTS and FRONTEND-FONT-FACES give
 them."
-  (window nil) (width 80 :type fixnum) (height 24 :type fixnum) (colours 256)
-  (cell-width nil) (cell-height nil) (images nil) (reorders nil) (style nil) (font-steps nil)
-  (description nil) (health '()) (fonts '()) (font-faces '()))
+  (window nil :documentation "True when the client's screen is a window of its own.")
+  (width 80 :type fixnum :documentation "The client's screen's width in cells.")
+  (height 24 :type fixnum :documentation "The client's screen's height in cells.")
+  (colours 256 :documentation "How many colours the client can show.")
+  (cell-width nil :documentation "A cell's width in pixels, or NIL.")
+  (cell-height nil :documentation "A cell's height in pixels, or NIL.")
+  (images nil :documentation "True when the client shows pictures.")
+  (reorders nil :documentation "True when the client turns right-to-left text round itself.")
+  (style nil :documentation "The desktop's style the client knows, :dark, :light or NIL.")
+  (font-steps nil :documentation "The steps the client's font is scaled by, or NIL.")
+  (description nil :documentation "Where the client shows the editor, in words, or NIL.")
+  (health '() :documentation "What the client says of itself for the health check,
+(LABEL . TEXT) pairs.")
+  (fonts '() :documentation "The fixed-width font families the client can show.")
+  (font-faces '() :documentation "The font families and their variants the client can show."))
 
 (setf (documentation 'make-facts 'function) "FACTS of an 80 by 24 terminal of 256 colours, as standard."
       (documentation 'copy-facts 'function) "A copy of FACTS, to be changed where the original is not."
-      (documentation 'facts-p 'function) "True when OBJECT is FACTS."
-      (documentation 'facts-window 'function) "True when the client's screen is a window of its own."
-      (documentation 'facts-width 'function) "The client's screen's width in cells."
-      (documentation 'facts-height 'function) "The client's screen's height in cells."
-      (documentation 'facts-colours 'function) "How many colours the client can show."
-      (documentation 'facts-cell-width 'function) "A cell's width in pixels, or NIL."
-      (documentation 'facts-cell-height 'function) "A cell's height in pixels, or NIL."
-      (documentation 'facts-images 'function) "True when the client shows pictures."
-      (documentation 'facts-reorders 'function) "True when the client turns right-to-left text round itself."
-      (documentation 'facts-style 'function) "The desktop's style the client knows, :dark, :light or NIL."
-      (documentation 'facts-font-steps 'function) "The steps the client's font is scaled by, or NIL."
-      (documentation 'facts-description 'function) "Where the client shows the editor, in words, or NIL."
-      (documentation 'facts-health 'function) "What the client says of itself for the health check,
-(LABEL . TEXT) pairs."
-      (documentation 'facts-fonts 'function) "The fixed-width font families the client can show."
-      (documentation 'facts-font-faces 'function) "The font families and their variants the client can show.")
+      (documentation 'facts-p 'function) "True when OBJECT is FACTS.")
 
 (defparameter *styles* #(nil :dark :light)
   "The desktop's styles, by their numbers in a message.")
@@ -497,9 +503,9 @@ given as (NAME . VALUE), in the order of *DISPLAY-SETTINGS*."
 
 ;;; What a client asks for as it attaches
 
-(defstruct (request (:constructor make-request (&key directory terminal environment files safe hex standard-input
-                                                      diff merge (frames 1) wait stop joins far agent notes))
-                    (:copier nil))
+(define-record (request (:constructor make-request (&key directory terminal environment files safe hex standard-input
+                                                         diff merge (frames 1) wait stop joins far agent notes))
+                       (:copier nil))
   "What a client asks of the editor as it attaches, beside what its screen
 is. DIRECTORY is the directory it was started in, an absolute path. TERMINAL is
 the device of its terminal (/dev/pts/3), or NIL. ENVIRONMENT is its variables
@@ -518,30 +524,26 @@ are the editor's machine's. AGENT, for such a client, is the socket on the
 editor's machine its ssh connection brings the desk's agent to, for the
 programs of its frames alone, or NIL. NOTES is what its connection said, at
 most eight lines, to be shown in its frame."
-  (directory nil) (terminal nil) (environment '()) (files '()) (safe nil) (hex nil) (standard-input nil)
-  (diff nil) (merge nil) (frames 1 :type fixnum) (wait nil) (stop nil) (joins nil) (far nil) (agent nil)
-  (notes '()))
+  (directory nil :documentation "The directory the client of REQUEST was started in.")
+  (terminal nil :documentation "The device of the client's terminal, or NIL.")
+  (environment '() :documentation "The client's variables kept for it, each (NAME . VALUE).")
+  (files '() :documentation "The files the client opens, each (PATH LINE COLUMN).")
+  (safe nil :documentation "True when the client's files open safely.")
+  (hex nil :documentation "True when the client's files open in the hex view.")
+  (standard-input nil
+                  :documentation "True when the client's standard input is read into a
+buffer; on the editor's side, its descriptor.")
+  (diff nil :documentation "The two paths the client compares, or NIL.")
+  (merge nil :documentation "The four paths the client merges, or NIL.")
+  (frames 1 :type fixnum :documentation "How many frames the client opens.")
+  (wait nil :documentation "True when the client waits for its files to be done with.")
+  (stop nil :documentation "True when the client asks the editor to stop.")
+  (joins nil :documentation "The word of the window the editor asked the client for that this connection is, or NIL.")
+  (far nil :documentation "True when the client is on another machine, reached over ssh.")
+  (agent nil :documentation "The socket of the desk's agent for a far client's frames, or NIL.")
+  (notes '() :documentation "What the client's connection said, to show in its frame."))
 
-(setf (documentation 'make-request 'function) "A REQUEST of a client, as its keywords give it."
-      (documentation 'request-p 'function) "True when OBJECT is a REQUEST."
-      (documentation 'request-directory 'function) "The directory the client of REQUEST was started in."
-      (documentation 'request-terminal 'function) "The device of the client's terminal, or NIL."
-      (documentation 'request-environment 'function) "The client's variables kept for it, each (NAME . VALUE)."
-      (documentation 'request-files 'function) "The files the client opens, each (PATH LINE COLUMN)."
-      (documentation 'request-safe 'function) "True when the client's files open safely."
-      (documentation 'request-hex 'function) "True when the client's files open in the hex view."
-      (documentation 'request-standard-input 'function)
-      "True when the client's standard input is read into a buffer; on the editor's side, its descriptor."
-      (documentation 'request-diff 'function) "The two paths the client compares, or NIL."
-      (documentation 'request-merge 'function) "The four paths the client merges, or NIL."
-      (documentation 'request-frames 'function) "How many frames the client opens."
-      (documentation 'request-wait 'function) "True when the client waits for its files to be done with."
-      (documentation 'request-stop 'function) "True when the client asks the editor to stop."
-      (documentation 'request-joins 'function)
-      "The word of the window the editor asked the client for that this connection is, or NIL."
-      (documentation 'request-far 'function) "True when the client is on another machine, reached over ssh."
-      (documentation 'request-agent 'function) "The socket of the desk's agent for a far client's frames, or NIL."
-      (documentation 'request-notes 'function) "What the client's connection said, to show in its frame.")
+(setf (documentation 'make-request 'function) "A REQUEST of a client, as its keywords give it.")
 
 (defconstant +most-path+ 4096 "The most octets of a path a client names.")
 
@@ -611,7 +613,9 @@ input."
          (directory (take-path inbox "a directory"))
          (terminal (let ((device (take-text inbox 256)))
                      (cond ((zerop (length device)) nil)
-                           ((and (uiop:string-prefix-p "/dev/" device) (not (find (code-char 0) device))) device)
+                           ((and (uiop:string-prefix-p "/dev/" device) (not (find (code-char 0) device))
+                                 (not (search "/.." device)))
+                            device)
                            (t (malformed "a terminal that is no device")))))
          (environment (loop repeat (take-count inbox 2 128 8)
                             collect (let ((name (take-text inbox 128)) (value (take-text inbox +most-path+)))
@@ -762,26 +766,24 @@ answer, and true when it is a piece of text with more to follow."
 
 ;;; Face names, numbered for each connection
 
-(defstruct (face-names (:constructor make-face-names ()) (:copier nil))
+(define-record (face-names (:constructor make-face-names ()) (:copier nil))
   "The numbers the messages of one connection give face names by: TABLE from
 each name to its number, from 1 in the order the names were first given one
 \(0 is no face); FRESH, the names numbered since they were last sent, newest
 first."
-  (table (make-hash-table :test 'eq) :read-only t)
-  (count 0 :type fixnum)
-  (fresh '() :type list))
+  (table (make-hash-table :test 'eq) :read-only t :documentation "The number of each face name of NAMES, by name.")
+  (count 0 :type fixnum :documentation "How many face names NAMES has numbered.")
+  (fresh '() :type list :documentation "The face names NAMES numbered since last sent, newest first."))
 
 (setf (documentation 'make-face-names 'function) "FACE-NAMES with no name numbered yet."
-      (documentation 'face-names-p 'function) "True when OBJECT is FACE-NAMES."
-      (documentation 'face-names-table 'function) "The number of each face name of NAMES, by name."
-      (documentation 'face-names-count 'function) "How many face names NAMES has numbered."
-      (documentation 'face-names-fresh 'function) "The face names NAMES numbered since last sent, newest first.")
+      (documentation 'face-names-p 'function) "True when OBJECT is FACE-NAMES.")
 
 (defun face-name-number (names name)
   "The number NAME, a face name, has in NAMES, given one when it has none; 0
 for NIL, and for any name past the +MOST-NAMES+ first."
-  (cond ((not (and name (symbolp name) (<= (tuatara.text:string-octet-length (symbol-name name)) 128))) 0)
+  (cond ((null name) 0)
         ((gethash name (face-names-table names)))
+        ((not (and (symbolp name) (<= (tuatara.text:string-octet-length (symbol-name name)) 128))) 0)
         ((< (face-names-count names) +most-names+)
          (push name (face-names-fresh names))
          (setf (gethash name (face-names-table names)) (incf (face-names-count names))))
@@ -799,6 +801,21 @@ did, if any."
       (end-message box at)
       (setf (face-names-fresh names) '()))))
 
+(sb-ext:defglobal **face-names-made** (list 0)
+  "How many face names from the editors at the other end of connections this
+process has made keywords of, which last as long as it does, in a list.")
+
+(defun received-face-name (name)
+  "The face name NAME, as the editor at the other end gave it, stands for here:
+the keyword of that name there is, or a new one while this process has made
+fewer than +MOST-NAMES+ of them; else NAME itself, a string, which no face
+has."
+  (or (find-symbol name :keyword)
+      (and (< (car **face-names-made**) +most-names+)
+           (progn (sb-ext:atomic-incf (car **face-names-made**))
+                  (intern name :keyword)))
+      name))
+
 (defun take-names (inbox names)
   "Read the face names of a message from INBOX into NAMES, a vector of them
 by number; each number is given a name once."
@@ -806,7 +823,7 @@ by number; each number is given a name once."
         do (let ((number (take-bounded inbox 2 1 +most-names+ "a face name's number"))
                  (name (take-text inbox 128)))
              (when (svref names number) (malformed "the face name ~d given twice" number))
-             (setf (svref names number) (intern name :keyword))))
+             (setf (svref names number) (received-face-name name))))
   (message-read inbox))
 
 (defun put-face-spec (box names spec)
@@ -917,7 +934,8 @@ attributes as SET-FACE-ATTRIBUTES takes them."
         (inherit (take-face-name inbox names)))
     (list name :fg fg :bg bg :bold (logtest 1 flags) :italic (logtest 2 flags) :reverse (logtest 4 flags)
                :dim (logtest 8 flags) :extend (logtest 16 flags) :underline underline :underline-colour underline-colour
-               :font (and (plusp (length font)) font) :height (and (> height 1) (min height 3)) :inherit inherit)))
+               :font (and (plusp (length font)) font) :height (and (> height 1) (min height 3))
+               :inherit (and (symbolp inherit) inherit))))
 
 ;;; A frame, painted: what the painter interface was called with between its beginning and its end
 
@@ -1097,38 +1115,28 @@ against those above (ROWS-AGAINST-ABOVE), deflated."
   "How many octets of room a picture coming from another machine is given at
 first: the room grows only as its pieces come.")
 
-(defstruct (arriving-picture (:constructor make-arriving-picture
-                                 (id width height channels total
-                                  &aux (octets (tuatara.text:make-octets (min total +first-picture-room+)))))
-                             (:copier nil))
+(define-record (arriving-picture (:constructor make-arriving-picture
+                                    (id width height channels total
+                                     &aux (octets (tuatara.text:make-octets (min total +first-picture-room+)))))
+                                (:copier nil))
   "A picture coming to a client from an editor on another machine: its ID,
 size and CHANNELS, the TOTAL of its packed octets, and OCTETS, the first
 FILLED of them come so far, in order. Once all have come it is unpacked by
 THREAD, unless CANCELLED, told to forget it meanwhile."
-  (id 0 :type (unsigned-byte 32) :read-only t)
-  (width 0 :type fixnum :read-only t)
-  (height 0 :type fixnum :read-only t)
-  (channels 0 :type fixnum :read-only t)
-  (total 0 :type fixnum :read-only t)
-  (octets nil :type tuatara.text:octets)
-  (filled 0 :type fixnum)
-  (cancelled nil)
-  (thread nil))
+  (id 0 :type (unsigned-byte 32) :read-only t :documentation "The number the picture arriving is sent by.")
+  (width 0 :type fixnum :read-only t :documentation "The picture arriving's width in pixels.")
+  (height 0 :type fixnum :read-only t :documentation "The picture arriving's height in pixels.")
+  (channels 0 :type fixnum :read-only t :documentation "The octets of each pixel of the picture arriving.")
+  (total 0 :type fixnum :read-only t :documentation "How many packed octets the picture arriving goes in.")
+  (octets nil :type tuatara.text:octets :documentation "The packed octets of the picture arriving
+come so far, and room.")
+  (filled 0 :type fixnum :documentation "How many of the picture arriving's packed octets have come.")
+  (cancelled nil :documentation "True when the client was told to forget
+the picture unpacking.")
+  (thread nil :documentation "The thread unpacking the picture arriving, once it is whole."))
 
 (setf (documentation 'make-arriving-picture 'function)
-      "An ARRIVING-PICTURE of TOTAL packed octets, given room for the first of them."
-      (documentation 'arriving-picture-p 'function) "True when OBJECT is an ARRIVING-PICTURE."
-      (documentation 'arriving-picture-id 'function) "The number the picture arriving is sent by."
-      (documentation 'arriving-picture-width 'function) "The picture arriving's width in pixels."
-      (documentation 'arriving-picture-height 'function) "The picture arriving's height in pixels."
-      (documentation 'arriving-picture-channels 'function) "The octets of each pixel of the picture arriving."
-      (documentation 'arriving-picture-total 'function) "How many packed octets the picture arriving goes in."
-      (documentation 'arriving-picture-octets 'function) "The packed octets of the picture arriving
-come so far, and room."
-      (documentation 'arriving-picture-filled 'function) "How many of the picture arriving's packed octets have come."
-      (documentation 'arriving-picture-cancelled 'function) "True when the client was told to forget
-the picture unpacking."
-      (documentation 'arriving-picture-thread 'function) "The thread unpacking the picture arriving, once it is whole.")
+      "An ARRIVING-PICTURE of TOTAL packed octets, given room for the first of them.")
 
 (defun put-picture-begin (box id width height channels total)
   "Begin sending in BOX the picture numbered ID, WIDTH by HEIGHT pixels of
@@ -1190,8 +1198,8 @@ exactly the pixels its size says and no more. Malformed when it does not
 unpack to that."
   (let* ((stride (* (arriving-picture-width arriving) (arriving-picture-channels arriving)))
          (count (* stride (arriving-picture-height arriving)))
-         (pixels (handler-case (tuatara.io:inflate (arriving-picture-octets arriving) :end (arriving-picture-filled arriving)
-                                                                 :limit count :size count)
+         (pixels (handler-case (tuatara.io:inflate (arriving-picture-octets arriving)
+                                                   :end (arriving-picture-filled arriving) :limit count :size count)
                    (tuatara.io:zip-error (condition) (malformed "a picture that does not unpack: ~a" condition)))))
     (unless (= (length pixels) count) (malformed "a picture of ~d octets, for ~d" (length pixels) count))
     (%make-image (arriving-picture-width arriving) (arriving-picture-height arriving)

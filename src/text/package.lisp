@@ -3,16 +3,20 @@
 
 (defpackage #:tuatara.text
   (:use #:cl #:alexandria)
+  (:import-from #:tuatara.runtime #:define-record #:one-line #:control-code-p)
   (:documentation "The text model: a rope of UTF-8 leaves with cached counts, mapped files, edit
 batches, versions and anchors.")
-  (:export #:escape-sequence-end #:c1-control-p #:xml-entity #:xml-tag-end #:xml-text-value
-   #:xml-name #:xml-attribute #:xml-children #:xml-child #:xml-root #:xml-local-name #:xml-unprefixed
+  (:export #:escape-sequence-end #:sgr-parameters #:sgr-changes #:c1-control-p #:xml-entity #:xml-tag-end
+   #:xml-text-value #:xml-name #:xml-attribute #:xml-children #:xml-child #:xml-root #:xml-local-name #:xml-unprefixed
    #:xml-local-children #:xml-find-all #:xml-all-text
    #:xml-first-text #:xml-parse #:*xml-deepest* #:*xml-most-elements* #:xml-escape
    #:xml-elements #:xml-element #:xml-top-elements #:xml-element-inner #:xml-element-inside #:xml-replace-elements
    #:xml-value
+   #:octet-at #:octets-integer #:octets-signed #:octets-put-integer #:octets-at-p #:base64-octets #:base64-string
+   #:octets-ascii #:octets-search #:octets-find
+   #:command-words #:version-numbers #:version-at-least-p #:search-count #:spaces
    #:utf-16-text #:parse-decimal #:whole-number #:split-words #:number-formatter #:merge-ranges
-   #:+fnv-offset+ #:+fnv-prime+ #:octets-hash #:string-hash
+   #:+fnv-offset+ #:+fnv-prime+ #:octets-hash #:rope-hash #:string-hash #:nul-fields
    ;; JSON
    #:json-read #:json-path-bounds #:json-write #:json-object #:json-get #:json-integer #:json-text #:json-items
    #:json-true-p #:json-error #:json-error-position #:json-error-text #:*json-deepest*
@@ -35,7 +39,7 @@ batches, versions and anchors.")
    #:char-boundary-p
    ;; reading
    #:map-leaf-pieces #:piece-copy #:piece-octet #:rope-octets #:rope-copy-into #:rope-copy-to-sap #:rope-string
-   #:rope-octet
+   #:rope-octets-equal-p #:rope-ranges-equal-p #:rope-octet
    #:rope-next-boundary #:rope-previous-boundary #:string-cluster-end #:string-cluster-start #:cluster-joins-p
    #:regional-indicator-code-p #:rope-char-start #:rope-char-at #:rope-find-octet #:rope-find-octet-backward
    #:rope-find-any-octet #:rope-bracket-match #:rope-escaped-p #:rope-skip-octets #:*blank-octets*
@@ -45,18 +49,18 @@ batches, versions and anchors.")
    #:line-end-octet-p #:octets-line-end-p #:line-text-ends-p #:octets-line-end-position
    #:octets-line-end-position-backward #:octets-line-ends
    #:rope-line-start #:rope-line-end #:rope-line-pieces #:map-rope-line-pieces
-   #:blank-line-octet-p #:*blank-line-octets*
+   #:blank-line-octet-p #:*blank-line-octets* #:space-or-tab-char-p #:blank-text-p
    #:rope-pieces #:rope-slice #:splice-rope
    ;; edits
    #:edit #:edit-p #:make-edit #:edit-start #:edit-end #:edit-insert #:edit-deleted
    #:edit-insert-length #:edit-delete-length
    #:apply-edits #:inverse-edits #:rope-insert #:rope-delete
    ;; versions, batches and anchors
-   #:version #:version-p #:make-version #:version-rope #:version-number #:version-batch #:version-next
+   #:version #:version-p #:make-version #:version-rope #:version-number #:version-batch
    #:version-current-p #:version-commit #:edits-batch #:swap-batch #:version-swap #:version-adopt #:version-undo-edits
    #:batch #:batch-p #:batch-edits #:batch-deltas #:batch-positions #:batch-swap
    #:swap #:swap-p #:make-swap #:swap-before #:swap-after #:swap-forward #:swap-backward
-   #:map-position #:map-forward #:changed-stretches
+   #:map-position #:map-forward #:version-batches #:batch-rope-before #:changed-stretches
    #:carried-tally #:carried-tally-p #:carry-tally #:carried-lost-p
    #:carried-line-number #:carried-line-start #:carried-counted-lines
    #:*carried-count-octets*

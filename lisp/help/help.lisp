@@ -8,6 +8,67 @@
 
 (in-package #:tuatara.defaults)
 
+;;; Help text filled
+
+(defparameter *help-column* 72
+  "The column the lines of help made of words are filled to: a command's,
+a function's or a variable's documentation, and the help on settings.")
+
+(defun marked-words (text)
+  "The words of TEXT, split at spaces and line ends; a key written into it
+between its marks (SUBSTITUTE-COMMAND-KEYS) is one word, spaces and all."
+  (let ((words '()) (word (make-string-output-stream)) (open nil))
+    (flet ((finish ()
+             (let ((w (get-output-stream-string word)))
+               (when (plusp (length w)) (push w words)))))
+      (loop for c across text
+            do (cond ((and (not open) (member c '(#\Space #\Newline))) (finish))
+                     (t (when (key-mark-p c) (setf open (not open)))
+                        (write-char c word))))
+      (finish))
+    (nreverse words)))
+
+(defun write-filled (stream head text &key (indent (length head)) (column *help-column*))
+  "Write HEAD, then the words of TEXT filled after it into lines no longer than
+COLUMN (TUATARA.DISPLAY:FILL-WORDS), the lines after the first set in by
+INDENT, to STREAM. The keys TEXT names are written in and marked to show as
+keys \(SUBSTITUTE-COMMAND-KEYS), each word as wide as it is shown. A word
+longer than a line has a line of its own."
+  (let* ((gap (and (plusp (length head)) (char/= (char head (1- (length head))) #\Space)))
+         (lines (tuatara.display:fill-words (marked-words (substitute-command-keys text :marks t)) column
+                                            :start (+ (length head) (if gap 1 0)) :indent indent
+                                            :width (lambda (c)
+                                                     (if (key-mark-p c) 0 (tuatara.display:char-columns c))))))
+    (write-string head stream)
+    (when (and gap lines) (write-char #\Space stream))
+    (format stream "~{~a~^~%~}" (cons (or (first lines) "")
+                                      (mapcar (lambda (line) (format nil "~va~a" indent "" line)) (rest lines))))
+    (terpri stream)))
+
+(defun write-documentation (stream doc &key (column *help-column*))
+  "Write DOC, a docstring, to STREAM filled to COLUMN (WRITE-FILLED), its parts
+as TUATARA.DISPLAY:DOCSTRING-PARAGRAPHS finds them, as the completion popup
+shows them too. The lines of a paragraph are joined and filled. A line
+beginning at its start with - or * or a number and a full stop begins a list
+item. The lines after it are its words until a blank line or the next item,
+filled under its first word. Any other line is set in (a table, an example;
+under an item, set in further than its words), and the blank lines are kept as
+written."
+  (let ((keymap ""))
+    (flet ((keep-keymap (line)
+             ;; a \\<KEYMAP> names the keymap for the keys after it, in the later parts too
+             (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "\\\\<([^>]+)>" line)
+               (when match (setf keymap (format nil "\\<~a>" (aref groups 0)))))))
+      (dolist (part (tuatara.display:docstring-paragraphs doc))
+        (ecase (first part)
+          (:blank (terpri stream))
+          (:as-is (let ((line (second part)))
+                    (write-line (substitute-command-keys (concatenate 'string keymap line) :marks t) stream)
+                    (keep-keymap line)))
+          (:filled (destructuring-bind (head indent words lines) (rest part)
+                     (write-filled stream head (format nil "~a~{~a~^ ~}" keymap words) :indent indent :column column)
+                     (mapc #'keep-keymap lines))))))))
+
 (define-major-mode help-mode special-mode
   "Documentation shown by the help commands, read-only; \\<help-mode>\\[quit-window]
 closes the help window, or shows again what its window showed before. An
@@ -95,10 +156,10 @@ makes the help again."
 (defmethod mode-syntax-highlights ((mode help-mode) buffer rows)
   "The colours of help: its first line, what is described, as a heading, and
 the keys it names as keys."
-  (append (loop for row across rows
-                when (and (zerop (tuatara.display:row-start row)) (not (tuatara.display:row-continuation-p row)))
-                  return (list (list 0 (tuatara.display:row-shown-end row) :heading)))
-          (made-spans-shown buffer rows)))
+  (list (loop for row across rows
+              when (and (zerop (tuatara.display:row-start row)) (not (tuatara.display:row-continuation-p row)))
+              return (list (list 0 (tuatara.display:row-shown-end row) :heading)))
+        (made-spans-shown buffer rows)))
 
 (defun command-bindings-text (symbol)
   "The keys that run command SYMBOL, marked as keys (MARK-KEY), or a note that it has none."
@@ -116,19 +177,28 @@ the keys it names as keys."
         (string-right-trim '(#\Newline) (with-output-to-string (out) (write-documentation out doc)))
         "(no documentation)")))
 
+(defun documentation-summary (symbol kind)
+  "The first sentence of SYMBOL's documentation of KIND (FUNCTION, VARIABLE),
+the keys it names written in; (no documentation) when there is none. Only that
+sentence is worked on, however long the documentation is."
+  (let ((doc (documentation symbol kind)))
+    (if doc
+        (substitute-command-keys (first-sentence doc))
+        "(no documentation)")))
+
 (defun documentation-field (doc width)
   "The first sentence of DOC, a docstring, as a field beside a candidate (see
 CANDIDATE) WIDTH wide, in :completion-annotation, the keys it names written
 in and in :help-key-binding."
-  (multiple-value-bind (text keys) (unmark-keys (first-sentence (and doc (substitute-command-keys doc :marks t))))
+  (multiple-value-bind (text keys) (unmark-keys (substitute-command-keys (first-sentence doc) :marks t))
     (if (null keys)
         (list text :completion-annotation width)
         (list text
               (let ((spans '()) (at 0))
                 (loop for (start end) in keys
                       do (when (< at start) (push (list at start :completion-annotation) spans))
-                         (push (list start end :help-key-binding) spans)
-                         (setf at end))
+                      (push (list start end :help-key-binding) spans)
+                      (setf at end))
                 (when (< at (length text)) (push (list at (length text) :completion-annotation) spans))
                 (nreverse spans))
               width))))
@@ -143,7 +213,7 @@ NIL and the longest path; for a file outside any tree, NIL and NIL."
   (let* ((path (pathname file))
          (tails (loop for directories on (rest (pathname-directory path))
                       when (member (first directories) '("src" "lisp" "frontends" "test" "tools") :test #'string=)
-                        collect (format nil "~{~a/~}~a" directories (file-namestring path))))
+                      collect (format nil "~{~a/~}~a" directories (file-namestring path))))
          (roots (tuatara.runtime:resource-directories "source/" "" :existing t)))
     (dolist (tail tails (values nil (first tails)))
       (dolist (root roots)
@@ -183,7 +253,7 @@ others are where Steel Bank Common Lisp (SBCL)'s source records say."
   (let* ((init (and (eq kind :function) (init-file-definition symbol)))
          (sources (and (not init)
                        (ignoring-errors-reported ("finding where ~s is defined" symbol)
-                         (sb-introspect:find-definition-sources-by-name symbol kind))))
+                                                 (sb-introspect:find-definition-sources-by-name symbol kind))))
          (file (if init
                    (first init)
                    (and sources (sb-introspect:definition-source-pathname (first sources))))))
@@ -284,20 +354,20 @@ documentation, the question taken away once the keys are read."
      (let* ((key (read-key (format nil
                                    "Describe key: ~@[~a ~]"
                                    (and specs (tuatara.frontend:key-sequence-description specs)))))
-             (spec (tuatara.frontend:key-spec key))
-             (binding (progn (setf specs (append specs (list spec)))
-                             (resolve-keys *editor* specs))))
-        (unless (keymap-p binding) (setf (editor-message *editor*) nil))
-        (cond ((keymap-p binding))          ; a prefix: keep reading
-              ((null binding)
-               (show-help (format nil "~a is undefined.~%"
-                                  (mark-key (tuatara.frontend:key-sequence-description specs))))
-               (return))
-              (t (show-help-pieces (cons (format nil "~a runs the command ~(~a~).~%~%"
-                                                 (mark-key (tuatara.frontend:key-sequence-description specs))
-                                                 binding)
-                                         (describe-command-pieces binding)))
-                 (return)))))))
+            (spec (tuatara.frontend:key-spec key))
+            (binding (progn (setf specs (append specs (list spec)))
+                            (resolve-keys *editor* specs))))
+       (unless (keymap-p binding) (setf (editor-message *editor*) nil))
+       (cond ((keymap-p binding))          ; a prefix: keep reading
+             ((null binding)
+              (show-help (format nil "~a is undefined.~%"
+                                 (mark-key (tuatara.frontend:key-sequence-description specs))))
+              (return))
+             (t (show-help-pieces (cons (format nil "~a runs the command ~(~a~).~%~%"
+                                                (mark-key (tuatara.frontend:key-sequence-description specs))
+                                                binding)
+                                        (describe-command-pieces binding)))
+                (return)))))))
 
 (defun tuatara-variables ()
   "All special variables of the editor's packages (EDITOR-PACKAGES) and
@@ -361,31 +431,35 @@ words typed, in *Apropos*. Each name is a link to its description:
     (unless (zerop (length pattern))
       (let ((commands (loop for s being the hash-keys of *commands*
                             for name = (string-downcase (symbol-name s))
-                            when (candidate-score pattern (make-candidate (format nil "~a ~a" name (first-sentence (documentation s 'function)))))
-                              collect s))
+                            when (candidate-score pattern (make-candidate
+                                                           (format nil "~a ~a" name
+                                                                   (first-sentence (documentation s 'function)))))
+                            collect s))
             (variables (loop for s in (tuatara-variables)
-                             when (candidate-score pattern (make-candidate (format nil "~(~a~) ~a" s (first-sentence (documentation s 'variable)))))
-                               collect s)))
+                             when (candidate-score pattern (make-candidate
+                                                            (format nil "~(~a~) ~a" s
+                                                                    (first-sentence (documentation s 'variable)))))
+                             collect s)))
         (show-help-pieces
          (collecting-pieces (put)
-           (put (format nil "Apropos ~a~%~%Commands:~%" pattern))
-           (dolist (s (sort commands #'string< :key #'symbol-name))
-             (let ((s s) (name (string-downcase (symbol-name s))))
-               (put "  ")
-               (put name :button (lambda () (show-help-pieces (describe-command-pieces s))))
-               ;; the keys from the 31st column
-               (put (format nil
-                            "~a~a~%    ~a~%"
-                            (column-text "" (max 1 (- 28 (text-columns name))))
-                            (command-bindings-text s)
-                            (first-sentence (documentation-text s 'function))))))
-           (put (format nil "~%Variables:~%"))
-           (dolist (s variables)
-             (let ((s s))
-               (put "  ")
-               (put (format nil "~(~a::~a~)" (package-name (symbol-package s)) s) :button
-                    (lambda () (show-help-pieces (lambda () (describe-variable-pieces s)))))
-               (put (format nil "~%    ~a~%" (first-sentence (documentation-text s 'variable)))))))
+                            (put (format nil "Apropos ~a~%~%Commands:~%" pattern))
+                            (dolist (s (sort commands #'string< :key #'symbol-name))
+                              (let ((s s) (name (string-downcase (symbol-name s))))
+                                (put "  ")
+                                (put name :button (lambda () (show-help-pieces (describe-command-pieces s))))
+                                ;; the keys from the 31st column
+                                (put (format nil
+                                             "~a~a~%    ~a~%"
+                                             (column-text "" (max 1 (- 28 (text-columns name))))
+                                             (command-bindings-text s)
+                                             (documentation-summary s 'function)))))
+                            (put (format nil "~%Variables:~%"))
+                            (dolist (s variables)
+                              (let ((s s))
+                                (put "  ")
+                                (put (format nil "~(~a::~a~)" (package-name (symbol-package s)) s) :button
+                                     (lambda () (show-help-pieces (lambda () (describe-variable-pieces s)))))
+                                (put (format nil "~%    ~a~%" (documentation-summary s 'variable))))))
          :name "*Apropos*")))))
 
 (defun key-line (out indent keys what &key marked)
@@ -393,7 +467,8 @@ words typed, in *Apropos*. Each name is a link to its description:
 keys (MARK-KEY) when MARKED, then WHAT they run from the 25th column after
 INDENT on, at least a space after the keys."
   ;; padded by the keys' own length: the marks take no room
-  (format out "~a~a~a~a~%" indent (if marked (mark-key keys) keys) (column-text "" (max 1 (- 22 (text-columns keys)))) what))
+  (format out "~a~a~a~a~%" indent (if marked (mark-key keys) keys)
+          (column-text "" (max 1 (- 22 (text-columns keys)))) what))
 
 (define-command describe-bindings ()
   "List every key binding in effect, keymap by keymap, each followed by the
@@ -408,7 +483,8 @@ under it."
                                      :from-end t))
        (format out "~a keymap:~%" (or (keymap-name map) "unnamed"))
        (labels ((walk (map prefix)
-                  (dolist (entry (sort (keymap-entries map :own t) #'string< :key (lambda (e) (tuatara.frontend:key-description (car e)))))
+                  (dolist (entry (sort (keymap-entries map :own t) #'string<
+                                       :key (lambda (e) (tuatara.frontend:key-description (car e)))))
                     (let* ((keys (append prefix (list (car entry))))
                            (key (tuatara.frontend:key-sequence-description keys)))
                       (cond ((keymap-p (cdr entry)) (walk (cdr entry) keys))
@@ -428,8 +504,9 @@ prefix's keys under its name, indented."
   (with-output-to-string (out)
     (labels ((walk (prefix depth)
                (loop for (key . name) in (prefix-entries keymaps prefix)
-                     for keys = (tuatara.frontend:key-sequence-description (append prefix (tuatara.frontend:parse-key-sequence key)))
-                     for indent = (make-string (* 2 depth) :initial-element #\Space)
+                     for keys = (tuatara.frontend:key-sequence-description
+                                 (append prefix (tuatara.frontend:parse-key-sequence key)))
+                     for indent = (spaces (* 2 depth))
                      do (if (uiop:string-prefix-p "+" name)
                             (progn (format out "~%~a~a  ~a~%" indent keys name)
                                    (walk (append prefix (tuatara.frontend:parse-key-sequence key)) (1+ depth))
@@ -452,7 +529,7 @@ is in it already."
     (set-major-mode buffer 'special-mode)))
 
 (defmethod host-messages-made ((host defaults-host) buffer)
-  "Put BUFFER, *Messages* just made, in special mode (MESSAGES-IN-SPECIAL-MODE)."
+  "Put BUFFER, a log just made, in special mode (MESSAGES-IN-SPECIAL-MODE)."
   (messages-in-special-mode buffer))
 
 (defmethod host-show-help ((host defaults-host) text)

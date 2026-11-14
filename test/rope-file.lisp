@@ -174,3 +174,18 @@
                 do (is = (tuatara.text:byte->line (tuatara.text:index-rope rope) byte)
                        (tuatara.text:byte->line joined byte))))
         (tuatara.text:close-mapping mapping)))))
+
+(define-test (rope-file last-mapping-left-to-close-is-closed)
+  (with-temp-file (path (to-octets "some text"))
+    (multiple-value-bind (rope mapping) (tuatara.text:open-file-rope path)
+      (declare (ignore rope))
+      (unwind-protect
+           ;; nothing else is waiting: the list it is taken off ends empty
+           (sb-thread:with-mutex (tuatara.text::**mapping-lock**)
+             (let ((waiting tuatara.text::**closing-later**))
+               (unwind-protect
+                    (progn (setf tuatara.text::**closing-later** (list mapping))
+                           (true (tuatara.text::take-closing-later mapping))
+                           (is eq nil tuatara.text::**closing-later**))
+                 (setf tuatara.text::**closing-later** waiting))))
+        (tuatara.text:close-mapping mapping)))))

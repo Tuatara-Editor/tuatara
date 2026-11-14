@@ -13,18 +13,16 @@
 
 (in-package #:tuatara.defaults)
 
-(defstruct (shown-text-job (:include tuatara.runtime:job) (:constructor nil) (:copier nil))
+(define-record (shown-text-job (:include tuatara.runtime:job) (:constructor nil) (:copier nil))
   "A look in the background at the text of a file shown in a window
 \(LOOK-AT-SHOWN-FILES), a job: the text at VERSION, ROPE, and RESULT, what
 the look found once done. Each kind of look is a structure including this
 one."
-  version rope result)
+  (version nil :documentation "The version of its buffer's text a look in the background was started on.")
+  (rope nil :documentation "The text a look in the background reads.")
+  (result nil :documentation "What a look in the background found, once done."))
 
-(setf (documentation 'shown-text-job-p 'function) "True when OBJECT is a SHOWN-TEXT-JOB, of any kind."
-      (documentation 'shown-text-job-version 'function)
-      "The version of its buffer's text a look in the background was started on."
-      (documentation 'shown-text-job-rope 'function) "The text a look in the background reads."
-      (documentation 'shown-text-job-result 'function) "What a look in the background found, once done.")
+(setf (documentation 'shown-text-job-p 'function) "True when OBJECT is a SHOWN-TEXT-JOB, of any kind.")
 
 (tuatara.runtime:define-job-words shown-text-job
   :at-exit :quiet)

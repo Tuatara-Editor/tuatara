@@ -61,6 +61,22 @@ one of FAMILIES, whole words matched in any case."
                (or (= (length family) (length name)) (char= (char name (length family)) #\Space))))
         families))
 
+(defun fonts-listed (function)
+  "What FUNCTION answers when called with the editor's frontend, one of
+FRONTEND-FONTS and FRONTEND-FONT-FACES, run on a thread of its own: the
+editor reads keys while the fonts are listed, and \\`C-g' gives up waiting.
+Two values, the answer and true; NIL and NIL when the waiting was given up."
+  (let* ((frontend (editor-frontend *editor*))
+         (thread (tuatara.runtime:make-guarded-thread (lambda () (funcall function frontend)) :name "tuatara fonts")))
+    (if (wait-interruptibly thread :message "Listing the fonts...")
+        (tuatara.runtime:thread-result thread 0)
+        (values nil nil))))
+
+(defun all-fonts-listed ()
+  "Every font family the window can draw, fixed-width or not, as
+FRONTEND-FONT-FACES lists them, listed as FONTS-LISTED lists."
+  (values (fonts-listed #'tuatara.frontend:frontend-font-faces)))
+
 (define-command set-frame-font ()
   "Choose the window's font among the fixed-width fonts installed: a family,
 with any style and size typed after it (DejaVu Sans Mono Bold 12); without a
@@ -68,19 +84,18 @@ size, the size in use stays, and so does any scaling by \\[text-scale-adjust].
 A family whose letters are not all as wide, typed by hand, is refused, as the
 window's text stands in columns. It lasts for this session; *gui-font* in the
 init file sets it for good. In a terminal the font is the terminal's."
-  (let* ((frontend (editor-frontend *editor*))
-         (families (tuatara.frontend:frontend-fonts frontend)))
-    (if (null families)
-        (message "In a terminal the font is the terminal's to change")
-        (let* ((name (string-trim " " (completing-read "Font: " families)))
-               (family (and (plusp (length name)) (fixed-width-family-p name families)))
-               (full (and family (tuatara.frontend:frontend-set-font frontend name))))
-          (cond (full (message "Font ~a" full))
-                ((and (not family)
-                      (fixed-width-family-p name (mapcar #'first (tuatara.frontend:frontend-font-faces frontend))))
-                 (message "~a is no fixed-width font, and the window's text stands in columns: the font is as it was"
-                          (shown-font-family name)))
-                (t (message "No font family ~a is installed" (shown-font-family name))))))))
+  (multiple-value-bind (families listed) (fonts-listed #'tuatara.frontend:frontend-fonts)
+    (cond ((not listed))
+          ((null families) (message "In a terminal the font is the terminal's to change"))
+          (t (let* ((frontend (editor-frontend *editor*))
+                    (name (string-trim " " (completing-read "Font: " families)))
+                    (family (and (plusp (length name)) (fixed-width-family-p name families)))
+                    (full (and family (tuatara.frontend:frontend-set-font frontend name))))
+               (cond (full (message "Font ~a" full))
+                     ((and (not family) (fixed-width-family-p name (mapcar #'first (all-fonts-listed))))
+                      (message "~a is no fixed-width font, and the window's text stands in columns: the font is as it was"
+                               (shown-font-family name)))
+                     (t (message "No font family ~a is installed" (shown-font-family name)))))))))
 
 (defun shown-font-family (name)
   "NAME, a font as typed, without the size at its end."

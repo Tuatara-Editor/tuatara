@@ -34,7 +34,9 @@ machine and not there, logging whether that was done ("applied true"); a
 text holding "stall" has it stop reading what it is sent; asked to describe
 "die" it ends without answering, and "huge" it describes in 200,000 words;
 a text holding "unformattable" it fails to lay out, saying it could not run
-its formatter, and one holding "slowformat" it never answers.
+its formatter, and one holding "slowformat" it never answers. In a text
+holding "slowly" it completes, finds definitions and grows the selection a
+second late, reading what it is sent meanwhile.
 
 As a build run on each save does, it checks the file as saved for "oops", an
 error: a second after each save it says what that check found, with what it
@@ -466,6 +468,10 @@ while True:
     elif method == 'textDocument/formatting' and 'unformattable' in TEXTS.get(params['textDocument']['uri'], ''):
         send({'jsonrpc': '2.0', 'id': message['id'], 'error': {'code': -32603, 'message':
               'Failed to spawn cd "/tmp/project/src" && RUSTUP_AUTO_INSTALL="0" "rustfmt" "--edition" "2021"\nmore words'}})
+    elif (method in ('textDocument/completion', 'textDocument/definition', 'textDocument/selectionRange')
+          and 'slowly' in TEXTS.get(params['textDocument']['uri'], '')):
+        answer = {'jsonrpc': '2.0', 'id': message['id'], 'result': ANSWERS[method](params)}
+        threading.Timer(1.0, send, [answer]).start()
     elif method in ANSWERS:
         send({'jsonrpc': '2.0', 'id': message['id'], 'result': ANSWERS[method](params)})
     elif method == 'shutdown':

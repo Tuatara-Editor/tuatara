@@ -267,6 +267,23 @@ shown, by an ordinary change of the buffer."
         (false (search "found only" (session-text editor)))
         (false (search "so far" (session-text editor)))))))
 
+(define-test (search-results files-past-the-most-searched-from-disk)
+  ;; a directory of more files than the text kept is searched whole, those past the most read from disk
+  (with-test-directory (dir)
+    (let ((a (put-file (merge-pathnames "a.txt" dir) (format nil "alpha kiwi~%")))
+          (most tuatara-user:*indexed-files-most*))
+      (put-file (merge-pathnames "b.txt" dir) (format nil "beta kiwi~%"))
+      (put-file (merge-pathnames "c.txt" dir) (format nil "gamma kiwi~%"))
+      (setf tuatara-user:*indexed-files-most* 1)
+      (unwind-protect
+           (let ((f (run-keys `(,(format nil "C-x C-f ~a RET M-s g" (key-string (tuatara.io:native a))) :wait "k i w i")
+                              :width 200 :height 12)))
+             (true (tuatara.frontend.fake:fake-frame-showing f "a.txt:1: alpha kiwi"))
+             (true (tuatara.frontend.fake:fake-frame-showing f "b.txt:1: beta kiwi"))
+             (true (tuatara.frontend.fake:fake-frame-showing f "c.txt:1: gamma kiwi"))
+             (false (tuatara.frontend.fake:fake-frame-showing f "files only")))
+        (setf tuatara-user:*indexed-files-most* most)))))
+
 (define-test (search-results unfinished-list-said-so)
   ;; lines listed before the search of files ended: the list says they are only those found so far
   (with-test-directory (dir)
@@ -479,3 +496,19 @@ shown, by an ordinary change of the buffer."
     (is equal '("/nonexistent/a.txt:7 not written: the file is not there"
                 "/nonexistent/a.txt:3 not written: the file is not there")
         (tuatara.defaults::write-back-job-refused job))))
+
+(define-test (search-results look-only-waits-while-pending)
+  ;; a project still being looked through for evidence directories is waited for by the second value
+  ;; the trust check gives, :PENDING, whatever its words say; then its answer counts
+  (let ((asked 0)
+        (job (tuatara.defaults::make-write-back-job nil '())))
+    (sb-int:encapsulate 'tuatara.defaults::directory-holds-evidence-p 'looking
+                        (lambda (f directory)
+                          (declare (ignore f directory))
+                          (if (< (incf asked) 3) (values "still being read" :looking) nil)))
+    (unwind-protect
+         (progn
+           (is eq :pending (nth-value 1 (tuatara.defaults::project-look-only-reason "/nonexistent/project/")))
+           (false (tuatara.defaults::look-only-reason-of job "/nonexistent/project/"))
+           (is = 3 asked))
+      (sb-int:unencapsulate 'tuatara.defaults::directory-holds-evidence-p 'looking))))

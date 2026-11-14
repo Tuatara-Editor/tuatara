@@ -5,9 +5,9 @@
 
 ;;; Mapped files
 
-(defstruct (mapping (:constructor %make-mapping (sap length path fd resources
-                                                &aux (sources (list (list 0 length fd 0)))))
-                    (:copier nil))
+(define-record (mapping (:constructor %make-mapping (sap length path fd resources
+                                                   &aux (sources (list (list 0 length fd 0)))))
+                       (:copier nil))
   "A memory-mapped file. SAP addresses LENGTH octets of PATH, read-only,
 outside the Lisp heap, mapped from the open file descriptor (FD), which the
 mapping keeps (so saving can copy straight from it).
@@ -34,37 +34,23 @@ the file changed where it was read from while it came, so that what is here is
 no one version of it, and any read of it is refused.
 Of a large mapping (*LARGE-MAPPING-OCTETS*) the system reads in no more than
 is asked (LARGE-MAPPING-ADVICE): its readers ask (NOTE-READ, READ-AHEAD)."
-  (sap (sb-sys:int-sap 0) :type sb-sys:system-area-pointer)
-  (length 0 :type fixnum :read-only t)
-  (path nil :read-only t)
-  (fd -1 :type fixnum)
-  (sources '() :type list)
-  (resources (list '()) :read-only t)
-  (live t :type boolean)
-  (wanted (cons 0 0) :type cons)
-  (seen 0 :type fixnum)
-  (asked (cons 0 0) :type cons)
-  (holes '() :type list)
-  (torn nil :type boolean)
-  (pieces (make-hash-table :synchronized t) :read-only t)
-  (releasing (sb-thread:make-mutex :name "tuatara mapping let go of") :read-only t))
-
-(setf (documentation 'mapping-p 'function) "True when OBJECT is a MAPPING."
-      (documentation 'mapping-sap 'function) "The foreign pointer to the mapped octets."
-      (documentation 'mapping-length 'function) "Number of mapped octets."
-      (documentation 'mapping-path 'function) "The mapped file's path."
-      (documentation 'mapping-fd 'function) "The open descriptor the mapped octets came from when last moved whole."
-      (documentation 'mapping-sources 'function) "The stretches (START END FD DELTA) a mapping's octets are read from."
-      (documentation 'mapping-resources 'function) "A cons whose car lists the (ADDRESS LENGTH FD)
-the mapping holds, ADDRESS NIL for a descriptor alone."
-      (documentation 'mapping-live 'function) "True until the mapping is closed with CLOSE-MAPPING."
-      (documentation 'mapping-wanted 'function) "The stretch (START . END) of a mapping a window shows and reads ahead."
-      (documentation 'mapping-seen 'function) "Where in the mapping the octets a window showed last began."
-      (documentation 'mapping-asked 'function) "The stretch (START . END) of a mapping asked about last outside a pass."
-      (documentation 'mapping-holes 'function) "The stretches of a mapping's file that have not arrived, in order."
-      (documentation 'mapping-torn 'function) "True when a mapping's file changed where it came from while it arrived."
-      (documentation 'mapping-releasing 'function) "Held while pieces of a mapping are let go of."
-      (documentation 'mapping-pieces 'function) "The pieces of a mapping passes hold, each (HOLDERS . HELD).")
+  (sap (sb-sys:int-sap 0) :type sb-sys:system-area-pointer :documentation "The foreign pointer to the mapped octets.")
+  (length 0 :type fixnum :read-only t :documentation "Number of mapped octets.")
+  (path nil :read-only t :documentation "The mapped file's path.")
+  (fd -1 :type fixnum :documentation "The open descriptor the mapped octets came from when last moved whole.")
+  (sources '() :type list :documentation "The stretches (START END FD DELTA) a mapping's octets are read from.")
+  (resources (list '()) :read-only t :documentation "A cons whose car lists the (ADDRESS LENGTH FD)
+the mapping holds, ADDRESS NIL for a descriptor alone.")
+  (live t :type boolean :documentation "True until the mapping is closed with CLOSE-MAPPING.")
+  (wanted (cons 0 0) :type cons :documentation "The stretch (START . END) of a mapping a window shows and reads ahead.")
+  (seen 0 :type fixnum :documentation "Where in the mapping the octets a window showed last began.")
+  (asked (cons 0 0) :type cons :documentation "The stretch (START . END) of a mapping asked about last outside a pass.")
+  (holes '() :type list :documentation "The stretches of a mapping's file that have not arrived, in order.")
+  (torn nil :type boolean :documentation "True when a mapping's file changed where it came from while it arrived.")
+  (pieces (make-hash-table :synchronized t) :read-only t
+          :documentation "The pieces of a mapping passes hold, each (HOLDERS . HELD).")
+  (releasing (sb-thread:make-mutex :name "tuatara mapping let go of") :read-only t
+             :documentation "Held while pieces of a mapping are let go of."))
 
 (define-condition not-arrived (tuatara.runtime:refusal) ()
   (:documentation "Signalled for a read of text that crosses a part of a file not arrived yet (MAPPING-HOLES),
@@ -94,8 +80,7 @@ region with no ADDRESS is not unmapped (it lies within another)."
                  (sb-posix:munmap (sb-sys:int-sap address) length)))
              (unless (member fd closed)
                (push fd closed)
-               (tuatara.runtime:ignoring-errors-reported ("closing the mapped file's descriptor ~d" fd)
-                 (sb-posix:close fd))))))
+               (tuatara.runtime:close-fd-quietly fd "the mapped file's descriptor ~d" fd)))))
 
 (sb-ext:defglobal **mapping-lock** (sb-thread:make-mutex :name "tuatara mappings")
   "Held while a mapping is moved or closed, which threads other than the
@@ -254,23 +239,33 @@ advice not taken is fine."
    sap length advice)
   nil)
 
+(defun file-advise (fd offset length advice)
+  "Give the system ADVICE, one of posix_fadvise(2)'s on Linux (0 to read ahead
+as it sees fit, 1 to read no more than is asked, 4 to let go of what it
+holds), about LENGTH octets from OFFSET of the file open as file descriptor
+\(FD), a LENGTH of 0 for all from OFFSET on, through every descriptor that
+shares its reading with FD. Changes nothing a reader sees; advice not taken is
+fine."
+  (sb-alien:alien-funcall
+   (sb-alien:extern-alien "posix_fadvise" (function sb-alien:int sb-alien:int (sb-alien:signed 64)
+                                                    (sb-alien:signed 64) sb-alien:int))
+   fd offset length advice)
+  nil)
+
 (defun drop-cached (fd offset length)
   "Tell the system the octets of the file open as file descriptor (FD) from
 OFFSET, LENGTH of them, are not needed in memory: those no program has mapped
 leave it, any not written out yet once they are, so that they need not crowd
 out what is in use."
   (when (plusp length)
-    (sb-alien:alien-funcall
-     (sb-alien:extern-alien "posix_fadvise" (function sb-alien:int sb-alien:int (sb-alien:signed 64)
-                                                      (sb-alien:signed 64) sb-alien:int))
-     fd offset length 4)))              ; POSIX_FADV_DONTNEED
+    (file-advise fd offset length 4)))
 
 (defun pages-in-memory (sap length)
   "For each page of the LENGTH octets of memory from SAP, a page boundary, 1
 when the system holds it in memory and 0 when reading it would wait for the
 disk, as a vector of octets (mincore(2)), asked in pieces of 64 MB in
-parallel when there are several; 1 where the system does not say. Complexity: O(LENGTH / page
-size), shared out between the processors."
+parallel when there are several; 1 where the system does not say.
+Complexity: O(LENGTH / page size), shared out between the processors."
   (let* ((page (sb-posix:getpagesize))
          (pages (make-array (ceiling length page) :element-type '(unsigned-byte 8) :initial-element 1))
          (piece (* 64 1024 1024)))
@@ -305,7 +300,7 @@ disk for, and lets go of, together.")
 after reading them, the last read: the pieces several threads read side by
 side, or one reread soon, are let go of only once well behind.")
 
-(defstruct (read-pass (:constructor make-read-pass ()) (:copier nil))
+(define-record (read-pass (:constructor make-read-pass ()) (:copier nil))
   "A pass reading large mapped files through once (WITH-READ-PASS). For each
 mapping read, it holds a PASSAGE, made as it is first read. LOCK is held while
 they change. USERS is how many tasks of other threads read in it
@@ -313,13 +308,14 @@ they change. USERS is how many tasks of other threads read in it
 FINISHED once that and its tasks are, everything it asked for let go of. Locks
 are taken in this order: a pass's LOCK, a mapping's RELEASING
 \(MAPPING-RELEASING), then **MAPPING-LOCK**."
-  (passages '() :type list)
-  (users 0 :type fixnum)
-  (ended nil :type boolean)
-  (finished nil :type boolean)
-  (lock (sb-thread:make-mutex :name "tuatara read pass") :read-only t))
+  (passages '() :type list :documentation "What a READ-PASS has read of each mapping, as PASSAGEs.")
+  (users 0 :type fixnum :documentation "How many tasks of other threads read in a READ-PASS.")
+  (ended nil :type boolean :documentation "True once the work a READ-PASS was begun for is done.")
+  (finished nil :type boolean :documentation "True once a READ-PASS and its tasks are done.")
+  (lock (sb-thread:make-mutex :name "tuatara read pass") :read-only t
+        :documentation "Held while a READ-PASS's passages change."))
 
-(defstruct (passage (:constructor make-passage (pass mapping)) (:copier nil))
+(define-record (passage (:constructor make-passage (pass mapping)) (:copier nil))
   "What PASS, a READ-PASS, has read of MAPPING. PIECES is a table from the
 number of each piece of +READ-PIECE+ it has asked for to its state, :AHEAD
 \(asked for, not read yet), :READ or :LET-GO. KEPT is the numbers of the pieces
@@ -328,28 +324,15 @@ not yet given back (LET-GO-PIECES). LAST is the piece read last. FRESH is what
 the system held of pieces about to be asked for, taken before the pass's lock
 \(PIECE-IN-MEMORY). The pieces themselves are held for all passes together
 \(HOLD-PIECE)."
-  (pass nil :type read-pass :read-only t)
-  (mapping nil :type mapping :read-only t)
-  (pieces (make-hash-table :synchronized t) :read-only t)
-  (kept '() :type list)
-  (letting '() :type list)
-  (last -1 :type fixnum)
-  (fresh (make-hash-table :synchronized t) :read-only t))
-
-(setf (documentation 'read-pass-p 'function) "True when OBJECT is a READ-PASS."
-      (documentation 'read-pass-passages 'function) "What a READ-PASS has read of each mapping, as PASSAGEs."
-      (documentation 'read-pass-lock 'function) "Held while a READ-PASS's passages change."
-      (documentation 'read-pass-users 'function) "How many tasks of other threads read in a READ-PASS."
-      (documentation 'read-pass-ended 'function) "True once the work a READ-PASS was begun for is done."
-      (documentation 'read-pass-finished 'function) "True once a READ-PASS and its tasks are done."
-      (documentation 'passage-p 'function) "True when OBJECT is a PASSAGE."
-      (documentation 'passage-pass 'function) "The READ-PASS a PASSAGE belongs to."
-      (documentation 'passage-mapping 'function) "The mapping a PASSAGE reads."
-      (documentation 'passage-pieces 'function) "The pieces of its mapping a PASSAGE has asked for, by number."
-      (documentation 'passage-kept 'function) "The pieces a PASSAGE has read and not let go of, the last first."
-      (documentation 'passage-letting 'function) "The pieces a PASSAGE let go of and has not given back yet."
-      (documentation 'passage-last 'function) "The piece a PASSAGE read last."
-      (documentation 'passage-fresh 'function) "What the system held of pieces a PASSAGE is about to ask for.")
+  (pass nil :type read-pass :read-only t :documentation "The READ-PASS a PASSAGE belongs to.")
+  (mapping nil :type mapping :read-only t :documentation "The mapping a PASSAGE reads.")
+  (pieces (make-hash-table :synchronized t) :read-only t
+          :documentation "The pieces of its mapping a PASSAGE has asked for, by number.")
+  (kept '() :type list :documentation "The pieces a PASSAGE has read and not let go of, the last first.")
+  (letting '() :type list :documentation "The pieces a PASSAGE let go of and has not given back yet.")
+  (last -1 :type fixnum :documentation "The piece a PASSAGE read last.")
+  (fresh (make-hash-table :synchronized t) :read-only t
+         :documentation "What the system held of pieces a PASSAGE is about to ask for."))
 
 (defun read-pass-task (task)
   "TASK, a function run by TUATARA.RUNTIME:RUN-TASKS, made to read in the pass
@@ -505,20 +488,14 @@ brought in afterwards (LOOK-LATER), as long as each look finds some.")
   "Seconds after pieces are let go of that they are first looked at again
 \(LOOK-LATER); each look after waits twice as long as the one before.")
 
-(defstruct (late-look (:constructor make-late-look (mapping pieces time)) (:copier nil))
+(define-record (late-look (:constructor make-late-look (mapping pieces time)) (:copier nil))
   "PIECES of MAPPING, each (PIECE . HELD), let go of while the disk may still
 have been reading them, to be let go of again at TIME, an internal real time,
 after LOOKS looks so far (LOOK-LATER)."
-  (mapping nil :read-only t)
-  (pieces '())
-  (time 0)
-  (looks 0))
-
-(setf (documentation 'late-look-p 'function) "True when OBJECT is a LATE-LOOK."
-      (documentation 'late-look-mapping 'function) "The mapping a LATE-LOOK lets go of pieces of."
-      (documentation 'late-look-pieces 'function) "The pieces a LATE-LOOK lets go of again, each (PIECE . HELD)."
-      (documentation 'late-look-time 'function) "The internal real time a LATE-LOOK is due."
-      (documentation 'late-look-looks 'function) "How many times a LATE-LOOK has looked.")
+  (mapping nil :read-only t :documentation "The mapping a LATE-LOOK lets go of pieces of.")
+  (pieces '() :documentation "The pieces a LATE-LOOK lets go of again, each (PIECE . HELD).")
+  (time 0 :documentation "The internal real time a LATE-LOOK is due.")
+  (looks 0 :documentation "How many times a LATE-LOOK has looked."))
 
 (sb-ext:defglobal **late-looks** '()
   "The LATE-LOOKs to come, guarded by **MAPPING-LOCK**.")
@@ -650,6 +627,15 @@ let go of is let go of then (LATE-LOOK-LOOP)."
               t))
     (close-mapping mapping)))
 
+(defun take-closing-later (mapping)
+  "True when MAPPING was left to be closed later (CLOSE-MAPPING-LATER) and no
+LATE-LOOK refers to it any more; it is then taken off that list, for the caller
+to close. Called with **MAPPING-LOCK** held."
+  (when (and (member mapping **closing-later**)
+             (not (find mapping **late-looks** :key #'late-look-mapping)))
+    (setf **closing-later** (remove mapping **closing-later**))
+    t))
+
 (defun late-look-loop ()
   "What the thread letting go late does: wait for a LATE-LOOK to come due, let
 go of the pages of its pieces that the system holds now and did not before,
@@ -686,9 +672,7 @@ after, while a look finds some; then close a mapping left to it
                                                       internal-time-units-per-second))))
                                    (push look **late-looks**)
                                    nil)
-                            (and (member mapping **closing-later**)
-                                 (not (find mapping **late-looks** :key #'late-look-mapping))
-                                 (setf **closing-later** (remove mapping **closing-later**)))))))
+                            (take-closing-later mapping)))))
           (when close
             (close-mapping mapping)))))))
 
@@ -815,30 +799,14 @@ has come (LET-GO-RELEASED)."
   (loop for (mapping released lately) in releases
         do (let-go-released mapping released lately)))
 
-(defstruct (file-read-pass (:constructor %make-file-read-pass (fd mapping pass)) (:copier nil))
+(define-record (file-read-pass (:constructor %make-file-read-pass (fd mapping pass)) (:copier nil))
   "A pass reading a large file open as file descriptor (FD) through once
 with read(2) or the like, not through a mapping (BEGIN-FILE-READ-PASS):
 MAPPING maps it only to learn what the system holds and to ask for it, in
 PASS, a READ-PASS of its own."
-  (fd -1 :type fixnum :read-only t)
-  (mapping nil :type mapping :read-only t)
-  (pass nil :type read-pass :read-only t))
-
-(setf (documentation 'file-read-pass-p 'function) "True when OBJECT is a FILE-READ-PASS."
-      (documentation 'file-read-pass-fd 'function) "The descriptor a FILE-READ-PASS reads."
-      (documentation 'file-read-pass-mapping 'function) "The mapping a FILE-READ-PASS asks the system through."
-      (documentation 'file-read-pass-pass 'function) "The READ-PASS of a FILE-READ-PASS.")
-
-(defun file-advice (fd advice)
-  "Give the system ADVICE, one of posix_fadvise(2)'s on Linux (0 to read ahead
-as it sees fit, 1 to read no more than is asked), about how the file open as
-file descriptor (FD) is read through it, and through every descriptor that
-shares its reading with it. Advice not taken is fine."
-  (sb-alien:alien-funcall
-   (sb-alien:extern-alien "posix_fadvise" (function sb-alien:int sb-alien:int (sb-alien:signed 64)
-                                                    (sb-alien:signed 64) sb-alien:int))
-   fd 0 0 advice)
-  nil)
+  (fd -1 :type fixnum :read-only t :documentation "The descriptor a FILE-READ-PASS reads.")
+  (mapping nil :type mapping :read-only t :documentation "The mapping a FILE-READ-PASS asks the system through.")
+  (pass nil :type read-pass :read-only t :documentation "The READ-PASS of a FILE-READ-PASS."))
 
 (defun begin-file-read-pass (fd end path)
   "Begin a pass reading the file open as file descriptor (FD) through once,
@@ -852,9 +820,9 @@ one or not large (*LARGE-MAPPING-OCTETS*). PATH names the file in messages."
              (= (logand (sb-posix:stat-mode (sb-posix:fstat fd)) sb-posix:s-ifmt) sb-posix:s-ifreg))
     (let ((own (sb-posix:dup fd)))
       (let ((mapping (handler-case (map-fd own end path)
-                       (sb-posix:syscall-error () (sb-posix:close own) nil))))
+                       (sb-posix:syscall-error () (tuatara.runtime:close-fd-quietly own) nil))))
         (when mapping
-          (file-advice fd 1)
+          (file-advise fd 0 0 1)
           (%make-file-read-pass fd mapping (make-read-pass)))))))
 
 (defun file-read-pass-note (file-pass start end)
@@ -871,7 +839,7 @@ mapping ends, and let go of the mapping it asked through."
   (when file-pass
     (end-read-pass (file-read-pass-pass file-pass))
     (close-mapping-later (file-read-pass-mapping file-pass))
-    (file-advice (file-read-pass-fd file-pass) 0)))
+    (file-advise (file-read-pass-fd file-pass) 0 0 0)))
 
 (sb-ext:defglobal **read-ahead-request** nil
   "The stretch the thread reading ahead (WANT-READ) is to read next, (MAPPING

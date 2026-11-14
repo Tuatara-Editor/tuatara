@@ -147,11 +147,6 @@ without its line end (a carriage return too with carriage return and line feed
   "OCTET with an ASCII capital letter made small."
   (if (<= 65 octet 90) (+ octet 32) octet))
 
-(declaim (inline space-or-tab-char-p))
-(defun space-or-tab-char-p (char)
-  "True for a space or a tab: the characters between a line's fields."
-  (or (char= char #\Space) (char= char #\Tab)))
-
 (defmacro define-field-bounds (name type blank-p)
   "Define NAME, a function finding a field of a line held in a vector of TYPE,
 BLANK-P telling apart what separates its fields."
@@ -529,7 +524,7 @@ rest of the result, all at once (START-SORT)."
 
 ;;; Large regions: pieces, runs and the merge
 
-(defstruct (sort-job (:include tuatara.runtime:job) (:constructor %make-sort-job) (:copier nil))
+(define-record (sort-job (:include tuatara.runtime:job) (:constructor %make-sort-job) (:copier nil))
   "A sort or filter of BUFFER's lines, a job (TUATARA.RUNTIME:JOB). WORDS says
 what it does (\"Sorting\") and WHAT says it in full. PROGRESS is a cons whose
 car counts the octets handled, of TOTAL. COUNTING, once the result is
@@ -542,22 +537,39 @@ abandons the result. BASE is the text the job began on
 SINCE the buffer's undo stack there. The result stands in the undo history
 there, before the changes made meanwhile
 \(TUATARA.BUFFER:BUFFER-TAKE-IN-JOB-RESULT)."
-  words what (progress (list 0)) (total 1) (counting nil) result message
-  (region-start 0) (region-end 0) changed change-function
-  base (base-start 0) (base-end 0) since)
+  (words nil :documentation "What JOB does, as a word such as \"Sorting\".")
+  (what nil :documentation "What JOB does, said in full.")
+  (progress (list 0) :documentation "A cons whose car counts the octets JOB has handled.")
+  (total 1 :documentation "How many octets JOB has to handle.")
+  (counting nil
+            :documentation "Once the result of JOB is written, a cons whose car counts the octets of it whose lines
+are counted, of its cdr; NIL before.")
+  (result nil :documentation "The octets or rope that replace the region once JOB is done, NIL before.")
+  (message nil :documentation "What to say once JOB is done.")
+  (region-start 0 :documentation "Where the region of JOB starts, following the region through edits made meanwhile.")
+  (region-end 0 :documentation "Where the region of JOB ends, following the region through edits made meanwhile.")
+  (changed nil :documentation "True when an edit touched the region of JOB, which abandons its result.")
+  (change-function nil
+                   :documentation "The function JOB put on the buffer's change functions to follow the region, NIL
+when none.")
+  (base nil :documentation "The text JOB began on.")
+  (base-start 0 :documentation "Where the region of JOB starts in its BASE.")
+  (base-end 0 :documentation "Where the region of JOB ends in its BASE.")
+  (since nil :documentation "The buffer's undo stack at the place JOB began."))
 
-(setf (documentation 'sort-job-p 'function) "True when OBJECT is a SORT-JOB.")
-
-(defstruct (run (:constructor make-run (fd length lines ends)) (:copier nil))
+(define-record (sort-run (:constructor make-sort-run (fd length lines ends)) (:copier nil))
   "A piece of a region sorted into an unnamed file open as file descriptor
 (FD) of LENGTH octets. Its LINES are records in their sorted order, each a
 header (the line's index in the piece, where its key starts and ends in its
 text, the text's length, and a number as two halves) and the line's text.
 ENDS is the length of each line's line end in the lines' first order."
-  fd length lines ends mapping)
+  (fd nil :documentation "The descriptor (FD) of the unnamed file holding RUN, NIL once it is mapped.")
+  (length nil :documentation "How many octets the file of RUN holds.")
+  (lines nil :documentation "How many lines RUN has, as records in their sorted order.")
+  (ends nil :documentation "The length of each line end of RUN, in the lines' first order.")
+  (mapping nil :documentation "The mapping of the file of RUN into memory, NIL until it is mapped."))
 
-(setf (documentation 'make-run 'function) "A run of LINES records in the file FD of LENGTH octets."
-      (documentation 'run-p 'function) "True when OBJECT is a RUN.")
+(setf (documentation 'make-sort-run 'function) "A run of LINES records in the file FD of LENGTH octets.")
 
 (defconstant +record-header+ 24 "Octets of a run record's header.")
 
@@ -569,14 +581,14 @@ what it returns holds the file open."
   (let ((result (gensym "RESULT")))
     `(let ((,fd (tuatara.io:open-scratch-file ,directory)) (,result nil))
        (unwind-protect (setf ,result (multiple-value-list (progn ,@body)))
-         (unless (first ,result) (ignoring-errors-reported ("closing a file of sorted lines") (sb-posix:close ,fd))))
+         (unless (first ,result) (tuatara.runtime:close-fd-quietly ,fd "a file of sorted lines")))
        (values-list ,result))))
 
 (defun discard-run (run)
   "Let go of RUN's file, a run or a piece's output, closing its file
 descriptor (FD)."
-  (let ((fd (if (consp run) (first run) (run-fd run))))
-    (when fd (ignoring-errors-reported ("closing a file of sorted lines") (sb-posix:close fd)))))
+  (let ((fd (if (consp run) (first run) (sort-run-fd run))))
+    (tuatara.runtime:close-fd-quietly fd "a file of sorted lines")))
 
 (defun sort-piece (job rope piece key reverse crlf fold directory)
   "Sort the lines of PIECE, (START END) of ROPE, into an unnamed run file in
@@ -608,56 +620,64 @@ DIRECTORY and return the RUN; NIL when JOB was stopped first."
                            (tuatara.io:writer-octets writer octets s e)))
                 (tuatara.io:writer-flush writer)
                 (sb-ext:atomic-incf (car (sort-job-progress job)) (- (length octets) third third))
-                (make-run fd (tuatara.io:writer-length writer) (length starts) line-ends)))))))))
+                (make-sort-run fd (tuatara.io:writer-length writer) (length starts) line-ends)))))))))
 
-(defstruct (cursor (:constructor make-cursor (run index sap end)) (:copier nil))
+(define-record (sort-cursor (:constructor make-sort-cursor (run index sap end)) (:copier nil))
   "Where the merge is in a run: the RUN's INDEX among the runs, its memory SAP
 and END, the record at POS, and that record's header decoded."
-  run (index 0 :type fixnum) (sap (sb-sys:int-sap 0) :type sb-sys:system-area-pointer) (end 0 :type fixnum)
-  (pos 0 :type fixnum) (line 0 :type fixnum) (key-start 0 :type fixnum) (key-end 0 :type fixnum)
-  (text 0 :type fixnum) (length 0 :type fixnum) (number 0d0 :type double-float))
+  (run nil :documentation "The run CURSOR is in.")
+  (index 0 :type fixnum :documentation "The index of the run of CURSOR among the runs.")
+  (sap (sb-sys:int-sap 0) :type sb-sys:system-area-pointer
+       :documentation "The memory address of the start of the run of CURSOR.")
+  (end 0 :type fixnum :documentation "The memory address of the end of the run of CURSOR.")
+  (pos 0 :type fixnum :documentation "The memory address of the record CURSOR is at.")
+  (line 0 :type fixnum :documentation "The index in its piece of the line of the record CURSOR is at.")
+  (key-start 0 :type fixnum :documentation "The memory address where the key of the record CURSOR is at starts.")
+  (key-end 0 :type fixnum :documentation "The memory address where the key of the record CURSOR is at ends.")
+  (text 0 :type fixnum :documentation "The memory address of the text of the record CURSOR is at.")
+  (length 0 :type fixnum :documentation "The length in octets of the text of the record CURSOR is at.")
+  (number 0d0 :type double-float :documentation "The number of the record CURSOR is at, as a double float."))
 
-(setf (documentation 'make-cursor 'function)
-      "A cursor at the start of the run RUN, the INDEXth, mapped at SAP up to END."
-      (documentation 'cursor-p 'function) "True when OBJECT is a CURSOR.")
+(setf (documentation 'make-sort-cursor 'function)
+      "A cursor at the start of the run RUN, the INDEXth, mapped at SAP up to END.")
 
-(defun cursor-read (cursor)
+(defun sort-cursor-read (cursor)
   "Decode the header of the record CURSOR is at; NIL at the end of its run."
-  (let ((sap (cursor-sap cursor)) (pos (cursor-pos cursor)))
-    (when (< pos (cursor-end cursor))
+  (let ((sap (sort-cursor-sap cursor)) (pos (sort-cursor-pos cursor)))
+    (when (< pos (sort-cursor-end cursor))
       (let ((low (sb-sys:sap-ref-32 sap (+ pos 16))) (high (sb-sys:sap-ref-32 sap (+ pos 20))))
-        (setf (cursor-line cursor) (sb-sys:sap-ref-32 sap pos)
-              (cursor-text cursor) (+ pos +record-header+)
-              (cursor-key-start cursor) (+ pos +record-header+ (sb-sys:sap-ref-32 sap (+ pos 4)))
-              (cursor-key-end cursor) (+ pos +record-header+ (sb-sys:sap-ref-32 sap (+ pos 8)))
-              (cursor-length cursor) (sb-sys:sap-ref-32 sap (+ pos 12))
-              (cursor-number cursor)
+        (setf (sort-cursor-line cursor) (sb-sys:sap-ref-32 sap pos)
+              (sort-cursor-text cursor) (+ pos +record-header+)
+              (sort-cursor-key-start cursor) (+ pos +record-header+ (sb-sys:sap-ref-32 sap (+ pos 4)))
+              (sort-cursor-key-end cursor) (+ pos +record-header+ (sb-sys:sap-ref-32 sap (+ pos 8)))
+              (sort-cursor-length cursor) (sb-sys:sap-ref-32 sap (+ pos 12))
+              (sort-cursor-number cursor)
               (sb-kernel:make-double-float (if (>= high #x80000000) (- high #x100000000) high) low)))
       t)))
 
-(defun cursor-advance (cursor)
+(defun sort-cursor-advance (cursor)
   "Move CURSOR to its run's next record; NIL at the end."
-  (setf (cursor-pos cursor) (+ (cursor-text cursor) (cursor-length cursor)))
-  (cursor-read cursor))
+  (setf (sort-cursor-pos cursor) (+ (sort-cursor-text cursor) (sort-cursor-length cursor)))
+  (sort-cursor-read cursor))
 
-(defun cursor-before-p (a b numeric reverse fold)
+(defun sort-cursor-before-p (a b numeric reverse fold)
   "True when the record under cursor A comes before the one under B in the
 merge: by key, descending with REVERSE, and between equal keys by run, the
 later run first with REVERSE so that ties reverse as the pieces' did."
   (let ((c (if numeric
-               (let ((x (cursor-number a)) (y (cursor-number b))) (cond ((< x y) -1) ((> x y) 1) (t 0)))
-               (sap-compare (cursor-sap a) (cursor-key-start a) (cursor-key-end a)
-                            (cursor-sap b) (cursor-key-start b) (cursor-key-end b) fold))))
+               (let ((x (sort-cursor-number a)) (y (sort-cursor-number b))) (cond ((< x y) -1) ((> x y) 1) (t 0)))
+               (sap-compare (sort-cursor-sap a) (sort-cursor-key-start a) (sort-cursor-key-end a)
+                            (sort-cursor-sap b) (sort-cursor-key-start b) (sort-cursor-key-end b) fold))))
     (cond ((/= c 0) (if reverse (> c 0) (< c 0)))
-          (reverse (> (cursor-index a) (cursor-index b)))
-          (t (< (cursor-index a) (cursor-index b))))))
+          (reverse (> (sort-cursor-index a) (sort-cursor-index b)))
+          (t (< (sort-cursor-index a) (sort-cursor-index b))))))
 
 (defun merge-runs (job runs function numeric reverse fold)
   "Merge RUNS, calling FUNCTION with the cursor of each record in merged order
 (its record is under the cursor only during the call); stops when JOB is
 stopped. The runs' files are mapped for the merge and let go after."
   (let ((heap (make-array (length runs))) (size 0))
-    (flet ((before (i j) (cursor-before-p (aref heap i) (aref heap j) numeric reverse fold))
+    (flet ((before (i j) (sort-cursor-before-p (aref heap i) (aref heap j) numeric reverse fold))
            (swap (i j) (rotatef (aref heap i) (aref heap j))))
       (labels ((up (i)
                  (loop while (and (plusp i) (before i (floor (1- i) 2)))
@@ -671,11 +691,12 @@ stopped. The runs' files are mapped for the merge and let go after."
         (unwind-protect
              (progn
                (loop for run in runs for index from 0
-                     when (plusp (run-length run))
-                       do (let* ((mapping (tuatara.text:map-fd (run-fd run) (run-length run) "a sort run"))
-                                 (cursor (make-cursor run index (tuatara.text:mapping-sap mapping) (run-length run))))
-                            (setf (run-mapping run) mapping (run-fd run) nil)
-                            (when (cursor-read cursor)
+                     when (plusp (sort-run-length run))
+                       do (let* ((mapping (tuatara.text:map-fd (sort-run-fd run) (sort-run-length run) "a sort run"))
+                                 (cursor (make-sort-cursor run index (tuatara.text:mapping-sap mapping)
+                                                           (sort-run-length run))))
+                            (setf (sort-run-mapping run) mapping (sort-run-fd run) nil)
+                            (when (sort-cursor-read cursor)
                               (setf (aref heap size) cursor)
                               (incf size)
                               (up (1- size)))))
@@ -684,13 +705,13 @@ stopped. The runs' files are mapped for the merge and let go after."
                        do (let ((cursor (aref heap 0)))
                             (when (and (zerop (mod (incf count) 65536)) (car (sort-job-cancel job))) (return))
                             (funcall function cursor)
-                            (if (cursor-advance cursor)
+                            (if (sort-cursor-advance cursor)
                                 (down 0)
                                 (progn (setf (aref heap 0) (aref heap (1- size))) (decf size) (down 0)))))))
           (dolist (run runs)
-            (when (run-mapping run) (tuatara.text:close-mapping (run-mapping run)))
-            (when (run-fd run)
-              (ignoring-errors-reported ("closing a file of sorted lines") (sb-posix:close (run-fd run))))))))))
+            (when (sort-run-mapping run) (tuatara.text:close-mapping (sort-run-mapping run)))
+            (when (sort-run-fd run)
+              (tuatara.runtime:close-fd-quietly (sort-run-fd run) "a file of sorted lines"))))))))
 
 (defun line-end-code (octets end next)
   "The code of the end of a line of OCTETS whose text ends at END, the next
@@ -739,17 +760,20 @@ over it, and how many lines there are. NIL when JOB was stopped."
         (with-scratch-file (fd directory)
           (let* ((writer (tuatara.io:make-writer fd))
                  ;; the line ends stay where they were: place I takes the end of line I
-                 (ends (let ((all (make-array (reduce #'+ runs :key #'run-lines) :element-type '(unsigned-byte 2))) (at 0))
-                         (dolist (run runs all) (replace all (run-ends run) :start1 at) (incf at (run-lines run)))))
+                 (ends (let ((all (make-array (reduce #'+ runs :key #'sort-run-lines) :element-type '(unsigned-byte 2)))
+                             (at 0))
+                         (dolist (run runs all)
+                           (replace all (sort-run-ends run) :start1 at)
+                           (incf at (sort-run-lines run)))))
                  (slot 0))
             (merge-runs job runs
                         (lambda (cursor)
                           (tuatara.io:writer-sap writer
-                                                 (cursor-sap cursor)
-                                                 (cursor-text cursor)
-                                                 (+ (cursor-text cursor) (cursor-length cursor)))
+                                                 (sort-cursor-sap cursor)
+                                                 (sort-cursor-text cursor)
+                                                 (+ (sort-cursor-text cursor) (sort-cursor-length cursor)))
                           (write-kept-line-end writer (aref ends slot) crlf)
-                          (sb-ext:atomic-incf (car (sort-job-progress job)) (+ 1 (cursor-length cursor)))
+                          (sb-ext:atomic-incf (car (sort-job-progress job)) (+ 1 (sort-cursor-length cursor)))
                           (incf slot))
                         (eq (first key) :numeric) reverse fold)
             (tuatara.io:writer-flush writer)
@@ -808,36 +832,41 @@ as it is written again (KEEP-PIECE)."
   (setf (sort-job-total job) (* 4 (max 1 (- end start))))
   (let* ((pieces (tuatara.text:rope-line-pieces rope start end *sort-piece*))
          (runs (coerce (tuatara.runtime:run-tasks
-                        (map 'simple-vector (lambda (piece) (lambda () (sort-piece job rope piece (list :line) nil crlf nil directory)))
+                        (map 'simple-vector
+                             (lambda (piece)
+                               (lambda () (sort-piece job rope piece (list :line) nil crlf nil directory)))
                              pieces)
                         :parallelism (max 1 (min 8 (- (tuatara.runtime:cpu-count) 2))) :discard #'discard-run)
                        'list)))
     (when (or (car (sort-job-cancel job)) (some #'null runs))
       (dolist (run runs) (when run (discard-run run)))
       (return-from dedupe-on-disk nil))
-    (let* ((firsts (let ((at 0)) (map 'vector (lambda (run) (prog1 at (incf at (run-lines run)))) runs)))
-           (marks (make-array (reduce #'+ runs :key #'run-lines) :element-type 'bit :initial-element 0))
+    (let* ((firsts (let ((at 0)) (map 'vector (lambda (run) (prog1 at (incf at (sort-run-lines run)))) runs)))
+           (marks (make-array (reduce #'+ runs :key #'sort-run-lines) :element-type 'bit :initial-element 0))
            (count 0)
-           (previous nil))
+           ;; the line kept last: its run's index, where its text starts and ends there, its number
+           (saps (make-array (length runs) :initial-element nil))
+           (previous -1) (previous-start 0) (previous-end 0) (previous-line 0))
+      (declare (type fixnum previous previous-start previous-end previous-line))
       ;; equal lines come together, in their first order: all but the first (or last) are marked
       (merge-runs job runs
                   (lambda (cursor)
-                    (let ((line (+ (aref firsts (cursor-index cursor)) (cursor-line cursor)))
-                          (length (cursor-length cursor)))
-                      (unless (and keep-blanks (zerop length))
-                        (if (and previous
-                                 (zerop (sap-compare (cursor-sap cursor)
-                                                     (cursor-text cursor)
-                                                     (+ (cursor-text cursor) length)
-                                                     (first previous) (second previous) (third previous) nil)))
-                            (progn (incf count)
-                                   (if reverse
-                                       (progn (setf (sbit marks (fourth previous)) 1)
-                                              (setf previous (list (cursor-sap cursor) (cursor-text cursor)
-                                                                   (+ (cursor-text cursor) length) line)))
-                                       (setf (sbit marks line) 1)))
-                            (setf previous (list (cursor-sap cursor) (cursor-text cursor)
-                                                 (+ (cursor-text cursor) length) line))))
+                    (let* ((index (sort-cursor-index cursor))
+                           (line (+ (aref firsts index) (sort-cursor-line cursor)))
+                           (text (sort-cursor-text cursor))
+                           (length (sort-cursor-length cursor)))
+                      (flet ((keep ()
+                               (setf previous index previous-start text previous-end (+ text length)
+                                     previous-line line)))
+                        (unless (svref saps index) (setf (svref saps index) (sort-cursor-sap cursor)))
+                        (unless (and keep-blanks (zerop length))
+                          (cond ((and (>= previous 0)
+                                      (zerop (sap-compare (sort-cursor-sap cursor) text (+ text length)
+                                                          (svref saps previous) previous-start previous-end nil)))
+                                 (incf count)
+                                 (cond (reverse (setf (sbit marks previous-line) 1) (keep))
+                                       (t (setf (sbit marks line) 1))))
+                                (t (keep)))))
                       (sb-ext:atomic-incf (car (sort-job-progress job)) (1+ length))))
                   nil nil nil)
       (when (car (sort-job-cancel job)) (return-from dedupe-on-disk nil))
@@ -897,7 +926,6 @@ when JOB was stopped."
           ((string= words "Deleting duplicates") "delete the duplicate lines")
           (t "sort"))))
 
-
 (defmethod tuatara.runtime:job-percent ((job sort-job))
   "A region of *SORT-IN-MEMORY-LIMIT* octets or more has its result's lines
 counted once written: sorting is the first half, counting the second."
@@ -907,7 +935,6 @@ counted once written: sorting is the first half, counting the second."
 (defmethod tuatara.runtime:job-state-words ((job sort-job))
   "What JOB is doing, reading or sorting, and how far it has gone, in words."
   (tuatara.runtime:two-phase-words (sort-job-words job) (sort-progress job) (sort-job-counting job)))
-
 
 (defmethod tuatara.runtime:job-guarded-spans ((job sort-job))
   "The region a sort or filter works on, until an edit has touched it."
@@ -1091,7 +1118,9 @@ a record without the field taking an empty value: two values, the records as
           do (multiple-value-bind (text-end after) (record-bounds rope at ends)
                (let* ((length (decode-into octets at (record-text-end rope text-end crlf) holder))
                       (value (if field
-                                 (or (funcall each (car holder) length field (lambda (string from to) (subseq string from to))) "")
+                                 (or (funcall each (car holder) length field
+                                              (lambda (string from to) (subseq string from to)))
+                                     "")
                                  (subseq (car holder) 0 length)))
                       (key (tuatara.text:string-octets value)))
                  (push (list at after) records)
@@ -1108,11 +1137,11 @@ a record without the field taking an empty value: two values, the records as
                          (and numeric (coerce (nreverse numbers) '(simple-array double-float (*))))
                          (list :field) reverse fold)))))
 
-(defun sort-records-by-field (buffer start end command numeric)
+(defun sort-records-by-field (buffer start end command numeric descending)
   "Sort the records of BUFFER, a file of records, that the lines from START
 below END touch, its header aside, by a field asked for (READ-RECORD-FIELD),
-as text, or with NUMERIC by number: each record whole, though it holds line
-breaks (RECORD-ENDS). Worked in memory (SORT-IN-MEMORY-ONLY). COMMAND names
+as text, or with NUMERIC by number, in descending order when DESCENDING: each
+record whole, though it holds line breaks (RECORD-ENDS). Worked in memory (SORT-IN-MEMORY-ONLY). COMMAND names
 the command in messages."
   (let* ((rope (tuatara.buffer:buffer-text buffer))
          (ends (record-ends buffer))
@@ -1120,7 +1149,7 @@ the command in messages."
          (fields (mode-record-fields (buffer-major-mode buffer) buffer))
          (field (and fields (read-record-field buffer fields "Sort by the column: ")))
          (each (and fields (record-fields-each fields)))
-         (reverse (sort-descending-p)) (fold *sort-fold-case*)
+         (reverse descending) (fold *sort-fold-case*)
          (newline (tuatara.text:string-octets (tuatara.buffer:buffer-newline buffer)))
          (memo (make-record-memo))
          (first (if (list-header-p buffer) (records-start rope 1 ends) 0))
@@ -1128,7 +1157,8 @@ the command in messages."
          (low (max first
                    (line-record memo rope start (min (tuatara.text:rope-octet-length rope)
                                                      (1+ (tuatara.text:rope-line-end rope start))) ends)))
-         (high (max low (nth-value 2 (line-record memo rope (tuatara.text:rope-line-start rope (max start (1- end))) end ends)))))
+         (high (max low (nth-value 2 (line-record memo rope (tuatara.text:rope-line-start rope (max start (1- end)))
+                                                  end ends)))))
     (if (>= low high)
         (message "No records to sort but the header: ~(~a~) was not run" (sort-command-name command))
         (sort-in-memory-only buffer low high command "Sorting"
@@ -1150,7 +1180,7 @@ empty. Without a selection, does nothing and says so."
   (let ((field (field-argument)))
     (with-selected-lines (b start end 'sort-fields)
       (if (records-file-p b)
-          (sort-records-by-field b start end 'sort-fields nil)
+          (sort-records-by-field b start end 'sort-fields nil *sort-descending*)
           (sort-lines-by b start end (list :field field) *sort-descending* "Sorting" "Sorted")))))
 
 (define-command sort-numeric-fields ()
@@ -1164,7 +1194,7 @@ selection, does nothing and says so."
   (let ((field (field-argument)))
     (with-selected-lines (b start end 'sort-numeric-fields)
       (if (records-file-p b)
-          (sort-records-by-field b start end 'sort-numeric-fields t)
+          (sort-records-by-field b start end 'sort-numeric-fields t *sort-descending*)
           (sort-lines-by b start end (list :numeric field) *sort-descending* "Sorting" "Sorted")))))
 
 (define-command sort-columns ()
@@ -1204,7 +1234,8 @@ descending order. Without a selection, does nothing and says so."
                              (lambda (octets)
                                (multiple-value-bind (starts ends nexts) (scan-lines octets crlf)
                                  (let ((records (paragraph-records octets starts ends nexts)))
-                                   (values (arrange-records octets records (record-order octets records reverse fold) newline)
+                                   (values (arrange-records octets records (record-order octets records reverse fold)
+                                                            newline)
                                            (format nil "Sorted ~:d paragraph~:p" (length records)))))))))))
 
 (define-command sort-pages ()
@@ -1239,7 +1270,8 @@ where it was. Without a selection, does nothing and says so."
                 (sort-in-memory-only b start end 'sort-regexp-fields "Sorting"
                                      (lambda (octets)
                                        (multiple-value-bind (text count)
-                                           (sort-regexp-text (tuatara.text:octets-string octets) record key reverse fold)
+                                           (sort-regexp-text (tuatara.text:octets-string octets)
+                                                             record key reverse fold)
                                          (values (tuatara.text:string-octets text)
                                                  (format nil "Sorted ~:d record~:p" count)))))))))))
 
@@ -1297,7 +1329,8 @@ says so; a large selection is handled in the background."
       (let ((crlf (buffer-crlf-p b)) (limit *sort-in-memory-limit*)
             (directory (tuatara.io:buffer-scratch-directory b)))
         (flet ((report (count)
-                 (format nil "Deleted ~:d ~:[~;adjacent ~]duplicate line~p~:[~; backward~]" count adjacent count reverse)))
+                 (format nil "Deleted ~:d ~:[~;adjacent ~]duplicate line~p~:[~; backward~]"
+                         count adjacent count reverse)))
           (start-sort b start end "Deleting duplicates"
                       (lambda (job rope start end)
                         (cond ((< (- end start) limit)
@@ -1313,13 +1346,17 @@ says so; a large selection is handled in the background."
                                  (multiple-value-bind (kept count)
                                      (keep-pieces job rope pieces crlf directory
                                                   (lambda (index)
-                                                    (let ((before (and (plusp index) (rope-line-before rope (first (elt pieces index)) crlf))))
+                                                    (let ((before (and (plusp index)
+                                                                       (rope-line-before rope (first (elt pieces index))
+                                                                                         crlf))))
                                                       (lambda (octets starts ends)
                                                         (multiple-value-bind (marks count)
                                                             (duplicate-marks octets starts ends nil t keep-blanks)
                                                           (when (and before (plusp (length starts))
-                                                                     (not (and keep-blanks (= (aref starts 0) (aref ends 0))))
-                                                                     (equalp before (subseq octets (aref starts 0) (aref ends 0))))
+                                                                     (not (and keep-blanks
+                                                                               (= (aref starts 0) (aref ends 0))))
+                                                                     (equalp before (subseq octets (aref starts 0)
+                                                                                            (aref ends 0))))
                                                             (setf (sbit marks 0) 1)
                                                             (incf count))
                                                           (values marks count))))))
@@ -1380,16 +1417,18 @@ each kept or deleted with its record, the record counted once."
         (none (tuatara.text:make-octets 0)))
     (declare (type (simple-array fixnum (*)) runs))
     (values
-     (lambda (function line line-end next rope block block-start block-end)
-       (declare (ignore line-end block block-start block-end) (type fixnum line next))
+     (lambda (function slice)
        ;; the run ending after the line's start, found by halving
-       (let* ((k (* 2 (tuatara.runtime:bisect (k 0 (ash (length runs) -1)) (<= (aref runs (1+ (* 2 k))) line))))
+       (let* ((line (line-slice-start slice))
+              (next (line-slice-next slice))
+              (k (* 2 (tuatara.runtime:bisect (k 0 (ash (length runs) -1)) (<= (aref runs (1+ (* 2 k))) line))))
               (left (and (< k (length runs)) (<= (aref runs k) line))))
          (unless (eq keep left)
            (when (and (not tuatara.runtime:*job-taken-in*)
-                      (or (null ends) (= line (line-record (thread-own memos #'make-record-memo) rope line next ends))))
+                      (or (null ends) (= line (line-record (thread-own memos #'make-record-memo)
+                                                           (line-slice-rope slice) line next ends))))
              (sb-ext:atomic-incf (car gone)))
-           (funcall function line next nil none))))
+           (funcall function line next none))))
      (lambda (rope low high halt)
        (setf runs
              (lines-matching-everywhere filter rope (make-array 2
@@ -1411,9 +1450,12 @@ and each of its lines is kept or deleted with it, the record counted once."
   (let ((holders (list '()))
         (memos (list '()))
         (none (tuatara.text:make-octets 0)))
-    (lambda (function line line-end next rope block block-start block-end)
-      (declare (type fixnum line line-end next))
-      (let ((counting (not tuatara.runtime:*job-taken-in*))
+    (lambda (function slice)
+      (let ((line (line-slice-start slice))
+            (line-end (line-slice-end slice))
+            (next (line-slice-next slice))
+            (rope (line-slice-rope slice))
+            (counting (not tuatara.runtime:*job-taken-in*))
             (holder (thread-own holders (lambda () (list (make-string 256)))))
             (memo (thread-own memos #'make-record-memo)))
         (multiple-value-bind (start text-end after)
@@ -1423,22 +1465,22 @@ and each of its lines is kept or deleted with it, the record counted once."
           (if (and (= start line) (= after next))
               (if (> (- line-end line) limit)
                   (when counting (sb-ext:atomic-incf (car long)))
-                  (multiple-value-bind (octets at) (line-octets rope line line-end block block-start block-end)
-                    (let* ((length (decode-into octets at (+ at (- line-end line)) holder))
+                  (multiple-value-bind (octets at end) (slice-octets slice)
+                    (let* ((length (decode-into octets at end holder))
                            (new (funcall fate (car holder) length)))
                       ;; a string grown for a long line is not kept for the short ones after it
                       (when (> (length (car holder)) 1048576)
                         (setf (car holder) (make-string 256)))
                       (cond ((null new)
                              (when counting (sb-ext:atomic-incf (car gone)))
-                             (funcall function line next nil none))
+                             (funcall function line next none))
                             ((stringp new)
                              (when counting (sb-ext:atomic-incf (car changed)))
-                             (funcall function line line-end nil (tuatara.text:string-octets new)))))))
+                             (funcall function line line-end (tuatara.text:string-octets new)))))))
               ;; a line of a record over several lines: the record decided once, whole
               (unless (record-verdict memo rope start text-end crlf limit holder fate)
                 (when (and counting (= start line)) (sb-ext:atomic-incf (car gone)))
-                (funcall function line next nil none))))))))
+                (funcall function line next none))))))))
 
 (defun too-long-words (count)
   "What is said of COUNT lines too long to read, after what was done to the
@@ -1451,16 +1493,18 @@ others: \"; N lines too long to look at left as they are\", or \"\" for none."
   (let* ((rope (tuatara.buffer:buffer-text buffer))
          (octets (tuatara.text:rope-octets rope :start start :end end))
          (out (make-array (length octets) :element-type '(unsigned-byte 8) :fill-pointer 0 :adjustable t))
-         (pos 0))
+         (pos 0)
+         (slice (make-line-slice rope))
+         (edit (lambda (a z new)
+                 (setf out (put-octets (put-octets out octets pos (- a start)) new 0 (length new))
+                       pos (- z start)))))
+    (setf (line-slice-block slice) octets (line-slice-block-start slice) start (line-slice-block-end slice) end)
     (multiple-value-bind (starts ends nexts) (scan-lines octets (buffer-crlf-p buffer))
       (dotimes (i (length starts))
-        (funcall per-line
-                 (lambda (a z groups new)
-                   (declare (ignore groups))
-                   (setf out (put-octets (put-octets out octets pos (- a start)) new 0 (length new))
-                         pos (- z start)))
-                 (+ start (aref starts i)) (+ start (aref ends i)) (+ start (aref nexts i))
-                 rope octets start end)))
+        (setf (line-slice-start slice) (+ start (aref starts i))
+              (line-slice-end slice) (+ start (aref ends i))
+              (line-slice-next slice) (+ start (aref nexts i)))
+        (funcall per-line edit slice)))
     (setf out (put-octets out octets pos (length octets)))
     (let ((result (coerce out 'tuatara.text:octets)))
       (unless (equalp result octets)
@@ -1489,7 +1533,8 @@ when search filters hide any of those lines (CHECK-HIDDEN-LINES)."
              (let ((job (start-line-job buffer start (1- end) per-line
                                         :prepare (and prepare
                                                       (lambda (job)
-                                                        (declare (notinline rewrite-rope rewrite-low rewrite-high rewrite-cancel))
+                                                        (declare (notinline rewrite-rope rewrite-low rewrite-high
+                                                                            rewrite-cancel))
                                                         (funcall prepare
                                                                  (rewrite-rope job)
                                                                  (rewrite-low job)
@@ -1527,7 +1572,8 @@ each whole (FATE-LINE)."
     (change-lines buffer start end words
                   (fate-line fate *rewrite-line-limit* gone changed long :ends ends :crlf (buffer-crlf-p buffer))
                   (lambda (done)
-                    (format nil "~a~@[ ~a~]~a" (funcall report (car gone) (car changed)) done (too-long-words (car long)))))))
+                    (format nil "~a~@[ ~a~]~a" (funcall report (car gone) (car changed)) done
+                            (too-long-words (car long)))))))
 
 (defun delete-filtered-lines (buffer start end words filter keep report &key ends)
   "Delete each line of BUFFER from START below END, octets at line starts,
@@ -1565,8 +1611,9 @@ records' header (LIST-HEADER-P), or NIL."
                                ;; how many lines the pattern matches, when it is tried on the whole line
                                :count (and (null what)
                                            (lambda (text regex)
-                                             (stretch-pattern-count counter buffer lines text regex
-                                                                    :ends (and (records-file-p buffer) (record-ends buffer))))))
+                                             (stretch-pattern-count
+                                              counter buffer lines text regex
+                                              :ends (and (records-file-p buffer) (record-ends buffer))))))
               (stop-pattern-count counter)))
         (values pattern regex matcher what first)))))
 
@@ -1587,14 +1634,15 @@ NOUN what a line is called in them."
           (multiple-value-bind (pattern regex matcher what first) (read-line-filter b words start end)
             (multiple-value-bind (filter why)
                 (and (plusp (length pattern))
-                     (make-search-filter pattern :regex regex :test (and what matcher) :crlf (buffer-crlf-p b)))
+                     (make-search-filter pattern :regex regex :test (and what matcher)))
               (let ((start (max start (or first 0))))
                 (cond ((zerop (length pattern)) (message "No pattern: ~(~a~) was not run" command))
                       ((null filter) (message "~a: ~(~a~) was not run" (string-capitalize why :end 1) command))
                       ((>= start end) (message "No lines to filter but the header: ~(~a~) was not run" command))
                       (t (delete-filtered-lines b start end "Filtering" filter keep
                                                 (lambda (gone)
-                                                  (format nil "Deleted ~:d ~:[matching~;non-matching~] ~a~p" gone keep noun gone))
+                                                  (format nil "Deleted ~:d ~:[matching~;non-matching~] ~a~p"
+                                                          gone keep noun gone))
                                                 :ends (and (records-file-p b) (record-ends b))))))))))))
 
 (define-command flush-lines ()

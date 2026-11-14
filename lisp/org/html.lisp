@@ -4,7 +4,7 @@
 ;;;; ORG-HTML-DOCUMENT writes an Org document as one web page, its stylesheet
 ;;;; inside it; ORG-HTML-PARTS gives the pieces of such a page, for pages laid
 ;;;; out by something else (tools/manual-html.lisp, the manual). The document is
-;;;; read as the LaTeX and Word exports read it (ORG-LATEX-TAKE-IN): the same
+;;;; read as the LaTeX and Word exports read it (ORG-EXPORT-TAKE-IN): the same
 ;;;; macros, keywords, options, tags left out and link targets. Every character
 ;;;; of the document is escaped: nothing in it is run, and the #+HTML: lines,
 ;;;; raw HTML blocks and @@html: snippets a page could carry are left out, which
@@ -23,8 +23,8 @@ colours: each colour is a variable (var(--bg) and the like) ORG-HTML-STYLESHEET 
 (defparameter *org-html-most-redacted* 200
   "The most characters of a black bar standing for redacted text.")
 
-(defstruct (org-html (:copier nil))
-  "What writing one Org document as HTML knows beyond its reading (*ORG-LATEX*):
+(define-record (org-html (:copier nil))
+  "What writing one Org document as HTML knows beyond its reading (*ORG-EXPORT*):
 CHAPTER, the number its first headline has in a larger work, or NIL for a whole
 page. KEYS, true when ~text~ is a key to press (<kbd>) and not code. RECORDS,
 each headline's record (LEVEL NUMBER TITLE ID) by the headline, TITLE its HTML.
@@ -34,10 +34,24 @@ reference, the last first. FOOTNOTE-ENTRIES, those with a label by the label.
 FOOTNOTE-COUNT, how many there are. ELSEWHERE, true when the page is written
 away from its note. CONTENTS-WRITTEN, true once a #+TOC: line has given its
 contents."
-  chapter keys (records (make-hash-table :test 'eq)) (headings '()) (ids (make-hash-table :test 'equal))
-  (footnotes '()) (footnote-entries (make-hash-table :test 'equal)) (footnote-count 0) elsewhere contents-written)
-
-(setf (documentation 'org-html-p 'function) "True when OBJECT is an ORG-HTML.")
+  (chapter nil
+           :documentation "The number the first headline of an Org HTML export has in a larger work, or NIL for a
+whole page.")
+  (keys nil :documentation "True when ~text~ in an Org HTML export is a key to press (<kbd>) and not code.")
+  (records (make-hash-table :test 'eq)
+           :documentation "The record (LEVEL NUMBER TITLE ID) of each headline of an Org HTML export, by the headline,
+the TITLE as HTML.")
+  (headings '() :documentation "The records of the headlines of an Org HTML export, in order.")
+  (ids (make-hash-table :test 'equal)
+       :documentation "The next number to try after each id an Org HTML export has given so far, to make a name.")
+  (footnotes '()
+             :documentation "The footnotes of an Org HTML export, each (NUMBER LABEL TEXT), by order of first
+reference, the last first.")
+  (footnote-entries (make-hash-table :test 'equal)
+                    :documentation "The footnotes of an Org HTML export that have a label, by the label.")
+  (footnote-count 0 :documentation "How many footnotes an Org HTML export has.")
+  (elsewhere nil :documentation "True when the page of an Org HTML export is written away from its note.")
+  (contents-written nil :documentation "True once a #+TOC: line has given its contents to an Org HTML export."))
 
 (defvar *org-html* nil
   "The ORG-HTML of the document being written as HTML.")
@@ -45,7 +59,7 @@ contents."
 (defun org-html-text (string newlines)
   "STRING, plain text of the note, as HTML: escaped, its --, --- and ... made
 dashes and an ellipsis unless #+OPTIONS: -:nil; each line break a <br> with NEWLINES."
-  (let ((text (xml-escape (if (org-latex-option "-" t)
+  (let ((text (xml-escape (if (org-export-option "-" t)
                               (cl-ppcre:regex-replace-all
                                "---?|\\.\\.\\." string
                                (lambda (match) (cond ((string= match "---") "—") ((string= match "--") "–") (t "…")))
@@ -58,7 +72,7 @@ dashes and an ellipsis unless #+OPTIONS: -:nil; each line break a <br> with NEWL
 
 (defun org-html-as-written (node)
   "The text of the object NODE as the note writes it, escaped: what has no HTML of its own."
-  (xml-escape (subseq *org-latex-text* (org-node-begin node) (- (org-node-end node) (org-node-post-blank node)))))
+  (xml-escape (subseq *org-export-text* (org-node-begin node) (- (org-node-end node) (org-node-post-blank node)))))
 
 (defun org-html-objects-between (objects begin end out newlines)
   "Write the text from BEGIN below END to OUT, OBJECTS the objects in it, as
@@ -66,7 +80,7 @@ HTML and the rest escaped, each line break a <br> with NEWLINES."
   (org-export-objects-between objects begin end out
                               :text (lambda (string) (org-html-text string newlines))
                               :object #'org-html-object
-                              :blank (lambda (n) (make-string n :initial-element #\Space))))
+                              :blank (lambda (n) (spaces n))))
 
 (defun org-html-objects-text (node &key newlines)
   "The contents of NODE, text and objects, as HTML, without the line break at its end."
@@ -80,7 +94,7 @@ HTML and the rest escaped, each line break a <br> with NEWLINES."
 
 (defun org-html-line (string)
   "STRING, a line of Org text such as a keyword's value, as HTML (ORG-PARSE-LINE)."
-  (let ((*org-latex-text* string))
+  (let ((*org-export-text* string))
     (org-html-objects-text (org-parse-line string))))
 
 ;;; Headings and places
@@ -94,14 +108,14 @@ case, made different from the ids given before it; \"place\" when WORDS holds no
     (loop for n from (gethash base ids 1)
           for name = (if (= n 1) base (format nil "~a-~d" base n))
           unless (gethash name ids)
-            do (setf (gethash name ids) 2
-                     (gethash base ids) (1+ n))
-               (return name))))
+          do (setf (gethash name ids) 2
+                   (gethash base ids) (1+ n))
+          (return name))))
 
 (defun org-html-id (node)
   "The id of the place NODE, given once: a headline's by its CUSTOM_ID or else its
 title, an element's by its #+NAME, a target's by its words."
-  (let ((labels (org-latex-labels *org-latex*)))
+  (let ((labels (org-export-labels *org-export*)))
     (or (gethash node labels)
         (setf (gethash node labels)
               (org-html-new-id (or (org-headline-property node "CUSTOM_ID")
@@ -121,14 +135,14 @@ title, an element's by its #+NAME, a target's by its words."
 from 1, its number as the options give it (from the chapter's number when
 there is one), its title as HTML and its id."
   (let ((html *org-html*)
-        (min-level (org-latex-min-level *org-latex*))
-        (depth (org-latex-option "num" t)))
+        (min-level (org-export-min-level *org-export*))
+        (depth (org-export-option "num" t)))
     (labels ((walk (node prefix)
                (let ((count 0))
                  (dolist (child (org-node-children node))
-                   (when (and (eq (org-node-type child) 'headline) (not (org-latex-skipped-p child)))
+                   (when (and (eq (org-node-type child) 'headline) (not (org-export-skipped-p child)))
                      (let* ((level (1+ (- (org-property child :level) min-level)))
-                            (numbered (and (org-latex-numbered-p child) (or (not (integerp depth)) (<= level depth))))
+                            (numbered (and (org-export-numbered-p child) (or (not (integerp depth)) (<= level depth))))
                             (number (and numbered
                                          (progn (incf count)
                                                 (if prefix
@@ -215,8 +229,9 @@ stand in it, each lit when it is among LIT, else faint."
   "LINE, a minibuffer's row drawn in a text, as HTML: its prompt, the words up
 to its colon after any count (2/3), in bold, and the cursor drawn at its end."
   (cl-ppcre:register-groups-bind (count prompt rest) ("^(\\s*\\d+/\\d+\\s+)?([^:]*:)(.*)$" line)
-    (return-from org-html-prompt-line
-      (format nil "~a<b>~a</b>~a█" (xml-escape (or count "")) (xml-escape prompt) (xml-escape rest))))
+                                 (return-from org-html-prompt-line
+                                   (format nil "~a<b>~a</b>~a█" (xml-escape (or count "")) (xml-escape prompt)
+                                           (xml-escape rest))))
   (format nil "~a█" (xml-escape line)))
 
 (defun org-html-screen (node attributes out)
@@ -260,12 +275,9 @@ straight after the headline at the top of a chapter (ORG-HTML-CHAPTER)."
          (eq node (first (org-node-children section))))))
 
 (defun org-html-image-link-p (node)
-  "True when NODE is a link to a picture, with no description, shown as the picture."
-  (and (eq (org-node-type node) 'link)
-       (string= (org-property node :type) "file")
-       (null (org-node-contents-begin node))
-       (member (tuatara.io:native-file-type (org-property node :path)) *org-html-image-types* :test #'string-equal)
-       t))
+  "True when NODE is a link to a picture a web page shows as the picture
+\(ORG-IMAGE-LINK-P, of *ORG-HTML-IMAGE-TYPES*)."
+  (org-image-link-p node *org-html-image-types*))
 
 (defun org-html-full-name-p (name)
   "True when NAME, a file a link names, is a full name and not relative to the page."
@@ -309,14 +321,14 @@ instead when the page may not show it (ORG-HTML-PICTURE-ALLOWED-P)."
 
 (defun org-html-paragraph (node out)
   "Write the paragraph NODE to OUT, the first of a chapter as its lead; a
-picture alone in it as a figure (ORG-LATEX-PICTURE-ALONE-P)."
-  (if (org-latex-picture-alone-p node #'org-html-image-link-p)
+picture alone in it as a figure (ORG-EXPORT-PICTURE-ALONE-P)."
+  (if (org-export-picture-alone-p node #'org-html-image-link-p)
       (org-html-with-figure
        node out
        (lambda (out)
-         (format out "~a~%" (org-html-image (first (org-node-children node)) (org-latex-attributes node "html")))))
+         (format out "~a~%" (org-html-image (first (org-node-children node)) (org-export-attributes node "html")))))
       (format out "<p~:[~; class=\"lead\"~]>~a</p>~%" (org-html-paragraph-after-headline-p node)
-              (org-html-objects-text node :newlines (org-latex-option "\\n" nil)))))
+              (org-html-objects-text node :newlines (org-export-option "\\n" nil)))))
 
 (defun org-html-list-item-body (item out)
   "Write what the list ITEM holds to OUT: a first paragraph alone in it, or
@@ -378,20 +390,22 @@ rule follows some row of cells; its #+CAPTION as its caption."
 
 (defun org-html-keyword-element (node out)
   "Write the keyword line NODE to OUT: the first #+TOC: headlines as a table of
-contents, any other left out, which is said; a raw HTML line left out, which is said."
+contents (ORG-TOC-KEYWORD), any other, tables or figures too, left out, which is
+said; a raw HTML line left out, which is said."
   (let ((key (org-property node :key)) (value (or (org-property node :value) "")))
     (cond ((string-equal key "HTML") (org-html-note "A #+HTML: line"))
           ((string-equal key "TOC")
-           (let ((words (tuatara.text:split-words value)))
-             (when (string-equal (first words) "headlines")
-               (cond ((org-html-contents-written *org-html*)
-                      (export-note "A repeated #+TOC: line left out of the web page: only the first gives contents"))
-                     (t
-                      (setf (org-html-contents-written *org-html*) t)
-                      (format out "<nav class=\"contents\">~a</nav>~%"
-                              (org-html-contents (org-html-headings *org-html*)
-                                                 :depth (and (second words) (every #'digit-char-p (second words))
-                                                             (parse-integer (second words)))))))))))))
+           (multiple-value-bind (kind depth) (org-toc-keyword value)
+             (case kind
+               (:headlines
+                (cond ((org-html-contents-written *org-html*)
+                       (export-note "A repeated #+TOC: line left out of the web page: only the first gives contents"))
+                      (t
+                       (setf (org-html-contents-written *org-html*) t)
+                       (format out "<nav class=\"contents\">~a</nav>~%"
+                               (org-html-contents (org-html-headings *org-html*) :depth depth)))))
+               ((:tables :figures)
+                (export-note "A #+TOC: ~(~a~) line left out of the web page: it lists headings only" kind))))))))
 
 (defun org-html-element (node out)
   "Write the element NODE to OUT, as its kind is written; nothing for what is never printed."
@@ -402,7 +416,7 @@ contents, any other left out, which is said; a raw HTML line left out, which is 
     (plain-list (org-html-plain-list node out))
     (table (org-html-table node out))
     (src-block (org-html-pre node (org-block-code node) out (org-property node :language)))
-    (example-block (let ((attributes (org-latex-attributes node "html")))
+    (example-block (let ((attributes (org-export-attributes node "html")))
                      (if (getf attributes :screen)
                          (org-html-screen node attributes out)
                          (org-html-pre node (or (org-property node :value) "") out))))
@@ -415,10 +429,7 @@ contents, any other left out, which is said; a raw HTML line left out, which is 
     (center-block (format out "<div class=\"centre\">~%") (org-html-elements node out) (format out "</div>~%"))
     (special-block (org-html-special-block node out))
     (verse-block (format out "<p class=\"verse\">~a</p>~%" (org-html-objects-text node :newlines t)))
-    (drawer (let ((drawers (org-latex-option "d" t)))
-              (unless (or (null drawers)
-                          (member (org-property node :drawer-name) '("LOGBOOK" "EXPORT") :test #'string-equal))
-                (org-html-elements node out))))
+    (drawer (when (org-export-drawer-printed-p node) (org-html-elements node out)))
     (t nil)))
 
 (defun org-html-headline (headline out)
@@ -432,13 +443,13 @@ numbered, but for the top of a chapter, whose number the contents show."
                (tag (min 6 (if chapter level (1+ level))))
                (todo (org-property headline :todo-keyword))
                (priority (org-property headline :priority))
-               (tags (and (org-latex-option "tags" t) (org-property headline :tags))))
+               (tags (and (org-export-option "tags" t) (org-property headline :tags))))
           (format out "<h~d id=\"~a\">" tag (xml-escape id))
           (when (and number (not (and chapter (= level 1))))
             (format out "<span class=\"num\">~a</span> " number))
-          (when (and todo (org-latex-option "todo" t))
+          (when (and todo (org-export-option "todo" t))
             (format out "<span class=\"todo\">~a</span> " (xml-escape todo)))
-          (when (and priority (org-latex-option "pri" nil))
+          (when (and priority (org-export-option "pri" nil))
             (format out "<span class=\"priority\">#~a</span> " (xml-escape (string (code-char priority)))))
           (write-string title out)
           (format out "~{ <span class=\"tag\">~a</span>~}" (mapcar #'xml-escape tags))
@@ -450,7 +461,7 @@ numbered, but for the top of a chapter, whose number the contents show."
 (defun org-html-footnote (node out)
   "Write the footnote reference NODE to OUT as its number, a link to its text,
 the text given when first referred to (ORG-HTML-FOOTNOTES)."
-  (when (org-latex-option "f" t)
+  (when (org-export-option "f" t)
     (let* ((label (org-property node :label))
            (entries (org-html-footnote-entries *org-html*))
            (known (and label (gethash label entries))))
@@ -459,11 +470,14 @@ the text given when first referred to (ORG-HTML-FOOTNOTES)."
           (push entry (org-html-footnotes *org-html*))
           (when label (setf (gethash label entries) entry))
           (setf (third entry)
-                (with-org-latex-expanding (:footnote (or label node)) ("")
-                  (if (eq (org-property node :type) 'inline)
-                      (org-html-objects-text node)
-                      (let ((found (and label (gethash label (org-latex-footnotes *org-latex*)))))
-                        (if found (with-output-to-string (s) (org-html-elements found s)) ""))))
+                (with-org-export-expanding (:footnote (or label node)) ("")
+                                           (if (eq (org-property node :type) 'inline)
+                                               (org-html-objects-text node)
+                                               (let ((found (and label
+                                                                 (gethash label (org-export-footnotes *org-export*)))))
+                                                 (if found
+                                                     (with-output-to-string (s) (org-html-elements found s))
+                                                     ""))))
                 known entry)))
       (format out "<sup><a href=\"#fn-~d\">~d</a></sup>" (first known) (first known)))))
 
@@ -487,7 +501,7 @@ else as its description or its target, as words."
          (description (and (org-node-contents-begin node) (org-html-objects-text node)))
          (address (org-link-address type path)))
     (cond ((org-html-image-link-p node)
-           (write-string (org-html-image node (org-latex-attributes (org-node-parent node) "html")) out))
+           (write-string (org-html-image node (org-export-attributes (org-node-parent node) "html")) out))
           (address
            (format out "<a href=\"~a\">~a</a>" (xml-escape address) (or description (xml-escape address))))
           ((string= type "file")
@@ -497,7 +511,7 @@ else as its description or its target, as words."
                                                           path)))
                    (or description (xml-escape path))))
           (t
-           (let ((target (org-latex-link-target node)))
+           (let ((target (org-export-link-target node)))
              (cond ((and target (eq (org-node-type target) 'headline))
                     (destructuring-bind (level number title id) (gethash target (org-html-records *org-html*))
                       (declare (ignore level number))
@@ -521,7 +535,7 @@ else as its description or its target, as words."
                     (xml-escape (org-property node :value)) (org-html-keys *org-html*)))
       ((verbatim inline-src-block) (format out "<code>~a</code>" (xml-escape (org-property node :value))))
       (entity (let ((character (gethash (org-property node :name) *org-entities*)))
-                (write-string (if (and character (org-latex-option "e" t))
+                (write-string (if (and character (org-export-option "e" t))
                                   (xml-escape character)
                                   (org-html-as-written node))
                               out)))
@@ -537,18 +551,18 @@ else as its description or its target, as words."
       (target (format out "<span id=\"~a\"></span>" (xml-escape (org-html-id node))))
       (radio-target (format out "<span id=\"~a\">~a</span>" (xml-escape (org-html-id node))
                             (org-html-objects-text node)))
-      (timestamp (when (org-latex-option "<" t)
+      (timestamp (when (org-export-option "<" t)
                    (format out "<span class=\"timestamp\">~a</span>" (xml-escape (org-property node :raw-value)))))
       (statistics-cookie (write-string (xml-escape (org-property node :value)) out))
       ((subscript superscript)
-       (let ((script (org-latex-option "^" "{}")))
+       (let ((script (org-export-option "^" "{}")))
          (if (or (null script) (and (equal script "{}") (not (org-property node :use-brackets-p))))
              (write-string (org-html-as-written node) out)
              (wrap (if (eq (org-node-type node) 'subscript) "sub" "sup")))))
-      (macro (let ((value (org-latex-macro-value node)))
+      (macro (let ((value (org-export-macro-value node)))
                (write-string (if value
-                                 (with-org-latex-expanding (:macro (org-property node :key))
-                                     ((org-html-as-written node))
+                                 (with-org-export-expanding (:macro (org-property node :key))
+                                   ((org-html-as-written node))
                                    (org-html-line value))
                                  (org-html-as-written node))
                              out)))
@@ -560,10 +574,10 @@ else as its description or its target, as words."
 (defun org-html-title-block (title out)
   "Write the head of a whole page, its TITLE and any #+SUBTITLE:, #+AUTHOR: and
 #+DATE: lines, to OUT, each as HTML; nothing for a page with none of them."
-  (let ((subtitle (org-latex-keyword "SUBTITLE"))
-        (author (and (org-latex-option "author" t) (org-latex-keyword "AUTHOR")))
-        (date (and (org-latex-option "date" t) (org-latex-keyword "DATE"))))
-    (when (and (org-latex-option "title" t)
+  (let ((subtitle (org-export-keyword "SUBTITLE"))
+        (author (and (org-export-option "author" t) (org-export-keyword "AUTHOR")))
+        (date (and (org-export-option "date" t) (org-export-keyword "DATE"))))
+    (when (and (org-export-option "title" t)
                (or (plusp (length title)) subtitle author date))
       (format out "<header class=\"title\">~%~@[<h1>~a</h1>~%~]~@[<p class=\"lead\">~a</p>~%~]~
                    ~@[<p>~a</p>~%~]~@[<p>~a</p>~%~]</header>~%"
@@ -584,38 +598,28 @@ Without CHAPTER, BODY begins with its title and contents as #+OPTIONS: says.
 With CHAPTER, the number of its first headline in a larger work, that headline
 is the top of the chapter and BODY has no title of its own. KEYS true makes
 ~text~ a key to press (<kbd>)."
-  (let* ((directory (and file (tuatara.io:parent-path file)))
-         (*org-list-allow-alphabetical* t)
-         (*org-latex* (let ((latex (make-org-latex text directory file)))
-                        (setf (org-latex-enhanced latex) t)
-                        latex))
-         (original text)
-         (output (org-export-file-name original file))
-         (text (let ((expanded (org-latex-expand-macros text)))
-                 (org-latex-check-hidden expanded original nil)
-                 expanded))
-         (tree (org-parse text))
-         (*org-latex-text* text)
-         (*org-html* (make-org-html :chapter chapter :keys keys
-                                    :elsewhere (and output (not (equal (tuatara.io:parent-path output) directory))))))
-    (org-latex-take-in text tree directory)
-    (org-html-gather-headings tree)
-    (let* ((title (org-latex-title))
-           (body (with-output-to-string (s)
-                   (unless chapter
-                     (org-html-title-block title s)
-                     (let ((toc (org-latex-option "toc" t)))
-                       (when (and toc (org-html-headings *org-html*))
-                         (format s "<nav class=\"contents\">~a</nav>~%"
-                                 (org-html-contents (org-html-headings *org-html*) :depth (and (integerp toc) toc))))))
-                   (org-html-element tree s)
-                   (org-html-footnotes-section s))))
-      (list :title (xml-escape (org-latex-plain title))
-            :body body
-            :headings (org-html-headings *org-html*)
-            :language (or (org-latex-keyword "LANGUAGE") "en")
-            :output (and output (replaced-type output "html"))
-            :notes (reverse (org-latex-notes *org-latex*))))))
+  (with-org-export-reading (expanded tree directory) (text file :enhanced t)
+                           (let* ((output (org-export-file-name text file))
+                                  (elsewhere (and output (not (equal (tuatara.io:parent-path output) directory))))
+                                  (*org-html* (make-org-html :chapter chapter :keys keys :elsewhere elsewhere)))
+                             (org-html-gather-headings tree)
+                             (let* ((title (org-export-title))
+                                    (body (with-output-to-string (s)
+                                            (unless chapter
+                                              (org-html-title-block title s)
+                                              (let ((toc (org-export-option "toc" t)))
+                                                (when (and toc (org-html-headings *org-html*))
+                                                  (format s "<nav class=\"contents\">~a</nav>~%"
+                                                          (org-html-contents (org-html-headings *org-html*)
+                                                                             :depth (and (integerp toc) toc))))))
+                                            (org-html-element tree s)
+                                            (org-html-footnotes-section s))))
+                               (list :title (xml-escape (org-export-plain title))
+                                     :body body
+                                     :headings (org-html-headings *org-html*)
+                                     :language (or (org-export-keyword "LANGUAGE") "en")
+                                     :output (and output (replaced-type output "html"))
+                                     :notes (reverse (org-export-notes *org-export*)))))))
 
 (defun org-html-stylesheet (&key chosen)
   "The stylesheet of a web page made from an Org document: the colours of the
@@ -640,8 +644,9 @@ the system's preference, and paper is always given the light colours."
 (defun org-html-page (title body &key style stylesheet script icon (language "en"))
   "A whole web page of BODY, its head naming TITLE (already escaped): STYLE the
 stylesheet's text to put inside, STYLESHEET, SCRIPT and ICON (the picture a
-browser shows in the page's tab) the addresses of files beside it to load. Its content security policy lets it load nothing else and
-run nothing else, so a page keeps to itself even if a browser reads it wrongly."
+browser shows in the page's tab) the addresses of files beside it to load. Its
+content security policy lets it load nothing else and run nothing else, so a
+page keeps to itself even if a browser reads it wrongly."
   (format nil "<!doctype html>
 <html lang=\"~a\">
 <head>

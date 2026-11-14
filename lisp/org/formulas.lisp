@@ -15,9 +15,10 @@
 
 ;;; Numbers as Calc has them
 
-(defstruct (org-calc-float (:constructor %make-org-calc-float (value)))
-  "A decimal number with a point, as table formulas keep it: VALUE is exact (a rational) and already rounded to the working digits."
-  value)
+(define-record (org-calc-float (:constructor %make-org-calc-float (value)))
+  "A decimal number with a point, as table formulas keep it: VALUE is exact (a
+rational) and already rounded to the working digits."
+  (value nil :documentation "The exact value of an ORG-CALC-FLOAT, a rational already rounded to the working digits."))
 
 (defvar *org-calc-digits* 12
   "How many significant digits decimal numbers are worked out to in table formulas (;p20 changes it for a formula).")
@@ -54,10 +55,17 @@
 number may have; past it the field shows #ERROR, at once, instead of a
 number too large to work out.")
 
+(defun org-calc-error ()
+  "Signal that the field being worked out shows #ERROR (ORG-FORMULA-ERROR)."
+  (error 'org-formula-error :text "#ERROR"))
+
+(defparameter *org-formula-lisp-refused* "Formulas in Emacs Lisp are not run: Tuatara runs nothing from a file"
+  "What a table says of a formula written in Emacs Lisp, which is never run.")
+
 (defun org-calc-bounded (n)
   "N, an integer a formula gives a count of digits or an exponent with, when
 it is within *ORG-CALC-LARGEST*; else an error for the field (#ERROR)."
-  (if (> (abs n) *org-calc-largest*) (error 'org-formula-error :text "#ERROR") n))
+  (if (> (abs n) *org-calc-largest*) (org-calc-error) n))
 
 (defun org-calc-number-p (x)
   "True when X is a number of the formulas: an integer or a decimal number."
@@ -66,7 +74,7 @@ it is within *ORG-CALC-LARGEST*; else an error for the field (#ERROR)."
 (defun org-calc-read-number (text)
   "The number TEXT (a field's text) is, as table formulas read it: 12 an integer, 1.5,
 3. and 1e10 decimal numbers; NIL when it is none."
-  (let ((text (string-trim " 	" text)))
+  (let ((text (string-trim '(#\Space #\Tab) text)))
     (multiple-value-bind (match groups)
         (cl-ppcre:scan-to-strings "^([-+]?)([0-9]*)(?:\\.([0-9]*))?(?:[eE]([-+]?[0-9]+))?$" text)
       (when (and match (or (plusp (length (aref groups 1))) (plusp (length (or (aref groups 2) "")))))
@@ -119,7 +127,7 @@ display mode of the formula's flags: (:normal N), (:fixed N) or (:scientific N).
                        (format nil "~:[~;-~]~a.~a" (and (minusp r) (plusp scaled))
                                (subseq text 0 (- (length text) n)) (subseq text (- (length text) n)))))
              (t (org-format-calc-float r 8)))))
-        (t (error 'org-formula-error :text "#ERROR"))))
+        (t (org-calc-error))))
 
 ;;; Arithmetic
 
@@ -134,7 +142,7 @@ display mode of the formula's flags: (:normal N), (:fixed N) or (:scientific N).
 
 (defun org-calc-check (x)
   "X when it is a number, else an error for the field (#ERROR)."
-  (unless (org-calc-number-p x) (error 'org-formula-error :text "#ERROR"))
+  (unless (org-calc-number-p x) (org-calc-error))
   x)
 
 (defun org-calc-arith (operator a b)
@@ -147,17 +155,19 @@ display mode of the formula's flags: (:normal N), (:fixed N) or (:scientific N).
         (+ (result (+ x y)))
         (- (result (- x y)))
         (* (result (* x y)))
-        (/ (when (zerop y) (error 'org-formula-error :text "#ERROR")) (result (/ x y)))
-        (% (when (zerop y) (error 'org-formula-error :text "#ERROR")) (result (mod x y)))
-        (\\ (when (zerop y) (error 'org-formula-error :text "#ERROR")) (floor x y))
+        (/ (when (zerop y) (org-calc-error)) (result (/ x y)))
+        (% (when (zerop y) (org-calc-error)) (result (mod x y)))
+        (\\ (when (zerop y) (org-calc-error)) (floor x y))
         (^ (when (and (integerp y) (/= 0 x) (/= 1 (abs x))
-                      (> (* (abs y) (max (integer-length (numerator (rational x))) (integer-length (denominator (rational x))) 1))
+                      (> (* (abs y)
+                            (max (integer-length (numerator (rational x))) (integer-length (denominator (rational x)))
+                                 1))
                          (* 100 *org-calc-largest*)))
-             (error 'org-formula-error :text "#ERROR"))
+             (org-calc-error))
            (cond ((and (integerp y) exact (>= y 0)) (expt x y))
-                 ((integerp y) (when (and (zerop x) (minusp y)) (error 'org-formula-error :text "#ERROR"))
+                 ((integerp y) (when (and (zerop x) (minusp y)) (org-calc-error))
                   (result (expt x y)))
-                 ((minusp x) (error 'org-formula-error :text "#ERROR"))
+                 ((minusp x) (org-calc-error))
                  (t (org-calc-float (expt (float x 1d0) (float y 1d0))))))))))
 
 (defun org-calc-compare (operator a b)
@@ -186,7 +196,7 @@ display mode of the formula's flags: (:normal N), (:fixed N) or (:scientific N).
   "The table formulas' function NAME (vsum, vmean...) applied to ARGUMENTS (values; a range is a list of them)."
   (flet ((one () (unless (and (= 1 (length arguments)) (not (listp (first arguments))))
                    (org-formula-fail "~a takes one number" name))
-           (first arguments))
+              (first arguments))
          (all () (org-calc-flatten arguments))
          (real (r) (org-calc-float (rational r)))
          (degrees (x) (* (org-calc-real x) (/ pi 180))))
@@ -198,10 +208,10 @@ display mode of the formula's flags: (:normal N), (:fixed N) or (:scientific N).
         ((string= name "vmean") (let ((numbers (all)))
                                   (if numbers
                                       (org-calc-arith '/ (org-calc-sum numbers) (length numbers))
-                                      (error 'org-formula-error :text "#ERROR"))))
+                                      (org-calc-error))))
         ((string= name "vmedian")
          (let* ((numbers (sort (copy-list (all)) #'< :key #'org-calc-value)) (n (length numbers)))
-           (cond ((zerop n) (error 'org-formula-error :text "#ERROR"))
+           (cond ((zerop n) (org-calc-error))
                  ((oddp n) (nth (floor n 2) numbers))
                  (t (org-calc-arith '/ (org-calc-arith '+
                                                        (nth (1- (floor n 2)) numbers)
@@ -209,29 +219,30 @@ display mode of the formula's flags: (:normal N), (:fixed N) or (:scientific N).
         ((member name '("vmax" "max") :test #'string=)
          (let ((numbers (all)))
            (if numbers (reduce (lambda (a b) (if (> (org-calc-value b) (org-calc-value a)) b a)) numbers)
-               (error 'org-formula-error :text "#ERROR"))))
+               (org-calc-error))))
         ((member name '("vmin" "min") :test #'string=)
          (let ((numbers (all)))
            (if numbers (reduce (lambda (a b) (if (< (org-calc-value b) (org-calc-value a)) b a)) numbers)
-               (error 'org-formula-error :text "#ERROR"))))
+               (org-calc-error))))
         ((string= name "abs")
          (let ((x (org-calc-check (one)))) (if (integerp x) (abs x) (org-calc-float (abs (org-calc-value x))))))
         ((string= name "round")
          (if (= 2 (length arguments))
              (let ((x (org-calc-check (first arguments)))
                    (n (org-calc-bounded (truncate (org-calc-value (org-calc-check (second arguments)))))))
-               (if (integerp x) x (org-calc-float (/ (org-round-half-away (* (org-calc-value x) (expt 10 n))) (expt 10 n)))))
+               (if (integerp x) x
+                   (org-calc-float (/ (org-round-half-away (* (org-calc-value x) (expt 10 n))) (expt 10 n)))))
              (org-round-half-away (org-calc-value (org-calc-check (one))))))
         ((string= name "floor") (floor (org-calc-value (org-calc-check (one)))))
         ((string= name "ceil") (ceiling (org-calc-value (org-calc-check (one)))))
         ((string= name "sqrt") (let* ((x (org-calc-check (one))) (v (org-calc-value x)))
-                                 (cond ((minusp v) (error 'org-formula-error :text "#ERROR"))
+                                 (cond ((minusp v) (org-calc-error))
                                        ((and (integerp x) (= v (expt (isqrt v) 2))) (isqrt v))
                                        (t (real (sqrt (float v 1d0)))))))
         ((string= name "exp") (real (exp (org-calc-real (one)))))
         ((member name '("ln" "log10") :test #'string=)
          (let ((x (org-calc-real (one))))
-           (when (<= x 0) (error 'org-formula-error :text "#ERROR"))
+           (when (<= x 0) (org-calc-error))
            (real (if (string= name "ln") (log x) (log x 10d0)))))
         ((string= name "sin") (real (sin (degrees (one)))))
         ((string= name "cos") (real (cos (degrees (one)))))
@@ -260,7 +271,8 @@ strings beginning @ or $), names, operators and brackets."
                     (setf i e)))
                  ((member c '(#\@ #\$))
                   (multiple-value-bind (s e)
-                      (cl-ppcre:scan "^(?:@(?:#|<+|>+|[-+]?I+|[-+]?[0-9]+))?(?:\\$(?:#|<+|>+|[-+]?[0-9]+))?" text :start i)
+                      (cl-ppcre:scan "^(?:@(?:#|<+|>+|[-+]?I+|[-+]?[0-9]+))?(?:\\$(?:#|<+|>+|[-+]?[0-9]+))?" text
+                                     :start i)
                     (declare (ignore s))
                     (when (= e i)
                       (org-formula-fail "~a is no reference formulas know here" (subseq text i (min n (+ i 8)))))
@@ -277,7 +289,7 @@ strings beginning @ or $), names, operators and brackets."
                           ((find c "+-*/%\\^<>!(),=")
                            (push (list :operator (string c)) tokens) (incf i))
                           ((char= c #\')
-                           (org-formula-fail "Formulas in Emacs Lisp are not run: Tuatara runs nothing from a file"))
+                           (org-formula-fail *org-formula-lisp-refused*))
                           (t (org-formula-fail "~a is not understood in a formula" c))))))))
     (nreverse tokens)))
 
@@ -339,7 +351,7 @@ refused."
                                      (let ((arguments '()))
                                        (unless (operator-p ")")
                                          (loop (push (or-level) arguments)
-                                               (if (operator-p ",") (take) (return))))
+                                          (if (operator-p ",") (take) (return))))
                                        (expect ")")
                                        (list :call (second token) (nreverse arguments))))
                               (list :name (second token))))
@@ -352,18 +364,20 @@ refused."
 
 ;;; References
 
-(defstruct (org-formula-context (:conc-name org-context-))
+(define-record (org-formula-context (:conc-name org-context-))
   "Where a formula is worked out: GRID, the table's rows of fields (a vector
 of vectors of their text, rules left out); DATA, the place of each in the
 table's rows; RULES, the places of its rules; COLUMNS, how many it has; ROW
 and COLUMN, the field being worked out (from 0, in GRID); FLAGS, a list of :N, :E."
-  grid data rules columns row column flags)
-
-(defun org-first-after (vector value)
-  "The index of the first element of VECTOR (ascending integers) above VALUE; its length when none."
-  (let ((lo 0) (hi (length vector)))
-    (setf lo (tuatara.runtime:bisect (mid lo hi) (<= (svref vector mid) value)) hi lo)
-    lo))
+  (grid nil
+        :documentation "The rows of fields of the table of ORG-FORMULA-CONTEXT, a vector of vectors of their text,
+rules left out.")
+  (data nil :documentation "The place in the table's rows of each field in the grid of ORG-FORMULA-CONTEXT.")
+  (rules nil :documentation "The places of the rules of the table of ORG-FORMULA-CONTEXT.")
+  (columns nil :documentation "How many columns the table of ORG-FORMULA-CONTEXT has.")
+  (row nil :documentation "The row of the field being worked out, from 0, in the grid of ORG-FORMULA-CONTEXT.")
+  (column nil :documentation "The column of the field being worked out, from 0, in the grid of ORG-FORMULA-CONTEXT.")
+  (flags nil :documentation "The flags of ORG-FORMULA-CONTEXT, a list of :N and :E."))
 
 (defun org-reference-row (context designator &key (as :start))
   "The data row (a place in the context's GRID) DESIGNATOR, the part of a
@@ -385,13 +399,13 @@ after it, or AS :END the row before it."
                 (k (length (string-left-trim "-+" designator)))
                 (rules (org-context-rules context))
                 (here (svref data current))
-                (after (org-first-after rules here))
+                (after (tuatara.runtime:first-index-at-or-after rules (1+ here)))
                 (index (cond ((null sign) (1- k))
-                             ((char= sign #\-) (- (org-first-after rules (1- here)) k))
+                             ((char= sign #\-) (- (tuatara.runtime:first-index-at-or-after rules here) k))
                              (t (+ after (1- k)))))
                 (rule (and (< -1 index (length rules)) (svref rules index))))
            (unless rule (org-formula-fail "There is no rule ~a in the table" designator))
-           (let ((next (org-first-after data rule)))
+           (let ((next (tuatara.runtime:first-index-at-or-after data (1+ rule))))
              (check (if (eq as :end) (1- next) next)))))
         ((find (char designator 0) "-+") (check (+ current (parse-integer designator))))
         (t (let ((n (parse-integer designator)))
@@ -424,7 +438,7 @@ after it, or AS :END the row before it."
 (defun org-field-value (context text &key in-range)
   "The value of a field holding TEXT: its number; an empty one 0 (in a range
 left out, unless the flags have E); text not a number as it is (0 with N)."
-  (let ((flags (org-context-flags context)) (trimmed (string-trim " 	" text)))
+  (let ((flags (org-context-flags context)) (trimmed (string-trim '(#\Space #\Tab) text)))
     (cond ((string= trimmed "")
            (if (and in-range (not (member :e flags))) :empty 0))
           ((org-calc-read-number trimmed))
@@ -450,7 +464,8 @@ left out, unless the flags have E); text not a number as it is (0 with N)."
         (remove :empty
                 (loop for row from (min r1 r2) to (max r1 r2)
                       append (loop for column from (min c1 c2) to (max c1 c2)
-                                   collect (org-field-value context (org-field-text context row column) :in-range t))))))))
+                                   collect (org-field-value context (org-field-text context row column)
+                                                            :in-range t))))))))
 
 (defun org-formula-evaluate (tree context)
   "The value of TREE, a formula read by ORG-FORMULA-PARSE, where CONTEXT is."
@@ -471,9 +486,11 @@ left out, unless the flags have E); text not a number as it is (0 with N)."
                                (case op
                                  (:&& (if (and (org-calc-true-p (value (third tree)))
                                                (org-calc-true-p (value (fourth tree)))) 1 0))
-                                 (:|\|\|| (if (or (org-calc-true-p (value (third tree))) (org-calc-true-p (value (fourth tree)))) 1 0))
+                                 (:|\|\|| (if (or (org-calc-true-p (value (third tree)))
+                                                  (org-calc-true-p (value (fourth tree)))) 1 0))
                                  ((:== :!= :< :> :<= :>=)
-                                  (org-calc-compare (intern (symbol-name op) :tuatara.defaults) (value (third tree)) (value (fourth tree))))
+                                  (org-calc-compare (intern (symbol-name op) :tuatara.defaults) (value (third tree))
+                                                    (value (fourth tree))))
                                  (t (org-calc-arith (intern (symbol-name op) :tuatara.defaults)
                                                     (value (third tree)) (value (fourth tree)))))))))))
            (scalar (tree)
@@ -535,7 +552,7 @@ ORG-CALC-TEXT takes it), :DIGITS (;p20), :PRINTF (%.2f...), :UNSUPPORTED."
                      (#\n (when n (setf mode (list :normal n))))
                      (#\f (when n (setf mode (list :fixed n))))
                      ((#\s #\e) (when n (setf mode (list :scientific n))))
-                     (#\L (setf unsupported "Formulas in Emacs Lisp are not run: Tuatara runs nothing from a file"))
+                     (#\L (setf unsupported *org-formula-lisp-refused*))
                      ((#\T #\t #\U) (setf unsupported "Times and durations (;T ;t ;U) are not worked out yet"))
                      ((#\Space #\Tab) nil)
                      (t (setf unsupported (format nil "The flag ~a is not known here" c))))
@@ -544,12 +561,19 @@ ORG-CALC-TEXT takes it), :DIGITS (;p20), :PRINTF (%.2f...), :UNSUPPORTED."
 
 ;;; Formulas of a table
 
-(defstruct (org-formula (:conc-name org-formula-))
+(define-record (org-formula (:conc-name org-formula-))
   "One formula of a table: TEXT as #+TBLFM: has it, LHS (what it fills as :COLUMN
 with COLUMN, :FIELD with ROW and COLUMN, :RANGE with FROM and TO), RHS (the
 text to work out), its FLAGS (as ORG-READ-FORMULA-FLAGS gives them) and
 PARSED, its right-hand side once read."
-  text kind lhs rhs flags parsed)
+  (text nil :documentation "The text of an Org formula as #+TBLFM: has it.")
+  (kind nil :documentation "The kind of left-hand side of an Org formula: :COLUMN, :FIELD or :RANGE.")
+  (lhs nil
+       :documentation "What an Org formula fills, as :COLUMN with COLUMN, :FIELD with ROW and COLUMN, or :RANGE with
+FROM and TO.")
+  (rhs nil :documentation "The right-hand side of an Org formula, the text to work out.")
+  (flags nil :documentation "The flags of an Org formula, as ORG-READ-FORMULA-FLAGS gives them.")
+  (parsed nil :documentation "The right-hand side of an Org formula once read, or NIL before."))
 
 (defun org-read-formula (text)
   "TEXT, one formula of #+TBLFM: (LHS=RHS;FLAGS), read."
@@ -569,7 +593,8 @@ PARSED, its right-hand side once read."
 
 (defun org-table-formula-texts (formulas-line)
   "The formulas of a #+TBLFM: line's text (after the colon), :: between them."
-  (remove "" (mapcar (lambda (s) (string-trim " 	" s)) (cl-ppcre:split "::" formulas-line)) :test #'string=))
+  (remove "" (mapcar (lambda (s) (string-trim '(#\Space #\Tab) s)) (cl-ppcre:split "::" formulas-line))
+          :test #'string=))
 
 (defun org-formula-sort-key (text)
   "The key Org sorts a table's formulas by: column formulas by column, then field formulas by row and column."
@@ -588,9 +613,9 @@ PARSED, its right-hand side once read."
          (rules (coerce (loop for row in rows for i from 0 when (eq row :rule) collect i) 'simple-vector))
          (grid (coerce (loop for row in rows
                              unless (eq row :rule)
-                               collect (let ((fields (make-array columns :initial-element "")))
-                                         (loop for field in row for c from 0 do (setf (svref fields c) field))
-                                         fields))
+                             collect (let ((fields (make-array columns :initial-element "")))
+                                       (loop for field in row for c from 0 do (setf (svref fields c) field))
+                                       fields))
                        'simple-vector)))
     (make-org-formula-context :grid grid :data data :rules rules :columns columns :row 0 :column 0)))
 
@@ -607,7 +632,7 @@ a field formula's field, a range formula's fields."
          (loop for index across (org-context-data context)
                for row from 0
                when (or (null first-rule) (> index first-rule))
-                 collect (cons row column))))
+               collect (cons row column))))
       (:field
        (multiple-value-bind (row column) (org-reference-parts lhs)
          (list (cons (org-reference-row context row) (org-reference-column context column)))))
@@ -649,7 +674,7 @@ ORG-FORMULA-ERROR, the table as it was, when one cannot be worked out at all."
   (let* ((context (org-context-for model))
          (grid (org-context-grid context))
          (columns (org-context-columns context))
-         (column-formulas (remove :column formulas :key #'org-formula-kind :test-not #'eq))
+         (column-formulas (remove-if-not (lambda (formula) (eq (org-formula-kind formula) :column)) formulas))
          (fields (remove :column formulas :key #'org-formula-kind))
          (own (make-hash-table)))
     (flet ((key (target) (+ (* (car target) columns) (cdr target)))
@@ -688,7 +713,7 @@ ORG-FORMULA-ERROR, the table as it was, when one cannot be worked out at all."
             (if (getf (org-formula-flags formula) :unsupported)
                 (setf left-out (format nil "~a: ~a" text (getf (org-formula-flags formula) :unsupported)))
                 (progn (when (uiop:string-prefix-p "'" (org-formula-rhs formula))
-                         (org-formula-fail "Formulas in Emacs Lisp are not run: Tuatara runs nothing from a file"))
+                         (org-formula-fail *org-formula-lisp-refused*))
                        (push formula formulas))))
         (org-formula-error (e) (setf left-out (format nil "~a: ~a" text (org-formula-error-text e))))))
     (values (nreverse formulas) left-out)))
@@ -701,11 +726,21 @@ ORG-PARSE) point is in, as texts."
   (let ((table (org-table-at (org-parse-tree parse) (org-parse-text parse) (org-parse-point parse))))
     (and table (org-table-formula-texts (or (first (org-property table :tblfm)) "")))))
 
+(defun org-formula-lhs-p (text lhs)
+  "True when TEXT, a table's formula, sets LHS ($3, @2$1): what stands before
+its = is LHS."
+  (let ((equals (position #\= text)))
+    (and equals (string= (string-trim " " (subseq text 0 equals)) lhs))))
+
+(defun org-table-data-row-number (model row)
+  "The number of the data row ROW of MODEL is, counting from 1, its rules not
+counted, as a formula's @ names it."
+  (1+ (count-if-not (lambda (r) (eq r :rule)) (org-table-rows model) :end row)))
+
 (defun org-store-formula (texts lhs rhs)
   "TEXTS, a table's formulas, with the formula of LHS made LHS=RHS (taken out
 when RHS is empty), sorted by what each sets (ORG-FORMULA-SORT-KEY)."
-  (let ((others (remove-if (lambda (text) (let ((equals (position #\= text)))
-                                            (and equals (string= (string-trim " " (subseq text 0 equals)) lhs))))
+  (let ((others (remove-if (lambda (text) (org-formula-lhs-p text lhs))
                            texts)))
     (sort (if (string= (string-trim " " rhs) "") others (cons (format nil "~a=~a" lhs rhs) others))
           #'string< :key #'org-formula-sort-key)))
@@ -781,7 +816,7 @@ empty) and work it out; the #+TBLFM: line written with the table."
     (multiple-value-bind (match groups) (and field (cl-ppcre:scan-to-strings "^(:?)=(.*[^=])$" field))
       (when match
         (setf (nth (org-table-field model) (nth row (org-table-rows model))) "")
-        (let ((data-row (1+ (count-if-not (lambda (r) (eq r :rule)) (subseq (org-table-rows model) 0 row))))
+        (let ((data-row (org-table-data-row-number model row))
               (column (1+ (org-table-field model))))
           (org-table-store-and-apply model
                                      (if (string= (aref groups 0) ":")
@@ -797,17 +832,17 @@ takes the formula away."
   (let ((field-formula (prefix-argument)))
     (unless (with-org-table (parse model)
               (let* ((row (org-table-row model))
-                     (data-row (1+ (count-if-not (lambda (r) (eq r :rule)) (subseq (org-table-rows model) 0 row))))
+                     (data-row (org-table-data-row-number model row))
                      (lhs (if field-formula
                               (format nil "@~d$~d" data-row (1+ (org-table-field model)))
                               (format nil "$~d" (1+ (org-table-field model)))))
-                     (old (find-if (lambda (text) (let ((equals (position #\= text)))
-                                                    (and equals (string= (string-trim " " (subseq text 0 equals)) lhs))))
+                     (old (find-if (lambda (text) (org-formula-lhs-p text lhs))
                                    (org-table-formulas model)))
                      (rhs (multiple-value-bind (rhs after)
                               (org-table-ask parse model
                                              (lambda ()
-                                               (read-string (format nil "~:[Column~;Field~] formula ~a = " field-formula lhs)
+                                               (read-string (format nil "~:[Column~;Field~] formula ~a = "
+                                                                    field-formula lhs)
                                                             :initial (if old (subseq old (1+ (position #\= old))) ""))))
                             (setf parse after)
                             rhs)))

@@ -87,18 +87,23 @@ the two for that status.
 
 ;;; Git in the background
 
-(defstruct (git-job (:include tuatara.runtime:job)
-                    (:constructor make-git-job (buffer doing then after quiet))
-                    (:copier nil))
+(define-record (git-job (:include tuatara.runtime:job)
+                       (:constructor make-git-job (buffer doing then after quiet))
+                       (:copier nil))
   "Git at work for BUFFER (a status, a log, a commit's message), a job: DOING
 says what it does (Pushing); THEN is called on the editor's thread with what
 its work gave once it is done, AFTER, when given, however it ended. QUIET
 work only reads the repository: it is stopped without asking when its buffer
 is killed or the editor left. RESULT is what the work gave, SAID what git said
 went wrong when it failed."
-  doing then after quiet (result '()) said)
-
-(setf (documentation 'git-job-p 'function) "True when OBJECT is a GIT-JOB.")
+  (doing nil :documentation "What GIT-JOB does, as in \"Pushing\".")
+  (then nil :documentation "The function called on the editor's thread with what the work of GIT-JOB gave.")
+  (after nil :documentation "The function called once GIT-JOB is done, however it ended, or NIL.")
+  (quiet nil
+         :documentation "True when GIT-JOB only reads the repository, so it is stopped without asking when its buffer
+is killed or the editor left.")
+  (result '() :documentation "What the work of GIT-JOB gave.")
+  (said nil :documentation "What git said went wrong when GIT-JOB failed."))
 
 (tuatara.runtime:define-job-words git-job
   :doing (git-job-doing job)
@@ -144,14 +149,19 @@ work that only reads."
 (defun git-failure-words (command text)
   "What is said when git COMMAND (push) failed, having printed TEXT, git push,
 and the line saying what went wrong, the first beginning fatal: or error:,
-else the last line it printed, else that it failed; when the server refused
-every ssh key, that, and how to give ssh yours."
+else the last line it printed, else that it failed; when ssh would not
+reach the server, why in plain words (SSH-REFUSAL-WORDS): a key it does not
+know yet, the host named, or a changed key, which may be an attack; when the
+server refused every ssh key, that, and how to give ssh yours."
   (let ((lines (remove-if (lambda (line) (zerop (length (string-trim '(#\Space #\Tab #\Return) line))))
                           (uiop:split-string text :separator '(#\Newline)))))
     (format nil "git ~a: ~a" command
-            (or (and (search "Permission denied (publickey" text)
-                     "the server took none of the ssh keys offered (Permission denied (publickey)): ssh-add puts yours in your ssh agent")
-                (find-if (lambda (line) (or (uiop:string-prefix-p "fatal:" line) (uiop:string-prefix-p "error:" line))) lines)
+            (or (ssh-refusal-words text)
+                (and (search "Permission denied (publickey" text)
+                     (concatenate 'string "the server took none of the ssh keys offered "
+                                  "(Permission denied (publickey)): ssh-add puts yours in your ssh agent"))
+                (find-if (lambda (line) (or (uiop:string-prefix-p "fatal:" line) (uiop:string-prefix-p "error:" line)))
+                         lines)
                 (car (last lines))
                 "it failed"))))
 
@@ -189,7 +199,9 @@ wrong (GIT-FAILURE-WORDS) or that it printed too much."
           (t (tuatara.runtime:job-check-stop)
              ;; what it said, or, saying nothing, what it printed (nothing to commit)
              (throw 'git-failed (git-failure-words (first arguments)
-                                                   (if (plusp (length said)) said (if octets (tuatara.text:lenient-string octets) ""))))))))
+                                                   (cond ((plusp (length said)) said)
+                                                         (octets (tuatara.text:lenient-string octets))
+                                                         (t ""))))))))
 
 (defun git-job-output (job top arguments &key environment input)
   "On JOB's thread: what git printed with ARGUMENTS in TOP, as text, as
@@ -206,7 +218,11 @@ the newlines at its ends left out (GIT-JOB-OUTPUT)."
 buffer doing DOING (START-GIT-JOB, GIT-JOB-OUTPUT); THEN is called with what
 it printed, as text, when it succeeded, AFTER however it ended; what went
 wrong is said when it failed."
-  (start-git-job doing (lambda (job) (git-job-output job top arguments :environment environment :input input))
+  (start-git-job doing (lambda (job)
+                        (call-with-git-environment environment arguments
+                                                   (lambda (environment)
+                                                     (git-job-output job top arguments :environment environment
+                                                                                       :input input))))
                  then :after after :quiet quiet))
 
 (defun git-top (buffer)
@@ -221,20 +237,13 @@ wrong is said when it failed."
 commit's message or history, is for."
   (tuatara.buffer:buffer-local buffer :git-top))
 
-(defun git-may-run-p (top)
-  "True when git may run for the repository at TOP: a project trusted, or
-looked at only, git then reading it alone (ASK-PROJECT-TRUST, asked once
-when it is neither; one that is, is in or holds an evidence directory is looked
-at only, not asked of)."
-  (ask-project-trust top))
-
 (defun git-repository ()
   "The top of the repository to act on: the current status's, log's or
 commit message's, else that of the current file or directory when its project
 is trusted (asked once when it is not); NIL, said so, when there is none."
   (or (git-here)
       (let ((top (git-top-said (current-buffer))))
-        (and top (git-may-run-p top) top))))
+        (and top (ask-project-trust top) top))))
 
 (defun git-top-said (buffer)
   "The top of the repository BUFFER's file or directory is in (GIT-TOP); NIL,
@@ -269,12 +278,19 @@ there is none."
   (let ((path (git-file-here top)))
     (if path (funcall function path) (message "~a" missing))))
 
+(defmacro with-git-file ((top path &key switches (missing "No file here")) &body body)
+  "Run BODY with TOP bound to the repository to act on (WITH-GIT-REPOSITORY,
+SWITCHES as it takes them) and PATH to the file of it to act on, relative to
+TOP (CALL-WITH-GIT-FILE); MISSING, a string, is said when there is none."
+  `(with-git-repository (,top ,@(and switches (list switches)))
+     (call-with-git-file ,top ,missing (lambda (,path) ,@body))))
+
 (defun git-inside-path-p (path)
   "True when PATH names a place within a repository, from its top: not empty,
 not beginning with - (an option to git) or /, and never going up with .."
   (and (plusp (length path))
        (not (member (char path 0) '(#\- #\/)))
-       (not (search ".." path))))
+       (notany (lambda (part) (string= part "..")) (uiop:split-string path :separator "/"))))
 
 (defun git-refresh-repository (top)
   "Read the repository at TOP again in its status, when one is open."
@@ -293,6 +309,16 @@ status is read again however it ended."
                        (when then (funcall then text)))
                      :input input :environment environment
                      :after (lambda () (git-refresh-repository top))))
+
+(defun git-remote-names (job top)
+  "On JOB's thread: the names of the remotes of the repository at TOP."
+  (git-lines job top (list "remote")))
+
+(defun git-entry-at (kind)
+  "The second element of the entry of a status on point's line when the entry is
+of KIND (:stash, :submodule); NIL when point is elsewhere."
+  (let ((entry (and (git-here) (list-entry-at))))
+    (and (eq (first entry) kind) (second entry))))
 
 (defun git-lines (job top arguments)
   "On JOB's thread: the lines git prints with ARGUMENTS for the repository at TOP, empty ones left out."
@@ -359,7 +385,9 @@ actions in the full menus all, in the slim ones those *GIT-SLIM-ACTIONS* names
   (let ((hidden (count-if-not #'git-menu-shows-p (menu-entries menu :all t))))
     (if (eq (git-menus-level) :full)
         "Full menus: every action. ~ in the status makes them slim."
-        (format nil "Slim menus: ~d action~:p not shown; ~~ in the status shows every one, *git-slim-actions* chooses." hidden))))
+        (format nil "Slim menus: ~d action~:p not shown; ~~ in the status shows every one, ~
+                     *git-slim-actions* chooses."
+                hidden))))
 
 (define-command git-toggle-full-menus ()
   "Make the git menus of this status show every action, or only the ones
@@ -373,16 +401,23 @@ most used again (*GIT-MENUS*, *GIT-SLIM-ACTIONS*)."
 separator, then its hash, short hash, date, author, how long ago it was
 made, the names at it and its subject, a unit separator between each.")
 
-(defstruct (git-commit (:constructor make-git-commit (&key hash short date author ago names subject path (graph "")))
-                       (:copier nil))
+(define-record (git-commit (:constructor make-git-commit
+                               (&key hash short date author ago names subject path (graph "")))
+                           (:copier nil))
   "A commit as git log wrote it (PARSE-GIT-COMMITS): its HASH and SHORT hash,
 its DATE, AUTHOR, how long AGO it was made (2 days ago), the NAMES at it
 \(branches, tags) and its SUBJECT, as git writes them; PATH, what the file
 of a history was called in it; GRAPH, the characters of the graph before
 it, with --graph. A line of the graph alone is a GIT-COMMIT with no HASH."
-  hash short date author ago names subject path (graph ""))
-
-(setf (documentation 'git-commit-p 'function) "True when OBJECT is a GIT-COMMIT.")
+  (hash nil :documentation "The hash of GIT-COMMIT, NIL for a line of the graph alone.")
+  (short nil :documentation "The short hash of GIT-COMMIT.")
+  (date nil :documentation "The date of GIT-COMMIT as git writes it.")
+  (author nil :documentation "The author of GIT-COMMIT.")
+  (ago nil :documentation "How long ago GIT-COMMIT was made, as in \"2 days ago\".")
+  (names nil :documentation "The names at GIT-COMMIT, branches and tags.")
+  (subject nil :documentation "The subject of GIT-COMMIT.")
+  (path nil :documentation "What the file of a history was called in GIT-COMMIT.")
+  (graph "" :documentation "The characters of the graph before GIT-COMMIT, with --graph."))
 
 (defun parse-git-commit-fields (text)
   "TEXT, a commit's fields as *GIT-COMMIT-FORMAT* writes them after its
@@ -392,7 +427,8 @@ record separator, as a GIT-COMMIT; NIL when its hash is not one
     (when (and (>= (length fields) 7) (git-hash-p (first fields)))
       (destructuring-bind (hash short date author ago names &rest subject) fields
         (make-git-commit :hash hash :short short :date date :author author :ago ago :names names
-                         :subject (reduce (lambda (a b) (concatenate 'string a (string (code-char #x1f)) b)) subject))))))
+                         :subject (reduce (lambda (a b) (concatenate 'string a (string (code-char #x1f)) b))
+                                          subject))))))
 
 (defun parse-git-commits (text &key names path)
   "TEXT, what git log printed with *GIT-COMMIT-FORMAT*, as a list of
@@ -433,9 +469,9 @@ line of the graph alone a GIT-COMMIT of its own."
 
 ;;; What the repository holds
 
-(defstruct (git-state (:constructor make-git-state ()) (:copier nil))
-  "A repository as \\[git] shows it. HEAD is the branch (NIL when detached) and
-the commit ((initial) before the first). UPSTREAM is its upstream, and AHEAD and
+(define-record (git-state (:constructor make-git-state ()) (:copier nil))
+  "A repository as \\[git] shows it. BRANCH is the branch (NIL when detached) and
+COMMIT the commit ((initial) before the first). UPSTREAM is its upstream, and AHEAD and
 BEHIND are how many commits it is ahead of and behind the upstream. Its files
 are UNMERGED (in conflict, git having joined two changes to them only in part,
 KIND saying how each side changed it, see GIT-UNMERGED-WORD), UNTRACKED,
@@ -447,13 +483,37 @@ UNPUSHED are the commits not pushed, each (HASH SUBJECT), the latest first, at
 most *GIT-RECENT-COMMITS* of UNPUSHED-COUNT. UNPUSHED-TO is the upstream they
 are not in, or NIL for those on no remote at all, a branch with none. DOING is
 what git is in the middle of: :AM, :MERGE, :REBASE, :CHERRY-PICK, :REVERT,
-:BISECT, or NIL. SUBMODULES are each (PATH STATE). IGNORES are the files it
+:BISECT, or NIL. SUBMODULES are each (PATH STATE). IGNORED are the files it
 ignores, each (PATH KIND), KIND the word ignored, a directory ignored whole being
 one entry ending in /. STASH-STAMP is the stamp of git's list of stashes when
 they were read, NIL when there was none."
-  branch commit upstream (ahead 0) (behind 0)
-  (unmerged '()) (untracked '()) (unstaged '()) (staged '()) (stashes '()) (recent '()) (unpushed '()) (unpushed-count 0) unpushed-to
-  doing (submodules '()) (ignored '()) stash-stamp)
+  (branch nil :documentation "The branch of GIT-STATE, NIL when detached.")
+  (commit nil :documentation "The commit of GIT-STATE, \"(initial)\" before the first.")
+  (upstream nil :documentation "The upstream of the branch of GIT-STATE.")
+  (ahead 0 :documentation "How many commits the branch is ahead of its upstream.")
+  (behind 0 :documentation "How many commits the branch is behind its upstream.")
+  (unmerged '()
+            :documentation "The files in conflict, each (PATH KIND), KIND saying how each side changed it
+\(GIT-UNMERGED-WORD).")
+  (untracked '()
+             :documentation "The untracked files, each (PATH KIND); a directory none of whose files is tracked is one
+entry ending in /.")
+  (unstaged '() :documentation "The unstaged files, each (PATH KIND).")
+  (staged '() :documentation "The staged files, each (PATH KIND), a rename being (PATH KIND ORIGINAL).")
+  (stashes '() :documentation "The stashes, each (NAME SUBJECT), the latest first.")
+  (recent '() :documentation "The recent commits, each (HASH SUBJECT).")
+  (unpushed '()
+            :documentation "The commits not pushed, each (HASH SUBJECT), the latest first, at most
+*GIT-RECENT-COMMITS* of UNPUSHED-COUNT.")
+  (unpushed-count 0 :documentation "How many commits are not pushed.")
+  (unpushed-to nil :documentation "The upstream the unpushed commits are not in, or NIL for those on no remote at all.")
+  (doing nil
+         :documentation "What git is in the middle of: :AM, :MERGE, :REBASE, :CHERRY-PICK, :REVERT, :BISECT, or NIL.")
+  (submodules '() :documentation "The submodules, each (PATH STATE).")
+  (ignored '()
+           :documentation "The files git ignores, each (PATH KIND); a directory ignored whole is one entry ending in
+/.")
+  (stash-stamp nil :documentation "The stamp of git's list of stashes when they were read, NIL when there was none."))
 
 (defun git-state-unborn-p (state)
   "True when the repository STATE is of has no commit yet."
@@ -509,7 +569,8 @@ file in conflict's, how both sides changed it (GIT-UNMERGED-WORD)."
                       (let* ((parts (uiop:split-string entry :separator '(#\Space)))
                              (xy (second parts))
                              (submodule (uiop:string-prefix-p "S" (third parts)))
-                             (path (format nil "~{~a~^ ~}" (nthcdr (case (char entry 0) (#\1 8) (#\2 9) (t 10)) parts))))
+                             (path (format nil "~{~a~^ ~}"
+                                           (nthcdr (case (char entry 0) (#\1 8) (#\2 9) (t 10)) parts))))
                         (flet ((kind (code) (if submodule "submodule" (git-change-word code))))
                           (let ((original (and (char= (char entry 0) #\2) (pop fields))))
                             (if (char= (char entry 0) #\u)
@@ -578,8 +639,8 @@ elsewhere would meet). The files it ignores are found in the same walk of its
 tree, a directory ignored whole being one entry. Its latest commits are read by git
 log, and its stashes by git stash list when it has any, kept from PREVIOUS, the
 state read before, while their list is as it was then."
-  (let ((state (parse-git-status (git-job-output job top (list "status" "--porcelain=v2" "--branch" "-z" "--untracked-files=normal"
-                                                               "--ignored=traditional")
+  (let ((state (parse-git-status (git-job-output job top (list "status" "--porcelain=v2" "--branch" "-z"
+                                                               "--untracked-files=normal" "--ignored=traditional")
                                                  :environment (list "GIT_OPTIONAL_LOCKS=0"))))
         (stamp (git-stash-stamp directory)))
     (setf (git-state-doing state) (git-operation directory)
@@ -614,7 +675,9 @@ repository has a remote, those on no remote at all."
             (git-state-unpushed state)
             (and (plusp (git-state-unpushed-count state))
                  (mapcar #'git-commit-line
-                         (parse-git-commits (or (git-job-try job top (append (git-log-arguments *git-recent-commits*) range)) ""))))))))
+                         (parse-git-commits (or (git-job-try job top (append (git-log-arguments *git-recent-commits*)
+                                                                             range))
+                                                ""))))))))
 
 ;;; Hunks
 
@@ -803,13 +866,24 @@ subject. \\<git-log-mode>\\[git-log-show] shows the commit on the line; \\[quit-
 (defparameter *git-operation-words*
   '((:am "taking in patches"
      "\\<git-status-mode>\\[git-am-menu] c goes on, \\[git-am-menu] s skips this patch, \\[git-am-menu] a stops it")
-    (:rebase "rebasing" "\\<git-status-mode>\\[git-rebase-menu] c goes on, \\[git-rebase-menu] s skips this commit, \\[git-rebase-menu] a stops it")
-    (:merge "merging" "\\<git-status-mode>\\[git-commit-menu] c commits once the files are put right and staged, \\[git-merge-menu] a stops it")
-    (:cherry-pick "cherry-picking" "\\<git-status-mode>\\[git-cherry-pick-menu] c goes on, \\[git-cherry-pick-menu] s skips this commit, \\[git-cherry-pick-menu] a stops it")
-    (:revert "reverting" "\\<git-status-mode>\\[git-revert-menu] c goes on, \\[git-revert-menu] s skips this commit, \\[git-revert-menu] a stops it")
-    (:bisect "bisecting" "\\<git-status-mode>\\[git-bisect-menu] g, \\[git-bisect-menu] b and \\[git-bisect-menu] s say good, bad, skip; \\[git-bisect-menu] r stops it"))
+    (:rebase "rebasing"
+     "\\<git-status-mode>\\[git-rebase-menu] c goes on, \\[git-rebase-menu] s skips this commit, ~
+      \\[git-rebase-menu] a stops it")
+    (:merge "merging"
+     "\\<git-status-mode>\\[git-commit-menu] c commits once the files are put right and staged, ~
+      \\[git-merge-menu] a stops it")
+    (:cherry-pick "cherry-picking"
+     "\\<git-status-mode>\\[git-cherry-pick-menu] c goes on, \\[git-cherry-pick-menu] s skips this commit, ~
+      \\[git-cherry-pick-menu] a stops it")
+    (:revert "reverting"
+     "\\<git-status-mode>\\[git-revert-menu] c goes on, \\[git-revert-menu] s skips this commit, ~
+      \\[git-revert-menu] a stops it")
+    (:bisect "bisecting"
+     "\\<git-status-mode>\\[git-bisect-menu] g, \\[git-bisect-menu] b and \\[git-bisect-menu] s say good, bad, ~
+      skip; \\[git-bisect-menu] r stops it"))
   "For each of *GIT-OPERATIONS*, what a status says of it and of the keys
-going on with it, the menus' keys written in by SUBSTITUTE-COMMAND-KEYS.")
+going on with it, a format control taking no arguments, the menus' keys
+written in by SUBSTITUTE-COMMAND-KEYS.")
 
 (defun git-status-head-lines (state)
   "The lines at the top of a status of STATE: its head, the branch in a face
@@ -827,7 +901,8 @@ middle of and the keys going on with it, when it is."
                              (plusp (+ (git-state-ahead state) (git-state-behind state)))
                              (git-state-ahead state) (git-state-behind state))))
           (let ((words (assoc (git-state-doing state) *git-operation-words*)))
-            (and words (list (format nil "Doing:    ~a (~a)" (second words) (substitute-command-keys (third words))))))))
+            (and words (list (format nil "Doing:    ~a (~a)"
+                                     (second words) (substitute-command-keys (format nil (third words)))))))))
 
 (defun git-staged-face (kind)
   "The face of a file staged as KIND says: a deletion's own, else the one of every file staged."
@@ -897,7 +972,8 @@ or a commit."
    (lambda (line)
      (case section
        (:submodules (destructuring-bind (path kind) member
-                      (funcall line (format nil "  ~a ~a" (column-text kind 16 :elide nil) (escape-controls path)) nil (list :submodule path))))
+                      (funcall line (format nil "  ~a ~a" (column-text kind 16 :elide nil) (escape-controls path))
+                               nil (list :submodule path))))
        (:stashes (destructuring-bind (name subject) member
                    (funcall line
                             (format nil "  ~a ~a" name (escape-controls subject))
@@ -1028,22 +1104,26 @@ changes."
         (directory (tuatara.buffer:buffer-local buffer 'git-directory))
         (previous (tuatara.buffer:buffer-local buffer 'git-state)))
     (setf (tuatara.buffer:buffer-local buffer 'git-reading) t
-          (tuatara.buffer:buffer-local buffer 'git-read-at) (get-internal-real-time)
-          (tuatara.buffer:buffer-local buffer 'git-look-only) (git-look-only-reason top))
+          (tuatara.buffer:buffer-local buffer 'git-read-at) (get-internal-real-time))
     (start-git-job "Reading the repository"
                    (lambda (job)
                      (when fresh (forget-git-shadow top))
-                     (let* ((directory (or directory (git-directory job top)))
+                     (let* ((look-only (git-look-only-reason top))
+                            (directory (or directory (git-directory job top)))
                             (state (git-read-state job top directory :previous previous))
                             (diffs (loop for (key . paths) in shown
                                          collect (cons key (git-read-diff job top (car key) paths)))))
-                       (values state diffs directory (git-stamps directory) (git-directories-of directory) (git-elsewhere-notes top))))
-                   (lambda (state diffs directory stamps watched elsewhere)
+                       (values state diffs directory (git-stamps directory) (git-directories-of directory)
+                               (git-elsewhere-notes top) look-only)))
+                   (lambda (state diffs directory stamps watched elsewhere look-only)
                      (when (live-buffer-p buffer)
                        (let ((shown (tuatara.buffer:buffer-local buffer 'git-shown)))
                          (loop for (key . diff) in diffs
                                do (if (rest diff) (setf (gethash key shown) diff) (remhash key shown))))
-                       (setf (tuatara.buffer:buffer-local buffer 'git-state) state
+                       (unless (equal watched (tuatara.buffer:buffer-local buffer 'git-watched))
+                         (directories-followed-changed))
+                       (setf (tuatara.buffer:buffer-local buffer 'git-look-only) look-only
+                             (tuatara.buffer:buffer-local buffer 'git-state) state
                              (tuatara.buffer:buffer-local buffer 'git-directory) directory
                              (tuatara.buffer:buffer-local buffer 'git-stamps) stamps
                              (tuatara.buffer:buffer-local buffer 'git-watched) watched
@@ -1091,6 +1171,9 @@ looked at again, and look at them (GIT-WATCH-TICK)."
 (defvar *git-statuses-followed* '()
   "The statuses that were shown when GIT-WATCH-TICK last looked.")
 
+(defvar *git-watching* nil
+  "Whether *GIT-WATCH-SECONDS* had the statuses shown watched when GIT-WATCH-TICK last looked.")
+
 (defun git-watch-tick (editor)
   "Tick function: read again each status shown whose repository changed on
 disk since it was read, as when git ran in a terminal (*GIT-WATCHED-FILES*),
@@ -1103,6 +1186,10 @@ again is looked at once; one a waiting question is about, once it is answered
       (dolist (buffer shown)
         (unless (member buffer *git-statuses-followed*)
           (setf (tuatara.buffer:buffer-local buffer 'git-disk-changed) t))))
+    ;; the directories watched are those of the statuses shown, while watching is on
+    (unless (and (equal shown *git-statuses-followed*) (eq *git-watching* (and *git-watch-seconds* t)))
+      (setf *git-watching* (and *git-watch-seconds* t))
+      (directories-followed-changed))
     (setf *git-statuses-followed* shown)
     (dolist (buffer shown soonest)
       ;; a status a waiting question is about is read again once it is answered
@@ -1146,7 +1233,7 @@ it ignores folded away."
   "Show the status of the repository or worktree at TOP, asking first
 whether you trust it when its project is not trusted; looked at only, it
 says so at its top (GIT-LOOK-ONLY-LINE)."
-  (when (git-may-run-p top)
+  (when (ask-project-trust top)
     (let ((buffer (git-status-buffer top)))
       (git-status-render buffer 0)
       (show-buffer buffer)
@@ -1297,7 +1384,8 @@ file git could not join is refused: it is staged whole once put right."
   (let ((conflicted (git-conflicted-file chosen section))
         (patch (git-hunks-patch chosen section (not (eq how :stage)))))
     (cond (conflicted
-           (message (substitute-command-keys "~a is in conflict: put it right, then \\<git-status-mode>\\[git-stage] on its line stages it whole"
+           (message (substitute-command-keys "~a is in conflict: put it right, then ~
+                                              \\<git-status-mode>\\[git-stage] on its line stages it whole"
                                             :for-format t)
                     (escape-controls conflicted)))
           ((null patch) (message "No change among the lines selected"))
@@ -1376,9 +1464,10 @@ at a time."
   (let ((untracked (make-hash-table :test 'equal)))
     (loop for rest = paths then (nthcdr 1000 rest)
           while rest
-          do (dolist (path (uiop:split-string (git-job-output job top (list* "ls-files" "-z" "--others" "--directory" "--"
-                                                                              (subseq rest 0 (min 1000 (length rest)))))
-                                              :separator (list (code-char 0))))
+          do (dolist (path (uiop:split-string
+                            (git-job-output job top (list* "ls-files" "-z" "--others" "--directory" "--"
+                                                           (subseq rest 0 (min 1000 (length rest)))))
+                            :separator (list (code-char 0))))
                (setf (gethash path untracked) t)))
     untracked))
 
@@ -1411,7 +1500,9 @@ WHY)."
            (files (remove "submodule" files :key #'second :test #'string=))
            (new (mapcar #'first (case section
                                   ((:untracked :ignored) files)
-                                  (:staged (if unborn files (remove "new file" files :key #'second :test-not #'string=))))))
+                                  (:staged (if unborn
+                                               files
+                                               (remove "new file" files :key #'second :test-not #'string=))))))
            (changed (and (not (member section '(:untracked :ignored)))
                          (let ((new-set (make-hash-table :test 'equal)))
                            (dolist (path new) (setf (gethash path new-set) t))
@@ -1426,7 +1517,8 @@ WHY)."
       (multiple-value-bind (moved left) (if new (git-trash-untracked job top new) (values '() '()))
         (values (remove-if (lambda (path) (some (lambda (file) (equal path (third file))) files)) changed)
                 moved
-                (append (mapcar (lambda (file) (list (first file) "a submodule, whose changes are its own repository's"))
+                (append (mapcar (lambda (file)
+                                  (list (first file) "a submodule, whose changes are its own repository's"))
                                 submodules)
                         left))))))
 
@@ -1458,7 +1550,8 @@ lines selected in hunks, those lines."
                                     "Reverse ~a~:[~;, staged and in the file~]? It cannot be undone"
                                     (git-hunks-words chosen section)
                                     (eq section :staged)))
-          (git-apply-hunks chosen section (if (eq section :staged) :reverse-staged :reverse) "Reversing changes" "Reversed ~a"))
+          (git-apply-hunks chosen section (if (eq section :staged) :reverse-staged :reverse)
+                           "Reversing changes" "Reversed ~a"))
         (git-reverse-files))))
 
 (defun git-reverse-files ()
@@ -1469,7 +1562,8 @@ files of the section whose title it is, after asking, as \\[git-reverse] does."
           ((yes-or-no-p* (if (member section '(:untracked :ignored))
                              (format nil "Move to the trash ~:[~*~a~;~d files~*~]?"
                                      (rest files) (length files) (escape-controls (first (first files))))
-                             (format nil "Reverse the changes of ~:[~*~a~;~d files~*~]~:[~;, staged and in the file~]? It cannot be undone"
+                             (format nil "Reverse the changes of ~:[~*~a~;~d files~*~]~:[~;, staged and in the file~]? ~
+                                          It cannot be undone"
                                      (rest files)
                                      (length files)
                                      (escape-controls (first (first files)))
@@ -1543,8 +1637,9 @@ fold or unfold the section, as in every list in sections."
       ((:file :hunk)
        (let ((path (concatenate 'string top (third entry)))
              (hunk (and (eq (first entry) :hunk)
-                        (nth (fourth entry) (rest (gethash (cons (second entry) (third entry))
-                                                          (tuatara.buffer:buffer-local (current-buffer) 'git-shown)))))))
+                        (nth (fourth entry)
+                             (rest (gethash (cons (second entry) (third entry))
+                                            (tuatara.buffer:buffer-local (current-buffer) 'git-shown)))))))
          (cond ((not (tuatara.io:path-kind path :follow nil)) (message "~a is deleted" (escape-controls (third entry))))
                ((eq (second entry) :unmerged)
                 ;; its conflicts shown, and point at the first
@@ -1559,19 +1654,27 @@ fold or unfold the section, as in every list in sections."
       (:section (list-toggle-section (current-buffer) (second entry)))
       (t (message "No file or commit on this line")))))
 
+(defun git-counted-text (buffer)
+  "BUFFER's text, its lines counted. Refused while the lines of a large file
+are still being counted in the background, which is never waited for."
+  (unless (tuatara.buffer:buffer-indexed-p buffer)
+    (refuse "The lines of ~a are still being counted: try again in a moment" (tuatara.buffer:buffer-name buffer)))
+  (tuatara.buffer:buffer-text buffer))
+
 (defun git-line-of (buffer position)
   "The line of BUFFER holding POSITION as git numbers lines (1 the first),
 by newlines alone: a carriage return that no newline follows ends a line in
-the editor, but not in git's patches (TUATARA.TEXT:BYTE->ROW). Waits for the
-lines of a large file to be counted. Complexity: O(log n)."
-  (tuatara.buffer:ensure-indexed buffer)
-  (1+ (tuatara.text:byte->row (tuatara.buffer:buffer-text buffer) position)))
+the editor, but not in git's patches (TUATARA.TEXT:BYTE->ROW). Refused while
+the lines of a large file are still being counted (GIT-COUNTED-TEXT).
+Complexity: O(log n)."
+  (1+ (tuatara.text:byte->row (git-counted-text buffer) position)))
 
 (defun git-line-start (buffer line)
   "Where the line LINE (1 the first) of BUFFER as git numbers lines begins
-\(GIT-LINE-OF); the end of the text when it has fewer. Complexity: O(log n)."
-  (tuatara.buffer:ensure-indexed buffer)
-  (tuatara.text:row->byte (tuatara.buffer:buffer-text buffer) (1- line)))
+\(GIT-LINE-OF); the end of the text when it has fewer. Refused while the
+lines of a large file are still being counted (GIT-COUNTED-TEXT).
+Complexity: O(log n)."
+  (tuatara.text:row->byte (git-counted-text buffer) (1- line)))
 
 (defun git-file-hunk (how)
   "Stage (HOW :STAGE) or unstage (:UNSTAGE) the hunk of the current file at
@@ -1581,8 +1684,9 @@ point, as git has the file on disk, in the background."
          (top (and file (git-top-said buffer)))
          (line (git-line-of buffer (tuatara.buffer:buffer-point buffer))))
     (cond ((null top))
-          ((tuatara.buffer:buffer-modified-p buffer) (message "Save it first: git takes the hunk from the file on disk"))
-          ((git-may-run-p top)
+          ((tuatara.buffer:buffer-modified-p buffer)
+           (message "Save it first: git takes the hunk from the file on disk"))
+          ((ask-project-trust top)
            (start-git-job (if (eq how :stage) "Staging" "Unstaging")
                           (lambda (job)
                             (let* ((directory (tuatara.io:parent-path file))
@@ -1590,11 +1694,14 @@ point, as git has the file on disk, in the background."
                                                         (list (tuatara.io:native-file-name file))))
                                    (hunk (find-if (lambda (h) (git-hunk-covers-p h line)) (rest diff))))
                               (when hunk
-                                (git-job-output job top (git-apply-arguments how) :input (git-patch (first diff) (list hunk))))
+                                (git-job-output job top (git-apply-arguments how)
+                                                :input (git-patch (first diff) (list hunk))))
                               (and hunk t)))
                           (lambda (done)
                             (message (if done
-                                         (if (eq how :stage) "Staged the hunk at line ~d" "Unstaged the hunk at line ~d")
+                                         (if (eq how :stage)
+                                             "Staged the hunk at line ~d"
+                                             "Unstaged the hunk at line ~d")
                                          (if (eq how :stage)
                                              "No change at line ~d left to stage"
                                              "No change staged at line ~d"))
@@ -1681,9 +1788,12 @@ however it ended, else the work only reads."
   (start-git-job doing
                  (lambda (job)
                    (let ((arguments (if (functionp arguments) (funcall arguments job) arguments)))
-                     (tuatara.text:octets->rope (coerce (git-job-octets job top arguments :environment environment
-                                                                                         :limit *git-shown-limit*)
-                                                        'tuatara.text:octets))))
+                     (call-with-git-environment
+                      environment arguments
+                      (lambda (environment)
+                        (tuatara.text:octets->rope (coerce (git-job-octets job top arguments :environment environment
+                                                                                            :limit *git-shown-limit*)
+                                                           'tuatara.text:octets))))))
                  (lambda (rope)
                    (if (and empty (zerop (tuatara.text:rope-octet-length rope)))
                        (message "~a" empty)
@@ -1692,7 +1802,8 @@ however it ended, else the work only reads."
 
 (defun git-show-commit (top hash)
   "Show the commit HASH of the repository at TOP: what it says and its changes."
-  (git-show-output "Reading the commit" top (list "show" "--no-color" "--no-ext-diff" "--stat" "--patch" "--end-of-options" hash)
+  (git-show-output "Reading the commit" top
+                   (list "show" "--no-color" "--no-ext-diff" "--stat" "--patch" "--end-of-options" hash)
                    (format nil "*git commit ~a*" (escape-controls hash))))
 
 ;;; Looked at only
@@ -1739,7 +1850,8 @@ status, and when \\[trust-project] answers anew); NIL when it is not."
 (defun git-look-only-line (why)
   "The line at the top of a status of a repository looked at only for WHY, a
 phrase: that it is, why, and what that means."
-  (format nil "Look only: ~a. Git reads this repository and runs nothing of it; what would change it is dimmed~:[~; (~a trusts it)~]"
+  (format nil "Look only: ~a. Git reads this repository and runs nothing of it; what would change it is ~
+               dimmed~:[~; (~a trusts it)~]"
           why (string= why "it is not trusted") (substitute-command-keys "\\[trust-project]")))
 
 (defun git-look-only-mode-line (editor buffer)
@@ -1817,7 +1929,8 @@ history, references, files, rewinding, the repository's parts, patches and
 rimu's git column."
   (define-key *global-keymap* "C-x g" 'git)
   (define-keys *git-status-keymap* '(("s" git-stage) ("u" git-unstage) ("x" git-reverse) ("TAB" git-toggle-diff)
-                                     ("RET" git-visit) ("l" git-visit) ("h" quit-window)
+                                     ("RET" git-visit) ("l" git-visit) ("C-f" git-visit)
+                                     ("h" quit-window) ("C-b" quit-window)
                                      ("n" git-next-section) ("p" git-previous-section) ("S-TAB" list-toggle-all-folds)))
   (pushnew 'git-after-save *after-save-functions*)
   (pushnew 'git-look-only-mode-line *mode-line-name-functions*)
@@ -1825,7 +1938,7 @@ rimu's git column."
   (pushnew 'git-trust-changed *trust-changed-functions*)
   (forget-old-git-shadows)
   (pushnew 'git-watch-tick *tick-functions*)
-  (follow-directories-for 'git-watched-directories 'git-directories-changed)
+  (follow-directories-for 'git-watched-directories 'git-directories-changed :tells t)
   (install-git-commits)
   (install-git-stash)
   (install-git-branches)

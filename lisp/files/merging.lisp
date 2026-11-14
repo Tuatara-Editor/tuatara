@@ -5,7 +5,7 @@
 ;;;; merge into shows the merge of the local, base and remote files with the
 ;;;; conflicts marked, to be resolved as any marked conflicts are
 ;;;; (lisp/editing/conflicts.lisp) and saved. merge-file runs in the sandbox
-;;;; (TUATARA.IO:SANDBOX-RUN), seeing only the directories of the three, read only.
+;;;; (TUATARA.IO:SANDBOX-RUN), seeing only the three, read only.
 
 (in-package #:tuatara.defaults)
 
@@ -14,8 +14,8 @@
 ancestor BASE (a file, or /dev/null for none), as an octet vector: the lines
 changed in one only taken as changed, those changed in both ways between
 <<<<<<<, |||||||, ======= and >>>>>>> lines. merge-file, shut in, sees only
-the directories of the three, read only. Stopped when CANCEL's car turns true; an
-error saying why when it cannot be done."
+the three, read only. Stopped when CANCEL's car turns true; an error saying
+why when it cannot be done."
   (multiple-value-bind (output outcome said)
       (tuatara.io:sandbox-run "git" (list "merge-file" "-p" "--diff3" "-L" "local" "-L" "base" "-L" "remote"
                                           (tuatara.io:real-place local)
@@ -24,21 +24,20 @@ error saying why when it cannot be done."
                               :output-limit *differences-limit*
                               :cancel cancel
                               :ended-well (loop for n from 0 to 127 collect n)
-                              :directories (remove-duplicates
-                                            (mapcar #'sandbox-seen-directory
-                                                    (remove "/dev/null" (list local base remote) :test #'equal))
-                                            :test #'string=))
+                              :directories (sandbox-shown-paths (list local base remote)))
     (unless (eq outcome :done)
       (refuse "~a" (sandbox-outcome-words outcome said :label "git merge-file")))
     output))
 
-(defstruct (merge-job (:include tuatara.runtime:job) (:constructor make-merge-job (buffer local base remote version))
-                      (:copier nil))
+(define-record (merge-job (:include tuatara.runtime:job)
+                          (:constructor make-merge-job (buffer local base remote version)) (:copier nil))
   "The merge of the files LOCAL, BASE and REMOTE being made for BUFFER, a job, begun on
 its text of version number VERSION; OCTETS, the merge."
-  local base remote version octets)
-
-(setf (documentation 'merge-job-p 'function) "True when OBJECT is a MERGE-JOB.")
+  (local nil :documentation "The path of the local file MERGE-JOB merges.")
+  (base nil :documentation "The path of the common base file MERGE-JOB merges from.")
+  (remote nil :documentation "The path of the remote file MERGE-JOB merges.")
+  (version nil :documentation "The version number of the text of the buffer when MERGE-JOB began.")
+  (octets nil :documentation "The octets of the merge MERGE-JOB made, NIL until it is done."))
 
 (tuatara.runtime:define-job-words merge-job
   :doing "Merging"
@@ -100,7 +99,8 @@ it is, and that is said."
           (t
            (let ((base (if (tuatara.io:path-kind base) base "/dev/null")))
              (tuatara.runtime:start-job-thread
-              (make-merge-job buffer local base remote (tuatara.text:version-number (tuatara.buffer:buffer-version buffer)))
+              (make-merge-job buffer local base remote
+                              (tuatara.text:version-number (tuatara.buffer:buffer-version buffer)))
               (lambda (job)
                 (setf (merge-job-octets job)
                       (three-way-merge (merge-job-local job) (merge-job-base job) (merge-job-remote job)

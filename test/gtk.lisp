@@ -892,6 +892,29 @@ windows side by side, \"floated\" for an Org note's two pictures."
     (true (plusp (length families)))
     (true (every #'stringp families))))
 
+(defclass slow-fonts-frontend (tuatara.frontend.fake:fake-frontend)
+  ((listed-on :initform nil :accessor fonts-listed-on
+              :documentation "The thread FRONTEND-FONTS was called on."))
+  (:documentation "A fake window that takes a while to list its fonts."))
+
+(defmethod tuatara.frontend:frontend-fonts ((f slow-fonts-frontend))
+  (setf (fonts-listed-on f) sb-thread:*current-thread*)
+  (sleep 1)
+  (call-next-method))
+
+(define-test (gtk fonts-listed-off-the-editor-thread)
+  ;; the window's fonts are listed on a thread of their own: the editor reads \`C-g' meanwhile and gives up
+  (let ((f (make-instance 'slow-fonts-frontend :font-steps 0 :fonts '("Adwaita Mono"))))
+    (tuatara.frontend.fake:fake-queue-keys f "M-x s e t - f r a m e - f o n t RET C-g")
+    (let ((scratch (tuatara.buffer:find-buffer "*scratch*")))
+      (when scratch (tuatara.buffer:kill-buffer scratch)))
+    (tuatara.buffer:make-buffer "*scratch*" :text "hello")
+    (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults
+                                  :buffer (tuatara.buffer:find-buffer "*scratch*"))
+    (true (fonts-listed-on f))
+    (false (eq sb-thread:*current-thread* (fonts-listed-on f)))
+    (false (tuatara.frontend.fake:fake-font f))))
+
 (define-test (gtk dropped-files)
   ;; files as a file manager drops them: a GdkFileList in a GValue
   (tuatara.gtk:load-gtk-libraries)
@@ -1509,3 +1532,66 @@ windows side by side, \"floated\" for an Org note's two pictures."
         (is = 1 gone "~(~a~) failing" fails)
         (is = 0 (tuatara.io:read-fd-into theirs octets) "~(~a~) failing: the connection closed" fails)
         (sb-posix:close theirs)))))
+
+(define-test (gtk layouts-found-without-garbage)
+  ;; a text already set out is found again without consing a key for it: what each lookup costs in bytes, at two counts
+  (with-painting-window (f)
+    (let* ((surface (tuatara.gtk:cairo-image-surface-create 0 64 64))
+           (cr (tuatara.gtk:cairo-create surface))
+           (layouts (tuatara.frontend.gtk::make-layouts)))
+      (unwind-protect
+           (flet ((cost (lookups)
+                    (tuatara.frontend.gtk::kept-layout f cr layouts "hello" nil 0)
+                    (let ((before (sb-ext:get-bytes-consed)))
+                      (dotimes (i lookups) (tuatara.frontend.gtk::kept-layout f cr layouts "hello" nil 0))
+                      (- (sb-ext:get-bytes-consed) before))))
+             (cost 10)
+             (true (< (cost 100000) 10000) "~d bytes for 100000 lookups" (cost 100000))
+             ;; the same text in another font is another layout
+             (false (eq (tuatara.frontend.gtk::kept-layout f cr layouts "hello" nil 0)
+                        (tuatara.frontend.gtk::kept-layout f cr layouts "hello" nil 1))))
+        (tuatara.frontend.gtk::free-layouts layouts)
+        (tuatara.gtk:cairo-destroy cr)
+        (tuatara.gtk:cairo-surface-destroy surface)))))
+
+(define-test (gtk last-piece-of-a-row-read-once)
+  ;; the content of a row's last piece is made once for a frame, for the shift and for the painting
+  (with-painting-window (f)
+    (let ((count 0)
+          (frame (tuatara.frontend.gtk:make-frame (vector (list "hello" nil '()) (list "world" nil '())))))
+      (sb-int:encapsulate 'tuatara.frontend.gtk::piece-content 'counted
+                          (lambda (function &rest arguments) (incf count) (apply function arguments)))
+      (unwind-protect
+           (let* ((width (* 20 (tuatara.frontend.gtk::cell-width f)))
+                  (surface (tuatara.gtk:cairo-image-surface-create 0 width (* 2 (tuatara.frontend.gtk::cell-height f))))
+                  (cr (tuatara.gtk:cairo-create surface)))
+             (unwind-protect (tuatara.frontend.gtk::paint-frame f cr width (* 2 (tuatara.frontend.gtk::cell-height f))
+                                                                frame t)
+               (tuatara.gtk:cairo-destroy cr)
+               (tuatara.gtk:cairo-surface-destroy surface)))
+        (sb-int:unencapsulate 'tuatara.frontend.gtk::piece-content 'counted))
+      (is = 2 count "one content made for each of the two rows"))))
+
+(define-test (gtk font-families-asked-of-the-font-map)
+  ;; a font is looked up by its family's name, without listing every family installed
+  (with-painting-window (f)
+    (true (tuatara.frontend.gtk::font-family-installed-p "Adwaita Mono"))
+    (true (tuatara.frontend.gtk::font-family-installed-p "adwaita mono"))
+    (false (tuatara.frontend.gtk::font-family-installed-p "No Such Family 12345"))
+    (let ((listed nil))
+      (sb-int:encapsulate 'tuatara.frontend.gtk::call-with-font-families 'counted
+                          (lambda (function &rest arguments) (setf listed t) (apply function arguments)))
+      (unwind-protect (let ((was tuatara-user:*gui-font*))
+                        (unwind-protect (tuatara.frontend:frontend-set-font f "Adwaita Mono 11")
+                          (setf tuatara-user:*gui-font* was)))
+        (sb-int:unencapsulate 'tuatara.frontend.gtk::call-with-font-families 'counted))
+      (false listed "setting a font listed the families"))))
+
+(define-test (gtk clipboard-watched-from-the-first-paste)
+  ;; a window keeps no copy of the clipboard until a paste asks for it: opening it starts no watch
+  (with-painting-window (f)
+    (false (tuatara.frontend.gtk::gtk-clipboard-reads f))
+    (false (search "(read-changed-clipboard f)"
+                   (subseq (gtk-frontend-source)
+                           (search "(defun open-window (f)" (gtk-frontend-source))
+                           (search "(defun log-stderr-unless-terminal" (gtk-frontend-source)))))))

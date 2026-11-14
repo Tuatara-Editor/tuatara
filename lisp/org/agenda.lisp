@@ -174,7 +174,7 @@ the days a scheduled TS waits; NIL when it says none."
 
 ;;; Entries of the files
 
-(defstruct (org-agenda-entry (:conc-name agenda-entry-))
+(define-record (org-agenda-entry (:conc-name agenda-entry-))
   "A headline of an agenda file, as the agenda reads it. It holds its FILE
 \(path) and TEXT, the character it begins at (POSITION) and where its own text
 ends (END), its LEVEL, TODO keyword and TODO-TYPE (TODO, DONE or NIL), PRIORITY
@@ -189,9 +189,41 @@ TICKED), TICKED (DONE . TOTAL) of its checkboxes or NIL). It holds also the
 FACTS of its dates the agenda works with, read once (ORG-ENTRY-FACTS). Its KIND
 is :HEADLINE, or :CHECKBOX for a list item with a checkbox kept as a task (an
 open box TODO, a ticked one DONE); SKIP, the stretches of its text that are its
-checkbox items' own, (START . END), read for them rather than for it."
-  file text position end level todo todo-type priority title tags local-tags category scheduled deadline closed heading
-  properties stamps ranges logs facts (kind :headline) skip)
+checkbox items' own, (START . END), read for them rather than for it. LINE,
+the line it begins on, from 0, when known."
+  (file nil :documentation "The path of the file an agenda entry is in.")
+  (text nil :documentation "The whole text of the file an agenda entry is in, as it was read.")
+  (position nil :documentation "The character of its file's text an agenda entry's headline begins at.")
+  (end nil
+       :documentation "The character of its file's text an agenda entry's own
+text ends at, its headlines below it left out.")
+  (level nil :documentation "How many stars an agenda entry's headline has.")
+  (todo nil :documentation "An agenda entry's TODO keyword, or NIL.")
+  (todo-type nil :documentation "TODO or DONE for an agenda entry's keyword, NIL for none.")
+  (priority nil
+            :documentation "An agenda entry's priority as a number: 2000 for [#A], 1000 for [#B] and none, 0 for [#C].")
+  (title nil :documentation "An agenda entry's title: its headline without its stars, keyword, priority and tags.")
+  (tags nil :documentation "An agenda entry's tags, those it inherits first.")
+  (local-tags nil :documentation "An agenda entry's own tags, on its headline.")
+  (category nil :documentation "An agenda entry's category.")
+  (scheduled nil :documentation "An agenda entry's SCHEDULED timestamp, its text, or NIL.")
+  (deadline nil :documentation "An agenda entry's DEADLINE timestamp, its text, or NIL.")
+  (closed nil :documentation "An agenda entry's CLOSED timestamp, its text, or NIL.")
+  (heading nil :documentation "An agenda entry's headline after its stars, as written.")
+  (properties nil :documentation "An agenda entry's properties, an alist of names and values.")
+  (stamps nil :documentation "An agenda entry's active timestamps in its text, not its planning line's, as texts.")
+  (ranges nil :documentation "An agenda entry's ranges of days in its text, each (FROM TO), the two timestamps' texts.")
+  (logs nil
+        :documentation "An agenda entry's log lines, each (:CLOSED TIMESTAMP NIL NIL), (:CLOCK FROM DURATION STOPPED
+OPEN) or (:DONE-NOTE TIMESTAMP NIL NIL TICKED).")
+  (facts nil :documentation "The facts of an agenda entry's dates the agenda works with, read once.")
+  (kind :headline
+        :documentation "The kind of an agenda entry: :HEADLINE, or :CHECKBOX for a list item with a checkbox kept as a
+task.")
+  (skip nil
+        :documentation "The stretches of an agenda entry's text that belong to its checkbox items, each (START . END),
+read for them rather than for it.")
+  (line nil :documentation "The line an agenda entry's headline or item begins on in its file's text, from 0, or NIL."))
 
 (defun org-known-tags (&rest buffers)
   "The tags used in BUFFERS and in the agenda files: the headings' and the
@@ -210,10 +242,17 @@ agenda keeps them (ORG-AGENDA-ENTRIES), never opened for it."
         (dolist (tag (agenda-entry-tags entry)) (pushnew tag tags :test #'string=))))
     (nreverse tags)))
 
+(defparameter *org-priority-cookie-scanner* (cl-ppcre:create-scanner "\\[#([A-Z0-9])\\]")
+  "A priority cookie in a heading, [#A], its letter a group.")
+
+(defun org-heading-priority-letter (heading)
+  "The letter of HEADING's priority cookie ([#A]), as a string; \"B\" when it has none."
+  (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings *org-priority-cookie-scanner* heading)
+    (if match (aref groups 0) "B")))
+
 (defun org-heading-priority (heading)
   "The priority Org gives HEADING's text: 1000 for each step above C, B with no cookie."
-  (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "\\[#([A-Z0-9])\\]" heading)
-    (* 1000 (- (char-code #\C) (char-code (if match (char (aref groups 0) 0) #\B))))))
+  (* 1000 (- (char-code #\C) (char-code (char (org-heading-priority-letter heading) 0)))))
 
 (defun org-file-keyword (text name)
   "The value of TEXT's first #+NAME: line, NAME in any case, blanks about it
@@ -228,7 +267,9 @@ left out; NIL when it has none or that line's is empty."
                             (string-equal name text :start2 (+ at 2) :end2 (+ at 2 size))
                             (char= (char text (+ at 2 size)) #\:))
                    (let* ((from (or (position-if-not #'blank-p text :start (+ at 3 size) :end end) end))
-                          (to (if (< from end) (1+ (position-if-not #'blank-p text :start from :end end :from-end t)) from)))
+                          (to (if (< from end)
+                                  (1+ (position-if-not #'blank-p text :start from :end end :from-end t))
+                                  from)))
                      (return (and (< from to) (subseq text from to))))))
             until (>= end length)))))
 
@@ -306,7 +347,8 @@ category as two more values."
 (defun org-agenda-file-entries (path text)
   "The headlines of the agenda file at PATH, its TEXT, as ORG-AGENDA-ENTRY
 objects in order, with the list items with a checkbox kept as tasks, those
-the agenda leaves out left out (ORG-WALK-ENTRIES)."
+the agenda leaves out left out (ORG-WALK-ENTRIES); the parse of TEXT as a
+second value."
   (let* ((tree (org-parse text))
          (*org-text* text)
          (entries '()))
@@ -316,7 +358,8 @@ the agenda leaves out left out (ORG-WALK-ENTRIES)."
                               (setf (agenda-entry-skip entry) (mapcar #'cdr items))
                               (push (agenda-entry-read-text entry) entries)
                               (dolist (item items)
-                                (push (org-agenda-checkbox-entry path text (car item) (cdr item) (1+ (agenda-entry-level entry))
+                                (push (org-agenda-checkbox-entry path text (car item) (cdr item)
+                                                                 (1+ (agenda-entry-level entry))
                                                                  (agenda-entry-tags entry)
                                                                  (agenda-entry-category entry))
                                       entries))))
@@ -325,9 +368,16 @@ the agenda leaves out left out (ORG-WALK-ENTRIES)."
       ;; the items with checkboxes above the first headline, before them
       (when walked
         (setf entries (append (loop for item in (org-agenda-checkbox-items tree)
-                                    collect (org-agenda-checkbox-entry path text (car item) (cdr item) 1 file-tags file-category))
+                                    collect (org-agenda-checkbox-entry path text (car item) (cdr item) 1
+                                                                       file-tags file-category))
                               entries)))
-      entries)))
+      ;; the line each begins on, counted in one pass over the text
+      (let ((line 0) (at 0))
+        (dolist (entry (sort (copy-list entries) #'< :key #'agenda-entry-position))
+          (incf line (count #\Newline text :start at :end (agenda-entry-position entry)))
+          (setf at (agenda-entry-position entry)
+                (agenda-entry-line entry) line)))
+      (values entries tree))))
 
 (defun org-agenda-checkbox-items (node)
   "The list items with a checkbox in NODE's own text (a headline's section, or
@@ -371,7 +421,8 @@ when its last note of a state says DONE."
     entry))
 
 (defvar *org-agenda-file-cache* (make-hash-table :test 'equal :synchronized t)
-  "The entries of each agenda file read, by its path: (STAMP-OR-VERSION . ENTRIES).")
+  "What was read of each agenda file, by its path: (STAMP-OR-VERSION ENTRIES
+KEYWORDS HEADINGS), as ORG-AGENDA-FILE-READ gives it.")
 
 (defvar *org-agenda-snapshot* nil
   "While an agenda is worked out away from the editor's thread, where each
@@ -399,8 +450,7 @@ thread. They are the buffers visiting an Org file, or a file the agenda reads
 \(ORG-AGENDA-FILES-IN-FORCE).
 Nothing on disk is looked at."
   (let ((named (loop for file in (org-agenda-files-in-force)
-                     for path = (ignoring-errors-reported ("naming the agenda file ~a" file)
-                                  (tuatara.io:native (tuatara.io:expand-path file)))
+                     for path = (agenda-file-native file)
                      when path collect path)))
     (org-agenda-snapshot
      (loop for buffer in tuatara.buffer:*buffers*
@@ -479,25 +529,44 @@ no regular file there (a pipe or a device is never waited on)."
     (and stamp (eq (tuatara.io:stamp-kind stamp) :regular)
          (values :disk (list :file (tuatara.io:stamp-mtime stamp) (tuatara.io:stamp-size stamp))))))
 
-(defun org-agenda-entries (path)
-  "The entries of the agenda file at PATH (native), read again only when it
-changed; NIL when it cannot be read. An error reading its text names the
-file. In a job in the background asked to stop, it ends the job instead
+(defun org-agenda-file-read (path)
+  "What the agenda keeps of the agenda file at PATH (native), read again only
+when it changed: (KEY ENTRIES KEYWORDS HEADINGS), KEY what tells whether it
+changed, ENTRIES as ORG-AGENDA-FILE-ENTRIES gives them, KEYWORDS its TODO
+keywords as ORG-TODO-KEYWORDS-OF gives them, HEADINGS all its headings, those
+the agenda leaves out too, each (LEVEL TITLES POSITION), TITLES from the top
+heading down; NIL when it cannot be read. An error reading its text names
+the file. In a job in the background asked to stop, it ends the job instead
 \(TUATARA.RUNTIME:JOB-CHECK-STOP)."
   (tuatara.runtime:job-check-stop)
   (multiple-value-bind (source key) (org-agenda-file-source path)
     (when source
       (let ((kept (gethash path *org-agenda-file-cache*)))
-        (if (and kept (equal (car kept) key))
-            (cdr kept)
+        (if (and kept (equal (first kept) key))
+            kept
             (let ((text (org-agenda-source-text path source)))
               (when text
-                (let ((entries (handler-bind ((error (lambda (condition)
-                                                       (refuse "~a could not be read: ~a" (file-namestring path)
-                                                               (tuatara.runtime:failure-words condition)))))
-                                 (org-agenda-file-entries path text))))
-                  (setf (gethash path *org-agenda-file-cache*) (cons key entries))
-                  entries))))))))
+                (handler-bind ((error (lambda (condition)
+                                        (refuse "~a could not be read: ~a" (file-namestring path)
+                                                (tuatara.runtime:failure-words condition)))))
+                  (multiple-value-bind (entries tree) (org-agenda-file-entries path text)
+                    (setf (gethash path *org-agenda-file-cache*)
+                          (list key entries (org-todo-keywords-of text)
+                                (loop for headline in (org-headlines tree)
+                                      collect (list (org-property headline :level) (org-headline-path headline)
+                                                    (org-node-begin headline))))))))))))))
+
+(defun org-agenda-entries (path)
+  "The entries of the agenda file at PATH (native), as ORG-AGENDA-FILE-READ
+keeps them; NIL when it cannot be read."
+  (second (org-agenda-file-read path)))
+
+(defun org-agenda-forget-files (paths)
+  "Let go of what the agenda keeps of files that are not among PATHS, the
+agenda files now."
+  (loop for path being the hash-keys of *org-agenda-file-cache*
+        unless (member path paths :test #'string=)
+          do (remhash path *org-agenda-file-cache*)))
 
 (defun org-clocks-left-open (&optional (now (org-now)))
   "The clocks left running in the agenda files, their CLOCK: lines open, as
@@ -514,6 +583,24 @@ universal time, is passed over."
                 do (push (make-org-clock :path path :started started :task (agenda-entry-title entry)) found))))
     (stable-sort found #'> :key #'org-clock-started)))
 
+(defun agenda-file-native (file)
+  "FILE, one of the agenda files as a setting names it, as a native path; NIL,
+said in the debug log, when it names none."
+  (ignoring-errors-reported ("naming the agenda file ~a" file)
+    (tuatara.io:native (tuatara.io:expand-path file))))
+
+(defun agenda-file-kind (file path)
+  "What FILE, one of the agenda files as a setting names it, PATH its native
+path (AGENDA-FILE-NATIVE), stands for, as two values: :PATTERN, the files
+its last part (holding * or ?) matches, and the directory they are in;
+:DIRECTORY, the .org files in it, a name ending in / or a directory there,
+and that directory; else :FILE, and NIL."
+  (multiple-value-bind (parent name) (tuatara.io:path-directory-and-name path)
+    (cond ((glob-pattern-p name) (values :pattern parent))
+          ((or (uiop:string-suffix-p file "/") (string= name "") (eq :directory (tuatara.io:path-kind path)))
+           (values :directory path))
+          (t (values :file nil)))))
+
 (defvar *org-agenda-paths-kept* nil
   "The agenda files last worked out (ORG-AGENDA-FILE-PATHS): (FILES STAMPS
 PATHS), FILES the setting they came from and STAMPS the times of the directories
@@ -522,47 +609,52 @@ listed for it, so that a directory is listed again only when it changed.")
 (defun org-agenda-file-paths (&optional (files (org-agenda-files-in-force)))
   "FILES as native paths, the home directory written ~ taken as it is: a
 directory as the .org files in it, a pattern (* ?) as the files it matches, each
-in order of name, every file once. The directories are listed again only when
-one of them changed (*ORG-AGENDA-PATHS-KEPT*)."
+in order of name, every file once; one that names no path passed over. The
+directories are listed again only when one of them changed
+\(*ORG-AGENDA-PATHS-KEPT*)."
   (let* ((stamps (loop for file in files
-                       for path = (ignoring-errors-reported ("naming the agenda file ~a" file)
-                                    (tuatara.io:native (tuatara.io:expand-path file)))
-                       for (parent name) = (and path (multiple-value-list (tuatara.io:path-directory-and-name path)))
-                       for directory = (and path (cond ((find-if (lambda (c) (find c "*?")) name) parent)
-                                                    ((eq :directory (tuatara.io:path-kind path)) path)
-                                                    (t nil)))
+                       for path = (agenda-file-native file)
+                       for directory = (and path (nth-value 1 (agenda-file-kind file path)))
                        collect (and directory (let ((stamp (tuatara.io:path-stamp directory :failure nil)))
-                                             (and stamp (tuatara.io:stamp-mtime stamp))))))
+                                                (and stamp (tuatara.io:stamp-mtime stamp))))))
          (kept *org-agenda-paths-kept*))
     (if (and kept (equal (first kept) files) (equal (second kept) stamps))
         (third kept)
         (let ((paths (org-agenda-file-paths-listed files)))
           (setf *org-agenda-paths-kept* (list (copy-list files) stamps paths))
+          (when (equal files (org-agenda-files-in-force))
+            (org-agenda-forget-files paths))
           paths))))
 
 (defun org-agenda-file-paths-listed (files)
   "FILES as ORG-AGENDA-FILE-PATHS gives them, the directories listed now."
   (let ((paths '()) (seen (make-hash-table :test 'equal)))
-    (dolist (file files)
-      (let ((path (tuatara.io:native (tuatara.io:expand-path file))))
-        (multiple-value-bind (dir name) (tuatara.io:path-directory-and-name path)
-          (flet ((in-directory (directory test)
-                   (loop for (entry kind) in (tuatara.io:directory-entries directory)
-                         when (and (eq kind :regular) (funcall test entry))
-                           collect (tuatara.io:path-join directory entry))))
-            (cond ((find-if (lambda (c) (find c "*?")) name)
-                   ;; as the shell has it: a name beginning with a dot only for a pattern that does
-                   (dolist (match (in-directory dir (lambda (entry)
-                                                      (and (or (char= (char name 0) #\.)
-                                                               (zerop (length entry)) (char/= (char entry 0) #\.))
-                                                           (glob-match name entry)))))
-                     (unless (gethash match seen) (setf (gethash match seen) t) (push match paths))))
-                  ((eq :directory (tuatara.io:path-kind path))
-                   (dolist (match (in-directory path
-                                             (lambda (entry) (and (plusp (length entry)) (char/= (char entry 0) #\.)
-                                                                  (uiop:string-suffix-p entry ".org")))))
-                     (unless (gethash match seen) (setf (gethash match seen) t) (push match paths))))
-                  (t (unless (gethash path seen) (setf (gethash path seen) t) (push path paths))))))))
+    (labels ((add (path)
+               (unless (gethash path seen)
+                 (setf (gethash path seen) t)
+                 (push path paths)))
+             (add-in (directory test)
+               (when (eq :directory (tuatara.io:path-kind directory))
+                 (loop for (entry kind) in (tuatara.io:directory-entries directory)
+                       when (and (eq kind :regular) (funcall test entry))
+                         do (add (tuatara.io:path-join directory entry))))))
+      (dolist (file files)
+        (let ((path (agenda-file-native file)))
+          (when path
+            (multiple-value-bind (kind directory) (agenda-file-kind file path)
+              (case kind
+                (:pattern
+                 ;; as the shell has it: a name beginning with a dot only for a pattern that does
+                 (let ((name (nth-value 1 (tuatara.io:path-directory-and-name path))))
+                   (add-in directory (lambda (entry)
+                                       (and (or (char= (char name 0) #\.)
+                                                (zerop (length entry)) (char/= (char entry 0) #\.))
+                                            (glob-match name entry))))))
+                (:directory
+                 (add-in directory (lambda (entry)
+                                     (and (plusp (length entry)) (char/= (char entry 0) #\.)
+                                          (uiop:string-suffix-p entry ".org")))))
+                (t (add path))))))))
     (nreverse paths)))
 
 ;;; Items
@@ -587,13 +679,20 @@ compiled."
       (refuse "~s is no kind of agenda line: ~{~a~^, ~}" type *org-agenda-item-types*)))
   `(member (org-item-type ,item) ',types :test #'string=))
 
-(defstruct (org-agenda-item (:conc-name org-item-))
+(define-record (org-agenda-item (:conc-name org-item-))
   "A line of the agenda: the DAY it is listed on (a day number, NIL in a list
 of tasks), its TYPE (one of *ORG-AGENDA-ITEM-TYPES*), its EXTRA (Scheduled:,
 Sched. 2x:, In   3 d.:, (1/3):), its TIME of day (930 for 09:30, or NIL) and
 the END of its time range (1500 for 14:00-15:00, or NIL), its ENTRY and TITLE,
 and its URGENCY, by which it is ordered (ORG-AGENDA-SORT)."
-  day type extra time end entry title urgency)
+  (day nil :documentation "The day an agenda item is listed on, a day number, or NIL in a list of tasks.")
+  (type nil :documentation "The type of an agenda item, one of *ORG-AGENDA-ITEM-TYPES*.")
+  (extra nil :documentation "The extra text of an agenda item, such as Scheduled: or (1/3).")
+  (time nil :documentation "The time of day of an agenda item, 930 for 09:30, or NIL.")
+  (end nil :documentation "The end of the time range of an agenda item, 1500 for 14:00-15:00, or NIL.")
+  (entry nil :documentation "The agenda entry of an agenda item.")
+  (title nil :documentation "The title of an agenda item.")
+  (urgency nil :documentation "The urgency of an agenda item, by which the agenda orders it."))
 
 (defun org-time-of-day (text)
   "The time of day TEXT holds first (09:30, 9:30-10:00, 3pm, as
@@ -602,7 +701,7 @@ part it was found in, and the end of its range (1000) or NIL, as the second
 and third values."
   (multiple-value-bind (start end hour minute end-hour end-minute) (find-time-range text)
     (when start
-      (values (+ (* 100 hour) minute) (subseq text start end) (and end-hour (+ (* 100 end-hour) end-minute))))))
+      (values (org-time-number hour minute) (subseq text start end) (org-time-number end-hour end-minute)))))
 
 (defvar *org-agenda-time-memo* nil
   "While an agenda is made, a table of the times of day read so far, by the text they were read from.")
@@ -616,17 +715,15 @@ and third values."
 once while an agenda is made (ORG-AGENDA-TS, ORG-AGENDA-RULE): 930 for 09:30,
 or NIL; and the end of its range, 1000, or NIL. For TEXT that is no
 timestamp, the first time of day in it (ORG-TIME-OF-DAY)."
-  (flet ((of-day (hour minute) (org-time-number hour minute)))
-    (let ((ts (org-agenda-ts text)))
-      (if ts
-          (values (of-day (org-ts-hour ts) (org-ts-minute ts)) (of-day (org-ts-end-hour ts) (org-ts-end-minute ts)))
-          (let ((rule (org-agenda-rule text)))
-            (if rule
-                (values (of-day (org-rule-hour rule) (org-rule-minute rule))
-                        (of-day (org-rule-end-hour rule) (org-rule-end-minute rule)))
-                (multiple-value-bind (of-day part end) (org-agenda-time-of-day text)
-                  (declare (ignore part))
-                  (values of-day end))))))))
+  (let ((ts (org-agenda-ts text)))
+    (if ts
+        (values (org-ts-time-of-day ts) (org-time-number (org-ts-end-hour ts) (org-ts-end-minute ts)))
+        (let ((rule (org-agenda-rule text)))
+          (if rule
+              (values (org-rule-time-of-day rule) (org-time-number (org-rule-end-hour rule) (org-rule-end-minute rule)))
+              (multiple-value-bind (of-day part end) (org-agenda-time-of-day text)
+                (declare (ignore part))
+                (values of-day end)))))))
 
 (defun org-title-without-dates (title)
   "TITLE without the active dates written in it (*ORG-AGENDA-STAMP-SCANNER*:
@@ -634,7 +731,8 @@ timestamp, the first time of day in it (ORG-TIME-OF-DAY)."
 one; TITLE as it is when it holds none, or nothing else."
   (if (not (search "<" title))
       title
-      (let ((left (string-trim " " (cl-ppcre:regex-replace-all "[ \\t]{2,}" (cl-ppcre:regex-replace-all *org-agenda-stamp-scanner* title "") " "))))
+      (let* ((plain (cl-ppcre:regex-replace-all *org-agenda-stamp-scanner* title ""))
+             (left (string-trim " " (cl-ppcre:regex-replace-all "[ \\t]{2,}" plain " "))))
         (if (plusp (length left)) left title))))
 
 (defun org-agenda-item
@@ -684,12 +782,14 @@ says both."
                       ;; a note of DONE, as a repeating task leaves each time it is done (a
                       ;; checkbox's is its closing, read with the item)
                       (unless (eq (agenda-entry-kind entry) :checkbox)
-                        (let ((groups (nth-value 1 (cl-ppcre:scan-to-strings *org-done-note-scanner* text :start line-start :end line-end))))
+                        (let ((groups (nth-value 1 (cl-ppcre:scan-to-strings *org-done-note-scanner* text
+                                                                              :start line-start :end line-end))))
                           (when groups
                             ;; the checkboxes ticked then, said on the line after
                             (let* ((next (min end (1+ line-end)))
+                                   (next-end (or (position #\Newline text :start next :end end) end))
                                    (ticked (nth-value 1 (cl-ppcre:scan-to-strings *org-boxes-ticked-scanner* text
-                                                                                   :start next :end (or (position #\Newline text :start next :end end) end)))))
+                                                                                   :start next :end next-end))))
                               (push (list :done-note (aref groups 0) nil nil
                                           (and ticked
                                                (cons (parse-integer (aref ticked 0)) (parse-integer (aref ticked 1)))))
@@ -700,7 +800,8 @@ says both."
                             (let ((stopped (and to duration (cl-ppcre:scan-to-strings "\\d{1,2}:\\d{2}(?=\\]$)" to))))
                               (push (list :clock from (and stopped duration) stopped (null to)) logs)))))))
              (unless (org-planning-line-p text :start line-start :end line-end)
-               (cl-ppcre:do-scans (s e range-starts range-ends *org-agenda-stamp-scanner* text nil :start line-start :end line-end)
+               (cl-ppcre:do-scans (s e range-starts range-ends *org-agenda-stamp-scanner* text nil
+                                   :start line-start :end line-end)
                  (if (aref range-starts 0)
                      (let ((dash (search ">--<" text :start2 s :end2 e)))
                        (push (list (subseq text s (1+ dash)) (subseq text (+ dash 3) e)) ranges))
@@ -733,7 +834,8 @@ the times cancelled and moved one at a time \(ORG-OCCURRENCE-NOTES)."
                                       (and (cl-ppcre:scan "^<\\d+-\\d+-\\d+[^>\\n]+?\\+\\d+[hdwmy]>$" text)
                                            (org-repeater-of text))))
           :ranges (loop for (from to) in (agenda-entry-ranges entry)
-                        collect (list from to (org-ts-day-number (org-agenda-ts from)) (org-ts-day-number (org-agenda-ts to))))
+                        collect (list from to
+                                      (org-ts-day-number (org-agenda-ts from)) (org-ts-day-number (org-agenda-ts to))))
           :rules (loop for (kind text) in (list* (list :scheduled (agenda-entry-scheduled entry))
                                                  (list :deadline (agenda-entry-deadline entry))
                                                  (loop for text in (agenda-entry-stamps entry)
@@ -756,6 +858,18 @@ the times cancelled and moved one at a time \(ORG-OCCURRENCE-NOTES)."
   "True when ENTRY's TODO keyword is a done one."
   (eq (agenda-entry-todo-type entry) 'done))
 
+(defun org-deadline-extra (late)
+  "What a deadline's line says before its title, LATE days past it (below 0,
+to come): 3 d. ago:, In   3 d.:, or Deadline: on its day."
+  (cond ((plusp late) (format nil "~2d d. ago: " late))
+        ((minusp late) (format nil "In ~3d d.: " (- late)))
+        (t "Deadline:  ")))
+
+(defun org-scheduled-extra (late)
+  "What a scheduled task's line says before its title, LATE days past its day:
+Sched. 2x:, or Scheduled: on its day."
+  (if (plusp late) (format nil "Sched.~2dx: " late) "Scheduled: "))
+
 (defun org-agenda-deadlines (entries current today)
   "The deadline lines of ENTRIES on the day CURRENT, today being TODAY."
   (loop for entry in entries
@@ -763,7 +877,9 @@ the times cancelled and moved one at a time \(ORG-OCCURRENCE-NOTES)."
         when facts
           append (destructuring-bind (deadline own-warning repeats) facts
                    (let* ((text (agenda-entry-deadline entry))
-                          (repeat (if (or (<= current today) (not repeats)) deadline (org-repeat-day repeats current :future)))
+                          (repeat (if (or (<= current today) (not repeats))
+                                      deadline
+                                      (org-repeat-day repeats current :future)))
                           (diff (- deadline current))
                           (warning (or own-warning *org-deadline-warning-days*))
                           (today-p (= current today)))
@@ -772,13 +888,11 @@ the times cancelled and moved one at a time \(ORG-OCCURRENCE-NOTES)."
                                  (and (org-done-p entry) (/= deadline current))
                                  ;; its time moved: listed where it went (ORG-AGENDA-NOTED-LINES)
                                  (and today-p (/= deadline current) (getf (agenda-entry-facts entry) :moved)
-                                      (org-moved-from-p (getf (agenda-entry-facts entry) :moved) deadline (org-agenda-stamp-time text))))
+                                      (org-moved-from-p (getf (agenda-entry-facts entry) :moved) deadline
+                                                        (org-agenda-stamp-time text))))
                        (list (org-agenda-item entry current
                                               (if (and today-p (> deadline today)) "upcoming-deadline" "deadline")
-                                              (cond ((and today-p (< deadline today))
-                                                     (format nil "~2d d. ago: " (- diff)))
-                                                    ((and today-p (> deadline today)) (format nil "In ~3d d.: " diff))
-                                                    (t "Deadline:  "))
+                                              (org-deadline-extra (if today-p (- diff) 0))
                                               (if (and (/= current deadline) (/= current repeat)) nil text)
                                               (+ (if today-p (- diff) 0) (agenda-entry-priority entry)))))))))
 
@@ -808,7 +922,9 @@ LOG true, a done task's closing line stands for its scheduled line
         when facts
           append (destructuring-bind (schedule delay repeats) facts
                    (let* ((text (agenda-entry-scheduled entry))
-                          (repeat (if (or (<= current today) (not repeats)) schedule (org-repeat-day repeats current :future)))
+                          (repeat (if (or (<= current today) (not repeats))
+                                      schedule
+                                      (org-repeat-day repeats current :future)))
                           (diff (- current schedule))
                           (delay (or delay 0))
                           (past (< schedule today)))
@@ -819,9 +935,10 @@ LOG true, a done task's closing line stands for its scheduled line
                                  (and log (org-closing-replaces-scheduled-p entry (cdr tail) current))
                                  ;; its time moved: listed where it went (ORG-AGENDA-NOTED-LINES)
                                  (and (= current today) past (getf (agenda-entry-facts entry) :moved)
-                                      (org-moved-from-p (getf (agenda-entry-facts entry) :moved) schedule (org-agenda-stamp-time text))))
+                                      (org-moved-from-p (getf (agenda-entry-facts entry) :moved) schedule
+                                                        (org-agenda-stamp-time text))))
                        (list (org-agenda-item entry current (if past "past-scheduled" "scheduled")
-                                              (if (and (= current today) past) (format nil "Sched.~2dx: " diff) "Scheduled: ")
+                                              (org-scheduled-extra (if (= current today) diff 0))
                                               (if (and (/= current schedule) (/= current repeat)) nil text)
                                               (+ 99 diff (agenda-entry-priority entry)))))))))
 
@@ -831,7 +948,9 @@ LOG true, a done task's closing line stands for its scheduled line
         append (loop for (from to d1 d2) in (getf (agenda-entry-facts entry) :ranges)
                      when (<= d1 current d2)
                        collect (org-agenda-item entry current "block"
-                                                (if (= d1 d2) "" (format nil "(~d/~d): " (1+ (- current d1)) (1+ (- d2 d1))))
+                                                (if (= d1 d2)
+                                                    ""
+                                                    (format nil "(~d/~d): " (1+ (- current d1)) (1+ (- d2 d1))))
                                                 (cond ((= d1 current) from) ((= d2 current) to) (t nil))
                                                 (agenda-entry-priority entry)))))
 
@@ -896,22 +1015,21 @@ before today are not past due."
                                  ((= current today)
                                   (let ((diff (- today open)))
                                     (cond ((and (not deadline) (>= diff 0))
-                                           (list (org-agenda-item entry current (if (plusp diff) "past-scheduled" "scheduled")
-                                                                  (if (plusp diff) (format nil "Sched.~2dx: " diff) "Scheduled: ")
+                                           (list (org-agenda-item entry current
+                                                                  (if (plusp diff) "past-scheduled" "scheduled")
+                                                                  (org-scheduled-extra diff)
                                                                   text (+ 99 diff priority))))
                                           ((and deadline (or (>= diff 0) (<= (- diff) warning)))
-                                           (list (org-agenda-item entry current (if (minusp diff) "upcoming-deadline" "deadline")
-                                                                  (cond ((plusp diff) (format nil "~2d d. ago: " diff))
-                                                                        ((minusp diff)
-                                                                         (format nil "In ~3d d.: " (- diff)))
-                                                                        (t "Deadline:  "))
+                                           (list (org-agenda-item entry current
+                                                                  (if (minusp diff) "upcoming-deadline" "deadline")
+                                                                  (org-deadline-extra diff)
                                                                   text (+ diff priority)))))))
                                  ((and (org-rule-matches-p rule current)
                                        (if (> current today)
                                            (>= current open)
                                            (or (null last-done) (> current last-done))))
                                   (list (org-agenda-item entry current (if deadline "deadline" "scheduled")
-                                                         (if deadline "Deadline:  " "Scheduled: ")
+                                                         (if deadline (org-deadline-extra 0) (org-scheduled-extra 0))
                                                          text (+ 99 priority))))))))))
 
 (defun org-agenda-progress (entries current)
@@ -920,21 +1038,24 @@ a task cancelled (*ORG-CANCEL-KEYWORDS*) that has a date of its own has no
 line of its closing, the line of its date saying it is cancelled already."
   (let ((day (format-day "%F" current)))
     (loop for entry in entries
-          for title = (if (agenda-entry-todo entry)
-                          (format nil "~a ~a" (agenda-entry-todo entry) (agenda-entry-title entry))
-                          (agenda-entry-title entry))
-          for cancelled = (and (member (agenda-entry-todo entry) *org-cancel-keywords* :test #'equal)
-                               (or (agenda-entry-stamps entry) (agenda-entry-ranges entry)
-                                   (agenda-entry-scheduled entry) (agenda-entry-deadline entry)))
-          append (loop for (kind timestamp clocked stopped) in (agenda-entry-logs entry)
-                       when (and (member kind '(:closed :clock)) (not (and cancelled (eq kind :closed)))
-                                 (uiop:string-prefix-p day (subseq timestamp 1)))
-                         collect (org-agenda-item entry current (if (eq kind :closed) "closed" "clock")
-                                                  (if (eq kind :closed) "Closed:    " (format nil
-                                                                                              "Clocked:   (~a)"
-                                                                                              (or clocked "-")))
-                                                  timestamp 100000 :search-heading nil :title title
-                                                  :end (and (eq kind :clock) stopped (org-time-of-day stopped)))))))
+          for logs = (loop for log in (agenda-entry-logs entry)
+                           when (and (member (first log) '(:closed :clock))
+                                     (uiop:string-prefix-p day (subseq (second log) 1)))
+                             collect log)
+          when logs
+            append (let ((title (format nil "~@[~a ~]~a" (agenda-entry-todo entry) (agenda-entry-title entry)))
+                         (cancelled (and (member (agenda-entry-todo entry) *org-cancel-keywords* :test #'equal)
+                                         (or (agenda-entry-stamps entry) (agenda-entry-ranges entry)
+                                             (agenda-entry-scheduled entry) (agenda-entry-deadline entry)))))
+                     (loop for (kind timestamp clocked stopped) in logs
+                           unless (and cancelled (eq kind :closed))
+                             collect (org-agenda-item entry current (if (eq kind :closed) "closed" "clock")
+                                                      (if (eq kind :closed)
+                                                          "Closed:    "
+                                                          (format nil "Clocked:   (~a)" (or clocked "-")))
+                                                      timestamp 100000 :search-heading nil :title title
+                                                      :end (and (eq kind :clock) stopped
+                                                                (org-time-of-day stopped))))))))
 
 (defun org-entry-repeats-p (entry)
   "True when ENTRY is a task that repeats: scheduled or with a deadline that
@@ -957,11 +1078,13 @@ checkboxes ticked then when its note says (its own cleared for the next time)."
                                                     :search-heading nil
                                                     :title (format nil "DONE ~a"
                                                                    (if ticked
-                                                                       (org-cookies-saying (agenda-entry-title entry) (car ticked) (cdr ticked))
+                                                                       (org-cookies-saying (agenda-entry-title entry)
+                                                                                           (car ticked) (cdr ticked))
                                                                        (agenda-entry-title entry))))))))
 
 (defun org-agenda-sort (items key)
-  "ITEMS ordered stably by KEY, a list of :TIME (by time of day, those without one last) and :URGENCY (the most urgent first)."
+  "ITEMS ordered stably by KEY, a list of :TIME (by time of day, those without
+one last) and :URGENCY (the most urgent first)."
   (stable-sort (copy-list items)
                (lambda (a b)
                  (loop for k in key
@@ -972,23 +1095,39 @@ checkboxes ticked then when its note says (its own cleared for the next time)."
                                                  (cond ((> ua ub) -1) ((> ub ua) 1)))))
                        when order return (minusp order)))))
 
-(defvar *org-agenda-noted-memo* nil
-  "While an agenda is made, the entries of each file with times cancelled or
-moved one at a time (ORG-AGENDA-NOTED-ENTRIES), by its list of entries.")
+(defvar *org-agenda-entries-memo* nil
+  "While an agenda is made, the entries of each file the agenda's passes look
+at (ORG-AGENDA-ENTRIES-OF), by its list of entries.")
 
-(defun org-agenda-noted-entries (entries)
-  "Those of ENTRIES with times cancelled or moved one at a time, found once
-for each file while an agenda is made (*ORG-AGENDA-NOTED-MEMO*)."
-  (flet ((noted ()
-           (remove-if-not (lambda (entry)
-                            (let ((facts (agenda-entry-facts entry)))
-                              (or (getf facts :cancelled) (getf facts :moved))))
-                          entries)))
-    (let ((memo *org-agenda-noted-memo*))
+(defun org-entry-dated-p (entry)
+  "True when ENTRY can give a line on a day of the agenda: it has a date of
+its own, a closing, a clock or a note in its log, or times cancelled or moved."
+  (let ((facts (agenda-entry-facts entry)))
+    (or (getf facts :deadline) (getf facts :scheduled) (getf facts :stamps) (getf facts :ranges)
+        (getf facts :rules) (getf facts :cancelled) (getf facts :moved) (agenda-entry-logs entry))))
+
+(defun org-entry-noted-p (entry)
+  "True when ENTRY has times cancelled or moved one at a time."
+  (let ((facts (agenda-entry-facts entry)))
+    (or (getf facts :cancelled) (getf facts :moved))))
+
+(defun org-agenda-entries-of (entries kind)
+  "Those of ENTRIES of KIND: :DATED those that can give a line on a day
+\(ORG-ENTRY-DATED-P), :NOTED those with times cancelled or moved one at a time
+\(ORG-ENTRY-NOTED-P); found once for each file while an agenda is made
+\(*ORG-AGENDA-ENTRIES-MEMO*)."
+  (flet ((find-them ()
+           (remove-if-not (ecase kind (:dated #'org-entry-dated-p) (:noted #'org-entry-noted-p)) entries)))
+    (let ((memo *org-agenda-entries-memo*))
       (if (null memo)
-          (noted)
-          (multiple-value-bind (known found) (gethash entries memo)
-            (if found known (setf (gethash entries memo) (noted))))))))
+          (find-them)
+          (let* ((kept (gethash entries memo))
+                 (found (assoc kind kept)))
+            (if found
+                (cdr found)
+                (let ((them (find-them)))
+                  (setf (gethash entries memo) (acons kind them kept))
+                  them)))))))
 
 (defun org-agenda-without-noted-times (items)
   "ITEMS without the lines of the times their entries cancelled or moved one
@@ -1036,8 +1175,8 @@ gone and not done, today, as one scheduled before."
                                       (not (and task (org-moved-done-p entry origin)))
                                       (not (org-cancelled-p cancelled (car target) (cdr target))))
                     when (= (car origin) current)
-                      collect (org-agenda-item entry current "moved" "Moved:     " (org-occurrence-stamp origin) priority
-                                               :search-heading nil
+                      collect (org-agenda-item entry current "moved" "Moved:     " (org-occurrence-stamp origin)
+                                               priority :search-heading nil
                                                :title (format nil
                                                               "~@[~a ~]~a → ~a"
                                                               (agenda-entry-todo entry)
@@ -1045,12 +1184,11 @@ gone and not done, today, as one scheduled before."
                                                               (org-occurrence-words target)))
                     when (and listed (= (car target) current))
                       collect (if task
-                                  (org-agenda-item entry current "scheduled" "Scheduled: " (org-occurrence-stamp target) (+ 99 priority))
+                                  (org-agenda-item entry current "scheduled" (org-scheduled-extra 0)
+                                                   (org-occurrence-stamp target) (+ 99 priority))
                                   (org-agenda-item entry current "timestamp" "" (org-occurrence-stamp target) priority))
                     when (and listed task (= current today) (< (car target) today))
-                    collect (org-agenda-item entry current "past-scheduled" (format nil
-                                                                                    "Sched.~2dx: "
-                                                                                    (- today (car target)))
+                    collect (org-agenda-item entry current "past-scheduled" (org-scheduled-extra (- today (car target)))
                                                (org-occurrence-stamp target) (+ 99 (- today (car target)) priority)))))
 
 (defun org-agenda-without-twice-listed (items)
@@ -1081,15 +1219,17 @@ ENTRIES-BY-FILE, when given, the entries of each file, read before."
   (org-agenda-sort
    (loop for path in files
          for entries in (or entries-by-file (mapcar #'org-agenda-entries files))
-         for noted = (org-agenda-noted-entries entries)
+         for noted = (org-agenda-entries-of entries :noted)
+         for dated = (org-agenda-entries-of entries :dated)
          append (org-agenda-without-twice-listed
-                 (let ((items (append (org-agenda-deadlines entries day today)
-                                      (and log (org-agenda-progress entries day))
-                                      (org-agenda-repeats-done entries day)
+                 ;; the scheduled pass looks at the sub-tasks after an entry, dated or not
+                 (let ((items (append (org-agenda-deadlines dated day today)
+                                      (and log (org-agenda-progress dated day))
+                                      (org-agenda-repeats-done dated day)
                                       (org-agenda-scheduled entries day today log)
-                                      (org-agenda-blocks entries day)
-                                      (org-agenda-timestamps entries day today)
-                                      (org-agenda-rules entries day today))))
+                                      (org-agenda-blocks dated day)
+                                      (org-agenda-timestamps dated day today)
+                                      (org-agenda-rules dated day today))))
                    (if noted
                        (nconc (org-agenda-without-noted-times items) (org-agenda-noted-lines noted day today))
                        items))))
@@ -1098,20 +1238,24 @@ ENTRIES-BY-FILE, when given, the entries of each file, read before."
 (defun org-agenda-span (first count &rest arguments)
   "The agenda lines of COUNT days from the day FIRST, day by day, as ORG-AGENDA-DAY gives each (with its ARGUMENTS)."
   (let* ((*org-agenda-ts-memo* (or *org-agenda-ts-memo* (make-hash-table :test 'equal)))
-         (*org-agenda-noted-memo* (or *org-agenda-noted-memo* (make-hash-table :test 'eq)))
+         (*org-agenda-entries-memo* (or *org-agenda-entries-memo* (make-hash-table :test 'eq)))
          (*org-agenda-time-memo* (or *org-agenda-time-memo* (make-hash-table :test 'equal)))
          (files (getf arguments :files (org-agenda-file-paths)))
          (entries-by-file (mapcar #'org-agenda-entries files)))
     (loop for day from first below (+ first count)
           append (apply #'org-agenda-day day :files files :entries-by-file entries-by-file arguments))))
 
-(defun org-agenda-todo-list (&key (files (org-agenda-file-paths)))
-  "The tasks not done in FILES, the most urgent first (ORG-AGENDA-SORT)."
+(defun org-agenda-todo-list (&key (files (org-agenda-file-paths)) keyword)
+  "The tasks not done in FILES, the most urgent first (ORG-AGENDA-SORT); with
+KEYWORD, the entries with that TODO keyword instead, done or not."
   (org-agenda-sort
    (loop for path in files
          append (loop for entry in (org-agenda-entries path)
-                      when (eq (agenda-entry-todo-type entry) 'todo)
-                        collect (org-agenda-item entry nil "todo" "" :heading (1+ (agenda-entry-priority entry)) :keep-title t)))
+                      when (if keyword
+                               (equal (agenda-entry-todo entry) keyword)
+                               (eq (agenda-entry-todo-type entry) 'todo))
+                        collect (org-agenda-item entry nil "todo" "" :heading (1+ (agenda-entry-priority entry))
+                                                 :keep-title t)))
    '(:urgency)))
 
 ;;; Matches
@@ -1121,86 +1265,122 @@ ENTRIES-BY-FILE, when given, the entries of each file, read before."
   (cond ((string-equal name "TODO") (agenda-entry-todo entry))
         ((string-equal name "LEVEL") (princ-to-string (agenda-entry-level entry)))
         ((string-equal name "CATEGORY") (agenda-entry-category entry))
-        ((string-equal name "PRIORITY")
-         (multiple-value-bind (m g) (cl-ppcre:scan-to-strings "\\[#([A-Z0-9])\\]" (agenda-entry-heading entry))
-           (if m (aref g 0) "B")))
+        ((string-equal name "PRIORITY") (org-heading-priority-letter (agenda-entry-heading entry)))
         ((string-equal name "ITEM") (agenda-entry-title entry))
         ((string-equal name "SCHEDULED") (agenda-entry-scheduled entry))
         ((string-equal name "DEADLINE") (agenda-entry-deadline entry))
         (t (cdr (assoc name (agenda-entry-properties entry) :test #'string-equal)))))
 
-(defun org-match-scanner (regex)
+(defun org-match-scanner (regex &key untrusted)
   "REGEX, of a match's {regex}, made ready to match as a search reads it, case
-ignored; NIL when it is no regular expression."
-  (ignoring-errors-reported ("reading the pattern ~a" regex)
-    (handler-case (tuatara.syntax:compile-pattern regex :case-fold t)
-      ((or tuatara.syntax:pattern-refused cl-ppcre:ppcre-syntax-error) () nil))))
+ignored; NIL for one that is no regular expression, or with UNTRUSTED, for
+one from a file, one that could take for ever, and the condition saying why
+as a second value."
+  (handler-case (tuatara.syntax:compile-pattern regex :case-fold t :untrusted untrusted)
+    ((or tuatara.syntax:pattern-refused cl-ppcre:ppcre-syntax-error) (condition)
+      (values nil condition))))
 
 (defun org-match-compare (op left right)
-  "LEFT OP RIGHT, as a match compares them: numbers as numbers, else texts, a {regex} by matching."
-  (cond ((null left) (string= op "<>"))
-        ((and (> (length right) 1) (char= (char right 0) #\{))
-         (let ((found (let ((scanner (org-match-scanner (subseq right 1 (1- (length right))))))
-                        (and scanner (cl-ppcre:scan scanner left)))))
-           (if (string= op "<>") (not found) found)))
-        ((and (> (length right) 1) (char= (char right 0) #\"))
-         (let ((r (subseq right 1 (1- (length right)))))
-           (cond ((string= op "=") (string= left r)) ((string= op "<>") (string/= left r))
-                 ((string= op "<") (string< left r)) ((string= op ">") (string> left r))
-                 ((string= op "<=") (string<= left r)) ((string= op ">=") (string>= left r)))))
-        (t (let ((l (let ((n (handler-case (org-calc-read-number left) (org-formula-error () nil))))
-                      (and n (org-calc-value n))))
-                 (r (let ((n (handler-case (org-calc-read-number right) (org-formula-error () nil))))
-                      (and n (org-calc-value n)))))
-             (and (realp l) (realp r)
-                  (cond ((string= op "=") (= l r)) ((string= op "<>") (/= l r))
-                        ((string= op "<") (< l r)) ((string= op ">") (> l r))
-                        ((string= op "<=") (<= l r)) ((string= op ">=") (>= l r))))))))
+  "LEFT OP RIGHT, as a match compares them: RIGHT a scanner of a {regex} by
+matching (= or <>), a \"text\" as texts, else as numbers."
+  (flet ((compare (a b less equal)
+           (cond ((string= op "=") (funcall equal a b)) ((string= op "<>") (not (funcall equal a b)))
+                 ((string= op "<") (funcall less a b)) ((string= op ">") (funcall less b a))
+                 ((string= op "<=") (not (funcall less b a))) ((string= op ">=") (not (funcall less a b)))))
+         (number-of (text)
+           (let ((n (handler-case (org-calc-read-number text) (org-formula-error () nil))))
+             (and n (org-calc-value n)))))
+    (cond ((null left) (string= op "<>"))
+          ((functionp right)
+           (let ((found (cl-ppcre:scan right left)))
+             (if (string= op "<>") (not found) found)))
+          ((and (> (length right) 1) (char= (char right 0) #\"))
+           (compare left (subseq right 1 (1- (length right))) #'string< #'string=))
+          (t (let ((l (number-of left)) (r (number-of right)))
+               (and (realp l) (realp r) (compare l r #'< #'=)))))))
 
-(defun org-match-predicate (match)
+(defun org-match-split (text char)
+  "TEXT cut at each CHAR outside braces and double quotes, as a match's parts
+are: a | inside {a|b} or \"a|b\" stays."
+  (let ((parts '()) (from 0) (depth 0) (quoted nil))
+    (loop for c across text for i from 0
+          do (cond ((char= c #\") (setf quoted (not quoted)))
+                   (quoted)
+                   ((char= c #\{) (incf depth))
+                   ((char= c #\}) (setf depth (max 0 (1- depth))))
+                   ((and (char= c char) (zerop depth)) (push (subseq text from i) parts) (setf from (1+ i)))))
+    (nreverse (cons (subseq text from) parts))))
+
+(defparameter *org-match-term-scanner*
+  (cl-ppcre:create-scanner
+   (concatenate 'string
+                "([-+&]?)(?:\\{([^}]*)\\}|LEVEL(<>|<=|>=|=|<|>)(\\d+)"
+                "|([\\w-]+)(<>|<=|>=|=|<|>)(\\{[^}]*\\}|\"[^\"]*\"|-?[.\\d]+)|([\\w@#%]+))"))
+  "One term of a match: its sign, then a {regex}, LEVEL compared, a property
+compared, or a tag, each a group.")
+
+(defun org-match-terms (group untrusted)
+  "The terms of GROUP, a part of a match between its |, each (NEGATE SCANNER
+LEVEL-OP LEVEL PROPERTY OP VALUE TAG), the {regex} given made ready
+\(ORG-MATCH-SCANNER, with UNTRUSTED), a VALUE that is one too. Refused when
+any of GROUP is not a term, or a {regex} is not made ready."
+  (let ((terms '()) (at 0))
+    (flet ((scanner (regex)
+             (multiple-value-bind (scanner why) (org-match-scanner regex :untrusted untrusted)
+               (or scanner (refuse "The match's {~a} is not run: ~a" regex why)))))
+      (cl-ppcre:do-scans (s e starts ends *org-match-term-scanner* group)
+        (unless (= s at) (return))
+        (flet ((part (i) (and (aref starts i) (subseq group (aref starts i) (aref ends i)))))
+          (let ((value (part 6)))
+            (push (list (string= (part 0) "-")
+                        (and (part 1) (scanner (part 1)))
+                        (part 2) (part 3) (part 4) (part 5)
+                        (if (and value (char= (char value 0) #\{))
+                            (scanner (subseq value 1 (1- (length value))))
+                            value)
+                        (part 7))
+                  terms)))
+        (setf at e))
+      (unless (= at (length group))
+        (refuse "The match cannot be read from “~a”" (subseq group at)))
+      (nreverse terms))))
+
+(defun org-match-term-p (term entry)
+  "True when TERM (as ORG-MATCH-TERMS makes them) takes ENTRY."
+  (destructuring-bind (negate scanner lop lvalue prop op value tag) term
+    (let ((hit (cond (scanner (some (lambda (tag) (cl-ppcre:scan scanner tag)) (agenda-entry-tags entry)))
+                     (lop (org-match-compare lop (princ-to-string (agenda-entry-level entry)) lvalue))
+                     (prop (org-match-compare op (agenda-entry-property-value entry prop) value))
+                     (t (member tag (agenda-entry-tags entry) :test #'string=)))))
+      (if negate (not hit) hit))))
+
+(defun org-match-predicate (match &key untrusted)
   "A function of an entry true when MATCH, an Org match (work+urgent-home,
-work|proj, TODO=\"NEXT\", LEVEL>1, -{.*}, CATEGORY=\"x\", tags/NEXT|WAIT), selects it."
-  (let* ((slash (let ((depth 0))
-                  (loop for c across match for i from 0
-                        do (case c (#\{ (incf depth)) (#\} (decf depth)))
-                        when (and (char= c #\/) (zerop depth)) return i)))
-         (tags-part (if slash (subseq match 0 slash) match))
+work|proj, TODO=\"NEXT\", LEVEL>1, -{.*}, CATEGORY=\"x\", tags/NEXT|WAIT), selects it.
+A match with something it cannot read is refused (REFUSE), as is a {regex}
+that is none, or with UNTRUSTED, for a match from a file, one that could take
+for ever. Its patterns are made ready once, here."
+  (let* ((slash (position #\/ match :start (length (first (org-match-split match #\/)))))
+         (tags-part (string-trim " " (if slash (subseq match 0 slash) match)))
          (todo-part (and slash (subseq match (1+ slash))))
-         (groups (mapcar (lambda (group)
-                           (let ((terms '()))
-                             (cl-ppcre:do-register-groups (sign regex lop lvalue prop op value tag)
-                                 ("([-+&]?)(?:\\{([^}]*)\\}|LEVEL(<>|<=|>=|=|<|>)(\\d+)|([\\w-]+)(<>|<=|>=|=|<|>)(\\{[^}]*\\}|\"[^\"]*\"|-?[.\\d]+)|([\\w@#%]+))" group)
-                               (push (list (string= sign "-") regex lop lvalue prop op value tag) terms))
-                             (nreverse terms)))
-                         (cl-ppcre:split "\\|" tags-part)))
+         (groups (and (plusp (length tags-part))
+                      (mapcar (lambda (group) (org-match-terms group untrusted)) (org-match-split tags-part #\|))))
          (todo-only-not-done (and todo-part (uiop:string-prefix-p "!" todo-part)))
-         (todo-words (and todo-part (cl-ppcre:split "\\|" (string-left-trim "!" todo-part)))))
+         (todo-words (and todo-part (remove "" (cl-ppcre:split "\\|" (string-left-trim "!" todo-part))
+                                            :test #'string=)))
+         (positive (remove-if (lambda (w) (uiop:string-prefix-p "-" w)) todo-words))
+         (negative (mapcar (lambda (w) (subseq w 1))
+                           (remove-if-not (lambda (w) (uiop:string-prefix-p "-" w)) todo-words))))
     (lambda (entry)
-      (and (or (every (lambda (group) (null group)) groups)
-               (some (lambda (terms)
-                       (and terms
-                            (every (lambda (term)
-                                     (destructuring-bind (negate regex lop lvalue prop op value tag) term
-                                       (let ((hit (cond (regex (let ((scanner (org-match-scanner regex)))
-                                                                 (and scanner
-                                                                      (some (lambda (t1) (cl-ppcre:scan scanner t1))
-                                                                            (agenda-entry-tags entry)))))
-                                                        (lop (org-match-compare lop (princ-to-string (agenda-entry-level entry)) lvalue))
-                                                        (prop (org-match-compare op (agenda-entry-property-value entry prop) value))
-                                                        (t (member tag (agenda-entry-tags entry) :test #'string=)))))
-                                         (if negate (not hit) hit))))
-                                   terms)))
+      (and (or (null groups)
+               (some (lambda (terms) (and terms (every (lambda (term) (org-match-term-p term entry)) terms)))
                      groups))
            (or (null todo-part)
-               (and (agenda-entry-todo entry)
-                    (or (not todo-only-not-done) (eq (agenda-entry-todo-type entry) 'todo))
-                    (or (null (remove "" todo-words :test #'string=))
-                        (let ((positive (remove-if (lambda (w) (uiop:string-prefix-p "-" w))
-                                                   (remove "" todo-words :test #'string=)))
-                              (negative (mapcar (lambda (w) (subseq w 1))
-                                                (remove-if-not (lambda (w) (uiop:string-prefix-p "-" w)) todo-words))))
-                          (and (or (null positive) (member (agenda-entry-todo entry) positive :test #'string=))
-                               (not (member (agenda-entry-todo entry) negative :test #'string=)))))))))))
+               (let ((todo (agenda-entry-todo entry)))
+                 (and todo
+                      (or (not todo-only-not-done) (eq (agenda-entry-todo-type entry) 'todo))
+                      (or (null positive) (member todo positive :test #'string=))
+                      (not (member todo negative :test #'string=)))))))))
 
 (defun org-entry-date-problem (entry)
   "What looks wrong with the dates of ENTRY, as two values, a short kind and the
@@ -1224,7 +1404,9 @@ is until it is done."
            (values "No repeat:"
                    "times of it done, moved or cancelled one at a time, but none of its dates repeats any more"))
           ((and task plain (not planned))
-           (values "Plain date:" "a task with a date in its text alone, listed as an event: SCHEDULED: would carry it on until done")))))
+           (values "Plain date:"
+                   (concatenate 'string "a task with a date in its text alone, listed as an event: "
+                                "SCHEDULED: would carry it on until done"))))))
 
 (defun org-agenda-date-check (&key (files (org-agenda-file-paths)))
   "The entries of FILES whose dates look wrong (ORG-ENTRY-DATE-PROBLEM), as
@@ -1234,12 +1416,10 @@ of what is wrong, and the title with the words saying it."
         append (loop for entry in (org-agenda-entries path)
                      append (multiple-value-bind (kind words) (org-entry-date-problem entry)
                               (and kind
-                                   (list (make-org-agenda-item :type "check" :extra (format nil "~11a" kind) :entry entry
-                                                               :title (format nil
-                                                                              "~@[~a ~]~a — ~a"
-                                                                              (agenda-entry-todo entry)
-                                                                              (agenda-entry-title entry) words)
-                                                               :urgency nil)))))))
+                                   (list (make-org-agenda-item
+                                          :type "check" :extra (format nil "~11a" kind) :entry entry :urgency nil
+                                          :title (format nil "~@[~a ~]~a — ~a" (agenda-entry-todo entry)
+                                                         (agenda-entry-title entry) words))))))))
 
 (defun org-agenda-match (match &key todo-only (files (org-agenda-file-paths)))
   "The entries of FILES MATCH (an Org match: work+urgent-home) selects, in the
@@ -1252,26 +1432,3 @@ not done."
                                  (funcall predicate entry))
                          collect (make-org-agenda-item :type "tagsmatch" :extra "" :entry entry
                                                        :title (agenda-entry-title entry) :urgency nil)))))
-
-(setf (documentation 'agenda-entry-file 'function) "The path of the file an agenda entry is in."
-      (documentation 'agenda-entry-text 'function) "The whole text of the file an agenda entry is in, as it was read."
-      (documentation 'agenda-entry-position 'function)
-      "The character of its file's text an agenda entry's headline begins at."
-      (documentation 'agenda-entry-end 'function)
-      "The character of its file's text an agenda entry's own text ends at, its headlines below it left out."
-      (documentation 'agenda-entry-level 'function) "How many stars an agenda entry's headline has."
-      (documentation 'agenda-entry-todo 'function) "An agenda entry's TODO keyword, or NIL."
-      (documentation 'agenda-entry-todo-type 'function) "TODO or DONE for an agenda entry's keyword, NIL for none."
-      (documentation 'agenda-entry-title 'function)
-      "An agenda entry's title: its headline without its stars, keyword, priority and tags."
-      (documentation 'agenda-entry-heading 'function) "An agenda entry's headline after its stars, as written."
-      (documentation 'agenda-entry-tags 'function) "An agenda entry's tags, those it inherits first."
-      (documentation 'agenda-entry-local-tags 'function) "An agenda entry's own tags, on its headline."
-      (documentation 'agenda-entry-scheduled 'function) "An agenda entry's SCHEDULED timestamp, its text, or NIL."
-      (documentation 'agenda-entry-deadline 'function) "An agenda entry's DEADLINE timestamp, its text, or NIL."
-      (documentation 'agenda-entry-closed 'function) "An agenda entry's CLOSED timestamp, its text, or NIL."
-      (documentation 'agenda-entry-properties 'function) "An agenda entry's properties, an alist of names and values."
-      (documentation 'agenda-entry-stamps 'function)
-      "An agenda entry's active timestamps in its text, not its planning line's, as texts."
-      (documentation 'agenda-entry-ranges 'function)
-      "An agenda entry's ranges of days in its text, each (FROM TO), the two timestamps' texts.")

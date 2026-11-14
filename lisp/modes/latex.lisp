@@ -28,22 +28,36 @@ environments a buffer uses.")
 percent sign, a comment, or \\begin{NAME} and \\end{NAME} (the word and the
 name as groups).")
 
+(defparameter *latex-skipped-environments* '("verbatim" "verbatim*" "lstlisting" "minted" "comment" "Verbatim")
+  "The environments of a LaTeX file whose text is never read for formulas or for
+environments.")
+
 (defun latex-environment-marks (buffer start end)
   "The \\begin and \\end commands of BUFFER between octets START and END, outside
-comments, as a list of (BEGINNING OCTET NAME) in text order: BEGINNING true
-for \\begin, OCTET where the command starts. START is the start of a line."
+comments and the text of verbatim environments (*LATEX-SKIPPED-ENVIRONMENTS*),
+as a list of (BEGINNING OCTET NAME) in text order: BEGINNING true for \\begin,
+OCTET where the command starts. START is the start of a line. A verbatim
+environment that ends before END is left out whole; one that does not end
+there is given as open, and what follows it is not read."
   (let ((text (tuatara.buffer:buffer-string buffer :start start :end end))
         (marks '()) (at 0) (octet start) (counted 0))
     (loop
       (multiple-value-bind (match-start match-end starts ends)
           (cl-ppcre:scan *latex-environment-scanner* text :start at)
         (unless match-start (return))
+        (setf at (max match-end (1+ match-start)))
         (when (aref starts 0)
-          (incf octet (length (tuatara.text:string-octets (subseq text counted match-start))))
-          (setf counted match-start)
-          (push (list (char= #\b (char text (aref starts 0))) octet (subseq text (aref starts 1) (aref ends 1)))
-                marks))
-        (setf at (max match-end (1+ match-start)))))
+          (let* ((beginning (char= #\b (char text (aref starts 0))))
+                 (name (subseq text (aref starts 1) (aref ends 1)))
+                 (verbatim (and beginning (member name *latex-skipped-environments* :test #'string=)))
+                 (closing (and verbatim (search (format nil "\\end{~a}" name) text :start2 match-end))))
+            (cond ((and verbatim closing)
+                   (setf at (+ closing (length name) 6)))
+                  (t
+                   (incf octet (length (tuatara.text:string-octets (subseq text counted match-start))))
+                   (setf counted match-start)
+                   (push (list beginning octet name) marks)
+                   (when verbatim (return))))))))
     (nreverse marks)))
 
 (defun latex-open-environment (buffer position)
@@ -79,14 +93,13 @@ as two values; NIL when each one is closed. Refused when none is found within
             do (incf (cdr (or (assoc name counts :test #'string=) (car (push (cons name 0) counts))))))
     (mapcar #'car (stable-sort (nreverse counts) #'> :key #'cdr))))
 
-(defun latex-put-lines (buffer lines)
+(defun insert-lines-alone (buffer lines)
   "Put LINES, strings, in BUFFER at point each on a line of its own and return
 the octet where the first starts and the octet after the last. On a line
 holding only blanks they replace the blanks; elsewhere the line is split at
 point, so that no text of it shares a line with them. Point is left after them."
   (flet ((text-between-p (start end)
-           (find-if-not (lambda (char) (member char '(#\Space #\Tab)))
-                        (tuatara.buffer:buffer-string buffer :start start :end end))))
+           (not (tuatara.text:blank-text-p (tuatara.buffer:buffer-string buffer :start start :end end)))))
     (let* ((point (tuatara.buffer:buffer-point buffer))
            (line-start (tuatara.buffer:buffer-line-start buffer point))
            (line-end (tuatara.buffer:buffer-line-end buffer point))
@@ -160,7 +173,7 @@ still open is closed by \\[latex-close-environment]."
          (end (format nil "\\end{~a}" name)))
     (if (tuatara.buffer:buffer-mark-active-p b)
         (latex-wrap-region b begin end)
-        (multiple-value-bind (first stop) (latex-put-lines b (list begin "" end))
+        (multiple-value-bind (first stop) (insert-lines-alone b (list begin "" end))
           (let ((line (tuatara.buffer:buffer-line-number b first)))
             (indent-lines b first stop :blank-lines t)
             (goto (tuatara.buffer:buffer-line-end b (tuatara.buffer:buffer-goto-line b (1+ line)))))))))
@@ -168,15 +181,15 @@ still open is closed by \\[latex-close-environment]."
 (define-command latex-close-environment ()
   "Write \\end{NAME} for the nearest \\begin{NAME} before point that no
 \\end{NAME} closes yet, on a line of its own when the line has text, indented
-as that \\begin is. Comments do not count. It says so when every environment
-before point is closed. \\<latex-mode>\\[latex-close-environment] in LaTeX
+as that \\begin is. Comments and the text of verbatim environments do not count.
+It says so when every environment before point is closed. \\<latex-mode>\\[latex-close-environment] in LaTeX
 buffers; \\[latex-insert-environment] opens one."
   (let ((b (current-buffer)))
     (multiple-value-bind (name octet) (latex-open-environment b (tuatara.buffer:buffer-point b))
       (unless name (refuse "Every environment before point is closed"))
       (let* ((line (tuatara.buffer:buffer-line-start b octet))
              (indent (tuatara.buffer:buffer-string b :start line :end (+ line (line-indentation b line)))))
-        (latex-put-lines b (list (format nil "~a\\end{~a}" indent name)))))))
+        (insert-lines-alone b (list (format nil "~a\\end{~a}" indent name)))))))
 
 (defun install-latex ()
   "Give LaTeX buffers their keys: \\`C-c C-e' opens an environment and \\`C-c ]'
@@ -193,9 +206,6 @@ closes the open one; their commands work there alone."
     "alignat" "alignat*" "eqnarray" "eqnarray*" "displaymath" "math")
   "The environments of a LaTeX file shown as pictures, as formulas
 \(\\[inline-pictures-mode]).")
-
-(defparameter *latex-skipped-environments* '("verbatim" "verbatim*" "lstlisting" "minted" "comment" "Verbatim")
-  "The environments of a LaTeX file whose text is never read for formulas.")
 
 (defparameter *latex-paragraph-reach* 65536
   "The most octets before and after a stretch of a LaTeX file looked through
@@ -223,6 +233,11 @@ while the text is unchanged."
                                (and body (string-trim '(#\Newline) (subseq text (min after-class body) body))))))))
     (values (second kept) (third kept))))
 
+(defun text-at-p (text position prefix)
+  "True when TEXT holds the string PREFIX at POSITION."
+  (let ((end (+ position (length prefix))))
+    (and (<= end (length text)) (string= prefix text :start2 position :end2 end))))
+
 (defun latex-formula-end (text from close)
   "Where the formula of TEXT that begins at FROM ends, after its CLOSE (a
 delimiter, or \\end{NAME}), its escaped characters and comments stepped
@@ -233,14 +248,40 @@ over; NIL when it does not end in TEXT."
              (cond ((and (char= c #\\) (< (1+ i) (length text)) (find (char text (1+ i)) "\\%$"))
                     (if (and (string= close "$") (char= (char text (1+ i)) #\$))
                         (incf i 2)
-                        (if (string= close (subseq text i (min (length text) (+ i (length close)))))
+                        (if (text-at-p text i close)
                             (return (+ i (length close)))
                             (incf i 2))))
                    ((char= c #\%)
                     (setf i (or (position #\Newline text :start i) (length text))))
-                   ((string= close (subseq text i (min (length text) (+ i (length close)))))
+                   ((text-at-p text i close)
                     (return (+ i (length close))))
                    (t (incf i))))))
+
+(defparameter *latex-opener-scanner*
+  (cl-ppcre:create-scanner "\\\\[\\\\%$]|%|\\$\\$?|\\\\[\\[(]|\\\\begin\\{([^}]*)\\}")
+  "Matches what the search for formulas stops at: an escaped backslash, percent
+sign or dollar, a comment, $ or $$, \\[ or \\(, and \\begin{NAME} (the name as
+group).")
+
+(defun latex-opener (text start end name-start name-end)
+  "What the match of *LATEX-OPENER-SCANNER* in TEXT from START to END begins, as
+two values: how many characters its opener takes and what closes it, as
+LATEX-FORMULA-END takes it; :COMMENT or :SKIP in place of the number for a
+comment, or an environment whose text is not read (*LATEX-SKIPPED-ENVIRONMENTS*);
+NIL for no formula, and the place to go on from as a third value."
+  (let ((name (and name-start (subseq text name-start name-end))))
+    (case (char text start)
+      (#\% (values :comment nil))
+      (#\$ (if (= 2 (- end start)) (values 2 "$$") (values 1 "$")))
+      (t (case (char text (1+ start))
+           (#\[ (values 2 "\\]"))
+           (#\( (values 2 "\\)"))
+           (#\b (cond ((member name *latex-math-environments* :test #'string=)
+                       (values (- end start) (format nil "\\end{~a}" name)))
+                      ((member name *latex-skipped-environments* :test #'string=)
+                       (values :skip (format nil "\\end{~a}" name)))
+                      (t (values nil nil (+ start 2)))))
+           (t (values nil nil end)))))))
 
 (defun latex-formulas (buffer start end)
   "The formulas BUFFER, a LaTeX file, shows as pictures among its lines (an
@@ -262,7 +303,9 @@ line."
         (let* ((head-start (tuatara.buffer:buffer-line-start buffer (max body (- from *latex-paragraph-reach*))))
                (head (tuatara.buffer:buffer-string buffer :start head-start :end from))
                (blank (cl-ppcre:all-matches "\\n[ \\t]*\\n" head))
-               (top (if blank (- from (tuatara.text:string-octet-length head :start (second (last blank 2)))) head-start))
+               (top (if blank
+                        (- from (tuatara.text:string-octet-length head :start (second (last blank 2))))
+                        head-start))
                ;; read to the end of END's line, then on to the end of its paragraph
                (middle (tuatara.buffer:buffer-line-end buffer (min end size)))
                (part (tuatara.buffer:buffer-string buffer :start top :end middle))
@@ -274,50 +317,43 @@ line."
                    ;; octets counted on from the last place asked, in order
                    (incf octet (tuatara.text:string-octet-length text :start char :end i))
                    (setf char i)
-                   octet)
-                 (blank-p (from below) (every (lambda (c) (member c '(#\Space #\Tab))) (subseq text from below))))
+                   octet))
             (loop with i = 0
                   while (< i stop)
-                  do (let ((c (char text i)))
-                       (multiple-value-bind (open close)
-                           (cond ((and (char= c #\\) (< (1+ i) (length text)) (find (char text (1+ i)) "\\%$"))
-                                  nil)
-                                 ((char= c #\%) (values :comment nil))
-                                 ((uiop:string-prefix-p "$$" (subseq text i (min (length text) (+ i 2)))) (values 2 "$$"))
-                                 ((char= c #\$) (values 1 "$"))
-                                 ((uiop:string-prefix-p "\\[" (subseq text i (min (length text) (+ i 2)))) (values 2 "\\]"))
-                                 ((uiop:string-prefix-p "\\(" (subseq text i (min (length text) (+ i 2)))) (values 2 "\\)"))
-                                 ((uiop:string-prefix-p "\\begin{" (subseq text i (min (length text) (+ i 7))))
-                                  (let* ((name-end (position #\} text :start i))
-                                         (name (and name-end (subseq text (+ i 7) name-end))))
-                                    (cond ((member name *latex-math-environments* :test #'string=)
-                                           (values (- (1+ name-end) i) (format nil "\\end{~a}" name)))
-                                          ((member name *latex-skipped-environments* :test #'string=)
-                                           (values :skip (format nil "\\end{~a}" name)))))))
+                  do (multiple-value-bind (match-start match-end starts ends)
+                         (cl-ppcre:scan *latex-opener-scanner* text :start i :end stop)
+                       (unless match-start (return))
+                       (multiple-value-bind (open close go-on)
+                           (latex-opener text match-start match-end
+                                         (and starts (aref starts 0)) (and ends (aref ends 0)))
+                         (setf i (or go-on match-end))
                          (cond ((eq open :comment)
-                                (setf i (or (position #\Newline text :start i) (length text))))
+                                (setf i (or (position #\Newline text :start match-start) (length text))))
                                ((eq open :skip)
-                                (setf i (or (let ((at (search close text :start2 i))) (and at (+ at (length close))))
+                                (setf i (or (let ((at (search close text :start2 match-start)))
+                                              (and at (+ at (length close))))
                                             (length text))))
                                (open
-                                (let* ((after (latex-formula-end text (+ i open) close))
-                                       (blank (cl-ppcre:scan "\\n[ \\t]*\\n" text :start i :end (or after (length text)))))
+                                (let* ((after (latex-formula-end text (+ match-start open) close))
+                                       (blank (cl-ppcre:scan "\\n[ \\t]*\\n" text :start match-start
+                                                                                  :end (or after (length text)))))
                                   (if (or (null after) blank)
-                                      (incf i open)
-                                      (let* ((line (1+ (or (position #\Newline text :end i :from-end t) -1)))
+                                      (setf i (+ match-start open))
+                                      (let* ((line (1+ (or (position #\Newline text :end match-start :from-end t) -1)))
                                              (line-end (or (position #\Newline text :start after) (length text)))
                                              (display (and (not (string= close "$")) (not (string= close "\\)"))
-                                                           (blank-p line i) (blank-p after line-end)))
-                                             (begin (if display line i))
+                                                           (tuatara.text:blank-text-p text line match-start)
+                                                           (tuatara.text:blank-text-p text after line-end)))
+                                             (begin (if display line match-start))
                                              (begin-octet (byte-at begin)))
                                         (when (and (<= start begin-octet) (< begin-octet end))
                                           (push (make-inline-picture
                                                  begin-octet (byte-at (if display line-end after))
-                                                 (make-formula (subseq text i after) preamble :inline (not display))
+                                                 (make-formula (subseq text match-start after) preamble
+                                                               :inline (not display))
                                                  :align (if display :center :left))
                                                 found))
-                                        (setf i after)))))
-                               (t (setf i (if (char= c #\\) (+ i 2) (1+ i)))))))))))
+                                        (setf i after))))))))))))
       (values (nreverse found) t))))
 
 (defmethod mode-enter ((mode latex-mode) buffer)

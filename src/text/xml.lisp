@@ -239,37 +239,52 @@ XML has no place for (a control character, a raw byte's) as U+FFFD."
 (defun xml-elements (xml name &key (start 0) (end (length xml)) count)
   "The elements of XML from START below END called NAME (w:p), as (BEGIN .
 END) of each, the outermost only, in order, no more than COUNT of them when
-it is given; one cut short at the end left out."
-  (let ((found '()) (taken 0) (open (format nil "<~a" name)) (close (format nil "</~a>" name)) (p start))
-    (flet ((name-ends-at (i) (and (< i (length xml)) (find (char xml i) '(#\Space #\> #\/ #\Newline #\Tab)))))
+it is given; one cut short at the end left out. XML nesting NAME deeper than
+*XML-DEEPEST*, or holding more than *XML-MOST-ELEMENTS* of them, is refused,
+as XML-PARSE refuses it. Each part of XML is read once."
+  (let ((found '()) (taken 0) (seen 0) (counted -1) (p start)
+        (open (format nil "<~a" name)) (close (format nil "</~a>" name)))
+    (labels ((name-ends-at (i)
+               (and (< i (length xml)) (find (char xml i) '(#\Space #\> #\/ #\Newline #\Tab))))
+             (open-from (q)
+               ;; the next opening tag of NAME from Q, each counted once against the most allowed
+               (loop for s = (search open xml :start2 q :end2 end) then (search open xml :start2 (1+ s) :end2 end)
+                     while (and s (not (name-ends-at (+ s (length open)))))
+                     finally (when (and s (> s counted))
+                               (setf counted s)
+                               (when (> (incf seen) *xml-most-elements*)
+                                 (error "XML of more than ~:d elements" *xml-most-elements*)))
+                             (return s))))
       (loop
         (when (and count (>= taken count)) (return))
-        (let ((at (search open xml :start2 p :end2 end)))
+        (let ((at (open-from p)))
           (unless at (return))
-          (if (not (name-ends-at (+ at (length open))))
-              (setf p (1+ at))
-              (let ((tag-end (xml-tag-end xml at)))
-                (cond
-                  ((null tag-end) (return))
-                  ((char= (char xml (1- tag-end)) #\/)
-                   (push (cons at (1+ tag-end)) found) (incf taken) (setf p (1+ tag-end)))
-                  ;; to the close that matches, nested ones of the same name counted
-                  (t
-                   (let ((depth 1) (q (1+ tag-end)))
-                     (loop while (plusp depth)
-                           do (let ((next-open (loop for s = (search open xml :start2 q :end2 end) then (search open xml :start2 (1+ s) :end2 end)
-                                                     while (and s (not (name-ends-at (+ s (length open)))))
-                                                     finally (return s)))
-                                    (next-close (search close xml :start2 q :end2 end)))
-                                (cond ((null next-close) (return-from xml-elements (nreverse found)))
-                                      ((and next-open (< next-open next-close))
-                                       (let ((e (xml-tag-end xml next-open)))
-                                         (unless e (return-from xml-elements (nreverse found)))
-                                         (unless (char= (char xml (1- e)) #\/) (incf depth))
-                                         (setf q (1+ e))))
-                                      (t (decf depth) (setf q (+ next-close (length close)))))))
-                     (push (cons at q) found) (incf taken)
-                     (setf p q)))))))))
+          (let ((tag-end (xml-tag-end xml at)))
+            (cond
+              ((null tag-end) (return))
+              ((char= (char xml (1- tag-end)) #\/)
+               (push (cons at (1+ tag-end)) found) (incf taken) (setf p (1+ tag-end)))
+              ;; to the close that matches, nested ones of the same name counted; the next
+              ;; opening and closing tags are each looked for again only once passed
+              (t
+               (let* ((depth 1) (q (1+ tag-end)) (next-open (open-from q))
+                      (next-close (search close xml :start2 q :end2 end)))
+                 (loop while (plusp depth)
+                       do (cond ((null next-close) (return-from xml-elements (nreverse found)))
+                                ((and next-open (< next-open next-close))
+                                 (let ((e (xml-tag-end xml next-open)))
+                                   (unless e (return-from xml-elements (nreverse found)))
+                                   (unless (char= (char xml (1- e)) #\/)
+                                     (when (>= (incf depth) *xml-deepest*)
+                                       (error "XML nested deeper than ~d elements" *xml-deepest*)))
+                                   (setf q (1+ e) next-open (open-from q))
+                                   (when (< next-close q) (setf next-close (search close xml :start2 q :end2 end)))))
+                                (t (decf depth)
+                                   (setf q (+ next-close (length close))
+                                         next-close (search close xml :start2 q :end2 end))
+                                   (when (and next-open (< next-open q)) (setf next-open (open-from q))))))
+                 (push (cons at q) found) (incf taken)
+                 (setf p q))))))))
     (nreverse found)))
 
 (defun xml-element (xml name &key (start 0) (end (length xml)))

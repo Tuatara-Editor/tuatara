@@ -73,9 +73,9 @@ for one of Tuatara's grammars are said as they are taken."
                         (abbreviated-path (namestring (tuatara.syntax:user-grammar-directory)))))
         text)))
 
-(defstruct (language (:constructor make-language (name doc grammar modes rules indents indent textobjects
-                                                  injections injection-names locals definitions tags))
-                     (:copier nil))
+(define-record (language (:constructor make-language (name doc grammar modes rules indents indent textobjects
+                                                     injections injection-names locals definitions tags))
+                        (:copier nil))
   "A language, of code or of text. NAME is a symbol such as RUST. DOC is its
 documentation string. GRAMMAR is the name of the grammar file it is parsed with.
 MODES are the modes that edit it. RULES is the text of its colouring rules.
@@ -87,74 +87,56 @@ level, and INDENT-QUERY those rules compiled when first needed. TEXTOBJECTS is
 the text of the rules for selecting its functions, types, parameters and
 comments, with TEXTOBJECT-QUERY, those compiled when first needed. INJECTIONS is
 its rules for text in other languages, with INJECTION-QUERY. INJECTION-NAMES is
-a regular expression for the names other languages' rules call it by. LOCALS is
+a regular expression for the names other languages' rules call it by, with
+INJECTION-SCANNER, that expression compiled. LOCALS is
 its rules for local names, with LOCALS-QUERY. DEFINITIONS is the rules naming
 what \\[beginning-of-defun] and \\[end-of-defun] move between, with
 DEFINITIONS-QUERY. TAGS is the rules naming its definitions and headings for
 \\[buffer-outline], with TAGS-QUERY."
-  (name nil :read-only t)
-  (doc "" :read-only t)
-  (grammar "" :read-only t)
-  (modes '() :read-only t)
-  (rules nil :read-only t)
-  (style nil)
-  (level nil)
-  (query nil)
-  (indents nil :read-only t)
-  (indent 4)
-  (indent-query nil)
-  (textobjects nil :read-only t)
-  (textobject-query nil)
-  (injections nil :read-only t)
-  (injection-names nil :read-only t)
-  (injection-query nil)
-  (locals nil :read-only t)
-  (locals-query nil)
-  (definitions nil :read-only t)
-  (definitions-query nil)
-  (tags nil :read-only t)
-  (tags-query nil))
+  (name nil :read-only t :documentation "The language's name, a symbol.")
+  (doc "" :read-only t :documentation "What the language is.")
+  (grammar "" :read-only t :documentation "The name of the grammar the language is parsed with.")
+  (modes '() :read-only t :documentation "The major modes that edit the language.")
+  (rules nil :read-only t :documentation "The text of the language's colouring rules, or NIL.")
+  (style nil
+         :documentation "How the language is set to be coloured: :RICH, :SPARSE, :NONE, or NIL for as its modes are.")
+  (level nil
+         :documentation "How much the sparse style is set to colour, from 1 (least) to 4 (all, as rich), or NIL for 3.")
+  (query nil :documentation "The compiled colouring rules, :FAILED, or NIL before they are needed.")
+  (indents nil :read-only t :documentation "The text of the language's indentation rules, or NIL.")
+  (indent 4 :documentation "The columns of one level of indentation.")
+  (indent-query nil :documentation "The compiled indentation rules, :FAILED, or NIL before they are needed.")
+  (textobjects nil :read-only t
+               :documentation "The text of the rules for selecting the language's
+functions, types, parameters and comments, or NIL.")
+  (textobject-query nil :documentation "Those rules compiled, :FAILED, or NIL before they are needed.")
+  (injections nil :read-only t :documentation "The text of the language's rules for text in other languages, or NIL.")
+  (injection-names nil :read-only t
+                   :documentation "A regular expression for the names other languages' rules call this one by, or NIL.")
+  (injection-scanner nil
+                     :documentation "The scanner for the injection names, matching a whole name in any case, or NIL.")
+  (injection-query nil
+                   :documentation "The rules for text in other languages compiled,
+:FAILED, or NIL before they are needed.")
+  (locals nil :read-only t :documentation "The text of the language's rules for local names, or NIL.")
+  (locals-query nil :documentation "The rules for local names compiled, :FAILED, or NIL before they are needed.")
+  (definitions nil :read-only t
+               :documentation "The text of the rules naming the language's
+definitions, each captured as @definition, or NIL.")
+  (definitions-query nil :documentation "Those rules compiled, :FAILED, or NIL before they are needed.")
+  (tags nil :read-only t :documentation "The text of the rules naming the language's definitions and headings, or NIL.")
+  (tags-query nil
+              :documentation "The rules naming definitions and headings compiled,
+:FAILED, or NIL before they are needed."))
 
-(setf (documentation 'make-language 'function) "A LANGUAGE from its parts; see DEFINE-LANGUAGE."
-      (documentation 'language-p 'function) "True when OBJECT is a LANGUAGE."
-      (documentation 'language-name 'function) "The language's name, a symbol."
-      (documentation 'language-doc 'function) "What the language is."
-      (documentation 'language-grammar 'function) "The name of the grammar the language is parsed with."
-      (documentation 'language-modes 'function) "The major modes that edit the language."
-      (documentation 'language-rules 'function) "The text of the language's colouring rules, or NIL."
-      (documentation 'language-style 'function)
-      "How the language is set to be coloured: :RICH, :SPARSE, :NONE, or NIL for as its modes are."
-      (documentation 'language-level 'function)
-      "How much the sparse style is set to colour, from 1 (least) to 4 (all, as rich), or NIL for 3."
-      (documentation 'language-query 'function) "The compiled colouring rules, :FAILED, or NIL before they are needed."
-      (documentation 'language-indents 'function) "The text of the language's indentation rules, or NIL."
-      (documentation 'language-indent 'function) "The columns of one level of indentation."
-      (documentation 'language-indent-query 'function)
-      "The compiled indentation rules, :FAILED, or NIL before they are needed."
-      (documentation 'language-textobjects 'function)
-      "The text of the rules for selecting the language's functions, types, parameters and comments, or NIL."
-      (documentation 'language-textobject-query 'function)
-      "Those rules compiled, :FAILED, or NIL before they are needed."
-      (documentation 'language-injections 'function)
-      "The text of the language's rules for text in other languages, or NIL."
-      (documentation 'language-injection-names 'function)
-      "A regular expression for the names other languages' rules call this one by, or NIL."
-      (documentation 'language-injection-query 'function)
-      "The rules for text in other languages compiled, :FAILED, or NIL before they are needed."
-      (documentation 'language-locals 'function) "The text of the language's rules for local names, or NIL."
-      (documentation 'language-locals-query 'function)
-      "The rules for local names compiled, :FAILED, or NIL before they are needed."
-      (documentation 'language-definitions 'function)
-      "The text of the rules naming the language's definitions, each captured as @definition, or NIL."
-      (documentation 'language-definitions-query 'function)
-      "Those rules compiled, :FAILED, or NIL before they are needed."
-      (documentation 'language-tags 'function)
-      "The text of the rules naming the language's definitions and headings, or NIL."
-      (documentation 'language-tags-query 'function)
-      "The rules naming definitions and headings compiled, :FAILED, or NIL before they are needed.")
+(setf (documentation 'make-language 'function) "A LANGUAGE from its parts; see DEFINE-LANGUAGE.")
 
 (defvar *languages* '()
   "Every language, the most recently defined first.")
+
+(defparameter *injection-languages-kept* 1000
+  "How many names for languages in other languages' text are remembered
+(*INJECTION-LANGUAGES*) before they are forgotten and looked up again.")
 
 (defvar *injection-languages* (make-hash-table :test 'equalp :synchronized t)
   "The language each name that rules for text in other languages have used
@@ -197,21 +179,26 @@ against one meaning to, as a package runs Lisp with all the rights Tuatara has."
       (message "~(~a~) is one of Tuatara's own languages: a package or an init file adds languages, it does not replace them (~(~a~) left as it is)"
                name name)
       (return-from register-language nil)))
-  (when injection-names
-    (handler-case (reporting-errors ("reading the injection names of ~(~a~)" name)
-                    (cl-ppcre:create-scanner (format nil "^(?i)(~a)$" injection-names)))
-      (error (e)
-        (refuse "The injection names of ~(~a~), ~s, are not a regular expression: ~a" name injection-names e))))
-  (let* ((old (find-language name))
+  (let* ((injection-scanner
+           (and injection-names
+                (handler-case (reporting-errors ("reading the injection names of ~(~a~)" name)
+                                (cl-ppcre:create-scanner (format nil "^(?i)(~a)$" injection-names)))
+                  (error (e)
+                    (refuse "The injection names of ~(~a~), ~s, are not a regular expression: ~a"
+                            name injection-names e)))))
+         (old (find-language name))
          (queries (or queries grammar))
          (textobjects (let ((read (read-kind-query "textobjects" queries)))
                         (if (and read more-textobjects)
                             (format nil "~a~%~a" read more-textobjects)
                             (or read more-textobjects))))
          (definitions (if (eq definitions :textobjects) (textobject-definitions textobjects) definitions))
-         (language (make-language name doc grammar modes (read-kind-query "rules" queries) (read-kind-query "indents" queries)
+         (language (make-language name doc grammar modes
+                                  (read-kind-query "rules" queries) (read-kind-query "indents" queries)
                                   indent textobjects (read-kind-query "injections" queries) injection-names
-                                  (read-kind-query "locals" queries) definitions (read-kind-query "tags" queries))))
+                                  (read-kind-query "locals" queries) definitions
+                                  (read-kind-query "tags" queries))))
+    (setf (language-injection-scanner language) injection-scanner)
     (when old
       (setf (language-style language) (language-style old)
             (language-level language) (language-level old)))
@@ -695,12 +682,15 @@ editor has none."
                 (or (find-if (lambda (l) (string-equal name (symbol-name (language-name l)))) *languages*)
                     ;; a grammar's own language before another that borrows it (Bash's, not .env files')
                     (let ((users (remove-if-not (lambda (l) (string-equal name (language-grammar l))) *languages*)))
-                      (or (find-if (lambda (l) (string-equal (language-grammar l) (symbol-name (language-name l)))) users)
+                      (or (find-if (lambda (l) (string-equal (language-grammar l) (symbol-name (language-name l))))
+                                   users)
                           (first users)))
-                    (find-if (lambda (l) (let ((names (language-injection-names l)))
-                                           (and names (ignoring-errors-reported ("matching injection names ~s" names)
-                                                        (cl-ppcre:scan (format nil "^(?i)(~a)$" names) name)))))
+                    (find-if (lambda (l)
+                               (let ((scanner (language-injection-scanner l)))
+                                 (and scanner (cl-ppcre:scan scanner name))))
                              *languages*)))))
+          (when (>= (hash-table-count *injection-languages*) *injection-languages-kept*)
+            (clrhash *injection-languages*))
           (setf (gethash name *injection-languages*) (or language :none))
           language))))
 
@@ -776,10 +766,10 @@ buffer; the style each starts in is set in the init file with set-colouring."
 left alone be parsed afresh (SYNTAX-REFRESH-TICK)."
   ;; the helpers all share started now, in the background: the first start
   ;; looks for the sandbox, which may take a moment
-  (sb-thread:make-thread (lambda ()
-                           (ignoring-errors-reported ("starting the syntax helpers")
-                             (tuatara.syntax:kept-helper :rules) (tuatara.syntax:kept-helper :shared)))
-                         :name "syntax helpers starting")
+  (tuatara.runtime:make-guarded-thread (lambda ()
+                                         (ignoring-errors-reported ("starting the syntax helpers")
+                                           (tuatara.syntax:kept-helper :rules) (tuatara.syntax:kept-helper :shared)))
+                                       :name "syntax helpers starting")
   (pushnew 'syntax-refresh-tick *tick-functions*))
 
 (defun syntax-refresh-tick (editor)
@@ -788,37 +778,37 @@ left alone long enough since parses after its edits
 (TUATARA.SYNTAX:REFRESH-SYNTAX). Asks to be called when the next one is due,
 or when rules not answered for may be asked for again (*RULES-UNANSWERED*)."
   (declare (ignore editor))
-  (let ((soonest nil))
-    ;; a buffer whose grammar was not to be had yet, its loader starting
-    (dolist (buffer tuatara.buffer:*buffers*)
-      (let ((language (tuatara.buffer:buffer-local buffer :syntax-pending))
-            (next (or (tuatara.buffer:buffer-local buffer :syntax-pending-next) 0))
-            (now (get-internal-real-time)))
-        (when (and language (null (tuatara.syntax:buffer-syntax buffer)))
-          (if (< now next)
-              (setf soonest (/ (- next now) internal-time-units-per-second))
-              (let ((tries (setf (tuatara.buffer:buffer-local buffer :syntax-pending-tries)
-                                 (1+ (or (tuatara.buffer:buffer-local buffer :syntax-pending-tries) 0)))))
-                (start-parsing buffer language)
-                ;; tried less and less often while the grammar cannot be had yet
-                (when (tuatara.buffer:buffer-local buffer :syntax-pending)
-                  (let ((wait (min 10 (* 0.2 (expt 2 (min tries 6))))))
-                    (setf (tuatara.buffer:buffer-local buffer :syntax-pending-next)
-                          (+ now (round (* wait internal-time-units-per-second)))
-                          soonest (min (or soonest wait) wait)))))))))
-    ;; rules the program compiling them did not answer for: the screen drawn
-    ;; again, and they asked for again, once their wait is over
-    (sb-ext:with-locked-hash-table (*rules-unanswered*)
-      (maphash (lambda (language entry)
-                 (declare (ignore language))
-                 (let ((wait (/ (- (first entry) (get-internal-real-time)) internal-time-units-per-second)))
-                   (when (plusp wait)
-                     (setf soonest (if soonest (min soonest wait) wait)))))
-               *rules-unanswered*))
-    (dolist (buffer tuatara.buffer:*buffers* soonest)
-      (let* ((syntax (tuatara.syntax:buffer-syntax buffer))
-             (wait (and syntax (tuatara.syntax:refresh-syntax syntax))))
-        (when wait (setf soonest (if soonest (min soonest wait) wait)))))))
+  (let ((soonest nil) (now (get-internal-real-time)))
+    (flet ((want (wait) (setf soonest (if soonest (min soonest wait) wait))))
+      ;; a buffer whose grammar was not to be had yet, its loader starting
+      (dolist (buffer tuatara.buffer:*buffers*)
+        (let ((language (tuatara.buffer:buffer-local buffer :syntax-pending)))
+          (when (and language (null (tuatara.syntax:buffer-syntax buffer)))
+            (let ((next (or (tuatara.buffer:buffer-local buffer :syntax-pending-next) 0)))
+              (if (< now next)
+                  (want (/ (- next now) internal-time-units-per-second))
+                  (let ((tries (setf (tuatara.buffer:buffer-local buffer :syntax-pending-tries)
+                                     (1+ (or (tuatara.buffer:buffer-local buffer :syntax-pending-tries) 0)))))
+                    (start-parsing buffer language)
+                    ;; tried less and less often while the grammar cannot be had yet
+                    (when (tuatara.buffer:buffer-local buffer :syntax-pending)
+                      (let ((wait (min 10 (* 0.2 (expt 2 (min tries 6))))))
+                        (setf (tuatara.buffer:buffer-local buffer :syntax-pending-next)
+                              (+ now (round (* wait internal-time-units-per-second))))
+                        (want wait)))))))))
+      ;; rules the program compiling them did not answer for: the screen drawn
+      ;; again, and they asked for again, once their wait is over
+      (sb-ext:with-locked-hash-table (*rules-unanswered*)
+        (maphash (lambda (language entry)
+                   (declare (ignore language))
+                   (let ((wait (/ (- (first entry) (get-internal-real-time)) internal-time-units-per-second)))
+                     (when (plusp wait) (want wait))))
+                 *rules-unanswered*))
+      (dolist (buffer tuatara.buffer:*buffers*)
+        (let* ((syntax (tuatara.syntax:buffer-syntax buffer))
+               (wait (and syntax (tuatara.syntax:refresh-syntax syntax))))
+          (when wait (want wait)))))
+    soonest))
 
 (defvar *memory-low-said* nil
   "True once the editor has said that memory is low and that parses stopped

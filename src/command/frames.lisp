@@ -41,6 +41,18 @@ buffer is shown, as a list kept current while it is in sight."
        (declare (dynamic-extent #',visit))
        (%map-frames-windows #',visit ,editor))))
 
+(defun bring-window-histories-up (editor)
+  "Move the places every window of EDITOR remembers in the buffers it showed
+before on to those buffers' text as it is now (REFRESH-WINDOW-HISTORY), so
+that a buffer changing while it is not shown, a log or a terminal, has its
+edits since kept for none of them. For *TICK-FUNCTIONS*: called again in half
+a minute."
+  (do-frames-windows (window editor)
+    (tuatara.display:refresh-window-history window))
+  30)
+
+(pushnew 'bring-window-histories-up *tick-functions*)
+
 (defun frames-windows (&optional (editor *editor*))
   "Every window of every frame of EDITOR, each frame's from the top left, those
 of the frame worked in first, as a list (DO-FRAMES-WINDOWS goes through them
@@ -124,7 +136,7 @@ no frame of EDITOR is named with."
         unless (find name (editor-frames editor) :key #'frame-name :test #'string=)
           return name))
 
-(defun add-frame (editor frontend &optional (buffer (tuatara.display:window-buffer (editor-window editor))))
+(defun add-frame (editor frontend &optional (buffer (selected-window-buffer editor)))
   "Give EDITOR another frame, painted through FRONTEND, and return it: as large
 as FRONTEND says, with one window showing BUFFER, by default the buffer of the
 window worked in, at its point, named by FREE-FRAME-NAME. A FRONTEND new to
@@ -218,6 +230,8 @@ window let go of instead."
           frame))))
 
 (defmethod tuatara.frontend:events-held ((frame frame))
+  "How many events FRAME holds to be dealt with in its turn: those left unread
+and those put off."
   (+ (length (frame-unread frame)) (count-if #'tuatara.frontend:event-p (frame-deferred frame))))
 
 (defun remove-frame (editor frame)

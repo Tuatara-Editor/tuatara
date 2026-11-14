@@ -88,6 +88,17 @@ Returns the frontend and the editor."
           (tuatara.buffer:kill-buffer buffer)))
       (image-forget))))
 
+(define-test (image-view sizes-checked-before-use)
+  ;; a picture with too few octets for its size is refused; a JPEG of height 0 has no size
+  (true (tuatara.frontend:make-image 2 1 3 (make-array 6 :element-type '(unsigned-byte 8))))
+  (fail (tuatara.frontend:make-image 2 2 3 (make-array 6 :element-type '(unsigned-byte 8))) 'tuatara.runtime:refusal)
+  (flet ((jpeg (height width)
+           (coerce (list #xFF #xD8 #xFF #xC0 0 11 8 (ash height -8) (logand height 255) (ash width -8)
+                         (logand width 255) 1 1 #x11 0 #xFF #xD9)
+                   'tuatara.text:octets)))
+    (is equal '(16 8) (multiple-value-list (tuatara.io::jpeg-size (jpeg 8 16))))
+    (false (tuatara.io::jpeg-size (jpeg 0 16)))))
+
 (define-test (image-view large-photo)
   ;; a photo of 108 megapixels (12000 x 9000, a phone's at full size) drawn as any: decoded
   ;; at a fraction of its size from the start, never refused for want of memory in the sandbox
@@ -153,7 +164,7 @@ Returns the frontend and the editor."
       (image-forget)
       (let ((tuatara.defaults::*image-decoders* '((:name "NoSuchMagick" :program ("no-such-magick-tuatara")))))
         (multiple-value-bind (f editor) (image-session file nil :cell-pixels '(10 20))
-          (true (tuatara.frontend.fake:fake-frame-showing f "photo.png opens as octets: no program for pictures (install NoSuchMagick)"))
+          (true (tuatara.frontend.fake:fake-frame-showing f "photo.png opens as octets: no program for pictures (install NoSuchMagick: no-such-magick-tuatara)"))
           (tuatara.buffer:kill-buffer (tuatara.display:window-buffer (tuatara.command:editor-window editor)))))
       (tuatara.io:sandbox-status :again t)
       ;; a picture that cannot be drawn says so and shows its octets

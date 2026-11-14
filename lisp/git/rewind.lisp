@@ -5,7 +5,7 @@
 ;;;; shows it as its latest commit left it, read only, in its own mode; p goes
 ;;;; a commit older, n newer, r to a commit chosen from its log, c shows the
 ;;;; commit, C-c w copies its hash. In rimu it does that for the directory, in
-;;;; a rimu list of its own (lisp/rimu/git.lisp), and RET on a file goes on
+;;;; a rimu list of its own (lisp/git/rimu.lisp), and RET on a file goes on
 ;;;; through that file's history from there. C-x G again goes back
 ;;;; to the file or the directory as it is now. The mode line says Rewind and
 ;;;; the commit, lit up.
@@ -24,8 +24,8 @@ the file's name in it (PARSE-GIT-COMMITS)."
   "On JOB's thread: the commits of PATH in the repository at TOP, the latest
 first (GIT-FILE-HISTORY), followed back across renames, from the commit AT
 or HEAD; one that deleted it left out."
-  (git-file-history (git-job-output job top (append (list "log" "--follow" "--diff-filter=d" "--date=short" "--name-only" "-z"
-                                                          *git-commit-format*)
+  (git-file-history (git-job-output job top (append (list "log" "--follow" "--diff-filter=d" "--date=short"
+                                                          "--name-only" "-z" *git-commit-format*)
                                                     (and at (list "--end-of-options" at))
                                                     (list "--" path)))))
 
@@ -45,12 +45,12 @@ closes.")
 
 (defun git-rewind-buffer-p (buffer)
   "True when BUFFER goes through a file's or a directory's history (\\[git-rewind])."
-  (and (tuatara.buffer:buffer-local buffer :git-rewind-revisions) t))
+  (and (tuatara.buffer:buffer-local buffer 'git-rewind-revisions) t))
 
 (defun git-rewind-words (buffer index)
   "What is said of the commit INDEX (0 the latest) of BUFFER's history: which
 of how many, its short hash, date, author and subject."
-  (let ((revisions (tuatara.buffer:buffer-local buffer :git-rewind-revisions)))
+  (let ((revisions (tuatara.buffer:buffer-local buffer 'git-rewind-revisions)))
     (let ((revision (svref revisions index)))
       (format nil
               "~:d of ~:d: ~a ~a ~a: ~a"
@@ -81,15 +81,15 @@ from, if any."
   (let ((buffer (git-rewind-buffer top (format nil "*git rewind: ~a*" (tuatara.io:native-file-name path))
                                    (mode-for-file (sb-ext:parse-native-namestring (concatenate 'string top path))))))
     (setf (tuatara.buffer:buffer-local buffer 'git-rewind-path) path
-          (tuatara.buffer:buffer-local buffer :git-rewind-list) list)
+          (tuatara.buffer:buffer-local buffer 'git-rewind-list) list)
     (start-git-job "Reading the file's history"
                    (lambda (job)
                      ;; from a directory's commit: the file followed back from there, and the
                      ;; commits after it that kept its name (following from HEAD a name
                      ;; gone there follows another file)
                      (let* ((newer (and at (git-file-history
-                                            (git-job-output job top (list "log" "--diff-filter=d" "--date=short" "--name-only" "-z"
-                                                                          *git-commit-format*
+                                            (git-job-output job top (list "log" "--diff-filter=d" "--date=short"
+                                                                          "--name-only" "-z" *git-commit-format*
                                                                           "--end-of-options"
                                                                           (format nil "~a..HEAD" at)
                                                                           "--" path)))))
@@ -137,9 +137,9 @@ INDEX of REVISIONS (GIT-REWIND-FILE-LOG) left it, OCTETS, point at the start
 of LINE (0 the first, the last there is when it has fewer); a file whose name
 gives no mode takes the one its first line gives (#!/bin/sh)."
   (let ((first-line (tuatara.text:octets-first-line octets)))
-    (setf (tuatara.buffer:buffer-local buffer :git-rewind-revisions) revisions
-          (tuatara.buffer:buffer-local buffer :git-rewind-at) index
-          (tuatara.buffer:buffer-local buffer :git-rewind-wanted) index)
+    (setf (tuatara.buffer:buffer-local buffer 'git-rewind-revisions) revisions
+          (tuatara.buffer:buffer-local buffer 'git-rewind-at) index
+          (tuatara.buffer:buffer-local buffer 'git-rewind-wanted) index)
     (when (eq (type-of (buffer-major-mode buffer)) 'fundamental-mode)
       (let ((mode (mode-for-file (sb-ext:parse-native-namestring path) (string-right-trim '(#\Return) first-line))))
         (unless (eq mode 'fundamental-mode)
@@ -156,16 +156,16 @@ later move asked for another before it came, that one is shown instead."
   (if (rimu-source buffer)
       (rimu-rewind-show buffer index)
       (let ((top (git-here buffer))
-            (revision (svref (tuatara.buffer:buffer-local buffer :git-rewind-revisions) index)))
-        (setf (tuatara.buffer:buffer-local buffer :git-rewind-wanted) index)
+            (revision (svref (tuatara.buffer:buffer-local buffer 'git-rewind-revisions) index)))
+        (setf (tuatara.buffer:buffer-local buffer 'git-rewind-wanted) index)
         (start-git-job "Reading a revision"
                        (lambda (job)
                          (tuatara.text:octets->rope (coerce (git-rewind-revision-octets job top revision)
                                                             'tuatara.text:octets)))
                        (lambda (rope)
-                         (when (eql index (tuatara.buffer:buffer-local buffer :git-rewind-wanted))
+                         (when (eql index (tuatara.buffer:buffer-local buffer 'git-rewind-wanted))
                            (show-list-text buffer rope nil nil)
-                           (setf (tuatara.buffer:buffer-local buffer :git-rewind-at) index)
+                           (setf (tuatara.buffer:buffer-local buffer 'git-rewind-at) index)
                            (message "~a" (git-rewind-words buffer index))))
                        :quiet t :buffer buffer))))
 
@@ -173,8 +173,8 @@ later move asked for another before it came, that one is shown instead."
   "Show the current history BY commits older (newer for a negative BY), said
 so at its ends."
   (let* ((buffer (current-buffer))
-         (revisions (tuatara.buffer:buffer-local buffer :git-rewind-revisions))
-         (index (+ (tuatara.buffer:buffer-local buffer :git-rewind-wanted) by))
+         (revisions (tuatara.buffer:buffer-local buffer 'git-rewind-revisions))
+         (index (+ (tuatara.buffer:buffer-local buffer 'git-rewind-wanted) by))
          (what (if (rimu-source buffer) "directory" "file")))
     (cond ((< index 0) (message "This is the latest commit of the ~a" what))
           ((>= index (length revisions)) (message "This is the first commit of the ~a" what))
@@ -193,7 +193,7 @@ so at its ends."
 left it, the latest first, by its hash, date, author or subject."
   (let ((index (completing-read-value
                 "Rewind to: "
-                (loop for revision across (tuatara.buffer:buffer-local (current-buffer) :git-rewind-revisions)
+                (loop for revision across (tuatara.buffer:buffer-local (current-buffer) 'git-rewind-revisions)
                       for i from 0
                       collect (make-candidate (format nil
                                                       "~a ~a ~a: ~a"
@@ -222,8 +222,8 @@ history as it is shown."
                (message "Copied ~a" short))
         (message "No commit shown yet: it is being read"))))
 
-(commands-for-buffers 'git-rewind-buffer-p "a file's or directory's history (\\[git-rewind])"
-                      'git-rewind-older 'git-rewind-newer 'git-rewind-to 'git-rewind-show-commit 'git-rewind-copy-hash)
+(commands-for-mode 'git-rewind-buffer-p "a file's or directory's history (\\[git-rewind])"
+                   'git-rewind-older 'git-rewind-newer 'git-rewind-to 'git-rewind-show-commit 'git-rewind-copy-hash)
 
 ;;; Back to now
 
@@ -237,7 +237,7 @@ there, said so."
       (let* ((top (git-here buffer))
              (path (concatenate 'string top (tuatara.buffer:buffer-local buffer 'git-rewind-path)))
              (line (tuatara.buffer:buffer-line-number buffer (tuatara.buffer:buffer-point buffer)))
-             (list (tuatara.buffer:buffer-local buffer :git-rewind-list)))
+             (list (tuatara.buffer:buffer-local buffer 'git-rewind-list)))
         (tuatara.buffer:kill-buffer buffer)
         (if (eq :regular (tuatara.io:path-kind path))
             (progn
@@ -245,7 +245,8 @@ there, said so."
                 (tuatara.buffer:kill-buffer list))
               (let ((file (visit-path path)))
                 (when file
-                  (goto-shown file (tuatara.buffer:buffer-goto-line file (min line (max 0 (1- (tuatara.buffer:buffer-line-count file)))))))))
+                  (goto-shown file (tuatara.buffer:buffer-goto-line
+                                    file (min line (max 0 (1- (tuatara.buffer:buffer-line-count file)))))))))
             (progn
               (if (and list (live-buffer-p list))
                   (rimu-rewind-leave list)
@@ -281,24 +282,23 @@ in it, nor is a file that is not text shown."
                    (rimu-rewind buffer top)
                    (message "~a is not in the repository at ~a" (abbreviated-path directory) (abbreviated-path top))))))
           (t
-           (with-git-repository (top)
-             (call-with-git-file top "No file here to rewind"
-                                 (lambda (path)
-                                   (if (or (uiop:string-suffix-p path "/")
-                                           (eq :directory (tuatara.io:path-kind (concatenate 'string top path))))
-                                       (message "~a is a directory: rewind a file in it, or the directory from its list (\\[rimu])"
-                                                (escape-controls path))
-                                       (git-rewind-file top path
-                                                        :line (if (tuatara.buffer:buffer-file buffer)
-                                                                  (tuatara.buffer:buffer-line-number buffer (tuatara.buffer:buffer-point buffer))
-                                                                  0))))))))))
+           (with-git-file (top path :missing "No file here to rewind")
+             (if (or (uiop:string-suffix-p path "/")
+                     (eq :directory (tuatara.io:path-kind (concatenate 'string top path))))
+                 (message "~a is a directory: rewind a file in it, or the directory from its list (\\[rimu])"
+                          (escape-controls path))
+                 (git-rewind-file top path
+                                  :line (if (tuatara.buffer:buffer-file buffer)
+                                            (tuatara.buffer:buffer-line-number buffer
+                                                                               (tuatara.buffer:buffer-point buffer))
+                                            0))))))))
 
 (defun git-rewind-shown (buffer)
   "The commit BUFFER's history shows, a GIT-COMMIT, and
 as a second value which it is (0 the latest) of how many, a third; NIL when
 BUFFER shows none."
-  (let ((revisions (tuatara.buffer:buffer-local buffer :git-rewind-revisions)))
-    (let ((at (tuatara.buffer:buffer-local buffer :git-rewind-at)))
+  (let ((revisions (tuatara.buffer:buffer-local buffer 'git-rewind-revisions)))
+    (let ((at (tuatara.buffer:buffer-local buffer 'git-rewind-at)))
       (when (and revisions at)
         (values (svref revisions at) at (length revisions))))))
 

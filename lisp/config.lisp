@@ -79,7 +79,8 @@ says how it was read."
 KEYMAP-REGISTRY."
   (cond ((keymap-p map) map)
         ((cdr (assoc map (keymap-registry))))
-        (t (refuse "Unknown keymap ~s; use a major mode's name or one of ~{~s~^ ~}." map (mapcar #'car (keymap-registry))))))
+        (t (refuse "Unknown keymap ~s; use a major mode's name or one of ~{~s~^ ~}."
+                   map (mapcar #'car (keymap-registry))))))
 
 (defun mode-keymaps (map mode)
   "The keymaps bind-key's MAP and MODE stand for: MAP's (KEYMAP-NAMED) without
@@ -92,11 +93,14 @@ mode's own keys, as with MAP :global and MODE that mode."
          (mode-keymaps :global map))
         ((null mode) (list (keymap-named map)))
         (t (loop for given in (if (listp mode) mode (list mode))
-                 for name = (if (and given (symbolp given)) (mode-named given) (refuse "No major mode called ~s." given))
+                 for name = (if (and given (symbolp given))
+                                (mode-named given)
+                                (refuse "No major mode called ~s." given))
                  collect (case map
                            (:global (mode-keymap name))
                            ((:normal :insert :support :leader) (mode-layer name map))
-                           (t (refuse "With :mode, :map is :global, :normal, :insert, :support or :leader, not ~s." map)))))))
+                           (t (refuse "With :mode, :map is :global, :normal, :insert, :support or :leader, not ~s."
+                                      map)))))))
 
 (defun tuatara-user:bind-key (keys command &key (map :global) mode label)
   "Bind KEYS (keys apart by spaces, C- for Control, M- for Meta and S- for
@@ -225,27 +229,40 @@ editor starts."
   '(("*EXPORT-TRUSTED-FOLDERS*" . tuatara-user::*export-trusted-directories*)
     ("*EVIDENCE-FOLDERS*" . tuatara-user::*evidence-directories*)
     ("*CODE-FILES-MAKE-FOLDERS*" . tuatara-user::*code-files-make-directories*)
-    ("*FOLDER-TREE-DEPTH-LIMIT*" . tuatara-user::*directory-tree-depth-limit*))
+    ("*FOLDER-TREE-DEPTH-LIMIT*" . tuatara-user::*directory-tree-depth-limit*)
+    ("*LSP-TRUSTED-PROJECTS*" . tuatara-user::*trusted-projects*))
   "Settings renamed before Tuatara 1.0, each (OLD-NAME . SETTING): an init file
-that still sets one by its old name has its value given to the setting
-\(CARRY-RENAMED-SETTINGS).")
+that still sets or changes one by its old name has its value given to the
+setting (LEND-RENAMED-SETTINGS, CARRY-RENAMED-SETTINGS).")
 
-(defun carry-renamed-settings ()
-  "Give each setting the init file set by an old name (*RENAMED-SETTINGS*)
-that value, and say which name to write there instead."
+;; an init file setting an old name is compiled without a warning of an undefined variable
+(dolist (renamed *renamed-settings*)
+  (proclaim `(special ,(intern (car renamed) :tuatara-user))))
+
+(defun lend-renamed-settings ()
+  "Give each old name of *RENAMED-SETTINGS* its setting's value, so that an
+init file may read it or add to it by that name, as by (push ... OLD-NAME).
+Each old name, its setting and the value lent, for CARRY-RENAMED-SETTINGS."
   (loop for (old . new) in *renamed-settings*
-        for symbol = (find-symbol old :tuatara-user)
-        when (and symbol (boundp symbol))
+        for symbol = (intern old :tuatara-user)
+        collect (list symbol new (setf (symbol-value symbol) (symbol-value new)))))
+
+(defun carry-renamed-settings (lent)
+  "Give each setting the init file changed by its old name that value, and say
+which name to write there instead, LENT being what LEND-RENAMED-SETTINGS lent
+before the file was read; the old names are then let go."
+  (loop for (symbol new value) in lent
+        when (and (boundp symbol) (not (eq (symbol-value symbol) value)))
           do (setf (symbol-value new) (symbol-value symbol))
-             (makunbound symbol)
              (message "Your init file sets ~(~a~), now called ~(~a~): its value is used; rename it there"
-                      old (symbol-name new))))
+                      (symbol-name symbol) (symbol-name new))
+        do (makunbound symbol)))
 
 (defun load-user-config ()
   "Load the init file if it exists, in the TUATARA-USER package, form by form
 \(READ-INIT-FILE), the packages it loads said with their times
 \(CALL-WITH-START-PACKAGES); an error in it is said and the rest is read; a
-setting set by its old name is carried over (CARRY-RENAMED-SETTINGS). The
+setting set by its old name is carried over (LEND-RENAMED-SETTINGS). The
 first time the editor runs without an init file of its own (*CONFIG-FILE*
 NIL: not a test's), a starter is written there first (WRITE-STARTER-CONFIG)
 and said."
@@ -258,8 +275,9 @@ and said."
         (let ((*package* (find-package :tuatara-user)))
           (setf *init-file-outcome* :read
                 *init-file-stop* nil)
-          (tuatara.packages:call-with-start-packages (lambda () (read-init-file file)))
-          (carry-renamed-settings)
+          (let ((lent (lend-renamed-settings)))
+            (tuatara.packages:call-with-start-packages (lambda () (read-init-file file)))
+            (carry-renamed-settings lent))
           (eq *init-file-outcome* :read))
         (progn (setf *init-file-outcome* :none) nil))))
 

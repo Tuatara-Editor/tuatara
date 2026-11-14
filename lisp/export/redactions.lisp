@@ -42,46 +42,57 @@ LaTeX, those of *LATEX-REDACTION-COMMANDS*."
        (let ((names (format nil "~{~a~^|~}" (mapcar #'cl-ppcre:quote-meta-chars *latex-redaction-commands*))))
          (when (plusp (length names))
            (cl-ppcre:do-scans (start end rs re (format nil "\\\\(~a)\\{([^{}]*)\\}" names) text)
-             (push (list start end (subseq text (aref rs 1) (aref re 1)) (subseq text (aref rs 0) (aref re 0))) found))))))
+             (push (list start end (subseq text (aref rs 1) (aref re 1)) (subseq text (aref rs 0) (aref re 0)))
+                   found))))))
     (nreverse found)))
 
 (defun token-char-p (c)
   "True when C joins characters into one token, as in an address (90.233.1.40), a path or a name."
   (or (alphanumericp c) (find c ".:-/_@")))
 
+(defun token-bounds (text start end)
+  "Where the token of TEXT holding the stretch from START below END begins and
+ends, as two values: widened over the characters TOKEN-CHAR-P joins on either
+side."
+  (values (loop for i downfrom start above 0 while (token-char-p (char text (1- i))) finally (return i))
+          (loop for i from end below (length text) while (token-char-p (char text i)) finally (return i))))
+
 (defun redaction-whole (text start end inside)
   "What INSIDE, hidden by the call from START below END of TEXT, stands for
 there: INSIDE alone, or when the call is part of a token (90.233.1.{{{redact(40)}}}),
 that token with INSIDE in the call's place (90.233.1.40), what would give it
 away written elsewhere."
-  (let ((from (loop for i downfrom start above 0 while (token-char-p (char text (1- i))) finally (return i)))
-        (to (loop for i from end below (length text) while (token-char-p (char text i)) finally (return i))))
+  (multiple-value-bind (from to) (token-bounds text start end)
     (if (and (= from start) (= to end))
         inside
         (concatenate 'string (subseq text from start) inside (subseq text end to)))))
+
+(defparameter *redaction-trimmed* '(#\Space #\Tab #\( #\) #\[ #\] #\{ #\} #\, #\. #\; #\: #\' #\")
+  "The characters taken off both ends of a hidden text before it is looked for
+elsewhere (REDACTION-NEEDLES).")
 
 (defun redaction-needles (inside &optional (whole inside))
   "What to look for elsewhere of INSIDE, a hidden text, WHOLE what it stands
 for where it is (REDACTION-WHOLE): WHOLE, and when INSIDE has several words,
 each word of *REDACTION-SHORTEST-PART* characters or more, without its
 punctuation."
-  (let* ((whole (string-trim " 	()[]{},.;:'\"" whole))
+  (let* ((whole (string-trim *redaction-trimmed* whole))
          (words (remove-if (lambda (w) (< (length w) *redaction-shortest-part*))
-                           (uiop:split-string (string-trim " 	()[]{},.;:'\"" inside)
-                              :separator (remove-if #'token-char-p (remove-duplicates inside))))))
-    (remove-duplicates (remove "" (cons whole (and (rest words) words)) :test #'string=) :test #'string-equal :from-end t)))
+                           (uiop:split-string (string-trim *redaction-trimmed* inside)
+                                              :separator (remove-if #'token-char-p (remove-duplicates inside))))))
+    (remove-duplicates (remove "" (cons whole (and (rest words) words)) :test #'string=) :test #'string-equal
+                       :from-end t)))
 
 (defun word-starts (text)
   "Where each word of TEXT begins (a run of letters, digits and _), by the
 word in lower case: a table of lists of positions, latest first."
   (let ((table (make-hash-table :test 'equal)) (n (length text)) (i 0))
-    (flet ((word-char-p (c) (or (alphanumericp c) (char= c #\_))))
-      (loop while (< i n)
-            do (if (word-char-p (char text i))
-                   (let ((end (or (position-if-not #'word-char-p text :start i) n)))
-                     (push i (gethash (string-downcase (subseq text i end)) table))
-                     (setf i end))
-                   (incf i))))
+    (loop while (< i n)
+          do (if (name-char-p (char text i))
+                 (let ((end (or (position-if-not #'name-char-p text :start i) n)))
+                   (push i (gethash (string-downcase (subseq text i end)) table))
+                   (setf i end))
+                 (incf i)))
     table))
 
 (defun redaction-findings (text kind &optional directory (spans (hidden-spans text kind directory)))
@@ -98,8 +109,7 @@ at once."
          (ends (map 'vector #'second spans))
          (words (word-starts text))
          (found (make-hash-table)))
-    (labels ((word-char-p (c) (or (alphanumericp c) (char= c #\_)))
-             (hidden-at-p (position)
+    (labels ((hidden-at-p (position)
                ;; the last span beginning at or before POSITION, by halves; spans do not overlap
                (let ((low 0) (high (length starts)))
                  (loop while (< low high)
@@ -108,10 +118,11 @@ at once."
                  (and (plusp low) (< position (aref ends (1- low))))))
              (places (needle)
                ;; where NEEDLE may stand: where its first word does, else anywhere it is
-               (let ((first-end (or (position-if-not #'word-char-p needle) (length needle))))
+               (let ((first-end (or (position-if-not #'name-char-p needle) (length needle))))
                  (if (plusp first-end)
                      (gethash (string-downcase (subseq needle 0 first-end)) words)
-                     (loop for at = (search needle text :test #'char-equal) then (search needle text :test #'char-equal :start2 (1+ at))
+                     (loop for at = (search needle text :test #'char-equal)
+                           then (search needle text :test #'char-equal :start2 (1+ at))
                            while at collect at)))))
       ;; each text to look for once, with the first hidden text it gives away
       (let ((owners (make-hash-table :test 'equalp)) (needles '()))
@@ -128,8 +139,8 @@ at once."
                 (when (and (<= (+ at n) (length text))
                            (string-equal needle text :start2 at :end2 (+ at n))
                            (not (hidden-at-p at))
-                           (or (zerop at) (not (word-char-p (char text (1- at)))))
-                           (or (>= (+ at n) (length text)) (not (word-char-p (char text (+ at n))))))
+                           (or (zerop at) (not (name-char-p (char text (1- at)))))
+                           (or (>= (+ at n) (length text)) (not (name-char-p (char text (+ at n))))))
                   ;; what stands there, as it is written; one finding a place
                   (unless (gethash at found)
                     (setf (gethash at found) (list at (subseq text at (+ at n)) inside name)))))))))
@@ -138,7 +149,8 @@ at once."
       ;; when one before it reaches as far
       (let ((ordered (sort (loop for f being the hash-values of found collect f)
                            (lambda (f g) (or (< (first f) (first g))
-                                             (and (= (first f) (first g)) (> (length (second f)) (length (second g))))))))
+                                             (and (= (first f) (first g))
+                                                  (> (length (second f)) (length (second g))))))))
             (reach -1)
             (kept '()))
         (dolist (f ordered (nreverse kept))
@@ -169,7 +181,8 @@ shows it in another window, \\[list-visit-other] the list staying selected;
                                     (if g (push f (cdr g)) (push (list (third f) f) groups)))))
                  do (destructuring-bind (inside . places) group
                       (funcall put "")
-                      (funcall put (format nil "~a (~a), ~d place~:p:" inside (fourth (first places)) (length places)) :heading
+                      (funcall put (format nil "~a (~a), ~d place~:p:" inside (fourth (first places)) (length places))
+                               :heading
                                (list :hidden inside))
                       (dolist (f (reverse places))
                         (destructuring-bind (position needle inside name) f
@@ -178,8 +191,10 @@ shows it in another window, \\[list-visit-other] the list staying selected;
                                  (line (1+ (tuatara.buffer:buffer-line-number buffer octet)))
                                  ;; one entry, the place, on both its lines
                                  (entry (list :place buffer octet)))
-                            (funcall put (format nil "  ~a:~d  ~a" (tuatara.buffer:buffer-name buffer) line needle) nil entry)
-                            (funcall put (format nil "    | ~a" (string-trim " 	" (aref lines (1- line)))) nil entry))))))))
+                            (funcall put (format nil "  ~a:~d  ~a" (tuatara.buffer:buffer-name buffer) line needle)
+                                     nil entry)
+                            (funcall put (format nil "    | ~a" (string-trim '(#\Space #\Tab) (aref lines (1- line))))
+                                     nil entry))))))))
       (let ((list (set-search-filtering (buffer-in-mode "*Redactions*" 'redactions-mode)
                                         :nouns "places" :heading (lambda (entry) (eq (first entry) :hidden)))))
         (render-pieces list
@@ -197,7 +212,7 @@ selected, or with OTHER the list kept selected."
   (destructuring-bind (kind &optional buffer octet) entry
     (cond ((not (eq kind :place)) (message "No place on this line"))
           ((not (live-buffer-p buffer)) (message "The buffer the place is in is gone"))
-          (t (show-place-beside buffer octet other)))))
+          (t (keeping-list-selected other (lambda () (show-buffer-position buffer octet :other t)))))))
 
 (defun check-buffer-redactions (buffer &key quiet (text (tuatara.buffer:buffer-string buffer)))
   "Look in BUFFER, whose text is TEXT, for its hidden texts shown elsewhere in
@@ -216,7 +231,8 @@ say what was found, and with QUIET nothing when there is nothing to say."
                       (tuatara.buffer:buffer-name buffer))))
           ((null findings)
            (unless quiet
-             (message "None of the ~d text~:p hidden in ~a shows anywhere else in it" (length spans) (tuatara.buffer:buffer-name buffer))))
+             (message "None of the ~d text~:p hidden in ~a shows anywhere else in it" (length spans)
+                      (tuatara.buffer:buffer-name buffer))))
           (t
            (show-redaction-findings buffer text findings)
            (message "~d place~:p in ~a show~:[~;s~] text hidden elsewhere in it: see *Redactions*"
@@ -258,13 +274,14 @@ what the export writes is not encrypted. Never into an evidence directory
   (let* ((file (tuatara.io:native (tuatara.io:expand-path (tuatara.buffer:buffer-file buffer))))
          (named (and (eq (export-kind buffer) :org)
                      (ignoring-errors-reported ("naming the export of ~a" file)
-                       (org-export-file-name (or text (tuatara.buffer:buffer-string buffer)) file))))
+                                               (org-export-file-name (or text (tuatara.buffer:buffer-string buffer))
+                                                                     file))))
          (kept (append (mapcar #'funcall *export-kept-directories*) *export-trusted-directories*))
          ;; links followed: a directory in the note's that is a link to elsewhere is elsewhere
          (outside (and named (notevery (lambda (type)
                                          (let ((path (replaced-type named type)))
-                                           (and (org-path-beside-p path (tuatara.io:parent-path file))
-                                                (not (path-in-directories-p path kept)))))
+                                           (and (tuatara.io:really-within-p path (tuatara.io:parent-path file))
+                                                (not (tuatara.io:path-in-directories-p path kept)))))
                                        types)))
          (existing (and outside
                         (find-if (lambda (path) (tuatara.io:path-stamp path))
@@ -302,7 +319,8 @@ holds the octet POINT, as (START END NAME INSIDE), octets; NIL when none."
       (cl-ppcre:do-scans (start end rs re *org-macro-call-re* text)
         (when (<= (octet start) point (octet end))
           (return-from macro-call-on-line
-            (list (octet start) (octet end) (subseq text (aref rs 0) (aref re 0)) (subseq text (aref rs 1) (aref re 1)))))))))
+            (list (octet start) (octet end)
+                  (subseq text (aref rs 0) (aref re 0)) (subseq text (aref rs 1) (aref re 1)))))))))
 
 (defun token-at (buffer point)
   "The token around the octet POINT of BUFFER (TOKEN-CHAR-P: a name, an address
@@ -310,14 +328,13 @@ as 90.233.1.40, a mail address or a path), as START and END octets; NIL when
 point is on none."
   (let* ((line (tuatara.buffer:buffer-line-start buffer point))
          (text (tuatara.buffer:buffer-line-text buffer line))
-         (at (length (tuatara.buffer:buffer-string buffer :start line :end point)))
-         (from (loop for i downfrom at above 0 while (token-char-p (char text (1- i))) finally (return i)))
-         (to (loop for i from at below (length text) while (token-char-p (char text i)) finally (return i))))
-    ;; a full stop or colon ending a sentence is not the token's
-    (loop while (and (> to from) (find (char text (1- to)) ".:")) do (decf to))
-    (when (< from to)
-      (values (+ line (tuatara.text:string-octet-length text :end from))
-              (+ line (tuatara.text:string-octet-length text :end to))))))
+         (at (length (tuatara.buffer:buffer-string buffer :start line :end point))))
+    (multiple-value-bind (from to) (token-bounds text at at)
+      ;; a full stop or colon ending a sentence is not the token's
+      (loop while (and (> to from) (find (char text (1- to)) ".:")) do (decf to))
+      (when (< from to)
+        (values (+ line (tuatara.text:string-octet-length text :end from))
+                (+ line (tuatara.text:string-octet-length text :end to)))))))
 
 (defun org-macro-choices (buffer &key call)
   "The macros text in BUFFER, an Org note, may be wrapped in, as candidates:
@@ -328,7 +345,8 @@ text is in, a last choice taking the call away (its value :NONE)."
                              (with-org-note-keywords ((tuatara.buffer:buffer-string buffer) (note-directory buffer))
                                (org-macro-definitions))
                              :key #'car)))
-    (append (list (make-candidate "R" :annotation "hidden in the PDF, a black box (redact; #+options: redact:nil prints it)")
+    (append (list (make-candidate
+                   "R" :annotation "hidden in the PDF, a black box (redact; #+options: redact:nil prints it)")
                   (make-candidate "P" :annotation "hidden in the PDF only with #+options: protect:t (protect)"))
             (loop for (name . body) in declared
                   collect (make-candidate name :annotation (format nil "declared: ~a" body)))
@@ -361,7 +379,8 @@ text alone again. While reading, a call shows as its text, in green.
           (let ((chosen (completing-read (format nil "Change {{{~a(...)}}} to: " name)
                                          (org-macro-choices buffer :call name)
                                          :require-match t :keep-order t)))
-            (tuatara.buffer:buffer-replace buffer start end (if (eq chosen :none) inside (format nil "{{{~a(~a)}}}" chosen inside)))
+            (tuatara.buffer:buffer-replace buffer start end
+                                           (if (eq chosen :none) inside (format nil "{{{~a(~a)}}}" chosen inside)))
             (drop-selection)
             (setf (tuatara.buffer:buffer-point buffer) start)
             (if (eq chosen :none)
@@ -377,7 +396,8 @@ text alone again. While reading, a call shows as its text, in green.
                     (message "The text holds )}}}, which would end the call early")
                     (let ((chosen (completing-read "Wrap in: " (org-macro-choices buffer) :require-match t :keep-order t
                                                    :default *org-last-macro*)))
-                      (let ((after (tuatara.buffer:buffer-replace buffer start end (format nil "{{{~a(~a)}}}" chosen inside))))
+                      (let ((after (tuatara.buffer:buffer-replace buffer start end
+                                                                  (format nil "{{{~a(~a)}}}" chosen inside))))
                         (drop-selection)
                         (setf *org-last-macro* chosen
                               (tuatara.buffer:buffer-point buffer) after)

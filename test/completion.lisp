@@ -210,6 +210,60 @@
         (is = 15 (position-if (lambda (row) (search "M-x end of buf" row)) screen))
         (true (< (position :completion-selected row-faces) 15))))))
 
+;; fitting fields to a row writes each one's control characters out once, however often it is measured
+(define-test (completion fields-written-out-once)
+  (let ((written 0)
+        (fields (list (format nil "a~cb" #\Tab) (list (format nil "c~cd" #\Tab) :list-size -8)
+                      (list (format nil "e~cf" #\Tab) :list-date 1/2))))
+    (sb-int:encapsulate 'tuatara.command:escape-controls 'counting
+                        (lambda (function text &rest more)
+                          (let ((shown (apply function text more)))
+                            (unless (eq shown text) (incf written))
+                            shown)))
+    (unwind-protect (tuatara.command:fit-fields fields 20 :row-width 40)
+      (sb-int:unencapsulate 'tuatara.command:escape-controls 'counting))
+    (is = 3 written)))
+
+;; a question asked while another is open is refused, the open one keeping its candidates
+(define-test (completion a-second-question-leaves-the-first-its-candidates)
+  (let ((outer nil) (after nil) (refused nil))
+    (run-keys (list "M-x"
+                    (lambda ()
+                      (let ((editor tuatara.command:*editor*))
+                        (setf outer (tuatara.command:editor-completion editor))
+                        (handler-case (tuatara.command:completing-read "Other: " '("zzz"))
+                          (tuatara.runtime:refusal () (setf refused t)))
+                        (setf after (tuatara.command:editor-completion editor))))
+                    "C-g"))
+    (true refused)
+    (true outer)
+    (is eq outer after)))
+
+;; the commands bound to the keys that end a question do so when called as commands
+(define-test (completion minibuffer-commands-act-when-called)
+  (let ((quit nil) (answer nil) (keymap (tuatara.command:make-keymap)))
+    (tuatara.command:define-key keymap "C-c" 'tuatara.command::minibuffer-submit-input)
+    (run-keys (list "M-x"
+                    (lambda ()
+                      (handler-case (funcall (tuatara.command::find-command 'tuatara.command::minibuffer-cancel))
+                        (tuatara.runtime:quit () (setf quit t))))
+                    "C-g"
+                    (lambda () (setf answer (tuatara.command:read-string "Name: " :initial "typed" :keymap keymap)))
+                    "C-c"))
+    (true quit)
+    (is string= "typed" answer)))
+
+;; C-y over the text a question offers, selected, takes its place
+(define-test (completion paste-replaces-the-offered-text)
+  (let ((answer nil)
+        (f (tuatara.frontend.fake:make-fake-frontend :width 40 :height 8)))
+    (setf (tuatara.frontend.fake:fake-clipboard f) "pasted")
+    (tuatara.frontend.fake:fake-queue-action
+     f (lambda () (setf answer (tuatara.command:read-string "Name: " :initial "offered" :select-initial t))))
+    (tuatara.frontend.fake:fake-queue-keys f "C-y RET")
+    (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults)
+    (is string= "pasted" answer)))
+
 (define-test (completion groups-and-highlights)
   ;; each group's candidates come together, where its best one comes
   (let ((cands (vector (tuatara.command:make-candidate "a1" :group "A")
@@ -233,6 +287,8 @@
   (is string= "abcde…" (tuatara.display:fit-columns "abcdefghij" nil 6))
   (is string= "abcdefghij" (tuatara.display:fit-columns "abcdefghij" nil 10))
   (is string= "/hom…s/file.txt" (tuatara.display:fit-columns "/home/user/documents/file.txt" nil 15 :middle t))
+  ;; the ellipsis given stands for the middle cut out too
+  (is string= "a...hij" (tuatara.display:fit-columns "abcdefghij" nil 7 :middle t :ellipsis "..."))
   (multiple-value-bind (string spans) (tuatara.display:fit-columns "abcdefghij" '((0 3 :a) (8 10 :b)) 7 :middle t)
     (is string= "ab…ghij" string)
     (is equal '((0 2 :a) (5 7 :b)) spans))
@@ -426,6 +482,26 @@
     ;; the key given back, for the tests after
     (tuatara-user:unbind-key "C-c z")))
 
+(tuatara.command:define-command menu-test-cannot ()
+  "An action that cannot do what it was asked, and keeps the menu open."
+  (tuatara.command:keep-menu-open)
+  (tuatara.command:message "Cannot do that"))
+
+(tuatara.command:define-menu menu-test-keeping-menu (:title "Keeping menu")
+  "Open the menu whose action keeps it open, for the menu tests."
+  ("Do" ("c" "Cannot" menu-test-cannot) ("a" "Act" menu-test-act))
+  ("Switches" ("- f" "Force" :switch "--force")))
+
+(define-test (completion menus-kept-open-by-their-action)
+  ;; an action that cannot do what it was asked keeps the menu open, what was set kept
+  (setf *menu-test-given* :none)
+  (multiple-value-bind (f editor) (run-keys "M-x m e n u - t e s t - k e e p i n g - m e n u RET - f c"
+                                            :width 100 :height 16)
+    (true (tuatara.frontend.fake:fake-frame-showing f "Cannot do that"))
+    (true (tuatara.command:editor-menu editor)))
+  (run-keys "M-x m e n u - t e s t - k e e p i n g - m e n u RET - f c a" :width 100 :height 16)
+  (is equal '("--force") *menu-test-given*))
+
 ;;; A menu opened with values, its option asked again, a summary under it, a switch that comes with a value.
 
 (defun menu-test-read-again (prompt &optional current)
@@ -483,6 +559,31 @@
     (let ((small (seconds-per-hint 500))
           (large (seconds-per-hint 10000)))
       (true (< large (* 3 small)) "~,3e against ~,3e s per hint" large small))))
+
+;; the windows are laid out for the panel's height without its rows made: no candidate annotated
+(define-test (completion panel-counted-without-making-rows)
+  (let ((annotated 0) (during nil) (heights '()))
+    (flet ((note-height ()
+             (let ((editor tuatara.command:*editor*))
+               (push (list (tuatara.command::panel-height editor)
+                           (length (tuatara.command::panel-rows editor)))
+                     heights))))
+      (run-keys (list (lambda ()
+                        (ignore-errors
+                         (tuatara.command:completing-read
+                          "Pick: " (loop for i below 30 collect (format nil "item-~d" i))
+                          :annotate (lambda (c) (declare (ignore c)) (incf annotated) "note"))))
+                      (lambda ()
+                        (note-height)
+                        (setf annotated 0)
+                        (tuatara.command:fit-windows tuatara.command:*editor*)
+                        (setf during annotated))
+                      "C-g" "C-x" #'note-height "C-g"
+                      "M-x m e n u - t e s t - o p e n - f i l l e d RET" #'note-height "C-g")
+                :width 100 :height 16))
+    (is = 0 during)
+    (is = 3 (length heights))
+    (loop for (height rows) in heights do (is = rows height))))
 
 (define-test (completion key-hint-groups-line-up)
   ;; groups laid out one under another with one column width have their columns at the same places

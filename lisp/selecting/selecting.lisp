@@ -3,14 +3,15 @@
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; A selection is started at point and grown by any motion (start-selection),
-;;;; or by whole lines (select-lines, as Vim's visual line); delete-selection-or-char,
+;;;; or by whole lines (select-lines); delete-selection-or-char,
 ;;;; copy-selection-or-char and yank-over-selection act on it, or on the
 ;;;; character at point without one. The selections of a word, a sentence, a
 ;;;; paragraph and a pair are in selection-objects.lisp; of an expression and of
 ;;;; the pieces of syntax tree-sitter names (functions, types, parameters ...)
 ;;;; here. Banking, the mark run, split, cursors, rectangles, wrapping and
 ;;;; digraphs are in files of their own. The modal layer (lisp/modal/) binds
-;;;; them to its keys; every one is a command of its own, to bind or run with M-x.
+;;;; them to its keys; every one is a command of its own, to bind or run with
+;;;; M-x.
 
 (in-package #:tuatara.defaults)
 
@@ -72,13 +73,17 @@ and those of \\[tuatara-change] on a rectangle past
   "True while a visual-line session is live: it was started and the region is still active."
   (and (line-selection-anchor) (tuatara.buffer:buffer-mark-active-p (current-buffer))))
 
-(defparameter *linear-selection-hint* "Linear selection: any motion extends, \\<normal>\\[start-selection] re-anchors, \\[tuatara-quit] to cancel"
+(defparameter *linear-selection-hint*
+  "Linear selection: any motion extends, \\<normal>\\[start-selection] re-anchors, \\[tuatara-quit] to cancel"
   "What the echo area says while a selection started with v lasts.")
 
-(defparameter *line-selection-hint* "Lines: \\<normal>\\[select-next-line]/\\[select-previous-line] whole lines, \\[next-line]/\\[previous-line] by char, \\[select-lines] to cancel"
+(defparameter *line-selection-hint*
+  (concatenate 'string "Lines: \\<normal>\\[select-next-line]/\\[select-previous-line] whole lines, "
+               "\\[next-line]/\\[previous-line] by char, \\[select-lines] to cancel")
   "What the echo area says while a visual-line session lasts.")
 
-(defparameter *rectangle-hint* "Rectangle: any motion sizes the block, \\<normal>\\[rectangle-mark-mode] or \\[tuatara-quit] to cancel"
+(defparameter *rectangle-hint*
+  "Rectangle: any motion sizes the block, \\<normal>\\[rectangle-mark-mode] or \\[tuatara-quit] to cancel"
   "What the echo area says while a rectangle lasts.")
 
 (defparameter *selection-hint-motions*
@@ -206,24 +211,24 @@ With a count, select that many rows from the current line (negative goes up)."
            (line-selection-update)
            (message "~a" (substitute-command-keys *line-selection-hint* :marks t))))))
 
-(define-command select-next-line ()
-  "Move down, extending the line selection if one is active."
+(defun select-line-away (count motion)
+  "Move COUNT lines down (up when negative), extending the line selection if
+one is active, else as MOTION, the command moving by a line, would."
   (if (line-selection-active-p)
       (progn
-        (goto (line-start-away (current-buffer) (point) (prefix)))
+        (goto (line-start-away (current-buffer) (point) count))
         (line-selection-update))
-      (progn (next-line)
-             ;; as next-line, so that j and J keep to one column together
-             (setf (editor-this-command *editor*) 'next-line))))
+      (progn (funcall motion)
+             ;; as MOTION, so that j and J keep to one column together
+             (setf (editor-this-command *editor*) motion))))
+
+(define-command select-next-line ()
+  "Move down, extending the line selection if one is active."
+  (select-line-away (prefix) 'next-line))
 
 (define-command select-previous-line ()
   "Move up, extending the line selection if one is active."
-  (if (line-selection-active-p)
-      (progn
-        (goto (line-start-away (current-buffer) (point) (- (prefix))))
-        (line-selection-update))
-      (progn (previous-line)
-             (setf (editor-this-command *editor*) 'previous-line))))
+  (select-line-away (- (prefix)) 'previous-line))
 
 ;;; Delete, change, copy, paste
 
@@ -289,6 +294,18 @@ a rectangle too: only the lines shown are copied."
              (line-selection-clear))
             (t (message "Nothing to copy"))))))
 
+(defun paste-keeping-line-end (buffer start end copies)
+  "COPIES, a paste in place of the whole lines of BUFFER from START to END,
+with BUFFER's line end after it when those lines end with one and COPIES does
+not, so that the lines below stay lines of their own. True as a second value
+when the line end was put after it."
+  (if (and (< start end)
+           (member (buffer-char-before buffer end) '(#\Newline #\Return))
+           (plusp (kill-size copies))
+           (not (kill-ends-line-p copies)))
+      (values (kill-join copies (tuatara.buffer:buffer-newline buffer)) t)
+      copies))
+
 (define-command yank-over-selection ()
   "Paste the last kill COUNT times, replacing the selection if there is one,
 its lines ending as the buffer's do; what another program copied to the system
@@ -316,27 +333,24 @@ instead, and the key pressed again pastes."
                    (setf (tuatara.buffer:buffer-mark-active-p b) nil)
                    (line-selection-clear)
                    (when start (goto start))
-                   (paste-rows-at-point (mapcar (lambda (row) (with-output-to-string (out)
-                                                                (dotimes (i (max 1 (prefix))) (write-string row out))))
-                                                (kill-parts kill))))
+                   (paste-rows-at-point (repeated-rows (kill-parts kill) (max 1 (prefix)))))
                   ((banked-p b)
                    (if (stringp copies)
                        (yank-over-banked copies)
                        (message "The last kill (~a) is too large to paste over banked lines"
                                 (octets-words (kill-size copies)))))
                   (start
-                   (let ((restore (and (line-selection-anchor)
-                                       (plusp (kill-size copies))
-                                       (not (kill-ends-line-p copies))
-                                       (< end (tuatara.buffer:buffer-size b)))))
-                     (let ((after (delete-spans b (list (cons start end))
-                                                :replacements (list (if restore (kill-join copies (tuatara.buffer:buffer-newline b)) copies)))))
-                       (setf (tuatara.buffer:buffer-mark-active-p b) nil)
-                       (line-selection-clear)
-                       (goto (if after (aref after 0) start)))))
-                  (t (goto (tuatara.buffer:buffer-insert b (point) (if (stringp copies)
-                                                                         (tuatara.buffer:unjoined-line-ends b (point) copies)
-                                                                         copies))))))))))
+                   (let ((after (delete-spans b (list (cons start end))
+                                              :replacements (list (if (line-selection-anchor)
+                                                                      (paste-keeping-line-end b start end copies)
+                                                                      copies)))))
+                     (setf (tuatara.buffer:buffer-mark-active-p b) nil)
+                     (line-selection-clear)
+                     (goto (if after (aref after 0) start))))
+                  (t (goto (tuatara.buffer:buffer-insert b (point)
+                                                         (if (stringp copies)
+                                                             (tuatara.buffer:unjoined-line-ends b (point) copies)
+                                                             copies))))))))))
 
 ;;; Lines
 
@@ -380,8 +394,8 @@ functions."
                (not (eq (editor-this-command editor) 'jump-back)))
       (let ((ring (tuatara.buffer:buffer-local b 'position-ring '())))
         (push last ring)
-        (when (> (length ring) *position-ring-max*)
-          (setf ring (subseq ring 0 *position-ring-max*)))
+        (let ((past (nthcdr (1- *position-ring-max*) ring)))
+          (when past (setf (cdr past) nil)))
         (setf (tuatara.buffer:buffer-local b 'position-ring) ring
               (tuatara.buffer:buffer-local b 'position-index) 0
               last nil)))
@@ -539,54 +553,54 @@ once, or with \\[universal-argument] N, the next element out."
 
 ;;; Commenting lines
 
+(defun on-selected-lines (function)
+  "Call FUNCTION with the current buffer and the start and end of its
+selection, or point twice when it has none, for the lines they touch; the
+selection ends. Returns what FUNCTION returns."
+  (let ((b (current-buffer)))
+    (multiple-value-bind (start end) (region-or-point b)
+      (prog1 (funcall function b start end)
+        (setf (tuatara.buffer:buffer-mark-active-p b) nil)))))
+
 (define-command toggle-comment-lines ()
   "Comment the lines the selection touches, or the current line, or uncomment
 them when they are all commented: with the language's marker (;; in Lisp, //
 in Rust, # in shell scripts and Org) at their smallest indentation, or each
 line between the two a comment has where it has an end (<!-- --> in HTML,
 /* */ in CSS). The selection ends."
-  (let* ((b (current-buffer))
-         (active (tuatara.buffer:buffer-mark-active-p b)))
-    (multiple-value-bind (start end) (if active (tuatara.buffer:buffer-region b) (values (point) (point)))
-      (let ((done (comment-or-uncomment-lines b start end)))
-        (setf (tuatara.buffer:buffer-mark-active-p b) nil)
-        (unless done
-          (message "No comment syntax is defined"))))))
+  (unless (on-selected-lines #'comment-or-uncomment-lines)
+    (message "No comment syntax is defined")))
 
 ;;; Indenting lines
 
 (define-command indent-selection-or-line ()
   "Indent the lines the selection touches, or the current line, as the
 language's mode indents them. The selection ends."
-  (let* ((b (current-buffer))
-         (active (tuatara.buffer:buffer-mark-active-p b)))
-    (multiple-value-bind (start end) (if active (tuatara.buffer:buffer-region b) (values (point) (point)))
-      (let ((done (indent-lines b start end)))
-        (setf (tuatara.buffer:buffer-mark-active-p b) nil)
-        (when (eq done :none)
-          (message "No indentation rules for ~a" (or (buffer-mode-name b) "this buffer")))))))
+  (when (eq (on-selected-lines #'indent-lines) :none)
+    (message "No indentation rules for ~a" (or (buffer-mode-name (current-buffer)) "this buffer"))))
 
 ;;; Repeating a change with its selection
 
 (defvar *text-object-commands-found* nil
-  "SELECTION-OBJECT-COMMANDS as last found, with the lists of keys it was found
-in: (NORMAL-BINDINGS SYNTAX-BINDINGS COMMANDS).")
+  "SELECTION-OBJECT-COMMANDS as last found, with the keymap generation it was
+found in: (GENERATION . COMMANDS).")
 
 (defun selection-object-commands ()
-  "The commands NORMAL state selects a text object with: those of its \\`m'
-keys that make a selection of a kind (a word, a sentence, a pair ...). Found
-again only when NORMAL state's keys have changed."
-  (let ((normal (symbol-value '*tuatara-normal-bindings*))
-        (syntax (symbol-value '*tuatara-syntax-bindings*))
-        (kept *text-object-commands-found*))
-    (if (and kept (eq (first kept) normal) (eq (second kept) syntax))
-        (third kept)
-        (third (setf *text-object-commands-found*
-                     (list normal syntax
-                           (loop for (keys command) in (append normal syntax)
-                                 when (and (uiop:string-prefix-p "m " keys)
-                                           (uiop:string-prefix-p "SELECT-" (symbol-name command)))
-                                   collect command)))))))
+  "The commands NORMAL state selects a text object with: those it binds under
+\\`m' that make a selection of a kind (a word, a sentence, a pair ...). Found
+again only when keys have changed."
+  (let ((kept *text-object-commands-found*))
+    (if (and kept (eql (car kept) *keymaps-generation*))
+        (cdr kept)
+        (let ((prefix (lookup-key *tuatara-normal-keymap* (tuatara.frontend:parse-key-sequence "m")))
+              (commands '()))
+          (when (keymap-p prefix)
+            (map-keymap-bindings (lambda (keys command)
+                                   (declare (ignore keys))
+                                   (when (uiop:string-prefix-p "SELECT-" (symbol-name command))
+                                     (pushnew command commands)))
+                                 (list prefix)))
+          (cdr (setf *text-object-commands-found* (cons *keymaps-generation* commands)))))))
 
 (defparameter *repeat-selection-largest* (* 64 1024)
   "The most octets a selection may hold to be made again when the command

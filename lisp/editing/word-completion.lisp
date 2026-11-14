@@ -51,18 +51,27 @@ prose and in Lisp or CSS names; NIL where it is an operator or a dash.")
   (:method ((mode scss-mode)) "SCSS names are joined by hyphens (font-size)." t))
 
 (defun word-part-p (char)
-  "True when CHAR can be part of a word being completed: a letter, a mark joined
-to one, a digit, _ or the joiner of an emoji sequence."
+  "True when CHAR can be part of a word: a letter, a mark joined to one, a
+digit, _ or the joiner of an emoji sequence."
   (or (word-character-p char) (digit-char-p char) (char= char #\_) (char= char (code-char #x200D))))
 
-(defun word-part-with-hyphen-p (char)
-  "True for what WORD-PART-P is true of, and a hyphen."
-  (or (char= char #\-) (word-part-p char)))
+(defgeneric mode-name-char-p (mode char)
+  (:documentation "True when CHAR is part of a name in buffers of MODE: the name at point a
+command takes, to complete, replace or select it. A letter, a mark joined to
+one, a digit or _ (WORD-PART-P) everywhere, and a hyphen where MODE joins
+names with hyphens (MODE-HYPHEN-IN-WORDS-P).")
+  (:method (mode char)
+    "A letter, a digit or _, and a hyphen where the mode joins names with them."
+    (or (word-part-p char) (and (char= char #\-) (mode-hyphen-in-words-p mode) t)))
+  (:method ((mode lisp-mode) char)
+    "Every character a Lisp name may hold as it is written (LISP-NAME-PART-P): *foo*, 1+, pkg:name."
+    (or (word-part-p char) (lisp-name-part-p char))))
 
 (defun word-part-function (buffer)
-  "The function telling a character of a word in BUFFER: WORD-PART-P, with
-hyphens too where the major mode has them in words (MODE-HYPHEN-IN-WORDS-P)."
-  (if (mode-hyphen-in-words-p (buffer-major-mode buffer)) #'word-part-with-hyphen-p #'word-part-p))
+  "The function telling a character of a word in BUFFER: one of a name as its
+major mode takes names (MODE-NAME-CHAR-P)."
+  (let ((mode (buffer-major-mode buffer)))
+    (lambda (char) (mode-name-char-p mode char))))
 
 (defun word-completion-kind (buffer)
   "What kind of text BUFFER holds as to who may see it: :ENCRYPTED for the
@@ -207,13 +216,23 @@ order to be kept. NIL when there are none."
     (when start
       (values start position candidates #'word-completion-annotation nil (word-part-function buffer) t))))
 
-(defvar *word-expansion* nil
-  "The words EXPAND-WORD is putting in one after another, while it is, as a
-list \(BUFFER VERSION START END WORDS INDEX PREFIX UNDO). BUFFER and VERSION
+(define-record (word-expansion (:constructor make-word-expansion (buffer start end words prefix undo)) (:copier nil))
+  "The words EXPAND-WORD is putting in one after another. BUFFER and VERSION
 are the buffer and the version of its text after the last word went in. START
 and END are where the text replaced starts and ends. WORDS are the words, INDEX
 the one in now (-1 for the text as typed), PREFIX the text as typed, and UNDO
-the buffer's undo history before the first word went in.")
+the buffer's undo history before the first word went in."
+  (buffer nil :documentation "The buffer EXPANSION is putting words in.")
+  (version nil :documentation "The version of the text of the buffer of EXPANSION after the last word went in.")
+  (start nil :documentation "Where the text EXPANSION replaces starts.")
+  (end nil :documentation "Where the text EXPANSION replaces ends.")
+  (words nil :documentation "The words EXPANSION puts in one after another.")
+  (index -1 :documentation "The index in its words of the one in now, -1 for the text as typed.")
+  (prefix nil :documentation "The text as typed that EXPANSION started from.")
+  (undo nil :documentation "The undo history of the buffer of EXPANSION before the first word went in."))
+
+(defvar *word-expansion* nil
+  "The WORD-EXPANSION under way, while EXPAND-WORD puts words in one after another.")
 
 (defun word-expansion-continues-p (buffer)
   "True when the last command was EXPAND-WORD and nothing has changed since it
@@ -221,50 +240,50 @@ put in a word at point of BUFFER."
   (let ((state *word-expansion*))
     (and state
          (eq (editor-last-command *editor*) 'expand-word)
-         (eq (first state) buffer)
-         (eq (second state) (tuatara.buffer:buffer-version buffer))
-         (= (fourth state) (tuatara.buffer:buffer-point buffer)))))
+         (eq (word-expansion-buffer state) buffer)
+         (eq (word-expansion-version state) (tuatara.buffer:buffer-version buffer))
+         (= (word-expansion-end state) (tuatara.buffer:buffer-point buffer)))))
 
 (defun word-expansion-put (buffer state index)
-  "Replace the text STATE (see *WORD-EXPANSION*) says went in by word INDEX, or
-by the text as typed for -1, and remember it. All the words put in one after
-another are one step to undo."
-  (destructuring-bind (b version start end words old prefix undo) state
-    (declare (ignore b version old))
-    (let* ((text (if (minusp index) prefix (nth index words)))
-           (after (tuatara.buffer:buffer-replace buffer start end text)))
-      (setf (tuatara.buffer:buffer-point buffer) after)
-      (tuatara.buffer:merge-undo-groups buffer undo)
-      (setf *word-expansion*
-            (list buffer (tuatara.buffer:buffer-version buffer) start after words index prefix undo)))))
+  "Replace the text STATE (a WORD-EXPANSION) says went in by word INDEX, or by
+the text as typed for -1, and make it the one under way. All the words put in
+one after another are one step to undo."
+  (let* ((text (if (minusp index) (word-expansion-prefix state) (nth index (word-expansion-words state))))
+         (after (tuatara.buffer:buffer-replace buffer (word-expansion-start state) (word-expansion-end state) text)))
+    (setf (tuatara.buffer:buffer-point buffer) after)
+    (tuatara.buffer:merge-undo-groups buffer (word-expansion-undo state))
+    (setf (word-expansion-version state) (tuatara.buffer:buffer-version buffer)
+          (word-expansion-end state) after
+          (word-expansion-index state) index
+          *word-expansion* state)))
 
 (define-command expand-word ()
   "Put in place of the start of the word before point the nearest word that
 starts with it, looked for in this buffer, then in the others (those shown
 first). Typed again straight after, it puts in the next nearest in its place;
 when the words are out the text as typed comes back, and one more press starts
-again. One undo takes all of them back. A word is letters, digits and _, and
-hyphens in prose and Lisp. About 64 KiB around point are read here, less in
-other buffers; files opened safely, evidence and decrypted files give words
-only to buffers of the same kind. \\[complete-word] lists the words instead.
-With *WORD-COMPLETION-KEEP-CASE* the case typed is kept."
+again. One undo takes all of them back. A word is a name as the major mode
+takes names: letters, digits and _, hyphens in prose, CSS and Lisp, and every
+character of a Lisp name (*print-base*) in Lisp. About 64 KiB around point are
+read here, less in other buffers; files opened safely, evidence and decrypted
+files give words only to buffers of the same kind. \\[complete-word] lists the
+words instead. With *WORD-COMPLETION-KEEP-CASE* the case typed is kept."
   (let ((b (current-buffer)))
-    (cond ((tuatara.display:hex-view-p b) (message "Nothing to expand in the hex view"))
-          ((buffer-read-only-p b)
-           (message "Buffer is read-only: ~a" (tuatara.buffer:buffer-name b)))
-          ((word-expansion-continues-p b)
-           (let* ((state *word-expansion*) (next (1+ (sixth state))))
-             (cond ((< next (length (fifth state))) (word-expansion-put b state next))
-                   (t (word-expansion-put b state -1)
-                      (message "No more words start with ~a" (seventh state))))))
-          (t
-           (let ((undo (tuatara.buffer:buffer-undo-stack b)))
-             (multiple-value-bind (start candidates prefix) (word-completion-candidates b (point))
-               (if (null start)
-                   (message "No word to expand here")
-                   (word-expansion-put b (list b nil start (point)
-                                               (mapcar #'tuatara.command:candidate-string candidates) -1 prefix undo)
-                                       0))))))))
+    (when (tuatara.display:hex-view-p b) (refuse "Nothing to expand in the hex view"))
+    (check-writable b)
+    (if (word-expansion-continues-p b)
+        (let* ((state *word-expansion*) (next (1+ (word-expansion-index state))))
+          (cond ((< next (length (word-expansion-words state))) (word-expansion-put b state next))
+                (t (word-expansion-put b state -1)
+                   (message "No more words start with ~a" (word-expansion-prefix state)))))
+        (let ((undo (tuatara.buffer:buffer-undo-stack b)))
+          (multiple-value-bind (start candidates prefix) (word-completion-candidates b (point))
+            (if (null start)
+                (message "No word to expand here")
+                (word-expansion-put b (make-word-expansion b start (point)
+                                                           (mapcar #'tuatara.command:candidate-string candidates)
+                                                           prefix undo)
+                                    0)))))))
 
 (define-command complete-word ()
   "List the words in the buffers that start with the text before point beside
@@ -277,7 +296,6 @@ narrows the list;
 \\`TAB' put the chosen one in, \\[popup-quit] closes it. When one word alone
 fits, it goes in at once."
   (let ((b (current-buffer)))
-    (cond ((tuatara.display:hex-view-p b) (message "Nothing to complete in the hex view"))
-          ((buffer-read-only-p b)
-           (message "Buffer is read-only: ~a" (tuatara.buffer:buffer-name b)))
-          (t (complete-at-point-in b :words :only)))))
+    (when (tuatara.display:hex-view-p b) (refuse "Nothing to complete in the hex view"))
+    (check-writable b)
+    (complete-at-point-in b :words :only)))

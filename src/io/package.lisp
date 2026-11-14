@@ -3,7 +3,10 @@
 
 (defpackage #:tuatara.io
   (:use #:cl #:alexandria)
-  (:import-from #:tuatara.runtime #:refuse #:define-setting)
+  (:import-from #:tuatara.runtime #:define-record #:refuse #:define-setting #:own-variable)
+  (:import-from #:tuatara.text #:octet-at #:octets-integer #:octets-signed #:octets-put-integer #:octets-at-p
+                #:base64-octets #:base64-string #:octets-ascii #:octets-search #:octets-find
+                #:command-words #:version-numbers #:version-at-least-p)
   (:import-from #:tuatara.text #:drop-cached)
   (:import-from #:tuatara-user #:*default-directory* #:*cache-directory* #:*state-directory* #:*sandbox*
                 #:*sandbox-seconds* #:*sandbox-memory* #:*sandbox-input-limit* #:*sandbox-total-memory*
@@ -27,7 +30,8 @@ elsewhere.")
    #:file-holes-p
    #:same-stamped-file-p #:symlink-target
    #:fd-file-system #:file-system-class #:free-octets #:free-inodes #:set-path-mode #:umask-bits #:now-nanoseconds
-   #:read-only-mount-p #:can-give-owner-p #:writable-p #:nearest-directory #:writing-refused #:host-writing-refusal #:writing-refusal
+   #:read-only-mount-p #:can-give-owner-p #:writable-p #:nearest-directory #:writing-refused #:host-writing-refusal
+   #:writing-refusal
    #:writing-refused-anywhere-p #:check-writing #:check-tree-writing #:fd-real-path #:host-say-writing #:tell-writing
    #:take-read-lease #:lease-breaking-p #:release-lease
    ;; copies and scratch files
@@ -44,7 +48,8 @@ elsewhere.")
    #:receive-with-descriptors #:+most-descriptors+
    #:native #:remove-file #:touch-path #:make-symbolic-link #:make-hard-link #:copy-regular-file #:copy-open-file-to
    #:scratch-name #:percent-encoded #:url-path #:path-file-name #:percent-decoded #:percent-decoded-octets
-   #:path-within-p #:real-path #:real-path-so-far #:real-path-or-parent #:really-within-p #:ensure-directories
+   #:path-within-p #:real-path #:real-path-so-far #:real-path-or-parent #:really-within-p #:path-in-directories-p
+   #:ensure-directories
    #:native-file-name #:native-file-stem #:native-file-type #:file-octets #:file-text #:home-directory-names
    #:home-directory #:expand-path #:default-directory #:directory-pathname #:directory-entries #:list-directory #:listed
    #:make-listed #:listed-p #:listed-name #:listed-octets #:listed-stamp #:listed-used #:listed-device #:listed-target
@@ -54,9 +59,9 @@ elsewhere.")
    #:tiff-octets-p #:tiff-entries #:box-contents-start #:octets-reader #:j2k-header #:jp2-header #:jxl-header
    #:jxl-file-header #:jpeg-segments #:box-children #:box-find #:octet-at #:*compound-file-signature*
    #:kind-name-disagrees-p #:name-kinds
-   #:sandbox-status #:sandbox-status-now #:sandbox-run #:sandbox-start #:end-sandbox
-   #:end-sandboxes #:sandbox-memory-scope-p #:real-place #:sealed-copy #:sandbox-input-refusal #:memory-file
-   #:sealed-file-size #:sandbox-run-on-file #:sandbox-find-program #:system-program #:sandbox-filtered-p
+   #:sandbox-status #:sandbox-status-now #:sandbox-run #:sandbox-start #:end-sandbox #:*sandbox-carried-settings*
+   #:end-sandboxes #:sandbox-memory-scope-p #:shown-place-p #:real-place #:sealed-copy #:sandbox-input-refusal
+   #:memory-file #:sealed-file-size #:sandbox-run-on-file #:sandbox-find-program #:system-program #:sandbox-filtered-p
    #:*sandbox-path* #:*sandbox-file-limit* #:find-program #:program-search-path #:*default-program-path*
    #:program-missing #:program-output #:program-environment #:*own-variables* #:program-variable #:own-variable
    #:own-directory #:variable-listed-p #:listed-environment #:host-program-environment #:start-program #:in-starter
@@ -65,6 +70,7 @@ elsewhere.")
    #:command-words #:setpriv-command #:desktop-p #:askpass-program #:*askpass-programs* #:*restricted-variables*
    #:restricted-environment #:version-numbers #:version-at-least-p
    #:rename-path #:make-directory #:path-join #:parent-path #:copy-path-tree #:delete-tree #:move-path #:trash-path
+   #:walk-directory #:tree-size
    #:trash-for #:home-trash #:scratch-directory #:buffer-scratch-directory #:kind-words #:size-words
    #:open-scratch-file #:open-unnamed-file #:name-unnamed-file #:cache-directory #:chosen-directory
    #:directory-in-memory-p #:directories-in-memory-words #:data-home #:read-line-bounded #:read-stream-octets
@@ -72,7 +78,8 @@ elsewhere.")
    #:open-lock-file #:lock-file-held-p #:call-with-state-lock
    #:sync-directory #:run-program-again #:*saved-program* #:slash-ended #:directory-name #:setsid-command
    #:drive-trash-sound-p
-   #:ensure-private-directory #:path-kind #:clean-path #:path-directory-and-name #:owner-name #:owner-group-name
+   #:ensure-private-directory #:path-kind #:fd-kind #:clean-path #:dot-entry-name-p #:fit-name
+   #:remove-file-if-there #:environment-without #:duplicate-fd #:path-directory-and-name #:owner-name #:owner-group-name
    #:user-font-directories
    ;; new names, and what a program shut in came to
    #:random-name #:numbered-name #:create-free-file #:copy-to-free-name

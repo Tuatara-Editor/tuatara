@@ -31,13 +31,15 @@ system keeps old copies of their blocks; a solid-state drive may."
       "its file system keeps old copies (copy-on-write)"
       "an SSD may keep old copies"))
 
-(defstruct (wipe-job (:include tuatara.runtime:job) (:constructor make-wipe-job (buffer paths total)) (:copier nil))
+(define-record (wipe-job (:include tuatara.runtime:job) (:constructor make-wipe-job (buffer paths total)) (:copier nil))
   "PATHS being wiped, a job: TOTAL octets to overwrite, all passes counted;
 DONE, so far; WIPED, those gone; REFUSED, why none was wiped, when one was
 found not to hold what it had to."
-  paths total (done 0) (wiped '()) (refused nil))
-
-(setf (documentation 'wipe-job-p 'function) "True when OBJECT is a WIPE-JOB.")
+  (paths nil :documentation "The paths that WIPE-JOB wipes.")
+  (total nil :documentation "How many octets WIPE-JOB overwrites in all, every pass counted.")
+  (done 0 :documentation "How many octets WIPE-JOB has overwritten so far.")
+  (wiped '() :documentation "The paths WIPE-JOB has wiped and removed.")
+  (refused nil :documentation "Why WIPE-JOB wiped nothing, when a path did not hold what it had to, or NIL."))
 
 (tuatara.runtime:define-job-words wipe-job
   :doing "Wiping"

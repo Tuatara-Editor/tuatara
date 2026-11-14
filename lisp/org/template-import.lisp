@@ -1,4 +1,4 @@
-;;;; lisp/org/template-import.lisp --- What a template imported from a Word or LaTeX document has, and its note template.
+;;;; lisp/org/template-import.lisp --- What a template imported from a Word or LaTeX document has; its note template.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; A document given to you to fill in, a Word document (docx-import.lisp)
@@ -21,15 +21,19 @@
 ;;;; A place written in the document already, {{{case}}}, is a field too:
 ;;;; tagging the fields before the import names them as you want.
 ;;;;
-;;;; Both imports also refuse to write over anything, write their files and
-;;;; say what they made the same way, with the functions here.
+;;;; Both imports also refuse to write over anything, make every file before
+;;;; writing any, take away what they wrote when a write fails, and say what
+;;;; they made the same way, with the functions here.
 
 (in-package #:tuatara.defaults)
 
-(defstruct (template-import (:constructor make-template-import ()) (:copier nil))
+(define-record (template-import (:constructor make-template-import ()) (:copier nil))
   "What an import has found: FIELDS, each (KEY KIND EXAMPLE LABEL FORMAT
 CHOICES) in the order met; NOTES, what to say of it."
-  (fields '()) (notes '()))
+  (fields '()
+          :documentation "The fields TEMPLATE-IMPORT found, each (KEY KIND EXAMPLE LABEL FORMAT CHOICES), in the order
+met.")
+  (notes '() :documentation "What TEMPLATE-IMPORT says of its import."))
 
 (defvar *template-import* nil
   "The TEMPLATE-IMPORT under way.")
@@ -44,8 +48,11 @@ and a keyword in lower case, words joined by _, the words that ask (enter,
 insert, type, your) left out: \"[Enter surveyor name]\" is surveyor_name."
   (let* ((words (cl-ppcre:all-matches-as-strings "[A-Za-z0-9]+" (string-downcase text)))
          (words (loop for rest on words
-                      while (and (rest rest) (member (first rest) '("enter" "insert" "type" "add" "select" "choose" "your" "the" "click" "or" "tap" "here" "to")
-                                                     :test #'string=))
+                      while (and (rest rest)
+                                 (member (first rest)
+                                         '("enter" "insert" "type" "add" "select" "choose" "your" "the" "click" "or"
+                                           "tap" "here" "to")
+                                         :test #'string=))
                       finally (return rest)))
          (key (format nil "~{~a~^_~}" (subseq words 0 (min 4 (length words))))))
     (cond ((zerop (length key)) "field")
@@ -82,6 +89,20 @@ saved in: NAME-media beside NOTE."
   (tuatara.io:ensure-directories path)
   (tuatara.io:replace-file path contents))
 
+(defun template-import-commit (places files)
+  "Write FILES, each (PATH . CONTENTS) as TEMPLATE-IMPORT-WRITE takes them, all
+made before; when one cannot be written, take away again each of PLACES, the
+files and directories the import makes (TEMPLATE-IMPORT-CHECK-FREE found them
+free), so that a failed import leaves nothing behind and can be tried again."
+  (handler-bind ((error (lambda (condition)
+                          (declare (ignore condition))
+                          (dolist (place places)
+                            (when (tuatara.io:path-stamp place :follow nil :failure nil)
+                              (ignoring-errors-reported ("taking away ~a" (abbreviated-path place))
+                                                        (tuatara.io:delete-tree place)))))))
+    (loop for (path . contents) in files
+          do (template-import-write path contents))))
+
 (defun template-import-result (note)
   "What an import returns once it has written the note template NOTE: NOTE,
 and as a second value what to say of it, a list of sentences: its fields
@@ -116,7 +137,8 @@ date's {{{issue_date:date=d MMMM yyyy}}}, but those Tuatara fills itself
   (cl-ppcre:do-matches (start end *template-place-re* text)
     (let ((place (template-place (subseq text start end))))
       (when (and place (null (getf place :condition))
-                 (not (member (getf place :name) (list* "body" "title" "contents" *latex-only-places*) :test #'string=)))
+                 (not (member (getf place :name) (list* "body" "title" "contents" *latex-only-places*)
+                              :test #'string=)))
         (let ((name (getf place :name)))
           (template-field name
                           (if (or (getf place :date) (template-date-label-p (substitute #\Space #\_ name))) :date :text)
@@ -149,11 +171,11 @@ template has them: a comment naming each and what it takes, then its keyword."
                      ((and empty (string= key "author"))
                       (format stream "# ~a~%#+author: %author%~%" words))
                      (empty
-                       (format stream "# ~a~@[, as ~a~]~%#+~a:~%" words
-                               (and example (not (string-equal example words))
-                                    (not (cl-ppcre:scan (format nil "^(?:~a)$" *template-placeholder*) example))
-                                    example)
-                               key))
+                      (format stream "# ~a~@[, as ~a~]~%#+~a:~%" words
+                              (and example (not (string-equal example words))
+                                   (not (cl-ppcre:scan (format nil "^(?:~a)$" *template-placeholder*) example))
+                                   example)
+                              key))
                      (t (format stream "# ~a~%#+~a: ~a~%" words key example))))))))))
 
 (defun template-heading-guidance (text)
@@ -179,13 +201,13 @@ there: # Write the executive summary."
                                       ((cl-ppcre:scan "^:[A-Za-z_-]+:$" next) (setf in-drawer t))
                                       ((zerop (length next)))
                                       (t (return))))
-                              (incf j))
+                           (incf j))
                      (let ((next-level (and (< j count) (level (aref lines j)))))
                        (when (or (>= j count) (and next-level (<= next-level level)))
                          ;; the drawers under the heading first, then the comment, then the blank lines
                          (loop for k from (1+ i) below j
                                unless (zerop (length (string-trim " " (aref lines k))))
-                                 do (write-line (aref lines k) out))
+                               do (write-line (aref lines k) out))
                          (let* ((title (string-trim " " (cl-ppcre:regex-replace "^\\*+ +" line "")))
                                 (title (cl-ppcre:regex-replace "\\s+:[\\w@:]+:$" title ""))
                                 (title (if (and (> (length title) 1) (lower-case-p (char title 1)))
@@ -194,7 +216,7 @@ there: # Write the executive summary."
                            (format out "# Write the ~a.~%" (org-safe-line title)))
                          (when (< (1+ i) j) (terpri out))
                          (setf i (1- j)))))))
-               (incf i)))
+            (incf i)))
     (string-right-trim '(#\Newline) (get-output-stream-string out))))
 
 (defun template-note-text (name title fields body &key contents numbered drawers)
@@ -207,9 +229,11 @@ export drawers in BODY to leave out of the document."
     (if (template-placeholder-p title)
         (format s "# The title~@[, as ~a~]~%#+title:~%" (and title (plusp (length title)) (org-safe-line title)))
         (format s "#+title: ~a~%" (org-safe-line title)))
-    (format s "#+template: ~a~%#+options: toc:~:[nil~;t~] num:~:[nil~;t~] redact:nil protect:nil~:[~; d:(not \"EXPORT\" \"LOGBOOK\")~]~%"
+    (format s "#+template: ~a~%#+options: toc:~:[nil~;t~] num:~:[nil~;t~] redact:nil protect:nil~:[~; d:(not ~
+\"EXPORT\" \"LOGBOOK\")~]~%"
             name contents numbered drawers)
-    (format s "# redact:t covers what {{{R(...)}}} wraps, protect:t what {{{P(...)}}} wraps (C-c m wraps the text selected).~%")
+    (format s "# redact:t covers what {{{R(...)}}} wraps, protect:t what {{{P(...)}}} wraps (C-c m wraps the text ~
+selected).~%")
     (when fields
       (format s "~%")
       (template-note-fields fields s))

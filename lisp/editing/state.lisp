@@ -97,10 +97,10 @@ other line."
   (let ((path (state-line-path line)))
     (and (plusp (length path)) (char= #\/ (char path 0)) path)))
 
-(defstruct (state-list (:constructor make-state-list (name parse print limit-variable
-                                                      &key header (path-of #'identity) key (version 1) (class :remembered)
-                                                        (fields 1) trust line-key))
-                       (:copier nil))
+(define-record (state-list (:constructor make-state-list (name parse print limit-variable
+                                                         &key header (path-of #'identity) key (version 1)
+                                                           (class :remembered) (fields 1) trust line-key formerly))
+                          (:copier nil))
   "A list kept between sessions in a file of the state directory. NAME is the
 file's name there. PARSE is a function making an entry of a line (NIL for a
 line to pass over). PRINT is one making the line of an entry. LIMIT-VARIABLE
@@ -115,7 +115,10 @@ a list of what you trusted, whose lines of a later version with more fields
 are not read. LINE-KEY is a function giving the name or path a line is about,
 read or not, to match PATH-OF, or NIL for a line not of the shape of its
 entries \(FIELD-LINE-KEY, SPACED-LINE-KEY; the first field, STATE-LINE-PATH,
-when NIL). What is known of it: FILE is the native name of the file read last,
+when NIL). FORMERLY is the name its file had in the state directory before,
+or NIL; a file of that name is moved over to NAME when there is none of NAME
+\(MOVE-FORMER-STATE-FILE). What is known of it: FILE is the native name of the
+file read last,
 its STAMP then and the entries it had then, DISK. PENDING is the changes made
 and not yet taken to be written, and WRITING is those being written, the
 latest first, each (FILE . CHANGE). SHOWN is the entries as STATE-LIST-ENTRIES
@@ -126,16 +129,50 @@ KNOWN-PATH is the native name of its file as last worked out, and PLACE is the
 setting of the state directory it was worked out for. CHANGES is how many
 times the entries may have changed, and LOOKED is when the file was last
 looked at for another session's change (STATE-LIST-GENERATION)."
-  name parse print limit-variable header path-of key version class fields trust line-key
-  (unreadable nil) (known-path nil) (place nil) (changes 0) (looked nil)
-  (file nil) (stamp nil) (disk '()) (pending '()) (writing '()) (shown nil)
-  (noted 0) (tried 0)
-  (lock (sb-thread:make-mutex :name "state list")))
+  (name nil :documentation "The name of a STATE-LIST's file in the state directory.")
+  (parse nil :documentation "The function making an entry of a line of LIST, NIL for a line to pass over.")
+  (print nil :documentation "The function making the line of an entry of LIST.")
+  (limit-variable nil :documentation "The variable saying how many entries of LIST are kept.")
+  (header nil :documentation "The lines written first in the file of LIST, or NIL.")
+  (path-of nil :documentation "The function giving the path an entry of LIST is about.")
+  (key nil :documentation "The function giving what makes two entries of LIST one, PATH-OF when NIL.")
+  (version nil
+           :documentation "The version of the format the lines of LIST are written in, said in the file's first line.")
+  (class nil
+         :documentation ":KEPT for a list of LIST you make yourself, whose loss would lose work, or :REMEMBERED for
+one of what you did.")
+  (fields nil :documentation "How many fields parted by tabs a line of today's format of LIST has at most.")
+  (trust nil
+         :documentation "True when LIST is of what you trusted, whose lines of a later version with more fields are
+not read.")
+  (line-key nil
+            :documentation "The function giving the name or path a line of LIST is about, read or not; NIL for a line
+not of the shape of its entries.")
+  (formerly nil :documentation "The name the file of LIST had in the state directory before, or NIL.")
+  (unreadable nil
+              :documentation "The native name of the file last said to be unreadable for LIST, NIL when none is, or
+after it is written.")
+  (known-path nil :documentation "The native name of the file of LIST as last worked out, NIL when not yet.")
+  (place nil :documentation "The setting of the state directory that the KNOWN-PATH of LIST was worked out for.")
+  (changes 0 :documentation "How many times the entries of LIST may have changed.")
+  (looked nil :documentation "When the file of LIST was last looked at for another session's change.")
+  (file nil :documentation "The native name of the file of LIST read last.")
+  (stamp nil :documentation "The stamp of the file of LIST when it was read last.")
+  (disk '() :documentation "The entries the file of LIST had when it was read last.")
+  (pending '()
+           :documentation "The changes to LIST made and not yet taken to be written, latest first, each (FILE .
+CHANGE).")
+  (writing '() :documentation "The changes to LIST being written, latest first, each (FILE . CHANGE).")
+  (shown nil
+         :documentation "The entries of LIST as STATE-LIST-ENTRIES gave them last, NIL when it has to work them out
+again.")
+  (noted 0 :documentation "How many changes to LIST were made.")
+  (tried 0 :documentation "How many changes to LIST there were when the writer last took them.")
+  (lock (sb-thread:make-mutex :name "state list")
+        :documentation "The mutex held while the changes to LIST are made or taken."))
 
 (setf (documentation 'make-state-list 'function)
-      "Return a STATE-LIST: a list kept between sessions in the state directory."
-      (documentation 'state-list-p 'function) "True when OBJECT is a STATE-LIST."
-      (documentation 'state-list-name 'function) "The name of a STATE-LIST's file in the state directory.")
+      "Return a STATE-LIST: a list kept between sessions in the state directory.")
 
 (defvar *state-lists* '()
   "Every list kept between sessions (DEFINE-STATE-LIST), for the writer to look through.")
@@ -143,9 +180,8 @@ looked at for another session's change (STATE-LIST-GENERATION)."
 (defmacro define-state-list (variable name &rest arguments)
   "Define VARIABLE as a list kept between sessions in the file NAME of the
 state directory, made by MAKE-STATE-LIST with ARGUMENTS (PARSE PRINT LIMIT
-and the keys: :HEADER, :PATH-OF, :KEY, :VERSION, :CLASS, :FIELDS, :TRUST and
-:LINE-KEY), and known to the
-writer (*STATE-LISTS*). Its file begins with the line # tuatara NAME VERSION;
+and the keys: :HEADER, :PATH-OF, :KEY, :VERSION, :CLASS, :FIELDS, :TRUST,
+:LINE-KEY and :FORMERLY), and known to the writer (*STATE-LISTS*). Its file begins with the line # tuatara NAME VERSION;
 lines beginning with # are comments, never given to PARSE."
   `(progn
      (defvar ,variable (make-state-list ,name ,@arguments)
@@ -167,11 +203,25 @@ it is looked for each time, to be used once there."
         (keep (and known (not (tuatara.io:directory-in-memory-p 'tuatara-user:*state-directory*)))))
     (if (and keep (state-list-known-path list) (eq place (state-list-place list)))
         (state-list-known-path list)
-        (let ((path (tuatara.io:native (merge-pathnames (state-list-name list) (tuatara.io:state-directory)))))
+        (let* ((directory (tuatara.io:state-directory))
+               (path (tuatara.io:native (merge-pathnames (state-list-name list) directory))))
+          (when (state-list-formerly list)
+            (move-former-state-file list path directory))
           (when keep
             (setf (state-list-place list) place
                   (state-list-known-path list) path))
           path))))
+
+(defun move-former-state-file (list path directory)
+  "Give the file of LIST in the state directory DIRECTORY under the name it
+had before (STATE-LIST-FORMERLY) the name PATH, its file now, when there is
+none at PATH: what an earlier release kept is read from then on, and written
+back in today's format."
+  (let ((old (tuatara.io:native (merge-pathnames (state-list-formerly list) directory))))
+    (when (and (null (tuatara.io:path-stamp path :follow nil :failure nil))
+               (tuatara.io:path-stamp old :follow nil :failure nil))
+      (ignoring-errors-reported ("moving ~a to ~a" old path)
+        (tuatara.io:rename-path old path)))))
 
 (defun forget-state-paths ()
   "Work out the files of the lists kept between sessions anew the next time
@@ -227,15 +277,19 @@ that only they are counted."
 a place by its file; NIL when there is none."
   (find key (state-list-entries list) :key (lambda (entry) (state-entry-key list entry)) :test #'equal))
 
-(defstruct (state-contents (:constructor make-state-contents (entries unread version lines comments))
-                           (:copier nil) (:predicate nil))
+(define-record (state-contents (:constructor make-state-contents (entries unread version lines comments))
+                              (:copier nil) (:predicate nil))
   "What the file of a list kept between sessions holds. ENTRIES is the
 entries, the latest first. UNREAD is the lines that are no entry this release
 reads, in their order. VERSION is the version its first line says, 1 when it
 says none. LINES is a table from each of ENTRIES to the line it was read from.
 COMMENTS is the comment lines of a file of a later version than the list's,
 but the version line."
-  entries unread version lines comments)
+  (entries nil :documentation "The entries of CONTENTS, the latest first.")
+  (unread nil :documentation "The lines of CONTENTS that are no entry this release reads, in their order.")
+  (version nil :documentation "The version the first line of the file of CONTENTS says, 1 when it says none.")
+  (lines nil :documentation "A table from each of the entries of CONTENTS to the line it was read from.")
+  (comments nil :documentation "The comment lines of CONTENTS when its file is of a later version than the list's."))
 
 (defun state-line-key (list line)
   "The name or path LINE of LIST, an entry or not, is about (LINE-KEY); NIL for
@@ -253,15 +307,19 @@ in the format of VERSION: # tuatara NAME VERSION."
 
 (defun state-line-version (list line)
   "The version of the format of LIST's file that LINE, a comment line of it,
-says (STATE-VERSION-LINE), or NIL when it says none."
-  (let* ((name (state-list-name list)) (start (+ 11 (length name))))
+says (STATE-VERSION-LINE), under its name or the one it had before
+\(STATE-LIST-FORMERLY), or NIL when it says none."
+  (flet ((version-under (name)
+           (let ((start (+ 11 (length name))))
+             (and (string= name line :start2 10 :end2 (min (length line) (+ 10 (length name))))
+                  (< start (length line) (+ start 7))
+                  (char= #\Space (char line (1- start)))
+                  (every #'digit-char-p (subseq line start))
+                  (let ((version (parse-integer line :start start)))
+                    (and (plusp version) version))))))
     (and (uiop:string-prefix-p "# tuatara " line)
-         (string= name line :start2 10 :end2 (min (length line) (+ 10 (length name))))
-         (< start (length line) (+ start 7))
-         (char= #\Space (char line (1- start)))
-         (every #'digit-char-p (subseq line start))
-         (let ((version (parse-integer line :start start)))
-           (and (plusp version) version)))))
+         (or (version-under (state-list-name list))
+             (and (state-list-formerly list) (version-under (state-list-formerly list)))))))
 
 (defun read-state-contents (list file)
   "What FILE, LIST's file, holds (STATE-CONTENTS). Its entries are the latest
@@ -405,8 +463,9 @@ again while nothing changed; empty when there is no state directory."
           (setf (state-list-file list) file
                 (state-list-stamp list) stamp
                 (state-list-disk list) disk))
-        (let ((entries (apply-state-changes list (state-list-disk list)
-                                            (changes-for file (append (state-list-pending list) (state-list-writing list))))))
+        (let ((entries (apply-state-changes
+                        list (state-list-disk list)
+                        (changes-for file (append (state-list-pending list) (state-list-writing list))))))
           (setf (state-list-shown list) (if (and most (> (length entries) most)) (subseq entries 0 most) entries)))))))
 
 (defun note-state-change (list change)
@@ -455,7 +514,8 @@ could not be written."
            (let ((contents (read-state-contents list file)))
              (if contents
                  (multiple-value-bind (now unread)
-                     (apply-state-changes list (state-contents-entries contents) changes (state-contents-unread contents))
+                     (apply-state-changes list (state-contents-entries contents) changes
+                                          (state-contents-unread contents))
                    (setf entries now
                          (state-contents-unread contents) unread)
                    (ignoring-errors-reported ("writing ~a" file)
@@ -632,10 +692,10 @@ ended; as an editor started bare writes none, it is always gone."
       (if ended
           (progn (ignoring-errors-reported ("deleting ~a" (car *bare-state-directory*))
                    (tuatara.io:delete-tree (car *bare-state-directory*)))
-                 (ignoring-errors-reported ("closing ~a" (car *bare-state-directory*))
-                   (sb-posix:close (cdr *bare-state-directory*)))
+                 (tuatara.runtime:close-fd-quietly (cdr *bare-state-directory*) "~a" (car *bare-state-directory*))
                  (setf *bare-state-directory* nil))
-          (tuatara.runtime:debug-report :file "the state writer is still running: ~a is left" (car *bare-state-directory*))))))
+          (tuatara.runtime:debug-report :file "the state writer is still running: ~a is left"
+                                        (car *bare-state-directory*))))))
 
 (defun install-state-lists ()
   "Write what is left of the lists kept between sessions as the editor stops,

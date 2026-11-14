@@ -754,3 +754,81 @@ end its lines with a carriage return and a newline."
       (is string= "Split: typed at the line ends of 3 cursors" (said "l t t A X C-g C-g"))
       (is string= "Split: typed on new lines below 3 cursors" (said "t t o X C-g C-g"))
       (is string= "Split: typed on new lines above 3 cursors" (said "t t O X C-g C-g")))))
+
+(define-test (split no-line-below-is-a-refusal)
+  ;; the words for "no line below" are a refusal, told whole while a secret is at hand
+  (let ((b (tuatara.buffer:make-buffer "spots-refusal" :text "only")))
+    (unwind-protect
+         (let ((condition (handler-case (tuatara.defaults::cursor-spots b 0 0 2 nil)
+                            (error (e) e))))
+           (true (typep condition 'tuatara.runtime:refusal) "~a" condition))
+      (tuatara.buffer:kill-buffer b))))
+
+(define-test (split keymaps-made-again-only-after-a-binding)
+  ;; starting cursors or a split makes their keys again only once a key was bound since
+  (tuatara.defaults::build-cursor-keymaps)
+  (tuatara.defaults::build-split-chooser-keymap)
+  (let ((generation tuatara.command::*keymaps-generation*)
+        (cursors tuatara.defaults::*cursor-keymap*)
+        (chooser tuatara.defaults::*split-chooser-keymap*))
+    (tuatara.defaults::build-cursor-keymaps)
+    (tuatara.defaults::build-split-chooser-keymap)
+    (is = generation tuatara.command::*keymaps-generation*)
+    (is eq cursors tuatara.defaults::*cursor-keymap*)
+    (is eq chooser tuatara.defaults::*split-chooser-keymap*)
+    (tuatara.command:define-key (tuatara.command:make-keymap) "x" 'ignore)
+    (tuatara.defaults::build-cursor-keymaps)
+    (isnt eq cursors tuatara.defaults::*cursor-keymap*)))
+
+(define-modal-test (split reminder-made-once-while-it-stands)
+  ;; the split's reminder is worked out again only when what it says changes, not after every command
+  (let ((f (tuatara.frontend.fake:make-fake-frontend :width 100 :height 10))
+        (result nil))
+    (let ((scratch (tuatara.buffer:find-buffer "*scratch*")))
+      (when scratch (tuatara.buffer:kill-buffer scratch)))
+    (tuatara.buffer:make-buffer "*scratch*" :text (format nil "ab~%ab~%ab~%"))
+    (tuatara.frontend.fake:fake-queue-keys f "% f a RET")
+    (tuatara.frontend.fake:fake-queue-action
+     f (lambda ()
+         (let* ((split tuatara.defaults::*split*)
+                (first (tuatara.defaults::split-hint split))
+                (before (sb-ext:get-bytes-consed)))
+           (dotimes (i 10) (tuatara.defaults::split-hint split))
+           (setf result (list first (- (sb-ext:get-bytes-consed) before) (tuatara.defaults::split-hint split))))))
+    (tuatara.frontend.fake:fake-queue-keys f "C-g")
+    (without-grammar-questions
+      (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults
+                                    :buffer (tuatara.buffer:find-buffer "*scratch*")))
+    (destructuring-bind (first consed again) result
+      (true (search "Split: 3 places in the selection" first))
+      (is eq first again)
+      (true (< consed 2000) "~:d octets for ten reminders" consed))))
+
+(defun settling-garbage (n)
+  "The octets one settling of N cursors, one a line, makes once they stand."
+  (let ((f (tuatara.frontend.fake:make-fake-frontend :width 100 :height 10))
+        (result nil))
+    (let ((scratch (tuatara.buffer:find-buffer "*scratch*")))
+      (when scratch (tuatara.buffer:kill-buffer scratch)))
+    (tuatara.buffer:make-buffer "*scratch*" :text (tuatara.defaults::repeated-text (format nil "ab~%") (1+ n)))
+    (tuatara.frontend.fake:fake-queue-keys f (format nil "C-u ~{~a~^ ~} t" (coerce (princ-to-string (1- n)) 'list)))
+    (tuatara.frontend.fake:fake-queue-action
+     f (lambda ()
+         (let ((split tuatara.defaults::*split*))
+           (tuatara.defaults::settle-cursors split)
+           (let ((before (sb-ext:get-bytes-consed)))
+             (tuatara.defaults::settle-cursors split)
+             (setf result (list (- (sb-ext:get-bytes-consed) before) (length (tuatara.defaults::split-places split))))))))
+    (tuatara.frontend.fake:fake-queue-keys f "C-g")
+    (without-grammar-questions
+      (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults
+                                    :buffer (tuatara.buffer:find-buffer "*scratch*")))
+    (values-list result)))
+
+(define-modal-test (split cursors-settled-without-garbage)
+  ;; settling cursors that keep their order and lines makes nothing anew, at a hundred cursors or at thousands
+  (multiple-value-bind (small small-count) (settling-garbage 100)
+    (multiple-value-bind (large large-count) (settling-garbage 5000)
+      (is = 100 small-count)
+      (is = 5000 large-count)
+      (true (< (- large small) 20000) "~:d octets at 100 cursors, ~:d at 5,000" small large))))

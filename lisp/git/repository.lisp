@@ -11,15 +11,25 @@
 
 ;;; Submodules
 
+(defun git-submodule-line-path (line)
+  "The path in LINE, one of git submodule status: the state's letter, the
+commit, the path (spaces in it kept), and, in brackets, what the commit is
+described as; NIL when there is none."
+  (let* ((from (position #\Space line :start (min 1 (length line))))
+         (path (and from (string-trim " " (subseq line from))))
+         (described (and path (plusp (length path)) (char= (char path (1- (length path))) #\))
+                         (search " (" path :from-end t))))
+    (let ((path (if described (subseq path 0 described) path)))
+      (and path (plusp (length path)) path))))
+
 (defun parse-git-submodules (text)
   "TEXT, what git submodule status printed, as a list of (PATH STATE),
 STATE a word: checked out as recorded, not checked out, at another commit,
 or clashing."
   (loop for line in (uiop:split-string text :separator '(#\Newline))
-        for words = (uiop:split-string (string-left-trim '(#\Space) (subseq line (min 1 (length line))))
-                                       :separator '(#\Space))
-        when (and (plusp (length line)) (second words))
-          collect (list (second words)
+        for path = (git-submodule-line-path line)
+        when path
+          collect (list path
                         (case (char line 0)
                           (#\- "not checked out") (#\+ "at another commit") (#\U "clashing") (t "as recorded")))))
 
@@ -39,12 +49,14 @@ records, each not looked into (their own settings could name programs)."
 (defun git-ask-submodule (prompt top then)
   "Ask with PROMPT for a submodule of the repository at TOP (the one on
 point's line of a status first), then call THEN with its path."
-  (let ((at (let ((entry (and (git-here) (list-entry-at)))) (and (eq (first entry) :submodule) (second entry)))))
+  (let ((at (git-entry-at :submodule)))
     (git-ask "Reading the submodules" top #'git-submodules
              (lambda (modules)
                (if (null modules)
                    (message "No submodule")
-                   (let ((path (completing-read prompt (mapcar (lambda (m) (make-candidate (first m) :annotation (second m))) modules)
+                   (let ((path (completing-read prompt
+                                                (mapcar (lambda (m) (make-candidate (first m) :annotation (second m)))
+                                                        modules)
                                                 :require-match t :default (or at (first (first modules))))))
                      (when (plusp (length path)) (funcall then path))))))))
 
@@ -180,7 +192,9 @@ committed."
             ((find #\Newline pattern) (message "A pattern is one line"))
             ((eq where :private)
              (git-ask "Reading where git keeps its exclusions" top
-                      (lambda (job top) (git-output-line job top (list "rev-parse" "--path-format=absolute" "--git-path" "info/exclude")))
+                      (lambda (job top)
+                        (git-output-line job top (list "rev-parse" "--path-format=absolute"
+                                                       "--git-path" "info/exclude")))
                       (lambda (file) (git-add-ignore-pattern file pattern top))))
             (t (git-add-ignore-pattern (concatenate 'string (or directory top) ".gitignore") pattern top))))))
 
@@ -271,7 +285,8 @@ format given the directory, once done."
           (when repository
             (let ((ref (git-read-name "Branch or revision: " '() :default "main")))
               (when ref
-                (git-over-network doing top (append (list "subtree" verb (format nil "--prefix=~a" prefix)) switches (list repository ref))
+                (git-over-network doing top (append (list "subtree" verb (format nil "--prefix=~a" prefix))
+                                                    switches (list repository ref))
                                   (format nil done prefix))))))))))
 
 (define-command git-subtree-add ()
@@ -321,7 +336,9 @@ so, when one is not within it (GIT-INSIDE-PATH-P) or none is given."
   (let ((directories (tuatara.text:split-words (read-string prompt) '(#\Space))))
     (cond ((null directories) (message "No directory given") nil)
           ((find-if-not #'git-inside-path-p directories)
-           (message "Not a directory within the repository: ~a" (escape-controls (find-if-not #'git-inside-path-p directories))) nil)
+           (message "Not a directory within the repository: ~a"
+                    (escape-controls (find-if-not #'git-inside-path-p directories)))
+           nil)
           (t directories))))
 
 (define-command git-sparse-set ()
@@ -349,7 +366,8 @@ the repository kept out of the files."
 (define-command git-sparse-reapply ()
   "Keep out of the files again what the sparse checkout leaves out, after a merge or a rebase brought some in."
   (with-git-repository (top)
-    (git-run "Narrowing the checkout again" top (list "sparse-checkout" "reapply") "Checked out as the sparse checkout says")))
+    (git-run "Narrowing the checkout again" top (list "sparse-checkout" "reapply")
+             "Checked out as the sparse checkout says")))
 
 (define-menu git-sparse-menu (:title "Sparse checkout" :show git-menu-shows-p :note git-menu-note)
   "Open the sparse checkout menu: check out only some directories, more of them,

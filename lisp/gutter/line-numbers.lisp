@@ -3,14 +3,6 @@
 
 (in-package #:tuatara.defaults)
 
-(defun add-gutter-provider (name width cell &key prepare first)
-  "Put the gutter provider NAME, with its functions WIDTH, CELL and PREPARE
-as *GUTTER-PROVIDERS* describes them, in the gutter in place of one of that
-name: after the others, or with FIRST before them."
-  (let ((provider (list* :name name :width width :cell cell (and prepare (list :prepare prepare))))
-        (others (remove name *gutter-providers* :key (lambda (p) (getf p :name)) :test #'equal)))
-    (setf *gutter-providers* (if first (cons provider others) (append others (list provider))))))
-
 (define-display-toggle line-numbers "Line numbers"
   "Show absolute line numbers in the gutter of the current buffer, or none:
 each line its own number, from 1. In a buffer showing relative ones, absolute
@@ -36,6 +28,34 @@ only line of an empty buffer: no part of the text, only a place for point."
   (and (= line (1- (tuatara.buffer:buffer-line-count buffer)))
        (= (tuatara.buffer:buffer-goto-line buffer line) (tuatara.buffer:buffer-size buffer))))
 
+(defparameter *number-strings-kept* 100000
+  "How many of the smallest numbers the gutter keeps the strings of (NUMBER-STRING).")
+
+(sb-ext:defglobal **number-strings** (make-array 0)
+  "The strings NUMBER-STRING has made, by number, NIL for those not asked for yet.")
+
+(defun number-string (number)
+  "NUMBER, a non-negative integer, as a string of decimal digits: the same
+string each time for a number below *NUMBER-STRINGS-KEPT*, so that drawing the
+numbers of a screen makes none."
+  (if (>= number *number-strings-kept*)
+      (princ-to-string number)
+      (let ((kept **number-strings**))
+        (when (>= number (length kept))
+          (let ((bigger (make-array (min *number-strings-kept* (max (1+ number) 256 (* 2 (length kept))))
+                                   :initial-element nil)))
+            (replace bigger kept)
+            (setf kept bigger
+                  **number-strings** bigger)))
+        (or (svref kept number)
+            (setf (svref kept number) (princ-to-string number))))))
+
+(defun digit-count (number)
+  "How many decimal digits NUMBER, a non-negative integer, is written with."
+  (loop for digits from 1
+        for below = 10 then (* below 10)
+        when (< number below) return digits))
+
 (defun line-numbers-width (editor window)
   "Gutter columns for line numbers in WINDOW: digits of the last line number, or 0 when off.
 The line after the text's last newline has no number, so it does not count.
@@ -46,10 +66,10 @@ a tenth more to spare; 0 until it has counted any."
     (cond ((null (line-numbers-mode buffer)) 0)
           ((tuatara.buffer:buffer-indexed-p buffer)
            (let ((count (tuatara.buffer:buffer-line-count buffer)))
-             (length (princ-to-string (max 1 (if (past-text-line-p buffer (1- count)) (1- count) count))))))
+             (digit-count (max 1 (if (past-text-line-p buffer (1- count)) (1- count) count)))))
           (t (multiple-value-bind (lines reached) (tuatara.io:counted-lines buffer)
                (if (and lines (plusp reached))
-                   (length (princ-to-string (max 1 (ceiling (* 11/10 (1+ lines) (tuatara.buffer:buffer-size buffer)) reached))))
+                   (digit-count (max 1 (ceiling (* 11/10 (1+ lines) (tuatara.buffer:buffer-size buffer)) reached)))
                    0))))))
 
 (defun line-numbers-prepare (editor window rows)
@@ -77,9 +97,9 @@ FRAME is what LINE-NUMBERS-PREPARE worked out for the frame."
     (cond ((null line)
            (if wrap (values *soft-wrap-indicator* :wrap-indicator) (values "" :line-number)))
           ((and counted (past-text-line-p (tuatara.display:window-buffer window) line)) (values "~" :line-number))
-          ((eql line current) (values (princ-to-string (1+ line)) :current-line-number))
-          ((and current relative) (values (princ-to-string (abs (- line current))) :line-number))
-          (t (values (princ-to-string (1+ line)) :line-number)))))
+          ((eql line current) (values (number-string (1+ line)) :current-line-number))
+          ((and current relative) (values (number-string (abs (- line current))) :line-number))
+          (t (values (number-string (1+ line)) :line-number)))))
 
 (define-command display-relative-line-numbers-mode ()
   "Show relative line numbers in the gutter of the current buffer, or none:

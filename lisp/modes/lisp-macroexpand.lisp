@@ -38,8 +38,8 @@ itself written #1= ... #1#, so that printing it ends."
     (setf (buffer-kind b) :macroexpansion)
     (tuatara.buffer:widen-buffer b)
     (tuatara.buffer:buffer-replace b 0 (tuatara.buffer:buffer-size b) (string-left-trim '(#\Newline) text))
-    (setf (tuatara.buffer:buffer-undo-stack b) '() (tuatara.buffer:buffer-redo-stack b) '()
-          (tuatara.buffer:buffer-point b) 0)
+    (tuatara.buffer:forget-history b)
+    (setf (tuatara.buffer:buffer-point b) 0)
     (tuatara.buffer:buffer-mark-saved b)
     (display-buffer b :other t :at :start)))
 
@@ -94,7 +94,8 @@ prefix argument put it in after the call."
                     (t (let ((expansion (expansion-text (first (second outcome)) (getf result :package)
                                                         (tuatara.display:window-width (current-window)))))
                          (if insert
-                             (goto (tuatara.buffer:buffer-insert b end (format nil "~%~a" (string-right-trim '(#\Newline) (string-left-trim '(#\Newline) expansion)))))
+                             (goto (tuatara.buffer:buffer-insert
+                                    b end (format nil "~%~a" (string-trim '(#\Newline) expansion))))
                              (show-expansion expansion)))))))))))
 
 (define-command pp-macroexpand-last-expression ()

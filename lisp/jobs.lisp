@@ -1,4 +1,4 @@
-;;;; lisp/search/jobs.lisp --- Jobs in the background: taken in, stopped, asked about, queued, and listed.
+;;;; lisp/jobs.lisp --- Jobs in the background: taken in, stopped, asked about, queued, and listed.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; Every job in the background runs on the one runner (TUATARA.RUNTIME:JOB):
@@ -21,7 +21,8 @@
 
 (in-package #:tuatara.defaults)
 
-(defstruct (queued-job (:constructor make-queued-job (buffer words starter anchors shade counted place)) (:copier nil))
+(define-record (queued-job (:constructor make-queued-job (buffer words starter anchors shade counted place))
+                           (:copier nil))
   "A job waiting its turn in BUFFER. WORDS say what it will do. STARTER is a
 function of the offsets its ANCHORS stand at when its turn comes, and starts
 the job. SHADE is a function of those offsets and the offsets FROM and TO of
@@ -30,9 +31,20 @@ while it waits. COUNTED is true when it needs BUFFER's lines counted first
 (LINES-UNCOUNTED-P). PLACE is where in BUFFER's undo history it was given
 \(TUATARA.BUFFER:MAKE-UNDO-PLACE), for its change to stand there
 \(JOB-BEGINS-WHERE-GIVEN). QUEUED is the time it was queued at."
-  buffer words starter anchors shade counted place (queued (get-universal-time)))
-
-(setf (documentation 'queued-job-p 'function) "True when OBJECT is a QUEUED-JOB.")
+  (buffer nil :documentation "The buffer QUEUED-JOB waits in.")
+  (words nil :documentation "What QUEUED-JOB will do, in words.")
+  (starter nil
+           :documentation "The function that starts QUEUED-JOB from the offsets its ANCHORS stand at when its turn
+comes.")
+  (anchors nil
+           :documentation "The anchors that follow the text QUEUED-JOB will read through every change made to its buffer
+meanwhile.")
+  (shade nil
+         :documentation "The function that gives the (START END) stretches QUEUED-JOB will change, painted while it
+waits.")
+  (counted nil :documentation "True when QUEUED-JOB needs its buffer's lines counted before it starts.")
+  (place nil :documentation "Where in its buffer's undo history QUEUED-JOB was given, for its change to stand there.")
+  (queued (get-universal-time) :documentation "The time QUEUED-JOB was queued at, in universal time."))
 
 (defvar *job-queue* '()
   "The jobs waiting their turn, in every buffer, the oldest first.")
@@ -75,21 +87,19 @@ stops it."
   (message "~a in the background; carry on~@[, ~a~] (\\[stop-job] stops it)" words then))
 
 (defparameter *job-verbs*
-  '((:search "Searching" "Searched" "search" nil)
-    (:type "Writing" "Wrote" "write" "at")
-    (:append "Writing" "Wrote" "write" "at")
-    (:change "Changing" "Changed" "change" nil)
-    (:delete "Deleting" "Deleted" "delete" nil)
-    (:cut "Cutting" "Cut" "cut" nil)
-    (:wrap "Wrapping" "Wrapped" "wrap" nil)
-    (:unwrap "Unwrapping" "Unwrapped" "unwrap" nil)
-    (:paste "Pasting" "Pasted" "paste" nil)
-    (:clear "Clearing" "Cleared" "clear" nil)
-    (:number "Numbering" "Numbered" "number" nil)
-    (:number-in "Numbering" "Numbered" "number" nil))
+  '(((:search) "Searching" "Searched" "search" nil)
+    ((:type :append) "Writing" "Wrote" "write" "at")
+    ((:change) "Changing" "Changed" "change" nil)
+    ((:delete) "Deleting" "Deleted" "delete" nil)
+    ((:cut) "Cutting" "Cut" "cut" nil)
+    ((:wrap) "Wrapping" "Wrapped" "wrap" nil)
+    ((:unwrap) "Unwrapping" "Unwrapped" "unwrap" nil)
+    ((:paste) "Pasting" "Pasted" "paste" nil)
+    ((:clear) "Clearing" "Cleared" "clear" nil)
+    ((:number :number-in) "Numbering" "Numbered" "number" nil))
   "The words of every kind of work done at many places in the background: a
 split's search and its writing out of sight, the cursors' and a rectangle's.
-Each is (KIND DOING DONE VERB PREPOSITION): what it is doing (the list of
+Each is (KINDS DOING DONE VERB PREPOSITION): what it is doing (the list of
 jobs, the mode line's questions, what is said as it starts or waits), what it
 did (its report), what it does as a verb (Could not ...), and the word between
 those and the places named, if any.")
@@ -98,7 +108,8 @@ those and the places named, if any.")
   "The word of *JOB-VERBS* for KIND in FORM, :DOING (Cutting), :DONE (Cut) or
 :VERB (cut); with WORDS, the places named, followed by them, after the kind's
 preposition when it has one: Writing at the other lines."
-  (destructuring-bind (doing done verb preposition) (rest (or (assoc kind *job-verbs*) (refuse "No words for ~s" kind)))
+  (destructuring-bind (doing done verb preposition)
+      (rest (or (find kind *job-verbs* :key #'first :test #'member) (refuse "No words for ~s" kind)))
     (let ((word (ecase form (:doing doing) (:done done) (:verb verb))))
       (if words (format nil "~a~@[ ~a~] ~a" word preposition words) word))))
 
@@ -120,7 +131,8 @@ left alone (HIDDEN-LEFT-WORDS). With no change, it says instead that doing it
 at WHOLE, the places in words, changed nothing."
   (lambda (job how changes seconds kept)
     (case how
-      (:done (format nil "~a ~a~[~:;; ~:*~:d left as they were, the text beside them not the same~]~[~:;; ~:*~:d left as they were, partly hidden in a fold~]~a"
+      (:done (format nil "~a ~a~[~:;; ~:*~:d left as they were, the text beside them not the same~]~
+~[~:;; ~:*~:d left as they were, partly hidden in a fold~]~a"
                      (job-words kind :done (funcall counted changes))
                      (job-done-words seconds kept)
                      (car refused)
@@ -147,6 +159,11 @@ change made meanwhile, for a job that waits its turn."
 typed meanwhile is answered first, the work going on behind it: work quicker
 than this is done before the key, as if it had taken no time.")
 
+(defgeneric job-kind (job)
+  (:documentation "The kind of work JOB does, as jobs that have ended are taken in
+together (TAKE-IN-SOON): a type every job of that kind is of.")
+  (:method (job) (type-of job)))
+
 (defun take-in-soon (job seconds &optional words then)
   "Wait up to SECONDS for JOB, just started, to end, or, after
 *GIVE-WAY-AFTER*, until a key is pressed, whichever comes first. When it has
@@ -164,7 +181,7 @@ work."
           do (sb-thread:join-thread (tuatara.runtime:job-thread job) :timeout (min left 1/100) :default nil)))
   (if (tuatara.runtime:job-running-p job)
       (when words (say-in-background words then))
-      (let ((kind (type-of job)))
+      (let ((kind (job-kind job)))
         (tuatara.runtime:take-in-jobs (lambda (other) (typep other kind))))))
 
 (defun result-refused-p (buffer what &optional (change 0))
@@ -251,7 +268,8 @@ meanwhile; by default the offsets taken two by two."
                           (let ((tuatara.syntax:*regex-thorough* t)) (apply starter positions)))
                         starter))
            (job (make-queued-job buffer words starter
-                                 (mapcar (lambda (p) (tuatara.text:make-anchor version (car p) :bias (cdr p))) positions)
+                                 (mapcar (lambda (p) (tuatara.text:make-anchor version (car p) :bias (cdr p)))
+                                         positions)
                                  shade counted (tuatara.buffer:make-undo-place buffer))))
       (setf *job-queue* (append *job-queue* (list job)))
       (tuatara.runtime:debug-report :job "~a in ~a queued, ~:r in line" words (tuatara.buffer:buffer-name buffer)
@@ -259,6 +277,14 @@ meanwhile; by default the offsets taken two by two."
       (message "Queued, ~:r in line: ~a (\\[list-jobs] lists the jobs)" (length (queued-in buffer)) words)
       t)))
 
+(defun run-or-queue (buffer words positions starter &key (shade #'ranges-shade) counted)
+  "Start the job STARTER starts: at once, STARTER called with the offsets of
+POSITIONS as they are now, returning what it returns; or, when a job runs or
+waits in BUFFER (QUEUE-IF-BUSY, with WORDS, SHADE and COUNTED), queued, called
+with where they stand when its turn comes, returning true. So STARTER alone
+works out what the job needs from its positions."
+  (or (queue-if-busy buffer words positions starter :shade shade :counted counted)
+      (apply starter (mapcar #'car positions))))
 (defun job-begins-where-given (buffer low high &key untouched)
   "Where a job changing BUFFER from LOW below HIGH begins: on the text now, or,
 for a job queued whose turn has come, on the text as it stood where it was
@@ -296,12 +322,7 @@ has started."
                (setf *job-queue* (remove job *job-queue*)))
               ((and (not (job-busy-p buffer)) (eq job (first (queued-in buffer)))
                     (not (and (queued-job-counted job) (lines-uncounted-p buffer))))
-               (setf *job-queue* (remove job *job-queue*))
-               (tuatara.buffer:forget-undo-place buffer (queued-job-place job))
-               (tuatara.runtime:debug-report :job
-                                             "~a in ~a: its turn"
-                                             (queued-job-words job)
-                                             (tuatara.buffer:buffer-name buffer))
+               (unqueue-job job "its turn")
                (setf started t)
                (let ((*starting-queued-job* t)
                      (*queued-job-since* (car (queued-job-place job))))
@@ -366,12 +387,17 @@ running job's shading is laid over it."
                         nconc (loop for (start end) in (funcall (queued-job-shade job) (queued-positions job) from to)
                                     collect (list start end :job-waiting)))))))
 
-(defun drop-queued-job (job)
-  "Take JOB out of the queue, never to run."
+(defun unqueue-job (job why)
+  "Take JOB out of the queue, its place in its buffer's undo list let go, WHY
+written in the debug log."
   (setf *job-queue* (remove job *job-queue*))
   (tuatara.buffer:forget-undo-place (queued-job-buffer job) (queued-job-place job))
-  (tuatara.runtime:debug-report :job "~a in ~a dropped from the queue" (queued-job-words job)
-                                (tuatara.buffer:buffer-name (queued-job-buffer job))))
+  (tuatara.runtime:debug-report :job "~a in ~a: ~a" (queued-job-words job)
+                                (tuatara.buffer:buffer-name (queued-job-buffer job)) why))
+
+(defun drop-queued-job (job)
+  "Take JOB out of the queue, never to run."
+  (unqueue-job job "dropped from the queue"))
 
 (defun jobs-question-words (running waiting)
   "The jobs RUNNING, each as BUFFER: state on a line of its own, and how many
@@ -399,12 +425,12 @@ below the question (JOBS-QUESTION-WORDS). True to go on."
                                 (t "Wait for the saving"))
                           then))))))
 
-(defun wait-for-saving (running)
+(defun wait-for-saving (running &key seconds)
   "Wait for those of the jobs RUNNING that are waited for at a kill or an exit
-\(TUATARA.RUNTIME:JOB-AT-EXIT :WAIT), the saves (WAIT-FOR-SAVES): true when
-they all ended, or there are none."
-  (let ((waits (remove :stop running :key #'tuatara.runtime:job-at-exit)))
-    (or (null waits) (wait-for-saves waits))))
+\(TUATARA.RUNTIME:JOB-AT-EXIT :WAIT), the saves (WAIT-FOR-SAVES), at most
+SECONDS when given: true when they all ended, or there are none."
+  (let ((waits (remove-if-not (lambda (job) (eq :wait (tuatara.runtime:job-at-exit job))) running)))
+    (or (null waits) (wait-for-saves waits :seconds seconds))))
 
 (defun jobs-kill-query (buffer)
   "Kill-buffer query: when jobs of BUFFER run or wait their turn, ask once
@@ -559,7 +585,9 @@ with POINT :keep at its column."
      ;; what other programs do, listed after, never marked
      :after (append (loop for (words percent who) in (outside-work)
                           append (table-row-pieces *jobs-columns*
-                                                   (list "  " who (cons (if percent (format nil "~d%" percent) "working") :job-queued)
+                                                   (list "  " who
+                                                         (cons (if percent (format nil "~d%" percent) "working")
+                                                               :job-queued)
                                                          words)))
                     (and (null entries) (null (outside-work)) (list (format nil "~%   No jobs in the background~%"))))
      :point point :first-line *jobs-title-lines* :key key
@@ -628,4 +656,4 @@ asked about first (GUARD-JOB-EDITS). The mode line's sign of the work
   (pushnew 'settle-jobs tuatara.buffer:*kill-buffer-functions*)
   (pushnew 'jobs-quit-query *quit-query-functions*)
   (pushnew 'guard-job-edits tuatara.buffer:*before-edit-functions*)
-  (define-key (mode-keymap 'jobs-mode) "h" 'quit-window))
+  (define-keys (mode-keymap 'jobs-mode) '(("h" quit-window) ("C-b" quit-window))))

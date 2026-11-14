@@ -204,3 +204,30 @@ Returns the frontend and the editor."
           (is string= "" (string-trim " " (nth (1- notes) lines)))
           (true (tuatara.io:safe-visit-p (session-buffer editor)))
           (false (line-with lines "copy.txt")))))))
+
+(define-test (rimu-found duplicates-differing-early-not-read-whole)
+  ;; files of one size whose starts differ are never summed whole; those alike are
+  (with-test-directory (dir)
+    (let* ((directory (namestring dir))
+           (size (* 3 tuatara.defaults::*rimu-head-octets*))
+           (sums '()))
+      (flet ((file (name first)
+               (put-file (merge-pathnames name dir)
+                         (concatenate 'string (string first) (make-string (1- size) :initial-element #\x)))))
+        (file "a.bin" #\a)
+        (file "b.bin" #\b)
+        (file "c.bin" #\c)
+        (file "c-again.bin" #\c))
+      (sb-int:encapsulate 'tuatara.defaults::file-sha256 'count-sums
+                          (lambda (function path &rest arguments)
+                            (push (tuatara.io:native-file-name path) sums)
+                            (apply function path arguments)))
+      (unwind-protect
+           (let ((listing (tuatara.defaults::rimu-search-found
+                           (tuatara.defaults::make-rimu-search
+                            nil (list :kind :duplicates :directory directory :roots (list directory))))))
+             (is equal '("c-again.bin" "c.bin")
+                 (sort (map 'list #'tuatara.io:listed-name (tuatara.defaults::rimu-listing-entries listing))
+                       #'string<)))
+        (sb-int:unencapsulate 'tuatara.defaults::file-sha256 'count-sums))
+      (is equal '("c-again.bin" "c.bin") (sort sums #'string<)))))

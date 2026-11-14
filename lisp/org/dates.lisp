@@ -20,14 +20,26 @@
   "Today as a day number, at the universal time NOW, any year."
   (nth-value 0 (time-day now)))
 
-(defstruct (org-ts (:conc-name org-ts-))
+(define-record (org-ts (:conc-name org-ts-))
   "A timestamp read: ACTIVE (<> rather than []), YEAR MONTH DAY, HOUR and
 MINUTE (NIL without a time), END-HOUR and END-MINUTE (a time range, else NIL),
 the REPEATER (:cumulate +, :catch-up ++, :restart .+) with REPEAT-VALUE and
 REPEAT-UNIT (#\\h #\\d #\\w #\\m #\\y), and the WARNING (:all -, :first --) with
 WARNING-VALUE and WARNING-UNIT."
-  active year month day hour minute end-hour end-minute
-  repeater repeat-value repeat-unit warning warning-value warning-unit)
+  (active nil :documentation "True when a timestamp is active, <> rather than [].")
+  (year nil :documentation "The year of a timestamp.")
+  (month nil :documentation "The month of a timestamp, 1 to 12.")
+  (day nil :documentation "The day of the month of a timestamp.")
+  (hour nil :documentation "The hour a timestamp begins at, or NIL when it has no time.")
+  (minute nil :documentation "The minute a timestamp begins at, or NIL when it has no time.")
+  (end-hour nil :documentation "The hour a timestamp's range of times ends at, or NIL.")
+  (end-minute nil :documentation "The minute a timestamp's range of times ends at, or NIL.")
+  (repeater nil :documentation "A timestamp's repeater: :CUMULATE (+), :CATCH-UP (++), :RESTART (.+), or NIL.")
+  (repeat-value nil :documentation "How many units a timestamp repeats every, or NIL.")
+  (repeat-unit nil :documentation "The unit a timestamp repeats by: #\\h #\\d #\\w #\\m or #\\y, or NIL.")
+  (warning nil :documentation "A timestamp's warning: :ALL (-), :FIRST (--), or NIL.")
+  (warning-value nil :documentation "How many units before its date a timestamp's warning begins, or NIL.")
+  (warning-unit nil :documentation "The unit a timestamp's warning is given in: #\\h #\\d #\\w #\\m or #\\y, or NIL."))
 
 (defparameter *org-timestamp-pattern*
   (format nil "^([<\\[])~a[]>]$" (org-timestamp-body t))
@@ -128,7 +140,8 @@ the day of the month, a date past the month's end counted on into the next:
                (format nil "~a~d~c" (ecase (org-ts-repeater ts) (:cumulate "+") (:catch-up "++") (:restart ".+"))
                        (org-ts-repeat-value ts) (org-ts-repeat-unit ts)))
           (and (org-ts-warning ts)
-               (format nil "~a~d~c" (if (eq (org-ts-warning ts) :first) "--" "-") (org-ts-warning-value ts) (org-ts-warning-unit ts)))
+               (format nil "~a~d~c" (if (eq (org-ts-warning ts) :first) "--" "-")
+                       (org-ts-warning-value ts) (org-ts-warning-unit ts)))
           (org-ts-active ts)))
 
 (defun org-day-timestamp-text (day &key active hour minute)
@@ -146,25 +159,37 @@ alone, [2026-10-01 Thu]."
 
 (defun org-ts-repeat (ts now)
   "Move TS, a timestamp with a repeater, to its next time after it is done at
-the universal time NOW. +1w and ++1w go a week on until the time is past NOW. A
-time missed is not owed: one done late goes on to its first time to come, where
-Emacs Org moves +1w one week only. .+1w goes a week on from NOW. One repeating
+the universal time NOW. +1w and ++1w go a week on until the time is past NOW.
+A time missed is not owed: one done late goes on to its first time to come.
+.+1w goes a week on from NOW. Hours of a timestamp of a day alone count from
+its midnight, and it goes to the day of the time they come to. One repeating
 every 0 stays."
   (let ((value (org-ts-repeat-value ts)) (unit (org-ts-repeat-unit ts)))
-    (unless (and value (plusp value)) (return-from org-ts-repeat ts))
-    (ecase (org-ts-repeater ts)
-      ((:cumulate :catch-up)
-       ;; hours, days and weeks: most of the way in one step, the rest one at a time
-       (let ((seconds (* value (case unit (#\h 3600) (#\d 86400) (#\w 604800) (t 0)))))
-         (when (plusp seconds)
-           (let ((steps (1- (floor (- now (org-ts-time ts)) seconds))))
-             (when (plusp steps) (org-ts-shift ts (* steps value) unit)))))
-       (loop do (org-ts-shift ts value unit)
-             while (<= (org-ts-time ts) now)))
-      (:restart (if (char= unit #\h)
-                    (org-ts-set-time ts (+ now (* value 3600)))
-                    (org-ts-shift (org-ts-set-day ts (org-today now)) value unit)))))
+    (cond ((not (and value (plusp value))))
+          ((eq (org-ts-repeater ts) :restart)
+           (if (char= unit #\h)
+               (org-ts-set-time ts (+ now (* value 3600)))
+               (org-ts-shift (org-ts-set-day ts (org-today now)) value unit)))
+          ((char= unit #\h)
+           ;; in seconds: a timestamp of a day alone keeps no hour to step on from
+           (let ((step (* value 3600)) (time (org-ts-time ts)))
+             (org-ts-set-time ts (+ time (* step (1+ (max 0 (floor (- now time) step))))))))
+          (t
+           ;; days and weeks: most of the way in one step, the rest one at a time
+           (let ((days (* value (case unit (#\d 1) (#\w 7) (t 0)))))
+             (when (plusp days)
+               (let ((steps (1- (floor (- now (org-ts-time ts)) (* days 86400)))))
+                 (when (plusp steps) (org-ts-shift ts (* steps value) unit)))))
+           (loop do (org-ts-shift ts value unit)
+                 while (<= (org-ts-time ts) now)))))
   ts)
+
+(defun org-ts-next (ts)
+  "Move TS, a timestamp with a repeater, to the time it repeats at after its
+own (ORG-TS-REPEAT); a timestamp of a day alone to the first after its day."
+  (org-ts-repeat ts (if (org-ts-hour ts)
+                        (org-ts-time ts)
+                        (1- (day-universal-time (1+ (org-ts-day-number ts)))))))
 
 (defun org-repeating-ts-p (ts)
   "True when TS, an ORG-TS or NIL, repeats: it has a repeater, and not of 0 (+0d)."
@@ -183,26 +208,21 @@ time (ORG-TS-REPEAT), as when their task is done at the universal time NOW,
 on past the times CANCELLED (ORG-OCCURRENCE-NOTES) cancels; and how many
 were moved, as a second value. A repeater of 0 (+0d) repeats nothing."
   (let ((count 0))
-    (values (cl-ppcre:regex-replace-all *org-active-timestamp-scanner* text
-                                        (lambda (match &rest groups)
-                                          (declare (ignore groups))
-                                          (let ((ts (org-read-ts match)))
-                                            (if (org-repeating-ts-p ts)
-                                                (progn
-                                                  (incf count)
-                                                  (org-ts-repeat ts now)
-                                                  (org-step-past ts
-                                                                 (lambda (ts)
-                                                                   (org-ts-shift ts
-                                                                                 (org-ts-repeat-value ts)
-                                                                                 (org-ts-repeat-unit ts)))
-                                                                 (lambda (ts)
-                                                                   (org-cancelled-p cancelled
-                                                                                    (org-ts-day-number ts)
-                                                                                    (org-ts-time-of-day ts))))
-                                                  (org-ts-text ts))
-                                                match)))
-                                        :simple-calls t)
+    (values (cl-ppcre:regex-replace-all
+             *org-active-timestamp-scanner* text
+             (lambda (match &rest groups)
+               (declare (ignore groups))
+               (let ((ts (org-read-ts match)))
+                 (if (org-repeating-ts-p ts)
+                     (progn
+                       (incf count)
+                       (org-ts-repeat ts now)
+                       (org-step-past ts #'org-ts-next
+                                      (lambda (ts)
+                                        (org-cancelled-p cancelled (org-ts-day-number ts) (org-ts-time-of-day ts))))
+                       (org-ts-text ts))
+                     match)))
+             :simple-calls t)
             count)))
 
 ;;; One time of a repeat cancelled or moved, the rest going on: a note in
@@ -229,6 +249,11 @@ gives NIL first, or none is found."
   "HOUR and MINUTE as one number, 930 for 09:30; NIL when HOUR is."
   (and hour (+ (* 100 hour) (or minute 0))))
 
+(defun org-time-hour-minute (time)
+  "The hour and the minute of TIME, a time of day as ORG-TIME-NUMBER makes
+it (930 for 09:30), as two values; NIL and NIL when TIME is NIL."
+  (if time (floor time 100) (values nil nil)))
+
 (defun org-ts-time-of-day (ts)
   "The time of day of TS, 930 for 09:30, or NIL when it has none."
   (org-time-number (org-ts-hour ts) (org-ts-minute ts)))
@@ -236,13 +261,13 @@ gives NIL first, or none is found."
 (defun org-occurrence-stamp (occurrence)
   "OCCURRENCE, (DAY . TIME), as a note writes it: [2026-10-30 Fri 08:00], or
 [2026-10-30 Fri] when it has no time of day."
-  (destructuring-bind (day . time) occurrence
-    (org-day-timestamp-text day :hour (and time (floor time 100)) :minute (and time (mod time 100)))))
+  (multiple-value-bind (hour minute) (org-time-hour-minute (cdr occurrence))
+    (org-day-timestamp-text (car occurrence) :hour hour :minute minute)))
 
 (defun org-occurrence-words (occurrence)
   "OCCURRENCE, (DAY . TIME), in words: 2026-10-30 Fri, or 2026-10-30 Fri 08:00."
-  (destructuring-bind (day . time) occurrence
-    (date-time-text day (and time (floor time 100)) (and time (mod time 100)))))
+  (multiple-value-bind (hour minute) (org-time-hour-minute (cdr occurrence))
+    (date-time-text (car occurrence) hour minute)))
 
 (defun org-occurrence-note (kind from to now)
   "The note an entry's log keeps of its time FROM, an occurrence, cancelled
@@ -273,7 +298,7 @@ Notes standing alone on their lines are read, *ORG-REPEAT-STEPS* at most."
   (let ((notes '()) (count 0))
     (cl-ppcre:do-scans (s e starts ends *org-occurrence-note-scanner* text nil :start start :end end)
       (when (and (< count *org-repeat-steps*)
-                 (every (lambda (c) (member c '(#\Space #\Tab))) (subseq text (string-line-start text s) s)))
+                 (blank-text-p text (string-line-start text s) s))
         (let ((from (org-occurrence-of (subseq text (aref starts 1) (aref ends 1))))
               (to (and (aref starts 2) (org-occurrence-of (subseq text (aref starts 2) (aref ends 2))))))
           (when from
@@ -314,7 +339,7 @@ OCCURRENCE when it was not moved."
 ;;; month. The rule between the brackets is read as data, a few forms of
 ;;; diary rules that say which days, and never run.
 
-(defstruct (org-rule (:conc-name org-rule-))
+(define-record (org-rule (:conc-name org-rule-))
   "A date by rule, read from a timestamp <%%(...)>: KIND, one of :FLOAT \(the
 Nth or last weekday of a month), :CYCLIC (every N days), :BLOCK (every day from
 one date to another), :ANNIVERSARY (a day each year), :DATE (the days whose
@@ -323,7 +348,13 @@ week listed, 0 for Sunday to 6 for Saturday), :ALL (the days all its rules take,
 from one date to another say) or :ANY (the days any of them takes). ARGUMENTS,
 what its form says, as ORG-READ-RULE reads them. And HOUR, MINUTE, END-HOUR and
 END-MINUTE of the time written after it, or NIL."
-  kind arguments hour minute end-hour end-minute)
+  (kind nil
+        :documentation "A date by rule's kind: :FLOAT, :CYCLIC, :BLOCK, :ANNIVERSARY, :DATE, :WEEKDAYS, :ALL or :ANY.")
+  (arguments nil :documentation "What a date by rule's form says, as ORG-RULE-FROM-DATA reads it for its kind.")
+  (hour nil :documentation "The hour of the time written after a date by rule, or NIL.")
+  (minute nil :documentation "The minute of the time written after a date by rule, or NIL.")
+  (end-hour nil :documentation "The hour the range of times after a date by rule ends at, or NIL.")
+  (end-minute nil :documentation "The minute the range of times after a date by rule ends at, or NIL."))
 
 (defparameter *org-rule-scanner* (cl-ppcre:create-scanner (format nil "^<~a>$" (org-rule-timestamp-body t)))
   "A timestamp by rule, whole (ORG-RULE-TIMESTAMP-BODY): its form and its
@@ -336,7 +367,7 @@ one passed over. Two values: the list of what it holds, and the index after
 it; NIL for anything else."
   (let ((i start) (stack (list '())))
     (loop
-      (loop while (and (< i end) (member (char text i) '(#\Space #\Tab))) do (incf i))
+      (loop while (and (< i end) (space-or-tab-char-p (char text i))) do (incf i))
       (when (>= i end)
         (return (and (null (rest stack)) (values (reverse (first stack)) i))))
       (let ((c (char text i)))
@@ -348,7 +379,9 @@ it; NIL for anything else."
                (when (null (rest stack)) (return nil))
                (let ((list (reverse (pop stack)))) (push list (first stack)))
                (incf i))
-              (t (let* ((stop (or (position-if (lambda (ch) (member ch '(#\Space #\Tab #\( #\) #\'))) text :start i :end end) end))
+              (t (let* ((stop (or (position-if (lambda (ch) (member ch '(#\Space #\Tab #\( #\) #\')))
+                                               text :start i :end end)
+                                  end))
                         (word (subseq text i stop))
                         (value (cond ((cl-ppcre:scan "^-?[0-9]{1,6}$" word) (parse-integer word))
                                      ((string= word "t") t)
@@ -438,6 +471,37 @@ ORG-RULE-FROM-DATA knows."
                   (setf (org-rule-hour rule) hour (org-rule-minute rule) minute
                         (org-rule-end-hour rule) end-hour (org-rule-end-minute rule) end-minute)
                   rule))))))))
+
+(defun org-rule-part-text (part)
+  "PART of a rule's form (T, a number or a list of numbers) as the form
+writes it: t, 3, '(1 4 7 10)."
+  (cond ((eq part t) "t")
+        ((consp part) (format nil "'(~{~d~^ ~})" part))
+        (t (format nil "~d" part))))
+
+(defun org-rule-form-text (rule)
+  "The form of RULE, an ORG-RULE, as a timestamp by rule writes it between
+its brackets, ORG-RULE-FROM-DATA reading it back: diary-float t 1 1, and (or
+(...) (...)) of several. Dates are written month, day, year, the order other
+programs reading these forms take by default."
+  (flet ((date (day)
+           (multiple-value-bind (year month date) (day-date day)
+             (format nil "~d ~d ~d" month date year))))
+    (destructuring-bind (&optional a b c d) (org-rule-arguments rule)
+      (ecase (org-rule-kind rule)
+        (:float (format nil "diary-float ~a ~a ~d~@[ ~d~]" (org-rule-part-text a) (org-rule-part-text b) c d))
+        (:cyclic (format nil "diary-cyclic ~d ~a" a (date b)))
+        (:block (format nil "diary-block ~a ~a" (date a) (date b)))
+        (:anniversary (format nil "diary-anniversary ~d ~d~@[ ~d~]" a b c))
+        (:date (format nil "diary-date ~a ~a ~a" (org-rule-part-text b) (org-rule-part-text c) (org-rule-part-text a)))
+        (:weekdays (format nil "memq (calendar-day-of-week date) ~a" (org-rule-part-text a)))
+        ((:all :any) (format nil "~:[or~;and~]~{ (~a)~}" (eq (org-rule-kind rule) :all)
+                             (mapcar #'org-rule-form-text a)))))))
+
+(defun org-rule-text (rule)
+  "RULE, an ORG-RULE, as a timestamp by rule, its time after its form:
+<%%(diary-float t 1 1) 10:00>. ORG-READ-RULE reads it back."
+  (format nil "<%%(~a)~@[ ~a~]>" (org-rule-form-text rule) (org-rule-time-text rule)))
 
 (defun org-rule-part-has-p (part value)
   "True when PART of a rule (T, a number or a list of numbers) takes VALUE."
@@ -635,26 +699,4 @@ RULE takes no day near."
     (and day (org-day-timestamp-text day :hour (org-rule-hour rule) :minute (org-rule-minute rule)))))
 
 (setf (documentation 'make-org-ts 'function)
-      "An ORG-TS of the parts given by their keywords, each as ORG-TS says; ORG-TS-TEXT writes it."
-      (documentation 'org-ts-active 'function) "True when a timestamp is active, <> rather than []."
-      (documentation 'org-ts-year 'function) "The year of a timestamp."
-      (documentation 'org-ts-month 'function) "The month of a timestamp, 1 to 12."
-      (documentation 'org-ts-day 'function) "The day of the month of a timestamp."
-      (documentation 'org-ts-hour 'function) "The hour a timestamp begins at, or NIL when it has no time."
-      (documentation 'org-ts-minute 'function) "The minute a timestamp begins at, or NIL when it has no time."
-      (documentation 'org-ts-end-hour 'function) "The hour a timestamp's range of times ends at, or NIL."
-      (documentation 'org-ts-end-minute 'function) "The minute a timestamp's range of times ends at, or NIL."
-      (documentation 'org-ts-repeater 'function)
-      "A timestamp's repeater: :CUMULATE (+), :CATCH-UP (++), :RESTART (.+), or NIL."
-      (documentation 'org-ts-repeat-value 'function) "How many units a timestamp repeats every, or NIL."
-      (documentation 'org-ts-repeat-unit 'function)
-      "The unit a timestamp repeats by: #\\h #\\d #\\w #\\m or #\\y, or NIL."
-      (documentation 'org-rule-kind 'function)
-      "A date by rule's kind: :FLOAT, :CYCLIC, :BLOCK, :ANNIVERSARY, :DATE, :WEEKDAYS, :ALL or :ANY."
-      (documentation 'org-rule-arguments 'function)
-      "What a date by rule's form says, as ORG-RULE-FROM-DATA reads it for its kind."
-      (documentation 'org-rule-hour 'function) "The hour of the time written after a date by rule, or NIL."
-      (documentation 'org-rule-minute 'function) "The minute of the time written after a date by rule, or NIL."
-      (documentation 'org-rule-end-hour 'function) "The hour the range of times after a date by rule ends at, or NIL."
-      (documentation 'org-rule-end-minute 'function)
-      "The minute the range of times after a date by rule ends at, or NIL.")
+      "An ORG-TS of the parts given by their keywords, each as ORG-TS says; ORG-TS-TEXT writes it.")

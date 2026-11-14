@@ -99,7 +99,8 @@ meanwhile), made again only when the list has changed."
 NAME.so in the directory you add them to, or kept from it, whose name Tuatara
 has no grammar of."
   (remove-duplicates
-   (loop for dir in (remove nil (list (tuatara.syntax:user-grammar-directory) (tuatara.syntax:user-grammar-store)))
+   (loop for dir in (remove nil (list (tuatara.syntax:user-grammar-directory)
+                                      (tuatara.syntax:user-grammar-store :make nil)))
          append (loop for path in (ignoring-errors-reported ("listing ~a" dir)
                                     (directory (merge-pathnames "*.so" dir) :resolve-symlinks nil))
                       for name = (pathname-name path)
@@ -206,21 +207,21 @@ and its size: a plain file there, not a link (never followed); NIL when
 there is none such."
   (let* ((path (uiop:native-namestring (merge-pathnames (format nil "~a.so" name)
                                                         (tuatara.syntax:user-grammar-directory))))
-         (fd (handler-case (sb-posix:open path (logior sb-posix:o-rdonly sb-posix:o-nofollow #o2000000))
-               (sb-posix:syscall-error () nil))))
+         (fd (handler-case (tuatara.io:open-for-reading path nil :accept '(:regular) :follow nil)
+               (tuatara.io:file-system-error () nil))))
     (when fd
-      (let ((stat (handler-case (sb-posix:fstat fd) (sb-posix:syscall-error () nil))))
-        (if (and stat (= (logand (sb-posix:stat-mode stat) sb-posix:s-ifmt) sb-posix:s-ifreg))
-            (values fd (sb-posix:stat-size stat))
-            (progn (sb-posix:close fd) nil))))))
+      (let ((stamp (nth-value 1 (tuatara.io:fd-kind fd))))
+        (if stamp
+            (values fd (tuatara.io:stamp-size stamp))
+            (progn (tuatara.runtime:close-fd-quietly fd "~a" path) nil))))))
 
 (defun user-grammar-file-sum (name)
   "The SHA-256 of NAME.so in the directory of grammars you add, read through a
 descriptor on the file itself (OPEN-USER-GRAMMAR); NIL when there is none."
   (let ((fd (open-user-grammar name)))
     (when fd
-      (unwind-protect (file-sha256 (format nil "/proc/self/fd/~d" fd))
-        (sb-posix:close fd)))))
+      (unwind-protect (fd-sha256 fd name)
+        (tuatara.runtime:close-fd-quietly fd "~a" name)))))
 
 (defun stored-grammar-path (name)
   "The path of the copy kept of NAME, a grammar you added (USER-GRAMMAR-STORE),

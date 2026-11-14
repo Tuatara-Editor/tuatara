@@ -605,6 +605,8 @@ refuses, a plain =y= as well. A key that has changed since ssh last saw it is
 never offered. ssh refuses the connection, and the echo area says the key
 differs from the one ssh knows. That is the sign of a machine that has been
 replaced, or of one pretending to be it. Ask the person who runs the server.
+Fetching, pulling and pushing with git over ssh ask in the same way
+(chapter 15).
 
 *** Passwords
 

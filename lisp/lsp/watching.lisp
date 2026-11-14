@@ -1,15 +1,15 @@
 ;;;; lisp/lsp/watching.lisp --- Telling language servers of files changed on disk.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; A server knows the files open in the editor from what is sent; of the
-;;;; rest of its project it knows what it read. When files change on disk
-;;;; without the editor (a git checkout, a build writing sources, another
-;;;; editor), a server that asks to be told (it registers the files it wants
-;;;; watched, by patterns such as **/*.rs) is told which were made, changed or
-;;;; deleted. The project's directories are found once in the background, those
-;;;; *LSP-WATCH-SKIPPED* names and hidden ones left out, and watched as the
-;;;; editor watches directories; a directory found changed is listed again and
-;;;; compared with what it held.
+;;;; A server knows the files open in the editor from what is sent; of the rest
+;;;; of its project it knows what it read. When files change on disk without the
+;;;; editor (a git checkout, a build writing sources, another editor), a server
+;;;; that asks to be told (it registers the files it wants watched, by patterns
+;;;; such as **/*.rs) is told which were made, changed or deleted. The project's
+;;;; directories are found once in the background, those *LSP-WATCH-SKIPPED*
+;;;; names and hidden ones left out, and watched as the editor watches
+;;;; directories; a directory found changed is listed again and compared with
+;;;; what it held, in the background too.
 
 (in-package #:tuatara.lsp)
 
@@ -32,11 +32,17 @@ build makes.
 (defvar *lsp-watched-most* 5000
   "The most directories of one project watched for its language servers.")
 
-(defstruct (watched-tree (:constructor make-watched-tree (root)) (:copier nil))
+(define-record (watched-tree (:constructor make-watched-tree (root)) (:copier nil))
   "The directories of the project at ROOT watched for its servers: DIRECTORIES,
 native names ending in /, and STAMPS, by directory, a table of what each holds,
-by name, a file's STAMP or :DIRECTORY; READY once they were found."
-  root (directories '()) (stamps (make-hash-table :test 'equal)) (ready nil))
+by name, a file's mark (FILE-MARK) or :DIRECTORY; READY once they were found.
+Once ready, it is changed only by the work on what changed (WATCHED-CHANGES),
+one at a time."
+  (root nil :documentation "The root directory of the project WATCHED-TREE watches.")
+  (directories '() :documentation "The directories of WATCHED-TREE as native names ending in /.")
+  (stamps (make-hash-table :test 'equal)
+          :documentation "A table by directory of what each holds, by name: a file's mark (FILE-MARK) or :DIRECTORY.")
+  (ready nil :documentation "True once the directories of WATCHED-TREE were found."))
 
 (defvar *lsp-watched-trees* (make-hash-table :test 'equal)
   "The projects watched for language servers, each a WATCHED-TREE by its root.")
@@ -60,18 +66,19 @@ the whole path; those that cannot be read left out."
                              (let* ((base (tuatara.text:json-get glob "baseUri"))
                                     (base (if (hash-table-p base) (tuatara.text:json-get base "uri") base))
                                     (path (or (uri-path base) (lsp-server-root server))))
-                               (format nil "~a/~a" (string-right-trim "/" path) (or (tuatara.text:json-text glob "pattern") "**")))))
+                               (format nil "~a/~a" (string-right-trim "/" path)
+                                       (or (tuatara.text:json-text glob "pattern") "**")))))
         for globs = (and pattern (glob-alternatives pattern))
         when globs
-          collect (cons globs (or (tuatara.text:json-integer w "kind") 7))))
+        collect (cons globs (or (tuatara.text:json-integer w "kind") 7))))
 
 (define-lsp-request "client/registerCapability" (server params)
   (loop for r across (tuatara.text:json-items params "registrations")
         when (equal (tuatara.text:json-text r "method") "workspace/didChangeWatchedFiles")
-          do (push (cons (tuatara.text:json-get r "id")
-                         (watcher-patterns server (tuatara.text:json-get r "registerOptions" "watchers")))
-                   (gethash server *lsp-watchers*))
-             (watch-project (lsp-server-root server)))
+        do (push (cons (tuatara.text:json-get r "id")
+                       (watcher-patterns server (tuatara.text:json-get r "registerOptions" "watchers")))
+                 (gethash server *lsp-watchers*))
+        (watch-project (lsp-server-root server)))
   :null)
 
 (define-lsp-request "client/unregisterCapability" (server params)
@@ -110,20 +117,29 @@ table by directory, as WATCHED-TREE's STAMPS): hidden ones and those
   (or (and (plusp (length name)) (char= (char name 0) #\.))
       (member name *lsp-watch-skipped* :test #'string=)))
 
+(defun file-mark (stamp)
+  "A whole number standing for the size and the time of change STAMP gives a
+file, which differs when its content has changed, as far as the system
+tells; kept for each file watched in place of its STAMP, a tenth of the
+room."
+  (logand (logxor (tuatara.io:stamp-mtime stamp) (* (tuatara.io:stamp-size stamp) 1000003)) most-positive-fixnum))
+
 (defun directory-contents (directory)
-  "What DIRECTORY holds, a table by name of each file's STAMP, or :DIRECTORY
-for a directory; NIL when it cannot be read."
+  "What DIRECTORY holds, a table by name of each file's mark (FILE-MARK), or
+:DIRECTORY for a directory; NIL when it cannot be read."
   (entries-contents (ignoring-errors-reported ("reading ~a" directory)
                       (tuatara.io:directory-entries directory :stamps t))))
 
 (defun entries-contents (entries)
   "ENTRIES of a directory, as TUATARA.IO:DIRECTORY-ENTRIES gives them with stamps,
-as DIRECTORY-CONTENTS gives them: a table by name of each file's STAMP, or
+as DIRECTORY-CONTENTS gives them: a table by name of each file's mark, or
 :DIRECTORY for a directory; NIL for none."
   (when entries
-    (let ((table (make-hash-table :test 'equal)))
+    (let ((table (make-hash-table :test 'equal :size (length entries))))
       (loop for (name kind nil nil stamp) in entries
-            do (setf (gethash name table) (if (eq kind :directory) :directory stamp)))
+            do (setf (gethash name table) (cond ((eq kind :directory) :directory)
+                                                (stamp (file-mark stamp))
+                                                (t 0))))
       table)))
 
 (defun watch-project (root)
@@ -137,7 +153,8 @@ background, once."
          (multiple-value-bind (directories stamps) (project-directories root)
            (setf (watched-tree-directories tree) directories
                  (watched-tree-stamps tree) stamps
-                 (watched-tree-ready tree) t)))
+                 (watched-tree-ready tree) t)
+           (directories-followed-changed)))
        :name "tuatara project directories"))))
 
 (defvar *lsp-watched-list* (cons nil nil)
@@ -181,7 +198,7 @@ directory made watched (its files made), one gone let go (its files deleted)."
                             (when (and (null before) (not (watch-skipped-p name)))
                               (setf changes (append (directory-made tree (format nil "~a/" (path name))) changes))))
                            ((null before) (push (list (path name) 1) changes))
-                           ((not (tuatara.io:same-content-p before what)) (push (list (path name) 2) changes)))))
+                           ((not (eql before what)) (push (list (path name) 2) changes)))))
                  new))
       (when old
         (maphash (lambda (name what)
@@ -202,8 +219,11 @@ directory made watched (its files made), one gone let go (its files deleted)."
         (changes '()))
     (setf (watched-tree-directories tree) (append (watched-tree-directories tree) (list directory))
           (gethash directory (watched-tree-stamps tree)) inside)
+    (directories-followed-changed)
     (when inside
-      (maphash (lambda (name what) (unless (eq what :directory) (push (list (format nil "~a~a" directory name) 1) changes)))
+      (maphash (lambda (name what)
+                 (unless (eq what :directory)
+                   (push (list (format nil "~a~a" directory name) 1) changes)))
                inside))
     changes))
 
@@ -217,32 +237,70 @@ directory made watched (its files made), one gone let go (its files deleted)."
       (remhash d (watched-tree-stamps tree)))
     (setf (watched-tree-directories tree)
           (remove-if (lambda (d) (uiop:string-prefix-p directory d)) (watched-tree-directories tree)))
+    (directories-followed-changed)
     changes))
+
+(defun server-watched-changes (registrations root changes)
+  "Those of CHANGES, each (PATH TYPE) as DIRECTORY-CHANGES gives them, in the
+project at ROOT that REGISTRATIONS, what its server asked to be told of,
+match, as the protocol's FileEvents."
+  (loop for (path type) in changes
+        when (and (uiop:string-prefix-p root path)
+                  (loop for (nil . patterns) in registrations
+                        thereis (loop for (globs . kinds) in patterns
+                                      thereis (and (logtest kinds (ash 1 (1- type)))
+                                                   (some (lambda (glob) (glob-match glob path)) globs)))))
+        collect (tuatara.text:json-object "uri" (path-uri path) "type" type)))
+
+(defun watched-changes (trees watchers changed)
+  "What each server of WATCHERS, a list of (SERVER ROOT . REGISTRATIONS), is
+to be told of the files of TREES changed on disk in CHANGED, the directories
+found changed: a list of (SERVER . FILE-EVENTS). The directories are listed
+again and the trees brought up to date (DIRECTORY-CHANGES): work for the
+background."
+  (let ((changes '()))
+    (dolist (tree trees)
+      (dolist (directory changed)
+        (when (and (uiop:string-prefix-p (watched-tree-root tree) directory)
+                   (gethash directory (watched-tree-stamps tree)))
+          (setf changes (append (directory-changes tree directory) changes)))))
+    (when changes
+      (loop for (server root . registrations) in watchers
+            for events = (server-watched-changes registrations root changes)
+            when events
+            collect (cons server events)))))
+
+(defvar *watch-work* nil
+  "While the directories found changed are looked at in the background
+\(LSP-WATCHED-CHANGED), a list of those found changed meanwhile, waiting
+for it; NIL otherwise.")
 
 (defun lsp-watched-changed (changed)
   "Tell each language server that asked of the files changed on disk in
-CHANGED, the directories the watcher found changed, those its patterns match."
-  (let ((changes '()))
-    (maphash (lambda (root tree)
-               (when (watched-tree-ready tree)
-                 (dolist (directory changed)
-                   (when (and (uiop:string-prefix-p root directory) (gethash directory (watched-tree-stamps tree)))
-                     (setf changes (append (directory-changes tree directory) changes))))))
-             *lsp-watched-trees*)
-    (when changes
-      (maphash (lambda (server registrations)
-                 (let ((mine (loop for (path type) in changes
-                                   when (and (uiop:string-prefix-p (lsp-server-root server) path)
-                                             (loop for (nil . patterns) in registrations
-                                                   thereis (loop for (globs . kinds) in patterns
-                                                                 thereis (and (logtest kinds (ash 1 (1- type)))
-                                                                              (some (lambda (glob) (glob-match glob path)) globs)))))
-                                     collect (tuatara.text:json-object "uri" (path-uri path) "type" type))))
-                   (when (and mine (eq (lsp-server-status server) :ready))
-                     (lsp-notify server "workspace/didChangeWatchedFiles"
-                                 (tuatara.text:json-object "changes" (coerce mine 'vector))))))
-               *lsp-watchers*))))
+CHANGED, the directories the watcher found changed, those its patterns match:
+the directories listed and compared with what they held in the background,
+the servers told once that is done. Directories found changed while it is
+under way wait for it."
+  (if *watch-work*
+      (setf (rest *watch-work*) (union changed (rest *watch-work*) :test #'string=))
+      (let ((trees (loop for tree being the hash-values of *lsp-watched-trees*
+                         when (watched-tree-ready tree) collect tree))
+            (watchers (loop for server being the hash-keys of *lsp-watchers* using (hash-value registrations)
+                            when (eq (lsp-server-status server) :ready)
+                            collect (list* server (lsp-server-root server) (copy-list registrations)))))
+        (setf *watch-work* (list t))
+        (lsp-in-background
+         (lambda () (watched-changes trees watchers changed))
+         (lambda (told)
+           (let ((waiting (rest *watch-work*)))
+             (setf *watch-work* nil)
+             (loop for (server . events) in told
+                   when (eq (lsp-server-status server) :ready)
+                   do (lsp-notify server "workspace/didChangeWatchedFiles"
+                                  (tuatara.text:json-object "changes" (coerce events 'vector))))
+             (when waiting
+               (lsp-watched-changed waiting))))))))
 
 (defun install-lsp-watching ()
   "Watch the directories of the projects whose language servers asked to be told of their files changed on disk."
-  (follow-directories-for 'lsp-watched-directories 'lsp-watched-changed))
+  (follow-directories-for 'lsp-watched-directories 'lsp-watched-changed :tells t))

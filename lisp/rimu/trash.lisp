@@ -34,14 +34,17 @@ deletion. \\[rimu-trash-empty] empties the trash (asked twice).
 (defvar *rimu-trash-keymap* (mode-keymap 'rimu-trash-mode)
   "Keys of the list of the trash (rimu-trash-mode's keymap).")
 
-(defstruct (trashed (:constructor make-trashed (trash name top path date directory)) (:copier nil))
+(define-record (trashed (:constructor make-trashed (trash name top path date directory)) (:copier nil))
   "A thing in the trash: TRASH, the trash directory it is in; NAME, its name
 there; TOP, the top of the drive TRASH is on (NIL for your own trash); PATH,
 where it was, whole; DATE, when it went there, as its .trashinfo has it;
 DIRECTORY, true when it is a directory."
-  trash name top path date directory)
-
-(setf (documentation 'trashed-p 'function) "True when OBJECT is a TRASHED.")
+  (trash nil :documentation "The trash directory TRASHED is in.")
+  (name nil :documentation "The name of TRASHED in its trash directory.")
+  (top nil :documentation "The top of the drive the trash of TRASHED is on, NIL for your own trash.")
+  (path nil :documentation "Where TRASHED was before, the whole path.")
+  (date nil :documentation "When TRASHED went into the trash, as its .trashinfo has it.")
+  (directory nil :documentation "True when TRASHED is a directory."))
 
 (defun trashed-files-path (thing)
   "Where THING, in the trash, is."
@@ -187,13 +190,12 @@ list of the trash read at another count is read again when a window shows it.")
 again when a window shows it."
   (incf *trash-changes*))
 
-(defstruct (trash-read (:include tuatara.runtime:job) (:constructor make-trash-read (buffer changes)) (:copier nil))
+(define-record (trash-read (:include tuatara.runtime:job) (:constructor make-trash-read (buffer changes)) (:copier nil))
   "What is in the trash read in the background for BUFFER, the list of the
 trash, a job (TUATARA.RUNTIME:JOB): CHANGES, *TRASH-CHANGES* as it began;
 THINGS, once done, what it found (TRASH-CONTENTS)."
-  changes things)
-
-(setf (documentation 'trash-read-p 'function) "True when OBJECT is a TRASH-READ.")
+  (changes nil :documentation "The value of *TRASH-CHANGES* when TRASH-READ began.")
+  (things nil :documentation "What TRASH-READ found in the trash, once it is done (TRASH-CONTENTS)."))
 
 (tuatara.runtime:define-job-words trash-read
   :doing "Reading the trash"
@@ -311,10 +313,7 @@ character (a null (NUL) among them)."
            "its .trashinfo gives no whole path")
           ((and top (not (and (tuatara.io:path-within-p path top)
                               ;; the nearest directory there, links followed
-                              (let ((above (tuatara.io:parent-path path)))
-                                (loop until (or (tuatara.io:path-stamp above) (string= above "/"))
-                                      do (setf above (tuatara.io:parent-path (string-right-trim "/" above))))
-                                (tuatara.io:really-within-p above top)))))
+                              (tuatara.io:really-within-p (tuatara.io:nearest-directory path) top))))
            "its .trashinfo's path leads out of its drive"))))
 
 (defun trash-restore-thing (thing)
@@ -449,8 +448,9 @@ after asking twice, in the background."
 
 (defun install-rimu-trash ()
   "Bind the keys of the list of the trash."
-  (define-keys *rimu-trash-keymap* '(("RET" list-visit) ("l" list-visit) ("o" list-visit-other)
-                                     ("h" quit-window) ("R" rimu-trash-restore) ("X" rimu-trash-empty))))
+  (define-keys *rimu-trash-keymap* '(("RET" list-visit) ("l" list-visit) ("C-f" list-visit) ("o" list-visit-other)
+                                     ("h" quit-window) ("C-b" quit-window)
+                                     ("R" rimu-trash-restore) ("X" rimu-trash-empty))))
 
 (commands-for-mode 'rimu-trash-mode "the list of the trash (\\[rimu-trash])"
                    'list-visit 'list-visit-other 'rimu-trash-restore 'rimu-trash-empty)

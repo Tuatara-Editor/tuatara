@@ -47,52 +47,67 @@ changed since they were: all in its kind of line, or with :wave as standard."
               do (tuatara.display:set-user-face face :underline (case style (:wave standard) (:dotted :dotted) (t t)))))
       (setf *diagnostics-style-shown* style))))
 
-(defstruct (diagnostic (:type list) (:constructor make-diagnostic (start end severity message source)) (:copier nil))
+(define-record (diagnostic (:type list) (:constructor make-diagnostic (start end severity message source))
+                           (:copier nil))
   "What a language server found wrong: from byte START to END of its buffer;
 SEVERITY 1 an error, 2 a warning, 3 information, 4 a hint; MESSAGE, its
 words; SOURCE, what found it (the server, or a checker of its own)."
-  start end severity message source)
+  (start nil :documentation "The byte of the buffer where DIAGNOSTIC starts.")
+  (end nil :documentation "The byte of the buffer where DIAGNOSTIC ends.")
+  (severity nil :documentation "How serious DIAGNOSTIC is: 1 an error, 2 a warning, 3 information, 4 a hint.")
+  (message nil :documentation "The words of DIAGNOSTIC.")
+  (source nil :documentation "What found DIAGNOSTIC, the server or a checker of its own."))
+
+(defvar *lsp-most-diagnostics* 5000
+  "The most of what one language server found wrong in one document that is
+kept, the worst first: a generated file can have tens of thousands.")
 
 (defun diagnostic-table (buffer)
-  "What BUFFER's language servers found wrong in it, where the text as it is
-now has them, as three values: a list in order of place, the same as a
-vector, and a vector giving for each the furthest any up to it reaches (its
-end, or the octet after its start when that is further). Worked out once for
-each text. Complexity: O(found) when the text changed, else O(1)."
+  "What BUFFER's language servers found wrong in it, as four values: a PLACED
+of them all in order of place, a vector; a vector giving for each the furthest
+any up to it reaches (its end, or the octet after its start when that is
+further), as offsets in the text the PLACED was made of; and the errors and
+the warnings among them, counted. Made again only when what was found
+changes; the places are moved with the text typed as they are looked at.
+Complexity: O(found) when what was found changed, else O(1)."
   (let ((found (tuatara.buffer:buffer-local buffer 'lsp-diagnostics))
-        (version (tuatara.buffer:buffer-version buffer))
         (kept (tuatara.buffer:buffer-local buffer 'lsp-diagnostics-sorted)))
-    (unless (and kept (eq (first kept) found) (eq (second kept) version))
-      (let* ((all (loop for (nil . placed) in found append (copy-list (placed-items-now placed buffer))))
-             (sorted (if (loop for (a b) on all while b always (<= (diagnostic-start a) (diagnostic-start b)))
-                         all
-                         (stable-sort all #'< :key #'diagnostic-start)))
-             (vector (coerce sorted 'simple-vector))
+    (unless (and kept (eq (first kept) found))
+      (let* ((all (loop for (nil . placed) in found
+                        append (map 'list #'copy-list (placed-items-now placed buffer))))
+             (vector (coerce (stable-sort all #'< :key #'diagnostic-start) 'simple-vector))
              (reach (make-array (length vector) :element-type 'fixnum))
              (furthest 0))
         (loop for d across vector
               for i from 0
               do (setf furthest (max furthest (diagnostic-end d) (1+ (diagnostic-start d)))
                        (aref reach i) furthest))
-        (setf kept (list found version sorted vector reach)
+        (setf kept (list found (make-placed (tuatara.buffer:buffer-version buffer) vector) reach
+                         (count 1 vector :key #'diagnostic-severity) (count 2 vector :key #'diagnostic-severity))
               (tuatara.buffer:buffer-local buffer 'lsp-diagnostics-sorted) kept)))
-    (values (third kept) (fourth kept) (fifth kept))))
+    (values-list (rest kept))))
 
 (defun buffer-diagnostics (buffer)
   "What BUFFER's language servers found wrong in it, in order of place, where
-the text as it is now has them."
-  (values (diagnostic-table buffer)))
+the text as it is now has them, as a list."
+  (coerce (placed-items-now (diagnostic-table buffer) buffer) 'list))
 
 (defun diagnostics-near (buffer from to)
   "Those of what BUFFER's servers found that start at or before TO and may
 reach FROM, in order of place: all that touch FROM to TO among them.
 Complexity: O(log found + those between)."
-  (multiple-value-bind (all vector reach) (diagnostic-table buffer)
-    (declare (ignore all) (type (simple-array fixnum (*)) reach))
-    (loop for i from (tuatara.runtime:bisect (mid 0 (length reach)) (< (aref reach mid) from)) below (length vector)
-          for d = (svref vector i)
-          while (<= (diagnostic-start d) to)
-          collect d)))
+  (multiple-value-bind (placed reach) (diagnostic-table buffer)
+    (declare (type (simple-array fixnum (*)) reach))
+    (let ((then (placed-version placed))
+          (now (tuatara.buffer:buffer-version buffer)))
+      (flet ((reach (i)
+               ;; the reach moved with the text typed since, which keeps their order
+               (if (eq then now) (aref reach i) (tuatara.text:map-forward (aref reach i) then now :before))))
+        (loop for i from (tuatara.runtime:bisect (mid 0 (length reach)) (< (reach mid) from))
+              below (length reach)
+              for d = (placed-item placed i buffer)
+              while (<= (diagnostic-start d) to)
+              collect d)))))
 
 (defparameter *diagnostic-severities*
   '((1 "error" "E" :error :diagnostic-error :diagnostic-error-ground)
@@ -124,6 +139,11 @@ when it says no severity known, what found it the server when it says not."
 name: each a list of (SERVER . DIAGNOSTICS), DIAGNOSTICS as the server sent
 them.")
 
+(defvar *diagnostics-changes* 0
+  "How many times what the language servers found has changed: the list of
+\[lsp-diagnostics] is made again, at most once a tick, when it is not the
+count it was made at (KEEP-SHOWN-CURRENT).")
+
 (defun keep-file-diagnostics (server uri items)
   "Keep ITEMS, what SERVER found wrong in the file uniform resource identifier
 (URI) names, not open, when the file is in its project; the list of them
@@ -134,7 +154,17 @@ shown again."
         (if (plusp (length (tuatara.text:json-items items)))
             (setf (gethash path *lsp-file-diagnostics*) (acons server items others))
             (if others (setf (gethash path *lsp-file-diagnostics*) others) (remhash path *lsp-file-diagnostics*))))
-      (refill-open-list "*Diagnostics*" 'diagnostics-mode))))
+      (incf *diagnostics-changes*))))
+
+(defun forget-file-diagnostics (server)
+  "Let go of what SERVER, stopped, found wrong in files not open."
+  (maphash (lambda (path found)
+             (let ((others (remove server found :key #'car)))
+               (cond ((eq others found))
+                     (others (setf (gethash path *lsp-file-diagnostics*) others))
+                     (t (remhash path *lsp-file-diagnostics*)))))
+           *lsp-file-diagnostics*)
+  (incf *diagnostics-changes*))
 
 (defun file-diagnostic-entries ()
   "What running servers found wrong in files not open, for the list: each
@@ -144,7 +174,7 @@ shown again."
                (unless (buffer-visiting path)
                  (loop for (server . items) in found
                        when (member server *lsp-servers*)
-                         do (loop for d across items do (push (list path server d) entries)))))
+                       do (loop for d across items do (push (list path server d) entries)))))
              *lsp-file-diagnostics*)
     (stable-sort (nreverse entries) #'string< :key #'first)))
 
@@ -170,18 +200,24 @@ shown again."
 
 (defun diagnostic-entries (doc server items)
   "ITEMS, a vector of the Diagnostics SERVER gave for DOC, as DIAGNOSTICs;
-any that says not where it is left out."
-  (loop for d across items
-        for (start end) = (multiple-value-list (doc-range-bytes doc server (tuatara.text:json-get d "range")))
-        when start
-          collect (json-diagnostic server d start end)))
+any that says not where it is left out. *LSP-MOST-DIAGNOSTICS* at most, the
+worst kept."
+  (let ((items (if (> (length items) *lsp-most-diagnostics*)
+                   (subseq (stable-sort (copy-seq items) #'<
+                                        :key (lambda (d) (or (tuatara.text:json-integer d "severity") 1)))
+                           0 *lsp-most-diagnostics*)
+                   items)))
+    (loop for d across items
+          for (start end) = (multiple-value-list (doc-range-bytes doc server (tuatara.text:json-get d "range")))
+          when start
+          collect (json-diagnostic server d start end))))
 
 (defun keep-diagnostics (buffer key entries)
   "Keep ENTRIES, DIAGNOSTICs of BUFFER, under KEY (a document and its server,
 and how they came), in place of those kept so before; the list of them shown
 again."
   (keep-placed buffer 'lsp-diagnostics key entries)
-  (refill-open-list "*Diagnostics*" 'diagnostics-mode))
+  (incf *diagnostics-changes*))
 
 (defun lsp-pull-diagnostics (doc)
   "Ask each of DOC's servers that gives what it finds wrong only when asked
@@ -193,20 +229,24 @@ asked of; what it found unchanged since it was last asked kept as it was."
         (let* ((version (lsp-doc-version doc))
                (key (list doc server :asked))
                (ids (or (tuatara.buffer:buffer-local buffer 'lsp-diagnostic-ids)
-                        (setf (tuatara.buffer:buffer-local buffer 'lsp-diagnostic-ids) (make-hash-table :test 'equal)))))
-          (lsp-request server "textDocument/diagnostic"
-                       (tuatara.text:json-object "textDocument" (doc-identifier doc)
-                                                 "previousResultId" (or (gethash key ids) :omit))
-                       (lambda (result error)
-                         (when (and (null error) (hash-table-p result) (doc-unchanged-p doc version))
-                           (setf (gethash key ids) (tuatara.text:json-text result "resultId"))
-                           (when (equal (tuatara.text:json-text result "kind") "full")
-                             (keep-diagnostics buffer key (diagnostic-entries doc server (tuatara.text:json-items result "items"))))))))))))
+                        (setf (tuatara.buffer:buffer-local buffer 'lsp-diagnostic-ids)
+                              (make-hash-table :test 'equal)))))
+          (lsp-ask-anew doc (list :diagnostics server) server "textDocument/diagnostic"
+                        (tuatara.text:json-object "textDocument" (doc-identifier doc)
+                                                  "previousResultId" (or (gethash key ids) :omit))
+                        (lambda (result error)
+                          (when (and (null error) (hash-table-p result) (doc-unchanged-p doc version))
+                            (setf (gethash key ids) (tuatara.text:json-text result "resultId"))
+                            (when (equal (tuatara.text:json-text result "kind") "full")
+                              (keep-diagnostics buffer key
+                                                (diagnostic-entries doc server
+                                                                    (tuatara.text:json-items result "items"))))))))))))
 
 (defun lsp-forget-diagnostics (buffer doc)
   "DOC, of BUFFER, is no longer open in a server: what servers found in it let go."
   (setf (tuatara.buffer:buffer-local buffer 'lsp-diagnostics)
-        (remove doc (tuatara.buffer:buffer-local buffer 'lsp-diagnostics) :key #'caar)))
+        (remove doc (tuatara.buffer:buffer-local buffer 'lsp-diagnostics) :key #'caar))
+  (incf *diagnostics-changes*))
 
 ;;; Shown
 
@@ -234,7 +274,7 @@ kind said in the box under the cursor, for what is of SEVERITY."
               ;; one of no width marks the character it stands before
               for end = (min size (max (diagnostic-end d) (1+ start)))
               when (and (< start to) (> end from))
-                collect (list start end (diagnostic-face (diagnostic-severity d))))))))
+              collect (list start end (diagnostic-face (diagnostic-severity d))))))))
 
 (defun diagnostic-gutter-width (editor window)
   "One column for marks while the buffer has something its servers found wrong."
@@ -247,12 +287,11 @@ byte FROM to byte TO, by where each starts: a list of (LINE . SEVERITY).
 Complexity: O(log found + those there)."
   (let* ((rope (tuatara.buffer:buffer-text buffer))
          (size (tuatara.text:rope-octet-length rope))
-         (vector (nth-value 1 (diagnostic-table buffer)))
+         (placed (diagnostic-table buffer))
          (lines '()))
-    (loop for i from (tuatara.runtime:bisect (mid 0 (length vector))
-                                             (< (min size (diagnostic-start (svref vector mid))) from))
-            below (length vector)
-          for d = (svref vector i)
+    (loop for i from (placed-first placed buffer (lambda (d) (>= (min size (diagnostic-start d)) from)))
+          below (length (placed-items placed))
+          for d = (placed-item placed i buffer)
           for start = (min size (diagnostic-start d))
           while (<= start to)
           do (let* ((line (tuatara.text:byte->line rope start))
@@ -267,8 +306,10 @@ Complexity: O(log found + those there)."
   (declare (ignore editor))
   (let ((buffer (tuatara.display:window-buffer window)))
     (when (and (plusp (length rows)) (tuatara.buffer:buffer-local buffer 'lsp-diagnostics))
-      (diagnostic-lines buffer (tuatara.buffer:buffer-line-start buffer (tuatara.display:row-start (aref rows 0)))
-                        (tuatara.buffer:buffer-line-end buffer (tuatara.display:row-end (aref rows (1- (length rows)))))))))
+      (diagnostic-lines buffer
+                        (tuatara.buffer:buffer-line-start buffer (tuatara.display:row-start (aref rows 0)))
+                        (tuatara.buffer:buffer-line-end buffer
+                                                        (tuatara.display:row-end (aref rows (1- (length rows)))))))))
 
 (defun diagnostic-gutter-cell (editor window row line &optional (lines nil prepared))
   "The mark beside ROW of the worst its servers found on LINE: E, W, i or ·;
@@ -279,8 +320,10 @@ from LINES, as DIAGNOSTIC-GUTTER-PREPARE gives them for the frame, when given."
         (values " " nil)
         (let ((worst (cdr (assoc line (if prepared
                                           lines
-                                          (let ((start (tuatara.text:line->byte (tuatara.buffer:buffer-text buffer) line)))
-                                            (diagnostic-lines buffer start (tuatara.buffer:buffer-line-end buffer start))))))))
+                                          (let ((start (tuatara.text:line->byte (tuatara.buffer:buffer-text buffer)
+                                                                                line)))
+                                            (diagnostic-lines buffer start
+                                                              (tuatara.buffer:buffer-line-end buffer start))))))))
           (if (assoc worst *diagnostic-severities*)
               (values (third (severity-entry worst)) (diagnostic-mark-face worst))
               (values " " nil))))))
@@ -288,14 +331,13 @@ from LINES, as DIAGNOSTIC-GUTTER-PREPARE gives them for the frame, when given."
 (defun diagnostic-mode-line (editor buffer)
   "How many errors and warnings BUFFER's servers found, for the mode line."
   (declare (ignore editor))
-  (let ((all (buffer-diagnostics buffer)))
-    (when all
-      (let ((errors (count 1 all :key #'diagnostic-severity))
-            (warnings (count 2 all :key #'diagnostic-severity)))
-        (when (plusp (+ errors warnings))
-          (list (format nil "~:[~*~;✘~d~]~:[~*~;~:*~:[~; ~]~*~]~:[~*~;⚠~d~]" (plusp errors) errors
-                        (plusp warnings) (and (plusp errors) (plusp warnings)) (plusp warnings) warnings)
-                (if (plusp errors) :error :warning)))))))
+  (when (tuatara.buffer:buffer-local buffer 'lsp-diagnostics)
+    (multiple-value-bind (placed reach errors warnings) (diagnostic-table buffer)
+      (declare (ignore placed reach))
+      (when (plusp (+ errors warnings))
+        (list (format nil "~:[~*~;✘~d~]~:[~*~;~:*~:[~; ~]~*~]~:[~*~;⚠~d~]" (plusp errors) errors
+                      (plusp warnings) (and (plusp errors) (plusp warnings)) (plusp warnings) warnings)
+              (if (plusp errors) :error :warning))))))
 
 (defun diagnostic-words (diagnostic)
   "DIAGNOSTIC as a line of words: its kind, what found it, and what it says."
@@ -339,14 +381,10 @@ nothing else is said there. True when something was said."
 
 ;;; Moving and listing
 
-(defstruct (diagnostic-places (:constructor make-diagnostic-places (buffer)) (:copier nil))
+(define-record (diagnostic-places (:constructor make-diagnostic-places (buffer)) (:copier nil))
   "What the language servers found wrong in BUFFER, as a list of places
 \(STEP-PLACE): \\[next-place] and \\[previous-place] go from one to the next."
-  (buffer nil :read-only t))
-
-(setf (documentation 'diagnostic-places-p 'function) "True when OBJECT is a DIAGNOSTIC-PLACES."
-      (documentation 'diagnostic-places-buffer 'function)
-      "The buffer whose diagnostics a DIAGNOSTIC-PLACES goes through.")
+  (buffer nil :read-only t :documentation "The buffer whose diagnostics a DIAGNOSTIC-PLACES goes through."))
 
 (defmethod places-buffer ((places diagnostic-places))
   "The buffer whose diagnostics PLACES goes through."
@@ -396,8 +434,8 @@ then (USE-PLACES)."
   "What the language servers found wrong in the open files and the files of
 their projects (\\[lsp-diagnostics]), a line each: where, how bad, what found it
 and what it says. \\<diagnostics-mode>\\[list-visit] goes there, in another
-window, \\[revert-buffer] lists them again (they are listed again as servers
-find more); \\[quit-window] closes."
+window, \\[revert-buffer] lists them again (they are listed again while it is
+shown as servers find more); \\[quit-window] closes."
   :lighter "Diagnostics" :interactive nil)
 
 (defvar *diagnostics-keymap* (mode-keymap 'diagnostics-mode)
@@ -472,7 +510,9 @@ window always."
   "Show what the language servers find: underlined, beside the lines, in the mode line."
   (pushnew 'diagnostic-highlights *highlight-functions*)
   (pushnew 'diagnostic-mode-line *mode-line-functions*)
-  (add-gutter-provider :diagnostics 'diagnostic-gutter-width 'diagnostic-gutter-cell :prepare 'diagnostic-gutter-prepare)
+  (add-gutter-provider :diagnostics 'diagnostic-gutter-width 'diagnostic-gutter-cell
+                       :prepare 'diagnostic-gutter-prepare)
+  (keep-shown-current 'diagnostics-mode (lambda (list) (declare (ignore list)) *diagnostics-changes*))
   (define-key *diagnostics-keymap* "RET" 'list-visit)
   (commands-for-mode 'diagnostics-mode "the list of diagnostics (\\[lsp-diagnostics])" 'list-visit))
 

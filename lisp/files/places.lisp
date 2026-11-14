@@ -1,10 +1,10 @@
-;;;; lisp/files/places.lisp --- Where point was in each file, kept between sessions: save-place-mode, as Emacs's.
+;;;; lisp/files/places.lisp --- Where point was in each file, kept between sessions.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; As Emacs's save-place-mode: where point is in a file is written to the
-;;;; state directory when its buffer is killed, when it is saved and when the
-;;;; editor stops, and a file visited again, in this session or a later one,
-;;;; opens with point there, a fold around it opened. The places live in one
+;;;; Where point is in a file is written to the state directory when its
+;;;; buffer is killed, when it is saved and when the editor stops, and a file
+;;;; visited again, in this session or a later one, opens with point there, a
+;;;; fold around it opened. The places live in one
 ;;;; file of the state directory (state.lisp), so that sessions side by side
 ;;;; share them, as the list of recent files is shared.
 

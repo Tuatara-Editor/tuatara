@@ -24,9 +24,7 @@ client who works in the frame too (JOIN-CLIENT)."
   (join-client buffer (current-client))
   (let* ((editor *editor*)
          (window (editor-window editor)))
-    (if (and (tuatara.display:window-kept window)
-             (not (one-window-p editor))
-             (not (buffer-place-fits-p (tuatara.display:window-kept window) buffer)))
+    (if (window-kept-elsewhere-p window buffer editor)
         (pop-to-buffer buffer :other t)
         (progn
           (when (one-window-p editor)
@@ -39,10 +37,11 @@ client who works in the frame too (JOIN-CLIENT)."
 before every redisplay of the command loop and returns when it wants to be
 called again. NIL means not until the next key. T means work of its own runs
 in the background, to be called soon (*TICK-INTERVAL*). A number of seconds
-means nothing is running, to look again then. The loop waits no longer than
-the soonest for a key. This is how a replacement or a save running in the
-background shows its progress and is taken in, and how a file changed on disk
-is noticed.")
+means nothing is running, to look again then: keys typed meanwhile do not
+call it again before, only the editor woken (as a job ending wakes it). The
+loop waits no longer than the soonest for a key. This is how a replacement or
+a save running in the background shows its progress and is taken in, and how
+a file changed on disk is noticed.")
 
 (defvar *last-input-time* (get-internal-real-time)
   "When the command loop last read something you did (a key, a paste, the
@@ -73,13 +72,33 @@ background may have shown another buffer meanwhile, as another frame shows
 its own. These functions bring what follows the buffer shown (the modal
 state's keys) in line before the next key is read, as after a command.")
 
-(defun run-tick-functions (editor)
+(defvar *tick-due* (make-hash-table :test 'eq)
+  "When each tick function that last asked for a number of seconds wants its
+next call, an internal real time, by function.")
+
+(defun tick-wanted (function editor now woken)
+  "What the tick FUNCTION wants, as *TICK-FUNCTIONS* says, NOW an internal
+real time: called with EDITOR, unless it asked for a number of seconds that
+have not gone and the editor was not WOKEN, the seconds left then."
+  (let ((due (gethash function *tick-due*)))
+    (if (and due (not woken) (< now due))
+        ;; a single float, which makes nothing
+        (/ (float (- due now) 1f0) internal-time-units-per-second)
+        (let ((wanted (call-tick-function function editor)))
+          (if (realp wanted)
+              (setf (gethash function *tick-due*) (+ now (round (* wanted internal-time-units-per-second))))
+              (remhash function *tick-due*))
+          wanted))))
+
+(defun run-tick-functions (editor &key (woken t))
   "Call *TICK-FUNCTIONS* with EDITOR (CALL-TICK-FUNCTION), then
 *AFTER-TICK-FUNCTIONS*; the seconds until the soonest tick function wants
-another call, or NIL when none does. Sets *BACKGROUND-WORK*."
-  (let ((soonest nil) (working nil))
+another call, or NIL when none does. Sets *BACKGROUND-WORK*. Unless the
+editor was WOKEN, after a key, a function that asked for a number of seconds
+not gone yet is not called (TICK-WANTED)."
+  (let ((soonest nil) (working nil) (now (get-internal-real-time)))
     (dolist (f *tick-functions*)
-      (let ((wanted (call-tick-function f editor)))
+      (let ((wanted (tick-wanted f editor now woken)))
         (when wanted
           (when (eq wanted t) (setf working t))
           (let ((seconds (if (realp wanted) wanted *tick-interval*)))
@@ -103,9 +122,13 @@ and what is typed on the last row, else the message there."
                              (tuatara.runtime:failure-words condition)
                              (tuatara.runtime:condition-words condition :headline t))))
      (tuatara.frontend:frontend-put-row
-      frontend 1 (substitute-command-keys "\\[switch-to-buffer] shows another buffer, \\[kill-buffer] kills this one, \\[save-buffers-kill-editor] quits; if its file changed on disk, \\[revert-buffer] reads it again."))
+      frontend 1 (substitute-command-keys (concatenate 'string "\\[switch-to-buffer] shows another buffer, "
+                                                       "\\[kill-buffer] kills this one, "
+                                                       "\\[save-buffers-kill-editor] quits; if its file changed on "
+                                                       "disk, \\[revert-buffer] reads it again.")))
      (tuatara.frontend:frontend-put-row
-      frontend 2 (substitute-command-keys "Debug mode (\\[debug-mode]) keeps what went wrong, and where, in *Debug* and its log."))
+      frontend 2 (substitute-command-keys
+                  "Debug mode (\\[debug-mode]) keeps what went wrong, and where, in *Debug* and its log."))
      (let ((last (max 3 (1- (editor-height editor)))))
        (if (editor-minibuffer-active editor)
            (let ((row (concatenate 'string (editor-minibuffer-prompt editor) (minibuffer-shown-text editor))))
@@ -175,16 +198,16 @@ editor may go without drawing a frame: the keys are handled first, so that
 none is left over to act after the key is let go, and a frame drawn at least
 this often shows where they have got to.")
 
-(defun take-in-background (editor)
+(defun take-in-background (editor &key (woken t))
   "Take in, on EDITOR's thread, what work in the background has for it: what
 other threads said and handed on (TAKE-IN-THREAD-MESSAGES), then what the
-tick functions take in (RUN-TICK-FUNCTIONS), moving the display generation on
-when anything may show differently. The seconds until a tick function wants
-another call, or NIL."
+tick functions take in (RUN-TICK-FUNCTIONS, WOKEN unless it comes after a
+key), moving the display generation on when anything may show differently.
+The seconds until a tick function wants another call, or NIL."
   (when (take-in-thread-messages editor)
     (incf *display-generation*))
   (let ((working *background-work*))
-    (prog1 (run-tick-functions editor)
+    (prog1 (run-tick-functions editor :woken woken)
       ;; work going on in the background, or just ended: what it brought may show anywhere
       (when (or working *background-work*)
         (incf *display-generation*)))))
@@ -197,9 +220,10 @@ is never held up by drawing; the other frames are painted when what they
 show may have changed (PAINT-OTHER-FRAMES). Each event is handled guarded
 \(HANDLE-EVENT-GUARDED)."
   (let ((*editor* editor)
-        (drawn (get-internal-real-time)))
+        (drawn (get-internal-real-time))
+        (woken t))
     (loop while (editor-running editor)
-          do (let ((wait (take-in-background editor))
+          do (let ((wait (take-in-background editor :woken woken))
                    (began (get-internal-real-time)))
                (unless (and (tuatara.frontend:frontend-input-pending-p (frame-frontend (editor-frame editor)))
                             (< (tuatara.runtime:milliseconds-since drawn) *frame-at-least-every*))
@@ -222,6 +246,8 @@ show may have changed (PAINT-OTHER-FRAMES). Each event is handled guarded
                    (incf *display-generation*))
                  (when (and event (not (functionp event)))
                    (setf *last-input-time* (get-internal-real-time)))
+                 ;; after a key, the tick functions that asked for a while are left until it has gone
+                 (setf woken (not (tuatara.frontend:input-event-p event)))
                  (handle-event-guarded editor event)
                  ;; the frame worked in closed by what ran: another is worked in from now
                  (when (frame-deleted (editor-frame editor))
@@ -316,28 +342,23 @@ unless WITHOUT-SCREEN says it asks nothing (*ACTIONS-WITHOUT-SCREEN*)."
           (setf (editor-deferred editor) (append (editor-deferred editor) (list function)))
           (wake-editor editor)))))
 
-(defstruct (editor-hold (:constructor make-editor-hold (editor words stop)) (:copier nil))
+(define-record (editor-hold (:constructor make-editor-hold (editor words stop)) (:copier nil))
   "The running EDITOR's thread asked to wait between two commands for work on
 another thread (CALL-WITH-EDITOR-HELD), WORDS saying what it is, STOP a
 function asking it to stop where it safely can, or NIL. STATE is :ASKED
-until it waits, :HELD while it does, :GIVEN-UP when the work stopped asking
-first; WAITING is signalled once it waits, GO-ON lets it go on."
-  editor
-  words
-  stop
-  (state :asked)
-  (waiting (sb-thread:make-semaphore :name "tuatara editor waiting"))
-  (go-on (sb-thread:make-semaphore :name "tuatara editor goes on")))
-
-(setf (documentation 'editor-hold-p 'function) "True when OBJECT is an EDITOR-HOLD."
-      (documentation 'editor-hold-editor 'function) "The editor an EDITOR-HOLD keeps waiting."
-      (documentation 'editor-hold-words 'function) "What the work an EDITOR-HOLD waits for is, in words."
-      (documentation 'editor-hold-stop 'function) "The function asking the work an EDITOR-HOLD waits
-for to stop, or NIL."
-      (documentation 'editor-hold-state 'function) "Whether the editor of an EDITOR-HOLD has been
-asked to wait, waits, or was given up."
-      (documentation 'editor-hold-waiting 'function) "Signalled once the editor of an EDITOR-HOLD waits."
-      (documentation 'editor-hold-go-on 'function) "Signalled to let the editor of an EDITOR-HOLD go on.")
+until it waits, :HELD while it does, :RELEASED once the work is done,
+:GIVEN-UP when the work stopped asking first; WAITING is signalled once it
+waits, GO-ON lets it go on."
+  (editor nil :documentation "The editor an EDITOR-HOLD keeps waiting.")
+  (words nil :documentation "What the work an EDITOR-HOLD waits for is, in words.")
+  (stop nil :documentation "The function asking the work an EDITOR-HOLD waits
+for to stop, or NIL.")
+  (state :asked :documentation "Whether the editor of an EDITOR-HOLD has been
+asked to wait, waits, or was given up.")
+  (waiting (sb-thread:make-semaphore :name "tuatara editor waiting")
+           :documentation "Signalled once the editor of an EDITOR-HOLD waits.")
+  (go-on (sb-thread:make-semaphore :name "tuatara editor goes on")
+         :documentation "Signalled to let the editor of an EDITOR-HOLD go on."))
 
 (defparameter *editor-held-seconds* 3
   "The seconds the editor may wait for work holding it (CALL-WITH-EDITOR-HELD)
@@ -372,9 +393,7 @@ waiting going on, said; other keys are kept for after."
                                            (editor-hold-words hold) *editor-held-seconds*)
              (say nil)
              (loop (when (sb-thread:wait-on-semaphore go-on :timeout 1/20) (return))
-                   (when (and frontend (tuatara.frontend:frontend-input-pending-p frontend)
-                              (keep-or-quit-event editor (tuatara.frontend:frontend-read-event-timeout frontend 1/100))
-                              (editor-hold-stop hold))
+                   (when (and frontend (pending-quit-p editor) (editor-hold-stop hold))
                      (funcall (editor-hold-stop hold))
                      (say t)))))
       (tuatara.runtime:note-editor-busy t))))
@@ -446,7 +465,7 @@ condition the editor can catch, rather than end the process as it does when
 started with --script (which implies --lose-on-corruption): code evaluated
 in the editor may recurse without end, and must not take the editor with
 it."
-  (tuatara.runtime:ignoring-errors-reported ("having running out of stack caught")
+  (tuatara.runtime:ignoring-errors-reported ("having running out of stack reported as a condition")
     (setf (sb-alien:extern-alien "lose_on_corruption_p" (sb-alien:unsigned 8)) 0)))
 
 (defgeneric host-visit-file (host path &key safe hex)
@@ -465,7 +484,7 @@ opened safely when it did.")
 
 (defgeneric host-visit-standard-input (host descriptor)
   (:documentation "Make a buffer of what is read from DESCRIPTOR, open, and return the buffer,
-for - among the files the editor is started with: called *stdin*, read only
+for a lone - among the files the editor is started with: called *stdin*, read only
 and opened safely. The defaults read it in the background; the core's own
 host reads it all first, into a file with no name in the cache directory.")
   (:method ((host tuatara.runtime:host) descriptor)

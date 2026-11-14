@@ -35,19 +35,19 @@ Long lines are cut, or wrap (\\[soft-wrap-mode]), at the column's edge."
 (defun centred-text-pad (editor window)
   "Gutter columns before the centred text of WINDOW: half of what the window
 has over the column and the other gutters; 0 when the text is not centred,
-or the window has no room over the column. Tells the layout the column's
-width as it goes (the buffer's :text-width)."
-  (let ((buffer (tuatara.display:window-buffer window)))
-    (if (centred-text-p buffer)
-        (let* ((others (loop for p in *gutter-providers*
-                             unless (eq (getf p :name) :centred-text)
-                               sum (gutter-width editor window p)))
-               ;; the margin takes a column between the gutters and the text
-               (room (- (tuatara.display:window-width window) others 1 *centred-text-width*)))
-          (setf (tuatara.buffer:buffer-local buffer :text-width) *centred-text-width*)
-          (max 0 (floor room 2)))
-        (progn (setf (tuatara.buffer:buffer-local buffer :text-width) nil)
-               0))))
+or the window has no room over the column. The buffer's :text-width, the
+column's width the layout keeps to, follows whether its text is centred."
+  (let* ((buffer (tuatara.display:window-buffer window))
+         (centred (centred-text-p buffer))
+         (width (and centred *centred-text-width*)))
+    (unless (eql width (tuatara.buffer:buffer-local buffer :text-width))
+      (setf (tuatara.buffer:buffer-local buffer :text-width) width))
+    (if centred
+        ;; the margin takes a column between the gutters and the text
+        (max 0 (floor (- (tuatara.display:window-width window) (gutter-width-except editor window :centred-text)
+                         1 *centred-text-width*)
+                      2))
+        0)))
 
 (defun centred-text-cell (editor window row line)
   "The margin beside ROW: blank."

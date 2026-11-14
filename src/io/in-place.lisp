@@ -32,9 +32,9 @@
 ;;;; its owner alone, who owns the file and runs Tuatara), no save or putting
 ;;;; back holds it (each holds a lock on it throughout), and it fits the file:
 ;;;; the same file, born when it was, its length between the old and the new,
-;;;; last changed by the save. While while a save writes, it marks its journal with
-;;;; the time every few seconds, so that a change to the file after the save
-;;;; was cut short is told from one the save made. Anything else, such as
+;;;; last changed by the save. While a save writes, it marks its journal with the
+;;;; time every few seconds, so that a change to the file after the save was
+;;;; cut short is told from one the save made. Anything else, such as
 ;;;; another program having written the file since, is said and nothing
 ;;;; written, and the file is not saved while the journal is there. A journal
 ;;;; held by a save going on, or a putting back, is waited for a little; the
@@ -128,10 +128,6 @@ it is of, to be used: NIL for the one Tuatara runs as. Tests name another.")
 named .NAME.tuatara-journal."
   (format nil "~a/.~a.tuatara-journal" (string-right-trim "/" (native (parent-path target))) (native-file-name target)))
 
-(defun memory-page-size ()
-  "The size of a page of memory, which mapped octets are moved in."
-  (sb-posix:getpagesize))
-
 ;;; What a save changes
 
 (defun reads-file-p (fd existing)
@@ -199,7 +195,7 @@ CHANGES (from ROPE-CHANGES, in order) has it; asked of stretches in order."
   "The stretches (START . END) of a file of OLD-SIZE octets that a save of
 CHANGES, leaving it NEW-SIZE long, overwrites or cuts off, in whole pages,
 in order and apart."
-  (let ((page (memory-page-size)) (ranges '()))
+  (let ((page (sb-posix:getpagesize)) (ranges '()))
     (dolist (change (append changes (and (< new-size old-size) (list (cons new-size old-size)))))
       (let ((start (* page (floor (car change) page)))
             (end (* page (ceiling (cdr change) page))))
@@ -339,7 +335,7 @@ turned true first. PROGRESS is called with the octets copied so far."
   (let* ((born (fd-birth-time file))
          (made (now-nanoseconds))
          (header (journal-header existing born made new-size ranges 0))
-         (data (* (memory-page-size) (ceiling (+ (length header) 64) (memory-page-size))))
+         (data (let ((page (sb-posix:getpagesize))) (* page (ceiling (+ (length header) 64) page))))
          (done 0))
     (write-octets journal (journal-header existing born made new-size ranges data) :path target)
     (loop for (start . end) in ranges
@@ -361,19 +357,13 @@ turned true first. PROGRESS is called with the octets copied so far."
 journal and flush the directory. NIL when the system will not name it or a
 journal of TARGET is there already."
   (call-with-directory directory
-                    (lambda (dirfd)
-                      (and (zerop (sb-alien:alien-funcall
-                                   (sb-alien:extern-alien "linkat" (function sb-alien:int sb-alien:int sb-alien:c-string
-                                                                             sb-alien:int
-                                                                             sb-alien:c-string
-                                                                             sb-alien:int))
-                                   -100 (format nil "/proc/self/fd/~d" journal) dirfd
-                                   (native-file-name (journal-path target)) #x400)) ; AT_SYMLINK_FOLLOW
-                           (progn (saving-step :journal-named)
-                                  (sync-directory directory)
-                                  (saving-step :directory-flushed)
-                                  t)))
-                    "save in"))
+                       (lambda (dirfd)
+                         (when (link-unnamed-at journal dirfd (native-file-name (journal-path target)))
+                           (saving-step :journal-named)
+                           (sync-directory directory)
+                           (saving-step :directory-flushed)
+                           t))
+                       "save in"))
 
 (defun remove-journal (directory target)
   "Take away TARGET's journal's name and flush the directory: what it kept is
@@ -477,15 +467,20 @@ was before it is signalled."
                                                                :data data :ranges ranges)
                                              target)
                                    t)))
-                        (tell-writing (format nil "The save of ~a failed part way; its old content is kept in ~a and put back when it is next opened"
+                        (tell-writing (format nil "The save of ~a failed part way; its old content is kept in ~a and ~
+                                                   put back when it is next opened"
                                               (native target) (journal-path target))))
                        ((tuatara.runtime:ignoring-errors-reported ("removing the journal of ~a" target)
                           (remove-journal directory target)
                           t))
                        ((journal-there-p target)
-                        (tell-writing (format nil "The save of ~a failed; the file is as it was, but its journal ~a could not be removed: it is used, and removed, when the file is next opened"
+                        (tell-writing (format nil "The save of ~a failed; the file is as it was, but its journal ~a ~
+                                                   could not be removed: it is used, and removed, when the file is ~
+                                                   next opened"
                                               (native target) (journal-path target))))
-                       (t (tell-writing (format nil "The save of ~a failed; the file is as it was, but its directory could not be flushed: after a power cut now, its journal may be beside it again, and is used when the file is next opened"
+                       (t (tell-writing (format nil "The save of ~a failed; the file is as it was, but its directory ~
+                                                     could not be flushed: after a power cut now, its journal may be ~
+                                                     beside it again, and is used when the file is next opened"
                                                 (native target))))))))
       (unwind-protect
            (handler-bind ((error (lambda (e) (declare (ignore e)) (give-back))))
@@ -534,13 +529,12 @@ was before it is signalled."
              (report (+ journalled changed))
              :done)
         (when heartbeat (funcall heartbeat))
-        (when out (tuatara.runtime:ignoring-errors-reported ("closing ~a" target) (sb-posix:close out)))
+        (when out (tuatara.runtime:close-fd-quietly out "~a" target))
         (take-back-leases leases)
         (when journal
           ;; the text may keep the journal open: the lock goes now
           (tuatara.runtime:unlock-fd journal)
-          (tuatara.runtime:ignoring-errors-reported ("closing the journal of ~a" target)
-            (sb-posix:close journal)))
+          (tuatara.runtime:close-fd-quietly journal "the journal of ~a" target))
         (sb-posix:close file)))))
 
 ;;; A save cut short
@@ -564,11 +558,14 @@ when the file was put back, or changed by the one waited for."
     (when (path-stamp journal-path :follow nil :failure nil)
       (let ((refusal (if safe "it is opened safely" (writing-refusal target :fd fd))))
         (when refusal
-          (tell-writing (format nil "~a may be part saved: a save of it was cut short, and its journal ~a is not used here, as ~a"
+          (tell-writing (format nil "~a may be part saved: a save of it was cut short, and its journal ~a is not used ~
+                                     here, as ~a"
                                 target journal-path refusal))
           (return-from recover-from-journal nil)))
       (flet ((left-alone (why)
-               (tell-writing (format nil "~a may be part saved: a save of it was cut short, and its journal ~a is left as it is, as ~a; once you have made sure the file is right, remove the journal"
+               (tell-writing (format nil "~a may be part saved: a save of it was cut short, and its journal ~a is ~
+                                          left as it is, as ~a; once you have made sure the file is right, remove the ~
+                                          journal"
                                      target journal-path why))
                (return-from recover-from-journal nil)))
         (handler-case
@@ -602,24 +599,27 @@ when the file was put back, or changed by the one waited for."
                                      (put-back out journal header target))
                            (sb-posix:close out))
                          (remove-journal (parent-path target) target)
-                         (tell-writing (format nil "A save of ~a was cut short: the file is put back as it was before it" target))
+                         (tell-writing (format nil "A save of ~a was cut short: the file is put back as it was before ~
+                                                    it" target))
                          t)))
                 (sb-posix:close journal)))
           (journal-busy (e) (error e))
           (file-system-error (e)
-            (tell-writing (format nil "~a may be part saved: a save of it was cut short, and it could not be put back from ~a: ~a"
+            (tell-writing (format nil "~a may be part saved: a save of it was cut short, and it could not be put back ~
+                                       from ~a: ~a"
                                   target journal-path (file-system-error-reason e)))
             nil))))))
 
-(defstruct (recovery (:include tuatara.runtime:job) (:constructor %make-recovery) (:copier nil))
+(define-record (recovery (:include tuatara.runtime:job) (:constructor %make-recovery) (:copier nil))
   "A file being put back from the journal of a save in place cut short, in
 the background, a job (TUATARA.RUNTIME:JOB): PATH, through the file
 descriptor (FD) of its own; PUT-BACK true once it was, and REFUSAL the
 JOURNAL-BUSY signalled when it was not, as another save or putting back held
 the journal."
-  path fd put-back refusal)
-
-(setf (documentation 'recovery-p 'function) "True when OBJECT is a RECOVERY.")
+  (path nil :documentation "The file RECOVERY puts back.")
+  (fd nil :documentation "The descriptor RECOVERY opened its file through.")
+  (put-back nil :documentation "True once RECOVERY put its file back, NIL before or when it was refused.")
+  (refusal nil :documentation "The JOURNAL-BUSY condition RECOVERY was refused with, or NIL."))
 
 (tuatara.runtime:define-job-words recovery
   :doing "Putting back"
@@ -653,7 +653,8 @@ long."
               :name "tuatara putting back")
              (if (tuatara.runtime:job-thread job)
                  (tuatara.runtime:host-wait-for-job tuatara.runtime:*host* job
-                                                    (format nil "Putting back ~a as it was before a save of it was cut short..."
+                                                    (format nil "Putting back ~a as it was before a save of it was ~
+                                                                 cut short..."
                                                             (native-file-name path)))
                  (sb-posix:close (recovery-fd job)))
              (tuatara.runtime:take-in-jobs (lambda (other) (eq other job)))
@@ -675,7 +676,8 @@ saying why)."
              (when (journal-there-p target)
                (error 'file-system-error
                       :operation "save" :path target
-                      :reason (format nil "a save of it was cut short and its journal ~a is still beside it (see above); once you have made sure the file is right, remove the journal"
+                      :reason (format nil "a save of it was cut short and its journal ~a is still beside it (see ~
+                                           above); once you have made sure the file is right, remove the journal"
                                       (journal-path target))))
              (fd-stamp fd target))
         (sb-posix:close fd)))))

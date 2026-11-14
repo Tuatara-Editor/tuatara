@@ -228,3 +228,24 @@ A session file not of its own kind is left alone, nothing in it evaluated. Off, 
                (is string= "open.txt" (tuatara.buffer:buffer-name (session-buffer editor)))
                (true (tuatara.frontend.fake:fake-frame-showing f "locked.txt:"))))
         (sb-posix:chmod (namestring locked) #o600)))))
+
+(define-test (session named-file-keeps-its-place)
+  ;; a file named at the start that the session holds too stays where it opened, not at the session's point
+  (with-test-directory (dir)
+    (let ((one (namestring (put-file (merge-pathnames "one.txt" dir) (format nil "one~%two~%three~%"))))
+          (tuatara-user:*keep-session* t))
+      (forget-session-buffers)
+      (alexandria:write-string-into-file (format nil "tuatara session 1~%buffer file 8 ~a~%frame~%window 1 0 file 8 ~a~%end~%"
+                                                 one one)
+                                         (tuatara.defaults::session-path) :if-exists :supersede)
+      (let* ((f (tuatara.frontend.fake:make-fake-frontend :width 120 :height 30))
+             (editor (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults :files (list one))))
+        (is = 0 (tuatara.buffer:buffer-point (tuatara.display:window-buffer (tuatara.command:editor-window editor)))))
+      (forget-session-buffers))))
+
+(define-test (session sleeps-while-left-alone)
+  ;; with nothing done since the last look, the session is not looked at and no wake is asked for
+  (let ((tuatara-user:*keep-session* t)
+        (tuatara.defaults::*session-looked* (get-internal-real-time))
+        (tuatara.command:*last-input-time* (- (get-internal-real-time) internal-time-units-per-second)))
+    (false (tuatara.defaults::session-tick nil))))

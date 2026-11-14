@@ -53,3 +53,8 @@ buffer in MODE holding TEXT, asked by PROSE-P and by PROSE-TEST, as two values."
                                                               (search (first place) note)) t)
                  "~a filled" (first place))))
       (tuatara.buffer:kill-buffer b))))
+
+(define-test (prose laid-out-names-matched)
+  ;; every part of a document that is not prose is named by the pattern, the last one too
+  (dolist (name '("code" "fence" "metadata" "html_block"))
+    (true (cl-ppcre:scan (format nil "^(?:~a)$" tuatara.defaults::*laid-out-node-names*) name) "~a" name)))

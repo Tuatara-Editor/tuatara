@@ -10,18 +10,11 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 . tools/inside.sh
+. tools/fetch.sh
 directory=build/bidi-conformance
 mkdir -p "$directory"
-fetch() {  # download Unicode's file $1 into the directory, kept only when its SHA-256 is $2
-  if ! echo "$2  $directory/$1" | sha256sum -c --status 2>/dev/null; then
-    curl -sSfL --retry 3 -o "$directory/$1.part" "https://www.unicode.org/Public/15.0.0/ucd/$1"
-    if ! echo "$2  $directory/$1.part" | sha256sum -c --status; then
-      rm -f "$directory/$1.part"
-      echo "$1 is not the file expected: not used" >&2
-      exit 1
-    fi
-    mv "$directory/$1.part" "$directory/$1"
-  fi
+fetch() {  # Unicode's file $1 into the directory, checked against SHA-256 $2
+  checked_download "https://www.unicode.org/Public/15.0.0/ucd/$1" "$directory/$1" "$2" || exit 1
 }
 fetch BidiTest.txt 72a7a509dba0e147322c17997fb5159431042ff4a49fa08c7c25ccc1e291bbfe
 fetch BidiCharacterTest.txt 3c423c301f7b8dc41b879062cbf01fd1b4ec2ea4826e20d276c44b52129a01b6

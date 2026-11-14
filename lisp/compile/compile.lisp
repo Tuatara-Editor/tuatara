@@ -2,22 +2,21 @@
 ;;;; compile.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; M-x compile runs a command typed in the minibuffer with the shell, from
-;;;; the root of the project the buffer's file is in, and shows what it prints
-;;;; in *compile* as it comes. The program runs as a job: a thread of its own
-;;;; reads its output a piece at a time and finds the lines naming a file and
-;;;; a line (GCC's, Clang's, rustc's, Python's, grep -n's) and those saying an
-;;;; error, a warning or a note; the editor takes the pieces in between keys,
-;;;; a few megabytes at most at once, so that typing never waits however much
-;;;; comes, and the thread waits when the editor is that far behind. The
-;;;; command runs in a session of its own with no terminal, so that a program
-;;;; asking for a password cannot reach the editor's, and stopping it ends
-;;;; every program of that session, killed when it does not end. RET on a
-;;;; line naming a place opens it, and the output is the list of places M-g n
-;;;; and M-g p go through (lisp/files/next-place.lisp). Running a build runs
-;;;; the project's own code, so a project not trusted is asked about first
-;;;; (lisp/files/trust.lisp); nothing of any file is run, only the command
-;;;; typed. As Emacs's compile, whose idea it is.
+;;;; M-x compile runs a command typed in the minibuffer with the shell, from the
+;;;; root of the project the buffer's file is in, and shows what it prints in
+;;;; *compile* as it comes. The program runs as a job: a thread of its own reads
+;;;; its output a piece at a time and finds the lines naming a file and a line
+;;;; (GCC's, Clang's, rustc's, Python's, grep -n's) and those saying an error, a
+;;;; warning or a note; the editor takes the pieces in between keys, a few
+;;;; megabytes at most at once, so that typing never waits however much comes,
+;;;; and the thread waits when the editor is that far behind. The command runs
+;;;; in a session of its own with no terminal, so that a program asking for a
+;;;; password cannot reach the editor's, and stopping it ends every program of
+;;;; that session, killed when it does not end. RET on a line naming a place
+;;;; opens it, and the output is the list of places M-g n and M-g p go through
+;;;; (lisp/files/next-place.lisp). Running a build runs the project's own code,
+;;;; so a project not trusted is asked about first (lisp/files/trust.lisp);
+;;;; nothing of any file is run, only the command typed.
 
 (in-package #:tuatara.compile)
 
@@ -73,10 +72,11 @@ the kind of line it is and the place it names.")
 ;;; Lines that name a place
 
 (defparameter *compile-line-scanners*
-  (flet ((scanner (pattern) (cl-ppcre:create-scanner pattern)))
+  (flet ((scanner (&rest parts) (cl-ppcre:create-scanner (apply #'concatenate 'string parts))))
     (list
      ;; GCC and Clang: file:line:col: error: what
-     (list :kinded (scanner "^([^\\s:\"'(][^\\s:]*):(\\d{1,9})(?::(\\d{1,9}))?:\\s*(fatal error|error|warning|note|remark)\\b"))
+     (list :kinded (scanner "^([^\\s:\"'(][^\\s:]*):(\\d{1,9})(?::(\\d{1,9}))?:"
+                            "\\s*(fatal error|error|warning|note|remark)\\b"))
      ;; rustc and cargo: --> file:line:col, under the line saying what is wrong
      (list :arrow (scanner "^\\s*--> ([^\\s:][^\\s:]*):(\\d{1,9})(?::(\\d{1,9}))?"))
      ;; Python's tracebacks: File "x", line n
@@ -85,9 +85,13 @@ the kind of line it is and the place it names.")
      ;; (before Rust 1.73, the message in quotes and a comma before the place)
      (list :panic (scanner "^thread '[^']*' panicked at (?:'.*', )?([^\\s:'][^\\s:]*):(\\d{1,9}):(\\d{1,9})"))
      ;; TypeScript's tsc, C# and MSVC: file(line,col): error
-     (list :parenthesised (scanner "^((?=[^\\s(]*[./])[^\\s(\"'][^\\s(]*)\\((\\d{1,9})(?:,(\\d{1,9}))?\\)\\s*:\\s*(fatal error|error|warning)\\b"))
+     (list :parenthesised (scanner "^((?=[^\\s(]*[./])[^\\s(\"'][^\\s(]*)\\((\\d{1,9})(?:,(\\d{1,9}))?\\)"
+                                   "\\s*:\\s*(fatal error|error|warning)\\b"))
      ;; what is wrong, without a place: rustc's error[E0308]:, SBCL's ; caught WARNING:, make's ***
-     (list :error (scanner "^(?:(?:fatal )?error(?:\\[[^\\]]*\\])?:|; caught ERROR:|(?:g?make|ninja)(?:\\[\\d+\\])?: \\*\\*\\*|FAILED:|Traceback \\(most recent call last\\):|[A-Za-z_][\\w.]*(?:Error|Exception): |.*\\*\\*\\* .*Stop\\.$)"))
+     (list :error (scanner "^(?:(?:fatal )?error(?:\\[[^\\]]*\\])?:|; caught ERROR:"
+                           "|(?:g?make|ninja)(?:\\[\\d+\\])?: \\*\\*\\*"
+                           "|FAILED:|Traceback \\(most recent call last\\):|[A-Za-z_][\\w.]*(?:Error|Exception): "
+                           "|.*\\*\\*\\* .*Stop\\.$)"))
      (list :warning (scanner "^(?:warning(?:\\[[^\\]]*\\])?:|; caught WARNING:)"))
      (list :note (scanner "^(?:note:|help:|; caught STYLE-WARNING:)"))
      ;; grep -n and the rest, file:line: or file:line:col:, of a file that is there
@@ -207,7 +211,8 @@ is. Python's File \"<string>\" and the like name no file."
                (declare (ignore match-end))
                (when start
                  (flet ((group (i) (and (aref starts i) (subseq line (aref starts i) (aref ends i))))
-                        (number (i) (and (aref starts i) (parse-integer line :start (aref starts i) :end (aref ends i)))))
+                        (number (i) (and (aref starts i)
+                                         (parse-integer line :start (aref starts i) :end (aref ends i)))))
                    (case what
                      (:kinded (let ((word (group 3)))
                                 (return (values (cond ((search "error" word) :error)
@@ -230,17 +235,22 @@ octets, its KIND (:ERROR, :WARNING, :NOTE or NIL), and PLACE true when it
 names a file and line."
   (logior (ash length 3) (ash (case kind (:error 1) (:warning 2) (:note 3) (t 0)) 1) (if place 1 0)))
 
-(defun code-length (code) "The length in octets of the line a PLACE-CODE stands for." (ash code -3))
-(defun code-place-p (code) "True when the line a PLACE-CODE stands for names a place." (logbitp 0 code))
+(defun place-code-length (code)
+  "The length in octets of the line a PLACE-CODE stands for."
+  (ash code -3))
 
-(defun code-face (code)
+(defun place-code-place-p (code)
+  "True when the line a PLACE-CODE stands for names a place."
+  (logbitp 0 code))
+
+(defun place-code-face (code)
   "The face of the line a PLACE-CODE stands for: :compile-error,
 :compile-warning or :compile-note; NIL for one of no kind."
   (case (ldb (byte 2 1) code) (1 :compile-error) (2 :compile-warning) (3 :compile-note)))
 
 ;;; A compile and its places
 
-(defstruct (compile-run (:constructor make-compile-run (buffer command directory base)) (:copier nil))
+(define-record (compile-run (:constructor make-compile-run (buffer command directory base)) (:copier nil))
   "A command run by \\[compile] and what its output names, a list of places
 \(STEP-PLACE): BUFFER shows its output after BASE octets of heading; COMMAND
 ran in DIRECTORY. STARTS, CODES and DIRECTORY-NUMBERS hold, in the order of the output,
@@ -250,28 +260,22 @@ its file names are taken from, as an index into DIRECTORIES (the first
 DIRECTORY, the others those make said it went into). They are written by the
 thread reading the output under LOCK. INDEX is the line gone to last, -1
 before any."
-  buffer command directory base
-  (lock (sb-thread:make-mutex :name "compile places"))
-  (starts (make-array 16 :element-type 'fixnum :adjustable t :fill-pointer 0))
-  (codes (make-array 16 :element-type 'fixnum :adjustable t :fill-pointer 0))
-  (directory-numbers (make-array 16 :element-type 'fixnum :adjustable t :fill-pointer 0))
-  (directories (make-array 1 :adjustable t :fill-pointer 1 :initial-element directory))
-  (index -1 :type fixnum))
-
-(setf (documentation 'compile-run-p 'function) "True when OBJECT is a COMPILE-RUN."
-      (documentation 'compile-run-buffer 'function) "The buffer showing a compile's output."
-      (documentation 'compile-run-command 'function) "The command a compile ran."
-      (documentation 'compile-run-directory 'function) "The directory a compile's command ran in."
-      (documentation 'compile-run-base 'function) "The octets of heading before a compile's output in its buffer."
-      (documentation 'compile-run-lock 'function) "The lock a compile's lines of note are written and read under."
-      (documentation 'compile-run-starts 'function)
-      "Where each line of note of a compile's output starts in its buffer."
-      (documentation 'compile-run-codes 'function) "The PLACE-CODE of each line of note of a compile's output."
-      (documentation 'compile-run-directory-numbers 'function)
-      "The directory each line of note of a compile's output takes its file names from, an index into its DIRECTORIES."
-      (documentation 'compile-run-directories 'function)
-      "The directory a compile's command ran in, then those make said it went into."
-      (documentation 'compile-run-index 'function) "The line of note of a compile gone to last, -1 before any.")
+  (buffer nil :documentation "The buffer showing a compile's output.")
+  (command nil :documentation "The command a compile ran.")
+  (directory nil :documentation "The directory a compile's command ran in.")
+  (base nil :documentation "The octets of heading before a compile's output in its buffer.")
+  (lock (sb-thread:make-mutex :name "compile places")
+        :documentation "The lock a compile's lines of note are written and read under.")
+  (starts (make-array 16 :element-type 'fixnum :adjustable t :fill-pointer 0)
+          :documentation "Where each line of note of a compile's output starts in its buffer.")
+  (codes (make-array 16 :element-type 'fixnum :adjustable t :fill-pointer 0)
+         :documentation "The PLACE-CODE of each line of note of a compile's output.")
+  (directory-numbers (make-array 16 :element-type 'fixnum :adjustable t :fill-pointer 0)
+                     :documentation "The directory each line of note of a compile's output takes
+its file names from, an index into its DIRECTORIES.")
+  (directories (make-array 1 :adjustable t :fill-pointer 1 :initial-element directory)
+               :documentation "The directory a compile's command ran in, then those make said it went into.")
+  (index -1 :type fixnum :documentation "The line of note of a compile gone to last, -1 before any."))
 
 (defmethod places-buffer ((places compile-run))
   "The buffer of the compile's output: killed, its places are in force no more."
@@ -289,9 +293,10 @@ taken from RUN's directory numbered DIRECTORY-NUMBER."
 (defun run-directory-number (run directory)
   "The index among RUN's directories of DIRECTORY, a directory make said it
 went into (taken from RUN's own when it does not start with /), added when new."
-  (let ((native (tuatara.io:slash-ended (tuatara.io:clean-path (if (uiop:string-prefix-p "/" directory)
-                                                                   directory
-                                                                   (tuatara.io:path-join (compile-run-directory run) directory))))))
+  (let ((native (tuatara.io:slash-ended
+                 (tuatara.io:clean-path (if (uiop:string-prefix-p "/" directory)
+                                            directory
+                                            (tuatara.io:path-join (compile-run-directory run) directory))))))
     (sb-thread:with-mutex ((compile-run-lock run))
       (let ((directories (compile-run-directories run)))
         (or (position native directories :test #'string=)
@@ -309,10 +314,10 @@ there)."
       (loop for i from first below count
             for start = (aref starts i)
             for code = (aref codes i)
-            for end = (min size (+ start (code-length code)))
+            for end = (min size (+ start (place-code-length code)))
             while (< start to)
-            when (and (code-face code) (> end from) (< start end))
-              collect (list (max start from) (min end to) (code-face code))))))
+            when (and (place-code-face code) (> end from) (< start end))
+            collect (list (max start from) (min end to) (place-code-face code))))))
 
 (defun compile-entry-at (buffer position)
   "The line of note of the compile shown in BUFFER that names a place, on the
@@ -324,7 +329,7 @@ line holding POSITION, as its index; NIL when that line names none."
           (let* ((starts (compile-run-starts run))
                  (i (tuatara.runtime:bisect (k 0 (fill-pointer starts)) (< (aref starts k) line-start))))
             (and (< i (fill-pointer starts)) (= (aref starts i) line-start)
-                 (code-place-p (aref (compile-run-codes run) i))
+                 (place-code-place-p (aref (compile-run-codes run) i))
                  i)))))))
 
 (defun compile-place-path (run file &optional (directory-number 0))
@@ -347,24 +352,24 @@ DIRECTORY-NUMBER."
   "Open the file the line of note INDEX of RUN names, at its line and column,
 in another window with OTHER, else in this one; the windows showing the
 compile's output put on that line, and the line said."
-  (let* ((buffer (compile-run-buffer run))
-         (start (sb-thread:with-mutex ((compile-run-lock run)) (aref (compile-run-starts run) index)))
-         (code (sb-thread:with-mutex ((compile-run-lock run)) (aref (compile-run-codes run) index)))
-         (directory-number (sb-thread:with-mutex ((compile-run-lock run)) (aref (compile-run-directory-numbers run)
-                                                                                index)))
-         (size (tuatara.buffer:buffer-size buffer))
-         (text (string-right-trim '(#\Return)
-                                  (tuatara.buffer:buffer-string buffer :start start
-                                                                       :end (min size (+ start (min (code-length code) *compile-line-looked-at*)))))))
-    (setf (compile-run-index run) index)
-    (dolist (window (buffer-windows buffer))
-      (setf (tuatara.display:window-point window) start))
-    (multiple-value-bind (kind file line column)
-        (output-line-place text :exists (lambda (file) (compile-file-there-p run file directory-number)))
-      (declare (ignore kind))
-      (cond ((null file) (message "No place on this line"))
-            ((show-file-line (compile-place-path run file directory-number) line :column column :other other)
-             (message "~a" (tuatara.display:shorten-string text 200 :one-line t)))))))
+  (multiple-value-bind (start code directory-number)
+      (sb-thread:with-mutex ((compile-run-lock run))
+        (values (aref (compile-run-starts run) index)
+                (aref (compile-run-codes run) index)
+                (aref (compile-run-directory-numbers run) index)))
+    (let* ((buffer (compile-run-buffer run))
+           (size (tuatara.buffer:buffer-size buffer))
+           (end (min size (+ start (min (place-code-length code) *compile-line-looked-at*))))
+           (text (string-right-trim '(#\Return) (tuatara.buffer:buffer-string buffer :start start :end end))))
+      (setf (compile-run-index run) index)
+      (dolist (window (buffer-windows buffer))
+        (setf (tuatara.display:window-point window) start))
+      (multiple-value-bind (kind file line column)
+          (output-line-place text :exists (lambda (file) (compile-file-there-p run file directory-number)))
+        (declare (ignore kind))
+        (cond ((null file) (message "No place on this line"))
+              ((show-file-line (compile-place-path run file directory-number) line :column column :other other)
+               (message "~a" (tuatara.display:shorten-string text 200 :one-line t))))))))
 
 (defmethod step-place ((places compile-run) direction)
   "Go to the next line of the compile's output naming a place (DIRECTION 1), or
@@ -378,7 +383,7 @@ output is in the selected one, else in the selected one."
                         (let ((starts (compile-run-starts places)) (codes (compile-run-codes places)))
                           (loop for i = (+ (compile-run-index places) direction) then (+ i direction)
                                 while (and (< -1 i (fill-pointer starts)) (< (aref starts i) size))
-                                when (code-place-p (aref codes i)) return i)))))
+                                when (place-code-place-p (aref codes i)) return i)))))
           (cond (found (goto-compile-place places found
                                            :other (eq buffer (tuatara.display:window-buffer (current-window)))))
                 ((and (plusp direction) (compile-under-way buffer))
@@ -391,9 +396,9 @@ output is in the selected one, else in the selected one."
 
 ;;; Reading the output
 
-(defstruct (compile-job (:include tuatara.runtime:job)
-                        (:constructor make-compile-job (buffer run environment most))
-                        (:copier nil))
+(define-record (compile-job (:include tuatara.runtime:job)
+                           (:constructor make-compile-job (buffer run environment most))
+                           (:copier nil))
   "A compile at work in BUFFER, a job: RUN is its COMPILE-RUN, ENVIRONMENT
 what its program sees, MOST the most octets of its output kept
 \(*COMPILE-OUTPUT-LIMIT* as it started). PIECES are the pieces read from its output and not
@@ -407,19 +412,37 @@ gives them; ENDED, the internal real time it did; LEFT-OUT, the octets past
 the output open after it ended. ENDING is true once it has ended and the rest
 of its output is being put in; THEN, a function of no arguments called once
 that is done \(the compile asked for meanwhile)."
-  run environment most
-  (lock (sb-thread:make-mutex :name "compile output"))
-  (room (sb-thread:make-waitqueue :name "compile output taken"))
-  (pieces '()) (waiting 0 :type fixnum) (asleep t) session exit ended (left-out 0) left-open ending then)
-
-(setf (documentation 'compile-job-p 'function) "True when OBJECT is a COMPILE-JOB.")
+  (run nil :documentation "The COMPILE-RUN of COMPILE-JOB.")
+  (environment nil :documentation "What the program of COMPILE-JOB sees as its environment.")
+  (most nil :documentation "The most octets of output COMPILE-JOB keeps (*COMPILE-OUTPUT-LIMIT* as it started).")
+  (lock (sb-thread:make-mutex :name "compile output")
+        :documentation "The mutex held while the pieces of output of COMPILE-JOB are changed.")
+  (room (sb-thread:make-waitqueue :name "compile output taken")
+        :documentation "The wait queue the reading of COMPILE-JOB waits on while too many octets wait.")
+  (pieces '()
+          :documentation "The pieces read from the output of COMPILE-JOB and not yet in its buffer, octet vectors or
+ropes, latest first.")
+  (waiting 0 :type fixnum :documentation "How many octets wait in the pieces of COMPILE-JOB.")
+  (asleep t
+          :documentation "True once the editor has taken in all the output of COMPILE-JOB there was, to be woken for
+the next.")
+  (session nil :documentation "The number of the session the command of COMPILE-JOB runs in (SESSION-COMMAND).")
+  (exit nil
+        :documentation "How the command of COMPILE-JOB ended, (STATUS CODE) as Steel Bank Common Lisp (SBCL) gives
+them.")
+  (ended nil :documentation "The internal real time COMPILE-JOB ended.")
+  (left-out 0 :documentation "How many octets of output past *COMPILE-OUTPUT-LIMIT* were not kept.")
+  (left-open nil :documentation "True when a program started by COMPILE-JOB held its output open after it ended.")
+  (ending nil :documentation "True once COMPILE-JOB has ended and the rest of its output is being put in.")
+  (then nil
+        :documentation "A function of no arguments called once the output is in, for the compile asked for meanwhile."))
 
 (tuatara.runtime:define-job-words compile-job
-  :doing "Compiling"
-  :description (format nil "Compiling: ~a" (tuatara.text:one-line (compile-run-command (compile-job-run job))))
-  :verb "run the command"
-  :left-words "the output so far"
-  :at-exit :stop)
+    :doing "Compiling"
+    :description (format nil "Compiling: ~a" (tuatara.text:one-line (compile-run-command (compile-job-run job))))
+    :verb "run the command"
+    :left-words "the output so far"
+    :at-exit :stop)
 
 (defmethod tuatara.runtime:job-holds-queue-p ((job compile-job))
   "False: nothing else waits for a compile."
@@ -442,13 +465,22 @@ programs have ended: killed at once when the editor is left meanwhile
   "True while PROCESS, a compile's setsid, or a program of its SESSION has not ended."
   (or (tuatara.io:process-unreaped-p process) (and session (tuatara.io:session-processes session))))
 
+(defun note-compile-stopping (entry)
+  "Add ENTRY, a process and its session, to the compiles being stopped, safe
+against other threads doing the same or ending one."
+  (sb-ext:atomic-push entry *compiles-stopping*))
+
+(defun forget-compile-stopping (entry)
+  "Take ENTRY off the compiles being stopped, safe against other threads."
+  (sb-ext:atomic-update *compiles-stopping* (lambda (entries) (remove entry entries))))
+
 (defun end-compile-session (job process)
   "End every program of JOB's session, PROCESS's, in the background: woken
 when stopped (SIGCONT) and asked to end (SIGTERM), then killed (SIGKILL)
 those not ended within *COMPILE-STOP-GRACE* seconds; none signalled once all
 have ended."
   (let ((entry (cons process (or (compile-job-session job) (tuatara.io:session-leader process)))))
-    (push entry *compiles-stopping*)
+    (note-compile-stopping entry)
     (tuatara.runtime:make-guarded-thread
      (lambda ()
        (unwind-protect
@@ -460,7 +492,7 @@ have ended."
                     do (sleep 0.05))
               (when (compile-session-there-p process session)
                 (tuatara.io:signal-session process session sb-posix:sigkill)))
-         (setf *compiles-stopping* (remove entry *compiles-stopping*))))
+         (forget-compile-stopping entry)))
      :name "tuatara compile stopping")))
 
 (defun kill-compiles-at-exit (editor)
@@ -474,8 +506,8 @@ outlives it."
         (push (cons (tuatara.runtime:job-process job) (compile-job-session job)) sessions)))
     (loop for (process . session) in sessions
           when (compile-session-there-p process session)
-            do (tuatara.io:signal-session process session sb-posix:sigcont)
-               (tuatara.io:signal-session process session sb-posix:sigkill))))
+          do (tuatara.io:signal-session process session sb-posix:sigcont)
+          (tuatara.io:signal-session process session sb-posix:sigkill))))
 
 (defmethod tuatara.runtime:job-stop ((job compile-job))
   "Stop the compile: its work asked to stop, and every program of its session ended (END-COMPILE-SESSION)."
@@ -496,7 +528,8 @@ the editor woken when it took in all there was before."
             do (tuatara.runtime:wait-on (compile-job-room job) (compile-job-lock job) 0.5))
       ;; a large piece made a rope here, its lines counted on this thread, to go into the
       ;; buffer as it is; (:BACK N) as it is
-      (push (if (and (not (consp octets)) (>= (length octets) *compile-rope-least*)) (tuatara.text:octets->rope octets) octets)
+      (push (if (and (not (consp octets)) (>= (length octets) *compile-rope-least*))
+                (tuatara.text:octets->rope octets) octets)
             (compile-job-pieces job))
       (incf (compile-job-waiting job) (piece-size octets))
       (when (compile-job-asleep job)
@@ -505,7 +538,7 @@ the editor woken when it took in all there was before."
       (let ((waker (tuatara.runtime:job-wake job)))
         (when waker (ignoring-errors-reported ("waking the compilation's reader") (funcall waker)))))))
 
-(defstruct (output-scan (:constructor make-output-scan (run offset &aux (line-start offset))) (:copier nil))
+(define-record (output-scan (:constructor make-output-scan (run offset &aux (line-start offset))) (:copier nil))
   "Where the reading of a compile's output has got, for finding its lines of
 note. RUN is its COMPILE-RUN. OFFSET is the octet of its buffer the next octet
 read goes to. LINE-START is where the line being read began. LINE is the
@@ -516,11 +549,20 @@ a line is matched in (LINE-TEXT). DIRECTORY-NUMBERS are the directories make wen
 the innermost first, as indexes into RUN's (0, where the command ran, when
 none). THERE is whether each file name looked for is a file, by directory and
 name."
-  run offset (line-start 0) (line (make-array 256 :element-type '(unsigned-byte 8) :adjustable t :fill-pointer 0))
-  (length 0) kind-before (text (make-string *compile-line-read*)) (directory-numbers '())
-  (there (make-hash-table :test 'equal)))
-
-(setf (documentation 'output-scan-p 'function) "True when OBJECT is an OUTPUT-SCAN.")
+  (run nil :documentation "The COMPILE-RUN whose output OUTPUT-SCAN reads.")
+  (offset nil :documentation "The octet of the buffer the next octet read goes to.")
+  (line-start 0 :documentation "The octet of the buffer where the line being read began.")
+  (line (make-array 256 :element-type '(unsigned-byte 8) :adjustable t :fill-pointer 0)
+        :documentation "The octets of the line read so far when it began in a piece read before, at most
+*COMPILE-LINE-LOOKED-AT*.")
+  (length 0 :documentation "How long the line being read is so far.")
+  (kind-before nil :documentation "The kind of the last line saying what is wrong without a place.")
+  (text (make-string *compile-line-read*) :documentation "The string a line is matched in (LINE-TEXT).")
+  (directory-numbers '()
+                     :documentation "The directories make went into, innermost first, as indexes into the directories
+of RUN (0 when none).")
+  (there (make-hash-table :test 'equal)
+         :documentation "Whether each file name looked for is a file, by directory and name."))
 
 (defun line-text (scan octets start end)
   "OCTETS from START below END as text to match, as two values, the string
@@ -566,7 +608,7 @@ are taken from."
             (:leaving (pop (output-scan-directory-numbers scan)))
             (t (multiple-value-bind (kind file)
                    (output-line-place text :kind-before (output-scan-kind-before scan) :end count
-                                           :exists (lambda (file) (scan-file-there-p scan file)))
+                                      :exists (lambda (file) (scan-file-there-p scan file)))
                  (when (and kind (null file)) (setf (output-scan-kind-before scan) kind))
                  (when (or kind file)
                    (note-output-line (output-scan-run scan) (output-scan-line-start scan) length kind file
@@ -588,7 +630,8 @@ are taken from."
                      ((zerop (fill-pointer line))
                       (note-line-octets scan octets from (+ from taken) (output-scan-length scan)))
                      (t (loop for i from from below (+ from taken) do (vector-push-extend (aref octets i) line))
-                        (note-line-octets scan (coerce line 'tuatara.text:octets) 0 (fill-pointer line) (output-scan-length scan))))
+                        (note-line-octets scan (coerce line 'tuatara.text:octets) 0 (fill-pointer line)
+                                          (output-scan-length scan))))
                (setf (fill-pointer line) 0
                      (output-scan-line-start scan) (+ (output-scan-offset scan) newline 1)
                      (output-scan-length scan) 0
@@ -606,17 +649,21 @@ are taken from."
 back to its start (OUTPUT-PAST-RETURNS): past it, until the next newline,
 the output goes in as it came, a carriage return in it ending a line.")
 
-(defstruct (output-returns (:constructor make-output-returns ()) (:copier nil))
+(define-record (output-returns (:constructor make-output-returns ()) (:copier nil))
   "How a compile's output stands where its last line is being written, for
 carriage returns written alone. SHOWN is the octets of that line as its buffer
 holds them. COLUMN is the character of it the next is written over, NIL when
 the next goes at its end. PENDING is true when the last octet read was a
 carriage return, a newline after it or not still to come. LOST is true while
 the line is longer than *COMPILE-RETURN-LINE-MOST*."
-  (shown (make-array 256 :element-type '(unsigned-byte 8) :adjustable t :fill-pointer 0))
-  (column nil) (pending nil) (lost nil))
-
-(setf (documentation 'output-returns-p 'function) "True when OBJECT is an OUTPUT-RETURNS.")
+  (shown (make-array 256 :element-type '(unsigned-byte 8) :adjustable t :fill-pointer 0)
+         :documentation "The octets of the last line of the output as its buffer holds them.")
+  (column nil
+          :documentation "The character of the last line the next is written over, NIL when the next goes at its end.")
+  (pending nil
+           :documentation "True when the last octet read was a carriage return, a newline after it or not still to
+come.")
+  (lost nil :documentation "True while the last line is longer than *COMPILE-RETURN-LINE-MOST*."))
 
 (defun output-past-returns (returns octets)
   "OCTETS, the next piece of a compile's output, as a terminal shows it: a
@@ -654,7 +701,7 @@ is kept up to date. Complexity: O(OCTETS and the line being written)."
         (let* ((back (fill-pointer shown))
                (line (let ((text (tuatara.text:octets-string (coerce shown 'tuatara.text:octets))))
                        (make-array (length text) :element-type 'character :adjustable t :fill-pointer (length text)
-                                                 :initial-contents text)))
+                                   :initial-contents text)))
                (column (output-returns-column returns))
                (text (tuatara.text:octets-string octets))
                (out (make-string-output-stream))
@@ -675,10 +722,10 @@ is kept up to date. Complexity: O(OCTETS and the line being written)."
                        (if (char= char #\Newline)
                            (progn (end-line (coerce '(#\Return #\Newline) 'string)) (setf char nil))
                            (setf column (and (plusp (length line)) 0))))
-                     (cond ((null char))
-                           ((char= char #\Newline) (end-line (string #\Newline)))
-                           ((char= char #\Return) (setf pending t))
-                           (t (put char)))))
+                  (cond ((null char))
+                        ((char= char #\Newline) (end-line (string #\Newline)))
+                        ((char= char #\Return) (setf pending t))
+                        (t (put char)))))
           (write-string line out)
           (let ((now (tuatara.text:string-octets (coerce line 'simple-string))))
             (setf (fill-pointer shown) 0
@@ -742,18 +789,18 @@ whatever outside it holds the output open."
                 (let ((ready (- filled (tuatara.text:octets-pending piece 0 filled))))
                   (when (or (plusp ready) (= filled (length piece)))
                     (give (if (plusp ready) ready filled))))))
-            ;; at every pass, written to or not: once the command has ended, the programs it
-            ;; left are given a moment, and a compile stopped ends with its session
-            (unless (sb-ext:process-alive-p process)
-              (let ((now (get-internal-real-time)))
-                (unless ended-at (setf ended-at now))
-                (cond ((> (- now ended-at) (* *compile-open-grace* internal-time-units-per-second))
-                       (unless (car (tuatara.runtime:job-cancel job))
-                         (setf (compile-job-left-open job) t))
-                       (return))
-                      ((and (car (tuatara.runtime:job-cancel job))
-                            (not (compile-session-there-p process (compile-job-session job))))
-                       (return))))))
+       ;; at every pass, written to or not: once the command has ended, the programs it
+       ;; left are given a moment, and a compile stopped ends with its session
+       (unless (sb-ext:process-alive-p process)
+         (let ((now (get-internal-real-time)))
+           (unless ended-at (setf ended-at now))
+           (cond ((> (- now ended-at) (* *compile-open-grace* internal-time-units-per-second))
+                  (unless (car (tuatara.runtime:job-cancel job))
+                    (setf (compile-job-left-open job) t))
+                  (return))
+                 ((and (car (tuatara.runtime:job-cancel job))
+                       (not (compile-session-there-p process (compile-job-session job))))
+                  (return))))))
       (when (plusp filled) (give filled)))
     (finish-output-scan scan)))
 
@@ -834,8 +881,9 @@ the tree changes (TUATARA.BUFFER:BUFFER-INSERT)."
                           (end (tuatara.buffer:buffer-size buffer))
                           (count (reduce #'+ run :key #'piece-size)))
                      (if (> count (max *compile-rope-least* (floor end 128)))
-                         (tuatara.buffer:buffer-splice buffer end end
-                                                       (apply #'tuatara.text:splice-rope (tuatara.text:make-rope) 0 0 (pieces-ropes run)))
+                         (tuatara.buffer:buffer-splice
+                          buffer end end
+                          (apply #'tuatara.text:splice-rope (tuatara.text:make-rope) 0 0 (pieces-ropes run)))
                          (tuatara.buffer:buffer-insert buffer end (if (and (null (rest run))
                                                                            (not (tuatara.text:rope-p (first run))))
                                                                       (first run)
@@ -855,7 +903,7 @@ is noted asleep, to wake the editor with the next."
       (let ((pieces (reverse (compile-job-pieces job))) (sum 0))
         (loop while (and pieces (or (null taken) (< (+ sum (piece-size (first pieces))) *compile-taken-at-once*)))
               do (incf sum (piece-size (first pieces)))
-                 (push (pop pieces) taken))
+              (push (pop pieces) taken))
         (setf (compile-job-pieces job) (reverse pieces))
         (decf (compile-job-waiting job) sum)
         (if taken
@@ -912,7 +960,8 @@ true as a second value when it ended well, exit code 0."
            (well (and (eq status :exited) (eql code 0) (not stopped)))
            (seconds (/ (- (or (compile-job-ended job) (get-internal-real-time)) (tuatara.runtime:job-started job))
                        internal-time-units-per-second)))
-      (values (format nil "~a, after ~a at ~a~@[; ~a~]~:[~;; a program it started held its output open and was left running~]"
+      (values (format nil "~a, after ~a at ~a~@[; ~a~]~:[~;; ~
+a program it started held its output open and was left running~]"
                       (cond ((eq (tuatara.runtime:job-status job) :failed) (tuatara.runtime:job-ending-words job))
                             (stopped "Compile stopped")
                             (well "Compile finished, exit code 0")
@@ -974,8 +1023,8 @@ note, as they come."
   (let ((run (tuatara.buffer:buffer-local buffer 'compile-run))
         (size (tuatara.buffer:buffer-size buffer)))
     (when run
-      (loop for (from . to) in (tuatara.display:shown-ranges rows :buffer buffer)
-            nconc (run-marks-between run from to size)))))
+      (list (loop for (from . to) in (tuatara.display:shown-ranges rows :buffer buffer)
+                  nconc (run-marks-between run from to size))))))
 
 (defmethod list-entry-noun ((mode compile-output-mode))
   "A place, a line of a compile's output naming a file and line."
@@ -983,11 +1032,11 @@ note, as they come."
 
 (defmethod visit-entry ((mode compile-output-mode) list entry other)
   "Open the file the line ENTRY of the compile's output names, at its line, in
-another window; the compile's places are the list of places in force then."
-  (declare (ignore other))
+another window, with OTHER keeping the list selected; the compile's places are
+the list of places in force then."
   (let ((run (tuatara.buffer:buffer-local list 'compile-run)))
     (use-places run)
-    (goto-compile-place run entry :other t)))
+    (keeping-list-selected other (lambda () (goto-compile-place run entry :other t)))))
 
 (defun compile-environment ()
   "What a compile's command sees of the environment: the editor's, with TERM
@@ -1023,22 +1072,22 @@ comes, the list of places in force then."
     (return-from start-compile-now nil))
   (unless (or *setsid-missing-said* (tuatara.io:find-program "setsid"))
     (setf *setsid-missing-said* t)
-    (message "setsid is not installed: the command runs in this terminal's session, so a program asking for a password could reach this terminal"))
-  (progn
-    (let* ((heading (format nil "Compile in ~a, ~a:~%~a~%~%" (abbreviated-path directory)
-                            (format-time "%F %a %T" (get-universal-time)) command))
-           (run (make-compile-run buffer command directory (tuatara.text:string-octet-length heading))))
-      (set-made-text buffer heading :refill 'compile-again)
-      (setf (tuatara.buffer:buffer-local buffer 'compile-run) run
-            (tuatara.buffer:buffer-local buffer :entry-at) 'compile-entry-at
-            (buffer-given-directory buffer) directory
-            (tuatara.buffer:buffer-point buffer) (tuatara.buffer:buffer-size buffer))
-      (use-places run)
-      (let ((window (display-buffer buffer)))
-        (when window (setf (tuatara.display:window-point window) (tuatara.buffer:buffer-size buffer))))
-      (tuatara.runtime:start-job-thread (make-compile-job buffer run (compile-environment) *compile-output-limit*)
-                                        'run-compile-job
-                                        :name "tuatara compile" :details command))))
+    (message "setsid is not installed: the command runs in this terminal's session, ~
+so a program asking for a password could reach this terminal"))
+  (let* ((heading (format nil "Compile in ~a, ~a:~%~a~%~%" (abbreviated-path directory)
+                          (format-time "%F %a %T" (get-universal-time)) command))
+         (run (make-compile-run buffer command directory (tuatara.text:string-octet-length heading))))
+    (set-made-text buffer heading :refill 'compile-again)
+    (setf (tuatara.buffer:buffer-local buffer 'compile-run) run
+          (tuatara.buffer:buffer-local buffer :entry-at) 'compile-entry-at
+          (buffer-given-directory buffer) directory
+          (tuatara.buffer:buffer-point buffer) (tuatara.buffer:buffer-size buffer))
+    (use-places run)
+    (let ((window (display-buffer buffer)))
+      (when window (setf (tuatara.display:window-point window) (tuatara.buffer:buffer-size buffer))))
+    (tuatara.runtime:start-job-thread (make-compile-job buffer run (compile-environment) *compile-output-limit*)
+                                      'run-compile-job
+                                      :name "tuatara compile" :details command)))
 
 (defun compile-in (command directory)
   "Run COMMAND in DIRECTORY (START-COMPILE) once the project there is trusted

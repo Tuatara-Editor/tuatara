@@ -1,12 +1,11 @@
 ;;;; lisp/help/char.lisp --- What is at point: C-x = and describe-char.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; C-x = says in the echo area which character is at point and where point
-;;;; is, as Emacs's what-cursor-position does. With C-u, or as M-x
-;;;; describe-char, *Help* shows all that is known of the character: its code,
-;;;; name and kind, its octets, the face it shows in, and in a buffer parsed
-;;;; with tree-sitter the syntax node it is in and the colouring rules that
-;;;; capture it.
+;;;; C-x = says in the echo area which character is at point and where point is.
+;;;; With C-u, or as M-x describe-char, *Help* shows all that is known of the
+;;;; character: its code, name and kind, its octets, the face it shows in, and
+;;;; in a buffer parsed with tree-sitter the syntax node it is in and the
+;;;; colouring rules that capture it.
 
 (in-package #:tuatara.defaults)
 
@@ -96,9 +95,10 @@ not show it."
          (rows (and (eq (tuatara.display:window-buffer window) buffer) (tuatara.display:window-rows window)))
          (face nil))
     (when (and rows (plusp (length rows)))
-      (loop for (start end painted) in (mode-syntax-highlights (buffer-major-mode buffer) buffer rows)
-            when (and (<= start position) (< position end))
-              do (setf face painted)))
+      (dolist (ranges (mode-syntax-highlights (buffer-major-mode buffer) buffer rows))
+        (loop for (start end painted) in ranges
+              when (and (<= start position) (< position end))
+                do (setf face painted))))
     (if (eq face :none) nil face)))
 
 (defun node-names-text (nodes)

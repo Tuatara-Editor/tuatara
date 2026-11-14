@@ -80,28 +80,22 @@ puts it, as new octets; NIL when that changes nothing."
   "A function changing each line for START-LINE-JOB: the text of the line from
 FROM below TO put in HOW's case, as CASE-CHANGED puts it; a line of ASCII
 changed octet by octet, another read as text."
-  (lambda (function line line-end next rope block block-start block-end)
-    (declare (ignore next) (type fixnum line line-end block-start block-end))
-    (let ((a (max line from)) (z (min line-end to)))
+  (lambda (function line)
+    (let ((a (max (line-slice-start line) from)) (z (min (line-slice-end line) to)))
       (declare (type fixnum a z))
       (when (< a z)
-        ;; the line's octets from the block read, or read now when it is not in it
-        (multiple-value-bind (octets start)
-            (if (and (>= a block-start) (<= z block-end))
-                (values block (- a block-start))
-                (values (tuatara.text:rope-octets rope :start a :end z) 0))
-          (declare (type (simple-array (unsigned-byte 8) (*)) octets) (type fixnum start))
-          (let* ((end (+ start (- z a)))
-                 (new (if (loop for p of-type fixnum from start below end always (< (aref octets p) 128))
-                          (ascii-case octets start end how)
-                          (let* ((text (tuatara.text:octets-string octets :start start :end end))
-                                 (changed (case-changed text how)))
-                            (and (string/= text changed) (tuatara.text:string-octets changed))))))
-            (when new (funcall function a z nil new))))))))
+        (multiple-value-bind (octets start end) (slice-octets line a z)
+          (declare (type (simple-array (unsigned-byte 8) (*)) octets) (type fixnum start end))
+          (let ((new (if (loop for p of-type fixnum from start below end always (< (aref octets p) 128))
+                         (ascii-case octets start end how)
+                         (let* ((text (tuatara.text:octets-string octets :start start :end end))
+                                (changed (case-changed text how)))
+                           (and (string/= text changed) (tuatara.text:string-octets changed))))))
+            (when new (funcall function a z new))))))))
 
 (defun region-case (how)
   "Change the case of the region, or say there is none. A region of more than
-*REWRITE-THRESHOLD* octets is changed in the background, a word at a time."
+*REWRITE-THRESHOLD* octets is changed in the background, a line at a time."
   (let ((b (current-buffer)))
     (multiple-value-bind (start end) (tuatara.buffer:buffer-region b)
       (cond ((not (and start (tuatara.buffer:buffer-mark-active-p b))) (message "The mark is not active now"))

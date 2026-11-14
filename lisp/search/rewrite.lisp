@@ -33,11 +33,10 @@ instead of in memory, so that it never holds the editor up.")
   "True, saying so, when the text from START below END is more octets than
 *REWRITE-THRESHOLD*: more than WHAT (a phrase such as \"Indenting\") is done on
 at once, on the editor's thread, without holding it up."
-  (let ((size (abs (- end start))))
-    (when (> size *rewrite-threshold*)
-      (message "~a works on at most ~a at once, and this is ~a: it was not done"
-               what (octets-words *rewrite-threshold*) (octets-words size))
-      t)))
+  (when (large-for-here-p start end)
+    (message "~a works on at most ~a at once, and this is ~a: it was not done"
+             what (octets-words *rewrite-threshold*) (octets-words (abs (- end start))))
+    t))
 
 (defvar *rewrite-piece* (* 64 1024 1024)
   "Octets of the scope a worker rewrites at a time; each piece ends at a line start.")
@@ -52,7 +51,8 @@ job running long enough to act while it runs.")
 
 ;;; Pieces and jobs
 
-(defstruct (rewrite-piece (:constructor make-rewrite-piece (start end &aux (done start) (allowed start))) (:copier nil))
+(define-record (rewrite-piece (:constructor make-rewrite-piece (start end &aux (done start) (allowed start)))
+                              (:copier nil))
   "A stretch of a job's scope from START below END, beginning at a line start,
 or where a match of the pieces before ends (MEND-SEAMS). ALLOWED is the first
 offset a match may start at under the one-per-line rule, START unless such a
@@ -65,66 +65,152 @@ is the octets it wrote. WRITER is the writer of its worker's unnamed file
 maps it as ROPE. CHECKPOINTS are triples of the input offset, the output offset
 within the piece and the first offset a match may start at under the
 one-per-line rule, noted along the way."
-  (start 0 :type fixnum) (end 0 :type fixnum) (done 0 :type fixnum)
-  (allowed 0 :type fixnum) (reach -1 :type fixnum) (allowed-after 0 :type fixnum) (tallies '())
-  (matches 0 :type fixnum) (lines 0 :type fixnum) (length 0 :type fixnum)
-  (writer nil) (from 0 :type fixnum) (rope nil)
-  (checkpoints (make-array 48 :element-type 'fixnum :adjustable t :fill-pointer 0)))
+  (start 0 :type fixnum
+         :documentation "Where PIECE starts in the scope of its job, a line start or where a match of the pieces
+before ends.")
+  (end 0 :type fixnum :documentation "Where PIECE ends in the scope of its job, the start of the piece after.")
+  (done 0 :type fixnum :documentation "How far the worker of PIECE has got.")
+  (allowed 0 :type fixnum :documentation "The first offset a match may start at in PIECE under the one-per-line rule.")
+  (reach -1 :type fixnum :documentation "Where the last match the worker of PIECE passed over ends, -1 before one.")
+  (allowed-after 0 :type fixnum
+                 :documentation "The first offset the match after the end of PIECE may start at under the one-per-line
+rule.")
+  (tallies '() :documentation "What PIECE counted, as TALLY records.")
+  (matches 0 :type fixnum :documentation "How many matches PIECE replaced.")
+  (lines 0 :type fixnum :documentation "On how many lines PIECE replaced matches.")
+  (length 0 :type fixnum :documentation "How many octets PIECE wrote.")
+  (writer nil :documentation "The writer of the worker of PIECE for its unnamed file, NIL when it has none.")
+  (from 0 :type fixnum :documentation "Where in that file the output of PIECE begins.")
+  (rope nil :documentation "The rope of the output of PIECE once the job maps it, NIL before.")
+  (checkpoints (make-array 48 :element-type 'fixnum :adjustable t :fill-pointer 0)
+               :documentation "Triples of the input offset, the output offset within PIECE and the first offset a
+match may start at under the one-per-line rule, noted along the way."))
 
-(defstruct (rewrite (:include tuatara.runtime:job) (:constructor %make-rewrite) (:copier nil))
-  "A replacement or count running in the background over BUFFER, a job
-\(TUATARA.RUNTIME:JOB). BASE is the version it reads and ROPE its text; LOW and
-HIGH bound the scope and WORDS name it; MAPPER finds the matches of a piece (one
-left as it is told as passed over, PASS-OVER) and EXPAND gives a match's
-replacement as octets; ALL is true with the g flag; COUNT-ONLY for the n flag.
-PIECES are rewritten by the pool's workers under the job's thread. TRACKER holds
-the edits made to the buffer since BASE (DIRTY records, or :ALL), noted by
+(define-record (rewrite (:include tuatara.runtime:job) (:constructor nil) (:copier nil))
+  "Work running in the background over BUFFER, a job (TUATARA.RUNTIME:JOB),
+that writes the text of its scope again piece by piece, or only reads it. Each
+kind of work is a type of its own, which does a piece its own way
+\(WRITE-PIECE): a replacement or count (MATCH-REWRITE), a change to each line
+\(LINE-REWRITE), a rectangle's rows, a split's search. BASE is the version it
+reads and ROPE its text; LOW and HIGH bound the scope and WORDS name it.
+MAPPER finds the changes in a piece (a match left as it is told as passed over,
+PASS-OVER), and EXPAND gives a change's octets from what MAPPER gives as its
+text and groups; ALL is true with the g flag, every match on a line changed.
+COUNT-ONLY is true for work that writes nothing (the n flag, a search). PIECES
+are rewritten by the pool's workers under the job's thread. TRACKER holds the
+edits made to the buffer since BASE (DIRTY records, or :ALL), noted by
 TRACKER-FUNCTION; RESULT is the text rewritten, once done; DIRECTORY is where
-the unnamed files go, FILES those files, one a worker (PIECE-FILES). CHECKPOINT
-and HOOK are *REWRITE-CHECKPOINT* and *REWRITE-PIECE-HOOK* as the job began,
-since the workers run on other threads. DOING, for work other than a
-replacement, names it in the list of jobs and in questions (Cutting), and
-REPORT, a function of the job, how it ended (:DONE, :NONE, :STOPPED or :FAILED),
-the changes made, the seconds taken and the changes kept as edited meanwhile,
-says so. For a count, done, it says what to say in place of the count, or NIL.
-RUNNER, when not NIL, rewrites a piece in place of REWRITE-PIECE-RUN: a function
-of the job and the piece making the same text, faster for work of its own kind.
-COUNTING, once every piece is written, is the cons INDEX-ROPE reports on as it
-counts the lines of the text written: the octets counted and the octets to
-count. SHADE, when not NIL, gives the text the job changes, shaded as it goes,
-for a job that changes less than its scope (a rectangle's columns): a function
-of the job and the offsets FROM and TO of the text shown, returning (START END
-FACE) ranges; by default the scope's pieces are shaded (JOB-SHADING). WHAT, when
-not NIL, says in full what the job does, for the list of jobs; VERB, what it
-does as a verb, for when it fails (Could not VERB), and LEAVES what stopping it
-leaves (Stopped: LEAVES), when not the replacement's. JOINS, when not NIL, is
-the buffer's undo stack as a change made before the job left it (the typing at a
-split's places in sight): the job's change joins that one for undo. SINCE is the
-buffer's undo stack as the job began (JOINS when given): its change stands there
-in the undo history, before the changes made meanwhile
-\(TUATARA.BUFFER:BUFFER-TAKE-IN-JOB-RESULT). Unless SESSION, for a job that
-writes out of sight what typing at places in sight still goes on writing (a
-split's, a block's rows), its change joins that typing on top, one change for
-undo with it. PREPARE, when not NIL, a function of the job, runs on the job's
-thread before the pieces are rewritten, to learn what their rewriting needs to
-know of the whole scope. GOAL, when not NIL, a function of the buffer with the
-job's text taken in, gives where point goes then, as the same work done at once
-leaves it; only when point is still at POINT, where it was when the job began,
-and nothing was edited meanwhile. HIDDEN-LEFT, when not NIL, is a cons whose car
-counts the matches left alone because a fold hides them (HIDDEN-LEFT-WORDS).
-LIGHTS-MATCHES, true for a job whose MAPPER only finds matches, keeping no count
-of its own (a replacement, a split's job at every match), has the matches still
-to change shaded rather than the whole stretch (JOB-MATCH-SHADING)."
-  base rope (low 0) (high 0) words what verb leaves joins since session prepare goal point hidden-left
-  mapper expand all count-only doing report runner (lights-matches nil)
-  (pieces #()) (counting nil) (shade nil)
-  (tracker '()) tracker-function result directory (files nil)
-  (out-starts-cache nil)
-  (checkpoint (* 256 1024)) (hook nil))
+the unnamed files go, FILES those files, one a worker (PIECE-FILES).
+CHECKPOINT and HOOK are *REWRITE-CHECKPOINT* and *REWRITE-PIECE-HOOK* as the
+job began, since the workers run on other threads. COUNTING, once every piece
+is written, is the cons INDEX-ROPE reports on as it counts the lines of the
+text written: the octets counted and the octets to count.
 
-(setf (documentation 'rewrite-p 'function) "True when OBJECT is a REWRITE."
-      (documentation 'rewrite-piece-p 'function) "True when OBJECT is a REWRITE-PIECE."
-      (documentation 'make-rewrite-piece 'function) "Return a piece of a rewrite from START below END.")
+DOING, for work other than a replacement, names it in the list of jobs and in
+questions (Cutting); WHAT, when not NIL, says in full what the job does, for
+the list of jobs; VERB, what it does as a verb, for when it fails (Could not
+VERB), and LEAVES what stopping it leaves (Stopped: LEAVES), when not the
+replacement's. REPORT, a function of the job, how it ended (:DONE, :NONE,
+:STOPPED or :FAILED), the changes made, the seconds taken and the changes kept
+as edited meanwhile, says so. For a count, done, it says what to say in place
+of the count, or NIL.
+
+JOINS, when not NIL, is the buffer's undo stack as a change made before the
+job left it (the typing at a split's places in sight): the job's change joins
+that one for undo. SINCE is the buffer's undo stack as the job began (JOINS
+when given): its change stands there in the undo history, before the changes
+made meanwhile (TUATARA.BUFFER:BUFFER-TAKE-IN-JOB-RESULT). Unless SESSION, for
+a job that writes out of sight what typing at places in sight still goes on
+writing (a split's, a block's rows), its change joins that typing on top, one
+change for undo with it. GOAL, when not NIL, a function of the buffer with
+the job's text taken in, gives where point goes then, as the same work done at
+once leaves it; only when point is still at POINT, where it was when the job
+began, and nothing was edited meanwhile."
+  (base nil :documentation "The version of the text JOB reads.")
+  (rope nil :documentation "The text of the version JOB reads.")
+  (low 0 :documentation "Where the scope of JOB starts.")
+  (high 0 :documentation "Where the scope of JOB ends.")
+  (words nil :documentation "The words naming the scope of JOB.")
+  (what nil :documentation "What JOB does said in full for the list of jobs, NIL for a replacement.")
+  (verb nil :documentation "What JOB does as a verb, for when it fails, NIL for a replacement.")
+  (leaves nil :documentation "What stopping JOB leaves, NIL for a replacement.")
+  (doing nil
+         :documentation "What JOB does when it is not a replacement, named in the list of jobs and in questions, NIL
+otherwise.")
+  (report nil
+          :documentation "A function of JOB saying how it ended (:DONE, :NONE, :STOPPED or :FAILED), the changes made,
+the seconds taken and the changes kept as edited meanwhile; NIL when none.")
+  (mapper nil :documentation "The function of JOB that finds the changes in a piece, NIL for work that writes nothing.")
+  (expand #'given-octets :documentation "The function of JOB that gives the octets of a change.")
+  (all nil :documentation "True when JOB changes every match on a line (the g flag).")
+  (count-only nil :documentation "True when JOB writes nothing: it only counts matches (the n flag), or finds them.")
+  (joins nil
+         :documentation "The undo stack of the buffer as a change made before JOB left it, which the change of JOB
+joins for undo; NIL when none.")
+  (since nil :documentation "The undo stack of the buffer as JOB began, where its change stands in the undo history.")
+  (session nil
+           :documentation "True for a job that writes out of sight what typing at places in sight still goes on
+writing, so that its change joins that typing.")
+  (goal nil
+        :documentation "A function of the buffer with the text of JOB taken in, giving where point goes then, NIL when
+none.")
+  (point nil :documentation "Where point was in the buffer when JOB began.")
+  (pieces #() :documentation "The pieces of the scope of JOB, a vector, rewritten by the workers of the pool.")
+  (counting nil
+            :documentation "Once every piece of JOB is written, the cons of octets counted and octets to count of the
+lines of the text written.")
+  (tracker '() :documentation "The edits made to the buffer since JOB read it, as DIRTY records, or :ALL.")
+  (tracker-function nil :documentation "The function that notes the edits made to the buffer for JOB.")
+  (result nil :documentation "The text rewritten by JOB once it is done, NIL before.")
+  (directory nil :documentation "The directory JOB puts its unnamed files in.")
+  (files nil :documentation "The PIECE-FILES of the unnamed files JOB writes its pieces to, NIL when it has none.")
+  (out-starts-cache nil
+                    :documentation "The vector of where the output of each piece of JOB starts in the rewritten text,
+NIL until worked out.")
+  (checkpoint (* 256 1024) :documentation "The value of *REWRITE-CHECKPOINT* as JOB began.")
+  (hook nil :documentation "The value of *REWRITE-PIECE-HOOK* as JOB began."))
+
+(define-record (match-rewrite (:include rewrite) (:constructor %make-match-rewrite) (:copier nil))
+  "A REWRITE whose MAPPER only finds matches, keeping no count of its own: a
+replacement, a count, a split's change at every match out of sight. The
+matches still to change are shaded rather than the whole stretch
+\(JOB-MATCH-SHADING). HIDDEN-LEFT, when not NIL, is a cons whose car counts the
+matches left alone because a fold hides them (HIDDEN-LEFT-WORDS)."
+  (hidden-left nil
+               :documentation "A cons whose car counts the matches JOB left alone because a fold hides them, NIL when
+none."))
+
+(define-record (line-rewrite (:include rewrite) (:constructor %make-line-rewrite) (:copier nil))
+  "A REWRITE that changes its scope a line at a time (START-LINE-JOB): PER-LINE
+says what each line becomes, its lines ending in carriage return and line feed
+when CRLF. PREPARE, when not NIL, a function of the job, runs on the job's
+thread before the pieces are rewritten, to learn what their rewriting needs to
+know of the whole scope."
+  (per-line nil :documentation "The function of JOB saying what a line becomes, as START-LINE-JOB takes it.")
+  (crlf nil :documentation "True when the lines JOB changes end in a carriage return and a line feed.")
+  (prepare nil :documentation "A function of JOB run on its thread before the pieces are rewritten, NIL when none."))
+
+(defun given-octets (text groups)
+  "Return GROUPS, TEXT ignored: the octets of a change made by a job whose
+mapper gives them in place of a match's groups (REWRITE-EXPAND)."
+  (declare (ignore text))
+  groups)
+
+(defgeneric write-piece (job piece)
+  (:documentation "Do PIECE of JOB, a REWRITE, on this thread: write its text
+again into this worker's unnamed file (START-PIECE), or for work that writes
+nothing only look at it, noting how far it has got and, once done, what it did
+\(FINISH-PIECE). By standard the changes MAPPER finds are made as the text is
+copied; a kind of work may do the same faster in its own way."))
+
+(defgeneric prepare-pieces (job)
+  (:documentation "What JOB, a REWRITE, does on its own thread before its
+pieces are written: by standard nothing.")
+  (:method ((job rewrite)) nil)
+  (:method ((job line-rewrite))
+    (when (line-rewrite-prepare job) (funcall (line-rewrite-prepare job) job))))
+
+(setf (documentation 'make-rewrite-piece 'function) "Return a piece of a rewrite from START below END.")
 
 (defun rewrite-totals (job)
   "How many matches JOB's pieces found and on how many lines, two values."
@@ -136,9 +222,10 @@ to change shaded rather than the whole stretch (JOB-MATCH-SHADING)."
 (defun hidden-left-words (count)
   "What is said of COUNT matches left alone because a fold hides them, after
 what a piece of work did: \"; N hidden in folds left alone\", or \"\" for none.
-COUNT is a number, or a job (REWRITE) whose HIDDEN-LEFT counts them."
+COUNT is a number, or a job (MATCH-REWRITE) whose HIDDEN-LEFT counts them."
   (let ((n (cond ((numberp count) count)
-                 ((and (rewrite-p count) (rewrite-hidden-left count)) (car (rewrite-hidden-left count)))
+                 ((and (match-rewrite-p count) (match-rewrite-hidden-left count))
+                  (car (match-rewrite-hidden-left count)))
                  (t 0))))
     (if (plusp n) (format nil "; ~:d hidden in folds left alone" n) "")))
 
@@ -175,10 +262,10 @@ again (MEND-SEAMS) takes its count back first."
   (car counter))
 
 (defun run-piece (job piece)
-  "Do PIECE of JOB on this thread, by its runner (REWRITE-PIECE-RUN unless
-another), what it counted noted in it (TALLY)."
+  "Do PIECE of JOB on this thread (WRITE-PIECE), what it counted noted in it
+\(TALLY)."
   (let ((*piece* piece))
-    (funcall (or (rewrite-runner job) #'rewrite-piece-run) job piece)))
+    (write-piece job piece)))
 
 (defun pass-over (function s e)
   "Tell FUNCTION, called by a job's mapper (REWRITE), that a match from S below
@@ -214,16 +301,17 @@ written in REPLACEMENT is NEWLINE, the buffer's."
 or the length a (LENGTH . WRITER) replacement says it writes."
   (if (consp replacement) (car replacement) (length replacement)))
 
-(defstruct (piece-files (:constructor make-piece-files (directory)) (:copier nil))
+(define-record (piece-files (:constructor make-piece-files (directory)) (:copier nil))
   "The unnamed files in DIRECTORY that the pieces of a job on disk are written
 to: one to each thread that writes a piece, opened as it first does
 \(PIECE-WRITER), WRITERS pairing each thread with its writer. A job holds as
 many open files as it has workers, however many pieces it has: a file of
 gigabytes cut into pieces of a few megabytes would soon pass the thousand or
 so files a process may have open."
-  (lock (sb-thread:make-mutex :name "piece files"))
-  (writers '())
-  (directory nil))
+  (lock (sb-thread:make-mutex :name "piece files")
+        :documentation "The mutex held while the writers of FILES are made or looked up.")
+  (writers '() :documentation "A list pairing each thread that writes a piece with its writer.")
+  (directory nil :documentation "The directory the unnamed files of FILES are in."))
 
 (defun piece-writer (files)
   "The writer of this thread's file among FILES', the file opened the first time."
@@ -318,7 +406,7 @@ ROPE's text from BLOCK-START below BLOCK-END, when all of it is there."
       (tuatara.io:writer-octets writer block (- from block-start) (- to block-start))
       (tuatara.io:writer-rope writer rope from to)))
 
-(defun rewrite-piece-run (job piece)
+(defmethod write-piece ((job rewrite) piece)
   "Rewrite PIECE of JOB into an unnamed file: the text as it is, with the
 matches that count replaced; or, for a count, only count them. The text
 between matches is copied from a megabyte of it read at a time, and the
@@ -366,8 +454,8 @@ output written a megabyte at a time."
                      (incf lines)
                      ;; the line's end from the text read when it holds it, else looked up
                      (setf line-end (let ((hit (and (<= window-start s) (< s window-end)
-                                                    (tuatara.text:octets-line-end-position window (- s window-start)
-                                                                                           (- window-end window-start) nil))))
+                                                    (tuatara.text:octets-line-end-position
+                                                     window (- s window-start) (- window-end window-start) nil))))
                                       (if hit (+ window-start hit) (tuatara.text:rope-line-end rope s)))))
                    (unless all (setf allowed (next-line-start-after rope e s))))
                  (setf (rewrite-piece-done piece) e)
@@ -418,7 +506,7 @@ ends, the files not mapped by then are closed."
   (unwind-protect
        (let ((pieces (rewrite-pieces job)))
          (setf (rewrite-files job) (make-piece-files (rewrite-directory job)))
-         (when (rewrite-prepare job) (funcall (rewrite-prepare job) job))
+         (prepare-pieces job)
          (when (and (plusp (length pieces)) (not (car (rewrite-cancel job))))
            (tuatara.runtime:run-tasks
             (map 'simple-vector (lambda (piece) (lambda () (run-piece job piece)))
@@ -433,7 +521,8 @@ ends, the files not mapped by then are closed."
                                                                        (rewrite-piece-from piece)
                                                                        (+ (rewrite-piece-from piece)
                                                                           (rewrite-piece-length piece))))))
-                         (written (apply #'tuatara.text:splice-rope (rewrite-rope job) (rewrite-low job) (rewrite-high job) ropes))
+                         (written (apply #'tuatara.text:splice-rope (rewrite-rope job) (rewrite-low job)
+                                         (rewrite-high job) ropes))
                          (counting (cons 0 0)))
                     (loop for piece across pieces for rope in ropes do (setf (rewrite-piece-rope piece) rope))
                     (setf (rewrite-counting job) counting)
@@ -568,13 +657,20 @@ inside). Values: the widened start and end, and how many matches were taken in."
 
 ;;; Edits made while the job runs
 
-(defstruct (dirty (:constructor make-dirty (base-start base-end start end)) (:copier nil))
+(define-record (dirty (:constructor make-dirty (base-start base-end start end)) (:copier nil))
   "A stretch edited while a job ran: BASE-START below BASE-END in the text the
 job read, START below END in the buffer's text now."
-  (base-start 0 :type fixnum) (base-end 0 :type fixnum) (start 0 :type fixnum) (end 0 :type fixnum))
+  (base-start 0 :type fixnum :documentation "Where the edited stretch of DIRTY starts in the text the job read.")
+  (base-end 0 :type fixnum :documentation "Where the edited stretch of DIRTY ends in the text the job read.")
+  (start 0 :type fixnum :documentation "Where the edited stretch of DIRTY starts in the buffer's text now.")
+  (end 0 :type fixnum :documentation "Where the edited stretch of DIRTY ends in the buffer's text now."))
 
 (setf (documentation 'make-dirty 'function) "Return a record of a stretch edited while a job ran."
       (documentation 'dirty-p 'function) "True when OBJECT is a DIRTY record.")
+
+(defun dirty-growth (dirty)
+  "How many octets longer the stretch DIRTY is now than in the text the job read."
+  (- (- (dirty-end dirty) (dirty-start dirty)) (- (dirty-base-end dirty) (dirty-base-start dirty))))
 
 (defun track-edits (dirties edits)
   "DIRTIES, sorted DIRTY records in the coordinates before an edit batch, after
@@ -582,7 +678,8 @@ the batch's EDITS (sorted, in the same coordinates): stretches that the edits
 touch or join are merged into one, which knows its extent in the text the job
 read and in the text now."
   (let ((items (sort (nconc (mapcar (lambda (d) (list (dirty-start d) (dirty-end d) d)) dirties)
-                            (map 'list (lambda (e) (list (tuatara.text:edit-start e) (tuatara.text:edit-end e) e)) edits))
+                            (map 'list (lambda (e) (list (tuatara.text:edit-start e) (tuatara.text:edit-end e) e))
+                                 edits))
                      #'< :key #'first))
         (result '()) (before 0) (shift 0))
     ;; BEFORE: how much longer the stretches passed are now than in the text read;
@@ -718,9 +815,11 @@ edited meanwhile as they are now, unless the buffer may no longer take it
            (let* ((now (tuatara.buffer:buffer-text buffer))
                   (edits (remove nil (map 'list (lambda (r)
                                                   (let ((text (and (< (getf r :start) (getf r :end))
-                                                                   (tuatara.text:rope-octets now :start (getf r :start) :end (getf r :end)))))
+                                                                   (tuatara.text:rope-octets now :start (getf r :start)
+                                                                                                 :end (getf r :end)))))
                                                     (unless (and (= (getf r :out-start) (getf r :out-end)) (null text))
-                                                      (tuatara.text:make-edit (getf r :out-start) (getf r :out-end) text))))
+                                                      (tuatara.text:make-edit (getf r :out-start) (getf r :out-end)
+                                                                              text))))
                                           regions)))
                   (final (if edits
                              (tuatara.text:apply-edits (rewrite-result job) (coerce edits 'simple-vector))
@@ -761,6 +860,10 @@ edited meanwhile as they are now, unless the buffer may no longer take it
                           (replaced-words (- matches taken) lines) (rewrite-words job) (job-done-words seconds taken)))
              (- matches taken))))))))
 
+(defmethod job-kind ((job rewrite))
+  "Every rewrite, whatever it changes: a replacement, the lines, a rectangle's rows."
+  'rewrite)
+
 (defmethod tuatara.runtime:job-take-in ((job rewrite))
   "Take in a replacement or count that has ended, on the editor's thread: its
 result, its count, or why it stopped."
@@ -799,15 +902,20 @@ only the pieces shown are looked at."
          (n (length pieces)))
     (flet ((here (position bias)
              (if edited (job-position-now job position bias) position)))
-      (let ((lo 0) (hi n))
-        (setf lo (tuatara.runtime:bisect (mid lo hi) (<= (here (rewrite-piece-end (aref pieces mid)) :before) from)) hi lo)
+      (let ((lo (tuatara.runtime:bisect (mid 0 n) (<= (here (rewrite-piece-end (aref pieces mid)) :before) from))))
         (loop for i from lo below n
               for piece = (aref pieces i)
               for start = (here (rewrite-piece-start piece) :after)
               while (< start to)
               collect (list start (here (rewrite-piece-end piece) :before)))))))
 
-(defun job-shading (job from to)
+(defgeneric job-shading (job from to)
+  (:documentation "What JOB, a REWRITE, changes in the text from FROM below
+TO, as ranges (START END FACE) to shade while it runs.")
+  (:method ((job rewrite) from to)
+    (pieces-shading job from to)))
+
+(defun pieces-shading (job from to)
   "JOB's pieces over the text from FROM below TO, as ranges to shade
 :JOB-QUEUED: the matches it will change there (JOB-MATCH-SHADING), or the
 whole stretch when those cannot be told quickly; all of them until its result
@@ -821,38 +929,47 @@ before the change till then."
           ranges
           (loop for (start . end) in stretches collect (list start end :job-queued))))))
 
-(defun job-match-shading (job stretches)
+(defgeneric job-match-shading (job stretches)
+  (:documentation "What JOB, a REWRITE, will change within STRETCHES, (START .
+END) of the text shown, as ranges in :JOB-QUEUED, and as a second value true
+when that could be told: by standard it cannot.")
+  (:method ((job rewrite) stretches)
+    (declare (ignore stretches))
+    nil))
+
+(defmethod job-match-shading ((job match-rewrite) stretches)
   "What JOB will change within STRETCHES, (START . END) of the text shown, as
 ranges in :JOB-QUEUED (CHANGES-IN-VIEW, by the job's own mapper, in the text
-it reads), and as a second value true when that could be told: only for a job
-that lights its matches (REWRITE-LIGHTS-MATCHES), not when the pattern is too
-slow on this text to light it. After edits made since the job began, the
-stretches are taken back to the text it reads (JOB-POSITION-READ) and its
-matches followed forward to the text now (JOB-POSITION-NOW), a match an edit
-reached into left out, so that only what will change is lit whatever was typed
-meanwhile, at a cost that does not grow with the typing."
-  (when (rewrite-lights-matches job)
-    (let ((edited (job-edited-p job)))
-      (multiple-value-bind (ranges slow)
-          (changes-in-view (rewrite-rope job)
-                           (lambda (function from to)
-                             (funcall (rewrite-mapper job)
-                                      (lambda (a z m g) (declare (ignore g)) (unless (eq m :passed) (funcall function a z)) nil)
-                                      from to nil))
-                           (if edited
-                               (loop for (start . end) in stretches
-                                     collect (cons (job-position-read job start :before)
-                                                   (job-position-read job end :after)))
-                               stretches)
-                           (rewrite-all job) :low (rewrite-low job))
-        (unless slow
-          (values (loop for (start end) in ranges
-                        for here-start = (if edited (job-position-now job start :after) start)
-                        for here-end = (if edited (job-position-now job end :before) end)
-                        ;; a match an edit reached into is no longer what the job will change
-                        when (= (- here-end here-start) (- end start))
-                          collect (list here-start here-end :job-queued))
-                  t))))))
+it reads), and as a second value true when that could be told: not when the
+pattern is too slow on this text to light it. After edits made since the job
+began, the stretches are taken back to the text it reads (JOB-POSITION-READ)
+and its matches followed forward to the text now (JOB-POSITION-NOW), a match
+an edit reached into left out, so that only what will change is lit whatever
+was typed meanwhile, at a cost that does not grow with the typing."
+  (let ((edited (job-edited-p job)))
+    (multiple-value-bind (ranges slow)
+        (changes-in-view (rewrite-rope job)
+                         (lambda (function from to)
+                           (funcall (rewrite-mapper job)
+                                    (lambda (a z m g)
+                                      (declare (ignore g))
+                                      (unless (eq m :passed) (funcall function a z))
+                                      nil)
+                                    from to nil))
+                         (if edited
+                             (loop for (start . end) in stretches
+                                   collect (cons (job-position-read job start :before)
+                                                 (job-position-read job end :after)))
+                             stretches)
+                         (rewrite-all job) :low (rewrite-low job))
+      (unless slow
+        (values (loop for (start end) in ranges
+                      for here-start = (if edited (job-position-now job start :after) start)
+                      for here-end = (if edited (job-position-now job end :before) end)
+                      ;; a match an edit reached into is no longer what the job will change
+                      when (= (- here-end here-start) (- end start))
+                      collect (list here-start here-end :job-queued))
+                t)))))
 
 (defun job-position-now (job position bias)
   "Where POSITION in the text JOB reads is in its buffer's text now, through
@@ -871,7 +988,7 @@ follow the edits (a count), through every version since
                   ((or (< position (dirty-base-end d)) (and (= position (dirty-base-end d)) (eq bias :before)
                                                              (< (dirty-base-start d) position)))
                    (return (if (eq bias :after) (dirty-end d) (dirty-start d))))
-                  (t (incf delta (- (- (dirty-end d) (dirty-start d)) (- (dirty-base-end d) (dirty-base-start d)))))))))))
+                  (t (incf delta (dirty-growth d)))))))))
 
 (defun job-position-read (job position bias)
   "Where POSITION in JOB's buffer's text now is in the text JOB reads, from
@@ -890,7 +1007,7 @@ to POSITION or past it, found by halves."
             (cond ((< position (dirty-start d)) (return (- position delta)))
                   ((< position (dirty-end d))
                    (return (if (eq bias :after) (dirty-base-end d) (dirty-base-start d))))
-                  (t (incf delta (- (- (dirty-end d) (dirty-start d)) (- (dirty-base-end d) (dirty-base-start d)))))))))))
+                  (t (incf delta (dirty-growth d)))))))))
 
 (defun rewrite-highlights (editor window rows)
   "Job highlight function: the text a job running in WINDOW's buffer is
@@ -902,7 +1019,7 @@ gigabytes). A count changes nothing, and is not shown."
          (job (tuatara.runtime:running-job buffer 'rewrite)))
     (when (and job (not (rewrite-count-only job)) (plusp (length rows)))
       (loop for (from . to) in (tuatara.display:shown-ranges rows :buffer buffer)
-            nconc (funcall (or (rewrite-shade job) #'job-shading) job from to)))))
+            nconc (job-shading job from to)))))
 
 (tuatara.runtime:define-job-words rewrite
   :doing (rewrite-doing-word job)
@@ -979,7 +1096,7 @@ what it marks."
 what it will change in the text shown, as the text stands now
 \(CHANGES-IN-VIEW); the whole stretch when the pattern is too slow on this
 text to light it; nothing for a count."
-  (let ((matcher (search-line-matcher line regex buffer))
+  (let ((matcher (search-line-matcher line regex))
         (all (find #\g flags)))
     (lambda (positions from to)
       (destructuring-bind (low high &rest more) positions
@@ -1001,176 +1118,177 @@ the pattern is slow on this text first when SLOW is true; the matches a fold
 hides are replaced too, the folds kept. SKIP, a vector of (START . END) in
 order, are lines left as they are, those replaced in sight already; the
 job's change then joins JOINS for undo, and REPORT says how it ended (both as
-REWRITE takes them). Returns the job, or
-:QUEUED when another job runs or waits in BUFFER: it then waits its turn
-(QUEUE-IF-BUSY), LOW and HIGH followed meanwhile. A replacement in a text
-whose lines are still being counted, a large file just opened or the result
-of a replacement before it, waits its turn the same way until they are,
-the editor answering keys meanwhile."
+REWRITE takes them). Returns the job, or :QUEUED when another job runs or
+waits in BUFFER: it then waits its turn (QUEUE-IF-BUSY), LOW and HIGH followed
+meanwhile. A replacement in a text whose lines are still being counted, a
+large file just opened or the result of a replacement before it, waits its
+turn the same way until they are, the editor answering keys meanwhile."
   (when (queue-if-busy buffer (rewrite-description line words flags)
                        (list (cons low :before) (cons high :after))
-                       (lambda (low high) (start-rewrite buffer line regex low high words flags :slow slow
-                                                                                                    :skip skip :joins joins :report report))
+                       (lambda (low high)
+                         (start-rewrite buffer line regex low high words flags
+                                        :slow slow :skip skip :joins joins :report report))
                        :shade (matches-shade buffer line regex flags)
                        :counted (not (find #\n flags)))
     (return-from start-rewrite :queued))
   (unless (find #\n flags)
     (check-hidden-lines buffer low high)
     (tuatara.buffer:ensure-indexed buffer))
-  (let* ((matcher (search-line-matcher line regex buffer))
+  (let* ((matcher (search-line-matcher line regex))
          (count-only (and (find #\n flags) t)))
     ;; what the replacement needs of each match: no more is copied from the text
     (multiple-value-bind (expand texts)
-        (if count-only (values nil nil) (rewrite-expander (search-line-replacement line) regex (matcher-fold matcher)
-                                                             (tuatara.buffer:buffer-newline buffer)))
+        (if count-only
+            (values nil nil)
+            (rewrite-expander (search-line-replacement line) regex (matcher-fold matcher)
+                              (tuatara.buffer:buffer-newline buffer)))
       (multiple-value-bind (rope low high since made)
           (if (or count-only joins)
               (values (tuatara.buffer:buffer-text buffer) low high nil '())
               (job-begins-where-given buffer low high))
-      (let* ((job (%make-rewrite :buffer buffer :base (tuatara.buffer:buffer-version buffer) :rope rope
-                                 :low low :high high :words words :what (rewrite-description line words flags)
-                                 :mapper (let ((mapper (rewrite-mapper-for rope matcher texts high)))
-                                           (if skip
-                                               (lambda (function from to halt)
-                                                 (funcall mapper (lambda (s e m g)
-                                                                   (if (spans-meet-p skip s s)
-                                                                       (pass-over function s e)
-                                                                       (funcall function s e m g)))
-                                                          from to halt))
-                                               mapper))
-                                 :joins joins :report report :lights-matches (not count-only)
-                                 :expand expand
-                                 :all (and (find #\g flags) t) :count-only count-only
-                                 :pieces (rewrite-pieces-for rope low high)
-                                 :checkpoint *rewrite-checkpoint* :hook *rewrite-piece-hook*
-                                 :directory (unless count-only (tuatara.io:buffer-scratch-directory buffer)))))
-        (launch-rewrite job "tuatara rewrite"
-                        (format nil "octets ~:d to ~:d in ~d piece~:p" low high (length (rewrite-pieces job)))
-                        :since since :made made)
-        (let ((doing (format nil "~:[replacing~;counting~] ~a" count-only words)))
-          (say-in-background (if slow (format nil "The pattern is slow here: ~a" doing) (string-capitalize doing :end 1))))
-        job)))))
+        (let* ((job (%make-match-rewrite
+                     :buffer buffer :base (tuatara.buffer:buffer-version buffer) :rope rope
+                     :low low :high high :words words :what (rewrite-description line words flags)
+                     :mapper (let ((mapper (rewrite-mapper-for rope matcher texts high)))
+                               (if skip
+                                   (lambda (function from to halt)
+                                     (funcall mapper (lambda (s e m g)
+                                                       (if (spans-meet-p skip s s)
+                                                           (pass-over function s e)
+                                                           (funcall function s e m g)))
+                                              from to halt))
+                                   mapper))
+                     :joins joins :report report
+                     :expand expand
+                     :all (and (find #\g flags) t) :count-only count-only
+                     :pieces (rewrite-pieces-for rope low high)
+                     :checkpoint *rewrite-checkpoint* :hook *rewrite-piece-hook*
+                     :directory (unless count-only (tuatara.io:buffer-scratch-directory buffer)))))
+          (launch-rewrite job "tuatara rewrite"
+                          (format nil "octets ~:d to ~:d in ~d piece~:p" low high (length (rewrite-pieces job)))
+                          :since since :made made)
+          (let ((doing (format nil "~:[replacing~;counting~] ~a" count-only words)))
+            (say-in-background (if slow
+                                   (format nil "The pattern is slow here: ~a" doing)
+                                   (string-capitalize doing :end 1))))
+          job)))))
 
-(defun line-piece-run (job piece per-line crlf)
-  "Rewrite PIECE of JOB, a job over lines (START-LINE-JOB), into an unnamed
-file: the text PER-LINE makes of each line (carriage return and line feed
-(CRLF) when a carriage return before a newline ends them), read a block at a
-time and written a megabyte at a time, so that no line looks anything up in
-the text."
+(defmethod write-piece ((job line-rewrite) piece)
+  "Rewrite PIECE of JOB into an unnamed file: the text the job's PER-LINE makes
+of each line, read a block at a time and written a megabyte at a time, so that
+no line looks anything up in the text."
   (let* ((rope (rewrite-rope job))
-         (total (tuatara.text:rope-octet-length rope))
          (start (rewrite-piece-start piece))
          (end (rewrite-piece-end piece))
+         (per-line (line-rewrite-per-line job))
          (cancel (rewrite-cancel job))
          (writer (start-piece job piece))
          (interval (rewrite-checkpoint job))
          (next-checkpoint (+ start interval))
          (changes 0) (lines 0)
-         ;; the line under way, and the block it was read in
-         (pos 0) (block nil) (block-start 0) (block-end 0))
-    (declare (type fixnum total start end next-checkpoint changes lines pos block-start block-end))
-    (flet ((edit (a z groups octets)
-             ;; what PER-LINE changes: the text before it as it is, then the change
-             (declare (ignore groups) (type fixnum a z))
-             (write-text writer rope pos a block block-start block-end)
-             (tuatara.io:writer-octets writer octets)
-             (setf pos z)
-             (incf changes)))
+         ;; the line under way, and how far its text is written
+         (slice nil) (pos 0))
+    (declare (type fixnum start end next-checkpoint changes lines pos))
+    (labels ((copy-to (to)
+               (write-text writer rope pos to (line-slice-block slice)
+                           (line-slice-block-start slice) (line-slice-block-end slice)))
+             (edit (a z octets)
+               ;; what PER-LINE changes: the text before it as it is, then the change
+               (declare (type fixnum a z))
+               (copy-to a)
+               (tuatara.io:writer-octets writer octets)
+               (setf pos z)
+               (incf changes)))
       (when (< start end)
         (map-piece-lines
-         (lambda (line line-end rope octets octets-start octets-end)
-           (declare (type fixnum line line-end octets-start octets-end))
-           (setf block octets block-start octets-start block-end octets-end pos line)
-           (let ((next (slice-next-line rope total crlf line-end block block-start block-end)))
-             (declare (type fixnum next))
-             (funcall per-line #'edit line line-end next rope block block-start block-end)
-             (write-text writer rope pos next block block-start block-end)
+         (lambda (line)
+           (let ((next (line-slice-next line)))
+             (setf slice line pos (line-slice-start line))
+             (funcall per-line #'edit line)
+             (copy-to next)
              (incf lines)
              (setf (rewrite-piece-done piece) next)
              (when (>= next next-checkpoint)
                (piece-checkpoint piece next (piece-written piece writer) start)
                (setf next-checkpoint (+ next interval)))))
-         rope start end crlf (lambda () (car cancel))))
+         rope start end (line-rewrite-crlf job) (lambda () (car cancel))))
       (unless (car cancel)
         (finish-piece piece writer changes lines)))))
 
-(defun line-octets (rope line line-end block block-start block-end)
-  "Two values: octets holding the text of ROPE from LINE below LINE-END, and
-where it starts in them, taken from BLOCK, the octets from BLOCK-START below BLOCK-END,
-when it holds it, else the text read now."
-  (declare (type fixnum line line-end block-start block-end))
-  (if (and (>= line block-start) (<= line-end block-end))
-      (values block (- line block-start))
-      (values (tuatara.text:rope-octets rope :start line :end line-end) 0)))
-
 (defun map-piece-lines (function rope start end crlf &optional halt)
-  "Call FUNCTION with (LINE LINE-END ROPE BLOCK BLOCK-START BLOCK-END) for each
-line of ROPE starting from START below END, read a block at a time (carriage
-return and line feed (CRLF) when a carriage return before a newline ends them).
-The block is one of a megabyte kept for reading into
-\(TUATARA.TEXT:WITH-OCTET-BLOCK), which FUNCTION must not keep. Stop when HALT,
+  "Call FUNCTION with a LINE-SLICE for each line of ROPE starting from START
+below END, read a block at a time (carriage return and line feed (CRLF) when a
+carriage return before a newline ends them). The slice and the block it holds,
+one of a megabyte kept for reading into (TUATARA.TEXT:WITH-OCTET-BLOCK), are
+filled again for each line: FUNCTION must not keep them. Stop when HALT,
 checked now and then, answers true."
-  (let ((n 0))
-    (declare (type fixnum n))
+  (let ((n 0) (total (tuatara.text:rope-octet-length rope)) (slice (make-line-slice rope)))
+    (declare (type fixnum n total))
     (tuatara.text:with-octet-block (reused (* 1024 1024))
       (block lines
         (tuatara.text:map-line-slices
          (lambda (line s e sc ec line-end block block-start block-end)
-           (declare (ignore s e sc ec))
+           (declare (ignore s e sc ec) (type fixnum line line-end block-start block-end))
            (when (and halt (zerop (logand (incf n) 1023)) (funcall halt)) (return-from lines))
-           (funcall function line line-end rope block block-start block-end))
+           (setf (line-slice-start slice) line
+                 (line-slice-end slice) line-end
+                 (line-slice-next slice) (slice-next-line rope total crlf line-end block block-start block-end)
+                 (line-slice-block slice) block
+                 (line-slice-block-start slice) block-start
+                 (line-slice-block-end slice) block-end)
+           (funcall function slice))
          rope start end 0 0 :crlf crlf :octets t :block reused)))))
 
 (defun start-line-job (buffer from to per-line &key doing what verb leaves report announce prepare goal)
   "Rewrite the lines of BUFFER from the one starting at FROM to the one ending
 at TO, in the background on all but two cores, as PER-LINE says, a line at a
-time. PER-LINE is a function of (FUNCTION LINE LINE-END NEXT ROPE BLOCK
-BLOCK-START BLOCK-END) called for each line. It is given the line's start, its
-end (before the line's end, that is its newline, or with carriage return and
-line feed (CRLF) the carriage return), the next line's start, and the text with
-the octets read around the line (BLOCK-OCTET reads them). It calls FUNCTION with
-\(START END NIL OCTETS) for each change it makes, in order, within the line and
-its line end. DOING names the work in a word and WHAT names it in full, for the
-list of jobs. VERB names it as a verb, for when it fails, and LEAVES says what
-stopping it leaves (REWRITE). REPORT says how it ended. ANNOUNCE, the work in
-words, is said to go on in the background as it starts (SAY-IN-BACKGROUND).
-PREPARE, when given, runs first on the job's thread (REWRITE). GOAL, when given,
-a function of FROM as the job starts, gives the job's GOAL (REWRITE). One change
-for undo, edits made meanwhile kept, \\[stop-job] stops it. Returns the job, or
-:QUEUED when another job runs or waits in BUFFER, or its lines are still being
+time. PER-LINE is a function of (FUNCTION SLICE) called for each line, SLICE a
+LINE-SLICE giving the line's start, its end (before the line's end, that is its
+newline, or with carriage return and line feed (CRLF) the carriage return),
+the next line's start, and the octets read around the line (SLICE-OCTET,
+SLICE-OCTETS read them). It calls FUNCTION with (START END OCTETS) for each
+change it makes, in order, within the line and its line end. DOING names the
+work in a word and WHAT names it in full, for the list of jobs. VERB names it
+as a verb, for when it fails, and LEAVES says what stopping it leaves
+\(REWRITE). REPORT says how it ended. ANNOUNCE, the work in words, is said to go
+on in the background as it starts (SAY-IN-BACKGROUND). PREPARE, when given,
+runs first on the job's thread (LINE-REWRITE). GOAL, when given, a function of
+FROM as the job starts, gives the job's GOAL (REWRITE). One change for undo,
+edits made meanwhile kept, \\[stop-job] stops it. Returns the job, or :QUEUED
+when another job runs or waits in BUFFER, or its lines are still being
 counted: it then waits its turn, FROM and TO followed meanwhile."
   (when (queue-if-busy buffer what (list (cons from :before) (cons to :after))
-                       (lambda (from to) (start-line-job buffer from to per-line :doing doing :what what
-                                                                                    :verb verb :leaves leaves
-                                                                                    :report report :announce announce
-                                                                                    :prepare prepare :goal goal))
+                       (lambda (from to)
+                         (start-line-job buffer from to per-line :doing doing :what what :verb verb :leaves leaves
+                                                                 :report report :announce announce
+                                                                 :prepare prepare :goal goal))
                        :counted t)
     (return-from start-line-job :queued))
   (tuatara.buffer:ensure-indexed buffer)
   (multiple-value-bind (rope from to since made) (job-begins-where-given buffer from to)
-  (let* ((total (tuatara.text:rope-octet-length rope))
-         (crlf (buffer-crlf-p buffer))
-         (high (min total (1+ (tuatara.text:rope-line-end rope to))))
-         (job (%make-rewrite :buffer buffer :base (tuatara.buffer:buffer-version buffer) :rope rope
-                             :low from :high high :words "the lines" :what what :doing doing :prepare prepare
-                             :verb verb :leaves leaves
-                             :goal (and goal (funcall goal from)) :point (tuatara.buffer:buffer-point buffer)
-                             :mapper (lambda (function start end halt)
-                                       (map-piece-lines (lambda (line line-end rope block block-start block-end)
-                                                          (when (>= line start)
-                                                            (funcall per-line function line line-end
-                                                                     (slice-next-line rope total crlf line-end block block-start block-end)
-                                                                     rope block block-start block-end)))
-                                                        rope (tuatara.text:rope-line-start rope start) (min end high) crlf halt))
-                             :expand (lambda (m g) (declare (ignore m)) g)
-                             :runner (lambda (job piece) (line-piece-run job piece per-line crlf))
-                             :all t :report report
-                             :pieces (rewrite-pieces-for rope from high)
-                             :checkpoint *rewrite-checkpoint* :hook *rewrite-piece-hook*
-                             :directory (tuatara.io:buffer-scratch-directory buffer))))
-    (launch-rewrite job "tuatara lines" (format nil "octets ~:d to ~:d" from high) :since since :made made)
-    (when announce (say-in-background announce))
-    job)))
+    (let* ((total (tuatara.text:rope-octet-length rope))
+           (crlf (buffer-crlf-p buffer))
+           (high (min total (1+ (tuatara.text:rope-line-end rope to))))
+           (job (%make-line-rewrite
+                 :buffer buffer :base (tuatara.buffer:buffer-version buffer) :rope rope
+                 :low from :high high :words "the lines" :what what :doing doing
+                 :verb verb :leaves leaves :report report :all t
+                 :goal (and goal (funcall goal from)) :point (tuatara.buffer:buffer-point buffer)
+                 :per-line per-line :crlf crlf :prepare prepare
+                 ;; each change told as a match whose groups are its octets (GIVEN-OCTETS)
+                 :mapper (lambda (function start end halt)
+                           (let ((edit (lambda (a z octets) (funcall function a z nil octets))))
+                             (map-piece-lines (lambda (line)
+                                                (when (>= (line-slice-start line) start)
+                                                  (funcall per-line edit line)))
+                                              rope (tuatara.text:rope-line-start rope start) (min end high) crlf
+                                              halt)))
+                 :pieces (rewrite-pieces-for rope from high)
+                 :checkpoint *rewrite-checkpoint* :hook *rewrite-piece-hook*
+                 :directory (tuatara.io:buffer-scratch-directory buffer))))
+      (launch-rewrite job "tuatara lines" (format nil "octets ~:d to ~:d" from high) :since since :made made)
+      (when announce (say-in-background announce))
+      job)))
 
 (defun rewrite-doing-word (job)
   "What JOB is doing, in a word: Replacing, Counting, or its own DOING."

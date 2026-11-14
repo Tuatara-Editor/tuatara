@@ -258,8 +258,8 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
     (true (search "][Read target first]]" (tuatara.defaults::clocktable-headline bare t nil)))
     (is string= "read a]b first" (tuatara.defaults::clocktable-sort-key escaped #\a))
     ;; the enhanced export's measure of a table's cell
-    (is string= "Read x first" (tuatara.defaults::org-latex-visible-text labelled))
-    (is string= "Read target first" (tuatara.defaults::org-latex-visible-text bare))
+    (is string= "Read x first" (tuatara.defaults::org-export-visible-text labelled))
+    (is string= "Read target first" (tuatara.defaults::org-export-visible-text bare))
     ;; a table of contents
     (let ((lines (mapcar #'first (tuatara.defaults::toc-entries
                                   (format nil "* Contents :TOC:~%* ~a~%* ~a~%" labelled bare)))))
@@ -276,7 +276,7 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
 (define-test (org-internals plain-text-of-a-cell)
   ;; links as labels, the marks of emphasis off, a lone + or * kept
   (is string= "bold and it y z" (tuatara.defaults::org-plain-text "*bold* and /it/ [[x][y]] [[z]]"))
-  (is string= "a + b * c" (tuatara.defaults::org-latex-visible-text "a + b * c"))
+  (is string= "a + b * c" (tuatara.defaults::org-export-visible-text "a + b * c"))
   (is string= "zeta" (tuatara.defaults::clocktable-sort-key "=Zeta=" #\a)))
 
 (define-test (org-internals dynamic-blocks-as-parsed)
@@ -351,8 +351,8 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
 (define-test (org-internals macro-definitions-one-way)
   ;; a macro's last #+MACRO: line is the one, its setup files' read too, for the export, the list
   ;; of macros to wrap text in, and the check for names only the enhanced export knows
-  (is string= "two" (cdr (assoc "m" (let ((tuatara.defaults::*org-latex* (tuatara.defaults::make-org-latex "" nil nil)))
-                                       (setf (tuatara.defaults::org-latex-keywords tuatara.defaults::*org-latex*)
+  (is string= "two" (cdr (assoc "m" (let ((tuatara.defaults::*org-export* (tuatara.defaults::make-org-export "" nil nil)))
+                                       (setf (tuatara.defaults::org-export-keywords tuatara.defaults::*org-export*)
                                              '(("MACRO" . "m one") ("MACRO" . "M  two")))
                                        (tuatara.defaults::org-macro-definitions))
                                 :test #'string-equal)))
@@ -564,7 +564,7 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
            (tree (tuatara.defaults::org-parse text))
            (at (search "[[" text)))
       (is equal
-          (list (cons at (+ at 5)) (cons (+ at 6) (+ at 8)))
+          (list (list at (+ at 5) "") (list (+ at 6) (+ at 8) ""))
           (tuatara.defaults::org-hidden-chars tree 0 (length text)))
       (is eq 'tuatara.defaults::headline
           (tuatara.defaults::org-node-type (tuatara.defaults::org-node-at tree at
@@ -632,10 +632,10 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
              (tree (tuatara.defaults::org-parse text))
              (at (search "[[" text)))
         (is equal
-            (list (cons at (+ at 5)) (cons (+ at 6) (+ at 8)))
+            (list (list at (+ at 5) "") (list (+ at 6) (+ at 8) ""))
             (tuatara.defaults::org-hidden-chars tree 0 (length text)))
         (is equal
-            (list (cons at (+ at 5)) (cons (+ at 6) (+ at 8)))
+            (list (list at (+ at 5) "") (list (+ at 6) (+ at 8) ""))
             (tuatara.defaults::org-hidden-chars tree at (length text)))
         (false (tuatara.defaults::org-hidden-chars tree 0 at)))
       (flet ((seconds (count)
@@ -853,3 +853,89 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
                            (sb-concurrency:list-queue-contents tuatara.runtime:*debug-reports*))))
       (setf tuatara.runtime:*debug-reports* kept
             tuatara.runtime:*debug-on* on))))
+
+(define-test (org-internals checkbox-refused-leaves-the-parse-as-read)
+  ;; a checkbox ticked in a buffer that refuses the edit: the parse kept still says what the text says
+  (let ((b (tuatara.buffer:make-buffer "org checkbox refused"))
+        (tuatara-user:*org-log-checkboxes* nil))
+    (unwind-protect
+         (let ((text (format nil "* T [0/1]~%- [ ] a~%")))
+           (tuatara.buffer:buffer-insert b 0 text)
+           (setf (tuatara.buffer:buffer-read-only-p b) t)
+           (flet ((item ()
+                    (let ((parse (tuatara.defaults::org-parse-now b)))
+                      (tuatara.defaults::org-item-on-line (tuatara.defaults::org-parse-tree parse)
+                                                          (search "- [" (tuatara.defaults::org-parse-text parse))))))
+             (true (handler-case (progn (tuatara.defaults::org-toggle-checkbox
+                                         (tuatara.defaults::org-parse-now b) 0 (item))
+                                        nil)
+                     (error () t)))
+             (is string= text (tuatara.buffer:buffer-string b))
+             (is eq 'tuatara.defaults::off (tuatara.defaults::org-property (item) :checkbox))))
+      (tuatara.buffer:kill-buffer b))))
+
+(define-test (org-internals checkboxes-cleared-as-the-parser-reads-them)
+  ;; a repeating task's checkboxes: [X] and [-] cleared, a [x] or a line of stars, plain text to the parser, kept
+  (multiple-value-bind (lines changed)
+      (tuatara.defaults::org-boxes-cleared (list "- [X] a" "  1. [-] b" "- [x] note" "* [X] no item"))
+    (is equal '("- [ ] a" "  1. [ ] b" "- [x] note" "* [X] no item") lines)
+    (true changed))
+  (is equal '(1 2) (multiple-value-list (tuatara.defaults::org-boxes-ticked (list "- [X] a" "- [x] b" "- [ ] c"))))
+  (true (tuatara.defaults::org-checkbox-line-p "  + [-] c"))
+  (false (tuatara.defaults::org-checkbox-line-p "- [x] c")))
+
+(define-test (org-internals table-aligned-in-time-with-its-columns)
+  ;; aligning a table measures each field once and finds it by its index: four times the columns, about four
+  ;; times the time, not sixteen
+  (flet ((seconds (columns)
+           (let* ((row (loop for i below columns collect (format nil "f~d" i)))
+                  (model (tuatara.defaults::make-org-table-model :indent "" :rows (loop repeat 20 collect (copy-list row))
+                                                                 :row 0 :field 0 :offset 0)))
+             (tuatara.defaults::org-table-render model)
+             (let ((start (get-internal-run-time)))
+               (loop repeat 5 do (tuatara.defaults::org-table-render model))
+               (/ (- (get-internal-run-time) start) internal-time-units-per-second)))))
+    (let ((small (seconds 500))
+          (large (seconds 2000)))
+      (true (< large (* 8 (max small 1/100))) "~,3f s for 2000 columns, ~,3f s for 500" large small))))
+
+(define-test (org-internals code-files-gathered-in-time-with-their-blocks)
+  ;; many blocks written to one file: each block's code put in once and the file's #+PROPERTY: lines read once,
+  ;; so four times the blocks take about four times as long, not sixteen
+  (flet ((seconds (blocks)
+           (let ((tree (tuatara.defaults::org-parse
+                        (with-output-to-string (s)
+                          (format s "#+PROPERTY: header-args :padline no~%")
+                          (dotimes (i blocks) (format s "#+begin_src sh :tangle out.sh~%echo ~d~%#+end_src~%" i))))))
+             (let ((files (tuatara.defaults::org-code-files tree nil)))
+               (is = 1 (length files))
+               (is = blocks (tuatara.defaults::code-file-blocks (first files))))
+             (loop repeat 3
+                   minimize (let ((start (get-internal-run-time)))
+                              (tuatara.defaults::org-code-files tree nil)
+                              (/ (- (get-internal-run-time) start) internal-time-units-per-second))))))
+    (let ((small (seconds 2000))
+          (large (seconds 8000)))
+      (true (< large (* 8 (max small 1/100))) "~,3f s for 8000 blocks, ~,3f s for 2000" large small))))
+
+(define-test (org-internals picture-widths-of-bounded-length)
+  ;; a :width of a great many digits is no width, read at once; one of a few digits is read as before
+  (is = 400 (tuatara.defaults::org-picture-width-value "400px"))
+  (is = 1/2 (tuatara.defaults::org-picture-width-value "50%"))
+  (false (tuatara.defaults::org-picture-width-value (make-string 100000 :initial-element #\9)))
+  (false (tuatara.defaults::org-picture-width-value (concatenate 'string "0." (make-string 100000 :initial-element #\5))))
+  (false (tuatara.defaults::org-picture-width-value (concatenate 'string (make-string 100000 :initial-element #\5) "%"))))
+
+(define-test (org-internals tab-after-stars-makes-no-headline)
+  ;; as Org: stars make a headline only when a space follows them, in the parse and in the parts alike
+  (let* ((text (format nil "* One~%*~ano headline~%** Two~%" #\Tab))
+         (tree (tuatara.defaults::org-parse text))
+         (one (first (tuatara.defaults::org-node-children tree)))
+         (octets (sb-ext:string-to-octets text :external-format :utf-8))
+         (line (1+ (position 10 octets))))
+    (is = 1 (count 'tuatara.defaults::headline (tuatara.defaults::org-node-children tree)
+                   :key #'tuatara.defaults::org-node-type))
+    (true (search "no headline" (subseq text (tuatara.defaults::org-node-begin one)
+                                        (tuatara.defaults::org-node-end one))))
+    (false (tuatara.defaults::org-line-kind (lambda (p) (aref octets p)) line (length octets)))
+    (is = 2 (tuatara.defaults::org-line-kind (lambda (p) (aref octets p)) (+ line 14) (length octets)))))

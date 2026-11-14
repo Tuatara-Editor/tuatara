@@ -44,21 +44,26 @@ car turns true."
             (incf left)))))
     (when (plusp left)
       (let ((commit nil))
-        (and (nth-value 1 (run-git directory (list "log" "--relative" "--name-only" *git-commit-format* "--" ".")
-                                   :cancel cancel :seconds *git-look-seconds*
-                                   :line (lambda (line)
-                                           (cond ((and (plusp (length line)) (char= (char line 0) (code-char #x1e)))
-                                                  (let ((fields (parse-git-commit-fields (subseq line 1))))
-                                                    (setf commit (and fields (list (git-commit-ago fields) (git-commit-subject fields))))))
-                                                 ((and commit (plusp (length line)))
-                                                  ;; the entry it is under: the path's first part
-                                                  (let ((name (subseq line 0 (or (position #\/ line) (length line)))))
-                                                    (when (and (gethash name wanted) (not (gethash name found)))
-                                                      (setf (gethash name found) commit)
-                                                      (decf left)))))
-                                           ;; every name has its commit: the rest of the history is not read
-                                           (zerop left))))
-             found)))))
+        ;; names are NUL-ended (-z), so git quotes none; a line holds several pieces
+        (run-git directory (list "log" "--relative" "--name-only" "-z" *git-commit-format* "--" ".")
+                 :cancel cancel :seconds *git-look-seconds*
+                 :line (lambda (line)
+                         (dolist (piece (uiop:split-string line :separator (list (code-char 0))))
+                           (cond ((zerop (length piece)))
+                                 ((char= (char piece 0) (code-char #x1e))
+                                  (let ((fields (parse-git-commit-fields (subseq piece 1))))
+                                    (setf commit (and fields (list (git-commit-ago fields)
+                                                                   (git-commit-subject fields))))))
+                                 (commit
+                                  ;; the entry it is under: the path's first part
+                                  (let ((name (subseq piece 0 (or (position #\/ piece) (length piece)))))
+                                    (when (and (gethash name wanted) (not (gethash name found)))
+                                      (setf (gethash name found) commit)
+                                      (decf left))))))
+                         ;; every name has its commit: the rest of the history is not read
+                         (zerop left)))
+        ;; what was found shows even when the time limit ended the reading
+        found))))
 
 (defun rimu-git-cells (directory entries)
   "The git column's texts for ENTRIES of DIRECTORY: :PENDING, found on a
@@ -80,6 +85,15 @@ RIMU-COLUMN-READY."
                                    (if (> (length subject) 72) (subseq subject 0 72) subject))
                                  :list-note)))))
             names)))))
+
+(defun rimu-git-state (directory)
+  "The stamps of git's own files that say which commit is checked out and
+what is staged (GIT-STAMPS), for the repository or worktree DIRECTORY is in;
+NIL when it is in none, or none of those files is there."
+  (let* ((top (repository-top directory))
+         (own (and top (git-real-directory top)))
+         (stamps (and own (git-stamps own))))
+    (and (some #'identity stamps) stamps)))
 
 (define-command rimu-toggle-git ()
   "Show or hide, after each name in this list, the entry's last commit in
@@ -120,10 +134,11 @@ or one longer than *RIMU-LINK-LIMIT*, is not in it."
                           (incf at (1+ size))))))
     targets))
 
-(defstruct (git-rewound (:constructor make-git-rewound (top &optional hash)) (:copier nil))
+(define-record (git-rewound (:constructor make-git-rewound (top &optional hash)) (:copier nil))
   "A rimu list's directory as a commit left it: the TOP of its repository and
 the HASH of the commit shown, NIL until its history is read."
-  top (hash nil))
+  (top nil :documentation "The top directory of the repository of GIT-REWOUND.")
+  (hash nil :documentation "The hash of the commit GIT-REWOUND shows, NIL until the history is read."))
 
 (defmethod rimu-source-top ((source git-rewound))
   "The top of the repository."
@@ -212,9 +227,10 @@ repository at TOP: in a new rimu list shown at once in its place, the directory
 as its latest commit left it, point on the entry it was on (\\[git-rewind])."
   (let* ((directory (tuatara.buffer:buffer-local list 'rimu-directory))
          (dir (subseq directory (length top)))
-         (entry (rimu-entry-at list (tuatara.buffer:buffer-point list)))
+         (entry (list-entry-at list (tuatara.buffer:buffer-point list)))
          (point-on (and entry (tuatara.io:listed-octets entry)))
-         (buffer (rimu-make-list directory :name (format nil "*git rewind: ~a*" (rimu-buffer-name directory)) :like list)))
+         (buffer (rimu-make-list directory :name (format nil "*git rewind: ~a*" (rimu-buffer-name directory))
+                                           :like list)))
     (setf (tuatara.buffer:buffer-local buffer 'rimu-rewound) (make-git-rewound top)
           (tuatara.buffer:buffer-local buffer :git-top) top
           (buffer-override-keymap buffer) *git-rewind-keymap*)
@@ -223,14 +239,16 @@ as its latest commit left it, point on the entry it was on (\\[git-rewind])."
     (start-git-job "Reading the directory's history"
                    (lambda (job)
                      (let ((path (if (string= dir "") "." dir)))
-                       (coerce (parse-git-commits (git-job-output job top (list "log" "--date=short" *git-commit-format* "--" path)) :path path)
+                       (coerce (parse-git-commits (git-job-output job top (list "log" "--date=short" *git-commit-format*
+                                                                                "--" path))
+                                                  :path path)
                                'simple-vector)))
                    (lambda (revisions)
                      (if (zerop (length revisions))
                          (progn (rimu-rewind-leave buffer)
                                 (message "~a has no history in git" (abbreviated-path directory)))
                          (progn
-                           (setf (tuatara.buffer:buffer-local buffer :git-rewind-revisions) revisions)
+                           (setf (tuatara.buffer:buffer-local buffer 'git-rewind-revisions) revisions)
                            (rimu-rewind-show buffer 0 point-on))))
                    :quiet t :buffer buffer)))
 
@@ -238,17 +256,17 @@ as its latest commit left it, point on the entry it was on (\\[git-rewind])."
   "List in BUFFER, a rimu list of a directory as a commit left it, the directory as
 the commit INDEX of its history (0 the latest) left it, point kept on its
 entry, or on the one named by the octets POINT-ON."
-  (let ((revision (svref (tuatara.buffer:buffer-local buffer :git-rewind-revisions) index)))
-    (setf (tuatara.buffer:buffer-local buffer :git-rewind-wanted) index
+  (let ((revision (svref (tuatara.buffer:buffer-local buffer 'git-rewind-revisions) index)))
+    (setf (tuatara.buffer:buffer-local buffer 'git-rewind-wanted) index
           (git-rewound-hash (rimu-source buffer)) (git-commit-hash revision))
     (rimu-update buffer :reread t :point-on point-on :wait nil)))
 
 (defmethod rimu-source-shown ((source git-rewound) buffer)
   "Once BUFFER shows what was read for the commit last asked for: make that
 the one shown, and say which it is, when it was not already."
-  (let ((wanted (tuatara.buffer:buffer-local buffer :git-rewind-wanted)))
-    (when (and wanted (not (eql wanted (tuatara.buffer:buffer-local buffer :git-rewind-at))))
-      (setf (tuatara.buffer:buffer-local buffer :git-rewind-at) wanted)
+  (let ((wanted (tuatara.buffer:buffer-local buffer 'git-rewind-wanted)))
+    (when (and wanted (not (eql wanted (tuatara.buffer:buffer-local buffer 'git-rewind-at))))
+      (setf (tuatara.buffer:buffer-local buffer 'git-rewind-at) wanted)
       (message "~a" (git-rewind-words buffer wanted)))))
 
 (defmethod rimu-source-open ((source git-rewound) buffer entry)
@@ -260,23 +278,15 @@ from that commit back (GIT-REWIND-FILE), \\[quit-window] coming back to the list
           (rimu-enter buffer (directory-name path :clean t))
           (git-rewind-file top (subseq path (length top)) :at (git-rewound-hash source) :list buffer)))))
 
-(defun rimu-show-nearest (directory &key point-on)
-  "List with rimu DIRECTORY, or where it is gone the nearest directory above it
-that is there; point on the entry whose name is the octets POINT-ON when it
-is DIRECTORY's."
-  (loop for place = directory then (tuatara.io:parent-path place)
-        until (or (string= place "/") (eq :directory (tuatara.io:path-kind place)))
-        finally (return (rimu-show-directory place :point-on (and (string= place directory) point-on)))))
-
 (defun rimu-rewind-leave (buffer)
   "End BUFFER, a rimu list of a directory as a commit left it, and the histories
 of files opened from it: list the directory as it is now, point on the entry it
 was on (RIMU-SHOW-NEAREST)."
   (let* ((directory (tuatara.buffer:buffer-local buffer 'rimu-directory))
-         (entry (rimu-entry-at buffer (tuatara.buffer:buffer-point buffer)))
+         (entry (list-entry-at buffer (tuatara.buffer:buffer-point buffer)))
          (on (and entry (tuatara.io:listed-octets entry))))
     (dolist (opened (copy-list tuatara.buffer:*buffers*))
-      (when (eq (tuatara.buffer:buffer-local opened :git-rewind-list) buffer)
+      (when (eq (tuatara.buffer:buffer-local opened 'git-rewind-list) buffer)
         (tuatara.buffer:kill-buffer opened)))
     (tuatara.buffer:kill-buffer buffer)
     (rimu-show-nearest directory :point-on on)))
@@ -287,10 +297,12 @@ was on (RIMU-SHOW-NEAREST)."
           (substitute-command-keys "\\[git-rewind]")))
 
 (defun install-rimu-git ()
-  "Make the git column, and bind G to show or hide it; refuse in a list of a
-directory not on the disk git's commands on the files as they are now."
-  (rimu-set-column :git 'rimu-git-cells :place :after :shown 'rimu-git-p
+  "Make the git column, kept for a list read again while the same commit is
+checked out and the same staged, and bind G to show or hide it; refuse in a
+list of a directory not on the disk the column and git's commands on the
+files as they are now."
+  (rimu-set-column :git 'rimu-git-cells :place :after :shown 'rimu-git-p :keep-while 'rimu-git-state
                    :documentation "The entry's last commit: when, and the first line of its message.")
   (define-key *rimu-keymap* "G" 'rimu-toggle-git)
-  (dolist (command '(git-file-menu git-blame git-log-file git-diff-file))
+  (dolist (command '(rimu-toggle-git git-file-menu git-blame git-log-file git-diff-file))
     (pushnew command *rimu-disk-commands*)))

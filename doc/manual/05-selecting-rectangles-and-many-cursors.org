@@ -174,19 +174,19 @@ keys. Press ~M~ (non-modal: ~C-z M~), the ~m~ held down, and you are in a run.
 The keys of a run are the ones you would have pressed after ~m~, without the
 ~m~.
 
-| Modal              | Non-modal | What it does in a run                                          |
-|--------------------+-----------+----------------------------------------------------------------|
-| ~w~, ~b~           | none      | Add the next word, or the one before.                          |
-| ~W~, ~B~           | none      | Add a symbol forward or backward.                              |
-| ~s~, ~S~           | none      | Add a sentence forward or backward.                            |
-| ~m p~, ~m P~       | none      | Add a paragraph forward or backward.                           |
-| ~h~, ~l~, ~j~, ~k~ | none      | Move the cursor end by one character or line, without ending the run. |
-| ~g h~, ~g l~       | none      | Stretch the cursor end to the start or end of its line.        |
-| ~g g~, ~g e~       | none      | Stretch the cursor end to the start or end of the buffer.      |
-| ~J~, ~K~           | none      | Grow the run down or up by whole lines.                        |
-| ~*~                | none      | Swap the two ends, so that ~h j k l~ then move the other end.  |
-| ~u~, ~U~           | none      | Take the last step back, or put it forward again.              |
-| ~M~                | none      | End the run and let go of the selection.                       |
+| Modal              | Non-modal                  | What it does in a run                                                 |
+|--------------------+----------------------------+-----------------------------------------------------------------------|
+| ~w~, ~b~           | none                       | Add the next word, or the one before.                                 |
+| ~W~, ~B~           | none                       | Add a symbol forward or backward.                                     |
+| ~s~, ~S~           | none                       | Add a sentence forward or backward.                                   |
+| ~m p~, ~m P~       | none                       | Add a paragraph forward or backward.                                  |
+| ~h~, ~l~, ~j~, ~k~ | ~C-b~, ~C-f~, ~C-n~, ~C-p~ | Move the cursor end by one character or line, without ending the run. |
+| ~g h~, ~g l~       | none                       | Stretch the cursor end to the start or end of its line.               |
+| ~g g~, ~g e~       | none                       | Stretch the cursor end to the start or end of the buffer.             |
+| ~J~, ~K~           | none                       | Grow the run down or up by whole lines.                               |
+| ~*~                | none                       | Swap the two ends, so that ~h j k l~ then move the other end.         |
+| ~u~, ~U~           | none                       | Take the last step back, or put it forward again.                     |
+| ~M~                | none                       | End the run and let go of the selection.                              |
 
 ~v~ and ~V~ are refused in a run, because a run is already making a
 selection. To take a selection you made another way into a run, so that these

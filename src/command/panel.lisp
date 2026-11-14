@@ -158,7 +158,7 @@ True while more may come."
               (completion-listed completion) listed)
         (when changed (setf (completion-stale completion) t))
         (when (editor-minibuffer-active editor)
-          (let ((prompt (shown-prompt completion)))
+          (let ((prompt (values (escape-controls (shown-prompt completion)))))
             (unless (equal prompt (editor-minibuffer-prompt editor))
               (setf (editor-minibuffer-prompt editor) prompt))))
         working))))
@@ -233,8 +233,23 @@ commands cannot run here now (HOST-COMMAND-REFUSAL), shown dimmed."
   "The width of a column of key hints holding every entry of LISTS, each a
 list of (KEY . NAME): the widest, KEY NAME, and two spaces after it. Groups
 laid out with it (KEY-HINT-ROWS' COLUMN-WIDTH) line up."
-  (+ 2 (loop for list in lists
-             maximize (loop for (key . name) in list maximize (+ (length key) 1 (length name))))))
+  (+ 2 (reduce #'max lists
+               :key (lambda (list)
+                      (reduce #'max list :key (lambda (entry) (+ (length (car entry)) 1 (length (cdr entry))))
+                                         :initial-value 0))
+               :initial-value 0)))
+
+(defun key-hint-columns (entries width column-width)
+  "How many columns of key-hint ENTRIES, a list of (KEY . NAME), fit in WIDTH,
+and how wide each is, as two values: COLUMN-WIDTH wide when given, else as
+wide as the widest entry (KEY-HINT-COLUMN-WIDTH)."
+  (let ((column-width (max (or column-width 1) (if entries (key-hint-column-width entries) 1))))
+    (values (max 1 (floor width column-width)) column-width)))
+
+(defun key-hint-row-count (entries width max-rows &key column-width)
+  "How many rows KEY-HINT-ROWS lays ENTRIES out in, given the same WIDTH,
+MAX-ROWS and COLUMN-WIDTH, without laying them out."
+  (min (max 0 max-rows) (ceiling (length entries) (key-hint-columns entries width column-width))))
 
 (defun key-hint-rows (entries width max-rows
                       &key (note (format nil "... ~a lists all" *prefix-help-key*)) column-width unavailable)
@@ -247,42 +262,42 @@ comes after the last row's entries, or on a row of its own when it is too long
 for that. The keys get :key-hint-key, prefix names (starting with +)
 :key-hint-prefix, commands :key-hint-command, and those of the keys
 UNAVAILABLE, whose commands cannot run here, :key-hint-unavailable."
-  (let* ((entries (coerce entries 'simple-vector))
-         (cells (map 'simple-vector (lambda (e) (format nil "~a ~a" (car e) (cdr e))) entries))
-         (column-width (max (or column-width 1) (if (plusp (length cells)) (+ 2 (reduce #'max cells :key #'length)) 1)))
-         (columns (max 1 (floor width column-width)))
-         (rows-needed (ceiling (length cells) columns)))
-    (labels ((lay-out (rows)
-               (let ((shown (min (length cells) (* rows columns)))
-                     (result '()))
-                 (dotimes (r rows)
-                   (let ((line (make-string-output-stream)) (spans '()) (pos 0))
-                     (loop for c from 0 below columns
-                           for i = (+ r (* c rows))
-                           when (< i shown)
-                             do (destructuring-bind (key . name) (svref entries i)
-                                  (let ((cell (svref cells i)))
-                                    (push (list pos (+ pos (length key)) :key-hint-key) spans)
-                                    (push (list (+ pos (length key) 1) (+ pos (length cell))
-                                                (cond ((member key unavailable :test #'string=) :key-hint-unavailable)
-                                                      ((and (plusp (length name)) (char= (char name 0) #\+))
-                                                       :key-hint-prefix)
-                                                      (t :key-hint-command)))
-                                          spans)
-                                    (write-string cell line)
-                                    (incf pos (length cell))
-                                    (when (< (1+ c) columns)
-                                      (let ((pad (- column-width (length cell))))
-                                        (write-string (make-string pad :initial-element #\Space) line)
-                                        (incf pos pad))))))
-                     (push (list (string-right-trim " " (get-output-stream-string line)) nil (nreverse spans)) result)))
-                 (values (nreverse result) (< shown (length cells))))))
-      (multiple-value-bind (rows cut) (lay-out (min rows-needed max-rows))
-        (let ((last (first (car (last rows)))))
-          (cond ((or (not cut) (null rows)) rows)
-                ((or (<= (+ (length last) 2 (length note)) width) (< max-rows 2))
-                 (append (butlast rows) (list (cons (format nil "~a  ~a" last note) (rest (car (last rows)))))))
-                (t (append (lay-out (1- max-rows)) (list (list note nil '()))))))))))
+  (multiple-value-bind (columns column-width) (key-hint-columns entries width column-width)
+    (let* ((entries (coerce entries 'simple-vector))
+           (cells (map 'simple-vector (lambda (e) (format nil "~a ~a" (car e) (cdr e))) entries))
+           (rows-needed (ceiling (length cells) columns)))
+      (labels ((lay-out (rows)
+                 (let ((shown (min (length cells) (* rows columns)))
+                       (result '()))
+                   (dotimes (r rows)
+                     (let ((line (make-string-output-stream)) (spans '()) (pos 0))
+                       (loop for c from 0 below columns
+                             for i = (+ r (* c rows))
+                             when (< i shown)
+                               do (destructuring-bind (key . name) (svref entries i)
+                                    (let ((cell (svref cells i)))
+                                      (push (list pos (+ pos (length key)) :key-hint-key) spans)
+                                      (push (list (+ pos (length key) 1) (+ pos (length cell))
+                                                  (cond ((member key unavailable :test #'string=) :key-hint-unavailable)
+                                                        ((and (plusp (length name)) (char= (char name 0) #\+))
+                                                         :key-hint-prefix)
+                                                        (t :key-hint-command)))
+                                            spans)
+                                      (write-string cell line)
+                                      (incf pos (length cell))
+                                      (when (< (1+ c) columns)
+                                        (let ((pad (- column-width (length cell))))
+                                          (write-string (tuatara.text:spaces pad) line)
+                                          (incf pos pad))))))
+                       (push (list (string-right-trim " " (get-output-stream-string line)) nil (nreverse spans))
+                             result)))
+                   (values (nreverse result) (< shown (length cells))))))
+        (multiple-value-bind (rows cut) (lay-out (min rows-needed max-rows))
+          (let ((last (first (car (last rows)))))
+            (cond ((or (not cut) (null rows)) rows)
+                  ((or (<= (+ (length last) 2 (length note)) width) (< max-rows 2))
+                   (append (butlast rows) (list (cons (format nil "~a  ~a" last note) (rest (car (last rows)))))))
+                  (t (append (lay-out (1- max-rows)) (list (list note nil '())))))))))))
 
 (define-setting *prompt-above-candidates* t
   "Whether the prompt of a completing read is shown above its candidates.
@@ -325,7 +340,7 @@ them alone."
   "The panel row that opens the group TITLE: a short line, the title and a
 line on to the last column but one."
   (let* ((lead (make-string 4 :initial-element *group-line-character*))
-         (label (tuatara.display:fit-columns (format nil " ~a " (escape-controls title)) nil (max 0 (- width 5)) :width #'panel-char-columns))
+         (label (fit-panel-columns (format nil " ~a " (escape-controls title)) nil (max 0 (- width 5))))
          (tail (make-string (max 0 (- width 1 4 (panel-columns label))) :initial-element *group-line-character*))
          (string (concatenate 'string lead label tail)))
     (list string nil (remove-if (lambda (span) (>= (first span) (second span)))
@@ -373,7 +388,7 @@ Control and invisible characters are written out (ESCAPE-CONTROLS)."
                                   for width in widths
                                   collect (multiple-value-bind (text face) (field-parts field nil)
                                             (let ((text (if (rest rest)
-                                                            (tuatara.display:fit-columns text nil width :width #'panel-char-columns)
+                                                            (fit-panel-columns text nil width)
                                                             text)))
                                               (list text face (and (rest rest) width)))))
                             :default-face nil)
@@ -407,7 +422,7 @@ end (FIT-COLUMNS). Returns the string and the spans."
                           when (<= (+ (panel-columns string :end at) 4) columns) return at)))
           (cond (keep (cut keep ", …)"))
                 ((<= (panel-columns string :end name-end) columns) (cut name-end ""))
-                (t (tuatara.display:fit-columns (subseq string 0 name-end) spans columns :width #'panel-char-columns)))))))
+                (t (fit-panel-columns (subseq string 0 name-end) spans columns)))))))
 
 (defun fit-left (candidate left spans columns matched)
   "LEFT, the text of CANDIDATE's row before its annotation, and its SPANS,
@@ -416,7 +431,7 @@ gives up keys (FIT-KEY-LIST), one in columns is cut at its end, any other
 gives up its middle, as a path keeps its start and its name (FIT-COLUMNS).
 MATCHED is how much of LEFT is the candidate's own string."
   (cond ((candidate-suffix candidate) (fit-key-list left spans columns matched))
-        (t (tuatara.display:fit-columns left spans columns :middle (null (candidate-columns candidate)) :width #'panel-char-columns))))
+        (t (fit-panel-columns left spans columns :middle (null (candidate-columns candidate))))))
 
 (defun candidate-row (candidate selected width widths components annotation)
   "The panel row of CANDIDATE: its string or columns at the left, the parts
@@ -450,7 +465,7 @@ SELECTED paints the row in :completion-selected."
                 (fit-fields fields free :row-width room)))
         (let* ((gap (if (zerop (length right)) 0 (- room (panel-columns left) (panel-columns right))))
                (offset (+ (length left) gap)))
-          (list (concatenate 'string left (make-string gap :initial-element #\Space) right)
+          (list (concatenate 'string left (tuatara.text:spaces gap) right)
                 (and selected :completion-selected)
                 (append left-spans
                         (loop for (start end face) in right-spans
@@ -476,12 +491,20 @@ column narrows, down to ten, so that the columns and ANNOTATION-WIDTH fit."
           (setf (nth widest widths) (max (min 10 (nth widest widths)) (- (nth widest widths) over))))))
     widths))
 
-(defun completion-rows (editor completion width room)
-  "The panel rows of COMPLETION's candidates in at most ROOM rows WIDTH wide:
-group titles, and the candidates around the selected one."
+(defun completion-page (editor completion)
+  "What the panel shows of COMPLETION's candidates in the rows it has for
+them (CANDIDATE-PAGE): NIL when there are none."
+  (let ((candidates (completion-candidates completion)))
+    (and (plusp (length candidates))
+         (candidate-page candidates (max 0 (completion-index completion))
+                         (1- (panel-room editor *panel-max-rows* (completion-tall completion)))))))
+
+(defun completion-rows (editor completion width items)
+  "The panel rows of COMPLETION's candidates WIDTH wide, ITEMS being what of
+them is shown (COMPLETION-PAGE): group titles, and the candidates around the
+selected one."
   (let* ((candidates (completion-candidates completion))
          (index (completion-index completion))
-         (items (candidate-page candidates (max 0 index) room))
          (indices (loop for (kind i) in items when (eq kind :candidate) collect i))
          (annotate (completion-annotate completion))
          (annotations (let ((table (make-hash-table)))
@@ -496,7 +519,9 @@ group titles, and the candidates around the selected one."
                                                  (fields-columns (if (stringp a) (list a) a) room)))))
          (table (completion-table completion))
          (input (editor-minibuffer-text editor))
-         (components (tuatara.text:split-words (if (functionp table) (input-query input (completion-separator completion)) input))))
+         (components (tuatara.text:split-words (if (functionp table)
+                                                   (input-query input (completion-separator completion))
+                                                   input))))
     (loop for (kind value) in items
           collect (if (eq kind :title)
                       (group-title-row value width)
@@ -556,6 +581,43 @@ read whole, as the minibuffer's are."
           (prompt-broken text width width))
         (values '() text '()))))
 
+(defun key-hint-parts (editor)
+  "The key hints for the keys EDITOR has pending, as the panel shows them: a
+list of (TITLE ENTRIES MAX-ROWS COLUMN-WIDTH), each entry (KEY . NAME). What
+acts on what the cursor is on comes first under its title, then the rest
+\(KEY-HINT-FOCUS); else all of them, with no title. MAX-ROWS of the first is
+what its rows may take, of the rest what the first leaves; COLUMN-WIDTH is
+shared by both, or NIL."
+  (let ((entries (prefix-entries (active-keymaps editor) (editor-pending editor)))
+        (room (key-hint-room editor)))
+    (multiple-value-bind (title chosen rest) (key-hint-focus editor entries)
+      (if chosen
+          (let ((column (key-hint-column-width chosen rest)))
+            (list (list title chosen (- room 2) column) (list nil rest (- room 2) column)))
+          (list (list nil entries (1- room) nil))))))
+
+(defun key-hint-panel-rows (editor width)
+  "The panel rows of the key hints for the keys EDITOR has pending, WIDTH
+wide (KEY-HINT-PARTS), the keys whose commands cannot run here dimmed
+\(KEY-HINTS-UNAVAILABLE)."
+  (let* ((parts (key-hint-parts editor))
+         (unavailable (key-hints-unavailable editor (loop for part in parts append (second part))))
+         (rows '()))
+    (loop for (title entries max-rows column) in parts
+          do (when title (setf rows (append rows (list (group-title-row title width)))))
+             (setf rows (append rows (key-hint-rows entries width (max 0 (- max-rows (max 0 (1- (length rows)))))
+                                                    :column-width column :unavailable unavailable))))
+    rows))
+
+(defun key-hint-panel-height (editor width)
+  "How many rows KEY-HINT-PANEL-ROWS gives, counted without making them."
+  (let ((rows 0))
+    (loop for (title entries max-rows column) in (key-hint-parts editor)
+          do (when title (incf rows))
+             (incf rows (key-hint-row-count entries width (max 0 (- max-rows (max 0 (1- rows))))
+                                            :column-width column)))
+    rows))
+
 (defun panel-rows (editor)
   "The rows of the bottom panel as a list of (STRING FACE SPANS), and the
 index of the minibuffer or echo row among them.
@@ -570,12 +632,8 @@ typed; the key hints under a pending prefix key; else the echo row."
   (let ((width (editor-width editor)))
     (cond ((editor-minibuffer-active editor)
            (let* ((completion (editor-completion editor))
-                  (rows (if (and completion (plusp (length (completion-candidates completion))))
-                            (completion-rows editor completion width (1-
-                                                                      (panel-room editor
-                                                                                  *panel-max-rows*
-                                                                                  (completion-tall completion))))
-                            '()))
+                  (items (and completion (completion-page editor completion)))
+                  (rows (and items (completion-rows editor completion width items)))
                   ;; the panel grows but does not shrink while the question is open: blank
                   ;; rows on the side away from the prompt, so that the windows above stay put
                   (rows (if completion
@@ -586,31 +644,12 @@ typed; the key hints under a pending prefix key; else the echo row."
                                   (append rows (make-list blank :initial-element (list "" nil nil)))
                                   (append (make-list blank :initial-element (list "" nil nil)) rows)))
                             rows))
-                  (head (mapcar (lambda (text) (list text nil (list (list 0 (length text) :minibuffer-prompt))))
-                                (prompt-pieces editor)))
-                  (prompt-row
-                    (multiple-value-bind (whole typed hidden) (minibuffer-row editor)
-                      (let* ((prompt-start (max 0 (- (length (completion-count-prefix editor)) hidden)))
-                             (prompt-end (max 0 (- typed hidden)))
-                             (row (subseq whole hidden))
-                             (said (editor-message editor)))
-                        (list (if said (concatenate 'string row " [" said "]") row)
-                              nil
-                              (append
-                               (and (< prompt-start prompt-end)
-                                    (list (list prompt-start prompt-end :minibuffer-prompt)))
-                               ;; the text a question offers, selected: typing takes its place
-                               (and *minibuffer-initial-selected* (< prompt-end (length row))
-                                    (list (list prompt-end (length row) :region)))
-                               ;; the line typed selected, over candidates: what RET takes, painted as they are
-                               (and completion (= (completion-index completion) -1)
-                                    (plusp (length (completion-candidates completion)))
-                                    (< prompt-end (length row))
-                                    (list (list prompt-end (length row) :completion-selected)))
-                               ;; the keys in what a key said, coloured as in the echo area
-                               (let ((offset (+ (length row) 2)))
-                                 (loop for (start end face) in (text-spans said)
-                                       collect (list (+ start offset) (+ end offset) face)))))))))
+                  (head '())
+                  (prompt-row (multiple-value-bind (rows last) (prompt-pieces editor)
+                                (setf head (mapcar (lambda (text)
+                                                     (list text nil (list (list 0 (length text) :minibuffer-prompt))))
+                                                   rows))
+                                (minibuffer-prompt-row editor completion last))))
              (if *prompt-above-candidates*
                  (values (append head (list prompt-row) rows) (length head))
                  (values (append rows head (list prompt-row)) (+ (length rows) (length head))))))
@@ -619,20 +658,7 @@ typed; the key hints under a pending prefix key; else the echo row."
              (values (append rows (list (echo-row editor)))
                      (length rows))))
           ((and (editor-key-hints editor) (editor-pending editor))
-           (let* ((entries (prefix-entries (active-keymaps editor) (editor-pending editor)))
-                  (unavailable (key-hints-unavailable editor entries))
-                  (rows (multiple-value-bind (title chosen rest) (key-hint-focus editor entries)
-                          (if chosen
-                              ;; what acts on what the cursor is on, under its title, then the rest
-                              (let* ((column (key-hint-column-width chosen rest))
-                                     (first (key-hint-rows chosen width (- (key-hint-room editor)
-                                                                           2) :column-width column
-                                                                                                    :unavailable
-                                                                                                    unavailable)))
-                                (append (list (group-title-row title width)) first
-                                        (key-hint-rows rest width (max 0 (- (key-hint-room editor) 2 (length first)))
-                                                       :column-width column :unavailable unavailable)))
-                              (key-hint-rows entries width (1- (key-hint-room editor)) :unavailable unavailable)))))
+           (let ((rows (key-hint-panel-rows editor width)))
              (values (append rows (list (echo-row editor)))
                      (length rows))))
           (t (multiple-value-bind (rows last starts) (key-question-pieces editor)
@@ -643,6 +669,52 @@ typed; the key hints under a pending prefix key; else the echo row."
                                   for start in starts
                                   collect (list row nil (spans-within spans start (+ start (length row)))))))
                  (values (append head (list (echo-row editor))) (length head))))))))
+
+(defun minibuffer-prompt-row (editor completion prompt)
+  "The panel row of EDITOR's minibuffer, as (STRING FACE SPANS): PROMPT, what
+of the prompt stays on it (PROMPT-PIECES), in :minibuffer-prompt, the text
+typed, the text a question offers selected in :region, the line typed in
+:completion-selected while it is selected over COMPLETION's candidates, and
+what a key said, in brackets."
+  (multiple-value-bind (whole typed hidden) (minibuffer-row editor prompt)
+    (let* ((prompt-start (max 0 (- (length (completion-count-prefix editor)) hidden)))
+           (prompt-end (max 0 (- typed hidden)))
+           (row (subseq whole hidden))
+           (said (editor-message editor)))
+      (list (if said (concatenate 'string row " [" said "]") row)
+            nil
+            (append
+             (and (< prompt-start prompt-end)
+                  (list (list prompt-start prompt-end :minibuffer-prompt)))
+             ;; the text a question offers, selected: typing takes its place
+             (and *minibuffer-initial-selected* (< prompt-end (length row))
+                  (list (list prompt-end (length row) :region)))
+             ;; the line typed selected, over candidates: what RET takes, painted as they are
+             (and completion (= (completion-index completion) -1)
+                  (plusp (length (completion-candidates completion)))
+                  (< prompt-end (length row))
+                  (list (list prompt-end (length row) :completion-selected)))
+             ;; the keys in what a key said, coloured as in the echo area
+             (let ((offset (+ (length row) 2)))
+               (loop for (start end face) in (text-spans said)
+                     collect (list (+ start offset) (+ end offset) face))))))))
+
+(defun panel-height (editor)
+  "How many rows the bottom panel takes now, as many as PANEL-ROWS gives,
+counted without making them: no candidate is annotated, no menu entry or key
+hint laid out."
+  (let ((width (editor-width editor)))
+    (cond ((editor-minibuffer-active editor)
+           (let ((completion (editor-completion editor)))
+             (+ (length (prompt-pieces editor)) 1
+                (if completion
+                    (max (completion-tallest completion) (length (completion-page editor completion)))
+                    0))))
+          ((and (editor-menu editor) (menu-keys-pending-p editor))
+           (1+ (menu-panel-height editor width (1- (panel-room editor 0 t)))))
+          ((and (editor-key-hints editor) (editor-pending editor))
+           (1+ (key-hint-panel-height editor width)))
+          (t (1+ (length (key-question-pieces editor)))))))
 
 (define-setting *show-completion-count* t
   "Whether a completing read shows the place of the selected candidate and how
@@ -672,11 +744,11 @@ completing read (*SHOW-COMPLETION-COUNT*), what another question counts
           (count (format nil "~6a " count))
           (t ""))))
 
-(defun minibuffer-row-text (editor)
+(defun minibuffer-row-text (editor &optional (prompt (nth-value 1 (prompt-pieces editor))))
   "The minibuffer's row whole, before any of it is scrolled off its left: the
-candidate count, what of the prompt stays on the row (PROMPT-PIECES) and the
-text typed as it is shown; and where in it the text typed begins."
-  (let ((head (concatenate 'string (completion-count-prefix editor) (nth-value 1 (prompt-pieces editor)))))
+candidate count, PROMPT, what of the prompt stays on the row (PROMPT-PIECES),
+and the text typed as it is shown; and where in it the text typed begins."
+  (let ((head (concatenate 'string (completion-count-prefix editor) prompt)))
     (values (concatenate 'string head (minibuffer-shown-text editor)) (length head))))
 
 (defun scrolled-off (row index room)
@@ -695,12 +767,13 @@ wide characters counting their two columns (PANEL-COLUMNS)."
                (setf hidden start)))
     hidden))
 
-(defun minibuffer-row (editor)
-  "The minibuffer's row as three values: the row whole (MINIBUFFER-ROW-TEXT),
-where in it the text typed begins, and how many of its characters are
-scrolled off its left, so that the cursor stays on the screen when the row
-takes more columns than it has (SCROLLED-OFF)."
-  (multiple-value-bind (row typed) (minibuffer-row-text editor)
+(defun minibuffer-row (editor &optional (prompt (nth-value 1 (prompt-pieces editor))))
+  "The minibuffer's row as three values: the row whole (MINIBUFFER-ROW-TEXT,
+PROMPT what of the prompt stays on it), where in it the text typed begins,
+and how many of its characters are scrolled off its left, so that the cursor
+stays on the screen when the row takes more columns than it has
+\(SCROLLED-OFF)."
+  (multiple-value-bind (row typed) (minibuffer-row-text editor prompt)
     (values row typed (scrolled-off row (+ typed (editor-minibuffer-point editor)) (1- (editor-width editor))))))
 
 (defun echo-question-p (editor)

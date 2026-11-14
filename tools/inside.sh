@@ -1,4 +1,5 @@
-# tools/inside.sh --- Run a command where Tuatara is built, say when build/tuatara is to be built again, and find this machine's names in a program: sourced by the other scripts.
+# tools/inside.sh --- Run a command where Tuatara is built, say when build/tuatara is to be built again, and find
+# this machine's names in a program: sourced by the other scripts.
 # Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 #
 # inside COMMAND...  runs COMMAND in the toolbox container named by

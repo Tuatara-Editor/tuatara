@@ -192,7 +192,7 @@
                 (end (search "fn f203(" text)))
            (true (tuatara.syntax:syntax-too-big syntax))
            (false (tuatara.syntax:syntax-ready-tree syntax))
-           (let ((shown (tuatara.syntax:syntax-highlights syntax query faces (list (cons start end)))))
+           (let ((shown (first (tuatara.syntax:syntax-highlights syntax query faces (list (cons start end))))))
              (true shown)
              (is equal (multiple-value-bind (tree rope parser) (parse-string "rust" text)
                          (unwind-protect (tuatara.syntax:rich-highlights query tree rope start end faces)
@@ -819,4 +819,28 @@ bound to the fake frontend and the editor; the file and its buffer go afterwards
                             "test.around" (- point 65536) (min (tuatara.text:rope-octet-length rope) (+ point 65536)))))
                (true (< (- (thread-cpu-time) start) (* 1/5 internal-time-units-per-second)))
                (true (tuatara.defaults::smallest-around tests point point nil)))))
+      (tuatara.buffer:kill-buffer buffer))))
+
+(define-test (syntax kept-slice-asks-for-no-helper)
+  ;; colours of lines kept from before are given again without looking for the helper
+  (let* ((text (with-output-to-string (s) (dotimes (i 400) (format s "fn f~d() {}~%" i))))
+         (buffer (tuatara.buffer:make-buffer "*syntax-kept-slice*" :text text))
+         (grammar (tuatara.syntax:find-grammar "rust"))
+         (query (tuatara.syntax:compile-query grammar (tuatara.defaults::language-rules (language-named 'rust))))
+         (faces (tuatara.defaults::query-faces query :rich 0))
+         (asked 0))
+    (unwind-protect
+         (let* ((tuatara.syntax:*syntax-size-limit* 1000)
+                (syntax (tuatara.syntax:attach-syntax buffer grammar))
+                (parts (list (cons (search "fn f200(" text) (search "fn f203(" text)))))
+           (true (tuatara.syntax:syntax-highlights syntax query faces parts))
+           (sb-int:encapsulate 'tuatara.syntax:buffer-helper-soon 'counted
+                               (lambda (function &rest arguments)
+                                 (incf asked)
+                                 (apply function arguments)))
+           (unwind-protect
+                (dotimes (i 3) (true (tuatara.syntax:syntax-highlights syntax query faces parts)))
+             (sb-int:unencapsulate 'tuatara.syntax:buffer-helper-soon 'counted))
+           (is = 0 asked))
+      (tuatara.syntax:detach-syntax buffer)
       (tuatara.buffer:kill-buffer buffer))))

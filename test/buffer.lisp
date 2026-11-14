@@ -58,6 +58,15 @@
     (tuatara.buffer:buffer-undo b)
     (is string= "aé b c d" (tuatara.buffer:buffer-string b))))
 
+(define-test (buffer replace-joins-undo-group)
+  ;; a replacement given :group undoes with the change before it, as typing does
+  (with-test-buffer (b "*u*" :text "abc")
+    (tuatara.buffer:buffer-insert b 3 "(")
+    (tuatara.buffer:buffer-replace b 0 1 "x" :group t)
+    (is string= "xbc(" (tuatara.buffer:buffer-string b))
+    (true (tuatara.buffer:buffer-undo b))
+    (is string= "abc" (tuatara.buffer:buffer-string b))))
+
 (define-test (buffer undo-redo)
   (with-test-buffer (b "*u*" :text "abc")
     (tuatara.buffer:buffer-insert b 3 "def")

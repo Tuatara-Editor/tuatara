@@ -1,5 +1,4 @@
-;;;; src/dates/zones.lisp --- Time zones by name: the system's zoneinfo files, their table of changes and the rule after
-;;;; it.
+;;;; src/dates/zones.lisp --- Time zones by name: the system's zoneinfo files, their changes and rule.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; A time zone is a table of changes, universal times at which the offset
@@ -11,30 +10,43 @@
 
 (in-package #:tuatara.dates)
 
-(defstruct (zone-rule (:constructor make-zone-rule (standard-name standard-offset &optional daylight-name daylight-offset to-daylight to-standard)))
+(define-record (zone-rule (:constructor make-zone-rule (standard-name standard-offset &optional daylight-name
+                                                       daylight-offset to-daylight to-standard))
+                         (:copier nil))
   "A yearly rule of a time zone: its standard time's name and offset (seconds
 east of UTC), and when it has summer time, that time's name and offset and
 the days and times it begins and ends. A day is (:MONTH M WEEK WEEKDAY) for
 the WEEKth WEEKDAY (0 Sunday) of month M, week 5 the last; (:YEAR-DAY N), 1
 to 365, 29 February never counted; or (:DAY N), 0 to 365, counting it. Each
 day is followed by the local time of the change, seconds into the day."
-  (standard-name "" :type string)
-  (standard-offset 0 :type integer)
-  (daylight-name nil)
-  (daylight-offset nil)
-  (to-daylight nil)
-  (to-standard nil))
+  (standard-name "" :type string :documentation "The name of a ZONE-RULE's standard time (CET, NZST).")
+  (standard-offset 0 :type integer :documentation "How many seconds a ZONE-RULE's standard
+time is ahead of UTC.")
+  (daylight-name nil :documentation "The name of a ZONE-RULE's summer time
+(CEST, NZDT), or NIL when it has none.")
+  (daylight-offset nil :documentation "How many seconds a ZONE-RULE's summer
+time is ahead of UTC, or NIL when it has none.")
+  (to-daylight nil :documentation "When a ZONE-RULE's summer time begins: (DAY
+TIME), DAY as ZONE-RULE says and TIME seconds into it on standard time; NIL when
+it has none.")
+  (to-standard nil :documentation "When a ZONE-RULE's summer time ends: (DAY
+TIME), DAY as ZONE-RULE says and TIME seconds into it on summer time; NIL when
+it has none."))
 
-(defstruct (time-zone (:constructor %make-time-zone (name changes offsets first-offset rule)))
+(define-record (time-zone (:constructor %make-time-zone (name changes offsets first-offset rule)) (:copier nil))
   "A time zone: its NAME as the zoneinfo names it (Pacific/Auckland), or NIL;
 the universal times its offset changed at, in order, the offset in force
 after each, the offset before the first, and the yearly rule after the
 last (a ZONE-RULE, or NIL)."
-  (name nil)
-  (changes #() :type simple-vector)
-  (offsets #() :type simple-vector)
-  (first-offset 0 :type integer)
-  (rule nil))
+  (name nil :documentation "A time zone's name as the zoneinfo names it
+(Pacific/Auckland), or NIL.")
+  (changes #() :type simple-vector :documentation "The universal times a time zone's offset changed
+at, in order.")
+  (offsets #() :type simple-vector :documentation "The offset of a time zone in force after each of its
+changes, seconds east of UTC.")
+  (first-offset 0 :type integer :documentation "A time zone's offset before its first change.")
+  (rule nil :documentation "A time zone's yearly rule after its table of
+changes, a ZONE-RULE, or NIL."))
 
 (defparameter *zoneinfo-largest* (* 1024 1024)
   "The most octets of a zoneinfo file read: a larger file is no time zone.")
@@ -121,14 +133,14 @@ much after it."
 
 (defun zoneinfo-directory ()
   "The directory of the system's zoneinfo files: TZDIR when set, else /usr/share/zoneinfo/."
-  (let ((dir (tuatara.io:own-variable "TZDIR")))
+  (let ((dir (tuatara.runtime:own-variable "TZDIR")))
     (if (and dir (plusp (length dir)))
         (if (char= (char dir (1- (length dir))) #\/) dir (concatenate 'string dir "/"))
         "/usr/share/zoneinfo/")))
 
 (defun time-zone-name-p (name)
   "True when NAME can be a zone's name in the zoneinfo: parts apart by /,
-each of letters, digits, _ + and -, none beginning with a dot or a -."
+each of letters, digits, _ + and -, none beginning with -."
   (and (stringp name) (< 0 (length name) 256)
        (loop for part in (uiop:split-string name :separator "/")
              always (and (plusp (length part))
@@ -200,14 +212,14 @@ when it says none this reads."
     (labels ((header-at (at)
                ;; the six counts of a header at AT, or NIL
                (when (and (<= (+ at 44) length)
-                          (= (tuatara.io:octets-integer octets at 4 :big-endian t) #x545A6966)) ; TZif
-                 (loop for i below 6 collect (tuatara.io:octets-integer octets (+ at 20 (* 4 i)) 4 :big-endian t))))
+                          (= (tuatara.text:octets-integer octets at 4 :big-endian t) #x545A6966)) ; TZif
+                 (loop for i below 6 collect (tuatara.text:octets-integer octets (+ at 20 (* 4 i)) 4 :big-endian t))))
              (signed-at (at count)
-               (tuatara.io:octets-signed (tuatara.io:octets-integer octets at count :big-endian t) (* 8 count)))
+               (tuatara.text:octets-signed (tuatara.text:octets-integer octets at count :big-endian t) (* 8 count)))
              (block-length (counts size)
                (destructuring-bind (utc-count std-count leap-count time-count type-count char-count) counts
-                 (+ (* time-count
-                       size) time-count (* type-count 6) char-count (* leap-count (+ size 4)) std-count utc-count))))
+                 (+ (* time-count size) time-count (* type-count 6) char-count (* leap-count (+ size 4))
+                    std-count utc-count))))
       (let ((first (header-at 0)))
         (when first
           (let* ((version (aref octets 4))
@@ -264,7 +276,7 @@ NIL when there is none by that name. Read once, then kept."
   "The name of the time zone the system keeps its clock in: TZ when it names
 a zone of the zoneinfo, else the zone /etc/localtime leads to; NIL when
 neither names one."
-  (let ((tz (tuatara.io:own-variable "TZ")))
+  (let ((tz (tuatara.runtime:own-variable "TZ")))
     (or (and tz (let ((name (string-left-trim ":" tz))) (and (time-zone-named name) name)))
         ;; the link followed to its end: a toolbox's leads through /run/host
         (let* ((path (handler-case (namestring (truename "/etc/localtime")) (file-error () nil)))
@@ -279,28 +291,12 @@ else as /etc/localtime holds it, else TZ read as a rule, else as far as the
 clock's offset now tells it."
   (or (let ((name (system-time-zone-name))) (and name (time-zone-named name)))
       (let ((octets (zoneinfo-file-octets "/etc/localtime"))) (and octets (read-zoneinfo octets nil)))
-      (let* ((tz (tuatara.io:own-variable "TZ")) (rule (and tz (read-zone-rule tz))))
+      (let* ((tz (tuatara.runtime:own-variable "TZ")) (rule (and tz (read-zone-rule tz))))
         (and rule (%make-time-zone nil #() #() (zone-rule-standard-offset rule) rule)))
       (fixed-time-zone (local-offset (get-universal-time)))))
 
 (setf (documentation 'make-zone-rule 'function) "A ZONE-RULE of STANDARD-NAME and STANDARD-OFFSET,
 and when it has summer time, DAYLIGHT-NAME, DAYLIGHT-OFFSET and the days and
 times TO-DAYLIGHT and TO-STANDARD it begins and ends."
-      (documentation 'zone-rule-standard-name 'function) "The name of a ZONE-RULE's standard time (CET, NZST)."
-      (documentation 'zone-rule-standard-offset 'function) "How many seconds a ZONE-RULE's standard
-time is ahead of UTC."
-      (documentation 'zone-rule-daylight-name 'function) "The name of a ZONE-RULE's summer time
-(CEST, NZDT), or NIL when it has none."
-      (documentation 'zone-rule-daylight-offset 'function) "How many seconds a ZONE-RULE's summer
-time is ahead of UTC, or NIL when it has none."
-      (documentation 'zone-rule-to-daylight 'function) "When a ZONE-RULE's summer time begins: (DAY
-TIME), DAY as ZONE-RULE says and TIME seconds into it on standard time; NIL when
-it has none."
-      (documentation 'zone-rule-to-standard 'function) "When a ZONE-RULE's summer time ends: (DAY
-TIME), DAY as ZONE-RULE says and TIME seconds into it on summer time; NIL when
-it has none."
-      (documentation 'time-zone-p 'function) "True when the object given is a TIME-ZONE."
-      (documentation 'time-zone-name 'function) "A time zone's name as the zoneinfo names it
-(Pacific/Auckland), or NIL."
-      (documentation 'time-zone-rule 'function) "A time zone's yearly rule after its table of
-changes, a ZONE-RULE, or NIL.")
+      (documentation 'zone-rule-p 'function) "True when the object given is a ZONE-RULE."
+      (documentation 'time-zone-p 'function) "True when the object given is a TIME-ZONE.")

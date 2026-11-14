@@ -1,84 +1,70 @@
 ;;;; src/text/version.lisp --- Text versions, edit batches and anchors.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; A VERSION is a rope plus the batch of edits that produced it, linked to the
-;;;; version that replaced it.  Anyone holding an old version (a worker with a
-;;;; snapshot) can map byte positions forward to the current version by walking
-;;;; the NEXT links and mapping through each batch in O(log edits).  An anchor
-;;;; holds no version, only the version's LINK: the same chain without the
-;;;; texts, so that an anchor resolved long ago keeps the edits since alive but
-;;;; never a rope.  Versions no longer referenced are garbage collected, so the
-;;;; history is exactly as long as something needs it.
+;;;; A VERSION is a rope plus the batch of edits that produced it, and its
+;;;; LINK, its place in a chain of the batches made since, which holds no
+;;;; text.  Anyone holding an old version (a worker with a snapshot) can map
+;;;; byte positions forward to the current version by walking the links and
+;;;; mapping through each batch in O(log edits) (VERSION-BATCHES), and keeps
+;;;; its own rope alive but never a later one.  An anchor holds no version,
+;;;; only the version's link, so that an anchor resolved long ago keeps the
+;;;; edits since alive but never a rope.  Versions no longer referenced are
+;;;; garbage collected, so the history is exactly as long as something needs
+;;;; it.
 
 (in-package #:tuatara.text)
 
-(defstruct (swap (:constructor make-swap (before after forward backward)) (:copier nil))
+(define-record (swap (:constructor make-swap (before after forward backward)) (:copier nil))
   "A change of a whole text too large to describe edit by edit: the rope BEFORE
 and the rope AFTER, with FORWARD mapping a byte position and a bias from the
 one to the other and BACKWARD mapping back. A replacement across a file of many
 gigabytes arrives this way."
-  (before nil :type rope :read-only t)
-  (after nil :type rope :read-only t)
-  (forward nil :type function :read-only t)
-  (backward nil :type function :read-only t))
+  (before nil :type rope :read-only t :documentation "The rope a SWAP replaced.")
+  (after nil :type rope :read-only t :documentation "The rope a SWAP put in its place.")
+  (forward nil :type function :read-only t
+           :documentation "SWAP's map of (POSITION BIAS) from the rope before to the rope after.")
+  (backward nil :type function :read-only t
+            :documentation "SWAP's map of (POSITION BIAS) from the rope after to the rope before."))
 
-(setf (documentation 'make-swap 'function) "Return a swap from rope BEFORE to rope AFTER with the two position maps."
-      (documentation 'swap-p 'function) "True when OBJECT is a SWAP."
-      (documentation 'swap-before 'function) "The rope a SWAP replaced."
-      (documentation 'swap-after 'function) "The rope a SWAP put in its place."
-      (documentation 'swap-forward 'function) "SWAP's map of (POSITION BIAS) from the rope before to the rope after."
-      (documentation 'swap-backward 'function) "SWAP's map of (POSITION BIAS) from the rope after to the rope before.")
+(setf (documentation 'make-swap 'function) "Return a swap from rope BEFORE to rope AFTER with the two position maps.")
 
-(defstruct (batch (:constructor %make-batch (edits deltas positions))
-                  (:constructor %make-swap-batch (swap))
-                  (:copier nil))
+(define-record (batch (:constructor %make-batch (edits deltas positions))
+                     (:constructor %make-swap-batch (swap))
+                     (:copier nil))
   "An applied edit batch: EDITS (a sorted simple-vector of EDIT), DELTAS (a
 fixnum vector where DELTAS[k] is the total change in length after edits 0..k),
 and POSITIONS (the vector APPLY-EDITS returned). A batch that swapped the whole
 text has no edits and its SWAP instead."
-  (edits #() :type simple-vector :read-only t)
-  (deltas (make-array 0 :element-type 'fixnum) :type fixvec :read-only t)
-  (positions (make-array 0 :element-type 'fixnum) :type fixvec :read-only t)
-  (swap nil :type (or null swap) :read-only t))
+  (edits #() :type simple-vector :read-only t :documentation "The sorted edits of BATCH.")
+  (deltas (make-array 0 :element-type 'fixnum) :type fixvec :read-only t
+          :documentation "Prefix sums of length change per edit of BATCH.")
+  (positions (make-array 0 :element-type 'fixnum) :type fixvec :read-only t
+             :documentation "The positions APPLY-EDITS returned for BATCH.")
+  (swap nil :type (or null swap) :read-only t
+        :documentation "The SWAP of a batch that replaced the whole text, or NIL."))
 
-(setf (documentation 'batch-p 'function) "True when OBJECT is a BATCH."
-      (documentation 'batch-edits 'function) "The sorted edits of BATCH."
-      (documentation 'batch-deltas 'function) "Prefix sums of length change per edit of BATCH."
-      (documentation 'batch-positions 'function) "The positions APPLY-EDITS returned for BATCH."
-      (documentation 'batch-swap 'function) "The SWAP of a batch that replaced the whole text, or NIL.")
-
-(defstruct (link (:constructor make-link (map)) (:copier nil))
+(define-record (link (:constructor make-link (map)) (:copier nil))
   "A version's place in its text's history, without its text: MAP takes a
 position of the version before to this one (NIL for the first, otherwise a batch of
 edits, or a function of a position and a bias for a swap of the whole text);
 NEXT is the link of the version after, or NIL while it is current."
-  (map nil :type (or null batch function) :read-only t)
-  (next nil :type (or null link)))
+  (map nil :type (or null batch function) :read-only t
+       :documentation "How a LINK's version maps positions of the one before: a
+batch, a function, or NIL.")
+  (next nil :type (or null link) :documentation "The link of the version after, or NIL."))
 
-(setf (documentation 'link-p 'function) "True when OBJECT is a LINK."
-      (documentation 'make-link 'function) "Return a link whose position map from the version before is MAP."
-      (documentation 'link-map 'function) "How a LINK's version maps positions of the one before: a
-batch, a function, or NIL."
-      (documentation 'link-next 'function) "The link of the version after, or NIL.")
+(setf (documentation 'make-link 'function) "Return a link whose position map from the version before is MAP.")
 
-(defstruct (version (:constructor %make-version (rope number batch &aux (link (make-link (batch-link-map batch)))))
-                    (:copier nil))
+(define-record (version (:constructor %make-version (rope number batch &aux (link (make-link (batch-link-map batch)))))
+                       (:copier nil))
   "One version of a text. ROPE is its content; NUMBER counts versions from 0;
 BATCH is the batch that produced it from the previous version (NIL for the
-first); NEXT is the version that replaced it, or NIL while it is current; LINK
-its place in the history without the text (anchors hold it)."
-  (rope (make-rope) :type rope :read-only t)
-  (number 0 :type fixnum :read-only t)
-  (batch nil :type (or null batch) :read-only t)
-  (next nil :type (or null version))
-  (link nil :type link :read-only t))
-
-(setf (documentation 'version-p 'function) "True when OBJECT is a VERSION."
-      (documentation 'version-rope 'function) "The rope holding VERSION's text."
-      (documentation 'version-number 'function) "VERSION's sequence number, 0 for the first."
-      (documentation 'version-batch 'function) "The batch that produced VERSION, or NIL for the first."
-      (documentation 'version-next 'function) "The version that replaced VERSION, or NIL while it is current."
-      (documentation 'version-link 'function) "VERSION's place in the history, without its text (a LINK).")
+first); LINK its place in the history without the text (anchors hold it),
+which leads to the batches made since but to no later text."
+  (rope (make-rope) :type rope :read-only t :documentation "The rope holding VERSION's text.")
+  (number 0 :type fixnum :read-only t :documentation "VERSION's sequence number, 0 for the first.")
+  (batch nil :type (or null batch) :read-only t :documentation "The batch that produced VERSION, or NIL for the first.")
+  (link nil :type link :read-only t :documentation "VERSION's place in the history, without its text (a LINK)."))
 
 (defun batch-link-map (batch)
   "What a link keeps of BATCH to map positions through it: the batch, or for a
@@ -91,7 +77,7 @@ swap of the whole text its function forward alone, which holds no rope."
 
 (defun version-current-p (version)
   "True when nothing has replaced VERSION yet."
-  (null (version-next version)))
+  (null (link-next (version-link version))))
 
 (defun edits-batch (rope edits)
   "Apply EDITS (a sequence of EDIT, sorted and non-overlapping) to ROPE, which is
@@ -117,18 +103,17 @@ undo step takes it back."
 
 (defun advance-version (version rope batch what)
   "The version after VERSION, which must be current, holding ROPE, made by
-BATCH and linked as VERSION's NEXT; returned with BATCH. When VERSION is not
+BATCH and linked after VERSION; returned with BATCH. When VERSION is not
 current, an error saying WHAT applies to the newest version only."
   (unless (version-current-p version)
     (error "Version ~a is not current; ~a applies to the newest version only." (version-number version) what))
   (let ((new (%make-version rope (1+ (version-number version)) batch)))
-    (setf (version-next version) new
-          (link-next (version-link version)) (version-link new))
+    (setf (link-next (version-link version)) (version-link new))
     (values new batch)))
 
 (defun version-commit (version edits)
   "Apply EDITS (a sequence of EDIT, sorted and non-overlapping) to VERSION, which
-must be current, and return the new version, linked as VERSION's NEXT. Also
+must be current, and return the new version, linked after VERSION. Also
 returns the batch as a second value (EDITS-BATCH). Complexity: that of
 APPLY-EDITS plus O(edits)."
   (multiple-value-bind (rope batch) (edits-batch (version-rope version) edits)
@@ -136,14 +121,14 @@ APPLY-EDITS plus O(edits)."
 
 (defun version-swap (version rope forward backward)
   "Replace the whole text of VERSION, which must be current, with ROPE: return
-the new version, linked as VERSION's NEXT, and its batch, whose SWAP maps
+the new version, linked after VERSION, and its batch, whose SWAP maps
 positions with FORWARD and back with BACKWARD (functions of a byte position and
 a bias). Complexity: O(1)."
   (advance-version version rope (%make-swap-batch (make-swap (version-rope version) rope forward backward)) "a swap"))
 
 (defun version-adopt (version rope)
   "Make ROPE, the same octets as VERSION's text with more known of them (their
-counts), the text of a new version linked as VERSION's NEXT; VERSION must be
+counts), the text of a new version linked after VERSION; VERSION must be
 current. The new version's batch has no edits: every position stays where it
 is. Returns the new version and its batch. Complexity: O(1)."
   (advance-version version rope (%make-batch #()
@@ -249,6 +234,25 @@ which is made in them where it can be. Complexity: O(edits + stretches)."
           (incf delta grown))))
     (nreverse out)))
 
+(defun version-batches (from to)
+  "The batches of edits that made each version after FROM up to TO, in order:
+NIL when TO is FROM, :WHOLE when the whole text was swapped between them or TO
+is not after FROM. Only the history between them is read, never a text.
+Complexity: O(versions between)."
+  (let ((batches '()) (at (version-link from)) (end (version-link to)))
+    (loop until (eq at end)
+          do (let ((next (link-next at)))
+               (unless (and next (batch-p (link-map next)))
+                 (return-from version-batches :whole))
+               (push (link-map next) batches)
+               (setf at next)))
+    (nreverse batches)))
+
+(defun batch-rope-before (batch after)
+  "The text BATCH, a batch of edits, was made to, from AFTER, the text it
+made: its edits undone, AFTER left as it is. Complexity: that of APPLY-EDITS."
+  (values (apply-edits after (inverse-edits (batch-edits batch) (batch-positions batch)))))
+
 (defun changed-stretches (from to)
   "The stretches of a text that differ between its versions FROM and TO, TO
 the later: a list in order of (OLD-START OLD-END NEW-START NEW-END), byte
@@ -256,15 +260,12 @@ offsets of each in FROM's text and in TO's, the text between them the same in
 both; :WHOLE when that is not known, the whole text swapped between them or TO
 not after FROM. The edits of every version between are taken in one pass.
 Complexity: O(edits + stretches) for each version between."
-  (let ((stretches '()) (at from))
-    (loop until (eq at to)
-          do (let* ((next (version-next at))
-                    (batch (and next (version-batch next))))
-               (when (or (null batch) (batch-swap batch))
-                 (return-from changed-stretches :whole))
-               (setf stretches (stretches-through stretches batch)
-                     at next)))
-    stretches))
+  (let ((batches (version-batches from to)))
+    (if (eq batches :whole)
+        :whole
+        (let ((stretches '()))
+          (dolist (batch batches stretches)
+            (setf stretches (stretches-through stretches batch)))))))
 
 ;;; A count of lines carried through the edits made since
 
@@ -273,7 +274,7 @@ Complexity: O(edits + stretches) for each version between."
 of one version of a text gives the line numbers of later versions
 \(CARRY-TALLY); past it they wait for the text to be counted again.")
 
-(defstruct (change-window (:constructor make-change-window ()) (:copier nil))
+(define-record (change-window (:constructor make-change-window ()) (:copier nil))
   "A stretch of a text that differs between the version a count of its lines
 was made of and a later one, with an octet more on each side: from OLD-START
 below OLD-END in the text counted, from NEW-START below NEW-END in the later
@@ -281,30 +282,21 @@ one. BEFORE and AFTER are the line ends the text has gained before the window
 and through it; FIRST-LINE the line at OLD-START once the count has passed
 it, else -1; OLD-LINES and NEW-LINES the line ends in the window on each
 side."
-  (old-start 0 :type fixnum)
-  (old-end 0 :type fixnum)
-  (new-start 0 :type fixnum)
-  (new-end 0 :type fixnum)
-  (before 0 :type fixnum)
-  (after 0 :type fixnum)
-  (first-line -1 :type fixnum)
-  (old-lines 0 :type fixnum)
-  (new-lines 0 :type fixnum))
+  (old-start 0 :type fixnum :documentation "Where a CHANGE-WINDOW begins in the text counted.")
+  (old-end 0 :type fixnum :documentation "Where a CHANGE-WINDOW ends in the text counted.")
+  (new-start 0 :type fixnum :documentation "Where a CHANGE-WINDOW begins in the text now.")
+  (new-end 0 :type fixnum :documentation "Where a CHANGE-WINDOW ends in the text now.")
+  (before 0 :type fixnum :documentation "The line ends the text has gained before a CHANGE-WINDOW.")
+  (after 0 :type fixnum :documentation "The line ends the text has gained up to a CHANGE-WINDOW's end.")
+  (first-line -1 :type fixnum
+              :documentation "The line at a CHANGE-WINDOW's start in the text
+counted, or -1 while the count has not passed it.")
+  (old-lines 0 :type fixnum :documentation "The line ends in a CHANGE-WINDOW in the text counted.")
+  (new-lines 0 :type fixnum :documentation "The line ends in a CHANGE-WINDOW in the text now."))
 
-(setf (documentation 'make-change-window 'function) "Return a CHANGE-WINDOW, for CARRIED-WINDOWS to fill in."
-      (documentation 'change-window-p 'function) "True when OBJECT is a CHANGE-WINDOW."
-      (documentation 'change-window-old-start 'function) "Where a CHANGE-WINDOW begins in the text counted."
-      (documentation 'change-window-old-end 'function) "Where a CHANGE-WINDOW ends in the text counted."
-      (documentation 'change-window-new-start 'function) "Where a CHANGE-WINDOW begins in the text now."
-      (documentation 'change-window-new-end 'function) "Where a CHANGE-WINDOW ends in the text now."
-      (documentation 'change-window-before 'function) "The line ends the text has gained before a CHANGE-WINDOW."
-      (documentation 'change-window-after 'function) "The line ends the text has gained up to a CHANGE-WINDOW's end."
-      (documentation 'change-window-first-line 'function)
-      "The line at a CHANGE-WINDOW's start in the text counted, or -1 while the count has not passed it."
-      (documentation 'change-window-old-lines 'function) "The line ends in a CHANGE-WINDOW in the text counted."
-      (documentation 'change-window-new-lines 'function) "The line ends in a CHANGE-WINDOW in the text now.")
+(setf (documentation 'make-change-window 'function) "Return a CHANGE-WINDOW, for CARRIED-WINDOWS to fill in.")
 
-(defstruct (carried-tally (:constructor %carry-tally (tally rope at)) (:copier nil))
+(define-record (carried-tally (:constructor %carry-tally (tally rope at)) (:copier nil))
   "TALLY, the count of the lines of ROPE, the text of one version, carried to
 the versions after it: the line numbers of a text edited while it is counted,
 known as soon as the count has passed them, as exact as the count. AT is the
@@ -315,24 +307,16 @@ TOUCHED, pairs of offsets, the stretches the edits reached since the carry
 before, in the text now. LOST is :LOST once the edits cannot be carried (the
 whole text swapped, a version not after the last, more changed than
 *CARRIED-COUNT-OCTETS*), else NIL."
-  (tally nil :type tally :read-only t)
-  (rope nil :type rope :read-only t)
-  (at nil :type link)
-  (stretches '())
-  (windows '())
-  (touched (make-array 16 :element-type 'fixnum :adjustable t :fill-pointer 0) :read-only t)
-  (lost nil))
-
-(setf (documentation 'carried-tally-p 'function) "True when OBJECT is a CARRIED-TALLY."
-      (documentation 'carried-tally-tally 'function) "The count of lines a CARRIED-TALLY carries."
-      (documentation 'carried-tally-rope 'function) "The text a CARRIED-TALLY's count is of."
-      (documentation 'carried-tally-at 'function) "The link of the latest version a CARRIED-TALLY was carried to."
-      (documentation 'carried-tally-stretches 'function)
-      "What differs between a CARRIED-TALLY's text and the latest it was carried to (CHANGED-STRETCHES)."
-      (documentation 'carried-tally-windows 'function) "The CHANGE-WINDOWs of a CARRIED-TALLY, in order."
-      (documentation 'carried-tally-touched 'function)
-      "Pairs of offsets: the stretches the edits since a CARRIED-TALLY was last carried reached."
-      (documentation 'carried-tally-lost 'function) "LOST once a CARRIED-TALLY cannot be carried, else NIL.")
+  (tally nil :type tally :read-only t :documentation "The count of lines a CARRIED-TALLY carries.")
+  (rope nil :type rope :read-only t :documentation "The text a CARRIED-TALLY's count is of.")
+  (at nil :type link :documentation "The link of the latest version a CARRIED-TALLY was carried to.")
+  (stretches '()
+             :documentation "What differs between a CARRIED-TALLY's text and the
+latest it was carried to (CHANGED-STRETCHES).")
+  (windows '() :documentation "The CHANGE-WINDOWs of a CARRIED-TALLY, in order.")
+  (touched (make-array 16 :element-type 'fixnum :adjustable t :fill-pointer 0) :read-only t
+           :documentation "Pairs of offsets: the stretches the edits since a CARRIED-TALLY was last carried reached.")
+  (lost nil :documentation "LOST once a CARRIED-TALLY cannot be carried, else NIL."))
 
 (defun carry-tally (tally version)
   "Return TALLY, a count of the lines of VERSION's text, ready to be carried
@@ -360,10 +344,11 @@ included."
 
 (defun carried-windows (carried version)
   "Carry CARRIED to VERSION, the version it was last carried to or one after
-it: its CHANGE-WINDOWs, :LOST when the edits cannot be carried. The line ends
-of a window are counted again only when the edits since reached it, those of
-its old side only when it is new. Complexity: O(edits since it was last
-carried + windows + the octets of the windows the edits reached)."
+it: its CHANGE-WINDOWs, :LOST when the edits cannot be carried, from then on.
+The line ends of a window are counted again only when the edits since reached
+it, those of its old side only when it is new. Called on the editor's thread:
+CARRIED is changed in place. Complexity: O(edits since it was last carried +
+windows + the octets of the windows the edits reached)."
   (let ((link (version-link version)))
     (cond ((carried-tally-lost carried) :lost)
           ((eq (carried-tally-at carried) link) (carried-tally-windows carried))
@@ -517,20 +502,15 @@ its start, and the offset there; NIL when the edits since cannot be carried."
 
 ;;; Anchors
 
-(defstruct (anchor (:constructor %make-anchor (link cached bias)) (:copier nil))
+(define-record (anchor (:constructor %make-anchor (link cached bias)) (:copier nil))
   "A byte position that follows the text through edits. CACHED is the position
 in the version of LINK; ANCHOR-POSITION maps it forward on demand and caches
 the result. BIAS is :BEFORE (stays before text inserted at it) or :AFTER
 \(moves after it)."
-  (link nil :type link)
-  (cached 0 :type fixnum)
-  (bias :before :type (member :before :after)))
-
-(setf (documentation 'anchor-p 'function) "True when OBJECT is an ANCHOR."
-      (documentation 'anchor-link 'function) "The link of the version ANCHOR's cached position is valid in."
-      (documentation 'anchor-bias 'function) "ANCHOR's bias, :BEFORE or :AFTER."
-      (documentation 'anchor-cached 'function) "ANCHOR's position in ANCHOR-VERSION, possibly stale;
-use ANCHOR-POSITION.")
+  (link nil :type link :documentation "The link of the version ANCHOR's cached position is valid in.")
+  (cached 0 :type fixnum :documentation "ANCHOR's position in the version of ANCHOR-LINK,
+possibly stale; use ANCHOR-POSITION.")
+  (bias :before :type (member :before :after) :documentation "ANCHOR's bias, :BEFORE or :AFTER."))
 
 (defun make-anchor (version position &key (bias :before))
   "Return an anchor at byte POSITION of VERSION with BIAS (:BEFORE by default)."

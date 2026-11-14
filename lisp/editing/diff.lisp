@@ -46,10 +46,10 @@ it), as a fixnum vector; a last line without a line end counts."
 
 (defun rope-line-hashes (rope)
   "LINE-HASHES of ROPE's text, read a megabyte at a time rather than copied whole."
-  (let ((hashes (make-array 1024 :element-type 'fixnum :adjustable t :fill-pointer 0))
-        (chunk (make-array (* 1024 1024) :element-type '(unsigned-byte 8)))
-        (size (tuatara.text:rope-octet-length rope))
-        (hash +fnv-offset+) (open nil))
+  (let* ((size (tuatara.text:rope-octet-length rope))
+         (hashes (make-array 1024 :element-type 'fixnum :adjustable t :fill-pointer 0))
+         (chunk (make-array (min (+ size 2) (* 1024 1024)) :element-type '(unsigned-byte 8)))
+         (hash +fnv-offset+) (open nil))
     ;; an octet more than is hashed, read for a carriage return at a chunk's end
     (loop for at from 0 below size by (1- (length chunk))
           do (let* ((n (min (- size at) (1- (length chunk))))
@@ -86,7 +86,8 @@ line. NIL when more than LIMIT lines differ."
               do (let* ((previous (aref trace (1- d)))
                         (k (- x y))
                         (down (or (= k (- d))
-                                  (and (/= k d) (< (aref previous (+ (1- k) (1- d))) (aref previous (+ (1+ k) (1- d)))))))
+                                  (and (/= k d)
+                                       (< (aref previous (+ (1- k) (1- d))) (aref previous (+ (1+ k) (1- d)))))))
                         (pk (if down (1+ k) (1- k)))
                         (px (aref previous (+ pk (1- d))))
                         (py (- px pk))
@@ -126,6 +127,15 @@ all that lies between is one hunk."
                     (when open (push (apply #'hunk open) hunks))
                     (nreverse hunks)))))))))
 
+(defun hunk-side-first (start count)
+  "The 0-based first line of one side of a hunk DIFF-HUNKS gives, its START
+and COUNT: the line after which the other side's go when COUNT is 0."
+  (if (zerop count) start (1- start)))
+
+(defun string-hashes (strings)
+  "The hashes of STRINGS, a vector, for DIFF-HUNKS."
+  (map '(simple-array fixnum (*)) #'tuatara.text:string-hash strings))
+
 (defun line-diff (old new &key (limit 2000))
   "The lines that differ between OLD and NEW, sequences of strings, each
 \(:REMOVED LINE) or (:ADDED LINE), in order, the lines both share left out:
@@ -133,12 +143,12 @@ each hunk DIFF-HUNKS finds, its lines removed, then those added. Past LIMIT
 differences, all that lies between the lines both begin and end with is
 removed and added."
   (let* ((old (coerce old 'simple-vector)) (new (coerce new 'simple-vector))
-         (hunks (diff-hunks (map '(simple-array fixnum (*)) #'tuatara.text:string-hash old)
-                            (map '(simple-array fixnum (*)) #'tuatara.text:string-hash new)
-                            :limit limit)))
+         (hunks (diff-hunks (string-hashes old) (string-hashes new) :limit limit)))
     (loop for (old-start old-count new-start new-count) in hunks
-          append (loop for i from (1- old-start) repeat old-count collect (list :removed (svref old i)))
-          append (loop for i from (1- new-start) repeat new-count collect (list :added (svref new i))))))
+          append (loop for i from (hunk-side-first old-start old-count) repeat old-count
+                       collect (list :removed (svref old i)))
+          append (loop for i from (hunk-side-first new-start new-count) repeat new-count
+                       collect (list :added (svref new i))))))
 
 (defun unified-diff (old new &key (old-name "old") (new-name "new") (context 3) (limit 2000))
   "The differences between OLD and NEW, lists of lines (strings without their
@@ -151,11 +161,9 @@ DIFF-HUNKS."
   (let* ((old (coerce old 'simple-vector)) (new (coerce new 'simple-vector))
          (n (length old))
          ;; each hunk as 0-based (OLD-FROM OLD-TO NEW-FROM NEW-TO)
-         (hunks (loop for (os oc ns nc) in (diff-hunks (map '(simple-array fixnum (*)) #'tuatara.text:string-hash old)
-                                                         (map '(simple-array fixnum (*)) #'tuatara.text:string-hash new)
-                                                         :limit limit)
-                      for o = (if (zerop oc) os (1- os))
-                      for s = (if (zerop nc) ns (1- ns))
+         (hunks (loop for (os oc ns nc) in (diff-hunks (string-hashes old) (string-hashes new) :limit limit)
+                      for o = (hunk-side-first os oc)
+                      for s = (hunk-side-first ns nc)
                       collect (list o (+ o oc) s (+ s nc))))
          (groups '()))
     ;; hunks whose context meets, together
@@ -192,9 +200,8 @@ last of them, or where removed lines were."
   (let ((delta 0))
     (dolist (hunk hunks (+ line delta))
       (destructuring-bind (old-start old-count new-start new-count) hunk
-        ;; 0-based first lines: a side without lines names the line after which the other's go
-        (let ((old-first (if (zerop old-count) old-start (1- old-start)))
-              (new-first (if (zerop new-count) new-start (1- new-start))))
+        (let ((old-first (hunk-side-first old-start old-count))
+              (new-first (hunk-side-first new-start new-count)))
           (cond ((< line old-first) (return (+ line delta)))
                 ((< line (+ old-first old-count))
                  (return (if (zerop new-count) new-first (+ new-first (min (- line old-first) (1- new-count))))))
@@ -214,10 +221,15 @@ last goes to its end."
                (at (min (+ start column) (tuatara.text:rope-line-end to start))))
           (tuatara.text:rope-char-start to at)))))
 
-(defvar *reload-diff-limit* (* 8 1024 1024)
+(defvar *reload-diff-limit* (* 1024 1024)
   "The largest text, in octets, compared line by line with the file read again
 in its place, so that point and the window stay on the same text; larger ones
 keep their offsets instead.")
+
+(defvar *reload-diff-differences* 200
+  "The most lines that may differ between a text and the file read again in
+its place for the lines between to be matched one by one; past it, all that
+lies between the lines both begin and end with is taken as one change.")
 
 (defun text-mapping (old new)
   "Two functions for BUFFER-SWAP-TEXT, taking positions in the rope OLD to the
@@ -227,7 +239,7 @@ where it is, cut to the other text's size."
   (let ((old-size (tuatara.text:rope-octet-length old)) (new-size (tuatara.text:rope-octet-length new)))
     (if (and (<= old-size *reload-diff-limit*) (<= new-size *reload-diff-limit*)
              (tuatara.text:rope-indexed-p old) (tuatara.text:rope-indexed-p new))
-        (let* ((hunks (diff-hunks (rope-line-hashes old) (rope-line-hashes new)))
+        (let* ((hunks (diff-hunks (rope-line-hashes old) (rope-line-hashes new) :limit *reload-diff-differences*))
                (back (mapcar (lambda (hunk) (destructuring-bind (os oc ns nc) hunk (list ns nc os oc))) hunks)))
           (values (lambda (position bias) (declare (ignore bias)) (map-by-lines old new hunks position))
                   (lambda (position bias) (declare (ignore bias)) (map-by-lines new old back position))))
@@ -250,10 +262,10 @@ the cursor and the window stay on the text they were on; returns how many
 places changed."
   (let* ((new (if (stringp new) (tuatara.text:string->rope new) new))
          (edits (loop for (os oc ns nc) in (diff-hunks (rope-line-hashes old) (rope-line-hashes new))
-                     collect (multiple-value-bind (start end)
-                                 (if (zerop oc) (line-edges old os 0) (line-edges old (1- os) oc))
+                     collect (multiple-value-bind (start end) (line-edges old (hunk-side-first os oc) oc)
                                (multiple-value-bind (from to) (if (zerop nc) (values 0 0) (line-edges new (1- ns) nc))
-                                 (tuatara.text:make-edit start end (and (< from to) (tuatara.text:rope-octets new :start from :end to))))))))
+                                 (tuatara.text:make-edit
+                                  start end (and (< from to) (tuatara.text:rope-octets new :start from :end to))))))))
     (when edits
       (tuatara.buffer:buffer-edit buffer (coerce edits 'vector)))
     (length edits)))

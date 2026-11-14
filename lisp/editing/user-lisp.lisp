@@ -181,7 +181,7 @@ signals an error."
          (moved (abs (- (position-at b to) (position-at b p)))))
     (setf (tuatara.buffer:buffer-point b) to)
     (when (< moved (abs n))
-      (error (edge-words (plusp n) nil)))
+      (refuse "~a" (edge-words (plusp n) nil)))
     nil))
 
 (defun tuatara-user:backward-char (&optional (n 1))

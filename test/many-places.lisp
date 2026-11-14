@@ -180,3 +180,34 @@ work in the background the one before began is done."
              made)))
     (let ((few (anchors "C-l")) (many (anchors (format nil "~{~a~^ ~}" (make-list 41 :initial-element "C-l")))))
       (true (< (- many few) 5) "~d anchors more for 40 commands" (- many few)))))
+
+(defun places-come-into-sight-garbage (n)
+  "The octets ten more looks for places come into sight make while typing at a
+split of N places all in sight, and what the last of them found."
+  (let ((f (tuatara.frontend.fake:make-fake-frontend :width 100 :height 10))
+        (result nil))
+    (let ((scratch (tuatara.buffer:find-buffer "*scratch*")))
+      (when scratch (tuatara.buffer:kill-buffer scratch)))
+    (tuatara.buffer:make-buffer "*scratch*" :text (tuatara.defaults::repeated-text (format nil "a~%") n))
+    (tuatara.frontend.fake:fake-queue-keys f "% f a RET i")
+    (tuatara.frontend.fake:fake-queue-action
+     f (lambda ()
+         (let ((split tuatara.defaults::*split*) (typing tuatara.defaults::*split-typing*))
+           (tuatara.defaults::places-come-into-sight split typing)
+           (let ((before (sb-ext:get-bytes-consed)) (found nil))
+             (dotimes (i 10) (setf found (tuatara.defaults::places-come-into-sight split typing)))
+             (setf result (list (- (sb-ext:get-bytes-consed) before) found))))))
+    (tuatara.frontend.fake:fake-queue-keys f "C-g")
+    (without-grammar-questions
+      (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults
+                                    :buffer (tuatara.buffer:find-buffer "*scratch*")))
+    (values-list result)))
+
+(define-modal-test (many-places typing-looks-only-for-places-new-in-sight)
+  ;; a key typed at a split's places looks only for those come into sight since the last: its cost does not
+  ;; grow with the places already in sight
+  (multiple-value-bind (small found-small) (places-come-into-sight-garbage 2000)
+    (multiple-value-bind (large found-large) (places-come-into-sight-garbage 20000)
+      (false found-small)
+      (false found-large)
+      (true (< (- large small) 20000) "~:d octets at 2,000 places, ~:d at 20,000" small large))))

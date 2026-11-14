@@ -25,15 +25,21 @@ year, as in 16 Apr 19:23, 2 Apr 2025."
                  ((< age 3600) (format nil "~d min ago" (floor age 60)))
                  ((< age 86400) (format nil "~d h ago" (floor age 3600)))
                  (t (format nil "~d day~:p ago" (floor age 86400)))))
-          (t (format-time (if (= (day-date (time-day time)) (day-date (time-day now))) "%-d %b %R" "%-d %b %Y") time)))))
+          (t (format-time (if (= (day-date (time-day time)) (day-date (time-day now))) "%-d %b %R" "%-d %b %Y")
+                          time)))))
+
+(defun mode-kind-char (mode)
+  "The letter ls writes first for a file's MODE (STAMP-MODE), saying its kind:
+d for a directory, l a link, p a pipe, s a socket, c and b devices, - a file."
+  (case (logand mode #o170000)
+    (#o040000 #\d) (#o120000 #\l) (#o010000 #\p) (#o140000 #\s)
+    (#o020000 #\c) (#o060000 #\b) (t #\-)))
 
 (defun mode-field (mode)
   "A file's MODE (STAMP-MODE) as ls writes it, drwxr-xr-x, as a field whose
 letters have the :completion-mode- faces."
   (let ((string (make-string 10 :initial-element #\-)))
-    (setf (char string 0) (case (logand mode #o170000)
-                            (#o040000 #\d) (#o120000 #\l) (#o010000 #\p) (#o140000 #\s)
-                            (#o020000 #\c) (#o060000 #\b) (t #\-)))
+    (setf (char string 0) (mode-kind-char mode))
     (loop for bit in '(#o400 #o200 #o100 #o40 #o20 #o10 #o4 #o2 #o1)
           for letter across "rwxrwxrwx"
           for i from 1
@@ -55,7 +61,7 @@ letters have the :completion-mode- faces."
 permissions in octal, as chmod takes them: d755, -644; with four digits when
 it has the set-user, set-group or sticky bit, -4755."
   (let ((bits (logand mode #o7777)))
-    (format nil "~c~:[~3,'0o~;~4,'0o~]" (char (first (mode-field mode)) 0) (> bits #o777) bits)))
+    (format nil "~c~:[~3,'0o~;~4,'0o~]" (mode-kind-char mode) (> bits #o777) bits)))
 
 (defun stamp-fields (stamp &optional (now (get-universal-time)))
   "What is shown beside a file whose STAMP is known: its permissions, its size
@@ -135,13 +141,12 @@ it (SHOW-BINARY-IN-HEX). NIL for a directory or a file that is not there."
   "Call FUNCTION with a preview function for COMPLETING-READ: called with the
 candidate selected (NIL for none, when what is shown stays), it shows in the
 selected window the buffer SHOW returns for it, or the window's own when SHOW
-returns NIL; when SHOW
-returns a position as a second value, there, in the middle of the window.
-SHOW is called with the candidate and a function to give the buffers made
-only for the preview. However FUNCTION ends, the window shows what it showed
-before, as it showed it, buffers already open that were shown elsewhere have
-point back where it was, and the buffers made for the preview are killed,
-where point was in their files not remembered. A place outside the part
+returns NIL; when SHOW returns a position as a second value, there, in the
+middle of the window. SHOW is called with the candidate and a function to give
+the buffers made only for the preview. However FUNCTION ends, the window shows
+what it showed before, as it showed it, buffers already open that were shown
+elsewhere have point back where it was, and the buffers made for the preview are
+killed, where point was in their files not remembered. A place outside the part
 shown of a narrowed buffer is shown widened, as choosing it shows it, and
 narrowed again after."
   (let* ((window (editor-window *editor*))

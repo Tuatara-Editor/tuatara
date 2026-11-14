@@ -80,6 +80,12 @@ faces, its references links; reading what man prints; asking for pages.")
   (false (tuatara.defaults::man-file-p "/x/archive.tar.gz"))
   (false (tuatara.defaults::man-file-p nil)))
 
+(define-test (man page-names-skip-empty-names)
+  ;; a name list ending in a comma makes no candidate for the nothing after it
+  (let ((candidates (tuatara.defaults::man-page-candidates
+                     (sb-ext:string-to-octets (format nil "ls, (1) - list directory contents~%") :external-format :utf-8))))
+    (is equal '("ls(1)") (mapcar #'tuatara.command:candidate-string candidates))))
+
 (define-test (man outside-program)
   ;; the system without man is told what to install
   (let ((words (tuatara.defaults::outside-program-install-words :man :fedora)))
@@ -170,6 +176,35 @@ faces, its references links; reading what man prints; asking for pages.")
   "What the page at PATH shows as text, man run shut in on it and read as the buffer shows it."
   (values (tuatara.defaults::man-formatting (tuatara.text:lenient-string (tuatara.defaults::man-run
                                                                           (list "--local-file") :file path)))))
+
+(define-test (man sgr-parameters-read)
+  ;; the numbers of a graphics sequence, parts written with colons kept together
+  (flet ((parameters (text) (tuatara.text:sgr-parameters text 0 (length text))))
+    (is equal '(0) (parameters ""))
+    (is equal '(1 0 31) (parameters "1;;31"))
+    (is equal '((4 3) (38 2 0 10 20 30)) (parameters "4:3;38:2::10:20:30"))
+    (is equal '(65535) (parameters "99999999999999999999"))))
+
+(define-test (man sgr-changes-read)
+  ;; what a graphics sequence changes, colours by semicolons or colons alike
+  (flet ((changes (text)
+           (let ((out '()))
+             (tuatara.text:sgr-changes (lambda (what value) (push (list what value) out)) text 0 (length text))
+             (nreverse out))))
+    (is equal '((:reset nil)) (changes ""))
+    (is equal '((:bold t) (:underline nil) (:underline t) (:italic nil)) (changes "1;4:0;4:3;23"))
+    (is equal '((:foreground 1) (:background 12) (:foreground nil)) (changes "31;104;39"))
+    (is equal '((:foreground 200) (:background-rgb #x0a141e) (:foreground 7))
+        (changes "38;5;200;48;2;10;20;30;37"))
+    (is equal '((:foreground-rgb #x0000ff) (:background 3)) (changes "38:2::0:0:255;48:5:3"))
+    (is equal '((:foreground nil) (:bold nil)) (changes "38;9;22"))))
+
+(define-test (man underline-style-none-not-underlined)
+  ;; an underline whose style is none (4:0) leaves the text plain
+  (multiple-value-bind (text marks)
+      (tuatara.defaults::man-formatting (substitute #\Escape #\^ "^[4:0mab^[4:3mc"))
+    (is string= "abc" text)
+    (is equal '(0 0 2) (coerce marks 'list))))
 
 (define-test (man escape-sequences)
   (let ((e (string #\Escape)))

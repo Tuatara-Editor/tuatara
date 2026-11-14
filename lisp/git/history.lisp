@@ -30,7 +30,8 @@ with it."
     (git-ask "Reading the revisions" top
              (lambda (job top)
                (values (and (not commits-only)
-                            (git-lines job top (list "for-each-ref" "--format=%(refname:short)" "refs/heads" "refs/remotes" "refs/tags")))
+                            (git-lines job top (list "for-each-ref" "--format=%(refname:short)"
+                                                     "refs/heads" "refs/remotes" "refs/tags")))
                        (parse-git-commits (git-job-output job top (git-log-arguments *git-log-length*)))))
              (lambda (names commits)
                (if (and commits-only (null commits))
@@ -38,11 +39,13 @@ with it."
                    (let* ((candidates (append (mapcar #'make-candidate names) (mapcar #'git-commit-candidate commits)))
                           (default (or (and at (find at candidates :key #'candidate-result :test #'equal))
                                        (if commits-only (first candidates) (make-candidate "HEAD"))))
-                          (revision (completing-read prompt (if commits-only candidates (cons (make-candidate "HEAD") candidates))
+                          (revision (completing-read prompt (if commits-only
+                                                                candidates
+                                                                (cons (make-candidate "HEAD") candidates))
                                                      :keep-order t :require-match commits-only
                                                      :default (candidate-string default))))
                      (when (plusp (length revision))
-                       (let ((name (if (find #\Space revision) (subseq revision 0 (position #\Space revision)) revision)))
+                       (let ((name (subseq revision 0 (position #\Space revision))))
                          (if (git-name-p name)
                              (funcall then name)
                              (message "Not a name git takes: ~a" (escape-controls name)))))))))))
@@ -67,16 +70,21 @@ saying what it is in their documentation."
   (flet ((name (step) (intern (format nil "GIT-~:@(~a~)-~a" what step) :tuatara.git)))
     `(progn
        (define-command ,(name "CONTINUE") ()
-         ,(format nil "Go on with the ~a stopped half way, once the files git could not join are put right and staged." noun)
+         ,(format nil "Go on with the ~a stopped half way, once the files git could not join are put right ~
+                       and staged."
+                  noun)
          (with-git-repository (top) (git-sequence-step ,what ,noun :continue top)))
        ,@(when skip
            `((define-command ,(name "SKIP") ()
                ,(format nil "Skip the commit the ~a stopped at and go on with the next." noun)
                (with-git-repository (top) (git-sequence-step ,what ,noun :skip top)))))
        (define-command ,(name "ABORT") ()
-         ,(format nil "Stop the ~a, after asking: the branch and the files go back to where they were before it began." noun)
+         ,(format nil "Stop the ~a, after asking: the branch and the files go back to where they were before ~
+                       it began."
+                  noun)
          (with-git-repository (top)
-           (git-sequence-step ,what ,noun :abort top :ask ,(format nil "Stop the ~a? What was done for it is lost" noun)))))))
+           (git-sequence-step ,what ,noun :abort top
+                                          :ask ,(format nil "Stop the ~a? What was done for it is lost" noun)))))))
 
 ;;; Merging
 
@@ -208,19 +216,31 @@ menu's switches go with it (--autosquash orders fixups first)."
                               (shown nil))
                           (start-git-job "Reading the commits to rebase"
                                          (lambda (job)
-                                           (let ((copy (concatenate 'string directory "todo-from-git")))
-                                             ;; git writes its list, which is copied out, then the rebase
-                                             ;; is given up: the editor fails, and git starts nothing
-                                             (run-git top (append (list "rebase" "-i") switches (list base))
-                                                      :environment (list* (format nil "GIT_SEQUENCE_EDITOR=~a"
-                                                                                  (git-sequence-editor (format nil "cp \"$1\" ~a; exit 1" (shell-quoted copy))))
-                                                                          *git-keep-messages*)
-                                                      :cancel (tuatara.runtime:job-cancel job) :errors t)
-                                             (and (eq :regular (tuatara.io:path-kind copy :follow nil))
-                                                  (tuatara.io:file-text copy :limit tuatara.io:*memory-read-limit*))))
-                                         (lambda (todo)
-                                           (cond ((null todo) (message "git made no list of commits after ~a to rebase" base))
-                                                 ((null (git-rebase-todo-lines todo)) (message "No commits after ~a to rebase" base))
+                                           (let* ((copy (concatenate 'string directory "todo-from-git"))
+                                                  ;; git writes its list, which is copied out, then the rebase
+                                                  ;; is given up: the editor fails, and git starts nothing
+                                                  (editor (git-sequence-editor
+                                                           (format nil "cp \"$1\" ~a; exit 1" (shell-quoted copy))))
+                                                  (said (nth-value 3 (run-git top (append (list "rebase" "-i") switches
+                                                                                          (list base))
+                                                                              :environment
+                                                                              (list* (concatenate
+                                                                                      'string "GIT_SEQUENCE_EDITOR="
+                                                                                      editor)
+                                                                                     *git-keep-messages*)
+                                                                              :cancel (tuatara.runtime:job-cancel job)
+                                                                              :errors t))))
+                                             (if (eq :regular (tuatara.io:path-kind copy :follow nil))
+                                                 (tuatara.io:file-text copy :limit tuatara.io:*memory-read-limit*)
+                                                 (values nil said))))
+                                         (lambda (todo &optional said)
+                                           (cond ((null todo)
+                                                  (message "git made no list of commits after ~a to rebase~@[: ~a~]"
+                                                           base
+                                                           (and said (plusp (length said))
+                                                                (git-failure-words "rebase" said))))
+                                                 ((null (git-rebase-todo-lines todo))
+                                                  (message "No commits after ~a to rebase" base))
                                                  (t (git-show-rebase-todo top base switches directory todo)
                                                     (setf shown t))))
                                          :after (lambda () (unless shown (delete-private-directory directory)))
@@ -253,7 +273,8 @@ list's directory, the new messages in it, is deleted once git is done."
                  (rewords (loop for line in lines
                                 for (hash subject) = (multiple-value-list (git-reword-line-p line))
                                 when hash
-                                  collect (list hash (read-string (format nil "New subject of ~a: " hash) :initial subject)))))
+                                  collect (list hash (read-string (format nil "New subject of ~a: " hash)
+                                                                  :initial subject)))))
             ;; the directory goes when git is done, not with the list
             (setf (tuatara.buffer:buffer-local buffer 'private-directory) nil)
             (start-git-job "Rebasing"
@@ -268,19 +289,21 @@ list's directory, the new messages in it, is deleted once git is done."
                                       (if (null hash)
                                           (format out "~a~%" line)
                                           (let* ((subject (second (find hash rewords :key #'first :test #'string=)))
-                                                 (body (git-output-line job top (list "log" "-1" "--format=%b" "--end-of-options" hash)))
+                                                 (body (git-output-line job top (list "log" "-1" "--format=%b"
+                                                                                      "--end-of-options" hash)))
                                                  (file (format nil "~amessage-~d" directory (incf n))))
                                             (tuatara.io:write-private-file
                                              file
                                              (format nil "~a~@[~%~%~a~]~%" subject (and (plusp (length body)) body)))
                                             ;; the commit made as it was, then its message replaced, a line
                                             ;; beginning with # kept, an empty commit amended as it is
-                                            (format out "pick ~a~%exec git commit --amend --only --allow-empty --cleanup=whitespace -F ~a~%"
+                                            (format out "pick ~a~%exec git commit --amend --only --allow-empty ~
+                                                         --cleanup=whitespace -F ~a~%"
                                                     hash (shell-quoted file))))))))
-                               (git-job-output job top (append (list "rebase" "-i") switches (list base))
-                                               :environment (list* (format nil "GIT_SEQUENCE_EDITOR=~a"
-                                                                           (git-sequence-editor (format nil "cp ~a \"$1\"" (shell-quoted todo))))
-                                                                   *git-keep-messages*))))
+                               (let ((editor (git-sequence-editor (format nil "cp ~a \"$1\"" (shell-quoted todo)))))
+                                 (git-job-output job top (append (list "rebase" "-i") switches (list base))
+                                                 :environment (list* (format nil "GIT_SEQUENCE_EDITOR=~a" editor)
+                                                                     (append *git-english* *git-keep-messages*))))))
                            (lambda (text)
                              (when (live-buffer-p buffer) (tuatara.buffer:kill-buffer buffer))
                              (let ((stopped (search "Stopped at" text)))
@@ -383,14 +406,15 @@ not to be tried."
                       (lambda (bad)
                         (git-ask-revision "Good revision (has not): " top
                                           (lambda (good)
-                                            (git-run "Bisecting" top (list "bisect" "start" bad good) #'git-bisect-words)))))))
+                                            (git-run "Bisecting" top (list "bisect" "start" bad good) #'git-bisect-words
+                                                    :environment *git-english*)))))))
 
 (defmacro define-git-bisect-step (name word doc)
   "Define the command NAME, documented by DOC, saying git bisect WORD of the commit checked out."
   `(define-command ,name ()
      ,doc
      (with-git-repository (top)
-       (git-run "Bisecting" top (list "bisect" ,word) #'git-bisect-words))))
+       (git-run "Bisecting" top (list "bisect" ,word) #'git-bisect-words :environment *git-english*))))
 
 (define-git-bisect-step git-bisect-good "good" "Say the commit checked out has not the fault: git tries one after it.")
 (define-git-bisect-step git-bisect-bad "bad" "Say the commit checked out has the fault: git tries one before it.")
@@ -408,7 +432,8 @@ one not to be tried), until the first bad commit is found."
   (with-git-repository (top)
     (let ((command (read-string "Command telling good (succeeds) from bad (fails): ")))
       (when (plusp (length command))
-        (git-run "Bisecting" top (list "bisect" "run" "sh" "-c" command) #'git-bisect-words)))))
+        (git-run "Bisecting" top (list "bisect" "run" "sh" "-c" command) #'git-bisect-words
+                 :environment *git-english*)))))
 
 (define-menu git-bisect-menu (:title "Bisect" :show git-menu-shows-p :note git-menu-note)
   "Open the bisect menu: look for the commit that brought a fault in, saying
@@ -461,14 +486,13 @@ the files with it, after asking: changes not committed are lost."
   "Put a file, the one on point's line of a status or the current one, back
 to how a revision asked for has it, staged, after asking: its changes not
 committed are lost."
-  (with-git-repository (top)
-    (call-with-git-file top "No file here to put back"
-                        (lambda (path)
-                          (git-ask-revision (format nil "Put ~a back to: " (escape-controls path)) top
-                                            (lambda (revision)
-                                              (when (yes-or-no-p* (format nil "Put ~a back to ~a? Its changes not committed are lost" (escape-controls path) revision))
-                                                (git-run "Putting a file back" top (list "checkout" revision "--" path)
-                                                         (format nil "Put ~a back to ~a" (escape-controls path) revision)))))))))
+  (with-git-file (top path :missing "No file here to put back")
+    (git-ask-revision (format nil "Put ~a back to: " (escape-controls path)) top
+                      (lambda (revision)
+                        (when (yes-or-no-p* (format nil "Put ~a back to ~a? Its changes not committed are lost"
+                                                    (escape-controls path) revision))
+                          (git-run "Putting a file back" top (list "checkout" revision "--" path)
+                                   (format nil "Put ~a back to ~a" (escape-controls path) revision)))))))
 
 (commands-for-mode 'git-rebase-mode "a rebase's list" 'git-rebase-todo-finish 'git-rebase-todo-cancel)
 

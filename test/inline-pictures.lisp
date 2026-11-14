@@ -166,9 +166,14 @@ frontend show pictures. Returns the frontend and the editor."
   (with-plain-org
     (with-test-directory (dir)
       (picture-file dir "pic.png" 200 100)
-      ;; #+STARTUP: inlineimages shows them as the file opens; noinlineimages does not, whatever the setting
+      ;; #+STARTUP: inlineimages shows them as the file opens only as *org-startup-shows-pictures* allows;
+      ;; noinlineimages does not, whatever the setting
       (let ((f (picture-session dir (format nil "#+STARTUP: inlineimages~%~a" *picture-note*) ""
                                 :cell-pixels '(10 20))))
+        (false (tuatara.frontend.fake:fake-images f)))
+      (let* ((tuatara.defaults::*org-startup-shows-pictures* t)
+             (f (picture-session dir (format nil "#+STARTUP: inlineimages~%~a" *picture-note*) ""
+                                 :cell-pixels '(10 20))))
         (is = 1 (length (tuatara.frontend.fake:fake-images f))))
       (let ((tuatara-user:*global-inline-pictures-mode* t))
         (let ((f (picture-session dir *picture-note* "" :cell-pixels '(10 20))))
@@ -376,6 +381,24 @@ gutter (a row going on from the one above marked in it) and 21 blank columns."
               (subseq (rows "C-u 3 C-v") 0 4))
           (is equal (rows "") (rows "C-u 3 C-v C-u 3 M-v")))))))
 
+(define-test (inline-pictures picture-line-crossed-by-rows)
+  ;; with long lines wrapped, moving a row at a time goes over a picture's line five rows tall, stopping at its
+  ;; start, and scrolling a row at a time brings the line to the top
+  (with-plain-org
+    (with-test-directory (dir)
+      (picture-file dir "pic.png" 200 100)
+      (let ((text (format nil "Top~%~%[[file:pic.png]]~%~%Below~%")))
+        (labels ((session (keys) (picture-session dir text "C-x T p C-x T l" :more keys :cell-pixels '(10 20)))
+                 (point-after (keys) (session-point (nth-value 1 (session keys))))
+                 (top-after (keys) (string-left-trim " " (first (screen-lines (session keys))))))
+          (is = (search "[[" text) (point-after "C-n C-n"))
+          (is = (search "Below" text) (point-after "C-n C-n C-n C-n"))
+          (is = (search "Below" text) (point-after "j j j j"))
+          (is = (search "[[" text) (point-after "M-> C-p C-p C-p"))
+          (is = 0 (point-after "M-> C-p C-p C-p C-p C-p"))
+          (is = 0 (point-after "M-> k k k k k"))
+          (is string= "[[file:pic.png]]" (top-after "C-u 1 C-v C-u 1 C-v")))))))
+
 (define-test (inline-pictures floated-exact-in-a-window)
   ;; a window drawing rows large: the picture 15 columns by 3¾ rows, the fourth row beside it narrower too
   (with-plain-org
@@ -502,7 +525,8 @@ gutter (a row going on from the one above marked in it) and 21 blank columns."
 
 (define-test (inline-pictures org-formulas-found)
   ;; which formulas an Org note shows as pictures: inside a line in its columns, alone on its lines or an
-  ;; environment on rows of their own, the #+LATEX_HEADER: lines above the first heading in their preamble
+  ;; environment on rows of their own, the #+LATEX_HEADER: lines above the first heading in their preamble when
+  ;; the note is in a project trusted, else left out
   (with-plain-org
     (with-test-directory (dir)
       (let* ((text (format nil "#+LATEX_HEADER: \\usepackage{bm}~%Then $x^2$ and \\(y\\) here.~%\\[ E = mc^2 \\]~%~
@@ -524,10 +548,19 @@ gutter (a row going on from the one above marked in it) and 21 blank columns."
                                 (tuatara.defaults::inline-picture-end picture)
                                 (tuatara.defaults::formula-text formula) (tuatara.defaults::formula-inline formula))))
                       found)))
-        (true (search "\\usepackage{bm}" (tuatara.defaults::formula-preamble
-                                          (tuatara.defaults::inline-picture-source (first found)))))
+        (false (search "\\usepackage{bm}" (tuatara.defaults::formula-preamble
+                                           (tuatara.defaults::inline-picture-source (first found)))))
         (true (search "\\usepackage{amsmath}" (tuatara.defaults::formula-preamble
-                                               (tuatara.defaults::inline-picture-source (first found)))))))))
+                                               (tuatara.defaults::inline-picture-source (first found)))))
+        (sb-int:encapsulate 'tuatara.defaults::buffer-in-trusted-project-p 'trusted (constantly t))
+        (unwind-protect
+             (picture-session dir text "" :more (list (lambda ()
+                                                        (let ((buffer (tuatara.command:current-buffer)))
+                                                          (setf found (tuatara.defaults::org-inline-pictures
+                                                                       buffer 0 (tuatara.buffer:buffer-size buffer)))))))
+          (sb-int:unencapsulate 'tuatara.defaults::buffer-in-trusted-project-p 'trusted))
+        (true (search "\\usepackage{bm}" (tuatara.defaults::formula-preamble
+                                          (tuatara.defaults::inline-picture-source (first found)))))))))
 
 (define-test (inline-pictures formulas-drawn)
   ;; drawn by LaTeX, shut in: one alone on its line centred on rows of its own, one inside a line in the columns
@@ -631,3 +664,111 @@ gutter (a row going on from the one above marked in it) and 21 blank columns."
                    (true (search "$\\rule" (second lines)))
                    (false (search "$x$" (third lines))))
               (setf tuatara.export::*formula-seconds* before)))))))
+
+(define-test (inline-pictures stopped-picture-drawn-again)
+  ;; a picture whose drawing was stopped is not kept as one that cannot be drawn: it is drawn when next in sight
+  (let* ((tuatara.defaults::*inline-picture-images* (make-hash-table :test 'equal))
+         (key (list "/nowhere/kea.png" nil 40 20))
+         (job (tuatara.defaults::make-inline-picture-job nil key "/nowhere/kea.png" 40 20)))
+    (setf (gethash key tuatara.defaults::*inline-picture-images*) :pending
+          (tuatara.runtime:job-status job) :stopped)
+    (tuatara.runtime:job-take-in job)
+    (false (nth-value 1 (gethash key tuatara.defaults::*inline-picture-images*)))))
+
+(define-test (inline-pictures failed-pictures-bounded)
+  ;; pictures that could not be drawn, one for each width tried, are not kept without end
+  (let ((table (make-hash-table :test 'equal)))
+    (dotimes (width 300)
+      (setf (gethash (list "/nowhere/kea.png" nil width 20) table) :failed))
+    (tuatara.defaults::forget-pictures-past (* 1024 1024) table)
+    (true (<= (hash-table-count table) tuatara.defaults::*inline-pictures-failed-kept*))))
+
+(define-test (inline-pictures own-words-of-a-note-given-count-not)
+  ;; a note's #+STARTUP: turns its pictures and formulas off, but on only as *org-startup-shows-pictures* allows
+  ;; and never for a note opened safely or read-only; a note not trusted has none of its own LaTeX lines drawn
+  (let ((b (tuatara.buffer:make-buffer "org pictures own words"
+                                       :text (format nil "#+LATEX_HEADER: \\usepackage{mine}~%* A~%$x$~%"))))
+    (unwind-protect
+         (flet ((after (options)
+                  (setf (tuatara.buffer:buffer-local b :inline-pictures) :unset)
+                  (tuatara.defaults::org-startup-pictures b options)
+                  (tuatara.buffer:buffer-local b :inline-pictures)))
+           (is eq :unset (after '("latexpreview")))
+           (is eq nil (after '("noinlineimages")))
+           (false (search "usepackage{mine}" (tuatara.defaults::org-formula-preamble b)))
+           (let ((tuatara.defaults::*org-startup-shows-pictures* t))
+             (is eq t (after '("inlineimages")))
+             (setf (tuatara.io:safe-visit-p b) t)
+             (is eq :unset (after '("latexpreview")))
+             (setf (tuatara.io:safe-visit-p b) nil
+                   (tuatara.buffer:buffer-read-only-p b) t)
+             (is eq :unset (after '("inlineimages")))))
+      (tuatara.buffer:kill-buffer b))))
+
+(define-test (inline-pictures picture-added-as-each-mode-writes-it)
+  ;; C-c C-x p: only pictures offered, the one selected shown while choosing; its link written alone on new
+  ;; lines with the properties a picture takes; the picture itself linked where it is and left unchanged
+  (with-test-directory (dir)
+    (let* ((picture (picture-file dir "my pic.png" 20 10))
+           (before (alexandria:read-file-into-byte-vector picture))
+           (written (file-write-date picture))
+           (offered nil)
+           (previewed nil)
+           (pictures-shown :unset))
+      (alexandria:write-string-into-file "x" (merge-pathnames "words.txt" dir))
+      (flet ((added (name text)
+               (let ((file (namestring (merge-pathnames name dir))))
+                 (alexandria:write-string-into-file text file :if-exists :supersede)
+                 (let ((editor (nth-value 1 (run-keys (list (format nil "M-> C-c C-x p C-a C-k ~a" (rimu-typed (namestring dir)))
+                                                            :wait
+                                                            (lambda () (setf offered (shown-candidates)))
+                                                            (rimu-typed "my pic")
+                                                            :wait
+                                                            (lambda ()
+                                                              (let ((shown (tuatara.display:window-buffer
+                                                                            (tuatara.command:editor-window
+                                                                             tuatara.command:*editor*))))
+                                                                (setf previewed (and (tuatara.buffer:buffer-file shown)
+                                                                                     (tuatara.io:native
+                                                                                      (tuatara.buffer:buffer-file shown))))))
+                                                            "RET")
+                                                      :file file :width 100 :height 20))))
+                   (setf pictures-shown (tuatara.defaults::inline-pictures-p
+                                         (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
+                   (prog1 (session-text editor)
+                     (forget-file-buffers))))))
+        (is string= (format nil "Above~%#+CAPTION:~%#+NAME: fig:my-pic~%#+ATTR_ORG: :width t~%~
+                                 #+ATTR_LATEX: :width .9\\linewidth~%[[file:my pic.png]]")
+            (added "notes.org" "Above"))
+        (is equal '("my pic.png") offered)
+        (is string= (tuatara.io:native picture) previewed)
+        (false pictures-shown)
+        (is string= (format nil "Some text~%![](<my pic.png>){width=100%}")
+            (added "notes.md" (format nil "Some text~%")))
+        (let ((latex (added "notes.tex" (format nil "\\begin{document}~%"))))
+          (true (search "\\begin{figure}[tbp]" latex) "~a" latex)
+          (true (cl-ppcre:scan "(?m)^\\s*\\\\includegraphics\\[width=\\.9\\\\linewidth\\]\\{my pic\\.png\\}$" latex) "~a" latex)
+          (true (cl-ppcre:scan "(?m)^\\s*\\\\caption\\{\\}$" latex) "~a" latex)
+          (true (cl-ppcre:scan "(?m)^\\s*\\\\label\\{fig:my-pic\\}$" latex) "~a" latex))
+        (false (find picture tuatara.buffer:*buffers* :key #'tuatara.buffer:buffer-file
+                                                       :test (lambda (a b) (and b (string= a (tuatara.io:native b))))))
+        (is equalp before (alexandria:read-file-into-byte-vector picture))
+        (is = written (file-write-date picture))
+        (is equal '("my pic.png") (mapcar (lambda (p) (tuatara.io:native-file-name (namestring p)))
+                                          (directory (merge-pathnames "*.png" dir))))))))
+
+(define-test (inline-pictures one-picture-link-test)
+  ;; the picture view and the exports ask one question, ORG-IMAGE-LINK-P, of a link: a file link with no
+  ;; description; they differ only in which file names count as pictures
+  (flet ((link (text)
+           (first (tuatara.defaults::org-node-children (tuatara.defaults::org-parse-line text)))))
+    (dolist (text '("[[file:a.png]]" "[[./a.png]]"))
+      (true (tuatara.defaults::org-picture-link-p (link text)) "~a" text)
+      (true (tuatara.defaults::org-html-image-link-p (link text)) "~a" text))
+    (dolist (text '("[[file:a.png][shown]]" "[[https://example.org/a.png]]" "[[file:notes.txt]]" "[[file:a]]"))
+      (false (tuatara.defaults::org-picture-link-p (link text)) "~a" text)
+      (false (tuatara.defaults::org-html-image-link-p (link text)) "~a" text))
+    ;; a type only the exports take, one only the view draws
+    (false (tuatara.defaults::org-picture-link-p (link "[[file:a.eps]]")))
+    (true (tuatara.defaults::org-image-link-p (link "[[file:a.eps]]") tuatara.defaults::*org-latex-image-types*))
+    (is eq t (tuatara.defaults::org-image-link-p (link "[[file:a.png]]") (constantly :anything)))))

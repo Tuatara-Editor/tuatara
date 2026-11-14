@@ -15,15 +15,16 @@ typed goes to the machine the editor runs on."
 (defun read-password (prompt &key confirm fresh)
   "Read a secret, a passphrase, with PROMPT in the minibuffer
 \(PASSWORD-PROMPT), what is typed shown as stars and kept nowhere else (no
-history, no debug log); with CONFIRM asked twice, an error when the two differ. With FRESH, for a question that
-comes unasked, only keys pressed once it is shown count (CALL-ASKED-UNASKED):
-keys typed before never become part of it. Returns the string, which the
-caller should wipe (WIPE-STRING) once it has handed it on. Every copy not
-returned is wiped, the question given up (\\[keyboard-quit]) too."
+history, no debug log); with CONFIRM asked twice, an error when the two
+differ. With FRESH, for a question that comes unasked, only keys pressed once
+it is shown count (CALL-ASKED-UNASKED): keys typed before never become part
+of it. Returns the string, which the caller should wipe (WIPE-STRING) once it
+has handed it on. Every copy not returned is wiped, the question given up
+\(\\[keyboard-quit]) too."
   (let* ((*minibuffer-hidden* t)
          (tuatara.runtime:*secret-at-hand* t)
          (prompt (password-prompt prompt))
-         (first (if fresh (call-asked-unasked prompt (lambda () (read-string prompt))) (read-string prompt)))
+         (first (read-string prompt :fresh fresh))
          (returned nil))
     (if (not confirm)
         first
@@ -57,8 +58,9 @@ it is typed and corrected."
           (editor-minibuffer-point editor) (+ start (length string)))))
 
 (defvar *minibuffer-finish* nil
-  "While the minibuffer reads, a function of no arguments that ends the
-question with the text typed (FINISH-MINIBUFFER); NIL otherwise.")
+  "While the minibuffer reads, a function of one argument that ends the
+question, READ-STRING returning that argument (FINISH-MINIBUFFER); NIL
+otherwise.")
 
 (defvar *minibuffer-history* nil
   "While the minibuffer reads a question with earlier answers (READ-STRING's
@@ -66,18 +68,98 @@ HISTORY), a list (ANSWERS PLACE TYPED): the answers, newest first, the index
 of the one shown, -1 for none, and what was typed before going back through
 them; NIL otherwise.")
 
-(defun finish-minibuffer ()
-  "End the question the minibuffer asks: READ-STRING returns the text typed.
-For the commands of a question's own keys (READ-STRING's KEYMAP) that end it."
+(defun finish-minibuffer (&optional (answer (editor-minibuffer-text *editor*)))
+  "End the question the minibuffer asks: READ-STRING returns ANSWER, the text
+typed unless given. For the commands of a question's own keys (READ-STRING's
+KEYMAP) that end it."
   (if *minibuffer-finish*
-      (funcall *minibuffer-finish*)
+      (funcall *minibuffer-finish* answer)
       (refuse "The minibuffer is not reading.")))
 
-(defun read-string (prompt &key (initial "") complete select-initial changed rewrite update keymap history)
-  "Read a line of text with PROMPT in the echo area. Returns the string.
-Signals QUIT when it is given up with \\<minibuffer>\\[minibuffer-cancel]. Runs
-a nested command loop with the minibuffer keymap. A message a key says while it
-reads is shown after the text typed, in brackets, until the next key. One said
+(defun choose-minibuffer-answer (editor)
+  "End the question EDITOR's minibuffer asks with what \\<minibuffer>\\[minibuffer-finish]
+takes, among the candidates as they are now (more may have come since they
+were drawn): the selected candidate, the default while nothing is typed, or
+the line typed where it can be taken. While more candidates come and none was
+chosen by hand, the choice is made once all have come. Where a match is
+required and there is none, it says so and the question stays open."
+  (update-candidates editor)
+  (let ((completion (editor-completion editor))
+        (text (editor-minibuffer-text editor)))
+    (cond ((null completion) (finish-minibuffer text))
+          ;; a name taken though not offered, typed whole
+          ((and (not (completion-moved completion))
+                (member text (completion-taken completion) :test #'string=))
+           (finish-minibuffer text))
+          ;; nothing typed: the default, at once
+          ((and (completion-default completion) (zerop (length text)) (not (completion-moved completion)))
+           (let ((selected (selected-candidate completion)))
+             (finish-minibuffer (if (and selected (default-candidate-p completion selected))
+                                    (candidate-result selected)
+                                    (completion-default completion)))))
+          ;; more coming and nothing chosen by hand: the best match once all has come
+          ((and (completion-working completion) (not (completion-moved completion)))
+           (setf (completion-done-pending completion) t))
+          ((selected-candidate completion)
+           (finish-minibuffer (candidate-result (selected-candidate completion))))
+          ;; the line typed selected: taken as it is
+          ((and (= (completion-index completion) -1) (input-selectable-p completion))
+           (finish-minibuffer text))
+          ((completion-require-match completion) (message "No match"))
+          (t (finish-minibuffer text)))))
+
+(defun drop-offered-text ()
+  "Clear the text a question offered while it is selected
+\(*MINIBUFFER-INITIAL-SELECTED*), so that what is typed or pasted takes its
+place. True when there was such text."
+  (when *minibuffer-initial-selected*
+    (setf *minibuffer-initial-selected* nil)
+    (minibuffer-clear)
+    t))
+
+(defun handle-minibuffer-key (editor key)
+  "Act on KEY, typed while EDITOR's minibuffer reads. A key that begins a
+sequence is kept for the next; the command a sequence is bound to (the
+question's own keys first) runs; a character bound to nothing is typed into
+the answer. The text offered stops being selected after any key but those
+that end the question."
+  (let* ((specs (append (editor-pending editor) (list (tuatara.frontend:key-spec key))))
+         (binding (resolve-keys editor specs)))
+    (cond ((keymap-p binding) (setf (editor-pending editor) specs))
+          (binding
+           (setf (editor-pending editor) '())
+           (funcall (find-command binding))
+           (unless (member binding '(minibuffer-finish minibuffer-submit-input minibuffer-cancel))
+             (setf *minibuffer-initial-selected* nil)))
+          ((and (null (editor-pending editor))
+                (characterp (tuatara.frontend:key-base key))
+                (not (tuatara.frontend:key-ctrl key)) (not (tuatara.frontend:key-meta key)))
+           (drop-offered-text)
+           (let ((typed (string (tuatara.frontend:key-base key))))
+             (minibuffer-insert typed)
+             (when *minibuffer-hidden* (wipe-string typed))))
+          (t (setf (editor-pending editor) '())))))
+
+(defun after-minibuffer-change (editor before rewrite changed)
+  "Call READ-STRING's REWRITE and CHANGED for the text EDITOR's minibuffer
+holds now, BEFORE being the text before the last key or paste: REWRITE when
+the text grew with the cursor at its end, CHANGED when it differs."
+  (let ((text (editor-minibuffer-text editor)))
+    (when (and rewrite (> (length text) (length before)) (= (editor-minibuffer-point editor) (length text)))
+      (let ((rewritten (funcall rewrite text)))
+        (unless (string= rewritten text)
+          (setf (editor-minibuffer-text editor) rewritten
+                (editor-minibuffer-point editor) (length rewritten))))))
+  (when (and changed (string/= before (editor-minibuffer-text editor)))
+    (funcall changed (editor-minibuffer-text editor))))
+
+(defun read-string (prompt &rest arguments
+                    &key (initial "") complete select-initial changed rewrite update keymap history completion fresh)
+  "Read a line of text with PROMPT in the echo area, its control and direction
+characters written out (ESCAPE-CONTROLS). Returns the string. Signals QUIT
+when it is given up with \\<minibuffer>\\[minibuffer-cancel]. Runs a nested
+command loop with the minibuffer keymap. A message a key says while it reads
+is shown after the text typed, in brackets, until the next key. One said
 before is not shown.
 COMPLETE, when given, is a function of no arguments that
 \\[minibuffer-complete] and \\`C-M-i' call to complete the word at the
@@ -109,7 +191,13 @@ what its CHANGED did (with HANDLER-CASE or UNWIND-PROTECT).
 KEYMAP holds the question's own keys, consulted before the minibuffer's. A
 command of it may end the question with FINISH-MINIBUFFER.
 HISTORY, a list of earlier answers, newest first, is gone back through with
-\\[minibuffer-previous-history] and forward with \\[minibuffer-next-history]."
+\\[minibuffer-previous-history] and forward with \\[minibuffer-next-history].
+COMPLETION, a COMPLETION, makes it a completing read (COMPLETING-READ).
+With FRESH, for a question that comes unasked, only keys pressed once it is
+shown count (CALL-ASKED-UNASKED): keys typed before never become part of it."
+  (when fresh
+    (return-from read-string
+      (call-asked-unasked prompt (lambda () (apply #'read-string prompt :fresh nil arguments)))))
   (let ((editor *editor*)
         (held '())
         (answered nil)
@@ -120,139 +208,81 @@ HISTORY, a list of earlier answers, newest first, is gone back through with
     (when (editor-minibuffer-active editor) (refuse "The minibuffer is already in use."))
     ;; a list of completions in a buffer closes when the minibuffer asks something
     (close-popup editor)
-    (setf (editor-minibuffer-prompt editor) prompt
+    (setf (editor-minibuffer-prompt editor) (values (escape-controls prompt))
           (editor-minibuffer-text editor) (copy-seq initial)
           (editor-minibuffer-point editor) (length initial)
           (editor-minibuffer-count editor) nil
           (editor-minibuffer-active editor) :reading
           (editor-minibuffer-completer editor) complete
+          (editor-completion editor) completion
           ;; what was said before the question is not shown in it
           (editor-message editor) nil)
     (unwind-protect
          (prog1 (block reading
-                  (let ((*minibuffer-finish* (lambda () (return-from reading (editor-minibuffer-text editor)))))
-                    (flet ((choose ()
-                             ;; RET: the selected candidate, or the line typed where it can be taken,
-                             ;; among the candidates as they are now (more may have come since drawn)
-                             (update-candidates editor)
+                  (let ((*minibuffer-finish* (lambda (answer) (return-from reading answer))))
+                    (flet ((take-in ()
+                             ;; what came in the background; a choice held back is made once all has come
+                             (take-in-source editor)
                              (let ((completion (editor-completion editor)))
-                               (cond ((null completion) (return-from reading (editor-minibuffer-text editor)))
-                                     ;; a name taken though not offered, typed whole
-                                     ((and (not (completion-moved completion))
-                                           (member (editor-minibuffer-text editor) (completion-taken completion) :test #'string=))
-                                      (return-from reading (editor-minibuffer-text editor)))
-                                     ;; nothing typed: the default, at once
-                                     ((and (completion-default completion)
-                                           (zerop (length (editor-minibuffer-text editor)))
-                                           (not (completion-moved completion)))
-                                      (return-from reading
-                                        (let ((selected (selected-candidate completion)))
-                                          (if (and selected (default-candidate-p completion selected))
-                                              (candidate-result selected)
-                                              (completion-default completion)))))
-                                     ;; more coming and nothing chosen by hand: the best match once all has come
-                                     ((and (completion-working completion) (not (completion-moved completion)))
-                                      (setf (completion-done-pending completion) t))
-                                     ((selected-candidate completion)
-                                      (return-from reading (candidate-result (selected-candidate completion))))
-                                     ;; the line typed selected: taken as it is
-                                     ((and (= (completion-index completion) -1) (input-selectable-p completion))
-                                      (return-from reading (editor-minibuffer-text editor)))
-                                     ((completion-require-match completion) (message "No match"))
-                                     (t (return-from reading (editor-minibuffer-text editor)))))))
-                  (loop
-                    (when update
-                      (multiple-value-bind (going prompt count) (funcall update)
-                        (setf working going
-                              (editor-minibuffer-count editor) count)
-                        (when prompt (setf (editor-minibuffer-prompt editor) prompt))))
-                    (redisplay-or-say editor)
-                    (let* ((completion (editor-completion editor))
-                           (source (and completion (completion-source completion))))
-                      (flet ((take-in ()
-                               ;; what came in the background; a choice held back is made once all has come
-                               (take-in-source editor)
-                               (when (and (completion-done-pending completion) (not (completion-working completion)))
+                               (when (and completion (completion-done-pending completion)
+                                          (not (completion-working completion)))
                                  (setf (completion-done-pending completion) nil)
                                  ;; the keys typed while it waited: handled after it, as typed
                                  (put-back-events editor held)
                                  (setf held '())
-                                 (choose))))
-                        ;; what was asked for while the candidates were worked out may have started
-                        ;; work: whether more is coming, asked again before waiting; all come, shown so first
-                        (when source
-                          (let ((was (completion-working completion)))
-                            (take-in)
-                            (when (and was (not (completion-working completion)))
-                              (redisplay-or-say editor))))
-                      (let ((event (if source
-                                       ;; candidates come from the background: woken for them, and
-                                       ;; looking again shortly while more may come
-                                       (let ((*background-work* (or *background-work* (completion-working completion))))
-                                         (read-event editor :ticks t :pastes t :timeout (and (completion-working completion) 1/20)))
-                                       (read-event editor :ticks working :pastes t :timeout (and (realp working) working))))
-                            (before (editor-minibuffer-text editor)))
-                      ;; what a key said is shown until the next one is typed
-                      (when (member (tuatara.frontend:event-kind event) '(:key :paste))
-                        (setf (editor-message editor) nil))
-                      (case (tuatara.frontend:event-kind event)
-                        (:quit (keyboard-quit-signal))
-                        (:tick (when completion (take-in)))
-                        ((:close :drop)
-                         ;; the window closed or files dropped: the question ends as C-g ends it
-                         (setf (editor-deferred editor) (append (editor-deferred editor) (list event)))
-                         (keyboard-quit-signal))
-                        ;; text pasted: typed into the answer, none of it taken for keys
-                        (:paste
-                         (minibuffer-take-pasted (tuatara.frontend:event-text event))
-                         ;; a secret pasted is left in the answer alone
-                         (when *minibuffer-hidden* (wipe-string (tuatara.frontend:event-text event))))
-                        (:key
-                         (if (and completion (completion-done-pending completion)
-                                  (not (quit-key-p (tuatara.frontend:event-key event))))
-                             ;; a choice waits for all to come: what is typed meanwhile is for after it
-                             (setf held (append held (list event)))
-                         (let* ((key (tuatara.frontend:event-key event))
-                                (specs (append (editor-pending editor) (list (tuatara.frontend:key-spec key))))
-                                (binding (resolve-keys editor specs)))
-                           (cond ((keymap-p binding) (setf (editor-pending editor) specs))
-                                 ((and binding *minibuffer-initial-selected*
-                                       (member binding '(minibuffer-backward-delete-char minibuffer-kill-line)))
-                                  ;; the text offered, selected, cleared
-                                  (setf (editor-pending editor) '()
-                                        *minibuffer-initial-selected* nil)
-                                  (minibuffer-clear))
-                                 (binding
-                                  (setf (editor-pending editor) '())
-                                  (unless (member binding
-                                                  '(minibuffer-finish minibuffer-submit-input minibuffer-cancel))
-                                    (setf *minibuffer-initial-selected* nil))
-                                  (case binding
-                                    (minibuffer-finish (choose))
-                                    (minibuffer-submit-input (return-from reading (editor-minibuffer-text editor)))
-                                    (minibuffer-cancel (keyboard-quit-signal))
-                                    (t (funcall (find-command binding)))))
-                                 ((and (null (editor-pending editor))
-                                       (characterp (tuatara.frontend:key-base key))
-                                       (not (tuatara.frontend:key-ctrl key)) (not (tuatara.frontend:key-meta key)))
-                                  (when *minibuffer-initial-selected*
-                                    ;; what is typed takes the place of the text offered
-                                    (setf *minibuffer-initial-selected* nil)
-                                    (minibuffer-clear))
-                                  (let ((typed (string (tuatara.frontend:key-base key))))
-                                    (minibuffer-insert typed)
-                                    (when *minibuffer-hidden* (wipe-string typed))))
-                                 (t (setf (editor-pending editor) '())))))))
-                      (let ((text (editor-minibuffer-text editor)))
-                        (when (and rewrite (> (length text) (length before))
-                                   (= (editor-minibuffer-point editor) (length text)))
-                          (let ((rewritten (funcall rewrite text)))
-                            (unless (string= rewritten text)
-                              (setf (editor-minibuffer-text editor) rewritten
-                                    (editor-minibuffer-point editor) (length rewritten))))))
-                      (when (and changed (string/= before (editor-minibuffer-text editor)))
-                        (funcall changed (editor-minibuffer-text editor))))))))))
-                (setf answered t))
+                                 (choose-minibuffer-answer editor)))))
+                      (take-in-source editor)
+                      (loop
+                        (when update
+                          (multiple-value-bind (going prompt count) (funcall update)
+                            (setf working going
+                                  (editor-minibuffer-count editor) count)
+                            (when prompt
+                              (setf (editor-minibuffer-prompt editor) (values (escape-controls prompt))))))
+                        (redisplay-or-say editor)
+                        (let* ((completion (editor-completion editor))
+                               (source (and completion (completion-source completion))))
+                          ;; what was asked for while the candidates were worked out may have started
+                          ;; work: whether more is coming, asked again before waiting; all come, shown so
+                          ;; first
+                          (when source
+                            (let ((was (completion-working completion)))
+                              (take-in)
+                              (when (and was (not (completion-working completion)))
+                                (redisplay-or-say editor))))
+                          (let ((event (if source
+                                           ;; candidates come from the background: woken for them, and
+                                           ;; looking again shortly while more may come
+                                           (let ((*background-work* (or *background-work*
+                                                                        (completion-working completion))))
+                                             (read-event editor :ticks t :pastes t
+                                                                :timeout (and (completion-working completion) 1/20)))
+                                           (read-event editor :ticks working :pastes t
+                                                              :timeout (and (realp working) working))))
+                                (before (editor-minibuffer-text editor)))
+                            ;; what a key said is shown until the next one is typed
+                            (when (member (tuatara.frontend:event-kind event) '(:key :paste))
+                              (setf (editor-message editor) nil))
+                            (case (tuatara.frontend:event-kind event)
+                              (:quit (keyboard-quit-signal))
+                              (:tick (when completion (take-in)))
+                              ((:close :drop)
+                               ;; the window closed or files dropped: the question ends as C-g ends it
+                               (setf (editor-deferred editor) (append (editor-deferred editor) (list event)))
+                               (keyboard-quit-signal))
+                              ;; text pasted: typed into the answer, none of it taken for keys
+                              (:paste
+                               (minibuffer-take-pasted (tuatara.frontend:event-text event))
+                               ;; a secret pasted is left in the answer alone
+                               (when *minibuffer-hidden* (wipe-string (tuatara.frontend:event-text event))))
+                              (:key
+                               (let ((key (tuatara.frontend:event-key event)))
+                                 (if (and completion (completion-done-pending completion) (not (quit-key-p key)))
+                                     ;; a choice waits for all to come: what is typed meanwhile is for after it
+                                     (setf held (append held (list event)))
+                                     (handle-minibuffer-key editor key)))))
+                            (after-minibuffer-change editor before rewrite changed)))))))
+           (setf answered t))
       (let ((popup (editor-popup editor)))
         (when (and popup (eq (popup-target popup) :minibuffer))
           (close-popup editor)))
@@ -300,16 +330,22 @@ own."
             ((sb-thread:thread-alive-p thread) (values nil :running))
             (t t)))))
 
-(defun wait-until-interruptibly (ready-p &key (message "Working...") (grace 1/10))
+(defun wait-until-interruptibly (ready-p &key (message "Working...") (grace 1/10) wake)
   "Wait until READY-P, a function of no arguments, is true, as
 WAIT-WHILE-INTERRUPTIBLY waits: the editor reading keys, MESSAGE shown after
-GRACE seconds, \\`C-g' stopping the waiting, the work going on. True once
+GRACE seconds, \\`C-g' stopping the waiting, the work going on. With WAKE, a
+semaphore the work signals when READY-P may have become true, it is asked
+then and not otherwise; without, it is asked fifty times a second. True once
 ready; else NIL, and :RUNNING as a second value."
   (wait-while-interruptibly (lambda (seconds)
                               (let ((deadline (tuatara.runtime:deadline-in seconds)))
                                 (loop (when (funcall ready-p) (return nil))
-                                      (when (>= (get-internal-real-time) deadline) (return t))
-                                      (sleep 1/50))))
+                                      (let ((left (tuatara.runtime:seconds-left deadline)))
+                                        (unless (plusp left) (return t))
+                                        (if wake
+                                            ;; not signalled in the time: still running, asked again next time
+                                            (unless (sb-thread:wait-on-semaphore wake :timeout left) (return t))
+                                            (sleep (min left 1/50)))))))
                             :message message :grace grace))
 
 (defun wait-while-interruptibly (running-p &key (message "Working...") (grace 1/10) stop thread)
@@ -351,8 +387,7 @@ when given, the debug log. With no editor showing, it simply waits."
         (loop
           (unless (running-p 1/20) (return))
           (when (and (functionp message) (>= (get-internal-real-time) next)) (show))
-          (when (and (tuatara.frontend:frontend-input-pending-p frontend)
-                     (keep-or-quit-event editor (tuatara.frontend:frontend-read-event-timeout frontend 1/100)))
+          (when (pending-quit-p editor)
             (cond ((null stop) (return-from wait-while-interruptibly (values nil :running)))
                   ((progn (funcall stop) (running-p 2))
                    (when thread (tuatara.runtime:left-running thread "Work stopped with C-g"))
@@ -402,7 +437,7 @@ key said something in its place."
                    (setf shown (editor-message editor))
                    (let* ((event (read-event editor))
                           (key (case (tuatara.frontend:event-kind event)
-                                 (:quit (if fresh (error 'quit) (keyboard-quit-signal)))
+                                 (:quit (quit-asking fresh))
                                  (t (tuatara.frontend:event-key event)))))
                      (when (and replay (not fresh)) (push key (cdr replay)))
                      key)))
@@ -454,7 +489,7 @@ a recording of keys going on."
              (base (tuatara.frontend:key-base key))
              (char (and (not (tuatara.frontend:key-ctrl key)) (not (tuatara.frontend:key-meta key))
                         (characterp base) (char-downcase base))))
-        (cond ((quit-key-p key) (if fresh (error 'quit) (keyboard-quit-signal)))
+        (cond ((quit-key-p key) (quit-asking fresh))
               ((and char (member char answers)) (return char))
               (t (setf asked (format nil "Answer ~a. ~a" (answer-keys-words answers) prompt))))))))
 
@@ -507,22 +542,20 @@ and \\[minibuffer-finish] is pressed with no candidate chosen by hand.
 KEYMAP holds the question's own keys, and REWRITE what is typed, as
 READ-STRING takes them.
 Signals QUIT on abort."
-  (let* ((editor *editor*)
-         (normalise (lambda (items)
-                      (if (every #'candidate-p
-                                 items) items (mapcar (lambda (c) (if (stringp c) (make-candidate c) c)) items))))
+  (let* ((normalise (lambda (items)
+                      (if (every #'candidate-p items)
+                          items
+                          (mapcar (lambda (c) (if (stringp c) (make-candidate c) c)) items))))
          (table (if (functionp table)
                     (lambda (input) (funcall normalise (funcall table input)))
-                    (funcall normalise table))))
-    (let ((completion (make-completion table :annotate annotate :require-match require-match :history history
-                                             :separator separator :filter filter :select select :reselect reselect
-                                             :preview preview :source source :default default :keep-order keep-order
-                                             :none none :taken taken :prompt prompt)))
-      (setf (editor-completion editor) completion)
-      (if source
-          (take-in-source editor)
-          (setf (completion-listed completion) (and (listp table) (length table))))
-      (read-string (shown-prompt completion) :initial initial :keymap keymap :rewrite rewrite))))
+                    (funcall normalise table)))
+         (completion (make-completion table :annotate annotate :require-match require-match :history history
+                                            :separator separator :filter filter :select select :reselect reselect
+                                            :preview preview :source source :default default :keep-order keep-order
+                                            :none none :taken taken :prompt prompt)))
+    (unless source
+      (setf (completion-listed completion) (and (listp table) (length table))))
+    (read-string (shown-prompt completion) :initial initial :keymap keymap :rewrite rewrite :completion completion)))
 
 (defun completing-read-value (prompt candidates &rest keys)
   "Read with completion as COMPLETING-READ does, KEYS given to it, and return
@@ -587,7 +620,7 @@ word beside it."
 
 (define-command minibuffer-submit-input (:interactive nil)
   "Return the minibuffer input as typed, ignoring the candidates."
-  nil)
+  (finish-minibuffer))
 
 (defun minibuffer-insert (string)
   "Insert STRING at the minibuffer cursor."
@@ -603,18 +636,21 @@ a leading minus negates."
   (echo "\\[universal-argument]-"))
 
 (define-command minibuffer-finish (:interactive nil)
-  "Finish minibuffer input and return the text to the command that asked."
-  nil)
+  "Finish minibuffer input: the selected candidate, or the text typed where
+none is chosen, goes to the command that asked."
+  (choose-minibuffer-answer *editor*))
 
 (define-command minibuffer-cancel (:interactive nil)
   "Abandon the minibuffer input."
-  nil)
+  (keyboard-quit-signal))
 
 (define-command minibuffer-backward-delete-char (:interactive nil)
-  "Delete the character before the minibuffer cursor."
-  (let ((p (editor-minibuffer-point *editor*)))
-    (when (plusp p)
-      (replace-minibuffer-text (1- p) p ""))))
+  "Delete the character before the minibuffer cursor, or the text a question
+offered while it is selected."
+  (unless (drop-offered-text)
+    (let ((p (editor-minibuffer-point *editor*)))
+      (when (plusp p)
+        (replace-minibuffer-text (1- p) p "")))))
 
 (define-command minibuffer-backward-char (:interactive nil)
   "Move the minibuffer cursor left a character, a letter with its accents or
@@ -637,9 +673,11 @@ an emoji with its skin tone one."
   (setf (editor-minibuffer-point *editor*) (length (editor-minibuffer-text *editor*))))
 
 (define-command minibuffer-kill-line (:interactive nil)
-  "Delete the minibuffer text after the cursor."
-  (let ((p (editor-minibuffer-point *editor*)))
-    (replace-minibuffer-text p (length (editor-minibuffer-text *editor*)) "")))
+  "Delete the minibuffer text after the cursor, or the text a question offered
+while it is selected."
+  (unless (drop-offered-text)
+    (let ((p (editor-minibuffer-point *editor*)))
+      (replace-minibuffer-text p (length (editor-minibuffer-text *editor*)) ""))))
 
 (define-command minibuffer-clear (:interactive nil)
   "Clear the minibuffer: the text typed goes, the prompt stays, as \\`C-u' clears a shell's line."
@@ -682,20 +720,10 @@ letter or a digit, then over the letters and digits before it."
     (loop while (and (plusp q) (tuatara.text:word-char-p (char text (1- q)))) do (decf q))
     (replace-minibuffer-text q p "" editor)))
 
-(define-setting tuatara-user:*use-system-clipboard* t
-  "Whether what is killed or copied goes on the system clipboard as well.
-Other programs paste it from there, and what another program copied there is
-pasted since.
-- t: the system clipboard is used (the standard).
-- nil: killed text stays with the editor."
-  :values boolean)
-
 (defun minibuffer-take-pasted (text)
   "Put TEXT at the minibuffer cursor, as pasted: in place of the text offered
 when that is selected."
-  (when *minibuffer-initial-selected*
-    (setf *minibuffer-initial-selected* nil)
-    (minibuffer-clear))
+  (drop-offered-text)
   (minibuffer-insert text))
 
 (define-command minibuffer-paste (:interactive nil)
@@ -708,7 +736,11 @@ nowhere else, not the kill ring."
          (text (cond ((plusp (length clipboard)) clipboard)
                      ((stringp kill) kill))))
     (if text
-        (minibuffer-take-pasted (string-right-trim '(#\Newline #\Return) text))
+        (let ((trimmed (string-right-trim '(#\Newline #\Return) text)))
+          (minibuffer-take-pasted trimmed)
+          ;; a secret pasted is left in the answer alone; the clipboard's text is the frontend's to keep
+          (when (and *minibuffer-hidden* (not (eq trimmed text)))
+            (wipe-string trimmed)))
         (message "Nothing to paste"))))
 
 (defun install-minibuffer-keys (keymap)
@@ -747,7 +779,7 @@ nowhere else, not the kill ring."
   (define-key keymap "M-RET" 'minibuffer-submit-input))
 
 (defun yes-or-no-p* (prompt)
-  "Ask PROMPT in the minibuffer, an answer typed and ended with \`RET': for a
+  "Ask PROMPT in the minibuffer, an answer typed and ended with \\`RET': for a
 question whose yes destroys or writes over what cannot be had back (a file
 deleted or written over, changes thrown away). The prompt ends with (y or n,
 then RET). True for the answer y or yes, false for n or no, in any case and

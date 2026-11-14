@@ -514,6 +514,21 @@ abc")
       (true (tuatara.frontend.fake:fake-frame-showing f "Digraphs")))
     (is = 1893 (length tuatara.defaults::*digraph-table*))))
 
+(define-test (objects range-folded-by-one-fold)
+  ;; a range is folded when one fold hides all of it
+  (let ((b (tuatara.buffer:make-buffer "*range folded*" :text (format nil "a~%b~%c~%d~%e~%f~%"))))
+    (unwind-protect
+         (progn
+           (false (tuatara.display:range-folded-p b 2 4))
+           (tuatara.display:fold-region b 1 5)
+           (tuatara.display:fold-region b 7 9)
+           (true (tuatara.display:range-folded-p b 2 4))
+           (true (tuatara.display:range-folded-p b 1 5))
+           (false (tuatara.display:range-folded-p b 4 8))
+           (true (tuatara.display:range-folded-p b 7 9))
+           (false (tuatara.display:range-folded-p b 0 2)))
+      (tuatara.buffer:kill-buffer b))))
+
 (define-test (objects unicode-names-as-the-standard-writes-them)
   ;; one name for a character wherever it is shown: none for a control character or a code
   ;; given no character, the standard's capitals for the rest
@@ -591,6 +606,14 @@ abc")
     (is equal '("" "aa") (multiple-value-list (tuatara.defaults::input-method-step m "aa")))
     (is equal '("aa" "") (multiple-value-list (tuatara.defaults::input-method-step m "aaa")))
     (is equal '("åx" "") (multiple-value-list (tuatara.defaults::input-method-step m "aax")))))
+
+(define-modal-test (objects input-method-key-leaves-functions-alone)
+  ;; a label that would name a function already there is left out, and the function stays
+  (let ((before (fdefinition 'tuatara.defaults::input-method-step))
+        (tuatara-user:*input-method-keys* '(("t" "step" "swedish-postfix"))))
+    (run-keys "SPC i t" :text "")
+    (is eq before (fdefinition 'tuatara.defaults::input-method-step))
+    (false (tuatara.command:find-command 'tuatara.defaults::input-method-step))))
 
 (define-test (objects insert-char)
   (let ((tuatara-user:*modal-editing* nil))
@@ -1105,6 +1128,84 @@ after a tab, and leaves a row after a wide character as it was).")
           (true (tuatara.frontend.fake:fake-frame-showing f "Cut the rectangle's 2 rows"))
           (is string= (format nil "ac~%df~%ghiX") (session-text editor)))))))
 
+(defun rows-job-mapped (text kind left right &rest keys)
+  "TEXT with the rows job KIND over all its lines between the columns LEFT and
+RIGHT applied through the job's mapper, KEYS as ROWS-JOB-SPEC takes them."
+  (let* ((b (tuatara.buffer:make-buffer "rows mapped" :text text))
+         (spec (apply #'tuatara.defaults::rows-job-spec b kind 0
+                      (tuatara.buffer:buffer-line-start b (1- (tuatara.buffer:buffer-size b))) left right keys))
+         (octets (tuatara.text:string-octets text))
+         (out (make-array 0 :element-type '(unsigned-byte 8) :adjustable t :fill-pointer 0))
+         (at 0))
+    (unwind-protect
+         (flet ((add (from to source)
+                  (loop for i from from below to do (vector-push-extend (aref source i) out))))
+           (funcall (tuatara.defaults::rectangle-mapper spec)
+                    (lambda (start end old replacement)
+                      (declare (ignore old))
+                      (add at start octets)
+                      (add 0 (length replacement) replacement)
+                      (setf at end))
+                    0 (tuatara.defaults::rows-job-high spec) nil)
+           (add at (length octets) octets)
+           (tuatara.text:octets-string (coerce out '(simple-array (unsigned-byte 8) (*)))))
+      (tuatara.buffer:kill-buffer b))))
+
+(defun rows-job-written (text kind left right &rest keys &key folds &allow-other-keys)
+  "TEXT with the rows job KIND over all its lines between the columns LEFT and
+RIGHT written in the background by the job's writer, in tiny pieces, KEYS as
+START-ROWS-JOB takes them; the octets of FOLDS, each (START . END), folded
+first."
+  (let ((f (tuatara.frontend.fake:make-fake-frontend :width 60 :height 10))
+        (keys (alexandria:remove-from-plist keys :folds)))
+    (let ((scratch (tuatara.buffer:find-buffer "*scratch*")))
+      (when scratch (tuatara.buffer:kill-buffer scratch)))
+    (let ((b (tuatara.buffer:make-buffer "*scratch*" :text text)))
+      (dolist (fold folds) (tuatara.display:fold-region b (car fold) (cdr fold))))
+    (tuatara.frontend.fake:fake-queue-action
+     f (lambda ()
+         (let* ((b (tuatara.buffer:find-buffer "*scratch*"))
+                (bottom (tuatara.buffer:buffer-line-start b (1- (tuatara.buffer:buffer-size b)))))
+           (apply #'tuatara.defaults::start-rows-job b kind 0 bottom left right
+                  (tuatara.defaults::rows-between b 0 bottom) :announce :none keys))))
+    (tuatara.frontend.fake:fake-queue-action
+     f (lambda ()
+         (loop while (find-if #'tuatara.runtime:job-running-p tuatara.runtime:*jobs*) do (sleep 0.01))))
+    (with-background ()
+      (session-text (without-grammar-questions
+                      (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults
+                                                    :buffer (tuatara.buffer:find-buffer "*scratch*")))))))
+
+(define-test (objects rows-job-mapper-and-writer-agree)
+  ;; every kind of change a rows job makes comes out the same through its mapper and its writer
+  (let* ((text (format nil "ab~ccdef~%x~%~cefgh~%abcdefgh~%(bcd)fg~%\\(bcd)fg~%" #\Tab #\Tab))
+         (source-text (format nil "PQ~%R~%ST~%UV~%WX~%YZ~%"))
+         (source-buffer (tuatara.buffer:make-buffer "rows source" :text source-text))
+         (source (tuatara.defaults::make-rectangle-source
+                  (tuatara.buffer:buffer-text source-buffer) 0
+                  (tuatara.buffer:buffer-line-start source-buffer (1- (length source-text))) 0 2 nil 6 8))
+         (numbering (lambda (k) (tuatara.text:string-octets (format nil "~d." (1+ k))))))
+    (unwind-protect
+         (loop for (kind left right . keys)
+                 in `((:cut 1 4) (:change 1 4 :text "XY") (:change 1 4 :text "XY" :pad nil) (:change 2 2 :text "XY")
+                      (:append 1 4 :text "!") (:clear 1 4) (:clear 1 9) (:number 1 4 :numbering ,numbering)
+                      (:number-in 1 4 :numbering ,numbering) (:wrap 1 4 :open "[" :close "]")
+                      (:wrap 1 9 :open "<<" :close ">") (:unwrap 1 4 :open "(" :close ")")
+                      (:paste 1 3 :source ,source) (:paste 2 2 :source ,source :repeat 2)
+                      (:type 1 4 :text "Z") (:type 1 4 :text "Z" :back 1 :forward 1) (:type 1 4 :text "Z" :at-end t))
+               do (is string= (apply #'rows-job-mapped text kind left right keys)
+                      (apply #'rows-job-written text kind left right keys)
+                      "~s ~s ~s ~s" kind left right keys))
+      (tuatara.buffer:kill-buffer source-buffer))))
+
+(define-test (objects rectangle-unwraps-no-escaped-opener)
+  ;; in the background a row whose opening half is escaped is not unwrapped, nor one whose pair a fold hides part of
+  (let ((text (format nil " (ab)~%\\(ab)~%")))
+    (is string= (format nil " ab~%\\(ab)~%") (rows-job-written text :unwrap 2 4 :open "(" :close ")"))
+    (is string= (format nil " ab~%\\(ab)~%") (rows-job-mapped text :unwrap 2 4 :open "(" :close ")")))
+  (is string= (format nil "ab~%(ab)~%")
+      (rows-job-written (format nil "(ab)~%(ab)~%") :unwrap 1 3 :open "(" :close ")" :folds '((7 . 9)))))
+
 (defun run-keys-folded (keys text folds)
   "RUN-KEYS on TEXT in a plain buffer whose octets FOLDS, each (START . END), are folded first."
   (let ((f (tuatara.frontend.fake:make-fake-frontend :width 40 :height 8)))
@@ -1305,3 +1406,40 @@ after a tab, and leaves a row after a wide character as it was).")
            (setf (tuatara.buffer:buffer-point b) 7 (tuatara.buffer:buffer-mark-active-p b) nil)
            (false (tuatara.defaults::selected-region b)))
       (tuatara.buffer:kill-buffer b))))
+
+(define-test (objects no-pair-is-a-refusal)
+  ;; the words for "no pair here" are a refusal, told whole while a secret is at hand
+  (let ((b (tuatara.buffer:make-buffer "pair-refusal" :text "no pair here")))
+    (unwind-protect
+         (dolist (call (list (lambda () (tuatara.defaults::pair-around b 3 #\( #\) nil))
+                             (lambda () (tuatara.defaults::pair-around b 3 #\" #\" nil))
+                             (lambda () (tuatara.defaults::pair-around-level b 3 #\( #\) nil 2))))
+           (let ((condition (handler-case (funcall call) (error (e) e))))
+             (true (typep condition 'tuatara.runtime:refusal) "~a" condition)))
+      (tuatara.buffer:kill-buffer b))))
+
+(define-modal-test (objects paste-over-last-line-keeps-its-line-end)
+  ;; a paste over whole lines keeps their line end when the paste has none, the text's last line too
+  (flet ((after (keys text) (session-text (nth-value 1 (run-keys keys :text text)))))
+    (is string= (format nil "ab cd~%ab~%") (after "m w y j V p" (format nil "ab cd~%x~%")))
+    (is string= (format nil "ab cd~%ab~%x~%") (after "m w y j V p" (format nil "ab cd~%y~%x~%")))))
+
+(define-test (objects banks-spent-in-one-pass)
+  ;; taking many lines out of as many banks looks at each bank once: the cost grows with the lines, not with
+  ;; the lines times the banks
+  (flet ((seconds (n)
+           (let ((b (tuatara.buffer:make-buffer "many banks" :text (tuatara.defaults::repeated-text (format nil "a~%") n)))
+                 (spans (loop for i below n collect (cons (* 2 i) (* 2 (1+ i))))))
+             (unwind-protect
+                  (progn
+                    (dolist (span spans) (tuatara.defaults::bank-span b span))
+                    (let ((start (get-internal-real-time)))
+                      (tuatara.defaults::spend-banks b spans)
+                      (values (/ (- (get-internal-real-time) start) internal-time-units-per-second)
+                              (tuatara.defaults::buffer-banks b))))
+               (tuatara.buffer:kill-buffer b)))))
+    (multiple-value-bind (small left-small) (seconds 500)
+      (multiple-value-bind (large left-large) (seconds 4000)
+        (false left-small)
+        (false left-large)
+        (true (< large (+ 0.2 (* 16 small))) "~,3f s for 500 banks, ~,3f s for 4,000" small large)))))

@@ -29,10 +29,10 @@ grammars; when empty, grammars/ beside the program, then the source tree's
 build/grammars/.")
 
 (defun user-grammar-directory ()
-  "The directory of the grammars you add yourself: tuatara/grammars/ in your data
-directory ($XDG_DATA_HOME, ~/.local/share/ unless set), each NAME.so with its
-rules in rules/, indents/, textobjects/, injections/, locals/ and tags/ beside
-it, as Tuatara's own syntax/ has them. Grammars are never loaded from it:
+  "The directory of the grammars you add yourself: tuatara/grammars/ in your
+data directory ($XDG_DATA_HOME, ~/.local/share/ unless set), each NAME.so with
+its rules in rules/, indents/, textobjects/, injections/, locals/ and tags/
+beside it, as Tuatara's own syntax/ has them. Grammars are never loaded from it:
 turned on, one is copied into USER-GRAMMAR-STORE."
   (uiop:xdg-data-home "tuatara/grammars/"))
 
@@ -45,24 +45,27 @@ words, or NIL (USER-GRAMMAR-STORE).")
 words, as USER-GRAMMAR-STORE last found; NIL when it can."
   **store-refused**)
 
-(defun user-grammar-store ()
+(defun user-grammar-store (&key (make t))
   "The directory the grammars you added and turned on are kept in, as they were
-turned on: grammar-store/ in Tuatara's state directory, made if needed, for you
-alone. The program running grammars loads them from here. NIL, with why in
-**STORE-REFUSED**, when what is there is a link, no directory, or someone
-else's; a directory of yours others may read or write is made yours alone."
+turned on: grammar-store/ in Tuatara's state directory, made if needed when
+MAKE is true, for you alone. The program running grammars loads them from here.
+NIL, with why in **STORE-REFUSED**, when what is there is a link, no directory,
+or someone else's, or when there is none and MAKE is false; a directory of
+yours others may read or write is made yours alone."
   (let* ((directory (merge-pathnames "grammar-store/" (tuatara.io:state-directory)))
          (name (string-right-trim "/" (uiop:native-namestring directory)))
-         (stat (handler-case (sb-posix:lstat name) (sb-posix:syscall-error () nil))))
-    (unless stat
+         (stamp (tuatara.io:path-stamp name :follow nil :failure nil)))
+    (when (and (null stamp) (not make))
+      (return-from user-grammar-store nil))
+    (unless stamp
       (handler-case (sb-posix:mkdir name #o700) (sb-posix:syscall-error () nil))
-      (setf stat (handler-case (sb-posix:lstat name) (sb-posix:syscall-error () nil))))
-    (let ((why (cond ((null stat) "it cannot be made")
-                     ((/= (logand (sb-posix:stat-mode stat) sb-posix:s-ifmt) sb-posix:s-ifdir) "it is a link or no directory")
-                     ((/= (sb-posix:stat-uid stat) (sb-posix:getuid)) "it is someone else's"))))
+      (setf stamp (tuatara.io:path-stamp name :follow nil :failure nil)))
+    (let ((why (cond ((null stamp) "it cannot be made")
+                     ((not (eq (tuatara.io:stamp-kind stamp) :directory)) "it is a link or no directory")
+                     ((/= (tuatara.io:stamp-uid stamp) (sb-posix:getuid)) "it is someone else's"))))
       (setf **store-refused** (and why (format nil "~a: ~a" name why)))
       (unless why
-        (when (/= (logand (sb-posix:stat-mode stat) #o777) #o700)
+        (when (/= (logand (tuatara.io:stamp-mode stamp) #o777) #o700)
           (sb-posix:chmod name #o700))
         directory))))
 
@@ -86,12 +89,19 @@ of one of Tuatara's."
 LENGTH, the octets up to the first zero."
   (tuatara.text:lenient-string (sap-octets pointer length)))
 
+(sb-ext:defglobal **physical-memory** nil
+  "The octets of memory the machine has, once asked (PHYSICAL-MEMORY).")
+
 (defun physical-memory ()
-  "The octets of memory the machine has, or 0 when the system does not say."
-  (flet ((conf (name)
-           (sb-alien:alien-funcall (sb-alien:extern-alien "sysconf" (function sb-alien:long sb-alien:int)) name)))
-    (let ((pages (conf 85)) (size (conf 30)))      ; _SC_PHYS_PAGES, _SC_PAGESIZE
-      (if (and (plusp pages) (plusp size)) (* pages size) 0))))
+  "The octets of memory the machine has, or 0 when the system does not say;
+asked of it once."
+  (or **physical-memory**
+      (setf **physical-memory**
+            (flet ((conf (name)
+                     (sb-alien:alien-funcall (sb-alien:extern-alien "sysconf" (function sb-alien:long sb-alien:int))
+                                             name)))
+              (let ((pages (conf 85)) (size (conf 30)))      ; _SC_PHYS_PAGES, _SC_PAGESIZE
+                (if (and (plusp pages) (plusp size)) (* pages size) 0))))))
 
 (defvar *syntax-helper-memory* (* 4 1024 1024 1024)
   "The octets of memory each program parsing for the editor (its syntax
@@ -157,7 +167,7 @@ for each parser it holds, and its own.")
 
 ;;; A helper
 
-(defstruct (helper (:constructor %make-helper (process fd directories kind)) (:copier nil))
+(define-record (helper (:constructor %make-helper (process fd directories kind)) (:copier nil))
   "A program parsing for the editor. It holds its PROCESS, file descriptor (FD)
 its first connection (over which the others are handed to it, and parses are
 stopped), the grammar DIRECTORIES it was given, and its KIND. :OWN parses one
@@ -169,43 +179,28 @@ CONNECTIONS all it has. WRITE-LOCK is held while the first connection is
 written to, and while IDLE and CONNECTIONS change. QUERIES holds the numbers
 of the queries it has been given. ALIVE is set until it ends, ENDED says what
 ended it, USED when it was last asked something."
-  (process nil :read-only t)
-  (fd -1 :type fixnum :read-only t)
-  (directories '() :read-only t)
-  (kind :own :read-only t)
-  (faulted '())
-  (parsing (list 0))
-  (kept nil)
-  (buffer nil)
-  (idle '())
-  (connections '())
-  (write-lock (sb-thread:make-mutex :name "syntax helper") :read-only t)
-  (queries (make-hash-table :synchronized t) :read-only t)
-  (alive t)
-  (ended nil)
-  (used (get-internal-real-time)))
-
-(setf (documentation 'helper-p 'function) "True when OBJECT is a HELPER."
-      (documentation 'helper-process 'function) "The helper's process."
-      (documentation 'helper-fd 'function) "The helper's first connection."
-      (documentation 'helper-directories 'function) "The grammar directories the helper was given."
-      (documentation 'helper-kind 'function) "What the helper is for: :OWN, :SHARED or :RULES."
-      (documentation 'helper-parsing 'function) "How many parses run in the helper now, in a cons for atomic counting."
-      (documentation 'helper-buffer 'function) "The buffer whose text the helper parses, for one of its own."
-      (documentation 'helper-kept 'function) "True while the helper is in use for work that must not
-lose it (an export), never ended for room."
-      (documentation 'helper-faulted 'function) "The names of the grammars that crashed in the
-helper, or in those before it for its buffer."
-      (documentation 'helper-idle 'function) "The helper's connections no call uses now."
-      (documentation 'helper-connections 'function) "Every connection to the helper."
-      (documentation 'helper-write-lock 'function) "Held while the first connection is written to,
-and the connections change."
-      (documentation 'helper-queries 'function) "The numbers of the queries the helper has been given."
-      (documentation 'helper-alive 'function) "True until the helper ends."
-      (documentation 'helper-ended 'function) "What ended the helper: :CRASHED, :HUNG, :SLOW (honest
+  (process nil :read-only t :documentation "The helper's process.")
+  (fd -1 :type fixnum :read-only t :documentation "The helper's first connection.")
+  (directories '() :read-only t :documentation "The grammar directories the helper was given.")
+  (kind :own :read-only t :documentation "What the helper is for: :OWN, :SHARED or :RULES.")
+  (faulted '() :documentation "The names of the grammars that crashed in the
+helper, or in those before it for its buffer.")
+  (parsing (list 0) :documentation "How many parses run in the helper now, in a cons for atomic counting.")
+  (kept nil :documentation "True while the helper is in use for work that must not
+lose it (an export), never ended for room.")
+  (buffer nil :documentation "The buffer whose text the helper parses, for one of its own.")
+  (idle '() :documentation "The helper's connections no call uses now.")
+  (connections '() :documentation "Every connection to the helper.")
+  (write-lock (sb-thread:make-mutex :name "syntax helper") :read-only t
+              :documentation "Held while the first connection is written to,
+and the connections change.")
+  (queries (make-hash-table :synchronized t) :read-only t
+           :documentation "The numbers of the queries the helper has been given.")
+  (alive t :documentation "True until the helper ends.")
+  (ended nil :documentation "What ended the helper: :CRASHED, :HUNG, :SLOW (honest
 work past its time), :BROKEN (a reply that cannot be right) or :STOPPED; NIL
-while it runs."
-      (documentation 'helper-used 'function) "When the helper was last asked something, in internal time units.")
+while it runs.")
+  (used (get-internal-real-time) :documentation "When the helper was last asked something, in internal time units."))
 
 (defun helper-shared (helper)
   "True when HELPER parses the files of projects you trust."
@@ -232,37 +227,29 @@ load from, as ((KIND . DIRECTORIES) . HELPER).")
 (defconstant +read-size+ 65536
   "The most octets a parse is given at a time.")
 
-(defstruct (call (:constructor %make-call (helper fd)) (:copier nil))
+(define-record (call (:constructor %make-call (helper fd)) (:copier nil))
   "A connection to HELPER over the socket open as file descriptor (FD), used
 by one call at a time. OUT is foreign memory the request is written in (its
 header first), OUT-SIZE octets of it used of OUT-ROOM. IN is where the
 reply's body is put, IN-SIZE octets of IN-ROOM. HEADER is where a message's
 header is read. TEXT is where the text a parse reads is given from. STATUS is
-what the reply's header said, :DEAD when the helper ended first."
-  (helper nil :read-only t)
-  (fd -1 :type fixnum :read-only t)
-  (out (null-pointer) :type sb-sys:system-area-pointer)
-  (out-size 0 :type fixnum)
-  (out-room 0 :type fixnum)
-  (in (null-pointer) :type sb-sys:system-area-pointer)
-  (in-size 0 :type fixnum)
-  (in-room 0 :type fixnum)
-  (header (null-pointer) :type sb-sys:system-area-pointer)
-  (text (null-pointer) :type sb-sys:system-area-pointer)
-  (status nil))
-
-(setf (documentation 'call-p 'function) "True when OBJECT is a CALL."
-      (documentation 'call-helper 'function) "The helper the connection is to."
-      (documentation 'call-fd 'function) "The connection's socket."
-      (documentation 'call-out 'function) "Foreign memory the request is written in."
-      (documentation 'call-out-size 'function) "The octets of the request written."
-      (documentation 'call-out-room 'function) "The octets there is room for in the request."
-      (documentation 'call-in 'function) "Foreign memory the reply's body is put in."
-      (documentation 'call-in-size 'function) "The octets of the reply's body."
-      (documentation 'call-in-room 'function) "The octets there is room for in the reply."
-      (documentation 'call-header 'function) "Foreign memory a message's header is read into."
-      (documentation 'call-text 'function) "Foreign memory the text a parse reads is given through."
-      (documentation 'call-status 'function) "How the request went: its reply's third number, or :DEAD.")
+what the reply's header said, :DEAD when the helper ended first. OPEN is true
+while a request is out and its reply not read whole, as when reading it was
+cut short: such a connection is closed when given back, never used again."
+  (helper nil :read-only t :documentation "The helper the connection is to.")
+  (fd -1 :type fixnum :read-only t :documentation "The connection's socket.")
+  (out (null-pointer) :type sb-sys:system-area-pointer :documentation "Foreign memory the request is written in.")
+  (out-size 0 :type fixnum :documentation "The octets of the request written.")
+  (out-room 0 :type fixnum :documentation "The octets there is room for in the request.")
+  (in (null-pointer) :type sb-sys:system-area-pointer :documentation "Foreign memory the reply's body is put in.")
+  (in-size 0 :type fixnum :documentation "The octets of the reply's body.")
+  (in-room 0 :type fixnum :documentation "The octets there is room for in the reply.")
+  (header (null-pointer) :type sb-sys:system-area-pointer
+          :documentation "Foreign memory a message's header is read into.")
+  (text (null-pointer) :type sb-sys:system-area-pointer
+        :documentation "Foreign memory the text a parse reads is given through.")
+  (status nil :documentation "How the request went: its reply's third number, or :DEAD.")
+  (open nil :documentation "True while the connection's request is out and its reply not read whole."))
 
 (defun foreign-grow (sap room wanted)
   "Foreign memory of at least WANTED octets holding what SAP's ROOM octets
@@ -367,7 +354,8 @@ between calls: more, taken for a large one, is let go.")
 
 (defun give-back-call (call)
   "Keep the connection CALL to be used again, its memory for requests and
-replies no more than +KEPT-ROOM+, or close it when its helper has ended."
+replies no more than +KEPT-ROOM+, or close it when its helper has ended or
+the reply to its request was not read whole (CALL-OPEN)."
   (when (> (call-in-room call) +kept-room+)
     (foreign-free (call-in call))
     (multiple-value-bind (in room) (foreign-grow (null-pointer) 0 4096)
@@ -378,7 +366,7 @@ replies no more than +KEPT-ROOM+, or close it when its helper has ended."
       (setf (call-out call) out (call-out-room call) room (call-out-size call) 0)))
   (let ((helper (call-helper call)))
     (when (sb-thread:with-mutex ((helper-write-lock helper))
-            (if (helper-alive helper)
+            (if (and (helper-alive helper) (not (call-open call)))
                 (progn (push call (helper-idle helper)) nil)
                 (progn (setf (helper-connections helper) (remove call (helper-connections helper))) t)))
       (close-call call))))
@@ -460,34 +448,26 @@ helper (REPLY-OVERRUN)."
   (reply-has call at length)
   (foreign-string (sb-sys:sap+ (call-in call) at) length))
 
-(defstruct (parse-input (:constructor make-parse-input
-                                      (rope &optional (end (tuatara.text:rope-octet-length rope)) (number 0)
-                                                                       (size end)))
-                        (:copier nil))
+(define-record (parse-input (:constructor make-parse-input
+                                         (rope &optional (end (tuatara.text:rope-octet-length rope)) (number 0)
+                                                                          (size end)))
+                           (:copier nil))
   "The text a parse reads: ROPE, up to octet END (the end of the last range of
 it read, for text in another language), by the parser NUMBER (0 for those
 parsing text in other languages), SIZE octets of text in all. FAILED is set
 when reading it went wrong, and the parse is then thrown away; OVER when it
 asked for its text more times over than a parse does (READ-BACK-MOST), and
 was given no more of it."
-  (rope nil :read-only t)
-  (end 0 :type fixnum :read-only t)
-  (number 0 :type fixnum :read-only t)
-  (size 0 :type fixnum :read-only t)
-  (given 0 :type fixnum)
-  (failed nil)
-  (over nil))
+  (rope nil :read-only t :documentation "The rope being parsed.")
+  (end 0 :type fixnum :read-only t :documentation "The octet the parse reads no further than.")
+  (number 0 :type fixnum :read-only t :documentation "The number of the parser reading the text.")
+  (size 0 :type fixnum :read-only t :documentation "The octets of text the parse is of, in all.")
+  (given 0 :type fixnum :documentation "The octets of text given to the parse so far.")
+  (failed nil :documentation "True when reading the text went wrong.")
+  (over nil :documentation "True when the parse asked for more of its text than it may have."))
 
 (setf (documentation 'make-parse-input 'function) "A PARSE-INPUT reading ROPE up to END (its end
-unless given) by the parser NUMBER."
-      (documentation 'parse-input-end 'function) "The octet the parse reads no further than."
-      (documentation 'parse-input-number 'function) "The number of the parser reading the text."
-      (documentation 'parse-input-p 'function) "True when OBJECT is a PARSE-INPUT."
-      (documentation 'parse-input-rope 'function) "The rope being parsed."
-      (documentation 'parse-input-failed 'function) "True when reading the text went wrong."
-      (documentation 'parse-input-given 'function) "The octets of text given to the parse so far."
-      (documentation 'parse-input-size 'function) "The octets of text the parse is of, in all."
-      (documentation 'parse-input-over 'function) "True when the parse asked for more of its text than it may have.")
+unless given) by the parser NUMBER.")
 
 (defparameter *read-back-times* 64
   "How many times over a parse may read its text: a grammar reads text again
@@ -543,9 +523,10 @@ ended when the whole call, its request, the text its parse asks for and its
 reply, takes more than SECONDS (*SYNTAX-HELPER-WAIT* unless given), or its
 reply is longer than MOST octets (unless given, the most for what it asked,
 OP-REPLY-MOST); ended as LATE when late (:HUNG unless given: :SLOW for work
-that may honestly take that long). CANCEL, a function of no arguments, is called now and then
-while waiting, to say a parse is to stop; INPUT is the text a parse asked
-reads."
+that may honestly take that long). A reply is taken in as it comes, the room
+for it growing with what came, not with what its header says. CANCEL, a
+function of no arguments, is called now and then while waiting, to say a
+parse is to stop; INPUT is the text a parse asked reads."
   (let* ((helper (call-helper call))
          (fd (call-fd call))
          (sap (call-out call))
@@ -554,7 +535,8 @@ reads."
          (most (min +reply-most+ (or most (op-reply-most (sb-sys:sap-ref-32 (call-out call) 8))))))
     (setf (sb-sys:sap-ref-32 sap 0) (- (call-out-size call) 12)
           (sb-sys:sap-ref-32 sap 4) 1
-          (helper-used helper) (get-internal-real-time))
+          (helper-used helper) (get-internal-real-time)
+          (call-open call) t)
     (flet ((dead (why)
              (end-helper helper why)
              (return-from call-send (setf (call-status call) :dead)))
@@ -593,11 +575,18 @@ reads."
                          (moved (give-text call input id byte deadline))))
                      (progn
                        (unless (and (= id 1) (<= size most)) (dead :broken))
-                       (when (> size (call-in-room call))
-                         (multiple-value-bind (in room) (foreign-grow (call-in call) (call-in-room call) size)
-                           (setf (call-in call) in (call-in-room call) room)))
-                       (moved (transfer fd (call-in call) size :read deadline))
-                       (setf (call-in-size call) size)
+                       ;; room made as the reply comes, at most twice what came before
+                       (loop with got = 0
+                             while (< got size)
+                             do (let ((part (min (- size got) (max 65536 got))))
+                                  (when (> (+ got part) (call-in-room call))
+                                    (multiple-value-bind (in room)
+                                        (foreign-grow (call-in call) (call-in-room call) (+ got part))
+                                      (setf (call-in call) in (call-in-room call) room)))
+                                  (moved (transfer fd (sb-sys:sap+ (call-in call) got) part :read deadline))
+                                  (incf got part)))
+                       (setf (call-in-size call) size
+                             (call-open call) nil)
                        (return (setf (call-status call) status)))))))))))
 
 (defmacro with-call ((call helper op) &body body)
@@ -654,8 +643,8 @@ connections, and a grammar's file while it is loaded.")
   "Say, once, that text is not parsed because there is no sandbox: TRUSTED
 when it is that of a project you trust. NIL."
   (unless (shiftf **refused-said** t)
-    (tuatara.runtime:debug-report :error "no syntax helper started: there is no sandbox~:[~; (*syntax-helper-unconfined* not set)~]"
-                                  trusted)
+    (tuatara.runtime:debug-report
+     :error "no syntax helper started: there is no sandbox~:[~; (*syntax-helper-unconfined* not set)~]" trusted)
     (tuatara.runtime:ignoring-errors-reported ("saying no syntax helper is started")
       (host-say-helper-refused tuatara.runtime:*host* trusted)))
   nil)
@@ -669,13 +658,13 @@ is no sandbox, and KIND is :OWN, or none runs without one
        t))
 
 (defun start-helper (directories kind &key at-once held)
-  "A new helper of KIND (see HELPER) loading grammars from DIRECTORIES, shut
-in by the sandbox; NIL when its program is not found, or when there is no
-sandbox: then a helper parsing a file outside the projects you trust is
-never started, and another only when *SYNTAX-HELPER-UNCONFINED* says so, a
-process of its own not shut in. AT-ONCE, when another start is under way,
-or this one takes more than a moment, gives :BUSY (TUATARA.IO:IN-STARTER), which HELD
-says the caller holds already."
+  "A new helper of KIND (see HELPER) loading grammars from DIRECTORIES, shut in
+by the sandbox; NIL when its program is not found, or when there is no sandbox:
+then a helper parsing a file outside the projects you trust is never started,
+and another only when *SYNTAX-HELPER-UNCONFINED* says so, a process of its own
+not shut in. AT-ONCE, when another start is under way, or this one takes more
+than a moment, gives :BUSY (TUATARA.IO:IN-STARTER), which HELD says the caller
+holds already."
   (let ((program (syntax-helper-program directories)))
     (when program
       (multiple-value-bind (mine theirs) (socket-pair)
@@ -711,8 +700,11 @@ says the caller holds already."
                   (process
                    (let ((helper (%make-helper process mine directories kind)))
                      (sb-thread:with-mutex (**helpers-lock**) (push helper **helpers**))
-                     (tuatara.runtime:debug-report :parse "syntax helper (~(~a~)) started, ~:[not shut in: no sandbox, *syntax-helper-unconfined* set~;shut in~]"
-                                                   kind (eq how :shut-in))
+                     (tuatara.runtime:debug-report
+                      :parse "syntax helper (~(~a~)) started, ~
+                              ~:[not shut in: no sandbox, *syntax-helper-unconfined* set~;shut in~]"
+                      kind (eq how :shut-in))
+
                      helper))
                   (t
                    (sb-posix:close mine)
@@ -740,19 +732,6 @@ HELPER-PARSING says whether a parse was running in it, which says so itself.")
   "What is being parsed or coloured now, to which what goes wrong is counted:
 a buffer, or what an export of a text is known by (TEXT-KEY); NIL for none.")
 
-(defun octets-digest (rope)
-  "A 64-bit digest (FNV-1a) of the octets of ROPE, the same for the same text."
-  (let ((hash #xcbf29ce484222325)
-        (window (make-array 65536 :element-type '(unsigned-byte 8)))
-        (bytes (tuatara.text:rope-octet-length rope)))
-    (declare (type (unsigned-byte 64) hash))
-    (loop for from from 0 below bytes by 65536
-          for to = (min bytes (+ from 65536))
-          do (tuatara.text:rope-copy-into rope from to window)
-             (dotimes (i (- to from))
-               (setf hash (ldb (byte 64 0) (* (logxor hash (aref window i)) #x100000001b3)))))
-    hash))
-
 (defun text-key (&key file text)
   "What a text is known by when what goes wrong in it is counted: the real
 path of FILE, every link followed, else a digest of TEXT (a rope or a
@@ -761,7 +740,8 @@ string), the same however often it is opened or exported."
       (or (tuatara.runtime:ignoring-errors-reported ("finding where ~a really is" file)
             (tuatara.io:real-path (tuatara.io:native (tuatara.io:expand-path file))))
           file)
-      (list :text (octets-digest (if (stringp text) (tuatara.text:string->rope text) text)))))
+      (list :text (let ((rope (if (stringp text) (tuatara.text:string->rope text) text)))
+                    (tuatara.text:rope-hash rope 0 (tuatara.text:rope-octet-length rope))))))
 
 (sb-ext:defglobal **faults-by-key** (make-hash-table :test 'equal :synchronized t)
   "What went wrong in each text known by a key (TEXT-KEY) and no buffer, as an export's.")
@@ -827,20 +807,16 @@ helper wanted in its place is started afresh."
           ;; its connections closed below even when ending it fails
           (tuatara.runtime:ignoring-errors-reported ("ending the syntax helper's process")
             (tuatara.io:end-sandbox process :wait wait))))
-      (flet ((shut (fd)
-               (sb-alien:alien-funcall (sb-alien:extern-alien "shutdown"
-                                                              (function sb-alien:int sb-alien:int sb-alien:int))
-                                       fd 2)))
-        (shut (helper-fd helper))
-        (tuatara.runtime:ignoring-errors-reported ("closing the syntax helper's connection")
-          (sb-posix:close (helper-fd helper)))
-        ;; the connections in use end for their callers, closed when given back
-        (let ((idle (sb-thread:with-mutex ((helper-write-lock helper))
-                      (dolist (call (helper-connections helper)) (shut (call-fd call)))
-                      (setf (helper-connections helper)
-                            (set-difference (helper-connections helper) (helper-idle helper)))
-                      (shiftf (helper-idle helper) '()))))
-          (mapc #'close-call idle)))
+      (tuatara.io:shut-socket (helper-fd helper))
+      (tuatara.runtime:ignoring-errors-reported ("closing the syntax helper's connection")
+        (sb-posix:close (helper-fd helper)))
+      ;; the connections in use end for their callers, closed when given back
+      (let ((idle (sb-thread:with-mutex ((helper-write-lock helper))
+                    (dolist (call (helper-connections helper)) (tuatara.io:shut-socket (call-fd call)))
+                    (setf (helper-connections helper)
+                          (set-difference (helper-connections helper) (helper-idle helper)))
+                    (shiftf (helper-idle helper) '()))))
+        (mapc #'close-call idle))
       ;; one that stopped answering, or answered wrongly, while not parsing:
       ;; nothing more of its buffer is parsed, so that it does not hang again
       (when (and (member why '(:hung :broken)) (helper-buffer helper) (zerop (car (helper-parsing helper))))
@@ -865,7 +841,6 @@ the texts it parsed are parsed again by another. NIL."
   "End every helper, as the program does before a saved image is made and when it ends."
   (dolist (helper (sb-thread:with-mutex (**helpers-lock**) (copy-list **helpers**)))
     (stop-helper helper)))
-
 
 (pushnew 'forget-killed-buffer-helper tuatara.buffer:*kill-buffer-functions*)
 (pushnew 'stop-helpers sb-ext:*save-hooks*)
@@ -1050,21 +1025,25 @@ the text shown uncoloured meanwhile."
   "The settings that say how a helper is started and chosen, given to the
 thread a parse runs in as they are where it was asked for.")
 
-(defun helper-settings ()
-  "The values of *HELPER-SETTING-NAMES* now, as a list."
-  (mapcar #'symbol-value *helper-setting-names*))
+(defun with-helper-settings ()
+  "A function that calls a function of no arguments with each of
+*HELPER-SETTING-NAMES* bound as it is now (TUATARA.RUNTIME:CARRY-SETTINGS),
+for work on another thread."
+  (tuatara.runtime:carry-settings *helper-setting-names* #'funcall))
 
 (defun start-in-background (function)
   "Call FUNCTION, which starts a helper, in a thread of its own, then wake the
 editor (HOST-WAKE) to show what it now parses."
-  (let ((settings (helper-settings)))
-    (sb-thread:make-thread (lambda ()
-                             (progv *helper-setting-names* settings
-                               (tuatara.runtime:ignoring-errors-reported ("starting a syntax helper in the background")
-                                 (funcall function)))
-                             (tuatara.runtime:ignoring-errors-reported ("waking the editor after a helper started")
-                               (tuatara.runtime:host-wake tuatara.runtime:*host*)))
-                           :name "syntax helper starting in the background")))
+  (tuatara.runtime:make-guarded-thread
+   (tuatara.runtime:carry-settings *helper-setting-names*
+                                   (lambda ()
+                                     (tuatara.runtime:ignoring-errors-reported
+                                         ("starting a syntax helper in the background")
+                                       (funcall function))
+                                     (tuatara.runtime:ignoring-errors-reported
+                                         ("waking the editor after a helper started")
+                                       (tuatara.runtime:host-wake tuatara.runtime:*host*))))
+   :name "syntax helper starting in the background"))
 
 (defgeneric host-buffer-shown-p (host buffer)
   (:documentation "True while BUFFER's text is shown, asked from any thread: a helper of a buffer

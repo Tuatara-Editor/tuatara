@@ -70,13 +70,26 @@ first again after the last; back when COUNT is negative."
 With a prefix argument N, the Nth window on, or back when N is negative."
   (select-window (window-on (prefix))))
 
+(defun call-with-window-towards (direction name function)
+  "Call FUNCTION with the window next to the selected one in DIRECTION, or say
+there is none, calling that side NAME."
+  (let ((window (window-towards direction)))
+    (if window
+        (funcall function window)
+        (message "No window ~a" name))))
+
+(defun call-with-other-window (function)
+  "Call FUNCTION with the window after the selected one (WINDOW-ON), or say
+there is no other window."
+  (let ((next (window-on 1)))
+    (if (eq next (current-window))
+        (message "There is no other window")
+        (funcall function next))))
+
 (defun select-window-towards (direction name)
   "Select the window next to the selected one in DIRECTION, or say there is
 none, calling that side NAME."
-  (let ((window (window-towards direction)))
-    (if window
-        (select-window window)
-        (message "No window ~a" name))))
+  (call-with-window-towards direction name #'select-window))
 
 (define-command select-window-left ()
   "Select the window to the left of the selected one: the one beside point's line."
@@ -99,10 +112,7 @@ none, calling that side NAME."
 (defun swap-window-towards (direction name)
   "Swap what the selected window shows with the window next to it in
 DIRECTION, or say there is none, calling that side NAME."
-  (let ((window (window-towards direction)))
-    (if window
-        (swap-windows (current-window) window)
-        (message "No window ~a" name))))
+  (call-with-window-towards direction name (lambda (window) (swap-windows (current-window) window))))
 
 (define-command swap-window-left ()
   "Swap the selected window's buffer with the window to the left; you go with
@@ -127,23 +137,18 @@ buffer, so it moves down."
 (define-command window-swap-states ()
   "Swap what the selected window shows with the next window (as
 \\[other-window] would select it); you go with your buffer."
-  (if (one-window-p)
-      (message "There is no other window")
-      (swap-windows (current-window) (window-on 1))))
+  (call-with-other-window (lambda (window) (swap-windows (current-window) window))))
 
 (define-command rotate-windows ()
   "Move each window's buffer to the next window, from the top left, and the
 last window's to the first; you go with your buffer."
-  (if (one-window-p)
-      (message "There is no other window")
-      (rotate-window-states (editor-windows))))
+  (call-with-other-window (lambda (window) (declare (ignore window)) (rotate-window-states (editor-windows)))))
 
 (define-command rotate-windows-back ()
   "Move each window's buffer to the window before it, from the top left, and
 the first window's to the last; you go with your buffer."
-  (if (one-window-p)
-      (message "There is no other window")
-      (rotate-window-states (reverse (editor-windows)))))
+  (call-with-other-window
+   (lambda (window) (declare (ignore window)) (rotate-window-states (reverse (editor-windows))))))
 
 (defun turn-windows (how)
   "Rearrange the layout of windows as TURN-LAYOUT does for HOW."
@@ -254,10 +259,7 @@ find-file does."
 (defun scroll-next-window (direction)
   "Scroll the next window (SCROLL-BY-COUNT, DIRECTION 1 forward or -1 back),
 leaving the selected one as it is, or say there is none."
-  (let ((next (window-on 1)))
-    (if (eq next (current-window))
-        (message "There is no other window")
-        (scroll-by-count next direction))))
+  (call-with-other-window (lambda (window) (scroll-by-count window direction))))
 
 (define-command scroll-other-window ()
   "Scroll the next window forward by nearly a screenful, leaving the selected
@@ -289,8 +291,9 @@ kept for them and selected."
      (format out "Where buffers are shown~2%")
      (format out "Of the rules that fit a buffer the first counts; a buffer no rule fits~%")
      (format out "is shown in another window (the place :other). Rules are made in the~%")
-     (format out (substitute-command-keys "init file with (place-buffers WHICH PLACE ...); \\[describe-function] place-buffers~%"
-                                          :marks t :for-format t))
+     (format out (substitute-command-keys
+                  "init file with (place-buffers WHICH PLACE ...); \\[describe-function] place-buffers~%"
+                  :marks t :for-format t))
      (format out "has the details.~2%")
      (format out "  ~30a ~10a ~6a ~5a ~a~%" "Buffers" "Place" "Size" "Kept" "Selected")
      (dolist (rule *buffer-places*)

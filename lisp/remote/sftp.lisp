@@ -74,14 +74,19 @@ past them the listing is cut, as past *SFTP-MOST-LISTED* entries.")
 (defun sftp-put (box field)
   "Put FIELD in BOX as SFTP writes it: an integer as 4 octets, a string as
 UTF-8 and octets as they are, each after its length; (:U64 N) as 8 octets;
-(:ATTRIBUTES PLIST) as a file's attributes (SFTP-PUT-ATTRIBUTES)."
+(:OCTETS VECTOR START END) as the octets of VECTOR from START below END, none
+copied first; (:ATTRIBUTES PLIST) as a file's attributes
+\(SFTP-PUT-ATTRIBUTES)."
   (etypecase field
     (integer (sftp-put-integer box field 4))
     (string (sftp-put box (tuatara.text:string-octets field)))
     (vector (sftp-put-integer box (length field) 4)
-     (tuatara.frontend:put-octets box (coerce field 'tuatara.text:octets)))
+            (tuatara.frontend:put-octets box (coerce field 'tuatara.text:octets)))
     (cons (ecase (first field)
             (:u64 (sftp-put-integer box (second field) 8))
+            (:octets (destructuring-bind (octets start end) (rest field)
+                       (sftp-put-integer box (- end start) 4)
+                       (tuatara.frontend:put-octets box octets start end)))
             (:attributes (sftp-put-attributes box (second field)))))))
 
 (defun sftp-put-attributes (box attributes)
@@ -217,13 +222,13 @@ of them."
     (loop while (< (tuatara.frontend:inbox-at inbox) (tuatara.frontend:inbox-stop inbox))
           do (when (>= (length extensions) +sftp-most-extensions+)
                (tuatara.frontend:malformed "more than ~d extensions" +sftp-most-extensions+))
-             (push (sftp-take-text inbox 256 "an extension's name") extensions)
-             (sftp-take-span inbox +sftp-most-name+ "an extension's data"))
+          (push (sftp-take-text inbox 256 "an extension's name") extensions)
+          (sftp-take-span inbox +sftp-most-name+ "an extension's data"))
     (values version (nreverse extensions))))
 
 ;;; The connection to a server
 
-(defstruct (sftp-link (:constructor make-sftp-link (host)) (:copier nil))
+(define-record (sftp-link (:constructor make-sftp-link (host)) (:copier nil))
   "The connection to the SFTP server of HOST, as ssh takes it, used by one
 thread at a time, holding LOCK. PROCESS is the ssh reaching it. FD is this end
 of the local socket ssh reads and writes. INBOX and OUTBOX are what the server
@@ -236,39 +241,24 @@ connection is closed, so that a handle of one connection is never used on the
 next. EXTENSIONS is the names of the extensions the server offers. REAL-PATHS
 is where paths lead there as asked once for this connection
 \(REMOTE-KEPT-REAL-PATH). FD is NIL while no connection is open."
-  (host "" :type string :read-only t)
-  (lock (sb-thread:make-mutex :name "sftp connection") :read-only t)
-  (process nil)
-  (fd nil)
-  (inbox nil)
-  (outbox nil)
-  (directory nil)
-  (next-id 0 :type (unsigned-byte 32))
-  (waiting 0 :type fixnum)
-  (extensions '())
-  (wanting 0 :type sb-ext:word)
-  (generation 0 :type fixnum)
-  (asking nil)
-  (real-paths (make-hash-table :test 'equal) :read-only t))
+  (host "" :type string :read-only t :documentation "The machine LINK reaches, as ssh takes it.")
+  (lock (sb-thread:make-mutex :name "sftp connection") :read-only t :documentation "The lock held while LINK is used.")
+  (process nil :documentation "The ssh reaching LINK's server, a process, or NIL.")
+  (fd nil :documentation "This end of the socket of LINK's ssh, or NIL when LINK is closed.")
+  (inbox nil :documentation "What LINK's server said and is not yet read.")
+  (outbox nil :documentation "What is to be sent to LINK's server.")
+  (directory nil :documentation "The private directory of what LINK's ssh said, or NIL.")
+  (next-id 0 :type (unsigned-byte 32) :documentation "The number of the last request sent over LINK.")
+  (waiting 0 :type fixnum :documentation "How many requests sent over LINK have no answer yet.")
+  (extensions '() :documentation "The names of the extensions LINK's server offers.")
+  (wanting 0 :type sb-ext:word :documentation "How many threads wait for LINK's connection.")
+  (generation 0 :type fixnum :documentation "How many times LINK's connection has been closed.")
+  (asking nil :documentation "How LINK's ssh asks you what it needs, an SSH-ASKING, while it connects, or NIL.")
+  (real-paths (make-hash-table :test 'equal) :read-only t
+              :documentation "Where paths lead on LINK's server, as asked over this connection."))
 
 (setf (documentation 'make-sftp-link 'function) "An SFTP-LINK to HOST, not yet connected."
-      (documentation 'sftp-link-p 'function) "True when OBJECT is an SFTP-LINK."
-      (documentation 'sftp-link-host 'function) "The machine LINK reaches, as ssh takes it."
-      (documentation 'sftp-link-lock 'function) "The lock held while LINK is used."
-      (documentation 'sftp-link-process 'function) "The ssh reaching LINK's server, a process, or NIL."
-      (documentation 'sftp-link-fd 'function) "This end of the socket of LINK's ssh, or NIL when LINK is closed."
-      (documentation 'sftp-link-inbox 'function) "What LINK's server said and is not yet read."
-      (documentation 'sftp-link-outbox 'function) "What is to be sent to LINK's server."
-      (documentation 'sftp-link-directory 'function) "The private directory of what LINK's ssh said, or NIL."
-      (documentation 'sftp-link-next-id 'function) "The number of the last request sent over LINK."
-      (documentation 'sftp-link-waiting 'function) "How many requests sent over LINK have no answer yet."
-      (documentation 'sftp-link-wanting 'function) "How many threads wait for LINK's connection."
-      (documentation 'sftp-link-generation 'function) "How many times LINK's connection has been closed."
-      (documentation 'sftp-link-extensions 'function) "The names of the extensions LINK's server offers."
-      (documentation 'sftp-link-asking 'function)
-      "How LINK's ssh asks you what it needs, an SSH-ASKING, while it connects, or NIL."
-      (documentation 'sftp-link-real-paths 'function)
-      "Where paths lead on LINK's server, as asked over this connection.")
+      (documentation 'sftp-link-p 'function) "True when OBJECT is an SFTP-LINK.")
 
 (sb-ext:defglobal **sftp-links** '()
   "The connections to servers, one for each host, as SFTP-LINK makes them.")
@@ -297,14 +287,9 @@ ASKING has it (SSH-ASKING-OPTIONS), no connection of another shared
 (defun sftp-ssh-said (link)
   "What LINK's ssh said on its error output, on one line, cleaned to be
 shown, the first *PROGRAM-SAID-LIMIT* octets at most; \"\" when nothing."
-  (let ((directory (sftp-link-directory link)))
-    (or (and directory
-             (ignoring-errors-reported ("reading what ssh said")
-               (tuatara.frontend:shown-words
-                (tuatara.text:one-line
-                 (tuatara.text:lenient-string
-                  (tuatara.io:file-octets (tuatara.io:path-join directory "e")
-                                          :limit tuatara.io:*program-said-limit*))))))
+  (let ((octets (and (sftp-link-directory link) (ssh-error-octets (sftp-link-directory link)))))
+    (if octets
+        (tuatara.frontend:shown-words (tuatara.text:one-line (tuatara.text:lenient-string octets)))
         "")))
 
 (defun sftp-close (link)
@@ -334,11 +319,16 @@ connected again when next used."
   ((size :initarg :size :reader remote-too-large-size))
   (:documentation "Signalled when a file holds SIZE octets, more than the work asked for may take."))
 
+(defun sftp-refusal-of (link operation path reason &rest arguments)
+  "An SFTP-REFUSAL, not signalled: OPERATION on PATH, a path on LINK's server,
+refused for the REASON FORMAT makes of ARGUMENTS."
+  (make-condition 'sftp-refusal :operation operation :path (remote-name (sftp-link-host link) path)
+                  :reason (apply #'format nil reason arguments)))
+
 (defun sftp-refuse (link operation path reason &rest arguments)
   "Signal an SFTP-REFUSAL: OPERATION on PATH, a path on LINK's server,
 refused for the REASON FORMAT makes of ARGUMENTS, the connection still good."
-  (error 'sftp-refusal :operation operation :path (remote-name (sftp-link-host link) path)
-                       :reason (apply #'format nil reason arguments)))
+  (error (apply #'sftp-refusal-of link operation path reason arguments)))
 
 (defun remote-missing-p (condition)
   "True when CONDITION, a refusal of a server, says there is no such file."
@@ -348,7 +338,7 @@ refused for the REASON FORMAT makes of ARGUMENTS, the connection still good."
   "Signal a TUATARA.IO:FILE-SYSTEM-ERROR: OPERATION on PATH, a path on LINK's
 server, refused for the REASON FORMAT makes of ARGUMENTS."
   (error 'tuatara.io:file-system-error :operation operation :path (remote-name (sftp-link-host link) path)
-                                       :reason (apply #'format nil reason arguments)))
+         :reason (apply #'format nil reason arguments)))
 
 (defun sftp-await-ssh (link on-slow)
   "Wait until LINK's ssh has something to say or is gone, answering what it
@@ -363,17 +353,17 @@ FILE-SYSTEM-ERROR when a question goes unanswered."
          (slow-at (tuatara.runtime:deadline-in *ssh-connecting-seconds*))
          (slow nil))
     (loop
-      (tuatara.runtime:job-check-stop)
-      (let ((ready (tuatara.io:wait-for-fds fds (min 1/4 (max 0 (tuatara.runtime:seconds-left deadline))))))
-        (cond ((and asking (consp ready) (member (ssh-asking-question asking) ready))
-               (unless (answer-ssh-question asking)
-                 (sftp-fail link "reach" "" "ssh's question was not answered: not connected"))
-               (setf deadline (tuatara.runtime:deadline-in *remote-seconds*)))
-              ((and (consp ready) (member fd ready)) (return deadline))
-              ((tuatara.runtime:deadline-passed-p deadline) (return deadline))
-              ((and (not slow) (tuatara.runtime:deadline-passed-p slow-at))
-               (setf slow t)
-               (funcall on-slow)))))))
+     (tuatara.runtime:job-check-stop)
+     (let ((ready (tuatara.io:wait-for-fds fds (min 1/4 (max 0 (tuatara.runtime:seconds-left deadline))))))
+       (cond ((and asking (consp ready) (member (ssh-asking-question asking) ready))
+              (unless (answer-ssh-question asking)
+                (sftp-fail link "reach" "" "ssh's question was not answered: not connected"))
+              (setf deadline (tuatara.runtime:deadline-in *remote-seconds*)))
+             ((and (consp ready) (member fd ready)) (return deadline))
+             ((tuatara.runtime:deadline-passed-p deadline) (return deadline))
+             ((and (not slow) (tuatara.runtime:deadline-passed-p slow-at))
+              (setf slow t)
+              (funcall on-slow)))))))
 
 (defun sftp-connect (link)
   "Connect LINK: ssh started, killed with the editor, what it asks put to
@@ -409,7 +399,7 @@ cannot be started."
               (handler-case
                   (tuatara.io:start-program (cons program (sftp-ssh-arguments host asking))
                                             :input stream :output stream
-                                            :error (tuatara.io:path-join (sftp-link-directory link) "e")
+                                            :error (ssh-error-path (sftp-link-directory link))
                                             :if-error-exists :supersede
                                             :environment (apply #'ssh-environment (ssh-asking-environment asking))
                                             :with-editor t :close-fds (list theirs))
@@ -433,15 +423,12 @@ cannot be started."
 (defun sftp-unreached (link)
   "Signal that LINK's server could not be reached, in what ssh said: that its
 host key changed since ssh last saw it, which is refused and is never asked
-about, or, when nobody could be asked, that a key ssh does not know yet is
-refused."
+about (SSH-REFUSAL-WORDS), or, when nobody could be asked, that a key ssh does
+not know yet is refused."
   (let ((said (sftp-ssh-said link)) (host (sftp-link-host link)))
-    (when (or (search "IDENTIFICATION HAS CHANGED" said) (search "has changed and you have requested strict" said))
-      (sftp-fail link "reach" "" "the host key of ~a differs from the one ssh knows, and ssh refuses it: check with ~
-                                  the machine's owner before removing the old key with ssh-keygen -R" host))
-    (when (search "ssh_askpass" said)
-      (sftp-fail link "reach" "" "ssh could not run the small program that asks its questions, in the cache directory ~
-                                  here (a directory programs may not be run from, mounted noexec?): ~a" said))
+    (multiple-value-bind (words kind) (ssh-refusal-words said host)
+      (when (member kind '(:changed :helper))
+        (sftp-fail link "reach" "" "~a" words)))
     (sftp-fail link "reach" "" "ssh could not reach it~:[~*~;: ~a~]~:[~;; a machine whose key ssh does not know yet ~
                                 is refused: connect once with ssh ~a and check its key~]"
                (plusp (length said)) said
@@ -472,12 +459,13 @@ when the server takes none of it for *REMOTE-SECONDS*, or has gone."
     (:stalled (sftp-fail link operation path "the server took nothing for ~d second~:p" *remote-seconds*))
     ((nil) (sftp-unreached link))))
 
-(defun sftp-answer (link ids path operation)
+(defun sftp-answer (link ids path operation &key refusals)
   "Wait for the next answer of LINK's server, *REMOTE-SECONDS* at most: its
 kind, what it says (SFTP-TAKE-ANSWER) and the number of the request it
 answers, which must be one of IDS. An answer of :STATUS done or at the end
 comes as its kind; another signals a FILE-SYSTEM-ERROR for OPERATION on
-PATH saying why."
+PATH saying why, or with REFUSALS comes as the kind :REFUSED and the
+SFTP-REFUSAL, not signalled."
   (let ((inbox (sftp-link-inbox link)))
     (setf (tuatara.frontend:inbox-deadline inbox) (tuatara.runtime:deadline-in *remote-seconds*))
     (let ((kind (sftp-take-packet inbox)))
@@ -492,14 +480,15 @@ PATH saying why."
                 (case code
                   (0 (values :done nil id))
                   (1 (values :end nil id))
-                  (t (error 'sftp-refusal :operation operation :path (remote-name (sftp-link-host link) path)
-                            :reason (format nil "~a~@[ (~a)~]"
-                                (if (< code (length *sftp-status-words*))
-                                    (aref *sftp-status-words* code)
-                                    (format nil "the server gave status ~d" code))
-                                ;; the server's words where ours say less than it may
-                                (and (plusp (length words)) (not (member code '(2 3 8)))
-                                     (tuatara.display:shorten-string words 200)))))))
+                  (t (let ((refusal (sftp-refusal-of
+                                     link operation path "~a~@[ (~a)~]"
+                                     (if (< code (length *sftp-status-words*))
+                                         (aref *sftp-status-words* code)
+                                         (format nil "the server gave status ~d" code))
+                                     ;; the server's words where ours say less than it may
+                                     (and (plusp (length words)) (not (member code '(2 3 8)))
+                                          (tuatara.display:shorten-string words 200)))))
+                       (if refusals (values :refused refusal id) (error refusal))))))
               (values kind said id)))))))
 
 (defun sftp-ask (link kind fields path operation)
@@ -509,6 +498,29 @@ answer (SFTP-ANSWER), for OPERATION on PATH: its kind and what it says."
     (sftp-flush link path operation)
     (multiple-value-bind (answer said) (sftp-answer link (list id) path operation)
       (values answer said))))
+
+(defun sftp-ask-each (link requests path operation)
+  "Send LINK's server REQUESTS, each (KIND FIELDS), +SFTP-PIECES-AHEAD+ at a
+time before waiting for their answers, for OPERATION on PATH. The answers, in
+the order asked, each (KIND . WHAT) as SFTP-ANSWER gives them, or for a request
+the server refused, the SFTP-REFUSAL itself, not signalled. Stopped between
+lots when the job doing it is asked to stop."
+  (let ((results '()))
+    (loop while requests
+          do (let ((ids (loop repeat +sftp-pieces-ahead+
+                              while requests
+                              collect (destructuring-bind (kind fields) (pop requests)
+                                        (sftp-put-packet link kind fields))))
+                   (answers (make-hash-table)))
+               (sftp-flush link path operation)
+               (loop while (/= (hash-table-count answers) (length ids))
+                     do (multiple-value-bind (kind said id)
+                            (sftp-answer link (remove-if (lambda (id) (nth-value 1 (gethash id answers))) ids)
+                                         path operation :refusals t)
+                          (setf (gethash id answers) (if (eq kind :refused) said (cons kind said)))))
+               (dolist (id ids) (push (gethash id answers) results))
+               (tuatara.runtime:job-check-stop)))
+    (nreverse results)))
 
 (defvar *remote-cancel* nil
   "A cons whose car turns true when the work on this thread with a server is
@@ -535,10 +547,10 @@ wanted by the time the connection is free stops there, connecting to nothing."
                (multiple-value-prog1
                    (progn (unless (sftp-link-fd link) (sftp-connect link))
                           (handler-bind ((tuatara.runtime:job-stopped
-                                           ;; stopped between requests, the connection stays good
-                                           (lambda (condition)
-                                             (declare (ignore condition))
-                                             (setf done (zerop (sftp-link-waiting link))))))
+                                          ;; stopped between requests, the connection stays good
+                                          (lambda (condition)
+                                            (declare (ignore condition))
+                                            (setf done (zerop (sftp-link-waiting link))))))
                             (funcall function link)))
                  (setf done t))
              (tuatara.frontend:malformed-message (condition)
@@ -576,12 +588,12 @@ at most."
   (let ((handle (sftp-handle link kind fields path operation)) (closed nil))
     (multiple-value-prog1
         (handler-bind (((or sftp-refusal tuatara.runtime:job-stopped)
-                         (lambda (condition)
-                           (declare (ignore condition))
-                           (when (and (not closed) (sftp-link-fd link) (zerop (sftp-link-waiting link)))
-                             (setf closed t)
-                             (handler-case (sftp-let-go link handle path)
-                               (sftp-refusal () nil))))))
+                        (lambda (condition)
+                          (declare (ignore condition))
+                          (when (and (not closed) (sftp-link-fd link) (zerop (sftp-link-waiting link)))
+                            (setf closed t)
+                            (handler-case (sftp-let-go link handle path)
+                              (sftp-refusal () nil))))))
           (funcall function handle))
       (unless closed
         (setf closed t)
@@ -673,18 +685,18 @@ characters of names."
       (lambda (handle)
         (let ((entries '()) (count 0) (characters 0) (cut nil))
           (loop
-            (multiple-value-bind (answer names) (sftp-ask link :readdir (list handle) directory "list")
-              (when (eq answer :end) (return))
-              (unless (eq answer :name) (tuatara.frontend:malformed "~(~a~) where names were asked for" answer))
-              (dolist (entry names)
-                (unless (member (car entry) '("." "..") :test #'string=)
-                  (push entry entries)
-                  (incf count)
-                  (incf characters (length (car entry)))))
-              (when (or (>= count *sftp-most-listed*) (>= characters *sftp-most-listed-characters*))
-                (setf cut t)
-                (return))
-              (tuatara.runtime:job-check-stop)))
+           (multiple-value-bind (answer names) (sftp-ask link :readdir (list handle) directory "list")
+             (when (eq answer :end) (return))
+             (unless (eq answer :name) (tuatara.frontend:malformed "~(~a~) where names were asked for" answer))
+             (dolist (entry names)
+               (unless (member (car entry) '("." "..") :test #'string=)
+                 (push entry entries)
+                 (incf count)
+                 (incf characters (length (car entry)))))
+             (when (or (>= count *sftp-most-listed*) (>= characters *sftp-most-listed-characters*))
+               (setf cut t)
+               (return))
+             (tuatara.runtime:job-check-stop)))
           (when cut
             ;; the first entries, as many as both bounds let be
             (setf entries (nreverse entries) characters 0 count 0)
@@ -701,7 +713,7 @@ characters of names."
 (defconstant +remote-tail-opening+ (* 64 1024)
   "Octets of the end of a large file on another machine read before it opens.")
 
-(defstruct (arrival (:constructor make-arrival (size &key opening in-order)) (:copier nil))
+(define-record (arrival (:constructor make-arrival (size &key opening in-order)) (:copier nil))
   "How a file on another machine being read in pieces stands: SIZE, the
 octets it holds there as it was opened; END, where it has been found to end,
 SIZE unless the server gave no more past it; ARRIVED, the stretches (START .
@@ -710,22 +722,14 @@ changed in place, so that any thread may read it; WANTED, the stretch (START
 . END) to read before the rest, or NIL; OPENING, true while only the file's
 first part is to be read, the rest after it has opened; IN-ORDER, true to
 read from the start to the end, nothing out of turn."
-  (size 0 :type fixnum :read-only t)
-  (end 0 :type fixnum)
-  (arrived '() :type list)
-  (wanted nil)
-  (opening nil)
-  (in-order nil :read-only t))
+  (size 0 :type fixnum :read-only t :documentation "The octets ARRIVAL's file holds there, as it was opened.")
+  (end 0 :type fixnum :documentation "Where ARRIVAL's file has been found to end.")
+  (arrived '() :type list :documentation "The stretches (START . END) of ARRIVAL's file that are here.")
+  (wanted nil :documentation "The stretch (START . END) of ARRIVAL's file to read first, or NIL.")
+  (opening nil :documentation "True while only the first part of ARRIVAL's file is to be read.")
+  (in-order nil :read-only t :documentation "True when ARRIVAL's file is read from start to end, nothing out of turn."))
 
-(setf (documentation 'make-arrival 'function) "An ARRIVAL of a file of SIZE octets, none of it here yet."
-      (documentation 'arrival-p 'function) "True when OBJECT is an ARRIVAL."
-      (documentation 'arrival-size 'function) "The octets ARRIVAL's file holds there, as it was opened."
-      (documentation 'arrival-end 'function) "Where ARRIVAL's file has been found to end."
-      (documentation 'arrival-arrived 'function) "The stretches (START . END) of ARRIVAL's file that are here."
-      (documentation 'arrival-wanted 'function) "The stretch (START . END) of ARRIVAL's file to read first, or NIL."
-      (documentation 'arrival-opening 'function) "True while only the first part of ARRIVAL's file is to be read."
-      (documentation 'arrival-in-order 'function)
-      "True when ARRIVAL's file is read from start to end, nothing out of turn.")
+(setf (documentation 'make-arrival 'function) "An ARRIVAL of a file of SIZE octets, none of it here yet.")
 
 (defun arrival-add (arrival start end)
   "Note that the octets of ARRIVAL's file from START below END are here."
@@ -742,7 +746,7 @@ read from the start to the end, nothing out of turn."
   (let ((at 0) (holes '()))
     (loop for (start . end) in (arrival-arrived arrival)
           do (when (< at start) (push (cons at start) holes))
-             (setf at (max at end)))
+          (setf at (max at end)))
     (when (< at (arrival-size arrival)) (push (cons at (arrival-size arrival)) holes))
     (nreverse holes)))
 
@@ -850,28 +854,28 @@ them."
                                       (and (arrival-in-order arrival) (zerop (sftp-link-wanting link))))
                                   (not (stopping)))
                          (top-up))
-                       (sftp-flush link path "read")
-                       (multiple-value-bind (answer data id)
-                           (sftp-answer link (loop for id being the hash-keys of asked collect id) path "read")
-                         (destructuring-bind (offset . length) (gethash id asked)
-                           (remhash id asked)
-                           (case answer
-                             ;; the file is shorter now than it was as opened
-                             (:end (setf (arrival-end arrival) (min (arrival-end arrival) offset)))
-                             (:data (let ((got (- (cdr data) (car data))))
-                                      (unless (<= 1 got length)
-                                        (tuatara.frontend:malformed "~d octets where at most ~d were asked for"
-                                                                    got length))
-                                      (tuatara.io:write-octets fd (tuatara.frontend:inbox-octets (sftp-link-inbox link))
-                                                               :start (car data) :end (cdr data) :path path :at offset)
-                                      (arrival-add arrival offset (+ offset got))
-                                      ;; the rest of a piece the server gave short
-                                      (when (and (< got length) (not (stopping)))
-                                        (ask (+ offset got) (- length got)))))
-                             (t (tuatara.frontend:malformed "~(~a~) where data was asked for" answer)))))
-                       (when (zerop (hash-table-count asked))
-                         (when on-piece (funcall on-piece))
-                         (sftp-let-others-in link)))
+                    (sftp-flush link path "read")
+                    (multiple-value-bind (answer data id)
+                        (sftp-answer link (loop for id being the hash-keys of asked collect id) path "read")
+                      (destructuring-bind (offset . length) (gethash id asked)
+                        (remhash id asked)
+                        (case answer
+                          ;; the file is shorter now than it was as opened
+                          (:end (setf (arrival-end arrival) (min (arrival-end arrival) offset)))
+                          (:data (let ((got (- (cdr data) (car data))))
+                                   (unless (<= 1 got length)
+                                     (tuatara.frontend:malformed "~d octets where at most ~d were asked for"
+                                                                 got length))
+                                   (tuatara.io:write-octets fd (tuatara.frontend:inbox-octets (sftp-link-inbox link))
+                                                            :start (car data) :end (cdr data) :path path :at offset)
+                                   (arrival-add arrival offset (+ offset got))
+                                   ;; the rest of a piece the server gave short
+                                   (when (and (< got length) (not (stopping)))
+                                     (ask (+ offset got) (- length got)))))
+                          (t (tuatara.frontend:malformed "~(~a~) where data was asked for" answer)))))
+                    (when (zerop (hash-table-count asked))
+                      (when on-piece (funcall on-piece))
+                      (sftp-let-others-in link)))
               (when (remote-cancelled-p) (error 'tuatara.runtime:job-stopped))
               (tuatara.runtime:job-check-stop)))
           attributes))))))
@@ -889,18 +893,18 @@ pieces when the job doing it is asked to stop."
     (loop while (or (< sent size) asked)
           do (loop while (and (< sent size) (< (length asked) +sftp-pieces-ahead+))
                    do (let ((count (tuatara.io:read-fd-at fd piece sent :end (min +sftp-piece+ (- size sent))
-                                                                       :path path)))
+                                                          :path path)))
                         (when (zerop count) (sftp-fail link "write" path "its copy here ended early"))
-                        (push (sftp-put-packet link :write (list handle (list :u64 sent) (subseq piece 0 count)))
+                        (push (sftp-put-packet link :write (list handle (list :u64 sent) (list :octets piece 0 count)))
                               asked)
                         (incf sent count)))
-             (when *sftp-octets-sent* (setf (car *sftp-octets-sent*) sent))
-             (sftp-flush link path "write")
-             (multiple-value-bind (answer said id) (sftp-answer link asked path "write")
-               (declare (ignore said))
-               (unless (eq answer :done) (tuatara.frontend:malformed "~(~a~) to a write" answer))
-               (setf asked (remove id asked)))
-             (tuatara.runtime:job-check-stop))))
+          (when *sftp-octets-sent* (setf (car *sftp-octets-sent*) sent))
+          (sftp-flush link path "write")
+          (multiple-value-bind (answer said id) (sftp-answer link asked path "write")
+            (declare (ignore said))
+            (unless (eq answer :done) (tuatara.frontend:malformed "~(~a~) to a write" answer))
+            (setf asked (remove id asked)))
+          (tuatara.runtime:job-check-stop))))
 
 (defun sftp-to-disk (link handle path)
   "Have LINK's server put what the file open as HANDLE holds on its disk, when it offers that (fsync@openssh.com)."
@@ -912,20 +916,18 @@ pieces when the job doing it is asked to stop."
 server, with :LINKS, the count of its names, when the server's long name of
 it says it (SFTP-LONG-NAME-LINKS); NIL when it is not listed. The directory is
 read until the entry comes."
-  (let* ((slash (position #\/ path :from-end t))
-         (directory (if slash (subseq path 0 (1+ slash)) "."))
-         (name (subseq path (if slash (1+ slash) 0))))
+  (multiple-value-bind (directory name) (tuatara.io:path-directory-and-name path)
     (sftp-with-handle
      link :opendir (list directory) directory "examine"
      (lambda (handle)
        (loop
-         (multiple-value-bind (answer names) (sftp-ask link :readdir (list handle) directory "examine")
-           (case answer
-             (:end (return nil))
-             (:name (let ((entry (assoc name names :test #'string=)))
-                      (when entry (return (cdr entry)))))
-             (t (tuatara.frontend:malformed "~(~a~) where names were asked for" answer))))
-         (tuatara.runtime:job-check-stop))))))
+        (multiple-value-bind (answer names) (sftp-ask link :readdir (list handle) directory "examine")
+          (case answer
+            (:end (return nil))
+            (:name (let ((entry (assoc name names :test #'string=)))
+                     (when entry (return (cdr entry)))))
+            (t (tuatara.frontend:malformed "~(~a~) where names were asked for" answer))))
+        (tuatara.runtime:job-check-stop))))))
 
 (defun sftp-owner-refusal (link handle path like)
   "Why the new file open as HANDLE at PATH on LINK's server cannot be given
@@ -951,9 +953,8 @@ away. A server that cannot rename over a file in one step
 \(posix-rename@openssh.com) has only a new file written. A write that fails
 or is stopped takes the new file away, over a new connection when answers
 to it were still to come."
-  (let* ((slash (position #\/ path :from-end t))
-         (temporary (format nil "~a.~a.~a" (subseq path 0 (1+ slash)) (subseq path (1+ slash))
-                            (tuatara.io:random-name)))
+  (let* ((temporary (multiple-value-bind (directory name) (tuatara.io:path-directory-and-name path)
+                      (format nil "~a.~a.~a" directory name (tuatara.io:random-name))))
          (handle nil) (made nil))
     (unwind-protect
          (block replacing
@@ -987,11 +988,11 @@ to it were still to come."
           ;; answers still to come, or the connection gone: a new one, the handle going with the old
           (when made
             (ignoring-errors-reported ("connecting again to take away ~a" temporary)
-              (sftp-close link)
-              (sftp-connect link))))
+                                      (sftp-close link)
+                                      (sftp-connect link))))
       (when (and made (sftp-link-fd link))
         (ignoring-errors-reported ("taking away ~a" temporary)
-          (sftp-done link :remove (list temporary) temporary "remove"))))))
+                                  (sftp-done link :remove (list temporary) temporary "remove"))))))
 
 (defun sftp-write-in-place (link path fd size check partly)
   "Write the SIZE octets of the file open as FD over the file at PATH on LINK's
@@ -1052,7 +1053,8 @@ never written in place."
                        (let ((links (getf (sftp-entry-attributes link path) :links)))
                          (when (and links (> links 1))
                            (when linked-refusal
-                             (sftp-refuse link "write" path "it has ~d names (hard links), and ~a" links linked-refusal))
+                             (sftp-refuse link "write" path "it has ~d names (hard links), and ~a" links
+                                          linked-refusal))
                            (format nil "it has ~d names (hard links)" links))))))
          (unless why
            (setf why (sftp-replace link path fd size permissions like #'check vet)))

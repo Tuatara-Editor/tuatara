@@ -29,30 +29,26 @@ further; the debug log on disk is not cut by it.
   :values (or (member nil) (integer 1 *)))
 
 (defun debug-buffer ()
-  "The *Debug* buffer, made when there is none: read-only, shown where
-*Messages* is."
-  (find-or-make-buffer "*Debug*" :mode 'special-mode
-                                 :made (lambda (b)
-                                         (setf (buffer-read-only-p b) t
-                                               (buffer-kind b) :messages))))
+  "The *Debug* buffer, made when there is none (LOG-BUFFER)."
+  (log-buffer "*Debug*"))
 
 (defun show-debug-reports (editor)
   "Tick function: put the reports made since it was last called at the end of
 *Debug*, keeping *DEBUG-LOG-LIMIT* lines; a window showing the end of *Debug*
 goes on showing it. While a waiting question is about *Debug*, the reports
-wait (BUFFER-HELD-BY-QUESTION-P)."
+wait (BUFFER-HELD-BY-QUESTION-P). *Debug* is not made until a report comes."
   (declare (ignore editor))
-  (let ((first (and (not (buffer-held-by-question-p (debug-buffer)))
-                    (sb-concurrency:dequeue tuatara.runtime:*debug-reports*))))
-    (when first
-      (add-to-log (debug-buffer) *debug-log-limit*
-                  (lambda (buffer)
-                    (tuatara.buffer:buffer-insert
-                     buffer (tuatara.buffer:buffer-size buffer)
-                     (with-output-to-string (out)
-                       (loop for report = first then (sb-concurrency:dequeue tuatara.runtime:*debug-reports*)
-                             while report
-                             do (write-line (tuatara.runtime:debug-report-line report) out))))))))
+  (unless (sb-concurrency:queue-empty-p tuatara.runtime:*debug-reports*)
+    (let ((buffer (debug-buffer)))
+      (unless (buffer-held-by-question-p buffer)
+        (add-to-log buffer *debug-log-limit*
+                    (lambda (buffer)
+                      (tuatara.buffer:buffer-insert
+                       buffer (tuatara.buffer:buffer-size buffer)
+                       (with-output-to-string (out)
+                         (loop for report = (sb-concurrency:dequeue tuatara.runtime:*debug-reports*)
+                               while report
+                               do (write-line (tuatara.runtime:debug-report-line report) out)))))))))
   nil)
 
 (defun debug-mode-line (editor buffer)

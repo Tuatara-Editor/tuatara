@@ -56,17 +56,15 @@ author's day as YYYY-MM-DD, worked out once for each commit."
   "List the current file (as saved), or the one on point's line of a status,
 a line each with the commit that last changed it, its author and date; RET
 on a line shows its commit."
-  (with-git-repository (top)
-    (call-with-git-file top "No file here to blame"
-                        (lambda (path)
-                          (git-show-table "Reading who changed each line" top (list "blame" "--porcelain" "--" path)
-                                          (format nil "*git blame: ~a*" (tuatara.io:native-file-name path))
-                                          'git-blame-mode
-                                          #'parse-git-blame *git-blame-columns*
-                                          (lambda (row)
-                                            (destructuring-bind (hash author date line) row
-                                              (list (or hash "--------") (escape-controls author) date
-                                                    (escape-controls (substitute #\Space #\Tab line))))))))))
+  (with-git-file (top path :missing "No file here to blame")
+    (git-show-table "Reading who changed each line" top (list "blame" "--porcelain" "--" path)
+                    (format nil "*git blame: ~a*" (tuatara.io:native-file-name path))
+                    'git-blame-mode
+                    #'parse-git-blame *git-blame-columns*
+                    (lambda (row)
+                      (destructuring-bind (hash author date line) row
+                        (list (or hash "--------") (escape-controls author) date
+                              (escape-controls (substitute #\Space #\Tab line))))))))
 
 (define-command git-blame-show ()
   "Show the commit that last changed the line of the blame point is on."
@@ -82,10 +80,8 @@ on a line shows its commit."
 (defun git-act-on-file (doing arguments done)
   "Run git with ARGUMENTS and then the path of the file at hand (GIT-FILE-HERE)
 for its repository, DOING said meanwhile and DONE, a format given the path, once done."
-  (with-git-repository (top)
-    (call-with-git-file top "No file here"
-                        (lambda (path)
-                          (git-run doing top (append arguments (list "--" path)) (format nil done (escape-controls path)))))))
+  (with-git-file (top path)
+    (git-run doing top (append arguments (list "--" path)) (format nil done (escape-controls path)))))
 
 (define-command git-stage-file ()
   "Stage the file you are in (as saved), or the one on point's line of a status."
@@ -94,63 +90,56 @@ for its repository, DOING said meanwhile and DONE, a format given the path, once
 (define-command git-unstage-file ()
   "Unstage the file you are in, or the one on point's line of a status, in a
 repository with no commit yet too."
-  (with-git-repository (top)
-    (call-with-git-file top "No file here"
-                        (lambda (path)
-                          (git-unstage-paths top (list path) (format nil "Unstaged ~a" (escape-controls path)))))))
+  (with-git-file (top path)
+    (git-unstage-paths top (list path) (format nil "Unstaged ~a" (escape-controls path)))))
 
 (define-command git-diff-file ()
   "Show the changes of the file you are in not yet committed, staged or not."
-  (with-git-repository (top switches)
-    (call-with-git-file top "No file here"
-                        (lambda (path)
-                          (git-show-diff top
-                                         (format nil "*git diff ~a*" (tuatara.io:native-file-name path))
-                                         (list switches (list path))
-                                         :against-head t)))))
+  (with-git-file (top path :switches switches)
+    (git-show-diff top
+                   (format nil "*git diff ~a*" (tuatara.io:native-file-name path))
+                   (list switches (list path))
+                   :against-head t)))
 
 (define-command git-delete-file ()
   "Delete the file you are in, or the one on point's line of a status, from
 the files and from git, after asking; the deletion is staged."
-  (with-git-repository (top)
-    (call-with-git-file top "No file here"
-                        (lambda (path)
-                          (when (yes-or-no-p* (format nil "Delete ~a from git and the files? Its changes not committed are lost" (escape-controls path)))
-                            (git-run "Deleting a file" top (list "rm" "-f" "--" path) (format nil "Deleted ~a" (escape-controls path))
-                                     :then (lambda (text)
-                                             (declare (ignore text))
-                                             (paths-changed (list (concatenate 'string top path))))))))))
+  (with-git-file (top path)
+    (when (yes-or-no-p* (format nil "Delete ~a from git and the files? Its changes not committed are lost"
+                                (escape-controls path)))
+      (git-run "Deleting a file" top (list "rm" "-f" "--" path) (format nil "Deleted ~a" (escape-controls path))
+               :then (lambda (text)
+                       (declare (ignore text))
+                       (paths-changed (list (concatenate 'string top path))))))))
 
 (define-command git-rename-file ()
   "Rename the file you are in, or the one on point's line of a status, to a
 path asked for within the repository (into a directory there, when it names
 one); the rename is staged, and the buffers visiting the file follow it."
-  (with-git-repository (top)
-    (call-with-git-file top "No file here"
-                        (lambda (path)
-                          (let ((to (string-trim '(#\Space)
-                                                 (read-string (format nil "Rename ~a to: " (escape-controls path))
-                                                              :initial path))))
-                            (if (git-inside-path-p to)
-                                (let* ((from (concatenate 'string top path))
-                                       (there (concatenate 'string top to))
-                                       (there (if (eq :directory (tuatara.io:path-kind there))
-                                                  (tuatara.io:path-join (tuatara.io:slash-ended there)
-                                                                        (tuatara.io:native-file-name from))
-                                                  there)))
-                                  (handler-case
-                                      (reporting-errors ("renaming ~a" path)
-                                        (check-not-saving (list from))
-                                        (git-run "Renaming a file" top (list "mv" "--" path to)
-                                                 (format nil
-                                                         "Renamed ~a to ~a"
-                                                         (escape-controls path)
-                                                         (escape-controls to))
-                                                 :then (lambda (text)
-                                                         (declare (ignore text))
-                                                         (rename-path-following from there :on-disk nil))))
-                                    (error (e) (message "Not renamed: ~a" e))))
-                                (message "Not a path within the repository: ~a" (escape-controls to))))))))
+  (with-git-file (top path)
+    (let ((to (string-trim '(#\Space)
+                           (read-string (format nil "Rename ~a to: " (escape-controls path))
+                                        :initial path))))
+      (if (git-inside-path-p to)
+          (let* ((from (concatenate 'string top path))
+                 (there (concatenate 'string top to))
+                 (there (if (eq :directory (tuatara.io:path-kind there))
+                            (tuatara.io:path-join (tuatara.io:slash-ended there)
+                                                  (tuatara.io:native-file-name from))
+                            there)))
+            (handler-case
+                (reporting-errors ("renaming ~a" path)
+                  (check-not-saving (list from))
+                  (git-run "Renaming a file" top (list "mv" "--" path to)
+                           (format nil
+                                   "Renamed ~a to ~a"
+                                   (escape-controls path)
+                                   (escape-controls to))
+                           :then (lambda (text)
+                                   (declare (ignore text))
+                                   (rename-path-following from there :on-disk nil))))
+              (error (e) (message "Not renamed: ~a" e))))
+          (message "Not a path within the repository: ~a" (escape-controls to))))))
 
 (define-menu git-file-menu (:title "This file" :show git-menu-shows-p :note git-menu-note)
   "Open the menu of the file you are in (or the one on point's line of a
@@ -178,4 +167,5 @@ revision, rename or delete it.
 at hand, or what git keeps of it, in a buffer opened safely."
   (dolist (command '(git-stage-file git-unstage-file git-delete-file git-rename-file git-reset-file))
     (pushnew command *file-changing-commands*))
-  (define-keys (mode-keymap 'git-blame-mode) '(("RET" git-blame-show) ("l" git-blame-show) ("h" quit-window))))
+  (define-keys (mode-keymap 'git-blame-mode) '(("RET" git-blame-show) ("l" git-blame-show) ("C-f" git-blame-show)
+                                               ("h" quit-window) ("C-b" quit-window))))

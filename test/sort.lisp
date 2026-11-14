@@ -200,7 +200,7 @@ are rewritten at once."
                              (cl-ppcre:regex-replace-all (string #\Newline) text (format nil "~c~%" #\Return)) text))
                    (buffer (tuatara.buffer:make-buffer (tuatara.buffer:unique-buffer-name "count") :text text))
                    (rope (tuatara.buffer:buffer-text buffer))
-                   (filter (tuatara.defaults::make-search-filter pattern :crlf crlf)))
+                   (filter (tuatara.defaults::make-search-filter pattern)))
               (when crlf (setf (tuatara.buffer:buffer-local buffer :line-ending) :crlf))
               (unwind-protect
                    ;; a pattern no filter can use is counted by none
@@ -216,7 +216,7 @@ are rewritten at once."
     (unwind-protect (is = 2
                         (tuatara.defaults::stretch-count buffer
                                                          (list (cons 0 15))
-                                                         (tuatara.defaults::make-search-filter "foo$" :crlf t)))
+                                                         (tuatara.defaults::make-search-filter "foo$")))
       (tuatara.buffer:kill-buffer buffer))))
 
 (define-modal-test (sorting sort-stands-where-begun)

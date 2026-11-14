@@ -76,7 +76,8 @@ whose state changed, and those whose file changed again."
           (grown (format nil "~{line ~d~%~}" (loop for i below 200000 collect i))))
       (with-visited (b path)
         (append-on-disk path grown)
-        (let* ((before (sb-ext:get-bytes-consed))
+        (let* ((tuatara.io::*append-at-once-most* (length grown))
+               (before (sb-ext:get-bytes-consed))
                (added (tuatara.io:append-from-disk b))
                (made (- (sb-ext:get-bytes-consed) before)))
           (is = (length grown) added)
@@ -86,6 +87,33 @@ whose state changed, and those whose file changed again."
         (append-on-disk path (format nil "end~%"))
         (is = 4 (tuatara.io:append-from-disk b))
         (is string= (format nil "start~%~aend~%" grown) (tuatara.buffer:buffer-string b))))))
+
+(define-test (files-changed-on-disk large-growth-read-in-the-background)
+  ;; growth larger than is read at once is read in the background: nothing waits on it, and it is added, once,
+  ;; when the job is taken in; asked again meanwhile, nothing more is started
+  (with-test-directory (dir)
+    (let ((path (put-file (merge-pathnames "burst.log" dir) (format nil "start~%")))
+          (grown (format nil "~{line ~d~%~}" (loop for i below 1000 collect i))))
+      (with-visited (b path)
+        (let ((tuatara.io::*append-at-once-most* 100))
+          (append-on-disk path grown)
+          (is = (length grown) (tuatara.io:append-from-disk b))
+          (is string= (format nil "start~%") (tuatara.buffer:buffer-string b))
+          (is = (length grown) (tuatara.io:append-from-disk b))
+          (let ((job (tuatara.buffer:buffer-local b :appending)))
+            (true (wait-until (lambda () (not (tuatara.runtime:job-running-p job))) 10))
+            (tuatara.runtime:take-in-jobs (lambda (other) (eq other job))))
+          (is string= (format nil "start~%~a" grown) (tuatara.buffer:buffer-string b))
+          (false (tuatara.buffer:buffer-modified-p b))
+          (is eq nil (tuatara.io:check-file b))
+          ;; read while the buffer was read again: not added
+          (append-on-disk path grown)
+          (is = (length grown) (tuatara.io:append-from-disk b))
+          (let ((job (tuatara.buffer:buffer-local b :appending)))
+            (true (wait-until (lambda () (not (tuatara.runtime:job-running-p job))) 10))
+            (tuatara.io:revert-buffer-file b)
+            (tuatara.runtime:take-in-jobs (lambda (other) (eq other job))))
+          (is string= (format nil "start~%~a~a" grown grown) (tuatara.buffer:buffer-string b)))))))
 
 (define-test (files-changed-on-disk appended)
   (with-test-directory (dir)
@@ -145,6 +173,20 @@ whose state changed, and those whose file changed again."
       (is = 7 (mapped old (format nil "l1~%XX~%l3~%l4~%") 7))           ; a line changed above, same length
       (is = 7 (mapped old (format nil "l1~%l2~%L~%l4~%") 8))            ; its own line shorter: cut
       (is = 3 (mapped (format nil "ab~%") (format nil "abc") 3)))))     ; past the end
+
+(define-test (files-changed-on-disk text-mapping-bounded)
+  ;; a file read again with every line changed is mapped at a bounded cost, not one that grows
+  ;; with the square of the lines that differ
+  (flet ((made (lines)
+           (let ((a (tuatara.text:string->rope (format nil "~{a~d~%~}" (alexandria:iota lines))))
+                 (b (tuatara.text:string->rope (format nil "~{b~d~%~}" (alexandria:iota lines)))))
+             (tuatara.defaults::text-mapping a b)
+             (let ((before (sb-ext:get-bytes-consed)))
+               (tuatara.defaults::text-mapping a b)
+               (- (sb-ext:get-bytes-consed) before)))))
+    (let ((small (made 1000)) (large (made 4000)))
+      (true (< large (* 1024 1024)) "~:d octets for 4,000 changed lines" large)
+      (true (< large (+ (* 8 small) 65536)) "~:d octets for 1,000 lines, ~:d for 4,000" small large))))
 
 (defun visited-session-buffer ()
   "The current buffer of the running session."

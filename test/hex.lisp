@@ -174,6 +174,16 @@
     (declare (ignore f))
     (is string= (format nil "- [ ] task~%") (session-text editor))))
 
+(define-test (hex-and-sums offset-digits-counted-without-garbage)
+  ;; the width of the offsets is worked out with nothing made for it
+  (is = 8 (tuatara.display::hex-offset-digits 0))
+  (is = 8 (tuatara.display::hex-offset-digits #xffffffff))
+  (is = 9 (tuatara.display::hex-offset-digits #x100000000))
+  (let ((before (sb-ext:get-bytes-consed)))
+    (loop for total from 0 below 1000 do (tuatara.display::hex-offset-digits total))
+    (let ((made (- (sb-ext:get-bytes-consed) before)))
+      (is = 0 made))))
+
 (define-test (hex-and-sums octets-shown-in-hex)
   ;; octets made by a command, in a buffer of their own: read only, in the hex view; shown again, replaced
   (let* ((shown nil)
@@ -195,12 +205,15 @@
       (tuatara.buffer:kill-buffer buffer))))
 
 (define-modal-test (hex-and-sums hex-search)
-  (flet ((found (keys)
-           (multiple-value-bind (f editor) (run-keys keys :text *hex-sample* :width 80)
+  (flet ((found (&rest keys)
+           ;; each search, in the background, taken in before the keys after it
+           (multiple-value-bind (f editor) (run-keys (loop for part in keys append (cons part (after-jobs)))
+                                                     :text *hex-sample* :width 80)
              (values (session-hex-point editor) f))))
     ;; forward from the cursor: "o" is 6f, "wo" is 77 6f
     (is = 4 (found "M-x h e x - m o d e RET M-x h e x - s e a r c h - f o r w a r d RET 6 f RET"))
-    (is = 8 (found "M-x h e x - m o d e RET M-x h e x - s e a r c h - f o r w a r d RET 6 f RET M-x h e x - s e a r c h - f o r w a r d RET 6 f RET"))
+    (is = 8 (found "M-x h e x - m o d e RET M-x h e x - s e a r c h - f o r w a r d RET 6 f RET"
+                   "M-x h e x - s e a r c h - f o r w a r d RET 6 f RET"))
     (is = 7 (found "M-x h e x - m o d e RET M-x h e x - s e a r c h - f o r w a r d RET 7 7 SPC 6 f RET"))
     ;; octets that are not UTF-8 on their own: the second of é and the !
     (is = 18 (found "M-x h e x - m o d e RET M-x h e x - s e a r c h - f o r w a r d RET a 9 2 1 RET"))
@@ -256,6 +269,20 @@
         (declare (ignore editor))
         (true (tuatara.frontend.fake:fake-frame-showing f "SHA-256 of *scratch*'s text (3,000,000 octets): "
                                                         "2a152c894398719c0570f83fac34ac03a0f6e8e474b995c2403aa5434f7b9dd4"))))))
+
+(define-test (hex-and-sums octets-sums-and-hashes)
+  ;; SHA-256 and MD5 of part of some octets, by the library and by the programs
+  (let ((octets (tuatara.text:string-octets "xabcx")))
+    (dolist (library (list tuatara.defaults::*hash-library* nil))
+      (let ((tuatara.defaults::*hash-library* library))
+        (is string= *abc-sum* (tuatara.defaults::octets-sha256 octets :start 1 :end 4))
+        (is string= "d41d8cd98f00b204e9800998ecf8427e" (tuatara.defaults::octets-md5 (tuatara.text:string-octets "")))
+        (is string= "900150983cd24fb0d6963f7d28e17f72" (tuatara.defaults::octets-md5 octets :start 1 :end 4)))))
+  ;; a rope's FNV-1a hash is that of its octets, however it is pieced together
+  (let* ((text (make-string 200000 :initial-element #\a))
+         (rope (tuatara.text:rope-insert (tuatara.text:string->rope text) 70000 "middle")))
+    (is = (tuatara.text:octets-hash (tuatara.text:rope-octets rope :start 5 :end 100005))
+        (tuatara.text:rope-hash rope 5 100005))))
 
 (define-test (hex-and-sums sha256-failing-and-stopped)
   ;; a program that does not print a sum: what it said is shown

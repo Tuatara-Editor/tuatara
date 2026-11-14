@@ -456,6 +456,43 @@
           (is string= (format nil "X [[https://b.org][new]] Y~%") (session-text editor)))
         (forget)))))
 
+(define-test (org insert-link-written-as-each-mode-writes-links)
+  ;; C-c C-l in Markdown and LaTeX writes the link as the file's mode does; a file link is its path alone
+  (with-test-directory (dir)
+    (let ((notes (merge-pathnames "sub/my notes.txt" dir))
+          (tuatara.defaults::*org-stored-links* '()))
+      (ensure-directories-exist notes)
+      (alexandria:write-string-into-file (format nil "line~%") notes)
+      (flet ((typed-in (name keys)
+               (let ((file (namestring (merge-pathnames name dir))))
+                 (alexandria:write-string-into-file "" file :if-exists :supersede)
+                 (prog1 (session-text (nth-value 1 (run-keys keys :file file :width 120 :height 20)))
+                   (forget-file-buffers))))
+             (file-keys (label)
+               (list (format nil "C-u C-c C-l C-a C-k ~a" (rimu-typed (namestring notes))) :wait
+                     (format nil "RET DEL ~a RET" label))))
+        (is string= "[Site \\[1\\]](https://ex.org)"
+            (typed-in "a.md" "C-c C-l h t t p s : / / e x . o r g RET S i t e SPC [ 1 ] RET"))
+        (is string= "[sub/my notes.txt](<sub/my notes.txt>)" (typed-in "a.md" (file-keys "")))
+        (is string= "\\href{https://ex.org/a\\%b}{Site}"
+            (typed-in "a.tex" "C-c C-l h t t p s : / / e x . o r g / a % b RET S i t e RET"))
+        (is string= "\\url{https://ex.org}" (typed-in "a.tex" "C-c C-l h t t p s : / / e x . o r g RET RET"))
+        (is string= "\\href{sub/my notes.txt}{Notes}" (typed-in "a.tex" (file-keys "N o t e s")))
+        ;; a label whose braces do not pair is refused in LaTeX, nothing written
+        (is string= "" (typed-in "a.tex" "C-c C-l h t t p s : / / e x . o r g RET \\ e m p h { x RET"))
+        (is string= "[[https://ex.org][Site]]" (typed-in "a.org" "C-c C-l h t t p s : / / e x . o r g RET S i t e RET"))))))
+
+(define-test (org insert-link-renamed-and-bound-in-each-mode)
+  ;; the one command for links is insert-link; org-insert-link is gone, with no second name
+  (false (fboundp 'tuatara.defaults::org-insert-link))
+  (run-keys "")
+  (dolist (mode '(tuatara.defaults::org-mode tuatara.defaults::markdown-mode tuatara.defaults::latex-mode))
+    (is eq 'tuatara.defaults::insert-link
+        (tuatara.command:lookup-key (tuatara.modes:mode-keymap mode) (tuatara.frontend:parse-key-sequence "C-c C-l")))
+    (is eq 'tuatara.defaults::inline-add-picture
+        (tuatara.command:lookup-key (tuatara.modes:mode-keymap mode)
+                                    (tuatara.frontend:parse-key-sequence "C-c C-x p")))))
+
 (define-test (org links-to-programs-kept-safe)
   ;; a mail link never has the mail program attach a file; numbers in matches read without the Lisp reader
   (is string= "mailto:a@b" (tuatara.defaults::mail-address-without-attachments "mailto:a@b?attach=~/.ssh/id_rsa"))

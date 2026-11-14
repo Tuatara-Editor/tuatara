@@ -534,6 +534,41 @@ anywhere: every copy of it passed was closed. IN is closed after."
         (tuatara.frontend:frontend-stop remote)
         (sb-posix:close theirs)))))
 
+(define-test (remote client-missing-an-answer-asked-once)
+  ;; a client that gives no answer in time holds the editor up once; asked again at once, it is taken
+  ;; to have none without waiting
+  (multiple-value-bind (mine theirs) (tuatara.io:socket-pair)
+    (raw-peer theirs)
+    (let ((remote (tuatara.frontend:make-remote-frontend mine)))
+      (is eq nil (tuatara.frontend::ask-client remote :clipboard nil 1/5))
+      (let ((start (get-internal-real-time)))
+        (is eq nil (tuatara.frontend::ask-client remote :clipboard nil 1/5))
+        (true (< (- (get-internal-real-time) start) (/ internal-time-units-per-second 20))))
+      (tuatara.frontend:frontend-stop remote)
+      (sb-posix:close theirs))))
+
+(define-test (remote face-names-from-an-editor-bounded)
+  ;; a face name from the editor is the keyword there is; new keywords are made only up to a bound for the
+  ;; life of the process, names past it kept as strings, which no face has
+  (is eq :default (tuatara.frontend::received-face-name "DEFAULT"))
+  (let ((made (car tuatara.frontend::**face-names-made**)))
+    (setf (car tuatara.frontend::**face-names-made**) tuatara.frontend::+most-names+)
+    (unwind-protect
+         (let ((name (tuatara.frontend::received-face-name "NO-SUCH-FACE-MADE-UP-BY-AN-EDITOR")))
+           (true (stringp name))
+           (false (find-symbol "NO-SUCH-FACE-MADE-UP-BY-AN-EDITOR" :keyword)))
+      (setf (car tuatara.frontend::**face-names-made**) made))))
+
+(define-test (remote face-name-numbers-looked-up-first)
+  ;; a face name numbered already is found without measuring it again
+  (let ((names (tuatara.frontend::make-face-names)) (measured 0))
+    (tuatara.frontend::face-name-number names :default)
+    (sb-int:encapsulate 'tuatara.text:string-octet-length 'counting
+                        (lambda (function &rest arguments) (incf measured) (apply function arguments)))
+    (unwind-protect (is = 1 (tuatara.frontend::face-name-number names :default))
+      (sb-int:unencapsulate 'tuatara.text:string-octet-length 'counting))
+    (is = 0 measured)))
+
 (defun ended-already-p (remote)
   "True when REMOTE's connection ends within five seconds, its frame said to be gone."
   (loop for event = (tuatara.frontend:queue-pop (tuatara.frontend::remote-queue remote) 5)
@@ -1834,3 +1869,26 @@ as messages from an editor; the client."
       (is equal (list (list :picture image 339/19 437/18 355/9 46/19 '(1 0))
                       (list :picture image 3 4 20 5 nil))
           (tuatara.frontend::take-frame inbox nil (vector) (list image))))))
+
+(define-test (remote idle-connection-sleeps-until-woken)
+  ;; a connection with nothing to read and no deadline waits without waking, until a message
+  ;; comes or its socket is shut
+  (multiple-value-bind (ours theirs) (tuatara.io:socket-pair)
+    (let ((inbox (tuatara.frontend::make-inbox ours :editor))
+          (polls 0)
+          (reader nil))
+      (sb-int:encapsulate 'tuatara.io:poll-fd 'idle-polls
+                          (lambda (original fd &rest more)
+                            (when (eql fd ours) (incf polls))
+                            (apply original fd more)))
+      (unwind-protect
+           (progn
+             (setf reader (sb-thread:make-thread (lambda () (tuatara.frontend::fill-inbox inbox 5))))
+             (sleep 1.3)
+             (true (sb-thread:thread-alive-p reader) "still waiting")
+             (is = 1 polls "one wait, never woken by a timer")
+             (tuatara.io:shut-socket ours)
+             (is eq nil (sb-thread:join-thread reader :timeout 5 :default :running) "the shut socket ends the wait"))
+        (sb-int:unencapsulate 'tuatara.io:poll-fd 'idle-polls)
+        (sb-posix:close ours)
+        (sb-posix:close theirs)))))

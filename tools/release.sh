@@ -30,16 +30,8 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
 . tools/inside.sh
-# Quicklisp's setup.lisp where tools/quicklisp.lisp finds it
-find_quicklisp_setup() {
-  local setup
-  for setup in "${QUICKLISP_SETUP:-}" "$HOME/quicklisp/setup.lisp" "$HOME/.local/share/quicklisp/setup.lisp"; do
-    if [ -n "$setup" ] && [ -f "$setup" ]; then echo "$setup"; return; fi
-  done
-  echo "tools/release.sh: Quicklisp is not installed: see HACKING.org" >&2
-  exit 1
-}
-find_quicklisp_setup >/dev/null
+. tools/fetch.sh
+quicklisp_setup >/dev/null || exit 1
 if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
   echo "tools/release.sh: changes not committed are left out of the release" >&2
 fi
@@ -49,8 +41,8 @@ tools/terminal-library.sh
 # changed since it, with these scripts, the same grammars and terminal
 # library, and the same Lisp libraries
 stamp="$root/build/release/.built-from"
-wanted="$(git rev-parse HEAD) $(cat "$0" tools/lisp-archives.sh tools/lisp-archives.sha256 tools/build-image.lisp tools/build-image.sh tools/inside.sh build/grammars/.built-from \
-            build/terminal/.built-from "$(dirname "$(find_quicklisp_setup)")/dists/quicklisp/distinfo.txt" | sha256sum |
+wanted="$(git rev-parse HEAD) $(cat "$0" tools/lisp-archives.sh tools/lisp-archives.sha256 tools/build-image.lisp tools/build-image.sh tools/inside.sh tools/fetch.sh build/grammars/.built-from \
+            build/terminal/.built-from "$(dirname "$(quicklisp_setup)")/dists/quicklisp/distinfo.txt" | sha256sum |
               cut -c1-16)"
 if [ -z "$(git status --porcelain --untracked-files=no)" ] &&
    [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$wanted" ] && [ -x build/release/tuatara/tuatara ] &&
@@ -59,7 +51,7 @@ if [ -z "$(git status --porcelain --untracked-files=no)" ] &&
   exit 0
 fi
 rm -f "$stamp"
-quicklisp="$(dirname "$(find_quicklisp_setup)")"
+quicklisp="$(dirname "$(quicklisp_setup)")"
 # a new directory of this account's alone, which the toolbox sees at the same path;
 # it and the directory the sources are packed in go however the script ends
 work="$(mktemp -d /tmp/tuatara-release-build.XXXXXX)"
@@ -188,6 +180,15 @@ tuatara/syntax/grammars.tsv names, under the licence it names there, which the
 build patches as tuatara/syntax/patches/ says. tuatara/HACKING.org says how to
 build it.
 EOF
+# the sources are given to others too: nothing in them names this machine
+named=0
+while IFS= read -r -d '' file; do
+  if names_this_machine "$file"; then named=1; fi
+done < <(find "$pack" -type f -print0)
+if [ "$named" = 1 ]; then
+  echo "tools/release.sh: files of the sources name this machine's home directory or user, where shown above: not released" >&2
+  exit 1
+fi
 tar -C "$pack" -cf - tuatara-sources | zstd -19 -T0 -q -f -o "$root/build/release/tuatara-sources.tar.zst"
 echo "$wanted" > "$stamp"
 echo "$out"

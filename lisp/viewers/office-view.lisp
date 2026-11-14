@@ -133,9 +133,7 @@ want of them (pages not wanted, or pictures not shown)."
   (when (and *office-view-pages* (tuatara.frontend:frontend-images-p (editor-frontend *editor*)))
     (let ((status (tuatara.io:sandbox-status-now)))
       (cond ((not (member status '(:ready :unknown))) (no-sandbox-words status))
-            ((null (find-pdf-decoder)) (format nil
-                                               "no program for PDFs (install ~a)"
-                                               (getf (first *pdf-decoders*) :name)))
+            ((null (find-pdf-decoder)) (no-decoder-words "PDFs" *pdf-decoders*))
             ((not (tuatara.io:sandbox-find-program *office-page-program*))
              (format nil "LibreOffice draws the pages, and is not installed (~a)" *office-page-program*))))))
 
@@ -183,27 +181,27 @@ thread working in the background."
           (reporting-errors ("drawing the pages of ~a" path)
             (let ((pdf (office-pdf-copy fd (office-ending office (tuatara.io:native-file-name path)) :cancel cancel)))
               (unwind-protect
-                   (multiple-value-bind (pdf-text pdf-notes pdf-image)
-                       (decode-pdf pdf :cancel cancel :pixels pixels :limit 4096)
-                     (declare (ignore pdf-text))
-                     ;; its pages counted; what the PDF's text was is not this text's
-                     (setf notes (remove-if-not (lambda (note) (cl-ppcre:scan "^, [0-9,]+ pages?$" (car note)))
-                                                pdf-notes)
-                           image pdf-image))
+                   (multiple-value-bind (pdf-text pdf-notes pdf-image info)
+                       (decode-pdf pdf :cancel cancel :pixels pixels :text nil)
+                     (declare (ignore pdf-text pdf-notes))
+                     ;; its pages counted
+                     (let ((pages (and info (whole-number (info-field info "Pages")))))
+                       (setf notes (and pages (list (pages-note pages)))
+                             image pdf-image)))
                 (ignoring-errors-reported ("closing the PDF made of ~a" path) (sb-posix:close pdf)))))
         (error () (push (cons ", its pages not drawn (the debug log says why)" :comment) notes))))
     (values text notes image)))
 
 ;;; Read as text
 
-(defstruct (office-read-job (:include tuatara.runtime:job)
-                            (:constructor make-office-read-job (buffer path office))
-                            (:copier nil))
+(define-record (office-read-job (:include tuatara.runtime:job)
+                               (:constructor make-office-read-job (buffer path office))
+                               (:copier nil))
   "An Office document at PATH, of the kind OFFICE (*OFFICE-FORMATS*), being
 read as text for BUFFER, a job; TEXT, the Org note made of it."
-  path office text)
-
-(setf (documentation 'office-read-job-p 'function) "True when OBJECT is an OFFICE-READ-JOB.")
+  (path nil :documentation "The path of the Office document OFFICE-READ-JOB reads.")
+  (office nil :documentation "The kind of the document of OFFICE-READ-JOB, from *OFFICE-FORMATS*.")
+  (text nil :documentation "The Org note OFFICE-READ-JOB made of the document, NIL until it is done."))
 
 (tuatara.runtime:define-job-words office-read-job
   :doing (format nil "Reading the ~a" (getf (office-read-job-office job) :words))

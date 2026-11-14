@@ -50,8 +50,12 @@
       ;; in the order the snippet gives them
       (flet ((row (word) (loop for r below 12 when (search word (tuatara.frontend.fake:fake-screen-line f r)) return r)))
         (true (< (row "red") (row "green") (row "blue")))))
-    ;; chosen by name with C-c y
-    (is string= "green!" (session-text (nth-value 1 (run-keys "C-c y P i c k RET g r e e n RET" :text ""))))
+    ;; chosen by name with C-c y, in text and in code; a buffer with no major mode has no such key
+    (is string= "green!" (session-text (nth-value 1 (run-keys "M-x t e x t - m o d e RET C-c y P i c k RET g r e e n RET"
+                                                              :text ""))))
+    (is string= "green!" (session-text (nth-value 1 (run-keys "M-x p r o g - m o d e RET C-c y P i c k RET g r e e n RET"
+                                                              :text ""))))
+    (false (tuatara.frontend.fake:fake-frame-showing (run-keys "C-c y" :text "" :width 100) "Pick one"))
     ;; not where nothing is typed: the buffer list, the bookmark manager, help
     (true (tuatara.frontend.fake:fake-frame-showing (run-keys "C-x C-b C-c y" :text "" :width 100) "C-c y is undefined"))
     (true (tuatara.frontend.fake:fake-frame-showing (run-keys "C-x m l C-c y" :text "" :width 100) "C-c y is undefined"))))
@@ -73,8 +77,9 @@
            (copy (merge-pathnames "org-mode/quote-block" dir)))
       (true (probe-file copy))
       (true (search "#+begin_quote" (alexandria:read-file-into-string copy)))
-      ;; changed, the copy is what <q puts in
+      ;; changed, the copy is what <q puts in once its directory is looked at again, a second on
       (alexandria:write-string-into-file (format nil "# name: Quote~%# key: <q~%# --~%> $0") copy :if-exists :supersede)
+      (clrhash tuatara.defaults::*snippets-read-by-directory*)
       (is string= "> hi" (session-text (nth-value 1 (run-keys "M-x o r g - m o d e RET < q TAB h i" :text "")))))))
 
 (define-test (snippets nested-too-deep)
@@ -115,14 +120,18 @@
     (is string= "pwrs" (session-text (nth-value 1 (run-keys "z p TAB TAB w" :text ""))))
     ;; a file whose lines end in carriage returns puts in lines without them
     (is string= (format nil "line1~%line2") (session-text (nth-value 1 (run-keys "c r TAB" :text ""))))
-    ;; the snippets read are kept, and read again once their files change
-    (let* ((place (tuatara.io:native (tuatara.defaults::own-subdirectory (first tuatara-user:*snippet-directories*) "fundamental-mode")))
-           (kept (cdr (gethash place tuatara.defaults::*snippets-read-by-directory*))))
+    ;; the snippets read are kept, and read again once their files change; the directory is
+    ;; looked at no more than once a second, so a TAB costs no listing of it
+    (let* ((place (tuatara.io:native (tuatara.defaults::own-subdirectory (first tuatara-user:*snippet-directories*)
+                                                                         "fundamental-mode")))
+           (kept (third (gethash place tuatara.defaults::*snippets-read-by-directory*))))
       (true kept)
       (is eq (first kept) (first (tuatara.defaults::user-snippets-of "fundamental-mode")))
       (alexandria:write-string-into-file (format nil "# key: zp~%# --~%changed and longer")
                                          (concatenate 'string place "zero")
                                          :if-exists :supersede)
+      (is eq (first kept) (first (tuatara.defaults::user-snippets-of "fundamental-mode")))
+      (decf (first (gethash place tuatara.defaults::*snippets-read-by-directory*)) internal-time-units-per-second)
       (is string= "changed and longer" (session-text (nth-value 1 (run-keys "z p TAB" :text ""))))))
   ;; a choice never closed is text
   (is equal '("x ${1|a,b") (tuatara.defaults::parse-snippet-body "x ${1|a,b"))

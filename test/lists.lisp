@@ -57,6 +57,17 @@ a keyword, with where it stood: (NAME . POSITION)."
                    (progn (write-char (char text i) out) (incf length) (incf i)))))
     (values (get-output-stream-string out) places)))
 
+(define-test (lists definition-start-makes-no-block-per-step)
+  ;; going back over definitions reads into one block on the stack, no new 64 KB block a step
+  (let ((buffer (tuatara.buffer:make-buffer "definitions" :text (format nil "~{(d~a)~%~}" (loop for i below 50 collect i)))))
+    (unwind-protect
+         (let* ((end (tuatara.buffer:buffer-size buffer))
+                (before (sb-ext:get-bytes-consed)))
+           (dotimes (i 40) (tuatara.defaults::bracket-definition-start buffer end 3))
+           (let ((made (- (sb-ext:get-bytes-consed) before)))
+             (true (< made (* 40 65536)) "~:d octets made by 40 calls" made)))
+      (tuatara.buffer:kill-buffer buffer))))
+
 (define-test (lists markers-read)
   (multiple-value-bind (text places) (marked-text "a=!one=bc=!two==!three=d")
     (is string= "abcd" text)
@@ -607,3 +618,36 @@ struct S {
     ;; nothing open
     (is string= "Every environment before point is closed" (third (closed (format nil "\\begin{a}~%\\end{a}~%"))))
     (is string= "Every environment before point is closed" (third (closed "")))))
+
+(define-test (lists latex-close-environment-leaves-verbatim-text-alone)
+  (flet ((closed (text) (first (latex-after text "C-c ]" :point (length text)))))
+    ;; a \begin inside a closed verbatim is text, not an open environment
+    (is string= (format nil "\\begin{figure}~%\\begin{verbatim}~%\\begin{foo}~%\\end{verbatim}~%\\end{figure}")
+        (closed (format nil "\\begin{figure}~%\\begin{verbatim}~%\\begin{foo}~%\\end{verbatim}~%")))
+    ;; point inside a verbatim: it is the one to close
+    (is string= (format nil "\\begin{figure}~%\\begin{verbatim}~%\\begin{foo}~%\\end{verbatim}")
+        (closed (format nil "\\begin{figure}~%\\begin{verbatim}~%\\begin{foo}~%")))))
+
+(define-test (lists lisp-indent-loop-is-the-name-loop)
+  ;; only a form named loop, with or without its package, is indented as a loop; one that begins with the
+  ;; letters is an ordinary call
+  (flet ((indented (text)
+           (session-text (nth-value 1 (session-in :lisp-mode text "M-x i n d e n t - f o r - t a b - c o m m a n d RET"
+                                                                 :point (1+ (position #\Newline text)))))))
+    (is string= (format nil "(loop-finish~% x)") (indented (format nil "(loop-finish~%x)")))
+    (is string= (format nil "(loopback a~%          b)") (indented (format nil "(loopback a~%b)")))
+    (is string= (format nil "(loop for x in y~%      collect x)") (indented (format nil "(loop for x in y~%collect x)")))
+    (is string= (format nil "(cl:loop for x in y~%      collect x)")
+        (indented (format nil "(cl:loop for x in y~%collect x)")))))
+
+(define-test (lists load-package-arguments-indented-as-a-body)
+  ;; in an init file, what follows a package's name is indented as a body even when the first line holds more,
+  ;; never lined up under the name
+  (flet ((indented (text)
+           (session-text (nth-value 1 (session-in :lisp-mode text "M-x i n d e n t - f o r - t a b - c o m m a n d RET"
+                                                                 :point (1+ (position #\Newline text)))))))
+    (is string= (format nil "(load-package \"outlook\" :source \"https://x\"~%  :version \"latest\")")
+        (indented (format nil "(load-package \"outlook\" :source \"https://x\"~%:version \"latest\")")))
+    (is string= (format nil "(package-source \"mine\" \"https://x\"~%  :signers '(\"a\"))")
+        (indented (format nil "(package-source \"mine\" \"https://x\"~%:signers '(\"a\"))")))
+    (is string= (format nil "(load-package \"keys\"~%  :config)") (indented (format nil "(load-package \"keys\"~%:config)")))))

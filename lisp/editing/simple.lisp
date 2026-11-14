@@ -32,7 +32,7 @@ it; with a count N, N spaces; a negative count takes the line ends among them
 too, leaving -N spaces."
   (let ((b (current-buffer)) (n (prefix)))
     (multiple-value-bind (start end) (space-bounds b (point) :newlines (minusp n))
-      (goto (tuatara.buffer:buffer-replace b start end (make-string (abs n) :initial-element #\Space))))))
+      (goto (tuatara.buffer:buffer-replace b start end (spaces (abs n)))))))
 
 (define-command cycle-spacing ()
   "Change the spaces around point in turn: once, one space (\\[just-one-space],
@@ -47,7 +47,7 @@ a count as there); pressed again, none; a third time, the spaces as they were."
                   (list :step 1 :newlines (minusp n)
                         :original (tuatara.buffer:buffer-string b :start start :end end)
                         :point-offset (- (point) start)))
-            (goto (tuatara.buffer:buffer-replace b start end (make-string (abs n) :initial-element #\Space)))))
+            (goto (tuatara.buffer:buffer-replace b start end (spaces (abs n))))))
         (destructuring-bind (&key step newlines original point-offset) state
           (multiple-value-bind (start end) (space-bounds b (point) :newlines newlines)
             (if (= step 1)
@@ -117,6 +117,39 @@ BLOCK-END, when it holds it."
       (aref block (- p block-start))
       (tuatara.text:rope-octet rope p)))
 
+(define-record (line-slice (:constructor make-line-slice (rope)) (:copier nil))
+  "A line of ROPE as work over lines reads it (START-LINE-JOB, MAP-PIECE-LINES):
+START its first octet, END where its text ends (before its newline, or the
+carriage return before that), NEXT the next line's start. BLOCK holds the
+octets read around it, ROPE's from BLOCK-START below BLOCK-END, which
+SLICE-OCTET and SLICE-OCTETS read the line from. One slice is filled again for
+each line in turn: it is not kept."
+  (rope nil :documentation "The text SLICE is a line of.")
+  (start 0 :type fixnum :documentation "Where the line of SLICE starts.")
+  (end 0 :type fixnum :documentation "Where the text of the line of SLICE ends, before its line end.")
+  (next 0 :type fixnum :documentation "Where the line after the one of SLICE starts, or the end of the text.")
+  (block nil :documentation "The octets read around the line of SLICE.")
+  (block-start 0 :type fixnum :documentation "Where the octets read around the line of SLICE start in its text.")
+  (block-end 0 :type fixnum :documentation "Where the octets read around the line of SLICE end in its text."))
+
+(declaim (inline slice-octet))
+(defun slice-octet (slice p)
+  "The octet at offset P of the text SLICE is a line of: from the octets read
+around the line when they hold it."
+  (block-octet (line-slice-rope slice) (line-slice-block slice)
+               (line-slice-block-start slice) (line-slice-block-end slice) p))
+
+(defun slice-octets (slice &optional (from (line-slice-start slice)) (to (line-slice-end slice)))
+  "Three values, octets holding the text SLICE is a line of from FROM below
+TO and where that starts and ends in them. By default it is the line's text
+without its line end. The octets are those read around the line when they
+hold it, else the text read now."
+  (declare (type fixnum from to))
+  (let ((block-start (line-slice-block-start slice)))
+    (if (and (>= from block-start) (<= to (line-slice-block-end slice)))
+        (values (line-slice-block slice) (- from block-start) (- to block-start))
+        (values (tuatara.text:rope-octets (line-slice-rope slice) :start from :end to) 0 (- to from)))))
+
 (defun joining-line (top bottom prefixes)
   "A function changing each line for START-LINE-JOB, so that the lines from the
 one starting at TOP to the one starting at BOTTOM become one, as
@@ -127,25 +160,30 @@ leave none (PREFIXES are the quote marks of Lisp)."
   (let ((space (tuatara.text:string-octets " "))
         (none (make-array 0 :element-type '(unsigned-byte 8)))
         (bound nil))
-    (lambda (function line line-end next rope block block-start block-end)
-      (flet ((octet (p) (block-octet rope block block-start block-end p))
+    (lambda (function slice)
+      (flet ((octet (p) (slice-octet slice p))
              (blank-p (b) (or (= b 32) (= b 9))))
-        (let* ((text (loop for p from line below line-end unless (blank-p (octet p)) return p finally (return line-end)))
+        (let* ((line (line-slice-start slice))
+               (line-end (line-slice-end slice))
+               (next (line-slice-next slice))
+               (text (loop for p from line below line-end
+                           unless (blank-p (octet p)) return p
+                           finally (return line-end)))
                (last (= line bottom)))
           (if (= text line-end)
               ;; a blank line goes, the last one's line end kept
               (let ((to (if last line-end next)))
-                (when (< line to) (funcall function line to nil none)))
+                (when (< line to) (funcall function line to none)))
               (let ((end (loop for p from (1- line-end) downto text unless (blank-p (octet p)) return (1+ p))))
                 (when (and (/= line top) (< line text))
-                  (funcall function line text nil none))
+                  (funcall function line text none))
                 (unless last
-                  (let* ((bound (or bound (setf bound (tuatara.text:rope-line-end rope bottom))))
+                  (let* ((bound (or bound (setf bound (tuatara.text:rope-line-end (line-slice-rope slice) bottom))))
                          (after (loop for p from next below bound
                                       for b = (octet p)
                                       unless (member b tuatara.text:*blank-octets*) return b))
                          (before (octet (1- end))))
-                    (funcall function end next nil
+                    (funcall function end next
                              (if (and after
                                       (not (member after tuatara.text:*closing-octets*))
                                       (not (member before tuatara.text:*opening-octets*))
@@ -208,7 +246,7 @@ every line it takes in, in the background when it holds more than
   "Insert a line end after point, point staying before it; with a count, that
 many line ends. The new line is not indented."
   (let ((n (insert-count)) (b (current-buffer)) (p (point)))
-    (tuatara.buffer:buffer-insert b p (tuatara.buffer:unjoined-line-ends b p (repeated-text (tuatara.buffer:buffer-newline b) n)))
+    (insert-blank-lines b p n)
     (goto p)))
 
 (define-command back-to-indentation ()
@@ -306,8 +344,8 @@ negative; past either end, an error: \"End of buffer\" or
 \"Beginning of buffer\"."
   (let ((p position))
     (dotimes (i (abs count) p)
-      (cond ((and (plusp count) (>= p (tuatara.buffer:buffer-size buffer))) (error (edge-words t nil)))
-            ((and (minusp count) (<= p 0)) (error (edge-words nil nil))))
+      (cond ((and (plusp count) (>= p (tuatara.buffer:buffer-size buffer))) (refuse "~a" (edge-words t nil)))
+            ((and (minusp count) (<= p 0)) (refuse "~a" (edge-words nil nil))))
       (setf p (tuatara.buffer:buffer-forward-char buffer p (if (plusp count) 1 -1))))))
 
 (defun word-mover (buffer position count)
@@ -335,8 +373,7 @@ shown alone."
               (setf p (tuatara.buffer:buffer-end buffer))
               (decf left))
             (when (plusp left)
-              (tuatara.buffer:buffer-insert buffer p (tuatara.buffer:unjoined-line-ends
-                                                     buffer p (repeated-text (tuatara.buffer:buffer-newline buffer) left)))
+              (insert-blank-lines buffer p left)
               (setf p (tuatara.buffer:buffer-end buffer)))))
         p)
       (let ((p (tuatara.buffer:buffer-line-start buffer position)))
@@ -500,13 +537,16 @@ narrowed buffer, the lines of the part shown."
          (size (tuatara.buffer:buffer-end b))
          (bol (tuatara.buffer:within-narrowing b (tuatara.buffer:buffer-line-start b p)))
          (eol (tuatara.buffer:within-narrowing b (tuatara.buffer:buffer-line-end b p))))
-    (when (and (plusp n) (= p size) (= bol size)) (error (edge-words t narrowed)))
-    (when (and (minusp n) (= p low) (= eol low)) (error (edge-words nil narrowed)))
+    (when (and (plusp n) (= p size) (= bol size)) (refuse "~a" (edge-words t narrowed)))
+    (when (and (minusp n) (= p low) (= eol low)) (refuse "~a" (edge-words nil narrowed)))
     (let* ((other (cond ((zerop n) eol)
                         ((minusp n)
                          ;; the start of the line -N-1 back, then back over the line end before it
                          (let ((q bol))
-                           (dotimes (i (- (1+ n))) (unless (<= q low) (setf q (tuatara.buffer:within-narrowing b (tuatara.buffer:buffer-line-start b (1- q))))))
+                           (dotimes (i (- (1+ n)))
+                             (unless (<= q low)
+                               (setf q (tuatara.buffer:within-narrowing
+                                        b (tuatara.buffer:buffer-line-start b (1- q))))))
                            (cond ((<= q low) low)
                                  ((and (> q (1+ low)) (eql (tuatara.buffer:buffer-char-at b (- q 2)) #\Return)) (- q 2))
                                  (t (1- q)))))
@@ -532,7 +572,8 @@ key is said to be no character FOR that."
             ((and (characterp base) (not (tuatara.frontend:key-ctrl key)) (not (tuatara.frontend:key-meta key))) base)
             ((eq base :enter) #\Newline)
             ((eq base :tab) #\Tab)
-            (t (refuse "~a is no character ~a" (tuatara.frontend:key-description (tuatara.frontend:key-spec key)) for))))))
+            (t (refuse "~a is no character ~a"
+                       (tuatara.frontend:key-description (tuatara.frontend:key-spec key)) for))))))
 
 (defun find-char-occurrence (buffer position char count fold)
   "Where the COUNTth CHAR after POSITION of BUFFER ends, or where the -COUNTth
@@ -616,14 +657,16 @@ looked for in that case only."
   "The settings a count reads as it works, carried to the thread it works on as
 they are on the editor's when it starts (TUATARA.RUNTIME:CARRY-SETTINGS).")
 
-(defstruct (count-job (:include tuatara.runtime:job) (:constructor %make-count-job) (:copier nil))
+(define-record (count-job (:include tuatara.runtime:job) (:constructor %make-count-job) (:copier nil))
   "A count for BUFFER, a job (TUATARA.RUNTIME:JOB), of the text WHAT names
 \(\"Region\", \"Buffer\"): TOTAL octets, the car of DONE counted so far;
 RESULT, once done, a list of lines, sentences, words and characters; LEFT-OUT
 the lines search filters hide, not counted."
-  what (total 0) (done (list 0)) result (left-out 0))
-
-(setf (documentation 'count-job-p 'function) "True when OBJECT is a COUNT-JOB.")
+  (what nil :documentation "What the count of JOB is of, as a name such as \"Region\" or \"Buffer\".")
+  (total 0 :documentation "How many octets the count of JOB goes through.")
+  (done (list 0) :documentation "A list whose car is how many octets of the text JOB has counted so far.")
+  (result nil :documentation "The lines, sentences, words and characters JOB counted as a list, NIL until it is done.")
+  (left-out 0 :documentation "How many lines the search filters hide that JOB did not count."))
 
 (tuatara.runtime:define-job-words count-job
   :at-exit :quiet
@@ -708,7 +751,9 @@ car turns true."
                                      (setf last-octet octet)
                                      (when (= octet 10) (incf lines))))
                           ;; a character begun at the end may go on in the next piece
-                          (loop with stop of-type fixnum = (if (= left n) filled (- filled (tuatara.text:octets-pending piece 0 filled)))
+                          (loop with stop of-type fixnum = (if (= left n)
+                                                               filled
+                                                               (- filled (tuatara.text:octets-pending piece 0 filled)))
                                 while (< i stop)
                                 do (if (< (aref piece i) #x80)
                                        (progn (see (code-char (aref piece i))) (incf i))
@@ -779,8 +824,9 @@ it takes time."
      job (tuatara.runtime:carry-settings
           *count-carried-settings*
           (lambda (job)
-            (let ((result (multiple-value-list (count-text rope start end :parts parts :done done :cancel cancel
-                                                                          :double-space (sentence-end-double-space-p b)))))
+            (let ((result (multiple-value-list
+                           (count-text rope start end :parts parts :done done :cancel cancel
+                                                      :double-space (sentence-end-double-space-p b)))))
               (if (first result)
                   (setf (count-job-result job) result (count-job-status job) :done)
                   (setf (count-job-status job) :stopped)))))

@@ -29,6 +29,12 @@ FILE-SYSTEM-ERROR happened, or NIL.")
 
 ;;; Names as the system has them
 
+(defun terminated-octets (octets)
+  "OCTETS with a null (NUL) octet after them, for the system."
+  (let ((name (make-array (1+ (length octets)) :element-type '(unsigned-byte 8) :initial-element 0)))
+    (replace name octets)
+    name))
+
 (defun keep-raw-bytes-in-names ()
   "Have every string handed to the system (a path to open, examine, rename)
 keep its raw bytes' characters (U+DC80..U+DCFF, what a name that is not UTF-8
@@ -41,12 +47,7 @@ writer of UTF-8 for the system is wrapped, as its TRACE wraps a function."
       (sb-int:encapsulate name 'raw-bytes
                           (lambda (original string)
                             (if (find-if (lambda (c) (tuatara.text:raw-byte-code-p (char-code c))) string)
-                                (let* ((octets (tuatara.text:string-octets string))
-                                       (out (make-array (1+
-                                                         (length octets)) :element-type '(unsigned-byte
-                                                                                          8) :initial-element 0)))
-                                  (replace out octets)
-                                  out)
+                                (terminated-octets (tuatara.text:string-octets string))
                                 (funcall original string)))))))
 
 (keep-raw-bytes-in-names)
@@ -90,14 +91,6 @@ report [final].tex; a name beginning with a dot alone (.bashrc) kept whole."
 character), as the pathname of a directory, whether or not its name ends with
 a slash."
   (sb-ext:parse-native-namestring (native directory) nil *default-pathname-defaults* :as-directory t))
-
-(defun own-variable (name)
-  "The value of the environment variable NAME as the editor itself has it,
-or NIL when it has none: what the editor's own directories, time zone, terminal
-and switches are read from. A program started for someone else is given their
-variables where they came with a request (PROGRAM-VARIABLE); this one never
-follows them."
-  (sb-posix:getenv name))
 
 (defun own-directory (name)
   "The directory the environment variable NAME names for the editor itself
@@ -220,31 +213,9 @@ left."
        (unwind-protect
             (let ((,sap (sb-alien:alien-sap ,alien)))
               ,@(when zero
-                  `((sb-alien:alien-funcall
-                     (sb-alien:extern-alien "memset" (function sb-sys:system-area-pointer sb-sys:system-area-pointer
-                                                               sb-alien:int sb-alien:unsigned-long))
-                     ,sap 0 ,octets)))
+                  `((%memset ,sap 0 ,octets)))
               ,@body)
          (sb-alien:free-alien ,alien)))))
-
-(defun sap-octets (sap &optional length)
-  "The LENGTH octets at the foreign pointer SAP, copied into a new octet
-vector; without LENGTH, the octets up to the first zero octet, the end of a
-C string, that zero left out. Complexity: O(LENGTH), one block copy."
-  (let* ((length (or length (sb-alien:alien-funcall
-                             (sb-alien:extern-alien "strlen"
-                                                    (function sb-alien:unsigned-long sb-sys:system-area-pointer))
-                             sap)))
-         (octets (make-array length :element-type '(unsigned-byte 8))))
-    (with-octets-sap (to octets)
-      (sb-kernel:system-area-ub8-copy sap 0 to 0 length))
-    octets))
-
-(defun sap-string (sap &optional length)
-  "The text of the LENGTH octets at the foreign pointer SAP, or of the C
-string there without LENGTH, read as the editor reads a file's text: UTF-8,
-an octet that is not UTF-8 kept as a raw byte."
-  (tuatara.text:octets-string (sap-octets sap length)))
 
 (defmacro with-c-string ((sap string &key (start 0) end length) &body body)
   "Run BODY with SAP pointing at STRING from START below END as C is given
@@ -274,7 +245,7 @@ garbage is made for them; BODY must not keep SAP."
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defun c-type (type)
     "The alien type DEFINE-C-FUNCTION takes TYPE for: :pointer, :int, :uint,
-:short, :uint8, :uint32, :ulong, :size, :double, :float, :void, :boolean (a
+:short, :uint8, :uint32, :long, :ulong, :size, :double, :float, :void, :boolean (a
 truth value as an int, GLib's gboolean), :bool (a truth value of one octet,
 C's bool) and :string (text, in UTF-8); any other TYPE is taken as an alien
 type itself."
@@ -285,6 +256,7 @@ type itself."
       (:short 'sb-alien:short)
       (:uint8 '(sb-alien:unsigned 8))
       (:uint32 '(sb-alien:unsigned 32))
+      (:long 'sb-alien:long)
       ((:ulong :size) 'sb-alien:unsigned-long)
       (:double 'sb-alien:double)
       (:float 'sb-alien:single-float)
@@ -297,13 +269,18 @@ type itself."
 (defmacro define-c-function ((c-name name) result &body arguments)
   "Define NAME, a function calling the C function C-NAME, which returns
 RESULT: ARGUMENTS, after an optional docstring, are each (ARGUMENT TYPE), the
-types C-TYPE knows. The library holding C-NAME is not loaded by NAME: its
-callers load it first (FOREIGN-LIBRARY-P, as LOAD-GTK-LIBRARIES and
+types C-TYPE knows. Declared inline before it is defined, a call of NAME
+costs what the bare call does and makes no garbage, as for the system calls
+the editor makes on every key. The library holding C-NAME is not loaded by
+NAME: its callers load it first (FOREIGN-LIBRARY-P, as LOAD-GTK-LIBRARIES and
 LOAD-NCURSES do). A :string argument may be any string, given as
 WITH-C-STRING gives it; a :string result is read as SAP-STRING reads it, NIL
 for a null pointer."
-  (let* ((documentation (when (stringp (first arguments)) (list (pop arguments))))
-         (names (mapcar #'first arguments))
+  (let* ((names (mapcar #'first (remove-if #'stringp arguments)))
+         (documentation (list (if (stringp (first arguments))
+                                  (pop arguments)
+                                  (format nil "Call the C function ~a~@[ with ~{~(~a~)~^, ~}~] and return what it ~
+                                               returns." c-name names))))
          (saps (loop for (argument type) in arguments
                      collect (if (eq type :string) (gensym (symbol-name argument)) argument)))
          (call `(sb-alien:alien-funcall
@@ -326,32 +303,127 @@ for a null pointer."
        ,@documentation
        ,body)))
 
+;;; The system's C functions the editor calls itself
+
+(declaim (inline %accept4 %bind %closedir %connect %copy-file-range %execv %execve %fchmodat %fcntl %fdopendir
+                 %fgetxattr %flistxattr %free %fsetxattr %fstatfs %fstatvfs %futimens %getgroups %getsockopt
+                 %inotify-add-watch %inotify-init1 %inotify-rm-watch %ioctl %ioctl-with-int %lgetxattr %linkat
+                 %linkat-named %listen %memfd-create %memset %mkdirat %openat %pidfd-open %pidfd-send-signal %pipe2
+                 %poll %posix-fadvise %pread %pwrite %read %readdir %readlinkat %realpath %recvmsg %renameat2
+                 %sendmsg %shutdown %socket %socketpair %statvfs %statx %strlen %symlinkat %sync-file-range %unlinkat
+                 %utimensat %write))
+
+(define-c-function ("memset" %memset) :pointer (sap :pointer) (octet :int) (count :size))
+(define-c-function ("strlen" %strlen) :size (sap :pointer))
+(define-c-function ("free" %free) :void (sap :pointer))
+(define-c-function ("realpath" %realpath) :pointer (path :pointer) (resolved :pointer))
+(define-c-function ("statx" %statx) :int (dirfd :int) (path :pointer) (flags :int) (mask :uint) (buffer :pointer))
+(define-c-function ("openat" %openat) :int (dirfd :int) (path :pointer) (flags :int) (mode :int))
+(define-c-function ("fdopendir" %fdopendir) :pointer (fd :int))
+(define-c-function ("readdir" %readdir) :pointer (directory :pointer))
+(define-c-function ("closedir" %closedir) :int (directory :pointer))
+(define-c-function ("readlinkat" %readlinkat) :long (dirfd :int) (path :pointer) (buffer :pointer) (size :size))
+(define-c-function ("mkdirat" %mkdirat) :int (dirfd :int) (path :pointer) (mode :uint))
+(define-c-function ("linkat" %linkat) :int (from-dirfd :int) (from :pointer) (to-dirfd :int) (to :pointer) (flags :int))
+(define-c-function ("linkat" %linkat-named) :int
+  (from-dirfd :int) (from :string) (to-dirfd :int) (to :string) (flags :int))
+(define-c-function ("symlinkat" %symlinkat) :int (target :pointer) (dirfd :int) (path :pointer))
+(define-c-function ("unlinkat" %unlinkat) :int (dirfd :int) (path :pointer) (flags :int))
+(define-c-function ("renameat2" %renameat2) :int
+  (from-dirfd :int) (from :pointer) (to-dirfd :int) (to :pointer) (flags :uint))
+(define-c-function ("fchmodat" %fchmodat) :int (dirfd :int) (path :pointer) (mode :uint) (flags :int))
+(define-c-function ("utimensat" %utimensat) :int (dirfd :int) (path :pointer) (times :pointer) (flags :int))
+(define-c-function ("futimens" %futimens) :int (fd :int) (times :pointer))
+(define-c-function ("lgetxattr" %lgetxattr) :long (path :pointer) (name :pointer) (value :pointer) (size :size))
+(define-c-function ("flistxattr" %flistxattr) :long (fd :int) (names :pointer) (size :size))
+(define-c-function ("fgetxattr" %fgetxattr) :long (fd :int) (name :pointer) (value :pointer) (size :size))
+(define-c-function ("fsetxattr" %fsetxattr) :int (fd :int) (name :pointer) (value :pointer) (size :size) (flags :int))
+(define-c-function ("fstatfs" %fstatfs) :int (fd :int) (buffer :pointer))
+(define-c-function ("fstatvfs" %fstatvfs) :int (fd :int) (buffer :pointer))
+(define-c-function ("statvfs" %statvfs) :int (path :string) (buffer :pointer))
+(define-c-function ("fcntl" %fcntl) :int (fd :int) (command :int) (argument :long))
+(define-c-function ("ioctl" %ioctl) :int (fd :int) (request :ulong) (argument :pointer))
+(define-c-function ("ioctl" %ioctl-with-int) :int (fd :int) (request :ulong) (argument :int))
+(define-c-function ("copy_file_range" %copy-file-range) :long
+  (in :int) (in-offset :pointer) (out :int) (out-offset :pointer) (length :size) (flags :uint))
+(define-c-function ("sync_file_range" %sync-file-range) :int (fd :int) (offset :long) (length :long) (flags :uint))
+(define-c-function ("posix_fadvise" %posix-fadvise) :int (fd :int) (offset :long) (length :long) (advice :int))
+(define-c-function ("read" %read) :long (fd :int) (sap :pointer) (count :size))
+(define-c-function ("pread" %pread) :long (fd :int) (sap :pointer) (count :size) (offset :long))
+(define-c-function ("write" %write) :long (fd :int) (sap :pointer) (count :size))
+(define-c-function ("pwrite" %pwrite) :long (fd :int) (sap :pointer) (count :size) (offset :long))
+(define-c-function ("poll" %poll) :int (fds :pointer) (count :ulong) (milliseconds :int))
+(define-c-function ("pipe2" %pipe2) :int (fds :pointer) (flags :int))
+(define-c-function ("memfd_create" %memfd-create) :int (name :string) (flags :uint))
+(define-c-function ("inotify_init1" %inotify-init1) :int (flags :int))
+(define-c-function ("inotify_add_watch" %inotify-add-watch) :int (fd :int) (path :string) (mask :uint))
+(define-c-function ("inotify_rm_watch" %inotify-rm-watch) :int (fd :int) (wd :int))
+(define-c-function ("socket" %socket) :int (domain :int) (type :int) (protocol :int))
+(define-c-function ("socketpair" %socketpair) :int (domain :int) (type :int) (protocol :int) (fds :pointer))
+(define-c-function ("bind" %bind) :int (fd :int) (address :pointer) (length :int))
+(define-c-function ("listen" %listen) :int (fd :int) (backlog :int))
+(define-c-function ("accept4" %accept4) :int (fd :int) (address :pointer) (length :pointer) (flags :int))
+(define-c-function ("connect" %connect) :int (fd :int) (address :pointer) (length :int))
+(define-c-function ("getsockopt" %getsockopt) :int
+  (fd :int) (level :int) (option :int) (value :pointer) (length :pointer))
+(define-c-function ("shutdown" %shutdown) :int (fd :int) (how :int))
+(define-c-function ("sendmsg" %sendmsg) :long (fd :int) (message :pointer) (flags :int))
+(define-c-function ("recvmsg" %recvmsg) :long (fd :int) (message :pointer) (flags :int))
+(define-c-function ("getgroups" %getgroups) :int (count :int) (groups :pointer))
+(define-c-function ("execv" %execv) :int (path :string) (argv :pointer))
+(define-c-function ("execve" %execve) :int (path :string) (argv :pointer) (environment :pointer))
+(define-c-function ("syscall" %pidfd-open) :long (number :long) (pid :int) (flags :uint))
+(define-c-function ("syscall" %pidfd-send-signal) :long
+  (number :long) (pidfd :int) (signal :int) (info :pointer) (flags :uint))
+
+(define-c-function ("strlen" %c-string-length) :size
+  "The octets STRING takes as SB-POSIX and SB-ALIEN give a name to the system."
+  (string sb-alien:c-string))
+
+;; a name read with a raw byte in it reaches the system as it was read, or the build stops here
+(unless (= 1 (%c-string-length (string (code-char #xDCFF))))
+  (error "A name that is not UTF-8 would not reach the system as it was read: ~
+          KEEP-RAW-BYTES-IN-NAMES no longer wraps what gives names to the system."))
+
+;;; Memory outside Lisp, read
+
+(defun sap-octets (sap &optional length)
+  "The LENGTH octets at the foreign pointer SAP, copied into a new octet
+vector; without LENGTH, the octets up to the first zero octet, the end of a
+C string, that zero left out. Complexity: O(LENGTH), one block copy."
+  (let* ((length (or length (%strlen sap)))
+         (octets (make-array length :element-type '(unsigned-byte 8))))
+    (with-octets-sap (to octets)
+      (sb-kernel:system-area-ub8-copy sap 0 to 0 length))
+    octets))
+
+(defun sap-string (sap &optional length)
+  "The text of the LENGTH octets at the foreign pointer SAP, or of the C
+string there without LENGTH, read as the editor reads a file's text: UTF-8,
+an octet that is not UTF-8 kept as a raw byte."
+  (tuatara.text:octets-string (sap-octets sap length)))
+
 ;;; statx: what a file is, exactly
 
-(defstruct (stamp (:constructor make-stamp (dev ino size mtime nlink mode uid gid &optional (ctime 0))) (:copier nil))
+(define-record (stamp (:constructor make-stamp (dev ino size mtime nlink mode uid gid &optional (ctime 0)))
+                      (:copier nil))
   "What the system reports about a file: DEV and INO name it; SIZE and MTIME (in
 nanoseconds) change when its content does; NLINK, the names it has; MODE,
 with its kind; user id (UID) and group id (GID), its owners; CTIME (in
 nanoseconds), when it, its owners or its permissions last changed, which no
 program can set back."
-  (dev 0 :type integer :read-only t) (ino 0 :type integer :read-only t)
-  (size 0 :type integer :read-only t) (mtime 0 :type integer :read-only t)
-  (nlink 1 :type integer :read-only t) (mode 0 :type integer :read-only t)
-  (uid 0 :type integer :read-only t) (gid 0 :type integer :read-only t)
-  (ctime 0 :type integer :read-only t))
+  (dev 0 :type integer :read-only t :documentation "The device of the file system holding the file.")
+  (ino 0 :type integer :read-only t :documentation "The file's inode number on that device.")
+  (size 0 :type integer :read-only t :documentation "The file's size in octets.")
+  (mtime 0 :type integer :read-only t :documentation "When the file's content last changed, in nanoseconds.")
+  (nlink 1 :type integer :read-only t :documentation "How many names (hard links) the file has.")
+  (mode 0 :type integer :read-only t :documentation "The file's mode: its kind and permissions.")
+  (uid 0 :type integer :read-only t :documentation "The file's owner.")
+  (gid 0 :type integer :read-only t :documentation "The file's group.")
+  (ctime 0 :type integer :read-only t :documentation "When the file, its owners or its permissions last
+changed, in nanoseconds."))
 
-(setf (documentation 'stamp-ctime 'function) "When the file, its owners or its permissions last
-changed, in nanoseconds."
-      (documentation 'make-stamp 'function) "Return a stamp with the given fields."
-      (documentation 'stamp-p 'function) "True when OBJECT is a STAMP."
-      (documentation 'stamp-dev 'function) "The device of the file system holding the file."
-      (documentation 'stamp-ino 'function) "The file's inode number on that device."
-      (documentation 'stamp-size 'function) "The file's size in octets."
-      (documentation 'stamp-mtime 'function) "When the file's content last changed, in nanoseconds."
-      (documentation 'stamp-nlink 'function) "How many names (hard links) the file has."
-      (documentation 'stamp-mode 'function) "The file's mode: its kind and permissions."
-      (documentation 'stamp-uid 'function) "The file's owner."
-      (documentation 'stamp-gid 'function) "The file's group.")
+(setf (documentation 'make-stamp 'function) "Return a stamp with the given fields.")
 
 (defun stamp-kind (stamp)
   "The kind of file STAMP describes: :REGULAR, :DIRECTORY, :FIFO, :CHARACTER-DEVICE,
@@ -396,12 +468,7 @@ errno when it cannot be examined."
         (buffer (make-array 256 :element-type '(unsigned-byte 8) :initial-element 0)))
     (with-octets-sap (path held)
       (with-octets-sap (sap buffer)
-        (if (zerop (sb-alien:alien-funcall
-                    (sb-alien:extern-alien "statx" (function sb-alien:int sb-alien:int sb-sys:system-area-pointer
-                                                             sb-alien:int
-                                                             sb-alien:unsigned-int
-                                                             sb-sys:system-area-pointer))
-                    dirfd path flags mask sap))
+        (if (zerop (%statx dirfd path flags mask sap))
             buffer
             (values nil (sb-alien:get-errno)))))))
 
@@ -438,12 +505,6 @@ Asking changes none of them."
   (let ((buffer (statx-fields fd "" #x1000 #x800))) ; AT_EMPTY_PATH, STATX_BTIME
     (and buffer (statx-birth-time buffer))))
 
-(defun terminated-octets (octets)
-  "OCTETS with a null (NUL) octet after them, for the system."
-  (let ((name (make-array (1+ (length octets)) :element-type '(unsigned-byte 8) :initial-element 0)))
-    (replace name octets)
-    name))
-
 (defun statx-octets (dirfd octets flags)
   "The STAMP statx reports for the entry whose name is OCTETS in the directory
 open as DIRFD, with FLAGS (#x100 not following a symbolic link), and as more
@@ -461,14 +522,7 @@ DIRFD, opened with FLAGS (made with MODE when they make it); NIL and the errno
 when it cannot be opened."
   (let ((name (terminated-octets octets)))
     (with-octets-sap (path name)
-      (let ((fd (sb-alien:alien-funcall
-                 (sb-alien:extern-alien "openat"
-                                        (function sb-alien:int
-                                                  sb-alien:int
-                                                  sb-sys:system-area-pointer
-                                                  sb-alien:int
-                                                  sb-alien:int))
-                 dirfd path flags mode)))
+      (let ((fd (%openat dirfd path flags mode)))
         (if (minusp fd) (values nil (sb-alien:get-errno)) fd)))))
 
 (defun map-directory-fd (function fd path)
@@ -477,8 +531,7 @@ as file descriptor (FD), . and .. among them, in the order the system gives
 them, read from its start; FD stays open. A FILE-SYSTEM-ERROR, PATH named,
 when it cannot be read."
   (let* ((copy (sb-posix:dup fd))
-         (dir (sb-alien:alien-funcall (sb-alien:extern-alien "fdopendir"
-                                                             (function sb-sys:system-area-pointer sb-alien:int)) copy)))
+         (dir (%fdopendir copy)))
     (when (null-pointer-p dir)
       (let ((errno (sb-alien:get-errno)))
         (sb-posix:close copy)
@@ -486,16 +539,12 @@ when it cannot be read."
     (unwind-protect
          (progn
            (sb-posix:lseek copy 0 sb-posix:seek-set)
-           (loop for entry = (sb-alien:alien-funcall
-                              (sb-alien:extern-alien "readdir"
-                                                     (function sb-sys:system-area-pointer sb-sys:system-area-pointer))
-                              dir)
+           (loop for entry = (%readdir dir)
                  until (null-pointer-p entry)
                  ;; the name stands at octet 19 of the record, after its inode, offset, length and type
                  do (funcall function (sap-octets (sb-sys:sap+ entry 19)))))
       ;; closes COPY too
-      (sb-alien:alien-funcall (sb-alien:extern-alien "closedir"
-                                                     (function sb-alien:int sb-sys:system-area-pointer)) dir))))
+      (%closedir dir))))
 
 (defun link-octets (dirfd octets)
   "What the symbolic link whose name is OCTETS in the directory open as DIRFD
@@ -504,10 +553,7 @@ holds, as octets; NIL when it cannot be read."
         (out (make-array 4096 :element-type '(unsigned-byte 8) :initial-element 0)))
     (with-octets-sap (path name)
       (with-octets-sap (sap out)
-        (let ((n (sb-alien:alien-funcall
-                  (sb-alien:extern-alien "readlinkat" (function sb-alien:long sb-alien:int sb-sys:system-area-pointer
-                                                                sb-sys:system-area-pointer sb-alien:unsigned-long))
-                  dirfd path sap 4096)))
+        (let ((n (%readlinkat dirfd path sap 4096)))
           (and (>= n 0) (subseq out 0 n)))))))
 
 (defun entry-label (dirfd octets)
@@ -522,13 +568,7 @@ context (SELinux) and no such list, NIL for neither."
              (let ((name (sb-ext:string-to-octets attribute :external-format :latin-1 :null-terminate t)))
                (with-octets-sap (sap path)
                  (with-octets-sap (key name)
-                   (>= (sb-alien:alien-funcall
-                        (sb-alien:extern-alien "lgetxattr"
-                                               (function sb-alien:long
-                                                         sb-sys:system-area-pointer
-                                                         sb-sys:system-area-pointer
-                                                         sb-sys:system-area-pointer sb-alien:unsigned-long))
-                        sap key (sb-sys:int-sap 0) 0)
+                   (>= (%lgetxattr sap key (sb-sys:int-sap 0) 0)
                        0))))))
       (cond ((or (has-p "system.posix_acl_access") (has-p "system.posix_acl_default")) #\+)
             ((has-p "security.selinux") #\.)))))
@@ -548,11 +588,11 @@ and are noted in the debug log while debug mode (\\[debug-mode]) is on."
 (defun examined-stamp (path follow)
   "The STAMP of the file at PATH, as PATH-STAMP gives it with FOLLOW: NIL when
 there is no such file, a FILE-SYSTEM-ERROR for any other failure."
-  (multiple-value-bind (stamp errno) (statx-stamp -100 (let ((name (native path)))
-                                                         (if (or follow
-                                                                 (<= (length name)
-                                                                     1)) name (string-right-trim "/" name)))
-                                                  (if follow 0 #x100))
+  (multiple-value-bind (stamp errno)
+      (statx-stamp +at-fdcwd+
+                   (let ((name (native path)))
+                     (if (or follow (<= (length name) 1)) name (string-right-trim "/" name)))
+                   (if follow 0 #x100))
     (cond (stamp)
           ((member errno (list sb-posix:enoent sb-posix:enotdir)) nil)
           (t (fail "examine" path errno)))))
@@ -574,6 +614,13 @@ file or it cannot be examined."
   "The STAMP of the file open as file descriptor (FD) (PATH for messages)."
   (multiple-value-bind (stamp errno) (statx-stamp fd "" #x1000) ; AT_EMPTY_PATH
     (or stamp (fail "examine" path errno))))
+
+(defun fd-kind (fd)
+  "What the file open as file descriptor (FD) is, as STAMP-KIND names it
+\(:REGULAR, :DIRECTORY and the rest), and its STAMP as a second value; NIL
+when it cannot be examined."
+  (let ((stamp (statx-stamp fd "" #x1000))) ; AT_EMPTY_PATH
+    (and stamp (values (stamp-kind stamp) stamp))))
 
 ;;; statfs and statvfs: which file system, and how much room
 
@@ -612,9 +659,7 @@ for a save to share their blocks.")
 descriptor (FD), or NIL."
   (let ((buffer (make-array 128 :element-type '(unsigned-byte 8) :initial-element 0)))
     (with-octets-sap (sap buffer)
-      (when (zerop (sb-alien:alien-funcall
-                    (sb-alien:extern-alien "fstatfs" (function sb-alien:int sb-alien:int sb-sys:system-area-pointer))
-                    fd sap))
+      (when (zerop (%fstatfs fd sap))
         (octets-integer buffer 0 8)))))
 
 (defun path-file-system (path &key (follow t))
@@ -639,9 +684,7 @@ read-only (a CD, a squashfs image, a read-only mount), where its content
 cannot change through that mount."
   (let ((buffer (make-array 128 :element-type '(unsigned-byte 8) :initial-element 0)))
     (with-octets-sap (sap buffer)
-      (and (zerop (sb-alien:alien-funcall
-                   (sb-alien:extern-alien "fstatvfs" (function sb-alien:int sb-alien:int sb-sys:system-area-pointer))
-                   fd sap))
+      (and (zerop (%fstatvfs fd sap))
            (logbitp 0 (octets-integer buffer 72 8))))))            ; f_flag's ST_RDONLY
 
 (defconstant +f-setlease+ 1024 "fcntl's F_SETLEASE.")
@@ -650,9 +693,7 @@ cannot change through that mount."
 (defun fcntl-int (fd command argument)
   "Fcntl(2) on file descriptor (FD) with COMMAND and an integer ARGUMENT; its
 result, -1 on failure."
-  (sb-alien:alien-funcall
-   (sb-alien:extern-alien "fcntl" (function sb-alien:int sb-alien:int sb-alien:int sb-alien:long))
-   fd command argument))
+  (%fcntl fd command argument))
 
 (defvar *lease-break-pipe* nil
   "A wake pipe (MAKE-WAKE-PIPE) woken whenever the system says a program waits
@@ -691,10 +732,7 @@ octets at one of OFFSETS into its structure, as a list; NIL when the system
 does not say."
   (let ((buffer (make-array 128 :element-type '(unsigned-byte 8) :initial-element 0)))
     (with-octets-sap (sap buffer)
-      (when (zerop (sb-alien:alien-funcall
-                    (sb-alien:extern-alien "statvfs"
-                                           (function sb-alien:int sb-alien:c-string sb-sys:system-area-pointer))
-                    (native path) sap))
+      (when (zerop (%statvfs (native path) sap))
         (mapcar (lambda (offset) (octets-integer buffer offset 8)) offsets)))))
 
 (defun free-octets (path)
@@ -742,9 +780,7 @@ column of sizes wants it, in units of 1,024 with one letter for the unit:
 FICLONE ioctl): a copy that takes no time and no space until either changes.
 True on success; NIL where the file system cannot (most cannot), for the
 caller to copy instead."
-  (zerop (sb-alien:alien-funcall
-          (sb-alien:extern-alien "ioctl" (function sb-alien:int sb-alien:int sb-alien:unsigned-long sb-alien:int))
-          dest #x40049409 source)))
+  (zerop (%ioctl-with-int dest #x40049409 source)))
 
 (defun copy-fd-range (source offset dest length)
   "Copy LENGTH octets of the open file SOURCE from OFFSET to the current offset
@@ -757,12 +793,7 @@ offset being after what was copied). Other failures signal."
     (with-octets-sap (sap cell)
       (setf (sb-sys:sap-ref-64 sap 0) offset)
       (loop while (< done length)
-            do (let ((copied (sb-alien:alien-funcall
-                              (sb-alien:extern-alien "copy_file_range"
-                                                     (function sb-alien:long sb-alien:int sb-sys:system-area-pointer
-                                                               sb-alien:int sb-sys:system-area-pointer
-                                                               sb-alien:unsigned-long sb-alien:unsigned-int))
-                              source sap dest (sb-sys:int-sap 0) (- length done) 0)))
+            do (let ((copied (%copy-file-range source sap dest (sb-sys:int-sap 0) (- length done) 0)))
                  (cond ((plusp copied) (incf done copied))
                        ((zerop copied) (error 'file-system-error :operation "copy from" :path "a file"
                                                                  :reason
@@ -783,16 +814,8 @@ interrupted."
   (let ((done 0))
     (loop while (< done length)
           do (let ((written (if at
-                                (sb-alien:alien-funcall
-                                 (sb-alien:extern-alien "pwrite" (function sb-alien:long sb-alien:int
-                                                                           sb-sys:system-area-pointer
-                                                                           sb-alien:unsigned-long sb-alien:long))
-                                 fd (sb-sys:sap+ sap done) (- length done) (+ at done))
-                                (sb-alien:alien-funcall
-                                 (sb-alien:extern-alien "write" (function sb-alien:long sb-alien:int
-                                                                          sb-sys:system-area-pointer
-                                                                          sb-alien:unsigned-long))
-                                 fd (sb-sys:sap+ sap done) (- length done)))))
+                                (%pwrite fd (sb-sys:sap+ sap done) (- length done) (+ at done))
+                                (%write fd (sb-sys:sap+ sap done) (- length done)))))
                (cond ((plusp written) (incf done written))
                      ((= (sb-alien:get-errno) sb-posix:eintr))
                      (t (fail "write" path)))))))
@@ -813,10 +836,7 @@ ended."
   "Ask the terminal open as file descriptor (FD) for its size, or tell it, by
 REQUEST (TIOCGWINSZ or TIOCSWINSZ) with the four 16-bit numbers at SAP:
 rows, columns, width and height in pixels. True when it worked."
-  (zerop (sb-alien:alien-funcall
-          (sb-alien:extern-alien "ioctl"
-                                 (function sb-alien:int sb-alien:int sb-alien:unsigned-long sb-sys:system-area-pointer))
-          fd request sap)))
+  (zerop (%ioctl fd request sap)))
 
 (defun terminal-window-size (fd)
   "The size of the terminal open as file descriptor (FD), as four values: its
@@ -840,17 +860,16 @@ known), each at most 65535."
 
 ;;; Writing a file through a buffer
 
-(defstruct (writer (:constructor make-writer (fd)) (:copier nil))
+(define-record (writer (:constructor make-writer (fd)) (:copier nil))
   "Octets written to the file open as file descriptor (FD) a megabyte at a
 time: FILL of them held in BUFFER, WRITTEN already in the file."
-  (fd -1 :type fixnum)
-  (buffer (make-array 1048576 :element-type '(unsigned-byte 8)) :type tuatara.text:octets)
-  (fill 0 :type fixnum)
-  (written 0 :type fixnum))
+  (fd -1 :type fixnum :documentation "The open file a WRITER writes to, a descriptor.")
+  (buffer (make-array 1048576 :element-type '(unsigned-byte 8)) :type tuatara.text:octets
+          :documentation "The octets of a WRITER held until they are written, a vector of a megabyte.")
+  (fill 0 :type fixnum :documentation "How many octets of a WRITER's buffer are held.")
+  (written 0 :type fixnum :documentation "How many octets of a WRITER are already in the file."))
 
-(setf (documentation 'make-writer 'function) "A writer to the open file FD."
-      (documentation 'writer-p 'function) "True when OBJECT is a WRITER."
-      (documentation 'writer-fd 'function) "The open file a WRITER writes to, a descriptor.")
+(setf (documentation 'make-writer 'function) "A writer to the open file FD.")
 
 (defun writer-flush (writer)
   "Write what WRITER holds to its file."
@@ -913,10 +932,7 @@ fits, into OCTETS from START below END, read again when a signal broke in:
 how many octets came, 0 at its end. A FILE-SYSTEM-ERROR, naming PATH, when
 it cannot be read."
   (loop (let ((got (with-octets-sap (sap octets)
-                     (sb-alien:alien-funcall
-                      (sb-alien:extern-alien "read" (function sb-alien:long sb-alien:int sb-sys:system-area-pointer
-                                                              sb-alien:unsigned-long))
-                      fd (sb-sys:sap+ sap start) (- end start)))))
+                     (%read fd (sb-sys:sap+ sap start) (- end start)))))
           (cond ((>= got 0) (return got))
                 ((/= (sb-alien:get-errno) sb-posix:eintr) (fail "read" path))))))
 
@@ -940,15 +956,14 @@ one, cut to what came."
         (if (zerop got) (return) (incf filled got))))
     (if (= filled (length buffer)) buffer (sb-kernel:%shrink-vector buffer filled))))
 
-(defstruct (octet-pieces (:constructor make-octet-pieces ()) (:copier nil))
+(define-record (octet-pieces (:constructor make-octet-pieces ()) (:copier nil))
   "Octets gathered a piece at a time (ADD-OCTET-PIECE), joined into one vector
 once all have come (JOINED-OCTETS): SIZE octets in all, PIECES each (VECTOR
 . N), the first N octets of VECTOR, the latest first."
-  (size 0 :type fixnum)
-  (pieces '() :type list))
+  (size 0 :type fixnum :documentation "How many octets an OCTET-PIECES holds in all.")
+  (pieces '() :type list :documentation "The pieces of an OCTET-PIECES, each (VECTOR . N), the latest first."))
 
-(setf (documentation 'make-octet-pieces 'function) "A new OCTET-PIECES, holding no octets yet."
-      (documentation 'octet-pieces-size 'function) "How many octets an OCTET-PIECES holds in all.")
+(setf (documentation 'make-octet-pieces 'function) "A new OCTET-PIECES, holding no octets yet.")
 
 (defun add-octet-piece (pieces octets &optional (n (length octets)))
   "Add the first N octets of OCTETS to PIECES (OCTET-PIECES), OCTETS itself
@@ -981,11 +996,7 @@ alone; return how many were read, fewer only where the file ends."
   (let ((filled 0))
     (with-octets-sap (sap octets)
       (loop while (< filled end)
-            do (let ((got (sb-alien:alien-funcall
-                           (sb-alien:extern-alien "pread"
-                                                  (function sb-alien:long sb-alien:int sb-sys:system-area-pointer
-                                                            sb-alien:unsigned-long sb-alien:long))
-                           fd (sb-sys:sap+ sap filled) (- end filled) (+ offset filled))))
+            do (let ((got (%pread fd (sb-sys:sap+ sap filled) (- end filled) (+ offset filled))))
                  (cond ((plusp got) (incf filled got))
                        ((zerop got) (return))
                        ((= (sb-alien:get-errno) sb-posix:eintr))
@@ -1007,9 +1018,7 @@ read."
 from OFFSET will be read soon, so that it starts reading them from the disk
 while the octets before are worked on. Changes nothing; a system that takes
 no advice is fine."
-  (sb-alien:alien-funcall (sb-alien:extern-alien "posix_fadvise" (function sb-alien:int sb-alien:int sb-alien:long
-                                                                           sb-alien:long sb-alien:int))
-                          fd offset length 3)             ; POSIX_FADV_WILLNEED
+  (%posix-fadvise fd offset length 3)  ; POSIX_FADV_WILLNEED
   nil)
 
 (defvar *write-out-window* (* 32 1024 1024)
@@ -1017,26 +1026,19 @@ no advice is fine."
 the device and waits for the ones before: the most it leaves in memory not
 yet on disk, and so how far its progress can be ahead of the device.")
 
-(defstruct (write-out (:constructor make-write-out (fd start &key (wait t) &aux (written start) (going start)))
-                      (:copier nil))
+(define-record (write-out (:constructor make-write-out (fd start &key (wait t) &aux (written start) (going start)))
+                         (:copier nil))
   "The octets written to the file open as file descriptor (FD) from START on,
 sent out to the device a window at a time (WRITE-OUT-STEP): below WRITTEN
 on the device and out of memory, below GOING on their way there; CAN-SEND
 false on a file system that cannot be asked. With WAIT false, nothing waits
 for the device: what has gone out is let go of from memory as it is there,
 the rest sent out."
-  (fd -1 :type fixnum :read-only t)
-  (wait t :read-only t)
-  (written 0 :type fixnum)
-  (going 0 :type fixnum)
-  (can-send t))
-
-(setf (documentation 'write-out-p 'function) "True when OBJECT is a WRITE-OUT."
-      (documentation 'write-out-fd 'function) "The descriptor a WRITE-OUT writes."
-      (documentation 'write-out-written 'function) "Below this offset a WRITE-OUT's octets are on the device."
-      (documentation 'write-out-going 'function) "Below this offset a WRITE-OUT's octets are on their way out."
-      (documentation 'write-out-can-send 'function) "False once a WRITE-OUT's file system cannot be asked to write out."
-      (documentation 'write-out-wait 'function) "True when a WRITE-OUT waits for the device.")
+  (fd -1 :type fixnum :read-only t :documentation "The descriptor a WRITE-OUT writes.")
+  (wait t :read-only t :documentation "True when a WRITE-OUT waits for the device.")
+  (written 0 :type fixnum :documentation "Below this offset a WRITE-OUT's octets are on the device.")
+  (going 0 :type fixnum :documentation "Below this offset a WRITE-OUT's octets are on their way out.")
+  (can-send t :documentation "False once a WRITE-OUT's file system cannot be asked to write out."))
 
 (defun write-out-step (out done)
   "With the file of OUT written below offset DONE: once a window
@@ -1115,10 +1117,7 @@ time ran out, or :INTERRUPTED when a signal came first (a terminal resized)."
       (loop for fd in fds for at from 0 by 8
             do (setf (sb-sys:signed-sap-ref-32 sap at) fd
                      (sb-sys:sap-ref-16 sap (+ at 4)) 1))
-      (let ((ready (sb-alien:alien-funcall
-                    (sb-alien:extern-alien "poll" (function sb-alien:int sb-sys:system-area-pointer
-                                                            sb-alien:unsigned-long sb-alien:int))
-                    sap count (if seconds (max 0 (min 2000000000 (ceiling (* seconds 1000)))) -1))))
+      (let ((ready (%poll sap count (if seconds (max 0 (min 2000000000 (ceiling (* seconds 1000)))) -1))))
         (cond ((plusp ready)
                (loop for fd in fds for at from 0 by 8
                      unless (zerop (sb-sys:sap-ref-16 sap (+ at 6))) collect fd))
@@ -1126,58 +1125,54 @@ time ran out, or :INTERRUPTED when a signal came first (a terminal resized)."
               ((= (sb-alien:get-errno) sb-posix:eintr) :interrupted)
               (t (fail "wait on" "open files")))))))
 
+(defun new-pipe (flags)
+  "A new pipe made with FLAGS (pipe2: O_CLOEXEC for both its ends closed in
+programs started, O_NONBLOCK for neither waiting): its reading and its
+writing descriptor, two values."
+  (sb-alien:with-alien ((ends (array sb-alien:int 2)))
+    (unless (zerop (%pipe2 (sb-alien:alien-sap ends) flags))
+      (fail "make" "a pipe"))
+    (values (sb-alien:deref ends 0) (sb-alien:deref ends 1))))
+
 (defun make-wake-pipe ()
   "A pipe that wakes a thread waiting on it with WAIT-FOR-FDS from any other
 thread (WAKE): a cons of its read end and its write end, neither blocking,
 both closed in programs the editor starts."
-  (let ((ends (make-array 2 :element-type '(signed-byte 32) :initial-element -1)))
-    (sb-sys:with-pinned-objects (ends)
-      (unless (zerop (sb-alien:alien-funcall
-                      (sb-alien:extern-alien "pipe2" (function sb-alien:int sb-sys:system-area-pointer sb-alien:int))
-                      (sb-sys:vector-sap ends) (logior #o4000 #o2000000))) ; O_NONBLOCK, O_CLOEXEC
-        (fail "make" "a pipe")))
-    (cons (aref ends 0) (aref ends 1))))
+  (multiple-value-call #'cons (new-pipe (logior sb-posix:o-nonblock +o-cloexec+))))
 
 (defun wake (pipe)
   "Wake the thread waiting on PIPE (MAKE-WAKE-PIPE). Any thread may call it;
 a pipe already full is awake enough."
   (let ((octet (make-array 1 :element-type '(unsigned-byte 8) :initial-element 1)))
     (with-octets-sap (sap octet)
-      (sb-alien:alien-funcall
-       (sb-alien:extern-alien "write"
-                              (function sb-alien:long sb-alien:int sb-sys:system-area-pointer sb-alien:unsigned-long))
-       (cdr pipe) sap 1)))
+      (%write (cdr pipe) sap 1)))
   nil)
 
 (defun drain-wake-pipe (pipe)
   "Empty PIPE (MAKE-WAKE-PIPE) of the wakes written to it."
   (let ((octets (make-array 64 :element-type '(unsigned-byte 8))))
     (with-octets-sap (sap octets)
-      (loop while (plusp (sb-alien:alien-funcall
-                          (sb-alien:extern-alien "read" (function sb-alien:long sb-alien:int sb-sys:system-area-pointer
-                                                                  sb-alien:unsigned-long))
-                          (car pipe) sap 64)))))
+      (loop while (plusp (%read (car pipe) sap 64)))))
   nil)
 
 (defun close-wake-pipe (pipe)
   "Close both ends of PIPE (MAKE-WAKE-PIPE)."
-  (tuatara.runtime:ignoring-errors-reported ("closing a wake pipe") (sb-posix:close (car pipe)))
-  (tuatara.runtime:ignoring-errors-reported ("closing a wake pipe") (sb-posix:close (cdr pipe)))
+  (tuatara.runtime:close-fd-quietly (car pipe) "a wake pipe")
+  (tuatara.runtime:close-fd-quietly (cdr pipe) "a wake pipe")
   nil)
 
 (defun poll-fd (fd events milliseconds)
   "Wait up to MILLISECONDS (a second at most) for file descriptor (FD) to have
-any of EVENTS \(POLLIN 1, POLLOUT 4); the events it has, 0 when none came."
-  (declare (type fixnum milliseconds))
+any of EVENTS \(POLLIN 1, POLLOUT 4); the events it has, 0 when none came.
+With MILLISECONDS NIL, wait until FD has one of them or is shut
+\(SHUT-SOCKET), however long that is."
+  (declare (type (or null fixnum) milliseconds))
   (sb-alien:with-alien ((poll (array (sb-alien:unsigned 8) 8)))
     (let ((sap (sb-alien:alien-sap poll)))
       (setf (sb-sys:signed-sap-ref-32 sap 0) fd
             (sb-sys:sap-ref-16 sap 4) events
             (sb-sys:sap-ref-16 sap 6) 0)
-      (if (plusp (sb-alien:alien-funcall
-                  (sb-alien:extern-alien "poll" (function sb-alien:int sb-sys:system-area-pointer sb-alien:unsigned-long
-                                                          sb-alien:int))
-                  sap 1 (max 0 (min 1000 milliseconds))))
+      (if (plusp (%poll sap 1 (if milliseconds (max 0 (min 1000 milliseconds)) -1)))
           (sb-sys:sap-ref-16 sap 6)
           0))))
 
@@ -1201,9 +1196,7 @@ than +MOST-SOCKET-PATH+ octets or holds a NUL."
 
 (defun new-local-socket ()
   "A new local stream socket, closed in programs started; its descriptor."
-  (let ((fd (sb-alien:alien-funcall
-             (sb-alien:extern-alien "socket" (function sb-alien:int sb-alien:int sb-alien:int sb-alien:int))
-             1 (logior 1 #x80000) 0)))                       ; AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC
+  (let ((fd (%socket 1 (logior 1 #x80000) 0)))  ; AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC
     (when (minusp fd) (fail "make" "a local socket"))
     fd))
 
@@ -1226,10 +1219,7 @@ says (the Umask line of /proc/self/status), read once and kept, never set;
 to: a link is left as it is. True when done, NIL when not (a link, or no
 entry there)."
   (with-c-string (name (native path))
-    (zerop (sb-alien:alien-funcall
-            (sb-alien:extern-alien "fchmodat" (function sb-alien:int sb-alien:int sb-sys:system-area-pointer
-                                                        sb-alien:unsigned-int sb-alien:int))
-            +at-fdcwd+ name mode #x100))))                   ; AT_SYMLINK_NOFOLLOW
+    (zerop (%fchmodat +at-fdcwd+ name mode #x100))))  ; AT_SYMLINK_NOFOLLOW
 
 (defun listen-at (path &key (backlog 16))
   "A local socket bound at PATH, listening, as a descriptor that ACCEPT-ON
@@ -1240,17 +1230,12 @@ there. The socket file is made for you alone (0600)."
          (progn
            (call-with-socket-address
             path (lambda (sap length)
-                   (unless (zerop (sb-alien:alien-funcall
-                                   (sb-alien:extern-alien "bind" (function sb-alien:int sb-alien:int
-                                                                           sb-sys:system-area-pointer sb-alien:int))
-                                   fd sap length))
+                   (unless (zerop (%bind fd sap length))
                      (fail "listen at" path))))
            ;; the socket itself, never what a link put in its place points at
            (unless (set-path-mode path #o600)
              (fail "make for you alone" path))
-           (unless (zerop (sb-alien:alien-funcall
-                           (sb-alien:extern-alien "listen" (function sb-alien:int sb-alien:int sb-alien:int))
-                           fd backlog))
+           (unless (zerop (%listen fd backlog))
              (fail "listen at" path))
            (setf done t)
            fd)
@@ -1262,10 +1247,7 @@ its descriptor, closed in programs started; NIL when FD is shut (SHUT-SOCKET)
 or fails, with errno as a second value. A connection given up on by its
 other end before it is taken is waited past."
   (loop
-    (let ((new (sb-alien:alien-funcall
-                (sb-alien:extern-alien "accept4" (function sb-alien:int sb-alien:int sb-sys:system-area-pointer
-                                                           sb-sys:system-area-pointer sb-alien:int))
-                fd (null-pointer) (null-pointer) #x80000)))       ; SOCK_CLOEXEC
+    (let ((new (%accept4 fd (null-pointer) (null-pointer) #x80000)))  ; SOCK_CLOEXEC
       (if (>= new 0)
           (return new)
           (let ((errno (sb-alien:get-errno)))
@@ -1280,10 +1262,7 @@ second value (ENOENT: no socket there; ECONNREFUSED: no one listens)."
   (let ((fd (new-local-socket)))
     (call-with-socket-address
      path (lambda (sap length)
-            (if (zerop (sb-alien:alien-funcall
-                        (sb-alien:extern-alien "connect" (function sb-alien:int sb-alien:int
-                                                                   sb-sys:system-area-pointer sb-alien:int))
-                        fd sap length))
+            (if (zerop (%connect fd sap length))
                 fd
                 (let ((errno (sb-alien:get-errno)))
                   (sb-posix:close fd)
@@ -1295,11 +1274,8 @@ for it (SO_PEERCRED): three values, its process id (PID), user id (UID)
 and group id (GID); NIL when the system cannot say."
   (sb-alien:with-alien ((credentials (array (sb-alien:unsigned 32) 3))
                         (length sb-alien:unsigned-int 12))
-    (if (zerop (sb-alien:alien-funcall
-                (sb-alien:extern-alien "getsockopt" (function sb-alien:int sb-alien:int sb-alien:int sb-alien:int
-                                                              (* (array (sb-alien:unsigned 32) 3))
-                                                              (* sb-alien:unsigned-int)))
-                fd 1 17 (sb-alien:addr credentials) (sb-alien:addr length)))   ; SOL_SOCKET, SO_PEERCRED
+    (if (zerop (%getsockopt fd 1 17 (sb-alien:alien-sap credentials)  ; SOL_SOCKET, SO_PEERCRED
+                            (sb-alien:alien-sap (sb-alien:addr length))))
         (values (sb-alien:deref credentials 0) (sb-alien:deref credentials 1) (sb-alien:deref credentials 2))
         nil)))
 
@@ -1311,10 +1287,8 @@ another given its number after it. NIL when the system cannot say, and
 then :UNSUPPORTED as a second value when this kernel has no such question
 \(before Linux 6.5); the pidfd is the caller's to close."
   (sb-alien:with-alien ((pidfd sb-alien:int -1) (length sb-alien:unsigned-int 4))
-    (if (zerop (sb-alien:alien-funcall
-                (sb-alien:extern-alien "getsockopt" (function sb-alien:int sb-alien:int sb-alien:int sb-alien:int
-                                                              (* sb-alien:int) (* sb-alien:unsigned-int)))
-                fd 1 77 (sb-alien:addr pidfd) (sb-alien:addr length)))       ; SOL_SOCKET, SO_PEERPIDFD
+    (if (zerop (%getsockopt fd 1 77 (sb-alien:alien-sap (sb-alien:addr pidfd))  ; SOL_SOCKET, SO_PEERPIDFD
+                            (sb-alien:alien-sap (sb-alien:addr length))))
         (let ((pid (pidfd-process pidfd)))
           (if pid
               (values pidfd pid)
@@ -1349,10 +1323,7 @@ program such as sshd to itself."
 programs started (a program is given its end as its input); the first does
 not wait when it cannot be read or written at once."
   (sb-alien:with-alien ((fds (array sb-alien:int 2)))
-    (unless (zerop (sb-alien:alien-funcall
-                    (sb-alien:extern-alien "socketpair" (function sb-alien:int sb-alien:int sb-alien:int sb-alien:int
-                                                                  (* (array sb-alien:int 2))))
-                    1 (logior 1 #x80000) 0 (sb-alien:addr fds)))     ; AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC
+    (unless (zerop (%socketpair 1 (logior 1 #x80000) 0 (sb-alien:alien-sap fds)))  ; AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC
       (fail "make" "a local socket"))
     (let ((mine (sb-alien:deref fds 0)))
       (fcntl-int mine 4 #x800)                                     ; F_SETFL O_NONBLOCK
@@ -1362,8 +1333,7 @@ not wait when it cannot be read or written at once."
   "Shut the socket open as file descriptor (FD) both ways, so that a thread
 waiting to read or write it stops waiting and the other end sees it end; the
 descriptor stays open until closed."
-  (sb-alien:alien-funcall (sb-alien:extern-alien "shutdown" (function sb-alien:int sb-alien:int sb-alien:int))
-                          fd 2)                                ; SHUT_RDWR
+  (%shutdown fd 2)  ; SHUT_RDWR
   nil)
 
 (defconstant +most-descriptors+ 4
@@ -1393,10 +1363,7 @@ a signal."
         (dotimes (i 56) (setf (sb-sys:sap-ref-8 m i) 0))
         (setf (sb-sys:sap-ref-64 m 16) (sb-sys:sap-int p) (sb-sys:sap-ref-64 m 24) 1
               (sb-sys:sap-ref-64 m 32) (if descriptors (sb-sys:sap-int c) 0) (sb-sys:sap-ref-64 m 40) control-length)
-        (let ((sent (sb-alien:alien-funcall
-                     (sb-alien:extern-alien "sendmsg" (function sb-alien:long sb-alien:int sb-sys:system-area-pointer
-                                                                sb-alien:int))
-                     fd m (logior #x4000 #x40))))      ; MSG_NOSIGNAL, MSG_DONTWAIT
+        (let ((sent (%sendmsg fd m (logior #x4000 #x40))))  ; MSG_NOSIGNAL, MSG_DONTWAIT
           ;; the reason read at once, before anything else can change it
           (values sent (if (minusp sent) (sb-alien:get-errno) 0)))))))
 
@@ -1417,10 +1384,7 @@ unseen; and for -1 the reason, errno (EAGAIN for none now)."
       (dotimes (i 56) (setf (sb-sys:sap-ref-8 m i) 0))
       (setf (sb-sys:sap-ref-64 m 16) (sb-sys:sap-int p) (sb-sys:sap-ref-64 m 24) 1
             (sb-sys:sap-ref-64 m 32) (sb-sys:sap-int c) (sb-sys:sap-ref-64 m 40) 32)
-      (let ((got (sb-alien:alien-funcall
-                  (sb-alien:extern-alien "recvmsg" (function sb-alien:long sb-alien:int sb-sys:system-area-pointer
-                                                             sb-alien:int))
-                  fd m (logior #x40000000 #x40)))       ; MSG_CMSG_CLOEXEC, MSG_DONTWAIT
+      (let ((got (%recvmsg fd m (logior #x40000000 #x40)))  ; MSG_CMSG_CLOEXEC, MSG_DONTWAIT
             (errno (sb-alien:get-errno))
             (descriptors '()))
         (when (>= got 0)
@@ -1453,25 +1417,20 @@ unseen; and for -1 the reason, errno (EAGAIN for none now)."
 (defun inotify-open ()
   "A new inotify descriptor, not blocking and closed in programs the editor
 starts; NIL where the system gives none (too many in use)."
-  (let ((fd (sb-alien:alien-funcall (sb-alien:extern-alien "inotify_init1" (function sb-alien:int sb-alien:int))
-                                    (logior #o4000 #o2000000)))) ; IN_NONBLOCK, IN_CLOEXEC
+  (let ((fd (%inotify-init1 (logior #o4000 #o2000000)))) ; IN_NONBLOCK, IN_CLOEXEC
     (and (>= fd 0) fd)))
 
 (defun inotify-watch (fd directory)
   "Have the inotify file descriptor (FD) report +WATCH-EVENTS+ in DIRECTORY (a
 native name). Returns the watch descriptor, or NIL when none can be had (no
 permission, the system's limit on watches reached)."
-  (let ((wd (sb-alien:alien-funcall
-             (sb-alien:extern-alien "inotify_add_watch" (function sb-alien:int sb-alien:int sb-alien:c-string
-                                                                  sb-alien:unsigned-int))
-             fd directory +watch-events+)))
+  (let ((wd (%inotify-add-watch fd directory +watch-events+)))
     (and (>= wd 0) wd)))
 
 (defun inotify-unwatch (fd wd)
   "End the watch WD of the inotify file descriptor (FD); nothing when it ended
 already."
-  (sb-alien:alien-funcall (sb-alien:extern-alien "inotify_rm_watch" (function sb-alien:int sb-alien:int sb-alien:int))
-                          fd wd)
+  (%inotify-rm-watch fd wd)
   nil)
 
 (defun inotify-events (fd octets)
@@ -1482,10 +1441,7 @@ as octets (NIL for the directory itself). NIL when none wait."
   (let ((events '()))
     (loop
       (let ((got (with-octets-sap (sap octets)
-                   (sb-alien:alien-funcall
-                    (sb-alien:extern-alien "read" (function sb-alien:long sb-alien:int sb-sys:system-area-pointer
-                                                            sb-alien:unsigned-long))
-                    fd sap (length octets)))))
+                   (%read fd sap (length octets)))))
         (cond ((plusp got)
                (let ((at 0))
                  (loop while (< at got)
@@ -1506,18 +1462,11 @@ as octets (NIL for the directory itself). NIL when none wait."
 (defun fd-xattr-names (fd)
   "The names of the extended attributes of the file open as file descriptor
 (FD), or NIL."
-  (let ((size (sb-alien:alien-funcall
-               (sb-alien:extern-alien "flistxattr" (function sb-alien:long sb-alien:int sb-sys:system-area-pointer
-                                                             sb-alien:unsigned-long))
-               fd (sb-sys:int-sap 0) 0)))
+  (let ((size (%flistxattr fd (sb-sys:int-sap 0) 0)))
     (when (plusp size)
       (let ((buffer (make-array size :element-type '(unsigned-byte 8))))
         (let ((got (with-octets-sap (sap buffer)
-                     (sb-alien:alien-funcall
-                      (sb-alien:extern-alien "flistxattr"
-                                             (function sb-alien:long sb-alien:int sb-sys:system-area-pointer
-                                                       sb-alien:unsigned-long))
-                      fd sap size))))
+                     (%flistxattr fd sap size))))
           (when (plusp got)
             (loop with start = 0
                   for end = (position 0 buffer :start start :end got)
@@ -1532,10 +1481,7 @@ descriptor (FD), as octets, or NIL when it has none or it cannot be read."
   (let ((key (path-octets name)))
     (flet ((get-value (value size)
              (with-octets-sap (key-sap key)
-               (sb-alien:alien-funcall
-                (sb-alien:extern-alien "fgetxattr" (function sb-alien:long sb-alien:int sb-sys:system-area-pointer
-                                                             sb-sys:system-area-pointer sb-alien:unsigned-long))
-                fd key-sap value size))))
+               (%fgetxattr fd key-sap value size))))
       (let ((size (get-value (sb-sys:int-sap 0) 0)))
         (when (and (>= size 0) (<= size (* 64 1024)))
           (let* ((value (make-array size :element-type '(unsigned-byte 8)))
@@ -1555,11 +1501,7 @@ those that cannot be set are left out, as on file systems without them."
                 (key (path-octets name)))
             (with-octets-sap (sap buffer)
               (with-octets-sap (key-sap key)
-                (sb-alien:alien-funcall
-                 (sb-alien:extern-alien "fsetxattr" (function sb-alien:int sb-alien:int sb-sys:system-area-pointer
-                                                              sb-sys:system-area-pointer sb-alien:unsigned-long
-                                                              sb-alien:int))
-                 to key-sap sap (length value) 0)))))))))
+                (%fsetxattr to key-sap sap (length value) 0)))))))))
 
 ;;; Directories and unnamed files
 
@@ -1607,13 +1549,14 @@ is, so that nothing swapped for it meanwhile is written in."
                            (funcall function fd))
       (sb-posix:close fd))))
 
-(defun unlink-entry-at (dirfd name)
-  "Take away the entry NAME (a string) of the directory open as DIRFD; true when it went."
-  (with-octets-sap (sap (terminated-octets (tuatara.text:string-octets name)))
-    (zerop (sb-alien:alien-funcall
-            (sb-alien:extern-alien "unlinkat"
-                                   (function sb-alien:int sb-alien:int sb-sys:system-area-pointer sb-alien:int))
-            dirfd sap 0))))
+(defun unlink-entry-at (dirfd name &key directory)
+  "Take away the entry NAME (a string, or octets) of the directory open as
+DIRFD: an empty directory when DIRECTORY, else a file or a symbolic link.
+True when it went; NIL, with the errno, when not."
+  (with-octets-sap (sap (terminated-octets (if (stringp name) (tuatara.text:string-octets name) name)))
+    (if (zerop (%unlinkat dirfd sap (if directory #x200 0)))  ; AT_REMOVEDIR
+        t
+        (values nil (sb-alien:get-errno)))))
 
 (defun open-unnamed-at (dirfd mode)
   "A descriptor, open for reading and writing, for a new file with no name in
@@ -1628,15 +1571,14 @@ writing. Where the file system has no unnamed files (NFS, FUSE, SMB and others),
 a named one removed at once, which comes to the same. Refused
 \(WRITING-REFUSED) where nothing may be written, told by the directory opened."
   (unless directory
-    (refuse "This text is not written to a scratch file on disk (the text of an encrypted file): too large to work on in memory"))
+    (refuse "This text is not written to a scratch file on disk (the text of an encrypted file): too large to work on ~
+             in memory"))
   (call-with-directory
    directory
    (lambda (dirfd)
      (or (open-unnamed-at dirfd #o600)
          (let ((name (native-file-name (scratch-name directory "scratch"))))
-           (multiple-value-bind (fd errno)
-               (openat-octets dirfd (tuatara.text:string-octets name)
-                              (logior sb-posix:o-creat sb-posix:o-excl sb-posix:o-rdwr +o-nofollow+ +o-cloexec+) #o600)
+           (multiple-value-bind (fd errno) (open-new-entry dirfd name #o600 :access sb-posix:o-rdwr)
              (unless fd (fail "create a file in" directory errno))
              (unlink-entry-at dirfd name)
              fd))))
@@ -1664,6 +1606,12 @@ opened."
                       (lambda (dirfd) (open-unnamed-at dirfd mode))
                       "create a file in")))
 
+(defun link-unnamed-at (fd dirfd name)
+  "Give the file open as file descriptor (FD), one with no name (OPEN-UNNAMED-AT),
+the name NAME (a string) in the directory open as DIRFD, the directory it was
+made in. True when done; NIL when the system will not, or NAME is taken."
+  (zerop (%linkat-named +at-fdcwd+ (format nil "/proc/self/fd/~d" fd) dirfd name #x400)))  ; AT_SYMLINK_FOLLOW
+
 (defun name-unnamed-file (fd directory tag)
   "Give file descriptor (FD), from OPEN-UNNAMED-FILE, a hidden name with TAG
 in DIRECTORY (the same directory it was made in) and return the name; NIL
@@ -1671,18 +1619,8 @@ when the system will not. Refused (WRITING-REFUSED) where nothing may be
 written, told by the directory opened."
   (let ((name (scratch-name directory tag)))
     (call-with-directory directory
-                      (lambda (dirfd)
-                        (and (zerop (sb-alien:alien-funcall
-                                     (sb-alien:extern-alien "linkat"
-                                                            (function sb-alien:int sb-alien:int sb-alien:c-string
-                                                                      sb-alien:int
-                                                                      sb-alien:c-string
-                                                                      sb-alien:int))
-                                     -100 (format nil
-                                                  "/proc/self/fd/~d"
-                                                  fd) dirfd (native-file-name name) #x400)) ; AT_SYMLINK_FOLLOW
-                             name))
-                      "name a file in")))
+                         (lambda (dirfd) (and (link-unnamed-at fd dirfd (native-file-name name)) name))
+                         "name a file in")))
 
 ;;; The names of accounts and groups
 
@@ -1720,16 +1658,11 @@ STAMP-GID), or NIL when it has none."
 
 (defun process-groups ()
   "The supplementary groups of this process, as numbers."
-  (let ((n (sb-alien:alien-funcall
-            (sb-alien:extern-alien "getgroups" (function sb-alien:int sb-alien:int sb-sys:system-area-pointer))
-            0 (sb-sys:int-sap 0))))
+  (let ((n (%getgroups 0 (sb-sys:int-sap 0))))
     (when (plusp n)
       (let ((buffer (make-array (* 4 n) :element-type '(unsigned-byte 8) :initial-element 0)))
         (with-octets-sap (sap buffer)
-          (let ((got (sb-alien:alien-funcall
-                      (sb-alien:extern-alien "getgroups"
-                                             (function sb-alien:int sb-alien:int sb-sys:system-area-pointer))
-                      n sap)))
+          (let ((got (%getgroups n sap)))
             (loop for i below (max 0 got) collect (sb-sys:sap-ref-32 sap (* 4 i)))))))))
 
 (defun can-give-owner-p (stamp)
@@ -1904,10 +1837,7 @@ OFFSET, LENGTH of them, out to the device; with WAIT, also wait until they
 are there. True when the system did so; NIL on a file system that cannot
 (the caller's flush at the end then does it all)."
   (and (plusp length)
-       (zerop (sb-alien:alien-funcall
-               (sb-alien:extern-alien "sync_file_range" (function sb-alien:int sb-alien:int (sb-alien:signed 64)
-                                                                  (sb-alien:signed 64) sb-alien:unsigned-int))
-               fd offset length (if wait 7 2)))))  ; WAIT_BEFORE | WRITE | WAIT_AFTER, or WRITE
+       (zerop (%sync-file-range fd offset length (if wait 7 2)))))  ; WAIT_BEFORE | WRITE | WAIT_AFTER, or WRITE
 
 (defvar *session-log-words* nil
   "What the session writing to stderr.log is (the window, the terminal), as
@@ -1932,7 +1862,7 @@ began. NIL when the log cannot be made. A daemon's log is named for it
           (let ((octets (sb-ext:string-to-octets
                          (format nil "Tuatara ~a on SBCL ~a, ~a, process ~d, began ~a~%"
                                  (tuatara:version) (lisp-implementation-version) what (sb-posix:getpid)
-                                 (tuatara.dates:format-time "%F %T" (get-universal-time)))
+                                 (tuatara.runtime:local-time-stamp (get-universal-time)))
                          :external-format :utf-8)))
             (with-octets-sap (sap octets)
               (handler-case (sb-posix:write fd sap (length octets)) (sb-posix:syscall-error () nil))))
@@ -1969,6 +1899,31 @@ or ~/.local/state/tuatara/."
                       (merge-pathnames "tuatara/"
                                        (or home (merge-pathnames ".local/state/" (user-homedir-pathname)))))))
 
+(defun open-new-entry (dirfd name mode &key (access sb-posix:o-wronly))
+  "A descriptor of a new file NAME (a string) made in the directory open as
+DIRFD with permissions MODE less the umask, open for ACCESS (O_WRONLY, or
+O_RDWR), kept from programs started; made only when nothing is at NAME, a
+link included, never through one. NIL and the errno when it cannot be made
+\(EEXIST: the name is taken)."
+  (openat-octets dirfd (tuatara.text:string-octets name)
+                 (logior access sb-posix:o-creat sb-posix:o-excl +o-nofollow+ +o-cloexec+) mode))
+
+(defun call-with-new-entry (dirfd name mode function &key (path name))
+  "Make the file NAME (a string) in the directory open as DIRFD, new, with
+permissions MODE less the umask, open it for writing and call FUNCTION with its
+file descriptor (FD), returning what FUNCTION returns. The descriptor is closed
+however FUNCTION ends; when an error leaves it, the new file is taken away
+again. An error naming PATH, and nothing made, when something is at NAME
+already, a link too."
+  (multiple-value-bind (fd errno) (open-new-entry dirfd name mode)
+    (unless fd (fail "write" path errno))
+    (handler-bind ((error (lambda (e)
+                            (declare (ignore e))
+                            (tuatara.runtime:ignoring-errors-reported ("taking away ~a beside ~a" name path)
+                              (unlink-entry-at dirfd name)))))
+      (unwind-protect (funcall function fd)
+        (tuatara.runtime:close-fd-quietly fd "~a beside ~a" name path)))))
+
 (defun replace-file (path contents &key (mode #o666))
   "Write CONTENTS, a string (in UTF-8) or octets, as the whole of the file at
 PATH, its name as the system has it ([Content_Types].xml too), made with MODE
@@ -1984,29 +1939,31 @@ which the new file is made and renamed."
      name
      (lambda (dirfd own)
        (let ((temporary (format nil "~a.~d.~a.new" (native-file-name name) (sb-posix:getpid) (random-name))))
-         (multiple-value-bind (fd errno)
-             (openat-octets dirfd (tuatara.text:string-octets temporary)
-                            (logior sb-posix:o-wronly sb-posix:o-creat sb-posix:o-excl +o-nofollow+ +o-cloexec+) mode)
-           (unless fd (fail "write" name errno))
-           (handler-bind ((error (lambda (e)
-                                   (declare (ignore e))
-                                   (tuatara.runtime:ignoring-errors-reported ("taking away ~a" temporary)
-                                     (unlink-entry-at dirfd temporary)))))
-             (unwind-protect (progn (write-octets fd octets :path name)
-                                    (flush-fd fd name))
-               (sb-posix:close fd))
-             (let ((old (terminated-octets (tuatara.text:string-octets temporary))) (new (terminated-octets own)))
-               (with-octets-sap (old-sap old)
-                 (with-octets-sap (new-sap new)
-                   (unless (zerop (sb-alien:alien-funcall
-                                   (sb-alien:extern-alien "renameat"
-                                                          (function sb-alien:int sb-alien:int sb-sys:system-area-pointer
-                                                                              sb-alien:int sb-sys:system-area-pointer))
-                                   dirfd old-sap dirfd new-sap))
-                     (fail "write" name)))))
-             (sync-directory (parent-path name))))))
+         (call-with-new-entry
+          dirfd temporary mode
+          (lambda (fd)
+            (write-octets fd octets :path name)
+            (flush-fd fd name)
+            (with-octets-sap (old (terminated-octets (tuatara.text:string-octets temporary)))
+              (with-octets-sap (new (terminated-octets own))
+                (multiple-value-bind (result errno) (rename-entry dirfd old dirfd new 0)
+                  (unless (zerop result) (fail "write" name errno))))))
+          :path name)
+         (sync-directory (parent-path name))))
      :writing "write")
     path))
+
+(defun environment-without (prefixes &rest added)
+  "The environment of this process, as NAME=VALUE strings, without those that
+begin with one of PREFIXES (\"GSK_RENDERER=\", \"TUATARA_\"), ADDED first:
+the environment for a program started with settings of its own."
+  (append added (remove-if (lambda (setting) (some (lambda (prefix) (uiop:string-prefix-p prefix setting)) prefixes))
+                           (sb-ext:posix-environ))))
+
+(defun duplicate-fd (fd &key (lowest 0))
+  "A new file descriptor (FD) for what FD is open on, the lowest free one from
+LOWEST, kept from the programs started (F_DUPFD_CLOEXEC)."
+  (sb-posix:fcntl fd 1030 lowest))
 
 (defun open-named-pipe (path)
   "Make a named pipe at PATH, for its owner alone, and open it both ways
@@ -2047,20 +2004,12 @@ in which the file is made."
     (call-with-parent
      name
      (lambda (dirfd own)
-       (multiple-value-bind (fd errno)
-           (openat-octets dirfd own (logior sb-posix:o-wronly
-                                            sb-posix:o-creat
-                                            sb-posix:o-excl
-                                            +o-nofollow+
-                                            +o-cloexec+) mode)
-         (unless fd (fail "write" name errno))
-         (handler-bind ((error (lambda (e)
-                                 (declare (ignore e))
-                                 (tuatara.runtime:ignoring-errors-reported ("taking away ~a" name)
-                                   (unlink-entry-at dirfd (native-file-name name))))))
-           (unwind-protect (progn (write-octets fd octets :end (or end (length octets)) :path name)
-                                  (when sync (sb-posix:fsync fd)))
-             (sb-posix:close fd)))))
+       (declare (ignore own))
+       (call-with-new-entry dirfd (native-file-name name) mode
+                            (lambda (fd)
+                              (write-octets fd octets :end (or end (length octets)) :path name)
+                              (when sync (sb-posix:fsync fd)))
+                            :path name))
      :writing "write")
     path))
 
@@ -2167,23 +2116,22 @@ UTF-8. Freed with FREE-ARGUMENT-VECTOR."
         do (sb-alien:free-alien string))
   (sb-alien:free-alien argv))
 
-(defun run-program-again (arguments &key (environment nil environment-p))
+(defun run-program-again (arguments &key (environment nil environment-p) heap)
   "Run this program again in place of this process: *SAVED-PROGRAM* with
 ARGUMENTS, strings, after its name, in ENVIRONMENT, NAME=VALUE strings, or
 the environment as it is now; names that are not UTF-8 among them are handed
-on as the octets they were read from. Returns only when that fails, or at
-once when Tuatara runs from the sources."
+on as the octets they were read from. HEAP, a number of megabytes, is the
+size of the memory it starts with. Returns only when that fails, or at once
+when Tuatara runs from the sources."
   (unless *saved-program* (return-from run-program-again nil))
-  (let ((argv (argument-vector (cons (first sb-ext:*posix-argv*) arguments)))
+  (let ((argv (argument-vector (cons (first sb-ext:*posix-argv*)
+                                     (if heap
+                                         (list* "--dynamic-space-size" (format nil "~dMB" heap) arguments)
+                                         arguments))))
         (envp (and environment-p (argument-vector environment))))
     (unwind-protect
          (if envp
-             (sb-alien:alien-funcall
-              (sb-alien:extern-alien "execve" (function sb-alien:int sb-alien:c-string (* (* sb-alien:char))
-                                                        (* (* sb-alien:char))))
-              *saved-program* argv envp)
-             (sb-alien:alien-funcall
-              (sb-alien:extern-alien "execv" (function sb-alien:int sb-alien:c-string (* (* sb-alien:char))))
-              *saved-program* argv))
+             (%execve *saved-program* (sb-alien:alien-sap argv) (sb-alien:alien-sap envp))
+             (%execv *saved-program* (sb-alien:alien-sap argv)))
       (when envp (free-argument-vector envp))
       (free-argument-vector argv))))

@@ -5,6 +5,8 @@
 ;;;; installed last in the usual places of an Emacs configuration, else
 ;;;; Quicklisp's Swank.
 ;;;; Listens on localhost:4005 until killed. Loads tuatara/tests so the image is ready to work in.
+;;;; The port takes no password: any account on the machine can run Lisp as the one
+;;;; that started this, so use it only where you are the one account.
 
 (load (merge-pathnames "quicklisp.lisp" *load-truename*))
 

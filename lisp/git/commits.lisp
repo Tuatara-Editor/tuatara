@@ -12,13 +12,16 @@
 
 (in-package #:tuatara.git)
 
+(defun parse-git-name-status (text)
+  "TEXT, what git diff --name-status -z --no-renames printed, as a list of
+\(PATH KIND), KIND as GIT-CHANGE-WORD says it. A name may hold a newline."
+  (loop for (code path) on (uiop:split-string text :separator (list (code-char 0))) by #'cddr
+        when (and path (plusp (length code)))
+          collect (list path (git-change-word (char code 0)))))
+
 (defun git-staged-files (job top)
   "On JOB's thread: the files staged at TOP, each (PATH KIND), as git diff --cached --name-status lists them."
-  (loop for line in (git-lines job top (list "diff" "--cached" "--name-status" "--no-renames" "-z"))
-        append (let ((fields (uiop:split-string line :separator (list (code-char 0)))))
-                 (loop for (code path) on fields by #'cddr
-                       when (and path (plusp (length code)))
-                         collect (list path (git-change-word (char code 0)))))))
+  (parse-git-name-status (git-job-output job top (list "diff" "--cached" "--name-status" "--no-renames" "-z"))))
 
 (defun git-last-message (job top)
   "On JOB's thread: the message of the last commit at TOP, or NIL when there is none."
@@ -102,7 +105,8 @@ written again, nothing staged going into it; \\<git-commit-mode>\\[git-commit-fi
 (define-command git-commit-extend ()
   "Extend the last commit with what is staged, its message as it is."
   (with-git-repository (top switches)
-    (git-run "Extending the last commit" top (list* "commit" "--amend" "--no-edit" switches) "Extended the last commit")))
+    (git-run "Extending the last commit" top (list* "commit" "--amend" "--no-edit" switches)
+             "Extended the last commit")))
 
 (define-command git-commit-fixup ()
   "Make a commit of what is staged fixing up one asked for: a rebase with
@@ -120,7 +124,8 @@ rebase with autosquash folds it in, its message added to that one's."
   (with-git-repository (top switches)
     (git-ask-revision "Squash into commit: " top
                       (lambda (hash)
-                        (git-run "Committing a squash" top (list* "commit" (format nil "--squash=~a" hash) "--no-edit" switches)
+                        (git-run "Committing a squash" top
+                                 (list* "commit" (format nil "--squash=~a" hash) "--no-edit" switches)
                                  (format nil "Committed a squash into ~a" hash)))
                       :commits-only t)))
 
@@ -160,7 +165,9 @@ its editor), save it and end the editor git started, so that git goes on."
     (cond ((and (null top) (git-message-file-p buffer)) (git-message-file-done buffer))
           ((null top) (message "Not a commit's message: save it, and git takes it"))
           ((zerop (length (string-trim '(#\Space #\Newline #\Tab) message))) (message "No message: not committed"))
-          (t (git-run "Committing" top (list* "commit" "--cleanup=strip" "-F" "-" (tuatara.buffer:buffer-local buffer 'git-commit-arguments))
+          (t (git-run "Committing" top
+                      (list* "commit" "--cleanup=strip" "-F" "-"
+                             (tuatara.buffer:buffer-local buffer 'git-commit-arguments))
                       (lambda (text)
                         (let ((first (first-line text)))
                           (if (plusp (length first)) first "Committed")))

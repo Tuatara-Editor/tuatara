@@ -61,12 +61,12 @@ not in FOUND."
 
 (define-chokepoint programs-started
   ((("run-program" "launch-program")))
-  (("src/io/sandbox.lisp" "the one place that starts programs: limits, environment, sessions and confinement"))
-  "Programs are started in the sandbox's file alone (START-PROGRAM and what is built on it).")
+  (("src/io/programs.lisp" "the one place that starts programs: limits, environment, sessions and confinement"))
+  "Programs are started in programs.lisp alone (START-PROGRAM and what is built on it).")
 
 (define-chokepoint environment-read
   ((("getenv" "getenv-absolute-directory" "posix-getenv")))
-  (("src/io/posix.lisp" "OWN-VARIABLE, the one way the editor reads a variable of its own environment"))
+  (("src/runtime/resources.lisp" "OWN-VARIABLE, the one way the editor reads a variable of its own environment"))
   "Environment variables are read with OWN-VARIABLE (or OWN-DIRECTORY) for the editor's own, and with PROGRAM-VARIABLE
 for the environment a program is started with. Packages have uiop's getenv from the API.")
 
@@ -74,12 +74,12 @@ for the environment a program is started with. Packages have uiop's getenv from 
   ((":direction" (":output" ":io"))
    (("write-string-into-file" "with-output-file"))
    (("o-wronly" "o-rdwr" "o-creat" "o-append" "o-trunc")))
-  (("src/io/files.lisp" "saving a buffer: the write, the temporary copy and the lock")
-   ("src/io/in-place.lisp" "writing changes into a file where it is")
+  (("src/io/in-place.lisp" "writing changes into a file where it is")
    ("src/io/operations.lisp" "the file operations: copy, make, move")
    ("src/io/posix.lisp" "the descriptor-level writing every other writer is built on")
-   ("src/runtime/debug.lisp" "the debug log, rotated by its own code")
-   ("lisp/files/external.lisp" "the lock file of a file open in another program")
+   ("src/io/save.lisp" "saving a buffer: the write, the temporary copy and the lock")
+   ("src/runtime/locks.lisp" "the logs sessions share, rotated by their own code")
+   ("lisp/files/private-directories.lisp" "the lock file of a directory a session holds")
    ("frontends/tui/client.lisp" "opens /dev/null for the daemon's output")
    ("frontends/tui/main.lisp" "opens the terminal to write to it")
    ("frontends/tui/man-pages.lisp" "writes the man pages into the build directory")
@@ -89,15 +89,15 @@ for the environment a program is started with. Packages have uiop's getenv from 
 
 (define-chokepoint files-removed
   ((("delete-file" "rename-file" "*:rename" "*:unlink" "*:rmdir" "delete-file-if-exists" "delete-directory-tree")))
-  (("src/io/files.lisp" "removing a temporary copy a save did not finish")
-   ("src/io/posix.lisp" "the descriptor-level calls every other remover is built on")
-   ("src/runtime/debug.lisp" "rotating the debug log")
+  (("src/io/posix.lisp" "the descriptor-level calls every other remover is built on")
+   ("src/io/save.lisp" "removing a temporary copy a save did not finish")
+   ("src/runtime/locks.lisp" "rotating the logs sessions share")
    ("frontends/tui/tui.lisp" "removing a picture's shared memory object")
    ("lisp/files/archives.lisp" "removing the directory an archive was opened into")
    ("lisp/files/grammars.lisp" "replacing a downloaded grammar's library")
-   ("lisp/git/look-only.lisp" "removing the copies a safe visit made")
    ("lisp/packages/compile-apart.lisp" "the compiled core and the request files of a compile")
-   ("lisp/packages/packages.lisp" "a package's compiled files")
+   ("lisp/packages/fetch.lisp" "moving a fetched package into its place")
+   ("lisp/packages/loading.lisp" "a package's compiled files")
    ("lisp/packages/signing.lisp" "a file made to check a signature")
    ("lisp/search/indexed.lisp" "the files of a search index"))
   "A file is renamed or removed by the file layer (src/io), and in the few other files that clean up what they made.")

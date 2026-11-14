@@ -142,4 +142,3 @@ through to NORMAL's. Does nothing until the editor has a window (during setup)."
                          *tuatara-normal-keymap*)))
                (editor-fallback-keymap editor) nil
                (editor-self-insert-command editor) (if (eq state :insert) 'self-insert-command nil))))))
-

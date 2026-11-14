@@ -467,7 +467,7 @@ manifest's entries for its text when given."
       (note-has note "*** Endnotes")
       (note-has note "Twelve *kea* seen[fn:1], see [[https://example.org/kea][the count]].  Was +old count+new count.")
       ;; what a document says stays its words: never a heading, a keyword, markup or a link of the note
-      (note-has note (format nil "~a* Forged heading" tuatara.defaults::*docx-read-zero-width-space*))
+      (note-has note (format nil "~a* Forged heading" tuatara.defaults::*org-zero-width-space*))
       (false (cl-ppcre:scan "(?m)^\\* Forged" note))
       (false (cl-ppcre:scan "(?m)^#\\+include" note))
       (note-has note "Costs \\dollar{}5")
@@ -676,3 +676,101 @@ manifest's entries for its text when given."
       (note-has note "[[https://example.org/%0A#+INCLUDE: x.org][the site]]")
       (note-has note "** Findings * Forged heading")
       (false (cl-ppcre:scan "(?mi)^[ \\t]*(\\*+ Forged|#\\+include|# )" note) "~a" note))))
+
+(define-test (office-view sections-past-a-full-note-cut)
+  ;; a header read after the text has filled the note, and deletions filling it before the text,
+  ;; give the cut note the limit promises, never an error
+  (with-test-directory (dir)
+    (let* ((w "xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"")
+           (docx (write-office-test-file
+                  (merge-pathnames "full.docx" dir)
+                  `(("word/document.xml"
+                     . ,(format nil "<w:document ~a><w:body>~{<w:p><w:r><w:t>~a</w:t></w:r></w:p>~}</w:body></w:document>"
+                                w (make-list 400 :initial-element "words that fill the note")))
+                    ("word/_rels/document.xml.rels"
+                     . "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/header\" Target=\"header1.xml\"/></Relationships>")
+                    ("word/header1.xml"
+                     . ,(format nil "<w:hdr ~a><w:p><w:r><w:t>Field notes</w:t></w:r></w:p></w:hdr>" w)))))
+           (note (let ((tuatara.defaults::*office-note-size-limit* 2000)) (tuatara.defaults::docx-read-note docx))))
+      (note-has note "The rest is left out: the note reached 2,000 characters"))
+    (let* ((odt (write-office-test-file
+                 (merge-pathnames "full.odt" dir)
+                 (odf-test-parts "text"
+                                 (format nil "~{<text:p>~a</text:p>~}"
+                                         (make-list 400 :initial-element "words that fill the note"))
+                                 :styles "<office:master-styles><style:master-page style:name='Standard'><style:header><text:p>Field<text:s text:c='3'/>notes</text:p></style:header></style:master-page></office:master-styles>")))
+           (note (let ((tuatara.defaults::*office-note-size-limit* 2000)) (tuatara.defaults::odf-read-note odt))))
+      (note-has note "- Header (page style Standard) :: Field   notes")
+      (note-has note "The rest is left out: the note reached 2,000 characters"))
+    (let* ((odt (write-office-test-file
+                 (merge-pathnames "deleted.odt" dir)
+                 (odf-test-parts "text"
+                                 (format nil "<text:tracked-changes><text:changed-region text:id='ct1'><text:deletion><text:p>a~{~a~}</text:p></text:deletion></text:changed-region></text:tracked-changes><text:p>Kept</text:p>"
+                                         (make-list 10 :initial-element "<text:s text:c='1000'/>")))))
+           (note (let ((tuatara.defaults::*office-note-size-limit* 2000)) (tuatara.defaults::odf-read-note odt))))
+      (note-has note "The rest is left out: the note reached 2,000 characters"))))
+
+(define-test (office-view odf-changes-escaped-once)
+  ;; a tracked change's words are kept from markup once, as the Word reader's are
+  (with-test-directory (dir)
+    (let* ((odt (write-office-test-file
+                 (merge-pathnames "changes.odt" dir)
+                 (odf-test-parts "text"
+                                 (concatenate 'string
+                                              "<text:tracked-changes><text:changed-region text:id='ct1'><text:deletion><text:p>Costs $5</text:p></text:deletion></text:changed-region>"
+                                              "<text:changed-region text:id='ct2'><text:insertion/></text:changed-region></text:tracked-changes>"
+                                              "<text:p>Was <text:change text:change-id='ct1'/><text:change-start text:change-id='ct2'/>\\now $6<text:change-end text:change-id='ct2'/>.</text:p>"))))
+           (note (tuatara.defaults::odf-read-note odt))
+           (z tuatara.defaults::*org-zero-width-space*))
+      (note-has note ":: Costs \\dollar{}5")
+      (note-has note (format nil ":: \\~anow \\dollar{}6" z))
+      (false (search (format nil "\\~adollar" z) note) "~a" note))))
+
+(define-test (office-view outside-links-listed-within-reason)
+  ;; a document linking to very many addresses outside it has a few of them named, the rest counted
+  (with-test-directory (dir)
+    (let* ((docx (write-office-test-file
+                  (merge-pathnames "links.docx" dir)
+                  `(("word/document.xml"
+                     . "<w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:body><w:p><w:r><w:t>Kea</w:t></w:r></w:p></w:body></w:document>")
+                    ("word/_rels/document.xml.rels"
+                     . ,(format nil "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">~{~a~}</Relationships>"
+                                (loop for i below 5
+                                      collect (format nil "<Relationship Id=\"rId~d\" Type=\"hyperlink\" Target=\"https://example.org/~d\" TargetMode=\"External\"/>" i i)))))))
+           (note (let ((tuatara.defaults::*office-most-listed* 2)) (tuatara.defaults::docx-read-note docx))))
+      (note-has note "- Links outside it :: https://example.org/0, https://example.org/1, and 3 more (none followed)"))))
+
+(define-test (office-view repeated-cells-read-once)
+  ;; a long cell repeated along a row and down the rows is read once, not once for each time it is shown
+  (with-test-directory (dir)
+    (let* ((cell (format nil "<table:table-cell table:number-columns-repeated='64'><text:p>~a</text:p></table:table-cell>"
+                         (make-string 100000 :initial-element #\x)))
+           (odt (write-office-test-file
+                 (merge-pathnames "repeated.odt" dir)
+                 (odf-test-parts "text" (format nil "<table:table table:name='T'><table:table-row table:number-rows-repeated='64'>~a</table:table-row></table:table>" cell))))
+           (ods (write-office-test-file
+                 (merge-pathnames "repeated.ods" dir)
+                 (odf-test-parts "spreadsheet" (format nil "<table:table table:name='T'><table:table-row table:number-rows-repeated='64'>~a</table:table-row></table:table>" cell)))))
+      (dolist (path (list odt ods))
+        (let* ((before (sb-ext:get-bytes-consed))
+               (note (let ((tuatara.defaults::*office-value-length-limit* 10)) (tuatara.defaults::odf-read-note path)))
+               (consed (- (sb-ext:get-bytes-consed) before)))
+          (note-has note "xxx")
+          (true (< consed (* 200 1024 1024)) "~:d octets for ~a" consed path))))))
+
+(define-test (office-view hidden-columns-past-the-sheet-hide-none)
+  ;; a hidden column declared past the sheet's last one (XFD) marks nothing: the last column stays shown
+  (with-test-directory (dir)
+    (let* ((ods (write-office-test-file
+                 (merge-pathnames "wide.ods" dir)
+                 (odf-test-parts "spreadsheet"
+                                 (concatenate 'string
+                                              "<table:table table:name='Wide'>"
+                                              "<table:table-column table:number-columns-repeated='16384'/>"
+                                              "<table:table-column table:visibility='collapse'/>"
+                                              "<table:table-row><table:table-cell table:number-columns-repeated='16383'/>"
+                                              "<table:table-cell><text:p>last</text:p></table:table-cell>"
+                                              "</table:table-row></table:table>"))))
+           (note (tuatara.defaults::odf-read-note ods)))
+      (note-has note "| XFD |")
+      (false (search "XFD (hidden)" note)))))

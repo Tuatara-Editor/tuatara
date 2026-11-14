@@ -4,9 +4,10 @@
 ;;;; As Helix's cursorcolumn and Vim's cursorcolumn: the screen column the
 ;;;; cursor is in, painted down the selected window in :cursor-column, the
 ;;;; :hl-line face's colour unless set apart, over the text's backgrounds (a
-;;;; source block's, the selection's) and under the line point is on, past the end of short lines too, as the line
-;;;; down the window at the fill column is (visual-line.lisp). Off in every buffer unless the init file
-;;;; says otherwise; a buffer, or the list for its major mode
+;;;; source block's, the selection's) and under the line point is on, past the
+;;;; end of short lines too, as the line down the window at the fill column is
+;;;; (display-fill-column.lisp). Off in every buffer unless the init file says
+;;;; otherwise; a buffer, or the list for its major mode
 ;;;; (*CURSOR-COLUMN-MODES*), may choose for itself, as with hl-line-mode.
 
 (in-package #:tuatara.defaults)

@@ -47,11 +47,13 @@ The table goes under the file's first heading tagged :TOC:
   "The largest Org or Markdown file whose table of contents is made again on
 saving, in octets: a larger one is saved as it is.")
 
-(defstruct (toc-line (:constructor make-toc-line (position text last)) (:copier nil))
+(define-record (toc-line (:constructor make-toc-line (position text last)) (:copier nil))
   "A headline as the table of contents is made from it: where its line begins
 (a character of the text), what is left of its line, and whether it is the
 text's last line, with no line end after it."
-  position text last)
+  (position nil :documentation "The character of the text where the headline line of a TOC-LINE begins.")
+  (text nil :documentation "What is left of the headline line of a TOC-LINE.")
+  (last nil :documentation "True when a TOC-LINE is the text's last line, with no line end after it."))
 
 (defparameter *toc-longest-line* 4096
   "The most characters of a headline line the table of contents reads: a longer
@@ -96,13 +98,14 @@ in order; and the lines starting with #+, as (POSITION . LINE)."
   (let ((headlines '()) (keywords '()) (n (length text)) (start 0))
     (loop while (< start n)
           do (let ((end (or (position #\Newline text :start start) n)))
-              (cond ((char= (char text start) #\*)
-                    (let ((stars (or (position #\* text :start start :end end :test #'char/=) end)))
-                      (when (and (< stars end) (char= (char text stars) #\Space))
-                        (push (make-toc-line start (subseq text start (min end (+ start *toc-longest-line*))) (= end n)) headlines))))
-                   ((and (< (1+ start) end) (char= (char text start) #\#) (char= (char text (1+ start)) #\+))
-                    (push (cons start (subseq text start end)) keywords)))
-              (setf start (1+ end))))
+               (cond ((char= (char text start) #\*)
+                      (let ((stars (or (position #\* text :start start :end end :test #'char/=) end)))
+                        (when (and (< stars end) (char= (char text stars) #\Space))
+                          (push (make-toc-line start (subseq text start (min end (+ start *toc-longest-line*)))
+                                               (= end n)) headlines))))
+                     ((and (< (1+ start) end) (char= (char text start) #\#) (char= (char text (1+ start)) #\+))
+                      (push (cons start (subseq text start end)) keywords)))
+               (setf start (1+ end))))
     (values (nreverse headlines) (nreverse keywords))))
 
 (defun toc-states-scanner (keywords)
@@ -114,7 +117,7 @@ stay."
                       for groups = (nth-value 1
                                               (cl-ppcre:scan-to-strings "(?i)^#\\+(TODO|SEQ_TODO|TYP_TODO):(.*)$" line))
                       when groups
-                        append (remove "" (cl-ppcre:split "[ \\f\\t\\n\\r\\v|]+" (aref groups 1)) :test #'string=))))
+                      append (remove "" (cl-ppcre:split "[ \\f\\t\\n\\r\\v|]+" (aref groups 1)) :test #'string=))))
     (cl-ppcre:create-scanner
      (format nil "^(\\*+ +)(?:~{~a +~^|~})"
              (mapcar (lambda (k) (cl-ppcre:quote-meta-chars (cl-ppcre:regex-replace-all "\\(.+?\\)" k "")))
@@ -180,46 +183,47 @@ written as Markdown links, the quote a fenced block."
                (tag (and (> (length found) 3) (subseq found 3)))
                (depth (if tag (digit-char-p (char tag 1)) *org-toc-max-depth*))
                (style (string-downcase (if (and tag (>= (length tag) 4)) (subseq tag 3) *org-toc-style*)))
-               (quote (member "quote" (toc-line-tags (toc-line-text tagged)) :test #'string-equal))
+               (quoted (member "quote" (toc-line-tags (toc-line-text tagged)) :test #'string-equal))
                (lines (remove tagged lines :count 1))
-                 (leave-states (some (lambda (k) (cl-ppcre:scan "(?i)^#\\+OPTIONS:.* todo:t[ \\n]"
-                                                                (format nil "~a~%" (cdr k))))
-                                     keywords)))
-            (unless leave-states (toc-edit lines (toc-states-scanner keywords) "\\1"))
-            (setf lines (toc-drop-subtrees lines (lambda (text) (and (cl-ppcre:scan "^\\*+ +COMMENT +" text) 0))))
-            (setf lines (toc-drop-subtrees lines (lambda (text)
-                                                   (let ((tag (find-if (lambda (tag)
-                                                                         (cl-ppcre:scan "(?i)^noexport([@_][0-9])?$" tag))
-                                                                       (toc-line-tags text))))
-                                                     (and tag (if (> (length tag) 8) (digit-char-p (char tag 9)) 0))))))
-            (toc-edit lines (cl-ppcre:create-scanner "^(\\*+ +)\\[#.\\] +") "\\1")
-            (dolist (line lines)
-              (setf (toc-line-text line) (org-links-as-labels (toc-without-tags (toc-line-text line)))))
-            (setf lines (remove-if (lambda (line) (> (length (toc-stars (toc-line-text line))) depth)) lines))
-            (let ((taken (make-hash-table :test 'equal)))
-              (values
-               (loop for line in lines
-                     for text = (toc-line-text line)
-                     for stars = (length (toc-stars text))
-                     for spaces = (or (position #\Space text :start stars :test #'char/=) (length text))
-                     for heading = (string-right-trim '(#\Space #\Tab) (subseq text spaces))
-                     for visible = (cl-ppcre:regex-replace-all (load-time-value (cl-ppcre:create-scanner (format nil " *~a *" *org-statistics-cookie-re*)))
-                                                                 heading "")
-                     for target = (if (string= style "org") visible (toc-gh-anchor heading taken))
-                     collect (list (if markdown
-                                       (format nil
-                                               "~a-~a[~a](~a)"
-                                               (make-string (* 2 (1- stars)) :initial-element #\Space)
-                                               (subseq text stars spaces) visible target)
-                                       (format nil
-                                               "~a-~a[[~a][~a]]"
-                                               (make-string (* 2 (1- stars)) :initial-element #\Space)
-                                               (subseq text stars spaces) target visible))
-                                   target (toc-line-position line) (toc-line-last line)))
-               (toc-line-position tagged)
-               (cond ((not quote) "") (markdown (format nil "```~%")) (t (format nil "#+BEGIN_QUOTE~%")))
-               (cond ((not quote) "") (markdown (format nil "```~%")) (t (format nil "#+END_QUOTE~%")))
-               style)))))))
+               (leave-states (some (lambda (k) (cl-ppcre:scan "(?i)^#\\+OPTIONS:.* todo:t[ \\n]"
+                                                              (format nil "~a~%" (cdr k))))
+                                   keywords)))
+          (unless leave-states (toc-edit lines (toc-states-scanner keywords) "\\1"))
+          (setf lines (toc-drop-subtrees lines (lambda (text) (and (cl-ppcre:scan "^\\*+ +COMMENT +" text) 0))))
+          (setf lines (toc-drop-subtrees lines (lambda (text)
+                                                 (let ((tag (find-if (lambda (tag)
+                                                                       (cl-ppcre:scan "(?i)^noexport([@_][0-9])?$" tag))
+                                                                     (toc-line-tags text))))
+                                                   (and tag (if (> (length tag) 8) (digit-char-p (char tag 9)) 0))))))
+          (toc-edit lines (cl-ppcre:create-scanner "^(\\*+ +)\\[#.\\] +") "\\1")
+          (dolist (line lines)
+            (setf (toc-line-text line) (org-links-as-labels (toc-without-tags (toc-line-text line)))))
+          (setf lines (remove-if (lambda (line) (> (length (toc-stars (toc-line-text line))) depth)) lines))
+          (let ((taken (make-hash-table :test 'equal)))
+            (values
+             (loop with cookie = (load-time-value (cl-ppcre:create-scanner
+                                                   (format nil " *~a *" *org-statistics-cookie-re*)))
+                   for line in lines
+                   for text = (toc-line-text line)
+                   for stars = (length (toc-stars text))
+                   for spaces = (or (position #\Space text :start stars :test #'char/=) (length text))
+                   for heading = (string-right-trim '(#\Space #\Tab) (subseq text spaces))
+                   for visible = (cl-ppcre:regex-replace-all cookie heading "")
+                   for target = (if (string= style "org") visible (toc-gh-anchor heading taken))
+                   collect (list (if markdown
+                                     (format nil
+                                             "~a-~a[~a](~a)"
+                                             (spaces (* 2 (1- stars)))
+                                             (subseq text stars spaces) visible target)
+                                     (format nil
+                                             "~a-~a[[~a][~a]]"
+                                             (spaces (* 2 (1- stars)))
+                                             (subseq text stars spaces) target visible))
+                                 target (toc-line-position line) (toc-line-last line)))
+             (toc-line-position tagged)
+             (cond ((not quoted) "") (markdown (format nil "```~%")) (t (format nil "#+BEGIN_QUOTE~%")))
+             (cond ((not quoted) "") (markdown (format nil "```~%")) (t (format nil "#+END_QUOTE~%")))
+             style)))))))
 
 (defun toc-markdown-view (text)
   "The Markdown TEXT as it is read for its table of contents, each
@@ -247,7 +251,8 @@ line made spaces, and <-- and --> around a heading's :TOC: tag spaces."
                  ;; spaces and #s closing the line
                  (let ((last (position #\# view :start start :end end :test #'char/= :from-end t)))
                    (when (and last (< (1+ last) end) (char= (char view last) #\Space))
-                     (let ((spaces (or (position #\Space view :start start :end (1+ last) :test #'char/= :from-end t) (1- start))))
+                     (let ((spaces (or (position #\Space view :start start :end (1+ last) :test #'char/= :from-end t)
+                                       (1- start))))
                        (blank (1+ spaces) end))))
                  (when (and (< start end) (char= (char view start) #\*))
                    (multiple-value-bind (match-start match-end starts ends)
@@ -275,7 +280,7 @@ Markdown), at or after the character FROM (a line's start) begins, or NIL."
   (let ((n (length text)) (p from))
     (loop while (< p n)
           do (when (char= (char text p) mark) (return p))
-             (setf p (1+ (or (position #\Newline text :start p) n))))))
+          (setf p (1+ (or (position #\Newline text :start p) n))))))
 
 (defun toc-place (text headline &optional (mark #\*))
   "Where the table of contents goes in TEXT under the headline beginning at the
@@ -295,16 +300,19 @@ being right under the drawers."
     (let* ((star (toc-next-star-line text point mark))
            (bound (if star (1+ star) n)))
       (loop
-        (let ((drawer (let ((p (if (= point (string-line-start text point))
-                                   point
-                                   (1+ (or (position #\Newline text :start point) (1- n))))))
-                        (loop while (< p n)
-                              do (let ((e (or (position #\Newline text :start p) n)))
-                                   (when (> e bound) (return nil))
-                                   (when (cl-ppcre:scan "^[ \\t]*:(?:\\w|[-_])+:[ \\t]*$" text :start p :end e) (return e))
-                                   (setf p (1+ e)))))))
-          (unless drawer (return))
-          (setf point (or (position-if-not (lambda (c) (member c '(#\Space #\Tab #\Newline #\Return #\Page))) text :start drawer) n)))))
+       (let ((drawer (let ((p (if (= point (string-line-start text point))
+                                  point
+                                  (1+ (or (position #\Newline text :start point) (1- n))))))
+                       (loop while (< p n)
+                             do (let ((e (or (position #\Newline text :start p) n)))
+                                  (when (> e bound) (return nil))
+                                  (when (cl-ppcre:scan "^[ \\t]*:(?:\\w|[-_])+:[ \\t]*$" text :start p :end e)
+                                    (return e))
+                                  (setf p (1+ e)))))))
+         (unless drawer (return))
+         (setf point
+               (or (position-if-not (lambda (c) (member c '(#\Space #\Tab #\Newline #\Return #\Page))) text
+                                    :start drawer) n)))))
     (setf point (string-line-start text point))
     (if (and (< point n) (char= (char text point) mark))
         (values point point "" t)
@@ -326,7 +334,8 @@ written with #s."
                (multiple-value-bind (start end lead open) (toc-place text headline (if markdown #\# #\*))
                  (if (and (not open) (string= lead "") (string= (subseq text start end) new))
                      :same
-                     (values start end (concatenate 'string lead new (if open (string #\Newline) "")) (length entries)))))))))
+                     (values start end (concatenate 'string lead new (if open (string #\Newline) ""))
+                             (length entries)))))))))
 
 (defun toc-markdown-p (buffer)
   "True when BUFFER is in Markdown mode, whose table of contents is written as Markdown."
@@ -335,13 +344,13 @@ written with #s."
 (defun toc-update (buffer &key quiet)
   "Make BUFFER's table of contents again, as on saving; true when
 there is one. A table as it should be already is left alone. QUIET says
-nothing of it. The text is read as it is, nothing parsed, and looked at no
-further when no :TOC appears in it. A buffer in Markdown mode has it written
-as Markdown."
-  (let* ((parse (org-text-now buffer))
-         (text (org-parse-text parse)))
+nothing of it. The buffer is searched for :TOC first, in place, and its text
+taken and read, nothing parsed, only when it is there. A buffer in Markdown
+mode has it written as Markdown."
+  (let* ((tagged (tuatara.syntax:regex-search-forward (tuatara.buffer:buffer-text buffer) ":toc" :threads 1))
+         (parse (and tagged (org-text-now buffer))))
     (multiple-value-bind (start end replacement count)
-        (if (cl-ppcre:scan "(?i):toc" text) (toc-change text :markdown (toc-markdown-p buffer)) nil)
+        (and tagged (toc-change (org-parse-text parse) :markdown (toc-markdown-p buffer)))
       (case start
         ((nil) nil)
         (:same (unless quiet (message "The table of contents is up to date")) t)
@@ -392,71 +401,3 @@ MARKDOWN, of the Markdown TEXT."
   (multiple-value-bind (entries headline) (toc-entries (if markdown (toc-markdown-view text) text) :markdown markdown)
     (when headline
       (third (find target entries :key #'second :test #'string=)))))
-
-;;; Links in Markdown
-
-(defparameter *markdown-link-re*
-  "(!)?\\[([^\\]^][^\\]]*|)\\]\\(([^)]*?)(?:\\s+(\"[^\"]*\"))?\\)"
-  "A Markdown link, [label](target \"title\"), or a picture's, ![label](target):
-the label the second group, the target the third.")
-
-(defun markdown-link-at (text position)
-  "The Markdown link of TEXT holding the character POSITION, as two values: its
-label and its target; NIL when there is none there. Only the line is looked
-at, at most *TOC-LONGEST-LINE* characters of it."
-  (let* ((start (string-line-start text position))
-         (end (min (string-line-end text position) (+ start *toc-longest-line*))))
-    (cl-ppcre:do-scans (s e starts ends *markdown-link-re* text nil :start start :end end)
-      (when (and (<= s position) (< position e))
-        (return-from markdown-link-at
-          (values (subseq text (aref starts 1) (aref ends 1)) (subseq text (aref starts 2) (aref ends 2))))))
-    nil))
-
-(defun markdown-heading-named (text label)
-  "The character of the Markdown TEXT where the first heading whose title is
-LABEL begins (#s, a space, then LABEL); NIL when none is."
-  (let ((view (toc-markdown-view text)) (start 0) (n (length text)))
-    (loop while (< start n)
-          do (let ((end (or (position #\Newline view :start start) n)))
-               (when (and (< start end) (char= (char view start) #\*))
-                 (let ((title (string-left-trim "* " (subseq view start end))))
-                   (when (uiop:string-prefix-p label title) (return start))))
-               (setf start (1+ end))))))
-
-(defun markdown-follow-link (buffer)
-  "Follow the Markdown link point is on in BUFFER: to the heading of this file
-#an-anchor (a table of contents's) leads to, else one titled as its label; to
-a web or mail address in the desktop's program, after asking; to a file,
-visited. True when point is on a link."
-  (let* ((point (tuatara.buffer:buffer-point buffer))
-         (start (tuatara.buffer:buffer-line-start buffer point))
-         (line (buffer-line-head buffer point (* 4 *toc-longest-line*)))
-         (column (and (<= (- point start) (tuatara.text:string-octet-length line))
-                      (length (tuatara.buffer:buffer-string buffer :start start :end point)))))
-    (multiple-value-bind (label target) (and column (markdown-link-at line column))
-      (when target
-        (cond ((uiop:string-prefix-p "#" target)
-               (let* ((parse (org-text-now buffer))
-                      (text (org-parse-text parse))
-                      (at (or (toc-target-position text target :markdown t) (markdown-heading-named text label))))
-                 (if at
-                     (org-goto-char parse at)
-                     (message "No heading here for ~a" target))))
-              ((open-address-p target) (open-address target))
-              ((string= target "") (message "The link leads nowhere"))
-              (t (visit-path (tuatara.io:native (tuatara.io:expand-path (subseq target 0 (or (position #\# target)
-                                                                                             (length target)))
-                                                                        :directory (buffer-directory buffer))))))
-        t))))
-
-(define-command markdown-follow-link-at-point ()
-  "Follow the Markdown link point is on (\\`C-c C-o', and \\`RET' in NORMAL state): to
-the heading a table of contents's link (#an-anchor) leads to, a web or mail
-address in the desktop's program after asking, or a file, visited."
-  (unless (markdown-follow-link (current-buffer))
-    (message "No link here")))
-
-(defun markdown-follow-link-for-return (buffer)
-  "For \\`RET' in NORMAL state: follow the Markdown link point is on, when
-BUFFER is in Markdown mode; true when it did."
-  (and (toc-markdown-p buffer) (markdown-follow-link buffer)))

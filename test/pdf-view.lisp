@@ -389,12 +389,14 @@ and zooms kept for the next time."
         (setf tuatara.defaults::*pdf-view-dark-pages* dark))
       ;; C-s: the page the text is on, and the line
       (pdf-forget)
-      (let ((f (pdf-session file nil "C-s p a g e SPC t w o RET" :cell-pixels '(10 20))))
+      (let ((f (pdf-session file nil (cons "C-s p a g e SPC t w o RET" (after-jobs)) :cell-pixels '(10 20))))
         (true (tuatara.frontend.fake:fake-frame-showing f "Page 2: And page two"))
         (true (tuatara.frontend.fake:fake-frame-showing f "Page 2 of 3")))
       ;; again with nothing typed: the next place, case ignored, on to the last page
       (pdf-forget)
-      (let ((f (pdf-session file nil "C-s p a g e RET C-s RET C-s RET C-s RET" :cell-pixels '(10 20))))
+      (let ((f (pdf-session file nil (loop for keys in '("C-s p a g e RET" "C-s RET" "C-s RET" "C-s RET")
+                                           append (cons keys (after-jobs)))
+                            :cell-pixels '(10 20))))
         (true (tuatara.frontend.fake:fake-frame-showing f "Page 3: "))
         (true (tuatara.frontend.fake:fake-frame-showing f "Page 3 of 3")))
       ;; i: what it says of itself, beside it
@@ -517,10 +519,11 @@ and zooms kept for the next time."
     (let ((file (merge-pathnames "birds.pdf" dir)))
       (alexandria:write-byte-vector-into-file (pdf-octets '("tui one" "kea two" "Tui three")) file)
       (pdf-forget)
-      (let ((f (pdf-session file nil "C-s T u i RET" :cell-pixels '(10 20))))
+      (let ((f (pdf-session file nil (cons "C-s T u i RET" (after-jobs)) :cell-pixels '(10 20))))
         (true (tuatara.frontend.fake:fake-frame-showing f "Page 3: Tui three")))
       (pdf-forget)
-      (let ((f (pdf-session file nil "C-s t u i RET C-s RET" :cell-pixels '(10 20))))
+      (let ((f (pdf-session file nil (append (cons "C-s t u i RET" (after-jobs)) (cons "C-s RET" (after-jobs)))
+                            :cell-pixels '(10 20))))
         (true (tuatara.frontend.fake:fake-frame-showing f "Page 3: Tui three")))
       (pdf-forget))))
 
@@ -638,4 +641,24 @@ and zooms kept for the next time."
               (true (and messages (search "report.pdf was not read: it is "
                                           (tuatara.buffer:buffer-string messages))))
               (tuatara.buffer:kill-buffer buffer)))))
+      (pdf-forget))))
+
+(define-test (pdf-view still-view-left-alone)
+  ;; ticks while nothing about a view changes draw nothing and show nothing again
+  (with-test-directory (dir)
+    (let ((file (merge-pathnames "report.pdf" dir)) (shown nil))
+      (alexandria:write-byte-vector-into-file (pdf-octets '("One" "Two")) file)
+      (pdf-forget)
+      (pdf-session file nil
+                   (list (lambda ()
+                           (let ((count 0))
+                             (sb-int:encapsulate 'tuatara.defaults::pdf-view-show 'count
+                                                 (lambda (function &rest arguments)
+                                                   (incf count)
+                                                   (apply function arguments)))
+                             (unwind-protect (dotimes (k 20) (tuatara.defaults::pdf-view-tick nil))
+                               (sb-int:unencapsulate 'tuatara.defaults::pdf-view-show 'count))
+                             (setf shown count))))
+                   :cell-pixels '(10 20))
+      (is eql 0 shown)
       (pdf-forget))))

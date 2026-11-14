@@ -15,7 +15,7 @@
 (defparameter *desktop-templates*
   (loop for (kind . file) in '((:application . "tuatara.desktop.in") (:client . "tuatara-client.desktop.in")
                                (:daemon . "tuatara-daemon.desktop.in"))
-        collect (cons kind (tuatara.defaults::data-file-text file)))
+        collect (cons kind (tuatara.defaults:data-file-text file)))
   "The templates of the desktop entries, by kind: :APPLICATION, :CLIENT and
 :DAEMON, each as its file of data/ has it, read when Tuatara is built. In each,
 @EXEC@ stands for the program and the words that start it, @NAME@ for =NAME
@@ -136,7 +136,7 @@ AppImage's when it runs from one."
 or tuatara-daemon-NAME.desktop for a daemon of another name than the
 default, in the desktop's autostart directory, ~/.config/autostart/ (autostart/
 in XDG_CONFIG_HOME when it is set)."
-  (namestring (uiop:xdg-config-home (if (string= name tuatara.defaults::*daemon-default-name*)
+  (namestring (uiop:xdg-config-home (if (string= name tuatara.defaults:*daemon-default-name*)
                                         "autostart/tuatara-daemon.desktop"
                                         (format nil "autostart/tuatara-daemon-~a.desktop" name)))))
 
@@ -146,7 +146,7 @@ desktop starts it with tuatara --daemon as you log in, naming this program as
 AUTOSTART-PROGRAM does; never over a file there. Said on the standard output,
 or why not on the error output. The exit code: 0 when written, 1 when not."
   (let ((path (autostart-path name))
-        (named (and (string/= name tuatara.defaults::*daemon-default-name*) name)))
+        (named (and (string/= name tuatara.defaults:*daemon-default-name*) name)))
     (handler-case
         (progn (tuatara.io:ensure-directories (tuatara.io:parent-path path))
                (tuatara.io:write-new-file path (desktop-entry :daemon :program (autostart-program) :name named)

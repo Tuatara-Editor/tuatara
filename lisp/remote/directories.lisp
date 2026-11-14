@@ -41,17 +41,12 @@ between them; NAME alone after a /ssh:HOST: naming the home directory there."
 
 ;;; Listed with rimu
 
-(defstruct (remote-rimu-source (:constructor make-remote-rimu-source (host)) (:copier nil))
+(define-record (remote-rimu-source (:constructor make-remote-rimu-source (host)) (:copier nil))
   "Where a rimu list of a directory on another machine reads it: HOST, as ssh
 takes it; EVIDENCE, true once a directory it listed was found to be evidence
 \(REMOTE-EVIDENCE-WORDS)."
-  (host "" :type string :read-only t)
-  (evidence nil))
-
-(setf (documentation 'remote-rimu-source-p 'function) "True when OBJECT is a REMOTE-RIMU-SOURCE."
-      (documentation 'remote-rimu-source-host 'function) "The machine SOURCE lists directories of, as ssh takes it."
-      (documentation 'remote-rimu-source-evidence 'function)
-      "True once a directory SOURCE listed was found to be evidence.")
+  (host "" :type string :read-only t :documentation "The machine SOURCE lists directories of, as ssh takes it.")
+  (evidence nil :documentation "True once a directory SOURCE listed was found to be evidence."))
 
 (defun remote-listed (name attributes &optional target target-attributes)
   "An entry of a directory on another machine, NAME with ATTRIBUTES
@@ -65,22 +60,34 @@ nowhere)."
 (defun remote-link-details (host directory names)
   "For each of NAMES, links in DIRECTORY on HOST, a path ending in /, what it
 holds and the attributes of where it leads (NIL: nowhere), as a list of
-\(TARGET . ATTRIBUTES)."
+\(TARGET . ATTRIBUTES). The requests go to the server a lot at a time."
   (call-with-sftp
    host directory "examine"
    (lambda (link)
-     (mapcar (lambda (name)
-               (let ((path (concatenate 'string directory name)))
-                 (tuatara.runtime:job-check-stop)
-                 (cons (let ((target (handler-case
-                                         (multiple-value-bind (answer names)
-                                             (sftp-ask link :readlink (list path) path "examine")
-                                           (and (eq answer :name) (= 1 (length names)) (car (first names))))
-                                       (sftp-refusal () nil))))
-                         ;; shown, never followed by its words
-                         (and target (if (remote-clean-name-p target) target (escape-controls target))))
-                       (sftp-attributes link path))))
-             names))))
+     (let ((answers (sftp-ask-each link
+                                   (loop for name in names
+                                         for path = (concatenate 'string directory name)
+                                         collect (list :readlink (list path))
+                                         collect (list :stat (list path)))
+                                   directory "examine")))
+       (loop for (readlink stat) on answers by #'cddr
+             collect (cons (remote-link-target readlink) (remote-link-attributes stat)))))))
+
+(defun remote-link-target (answer)
+  "Where a link leads, from ANSWER, the server's answer to a request to read
+it (SFTP-ASK-EACH): a name shown as it is, or escaped when it would not be;
+NIL for a refusal."
+  (let ((target (and (consp answer) (eq (car answer) :name) (= 1 (length (cdr answer))) (car (first (cdr answer))))))
+    ;; shown, never followed by its words
+    (and target (if (remote-clean-name-p target) target (escape-controls target)))))
+
+(defun remote-link-attributes (answer)
+  "The attributes ANSWER, the server's answer to a request for them
+\(SFTP-ASK-EACH), holds; NIL when there is no such file, any other refusal
+signalled."
+  (cond ((and (consp answer) (eq (car answer) :attrs)) (cdr answer))
+        ((typep answer 'sftp-refusal) (if (remote-missing-p answer) nil (error answer)))
+        (t (tuatara.frontend:malformed "an answer of another kind where attributes were asked for"))))
 
 (defun remote-rimu-listing (source directory)
   "DIRECTORY, a directory on another machine as REMOTE-DIRECTORY-NAME writes
@@ -105,12 +112,13 @@ REMOTE-RIMU-SOURCE, is told when the directory is evidence."
               (make-rimu-listing
                dir
                (coerce (list* (remote-listed "." here) (remote-listed ".." here)
+                              ;; the links are some of the entries, in order, their details in step
                               (mapcar (lambda (entry)
-                                        (let ((link (position entry links)))
-                                          (if link
-                                              (let ((detail (nth link details)))
-                                                (remote-listed (car entry) (cdr entry) (or (car detail) "") (cdr detail)))
-                                              (remote-listed (car entry) (cdr entry)))))
+                                        (if (eq entry (first links))
+                                            (let ((detail (pop details)))
+                                              (pop links)
+                                              (remote-listed (car entry) (cdr entry) (or (car detail) "") (cdr detail)))
+                                            (remote-listed (car entry) (cdr entry))))
                                       entries))
                        'simple-vector)
                nil
@@ -210,6 +218,10 @@ when it is found to be by the server's word (REMOTE-RIMU-LISTING)."
 
 ;;; Copied, moved and deleted
 
+(defparameter *remote-tree-depth* 256
+  "The most levels of directories within a directory on another machine looked
+through before it is deleted, moved or copied; one deeper is refused.")
+
 (defun remote-or-local-kind (name)
   "What NAME, here or on another machine, names, a link not followed:
 :DIRECTORY, :FILE, :LINK or :OTHER; NIL when nothing is there."
@@ -217,16 +229,22 @@ when it is found to be by the server's word (REMOTE-RIMU-LISTING)."
       (multiple-value-bind (host path) (remote-name-parts name)
         (let ((attributes (remote-attributes host path :follow nil)))
           (and attributes (or (remote-kind attributes) :other))))
-      (case (tuatara.io:path-kind name :follow nil)
-        ((nil) nil)
-        (:directory :directory)
-        (:regular :file)
-        (:symlink :link)
-        (t :other))))
+      (local-kind-word (tuatara.io:path-kind name :follow nil))))
 
-(defun remote-or-local-names (directory)
-  "The names of the entries of DIRECTORY, here or on another machine, . and ..
-left out; refused when the server lists more than *SFTP-MOST-LISTED*, or a
+(defun local-kind-word (kind)
+  "KIND, as TUATARA.IO:PATH-KIND says what a file here is, as the kind of one on
+another machine: :DIRECTORY, :FILE, :LINK or :OTHER; NIL for NIL."
+  (case kind
+    ((nil) nil)
+    (:directory :directory)
+    (:regular :file)
+    (:symlink :link)
+    (t :other)))
+
+(defun remote-or-local-entries (directory)
+  "The entries of DIRECTORY, here or on another machine, . and .. left out, as
+a list of (NAME KIND SIZE): KIND as REMOTE-OR-LOCAL-KIND says it, a link not
+followed. Refused when the server lists more than *SFTP-MOST-LISTED*, or a
 name no entry can have (REMOTE-ENTRY-NAME-P)."
   (if (remote-name-p directory)
       (multiple-value-bind (host path) (remote-name-parts directory)
@@ -236,9 +254,10 @@ name no entry can have (REMOTE-ENTRY-NAME-P)."
           (dolist (entry entries)
             (unless (remote-entry-name-p (car entry))
               (refuse "~a lists a name no entry can have: ~a" directory (escape-controls (car entry)))))
-          (mapcar #'car entries)))
-      (remove-if (lambda (name) (member name '("." "..") :test #'string=))
-                 (mapcar #'first (tuatara.io:directory-entries directory)))))
+          (loop for (name . attributes) in entries
+                collect (list name (or (remote-kind attributes) :other) (or (getf attributes :size) 0)))))
+      (loop for (name nil size own) in (tuatara.io:directory-entries directory)
+            collect (list name (local-kind-word own) size))))
 
 (defun remote-copy-down (from to)
   "Copy the file FROM, on another machine, to TO, a new name here, readable
@@ -268,9 +287,13 @@ FROM's permissions, never over a file there (REMOTE-UPLOAD)."
                             :expected (lambda (attributes) (and attributes "a file of that name is there"))))
         (sb-posix:close fd)))))
 
-(defun remote-copy-file (from to)
+(defun remote-copy-file (from to &optional size)
   "Copy the file FROM to TO, a new name, either or both on another machine;
-between two on other machines through a private copy here, deleted after."
+between two on other machines through a private copy here, deleted after.
+Refused when the file system here has no room for the SIZE octets of a file
+from another machine, when SIZE is given."
+  (when (and size (remote-name-p from) (not (remote-name-p to)))
+    (remote-check-room to size))
   (cond ((not (and (remote-name-p from) (remote-name-p to)))
          (if (remote-name-p from) (remote-copy-down from to) (remote-copy-up from to)))
         (t (let ((directory (new-private-directory (private-cache-directory "remote/"))))
@@ -280,27 +303,29 @@ between two on other machines through a private copy here, deleted after."
                     (remote-copy-up copy to))
                (delete-private-directory directory))))))
 
-(defun remote-copy-tree (from to skip)
+(defun remote-copy-tree (from to skip &optional (kind (remote-or-local-kind from)) size (depth 0))
   "Copy FROM, a file or a directory with all in it, to the new name TO, either
 or both on another machine; a link, and what is neither file nor directory,
-left out, SKIP called with its name and words saying why."
+left out, SKIP called with its name and words saying why. KIND, what FROM is
+\(REMOTE-OR-LOCAL-KIND, asked when not given) and SIZE, its octets, are known
+from the listing of the directory holding it. A directory more than
+*REMOTE-TREE-DEPTH* levels down is refused."
   (tuatara.runtime:job-check-stop)
-  (let ((kind (remote-or-local-kind from)))
-    (case kind
-      ((nil) (refuse "it is not there"))
-      (:directory
-       (if (remote-name-p to)
-           (multiple-value-bind (host path) (remote-name-parts to) (remote-change host :mkdir path))
-           (tuatara.io:make-directory to))
-       (dolist (name (remote-or-local-names from))
-         (remote-copy-tree (remote-join from name) (remote-join to name) skip)))
-      (:file (remote-copy-file from to))
-      (t (funcall skip from (if (eq kind :link) "a link" "neither a file nor a directory"))))))
-
-(defparameter *remote-tree-depth* 256
-  "The most levels of directories within a directory on another machine looked
-through before it is deleted or moved (REMOTE-CHECK-WRITING); one deeper is
-refused.")
+  (when (> depth *remote-tree-depth*)
+    (refuse "~a is more than ~d directories deep to be copied" from *remote-tree-depth*))
+  (case kind
+    ((nil) (refuse "it is not there"))
+    (:directory
+     (if (remote-name-p to)
+         (multiple-value-bind (host path) (remote-name-parts to) (remote-change host :mkdir path))
+         (tuatara.io:make-directory to))
+     (loop for (name entry-kind entry-size) in (remote-or-local-entries from)
+           do (if (and (remote-name-p from) (not (remote-clean-name-p name)))
+                  (funcall skip (escape-controls (remote-join from name)) "a name that would not show as it is")
+                  (remote-copy-tree (remote-join from name) (remote-join to name) skip entry-kind entry-size
+                                    (1+ depth)))))
+    (:file (remote-copy-file from to size))
+    (t (funcall skip from (if (eq kind :link) "a link" "neither a file nor a directory")))))
 
 (defun remote-check-writing (name operation &key tree)
   "Signal TUATARA.IO:WRITING-REFUSED for OPERATION on NAME, on another
@@ -318,7 +343,7 @@ Looks within only while *EVIDENCE-DIRECTORIES* names some directory."
                  (multiple-value-bind (directory entry) (remote-evidence host names)
                    (when directory
                      (error 'tuatara.io:writing-refused :operation operation :path name
-                                                        :reason (evidence-words directory entry)))))
+                            :reason (evidence-words directory entry)))))
                (directories (path)
                  ;; the names of the directories within, the rest of the listing let go of
                  (multiple-value-bind (entries cut) (remote-listing host path)
@@ -326,7 +351,7 @@ Looks within only while *EVIDENCE-DIRECTORIES* names some directory."
                      (refuse "~a holds too many entries to be looked through for evidence" (remote-name host path)))
                    (loop for (entry-name . attributes) in entries
                          when (and (eq :directory (remote-kind attributes)) (remote-entry-name-p entry-name))
-                           collect entry-name)))
+                         collect entry-name)))
                (walk (path real depth)
                  (tuatara.runtime:job-check-stop)
                  (when (> depth *remote-tree-depth*)
@@ -356,16 +381,19 @@ really are there."
              (or (into-p from-path to-path)
                  (into-p (remote-place-real-path from-host from-path) (remote-place-real-path to-host to-path))))))))
 
-(defun remote-delete-tree (name)
+(defun remote-delete-tree (name &optional (kind (remote-or-local-kind name)) (depth 0))
   "Delete NAME, on another machine, for good: a file or a link, or a directory
-with all in it."
+with all in it. KIND, what NAME is (REMOTE-OR-LOCAL-KIND), is asked when not given.
+A directory more than *REMOTE-TREE-DEPTH* levels down is refused."
   (tuatara.runtime:job-check-stop)
+  (when (> depth *remote-tree-depth*)
+    (refuse "~a is more than ~d directories deep to be deleted" name *remote-tree-depth*))
   (multiple-value-bind (host path) (remote-name-parts name)
-    (case (remote-or-local-kind name)
+    (case kind
       ((nil) (refuse "it is not there"))
       (:directory
-       (dolist (entry (remote-or-local-names name))
-         (remote-delete-tree (remote-join name entry)))
+       (loop for (entry entry-kind) in (remote-or-local-entries name)
+             do (remote-delete-tree (remote-join name entry) entry-kind (1+ depth)))
        (remote-change host :rmdir path))
       (t (remote-change host :remove path)))))
 

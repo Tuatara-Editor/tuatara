@@ -476,7 +476,7 @@ git rev-parse HEAD" (uiop:native-namestring origin))))))
 syntax/grammars.tsv: its exit status, and its output and error output."
   (let ((tools (merge-pathnames "tools/" directory)))
     (ensure-directories-exist tools)
-    (dolist (script '("grammars.sh" "grammar-build.sh" "inside.sh" "licence-names.sh"))
+    (dolist (script '("grammars.sh" "grammar-build.sh" "fetch.sh" "inside.sh" "licence-names.sh"))
       (uiop:copy-file (tools-script script) (merge-pathnames script tools)))
     ;; what the script reads to tell whether it has anything to do
     (dolist (file '("syntax/grammar-inputs.sha256" "syntax/syntax.c" "syntax/helper.c" "syntax/safe-ctype.h"
@@ -559,6 +559,7 @@ and the Quicklisp directory."
     (ensure-directories-exist tools)
     (ensure-directories-exist archives)
     (uiop:copy-file (tools-script "lisp-archives.sh") (merge-pathnames "lisp-archives.sh" tools))
+    (uiop:copy-file (tools-script "fetch.sh") (merge-pathnames "fetch.sh" tools))
     (flet ((archive (name text)
              (with-open-file (o (merge-pathnames name archives) :direction :output :if-exists :supersede)
                (write-string text o))))
@@ -1179,3 +1180,93 @@ printf 'Source: foo\\nChecksums-Sha256:\\n %s 4 foo_1.0.orig.tar.xz\\nFiles:\\n 
         (false (search "  load-bank-statement  lisp/new.lisp" out))
         (false (search "draw-the-moon" out))
         (false (search "zzz-quux" out))))))
+
+(define-test (tools possible-copies-alike-meaning-without-the-model)
+  ;; with no model file the mode says so in one line and ends well, so a report can leave its section out
+  (with-test-directory (directory)
+    (let ((out (uiop:run-program
+                (list "env" (format nil "TUATARA_AI_MODEL=~a"
+                                    (uiop:native-namestring (merge-pathnames "none.gguf" directory)))
+                      "bash" (uiop:native-namestring (tools-script "possible-copies.sh")) "--alike-meaning")
+                :output :string)))
+      (is = 1 (count #\Newline out))
+      (true (eql 0 (search "no meaning model" out))))))
+
+(define-test (tools generated-parser-not-written-through-a-link)
+  ;; a grammar repository that commits src as a link to a directory outside it gets nothing written there
+  ;; by the parser taken back from the copy
+  (with-test-directory (directory)
+    (let* ((repo (uiop:native-namestring (merge-pathnames "g/" directory)))
+           (host (uiop:native-namestring (merge-pathnames "host/" directory)))
+           (cli (uiop:native-namestring (merge-pathnames "fake-tree-sitter" directory))))
+      (ensure-directories-exist (merge-pathnames "host/" directory))
+      (write-test-file directory "fake-tree-sitter"
+                       (format nil "#!/bin/bash~%rm -rf src~%mkdir src~%echo 'int made;' > src/parser.c~%"))
+      (sb-posix:chmod cli #o755)
+      (let ((out (grammar-build-output
+                  (format nil "mkdir -p '~a'; cd '~a'; ln -s '~a' src
+( generate_parser '~a' '~a' ) 2>/dev/null; echo \"exit $?\"
+[ -e '~a/parser.c' ] && echo wrote-outside || echo wrote-nothing-outside"
+                          repo repo (string-right-trim "/" host) repo cli (string-right-trim "/" host))
+                  directory)))
+        (true (search "wrote-nothing-outside" out) "~a" out)))))
+
+(define-test (tools downloads-checked-before-they-are-kept)
+  ;; a file there with the hash is not fetched again, one that cannot be got or is not the one expected leaves
+  ;; nothing, and only https is taken
+  (with-test-directory (directory)
+    (let ((file (uiop:native-namestring (merge-pathnames "kept" directory)))
+          (hash "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"))
+      (write-test-file directory "kept" "abc")
+      (flet ((run (url sha256)
+               (multiple-value-bind (out error code)
+                   (uiop:run-program (list "bash" "-c" ". \"$1\"; checked_download \"$2\" \"$3\" \"$4\"" "_"
+                                           (tools-script "fetch.sh") url file sha256)
+                                     :output :string :error-output :string :ignore-error-status t)
+                 (declare (ignore out))
+                 (values code error))))
+        (is = 0 (run "https://127.0.0.1:9/never-asked" hash))
+        (multiple-value-bind (code error) (run "https://127.0.0.1:9/other" (make-string 64 :initial-element #\0))
+          (is = 1 code)
+          (true (search "could not be downloaded" error)))
+        (multiple-value-bind (code error) (run "http://127.0.0.1:9/plain" (make-string 64 :initial-element #\0))
+          (is = 1 code)
+          (true (search "could not be downloaded" error)))
+        (false (probe-file (concatenate 'string file ".part")))
+        (is string= "abc" (uiop:read-file-string file))))))
+
+(define-test (tools release-sources-named-for-this-machine)
+  ;; the second file of a release, the sources, is looked through for this machine's names as the first is
+  (let ((release (uiop:read-file-string (tools-script "release.sh"))))
+    (true (search "done < <(find \"$pack\" -type f -print0)" release))
+    (true (< (search "done < <(find \"$pack\" -type f -print0)" release)
+             (search "tar -C \"$pack\" -cf - tuatara-sources" release)))))
+
+(defun run-python-tool (name &rest arguments)
+  "What the script NAME of tools/ prints, run with ARGUMENTS."
+  (uiop:run-program (list* "python3" "-I" (tools-script name) arguments) :output :string))
+
+(define-test (tools health-counts-packages-reaches-and-long-lines)
+  ;; two colons between packages are counted where the file is in another package, not in its own, and not in
+  ;; a test; the long lines of every repository given are listed
+  (with-test-directory (directory)
+    (write-test-file directory "r/a.lisp"
+                     (format nil "(in-package #:one)~%(defun f () (two::g) (one::h) (three::i))  ; (x::y)~%~
+                                  (defun long () \"~a\")~%" (make-string 130 :initial-element #\x)))
+    (write-test-file directory "r/test/t.lisp" (format nil "(in-package #:one)~%(two::g)~%"))
+    (write-test-file directory "q/b.lisp" (format nil "(in-package #:two)~%(defun k () (one::f))~%"))
+    (loop for repo in '("r" "q")
+          do (uiop:run-program (list "bash" "-c" "cd \"$1\" && git init -q && git add . && git -c user.name=t -c user.email=t@example.invalid commit -q -m x"
+                                     "_" (uiop:native-namestring (merge-pathnames (format nil "~a/" repo) directory)))))
+    (let ((r (uiop:native-namestring (merge-pathnames "r/" directory)))
+          (q (uiop:native-namestring (merge-pathnames "q/" directory))))
+      (let ((out (run-python-tool "package-reaches.py" r q)))
+        (true (search "two::g" out))
+        (true (search "three::i" out))
+        (true (search "one::f" out))
+        (false (search "one::h" out))
+        (false (search "x::y" out))
+        (true (search "3 references" out) "~a" out))
+      (let ((out (run-python-tool "line-check.py" r q)))
+        (true (search "r/a.lisp:3: 148" out) "~a" out)
+        (true (search "1 lines past the column" out) "~a" out)))))

@@ -35,16 +35,16 @@ are passed over \(STATE-LINE-FIELDS)."
       (destructuring-bind (where signer name key &rest later) fields
         (declare (ignore later))
         (and (plusp (length where))
-             (or (string= signer "unsigned") (cl-ppcre:scan "^(?:SHA256:[A-Za-z0-9+/=]+|[0-9A-F]{40,64}|key:(?:[0-9A-F]{40}|[0-9A-F]{64}))$" signer))
+             (signer-fingerprint-p signer :stored t)
              (or (zerop (length key)) (cl-ppcre:scan "^[a-z0-9@.-]{1,64} [A-Za-z0-9+/]+={0,2}$" key))
              (list (unescape-path where) signer (let ((name (unescape-path name))) (and (plusp (length name)) name))
                    (and (plusp (length key)) key)))))))
 
 (define-state-list *package-trust* "package-trust" 'parse-trust-line 'trust-line '*packages-kept*
-  :header (format nil "# The sources of packages trusted, the latest first: the address; who signed~%~
+                   :header (format nil "# The sources of packages trusted, the latest first: the address; who signed~%~
                        # the versions taken from it, a key's fingerprint, or unsigned; the signer's~%~
                        # name; an SSH signer's key. M-x package-trust-again forgets a source's.~%")
-  :path-of #'first :fields 4 :trust t :line-key (field-line-key 4 0))
+                   :path-of #'first :fields 4 :trust t :line-key (field-line-key 4 0))
 
 (defun package-signers-file (where)
   "The allowed signers file git checks the secure shell (SSH) signatures of
@@ -58,7 +58,8 @@ Returns its name."
   (let ((file (package-signers-file where))
         (trusted (state-list-find *package-trust* where)))
     (tuatara.io:ensure-private-directory (directory-namestring file))
-    (tuatara.io:write-private-file file (if (fourth trusted) (format nil "trusted namespaces=\"git\" ~a~%" (fourth trusted)) ""))
+    (tuatara.io:write-private-file file (if (fourth trusted) (format nil "trusted namespaces=\"git\" ~a~%"
+                                                                     (fourth trusted)) ""))
     file))
 
 (defun signature-block (text kind)
@@ -86,7 +87,8 @@ NIL when it has none."
   (multiple-value-bind (begin end) (signature-block text kind)
     (let ((mark "-----BEGIN SSH SIGNATURE-----"))
       (when (and begin (string= mark text :start2 begin :end2 (min (length text) (+ begin (length mark)))))
-        (let* ((octets (tuatara.io:base64-octets (tuatara.text:string-octets (subseq text (+ begin (length mark)) (search "-----END" text :start2 begin :end2 end)))))
+        (let* ((octets (tuatara.io:base64-octets (tuatara.text:string-octets (subseq text (+ begin (length mark))
+                                                                                     (search "-----END" text :start2 begin :end2 end)))))
                (size (tuatara.io:octets-integer octets 10 4 :big-endian t)))
           (when (and size (tuatara.io:octets-at-p octets "SSHSIG") (<= (+ 14 size) (length octets)))
             (let* ((blob (subseq octets 14 (+ 14 size)))
@@ -142,7 +144,9 @@ its key's fingerprint left to MISSING-KEY."
   "The signature of a tag, as PACKAGE-SIGNATURE gives it, from SAID, what git
 verify-tag --raw said of it, and OBJECT, the tag's object."
   (if (ssh-signature-p object :tag)
-      (let ((good (nth-value 1 (cl-ppcre:scan-to-strings "(?m)^Good \"git\" signature (?:for \\S+ )?with \\S+ key (SHA256:[A-Za-z0-9+/=]+)$" said))))
+      (let ((good (nth-value 1
+                             (cl-ppcre:scan-to-strings "(?m)^Good \"git\" signature (?:for \\S+ )?with \\S+ key (SHA256:[A-Za-z0-9+/=]+)$"
+                                                       said))))
         (if good
             (list :status :good :fingerprint (aref good 0) :key (ssh-signature-key object :tag))
             (list :status :bad)))
@@ -201,7 +205,8 @@ one, the key seen to have made the signature."
            (check (allowed tag-object)
              (if tag-object
                  (tag-signature (nth-value 1 (git allowed "verify-tag" "--raw" "FETCH_HEAD")) tag-object)
-                 (commit-signature (uiop:split-string (trimmed (git allowed "log" "-1" "--format=%G?%x00%GF%x00%GP%x00%GS%x00%GK" commit))
+                 (commit-signature (uiop:split-string (trimmed (git allowed "log" "-1"
+                                                                    "--format=%G?%x00%GF%x00%GP%x00%GS%x00%GK" commit))
                                                       :separator (list (code-char 0)))
                                    (git allowed "cat-file" "commit" commit)))))
     (let* ((allowed (write-package-signers-file where))
@@ -287,17 +292,21 @@ whoever signed it, and nothing is remembered."
     (cond ((member status '(:bad :error)) (values :refuse words nil))
           (named (cond ((and good (member fingerprint named :test #'string=)) (values :take words remember))
                        ((and good (member (getf signature :subkey) named :test #'equal))
-                        (values :refuse (format nil "~a; its :signers name the key's signing subkey, ~a: name the key's own fingerprint, ~a"
+                        (values :refuse (format nil
+                                                "~a; its :signers name the key's signing subkey, ~a: name the key's own fingerprint, ~a"
                                                 words (getf signature :subkey) fingerprint)
                                 nil))
                        (t (values :refuse (format nil "~a, by none of the signers its :signers name" words) nil))))
           ((eq status :unchecked)
-           (values :refuse words (and (null trusted) (list where (format nil "key:~a" (getf signature :key-id)) nil nil))))
+           (values :refuse words (and (null trusted) (list where (format nil "key:~a" (getf signature :key-id)) nil
+                                                           nil))))
           (pinned-id (if (and good (or (string= fingerprint pinned-id) (equal (getf signature :subkey) pinned-id)))
                          (values :take words remember)
-                         (values :refuse (format nil "~a, and its first version was signed by ~a" words (trusted-signer-words trusted)) nil)))
+                         (values :refuse (format nil "~a, and its first version was signed by ~a" words
+                                                 (trusted-signer-words trusted)) nil)))
           ((null trusted) (values :ask words (or remember (list where "unsigned" nil nil))))
           ((string= (second trusted) "unsigned") (values :take words remember))
           ((and good (string= fingerprint (second trusted))) (values :take words nil))
-          (t (values :refuse (format nil "~a, and the versions taken before were signed by ~a" words (trusted-signer-words trusted))
+          (t (values :refuse (format nil "~a, and the versions taken before were signed by ~a" words
+                                     (trusted-signer-words trusted))
                      nil)))))

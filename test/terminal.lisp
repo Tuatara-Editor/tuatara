@@ -559,6 +559,11 @@ list, has the frontend show pictures. Returns the frontend and the editor."
       (mapcar (lambda (text) (apply #'subseq "see https://example.org/a_(b). and (http://x.y/z), file:///tmp/f'" text))
               (tuatara.terminal-emulator::text-urls "see https://example.org/a_(b). and (http://x.y/z), file:///tmp/f'"))))
 
+(define-test (terminal addresses-end-where-core-ends-them)
+  ;; a terminal's addresses end as core's address pattern ends them: at a character RFC 3986 does not let one hold
+  (is equal '((0 14) (20 32))
+      (tuatara.terminal-emulator::text-urls "https://x.nz/a|b or FILE:///tmp/ōtaki")))
+
 (define-test (terminal links-underlined-and-opened)
   ;; a link a program wrote (OSC 8) and an address written: underlined; C-click on the
   ;; first, to a file here, opens it in Tuatara
@@ -984,7 +989,8 @@ be shown 4 columns by 2 rows, then prints ready and waits."
            (false (tuatara.terminal-emulator::key-among-p key '("C-<nokey>")))
            (true (sb-concurrency:queue-empty-p tuatara.runtime:*debug-reports*))
            (tuatara.runtime:set-debug t)
-           (false (tuatara.terminal-emulator::key-among-p key '("C-<nokey>")))
+           ;; a list read for the first time: the one above is kept, parsed once
+           (false (tuatara.terminal-emulator::key-among-p key (list "C-<nokey>")))
            (let ((texts (loop for report = (sb-concurrency:dequeue tuatara.runtime:*debug-reports*)
                               while report collect (princ-to-string (fourth report)))))
              (true (find-if (lambda (text) (search "reading the keys \"C-<nokey>\" failed" text)) texts)
@@ -1020,3 +1026,52 @@ be shown 4 columns by 2 rows, then prints ready and waits."
            (true (search "kea-42" (tuatara.buffer:buffer-string (session-buffer editor)))))
       (setf tuatara.command::*taking-in-inside-question* nil
             tuatara.command::*buffers-held-by-questions* '()))))
+
+(define-test (terminal typed-keys-are-not-parsed-again)
+  ;; the configured key lists are read once, not again for each key typed
+  (let ((key (tuatara.frontend:make-key #\a)))
+    (tuatara.terminal-emulator::terminal-paste-key-p key)
+    (tuatara.terminal-emulator::key-among-p key tuatara-user:*terminal-editor-keys*)
+    (let ((calls (nth-value 1 (counting-calls (tuatara.frontend:parse-key-sequence)
+                                (dotimes (i 50)
+                                  (tuatara.terminal-emulator::terminal-paste-key-p key)
+                                  (tuatara.terminal-emulator::key-among-p key tuatara-user:*terminal-editor-keys*))))))
+      (is = 0 calls))
+    (true (tuatara.terminal-emulator::key-among-p (tuatara.frontend:make-key #\x :ctrl t)
+                                                  tuatara-user:*terminal-editor-keys*))))
+
+(define-test (terminal program-directory-looked-at-once-while-it-is-quiet)
+  ;; a terminal that printed nothing new is not asked for its program's directory and title again
+  (true (tuatara.terminal-emulator::terminal-library-p))
+  (let ((e (tuatara.terminal-emulator::start-emulator "sh" (list "-c" "echo ready; exec cat") :columns 40 :rows 5))
+        (buffer (tuatara.buffer:make-buffer "*terminal follow test*")))
+    (unwind-protect
+         (progn
+           (loop repeat 500
+                 until (plusp (tuatara.terminal-emulator::emulator-last-output e))
+                 do (sleep 1/100))
+           (let ((tuatara.terminal-emulator::*terminal-follow-interval* 0))
+             (tuatara.terminal-emulator::follow-terminal-program buffer e)
+             (let ((calls (nth-value 1 (counting-calls (tuatara.terminal-emulator::emulator-directory)
+                                         (dotimes (i 50)
+                                           (tuatara.terminal-emulator::follow-terminal-program buffer e))))))
+               (is = 0 calls))))
+      (tuatara.terminal-emulator::stop-emulator e)
+      (tuatara.buffer:kill-buffer buffer))))
+
+(define-test (terminal pictures-sent-in-a-flood-are-dropped)
+  ;; a program sending PNG pictures faster than a few a second has the rest dropped, not drawn
+  (let ((tuatara.terminal-emulator::*png-allowance* (list tuatara.terminal-emulator::*terminal-png-decodes-per-second*
+                                                          (get-internal-real-time) nil)))
+    (let ((calls (nth-value 1 (counting-calls (tuatara.terminal-emulator::decode-picture :stub nil)
+                                (dotimes (i 200)
+                                  (tuatara.terminal-emulator::decode-terminal-png (tuatara.io:null-pointer) (tuatara.io:null-pointer)
+                                                                                  0 (tuatara.io:null-pointer)))))))
+      (true (<= 1 calls (+ 2 tuatara.terminal-emulator::*terminal-png-decodes-per-second*))
+            "~d pictures were drawn of 200 sent" calls))))
+
+(define-test (terminal c1-controls-left-out)
+  ;; a program's C1 controls and DEL never reach the history's text, nor what a C1 control begins
+  (is equal '("abcd")
+      (tuatara.terminal-emulator:ansi-pieces (format nil "a~cb~c2Kc~cd" (code-char 127) (code-char #x9b)
+                                                     (code-char #x85)))))

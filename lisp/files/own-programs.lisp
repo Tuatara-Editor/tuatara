@@ -184,11 +184,3 @@ Call it from a job's thread, the job's CANCEL given; the job stopping ends it."
       (tuatara.runtime:job-check-stop)
       (let ((report (and (eq outcome :done) (copies-output-json output))))
         (values report names (and (null report) (run-on-copies-failure label outcome said names seconds-setting)))))))
-
-(defun likelihood-face (percent)
-  "The face a likelihood of PERCENT per cent is shown in: :info from 80 (very
-likely and above), :warning from 45 (likely down to an even chance), :error
-below."
-  (cond ((>= percent 80) :info)
-        ((>= percent 45) :warning)
-        (t :error)))

@@ -25,6 +25,16 @@
   (declare (type fixnum length))
   (make-array length :element-type '(unsigned-byte 8)))
 
+(defun join-octets (pieces)
+  "One octet vector of PIECES, a list of octet vectors, one after another:
+made once, at its whole length, however many pieces there are."
+  (let ((joined (make-octets (loop for piece in pieces sum (length (the octets piece)))))
+        (at 0))
+    (declare (type fixnum at))
+    (dolist (piece pieces joined)
+      (replace joined (the octets piece) :start1 at)
+      (incf at (length (the octets piece))))))
+
 (defconstant +block-slack+ 256
   "Octets a kept block has past its size, for a needle or a character read on past it.")
 
@@ -76,11 +86,6 @@ for a size larger than a megabyte, new octets. BODY must not keep it."
 (defun raw-byte-code-p (code)
   "True when CODE is the code of a raw byte's character, U+DC80..U+DCFF."
   (<= #xDC80 code #xDCFF))
-
-(declaim (inline control-code-p))
-(defun control-code-p (code)
-  "True when CODE is a control character's: 0 to 31, 127 to 159."
-  (or (< code 32) (<= 127 code 159)))
 
 ;;; Line ends
 ;;;
@@ -353,7 +358,7 @@ are its newlines alone."
 
 (defun summarise-sap (sap start end)
   "Scan the octets at SAP from offset START, which must start a character,
-below END, and return five values: characters (a raw byte is one), UTF-16
+below END, and return six values: characters (a raw byte is one), UTF-16
 code units (a raw byte is one), line ends (LINE-END-OCTET-P, a carriage
 return at END - 1 ending one), raw bytes, carriage returns, and newlines. Words of
 eight ASCII octets go at once, two at a time where no carriage return is.

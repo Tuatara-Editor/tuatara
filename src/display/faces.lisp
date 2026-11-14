@@ -8,7 +8,7 @@
 
 (in-package #:tuatara.display)
 
-(defstruct (face (:constructor %make-face (name)) (:copier nil))
+(define-record (face (:constructor %make-face (name)) (:copier nil))
   "A named set of display attributes. FG and BG are colours: a keyword such as
 :red or :bright-blue, an integer 0-255, a string \"#rrggbb\", or NIL for
 unspecified. BOLD, ITALIC, UNDERLINE, REVERSE and DIM are true or NIL
@@ -18,44 +18,33 @@ without its size (\"DejaVu Sans Mono\") that a window of its own paints
 the text in, at its own size; a terminal shows its own. HEIGHT, 2 or 3, has a
 window of its own draw a line beginning in the face that many rows tall, its
 letters as many times as wide (a headline drawn large); NIL, or 1, for one row.
-INHERIT names a face whose
-attributes fill in what this one leaves unspecified. DOC says what the face is
+INHERIT names a face whose attributes fill in what this one leaves
+unspecified. DOC says what the face is
 used for. BASE is the attribute list its definition gave it, which a theme
 starts from."
-  (name nil :read-only t)
-  (doc "")
-  (fg nil) (bg nil)
-  (bold nil) (italic nil) (underline nil) (underline-colour nil) (reverse nil) (dim nil)
-  (extend nil)
-  (font nil)
-  (height nil)
-  (inherit nil)
-  (base '()))
-
-(setf (documentation 'face-p 'function) "True when OBJECT is a FACE."
-      (documentation 'face-name 'function) "The name of FACE, a keyword."
-      (documentation 'face-doc 'function) "What FACE is used for."
-      (documentation 'face-fg 'function) "The foreground colour of FACE, or NIL."
-      (documentation 'face-bg 'function) "The background colour of FACE, or NIL."
-      (documentation 'face-bold 'function) "True when FACE is bold."
-      (documentation 'face-italic 'function) "True when FACE is italic."
-      (documentation 'face-underline 'function) "T when FACE is underlined with a straight line,
+  (name nil :read-only t :documentation "The name of FACE, a keyword.")
+  (doc "" :documentation "What FACE is used for.")
+  (fg nil :documentation "The foreground colour of FACE, or NIL.")
+  (bg nil :documentation "The background colour of FACE, or NIL.")
+  (bold nil :documentation "True when FACE is bold.")
+  (italic nil :documentation "True when FACE is italic.")
+  (underline nil :documentation "T when FACE is underlined with a straight line,
 :WAVE with a wavy one, :DOTTED with a dotted one, :BOX with a box round each
 character (where a window of its own draws it; a terminal draws a straight
-line), NIL when not."
-      (documentation 'face-underline-colour 'function) "The colour of FACE's underline, or NIL for its text's."
-      (documentation 'face-reverse 'function) "True when FACE swaps foreground and background."
-      (documentation 'face-dim 'function) "True when FACE is dimmed."
-      (documentation 'face-extend 'function) "True when FACE goes on past the end of a line whose
-newline it covers, to the window's edge."
-      (documentation 'face-font 'function) "The font FACE's text is painted in by a window of its
-own, a name without a size; NIL for the window's."
-      (documentation 'face-height 'function) "How many rows tall a window of its own draws a line
+line), NIL when not.")
+  (underline-colour nil :documentation "The colour of FACE's underline, or NIL for its text's.")
+  (reverse nil :documentation "True when FACE swaps foreground and background.")
+  (dim nil :documentation "True when FACE is dimmed.")
+  (extend nil :documentation "True when FACE goes on past the end of a line whose
+newline it covers, to the window's edge.")
+  (font nil :documentation "The font FACE's text is painted in by a window of its
+own, a name without a size; NIL for the window's.")
+  (height nil :documentation "How many rows tall a window of its own draws a line
 beginning in FACE, and its letters as many times as wide: more than 1, at most 3
-(5/4, 3/2, 2); NIL for one."
-      (documentation 'face-inherit 'function) "The face FACE inherits unspecified attributes from, or NIL."
-      (documentation 'face-base 'function) "The attributes FACE's definition gave it, as a property
-list; themes start from these.")
+(5/4, 3/2, 2); NIL for one.")
+  (inherit nil :documentation "The face FACE inherits unspecified attributes from, or NIL.")
+  (base '() :documentation "The attributes FACE's definition gave it, as a property
+list; themes start from these."))
 
 (defvar *faces* (make-hash-table :test 'eq :synchronized t)
   "All faces, keyed by name; read by the window's thread as it paints while the editor's changes them.")
@@ -63,12 +52,13 @@ list; themes start from these.")
 (defvar *face-generation* 0
   "Incremented whenever a face changes, so that painters can drop cached translations.")
 
-(defstruct (face-cache (:constructor make-face-cache ()) (:copier nil))
+(define-record (face-cache (:constructor make-face-cache ()) (:copier nil))
   "What a painter has worked out from face specs, kept until a face changes
 \(FACE-CACHE-TABLE)."
-  (entries (make-hash-table :test 'equal :synchronized t) :read-only t)
-  (generation -1)
-  (context nil))
+  (entries (make-hash-table :test 'equal :synchronized t) :read-only t
+           :documentation "The table of what the painter worked out from face specs, keyed by face spec.")
+  (generation -1 :documentation "The face generation FACE-CACHE's entries were worked out at.")
+  (context nil :documentation "What else FACE-CACHE's entries depend on, as last given to FACE-CACHE-TABLE."))
 
 (setf (documentation 'make-face-cache 'function)
       "A new, empty store for what a painter works out from face specs (FACE-CACHE-TABLE).")
@@ -93,10 +83,8 @@ to that time's; a second value is true when it was emptied."
   (gethash name *faces*))
 
 (defun set-face-attributes (name &key (doc nil doc-p) (fg nil fg-p) (bg nil bg-p) (bold nil bold-p)
-                                      (italic nil italic-p)
-                                   (underline nil underline-p)
-                                   (underline-colour nil underline-colour-p)
-                                   (reverse nil reverse-p)
+                                      (italic nil italic-p) (underline nil underline-p)
+                                      (underline-colour nil underline-colour-p) (reverse nil reverse-p)
                                       (dim nil dim-p) (extend nil extend-p) (font nil font-p) (height nil height-p)
                                       (inherit nil inherit-p))
   "Set the given attributes of face NAME, creating the face if needed; attributes
@@ -125,7 +113,7 @@ not given are left as they are. For themes and init files:
 (defvar *current-theme* nil
   "The name of the theme in force, or NIL for the faces as defined.")
 
-(defstruct (theme (:constructor make-theme (name doc settings &key colourless palette faces-from)) (:copier nil))
+(define-record (theme (:constructor make-theme (name doc settings &key colourless palette faces-from)) (:copier nil))
   "A theme: NAME, DOC, and SETTINGS, a list of (FACE . ATTRIBUTES) where
 ATTRIBUTES is a property list as for SET-FACE-ATTRIBUTES. A colour there may be
 a role, a symbol such as GROUND or COMMENT, which the theme's PALETTE, a list of
@@ -135,22 +123,14 @@ one's own, with their roles taken from this theme's palette, and whose palette
 gives the roles this one leaves out. A COLOURLESS theme removes every colour,
 for terminals without colours: only bold, italic, underline, reverse video and
 dim remain."
-  (name nil :read-only t)
-  (doc "" :read-only t)
-  (settings '() :read-only t)
-  (palette '() :read-only t)
-  (faces-from nil :read-only t)
-  (colourless nil :read-only t))
-
-(setf (documentation 'theme-p 'function) "True when OBJECT is a THEME."
-      (documentation 'theme-name 'function) "The theme's name, a symbol."
-      (documentation 'theme-doc 'function) "What the theme looks like and is for."
-      (documentation 'theme-settings 'function) "The theme's own face settings as written, as a list
-of (FACE . ATTRIBUTES), their colours perhaps roles."
-      (documentation 'theme-palette 'function) "The theme's roles and their colours, as a list of (ROLE COLOUR)."
-      (documentation 'theme-faces-from 'function) "The name of the theme whose face settings this
-one starts from, or NIL."
-      (documentation 'theme-colourless 'function) "True when the theme removes every colour.")
+  (name nil :read-only t :documentation "The theme's name, a symbol.")
+  (doc "" :read-only t :documentation "What the theme looks like and is for.")
+  (settings '() :read-only t :documentation "The theme's own face settings as written, as a list
+of (FACE . ATTRIBUTES), their colours perhaps roles.")
+  (palette '() :read-only t :documentation "The theme's roles and their colours, as a list of (ROLE COLOUR).")
+  (faces-from nil :read-only t :documentation "The name of the theme whose face settings this
+one starts from, or NIL.")
+  (colourless nil :read-only t :documentation "True when the theme removes every colour."))
 
 (defun role-p (value)
   "True when VALUE, given as a colour in a theme, names a role of the theme's
@@ -211,8 +191,8 @@ given. Linear in the settings times the palette."
 (defun reset-face (face)
   "Return FACE to the attributes its definition gave it."
   (setf (face-fg face) nil (face-bg face) nil (face-bold face) nil (face-italic face) nil
-        (face-underline face) nil (face-underline-colour face) nil (face-reverse face) nil (face-dim face) nil (face-extend face) nil
-        (face-font face) nil (face-height face) nil (face-inherit face) nil)
+        (face-underline face) nil (face-underline-colour face) nil (face-reverse face) nil (face-dim face) nil
+        (face-extend face) nil (face-font face) nil (face-height face) nil (face-inherit face) nil)
   (apply #'set-face-attributes (face-name face) (face-base face))
   face)
 
@@ -328,22 +308,37 @@ out the theme. Returns the theme's name."
     (incf *face-generation*)
     *current-theme*))
 
-(defun face-attribute (name attribute)
-  "The value of ATTRIBUTE (:fg :bg :bold :italic :underline :underline-colour
-:reverse :dim :extend :font or :height) for face NAME, following :inherit; NIL when no face
-in the chain specifies it. The name of the face that gives it is a second value."
-  (loop repeat 16                       ; guards against inheritance cycles
+(defun walk-inherited (name function)
+  "Follow face NAME and the faces it inherits from, sixteen at most so that a
+cycle ends, calling FUNCTION with each one's name and face: it returns the
+value looked for, or NIL and the name of the face to go on to. Returns the
+first value found and, as a second value, the name of the face giving it;
+NIL when none does."
+  (declare (type function function))
+  (loop repeat 16
         for face = (find-face name)
         while face
-        do (let ((value (ecase attribute
-                          (:fg (face-fg face)) (:bg (face-bg face)) (:bold (face-bold face))
-                          (:italic (face-italic face)) (:underline (face-underline face))
-                          (:underline-colour (face-underline-colour face))
-                          (:reverse (face-reverse face)) (:dim (face-dim face)) (:extend (face-extend face))
-                          (:font (face-font face)) (:height (face-height face)))))
+        do (multiple-value-bind (value next) (funcall function name face)
              (when value (return (values value name)))
-             (setf name (face-inherit face)))
+             (setf name next))
         finally (return nil)))
+
+(defun face-attribute (name attribute)
+  "The value of ATTRIBUTE (:fg :bg :bold :italic :underline :underline-colour
+:reverse :dim :extend :font or :height) for face NAME, following :inherit;
+NIL when no face in the chain specifies it. The name of the face that gives
+it is a second value."
+  (flet ((own (name face)
+           (declare (ignore name))
+           (values (ecase attribute
+                     (:fg (face-fg face)) (:bg (face-bg face)) (:bold (face-bold face))
+                     (:italic (face-italic face)) (:underline (face-underline face))
+                     (:underline-colour (face-underline-colour face))
+                     (:reverse (face-reverse face)) (:dim (face-dim face)) (:extend (face-extend face))
+                     (:font (face-font face)) (:height (face-height face)))
+                   (face-inherit face))))
+    (declare (dynamic-extent #'own))
+    (walk-inherited name #'own)))
 
 (defun combine-faces (span-face row-face)
   "The face spec for a span painted over a row: the span's faces first, then the row's."
@@ -372,12 +367,19 @@ priority, so a theme's text colours and background reach everything."
     (when (member underline '(:wave :dotted :box)) (push underline flags))
     (values fg bg (nreverse flags))))
 
+(defun spec-face-with (spec attribute)
+  "The highest-priority face of SPEC (as for RESOLVE-FACE-SPEC) that sets
+ATTRIBUTE (FACE-ATTRIBUTE), and that value as a second value; NIL when none
+does."
+  (dolist (name (if (listp spec) spec (list spec)) nil)
+    (let ((value (and name (face-attribute name attribute))))
+      (when value (return (values name value))))))
+
 (defun resolve-face-underline-colour (spec)
   "The colour the highest-priority face of SPEC (as for RESOLVE-FACE-SPEC)
 that underlines gives its underline, or NIL for the text's."
-  (dolist (name (if (listp spec) spec (list spec)) nil)
-    (when (and name (face-attribute name :underline))
-      (return (face-attribute name :underline-colour)))))
+  (let ((name (spec-face-with spec :underline)))
+    (and name (face-attribute name :underline-colour))))
 
 (defvar *row-scaling* nil
   "True while the frontend draws rows of more than one row's height (a window
@@ -386,9 +388,7 @@ of its own, not a terminal): a face's HEIGHT then has a line drawn large.")
 (defun resolve-face-font (spec)
   "The font (FACE-FONT) of the highest-priority face of SPEC (as for
 RESOLVE-FACE-SPEC) that names one, or NIL for the window's own."
-  (dolist (name (if (listp spec) spec (list spec)) nil)
-    (let ((font (and name (face-attribute name :font))))
-      (when font (return font)))))
+  (nth-value 1 (spec-face-with spec :font)))
 
 ;;; Colours for terminals
 
@@ -426,19 +426,15 @@ THEME: the face's own definition, then THEME's settings for it, then yours
 colour when THEME has none."
   (let ((theme (if (theme-p theme) theme (find-theme theme))))
     (unless (and theme (member attribute '(:fg :bg :underline-colour)) (theme-colourless theme))
-      (loop repeat 16                       ; guards against inheritance cycles
-            for face = (find-face name)
-            while face
-            do (let ((attributes (copy-list (face-base face))))
+      (flet ((as-themed (name face)
+               (let ((attributes (copy-list (face-base face))))
                  (when theme
                    (dolist (spec (theme-specs theme name))
                      (loop for (key value) on (cdr spec) by #'cddr do (setf (getf attributes key) value))))
                  (loop for (key value) on (cdr (assoc name *user-face-settings*)) by #'cddr
                        do (setf (getf attributes key) value))
-                 (let ((value (getf attributes attribute)))
-                   (when value (return value)))
-                 (setf name (or (getf attributes :inherit) (face-inherit face))))
-            finally (return nil)))))
+                 (values (getf attributes attribute) (or (getf attributes :inherit) (face-inherit face))))))
+        (values (walk-inherited name #'as-themed))))))
 
 (defun basic-colour-index (name)
   "The number in the terminal palette of the basic colour NAME (:red 1,

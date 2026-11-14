@@ -67,17 +67,26 @@ it goes under, with these filled in:
   "Tuatara's own capture templates, each (FILE-NAME TEXT): a TODO for the
 agenda (t), a note to the inbox (n), a journal entry (j), meeting notes (m).")
 
-(defstruct (capture-template (:constructor make-capture-template
-                                           (key name target text &key clock-in clock-resume file own))
-                             (:copier nil))
+(define-record (capture-template (:constructor make-capture-template
+                                              (key name target text &key clock-in clock-resume file own))
+                                (:copier nil))
   "A template \\[org-capture] offers: KEY, the character choosing it, as text;
 NAME, what it is; TARGET, where its text is filed, (:FILE-HEADLINE FILE
 HEADLINE), (:OLP FILE TITLE ...), (:FILE FILE) or (:JOURNAL), NIL when its
 file says none; TEXT, its %-escapes not filled in yet; CLOCK-IN and
 CLOCK-RESUME; FILE, its file's name; OWN, true for one of Tuatara's."
-  key name target text clock-in clock-resume file own)
-
-(setf (documentation 'capture-template-p 'function) "True when OBJECT is a CAPTURE-TEMPLATE.")
+  (key nil :documentation "The character that chooses a CAPTURE-TEMPLATE, as text.")
+  (name nil :documentation "What a CAPTURE-TEMPLATE is, its name.")
+  (target nil
+          :documentation "Where a CAPTURE-TEMPLATE files its text: (:FILE-HEADLINE FILE HEADLINE), (:OLP FILE TITLE
+...), (:FILE FILE) or (:JOURNAL), or NIL when its file says none.")
+  (text nil :documentation "The text of a CAPTURE-TEMPLATE, its %-escapes not filled in yet.")
+  (clock-in nil :documentation "True when the entry of a CAPTURE-TEMPLATE is clocked from when its capture begins.")
+  (clock-resume nil
+                :documentation "True when the clock of a CAPTURE-TEMPLATE stops when it is filed and the clock that
+ran before it runs again.")
+  (file nil :documentation "The name of the file a CAPTURE-TEMPLATE was read from.")
+  (own nil :documentation "True for a CAPTURE-TEMPLATE that is one of Tuatara's own."))
 
 (defun read-capture-template (file-name text &optional own)
   "The capture template a file called FILE-NAME holding TEXT is (OWN for one
@@ -140,7 +149,8 @@ is."
 (defun org-capture-target-text (target)
   "TARGET of a template, in words, for messages."
   (case (first target)
-    (:file-headline (format nil "under ~a in ~a" (third target) (tuatara.io:native-file-name (capture-target-path (second target)))))
+    (:file-headline (format nil "under ~a in ~a" (third target)
+                            (tuatara.io:native-file-name (capture-target-path (second target)))))
     (:file (format nil "at the end of ~a" (tuatara.io:native-file-name (capture-target-path (second target)))))
     (:journal "in today's journal entry")
     (:olp (format nil "under ~a" (org-olp-text target)))
@@ -234,11 +244,8 @@ says, \\[org-capture-kill] throws it away; either way you are back where you wer
 file, else agenda.org in the directory it names or its pattern's directory."
   (let* ((first (or (first *org-agenda-files*) "~/org/agenda.org"))
          (path (tuatara.io:native (tuatara.io:expand-path first))))
-    (multiple-value-bind (parent name) (tuatara.io:path-directory-and-name path)
-      (cond ((find-if (lambda (c) (find c "*?")) name) (tuatara.io:path-join parent "agenda.org"))
-            ((or (uiop:string-suffix-p first "/") (eq :directory (tuatara.io:path-kind path)))
-             (tuatara.io:path-join path "agenda.org"))
-            (t path)))))
+    (multiple-value-bind (kind directory) (agenda-file-kind first path)
+      (if (eq kind :file) path (tuatara.io:path-join directory "agenda.org")))))
 
 (defun capture-target-path (file)
   "FILE, as a capture template's # file: names it, as an absolute path."
@@ -364,7 +371,8 @@ the capture is for that day (ORG-CAPTURE-ON-DAY)."
                     :clock-resume (capture-template-clock-resume template))
               (tuatara.display:buffer-header-line buffer)
               (let ((line (substitute-command-keys
-                           (format nil " \\<org-capture-mode>\\[org-capture-finalize] files it, \\[org-capture-refile] elsewhere, \\[org-capture-kill] throws it away: ~a, ~a"
+                           (format nil " \\<org-capture-mode>\\[org-capture-finalize] files it, \\[org-capture-refile] ~
+elsewhere, \\[org-capture-kill] throws it away: ~a, ~a"
                                    description (org-capture-target-text target)))))
                 (lambda (window) (declare (ignore window)) line)))
         (tuatara.buffer:buffer-mark-saved buffer)
@@ -443,7 +451,7 @@ capture began."
     (unless capture (refuse "This is no capture buffer"))
     (destructuring-bind (&key description target clock-in clock-resume started day) capture
       (when elsewhere (setf target elsewhere))
-      (if (zerop (length (string-trim '(#\Space #\Tab #\Newline) text)))
+      (if (zerop (length text))
           (progn (org-capture-done buffer) (message "Nothing captured: it was empty"))
           (let* ((day (or day (org-today started)))
                  (was-modified (tuatara.io:changes-unsaved-p (org-capture-target-buffer target day))))

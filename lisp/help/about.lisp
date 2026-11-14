@@ -1,11 +1,11 @@
 ;;;; lisp/help/about.lisp --- About Tuatara: what it is, whose, under which license, and the ways in.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; M-x about-tuatara (C-h C-a, as Emacs's about-emacs) shows *About Tuatara*:
-;;;; the name in large letters, the version, the copyright and license, where
-;;;; its sources are, and the ways in for a newcomer, each a button. C-h C-c shows the license, C-h C-w its
-;;;; part on warranty; M-x credits says where Tuatara's ideas come from. A
-;;;; button is text that does something when RET is pressed on it or it is
+;;;; M-x about-tuatara (C-h C-a) shows *About Tuatara*: the name in large
+;;;; letters, the version, the copyright and license, where its sources are, and
+;;;; the ways in for a newcomer, each a button. C-h C-c shows the license, C-h
+;;;; C-w its part on warranty; M-x credits says where Tuatara's ideas come from.
+;;;; A button is text that does something when RET is pressed on it or it is
 ;;;; clicked; TAB and S-TAB go from one to the next.
 
 (in-package #:tuatara.defaults)
@@ -65,24 +65,13 @@ and do what a button there does."
 
 ;;; *About Tuatara*
 
-(define-major-mode about-mode special-mode
+(define-major-mode about-mode help-mode
   "*About Tuatara*, what Tuatara is, whose, under which license, and the ways
 in, each a button. \\<about-mode>\\[push-button] or a click on one opens what it
 names, \\[forward-button] and \\[backward-button] go from one to the next,
 \\`q' closes; the modal keys that move, select and copy work as in any support
 buffer."
   :lighter "About" :interactive nil)
-
-(defmethod mode-enter ((mode about-mode) buffer)
-  "Have the rows a long line of the page wraps into continue under their own
-text (SET-HANGING)."
-  (set-hanging buffer :cells)
-  (call-next-method))
-
-(defmethod mode-exit ((mode about-mode) buffer)
-  "Let go of the hanging rows the page has (SET-HANGING)."
-  (set-hanging buffer nil)
-  (call-next-method))
 
 (defparameter *about-name-rows*
   '("▀█▀ █ █ ▄▀▄ ▀█▀ ▄▀▄ █▀▄ ▄▀▄"
@@ -96,43 +85,47 @@ text (SET-HANGING)."
 (defun about-pieces ()
   "The text of *About Tuatara*, as pieces for RENDER-PIECES."
   (collecting-pieces (put)
-    (flet ((line (format-string &rest arguments) (put (apply #'format nil format-string arguments)))
-           (keys (command) (substitute-command-keys (format nil "\\[~(~a~)]" command))))
-      (put (format nil "~%~{  ~a~%~}~%" *about-name-rows*) :about-name)
-      (line "  ~a~%~%" (tuatara:version-line (tuatara.frontend:frontend-description (editor-frontend *editor*))))
-      (line "  An editor in the manner of Emacs, with modal keys after donkey.el, for text~%")
-      (line "  of any size: what takes time is done in the background.~%~%")
-      (line "  Copyright (C) 2026 Michael A Jones.~%")
-      (line "  Tuatara is free software under the ")
-      (put "GNU General Public License" :button #'describe-copying)
-      (line ", version 3 or any later~%  version, which you may share and change on its terms (~a).~%"
-            (keys 'describe-copying))
-      (line "  It comes with ")
-      (put "absolutely no warranty" :button #'describe-no-warranty)
-      (line " (~a).~%" (keys 'describe-no-warranty))
-      (line "  Where its ideas come from: the ")
-      (put "credits" :button #'credits)
-      (line " (~a).~%" (keys 'credits))
-      (line "  Its sources: ")
-      (put *project-address* :button (lambda () (open-address *project-address*)))
-      (line "; ")
-      (put "report a fault" :button (lambda () (open-address (format nil "~a/issues/new/choose" *project-address*))))
-      (line " there.~%~%")
-      (put (format nil "  Ways in~%") :about-heading)
-      (loop for (label command words) in
-            '(("The tutor" tuatara-tutor "learn the modal keys by editing a text with them")
-              ("What a key does" describe-key "and the command it runs")
-              ("A command" describe-command "what it does, and its keys")
-              ("Every key here" describe-bindings "those of the buffer shown and its mode")
-              ("Your init file" nil "every setting, commented out, each with what it does")
-              ("Checking health" check-health "what works here: grammars, fonts, the clipboard"))
-            do (put "  ")
-               (put label :button
-                    (if command
-                        (let ((command command)) (lambda () (funcall command)))
-                        (lambda () (visit-path (tuatara.io:native (config-file))))))
-               (line "~a ~a ~a~%" (column-text "" (max 1 (- 22 (text-columns label))))
-                     (column-text (if command (keys command) (abbreviated-path (config-file))) 22 :elide nil) words)))))
+                     (flet ((line (format-string &rest arguments) (put (apply #'format nil format-string arguments)))
+                            (keys (command) (substitute-command-keys (format nil "\\[~(~a~)]" command))))
+                       (put (format nil "~%~{  ~a~%~}~%" *about-name-rows*) :about-name)
+                       (line "  ~a~%~%"
+                             (tuatara:version-line (tuatara.frontend:frontend-description (editor-frontend *editor*))))
+                       (line "  An editor in the manner of Emacs, with modal keys after donkey.el, for text~%")
+                       (line "  of any size: what takes time is done in the background.~%~%")
+                       (line "  Copyright (C) 2026 Michael A Jones.~%")
+                       (line "  Tuatara is free software under the ")
+                       (put "GNU General Public License" :button #'describe-copying)
+                       (line ", version 3 or any later~%  version, which you may share and change on its terms (~a).~%"
+                             (keys 'describe-copying))
+                       (line "  It comes with ")
+                       (put "absolutely no warranty" :button #'describe-no-warranty)
+                       (line " (~a).~%" (keys 'describe-no-warranty))
+                       (line "  Where its ideas come from: the ")
+                       (put "credits" :button #'credits)
+                       (line " (~a).~%" (keys 'credits))
+                       (line "  Its sources: ")
+                       (put *project-address* :button (lambda () (open-address *project-address*)))
+                       (line "; ")
+                       (put "report a fault" :button
+                            (lambda () (open-address (format nil "~a/issues/new/choose" *project-address*))))
+                       (line " there.~%~%")
+                       (put (format nil "  Ways in~%") :about-heading)
+                       (loop for (label command words) in
+                             '(("The tutor" tuatara-tutor "learn the modal keys by editing a text with them")
+                               ("What a key does" describe-key "and the command it runs")
+                               ("A command" describe-command "what it does, and its keys")
+                               ("Every key here" describe-bindings "those of the buffer shown and its mode")
+                               ("Your init file" nil "every setting, commented out, each with what it does")
+                               ("Checking health" check-health "what works here: grammars, fonts, the clipboard"))
+                             do (put "  ")
+                             (put label :button
+                                  (if command
+                                      (let ((command command)) (lambda () (funcall command)))
+                                      (lambda () (visit-path (tuatara.io:native (config-file))))))
+                             (line "~a ~a ~a~%" (column-text "" (max 1 (- 22 (text-columns label))))
+                                   (column-text (if command (keys command) (abbreviated-path (config-file)))
+                                                22 :elide nil)
+                                   words)))))
 
 (define-command about-tuatara ()
   "Show *About Tuatara*, the page that introduces Tuatara.
@@ -161,7 +154,8 @@ from the line holding START-MARKER to the one before the line holding
 END-MARKER, all of it when they are NIL."
   (let ((file (license-file)))
     (if (null file)
-        (message "The license's text is not here: it is the GNU GPL, version 3 or later, https://www.gnu.org/licenses/gpl-3.0.html")
+        (message "The license's text is not here: it is the GNU GPL, version 3 or later, ~
+https://www.gnu.org/licenses/gpl-3.0.html")
         (let* ((text (tuatara.io:file-text file))
                (start (and start-marker (search start-marker text)))
                (from (if start (string-line-start text start) 0))
@@ -183,38 +177,38 @@ version)."
 
 (defparameter *credits*
   '(("GNU Emacs" "the design: buffers for everything, text properties, every key"
-                 "a named command, self-documentation; the standard keys, the"
-                 "behaviour of most base commands, and many of their test cases;"
-                 "the calendar, and the diary's forms of dates by rule")
+     "a named command, self-documentation; the standard keys, the"
+     "behaviour of most base commands, and many of their test cases;"
+     "the calendar, and the diary's forms of dates by rule")
     ("DONKEY" "the modal keys: donkey.el, by the same author"
-              "(github.com/YardQuit/donkey)")
+     "(github.com/YardQuit/donkey)")
     ("Helix" "each language's rules for colours, indentation, selections and"
-             "outlines (under the MPL 2.0), the keys that select by the syntax,"
-             "the health report, and each language's servers and formatters")
+     "outlines (under the MPL 2.0), the keys that select by the syntax,"
+     "the health report, and each language's servers and formatters")
     ("tree-sitter and the authors of its grammars" "parsing; each grammar's licence goes with every release")
     ("tree-sitter-prolog, by Stefano Volpe and Shane Brewer"
      "parsing Prolog; under the GNU Affero GPL 3.0 or later, Shane"
-                                                            "Brewer's first part under the ISC licence: the only part of"
-                                                            "the release under the Affero GPL")
+     "Brewer's first part under the ISC licence: the only part of"
+     "the release under the Affero GPL")
     ("Org mode" "the Org format and how Org files behave: folding, links,"
-                "tables, the agenda, clocking, source blocks, dynamic blocks,"
-                "and Org documents written as LaTeX for a PDF")
+     "tables, the agenda, clocking, source blocks, dynamic blocks,"
+     "and Org documents written as LaTeX for a PDF")
     ("toc-org, by Sergei Nosov" "tables of contents of Org and Markdown files")
     ("markdown-mode, by Jason Blevins" "how a Markdown link is read")
     ("org-bullets and org-superstar" "signs in place of headlines' stars and lists' bullets")
     ("Denote, by Protesilaos Stavrou" "the names of files with formatted names")
     ("denote-org and denote-sequence, also by Protesilaos Stavrou" "the dynamic blocks of files with formatted names")
     ("consult, vertico, orderless, marginalia and Corfu" "the look and feel of completion: the list, matched by words"
-                                                         "in any order, what is shown beside each, completion beside"
-                                                         "the cursor; the outline of a buffer and its preview")
+     "in any order, what is shown beside each, completion beside"
+     "the cursor; the outline of a buffer and its preview")
     ("eglot, Flymake and ElDoc" "how language servers look and feel: problems marked and"
-                                "shown under the cursor, a call's parameters in the echo area")
+     "shown under the cursor, a call's parameters in the echo area")
     ("Magit" "the state of a git repository, staging, commits and the log")
     ("compile and smerge-mode" "running a build or the tests and going from place to place in its"
-                               "messages; the conflicts a merge left in a file, shown and put right")
+     "messages; the conflicts a merge left in a file, shown and put right")
     ("EasyPG" "the GnuPG commands, and .gpg files opened and saved")
     ("jinx, by Daniel Mendler" "checking the spelling of only the words shown, with enchant"
-                               "called directly")
+     "called directly")
     ("olivetti, by Paul W. Rankin, and visual-fill-column"
      "text centred in its window, and soft wrap at the fill column")
     ("use-package" "the keywords of load-package in the init file")
@@ -222,7 +216,7 @@ version)."
     ("dired" "how Rimu lists a directory and acts on the entries marked")
     ("dired-du, by Tino Calancha; dired-git-info, by Clemens Radermacher; and dired-duplicates, by Harald Judt"
      "Rimu's sizes of directories, each entry's last commit, and the files"
-                                                                                                                "that are the same as another")
+     "that are the same as another")
     ("git-timemachine, by Peter Stiernström" "going back through a file's history, a commit at a time")
     ("doc-view and pdf-tools, by Andreas Politz" "PDFs shown as pictures of their pages")
     ("SLIME" "the keys that expand Common Lisp's macros")
@@ -231,40 +225,40 @@ version)."
     ("The tz database (IANA), by Paul Eggert, Arthur David Olson and its contributors, and RFC 8536"
      "time zones by name, read from the system's zoneinfo files")
     ("Vim" "replacing typed at the search prompt, digraphs, the line"
-           "selection and the cursor column")
+     "selection and the cursor column")
     ("Eugene W. Myers's difference algorithm" "the gutter's changes since the file was saved or committed")
     ("Unicode's text segmentation (UAX #29)" "a letter and its accents, or an emoji, taken as one character")
     ("Unicode's bidirectional algorithm (UAX #9)" "right-to-left text shown in the order it is read in, checked"
-                                                  "against Unicode's own BidiTest.txt, BidiCharacterTest.txt"
-                                                  "and BidiBrackets.txt")
+     "against Unicode's own BidiTest.txt, BidiCharacterTest.txt"
+     "and BidiBrackets.txt")
     ("freedesktop.org's trash specification" "the trash Rimu puts files in and lists")
     ("freedesktop.org's desktop notifications" "notifications told on the desktop, the agenda's and"
-                                               "packages', through libnotify's notify-send")
+     "packages', through libnotify's notify-send")
     ("The file program" "a file's kind told by its first octets, never by its name")
     ("PDF (ISO 32000)" "the structure of a PDF read by show-file-metadata: its objects, cross-reference"
-                       "tables, streams and filters, and page content")
+     "tables, streams and filters, and page content")
     ("RARLAB's RAR 5.0 format description" "the rar archives the tests make, laid out as it describes"
-                                          "(test/rimu-operations.lisp)")
+     "(test/rimu-operations.lisp)")
     ("RFC 1345" "the digraphs, as Emacs's rfc1345 input method has them")
     ("RFC 3339" "dates and times as the named date patterns read and compare them")
     ("NO_COLOR (no-color.org)" "no colours in the terminal where NO_COLOR is set")
     ("Ghostty, by Mitchell Hashimoto and its contributors" "the terminal library M-x terminal keeps its screen with"
-                                                           "(libghostty-vt)")
+     "(libghostty-vt)")
     ("simdutf, Highway, Wuffs and uucode" "the libraries the terminal library is built with: Unicode"
-                                          "text checked and converted (simdutf), many characters worked"
-                                          "on at once (Highway), pictures' pixels (Wuffs) and the Unicode"
-                                          "character properties (uucode); each one's licence goes with"
-                                          "every release")
+     "text checked and converted (simdutf), many characters worked"
+     "on at once (Highway), pictures' pixels (Wuffs) and the Unicode"
+     "character properties (uucode); each one's licence goes with"
+     "every release")
     ("Zig and LLVM's libc++" "the compiler the terminal library is built with, whose standard"
-                             "library and C++ library are compiled into it; their licences go"
-                             "with every release")
+     "library and C++ library are compiled into it; their licences go"
+     "with every release")
     ("The Unicode Character Database" "the characters' properties the terminal library knows them by,"
-                                      "through uucode; its licence goes with every release")
+     "through uucode; its licence goes with every release")
     ("kitty, by Kovid Goyal" "the graphics and keyboard protocols")
     ("Ao" "the colour theme, by the same author (github.com/YardQuit/ao)")
     ("SBCL" "the Common Lisp Tuatara is written in and runs on")
     ("alexandria, cl-ppcre, ASDF and Quicklisp" "the Common Lisp libraries Tuatara is built with; each one's"
-                                                 "licence goes with every release"))
+     "licence goes with every release"))
   "Where Tuatara's ideas come from, as \\[credits] shows them: each a name and
 the lines saying what came from it.")
 
@@ -278,7 +272,8 @@ from each."
                      (loop for (name . lines) in *credits*
                            collect (list (format nil "  ~a" (column-text name 22 :elide nil)) :about-heading)
                            ;; a name too long for its column has the text below it; the text wraps under itself
-                           collect (list (format nil "~:[~*~;~%~24@a~]~{~a~^ ~}~%" (> (text-columns name) 20) "" lines))))))
+                           collect (list (format nil "~:[~*~;~%~24@a~]~{~a~^ ~}~%"
+                                                 (> (text-columns name) 20) "" lines))))))
       (render-pieces buffer #'credits-pieces :point :button))
     (show-buffer buffer)))
 

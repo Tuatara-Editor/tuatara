@@ -9,8 +9,8 @@
 
 (in-package #:tuatara.command)
 
-(defstruct (candidate (:constructor make-candidate (string &key annotation value group columns suffix rank))
-                      (:copier nil))
+(define-record (candidate (:constructor make-candidate (string &key annotation value group columns suffix rank))
+                         (:copier nil))
   "One completion candidate. STRING is what is matched, and what is shown
 unless COLUMNS says otherwise. SUFFIX is fields shown right after STRING, such
 as a command's keys after its name in M-x. ANNOTATION is what is shown beside
@@ -25,25 +25,17 @@ at the right for a negative WIDTH, or a fraction, that share of the row. The
 text is cut to fit at its end, or in its middle when CUT is :MIDDLE. RANK,
 when given, puts it with the entries of a completing read's history, the lower
 the sooner: for files, how lately it was chosen."
-  (string "" :type string :read-only t)
-  (annotation nil :type (or null string list) :read-only t)
-  (value nil :read-only t)
-  (group nil :type (or null string) :read-only t)
-  (columns nil :type list :read-only t)
-  (suffix nil :type list :read-only t)
-  (rank nil :read-only t))
+  (string "" :type string :read-only t :documentation "The text of CANDIDATE.")
+  (annotation nil :type (or null string list) :read-only t :documentation "The annotation of CANDIDATE, or NIL.")
+  (value nil :read-only t :documentation "The value CANDIDATE stands for, or NIL to mean its string.")
+  (group nil :type (or null string) :read-only t
+         :documentation "The title of the group CANDIDATE is listed under, or NIL.")
+  (columns nil :type list :read-only t :documentation "The fields CANDIDATE is shown as, or NIL to show its string.")
+  (suffix nil :type list :read-only t :documentation "The fields shown right after CANDIDATE's string, or NIL.")
+  (rank nil :read-only t :documentation "How soon CANDIDATE comes with a read's history (lower sooner), or NIL."))
 
 (setf (documentation 'make-candidate 'function) "Return a CANDIDATE for STRING with ANNOTATION,
-VALUE, GROUP and COLUMNS."
-      (documentation 'candidate-p 'function) "True when OBJECT is a CANDIDATE."
-      (documentation 'candidate-string 'function) "The text of CANDIDATE."
-      (documentation 'candidate-annotation 'function) "The annotation of CANDIDATE, or NIL."
-      (documentation 'candidate-value 'function) "The value CANDIDATE stands for, or NIL to mean its string."
-      (documentation 'candidate-group 'function) "The title of the group CANDIDATE is listed under, or NIL."
-      (documentation 'candidate-columns 'function) "The fields CANDIDATE is shown as, or NIL to show its string."
-      (documentation 'candidate-suffix 'function) "The fields shown right after CANDIDATE's string, or NIL."
-      (documentation 'candidate-rank
-                     'function) "How soon CANDIDATE comes with a read's history (lower sooner), or NIL.")
+VALUE, GROUP and COLUMNS.")
 
 (defun candidate-result (candidate)
   "What choosing CANDIDATE returns: its value, or its string."
@@ -380,6 +372,16 @@ one for any other (a control character shows there as a single sign)."
   "The columns STRING takes in the panel under the prompt (PANEL-CHAR-COLUMNS)."
   (tuatara.display:string-columns string :start start :end end :width #'panel-char-columns))
 
+(defun fit-panel-columns (string spans columns &rest keys)
+  "STRING and its SPANS cut to take at most COLUMNS columns of the panel, as
+TUATARA.DISPLAY:FIT-COLUMNS cuts them with KEYS (PANEL-CHAR-COLUMNS)."
+  (apply #'tuatara.display:fit-columns string spans columns :width #'panel-char-columns keys))
+
+(defun pad-panel-columns (string columns)
+  "STRING padded with spaces to take COLUMNS columns of the panel
+\(TUATARA.DISPLAY:PAD-COLUMNS, PANEL-CHAR-COLUMNS)."
+  (tuatara.display:pad-columns string columns :width #'panel-char-columns))
+
 (defun columns-end (string columns)
   "How many characters of STRING fit in COLUMNS columns (PANEL-COLUMNS)."
   (tuatara.display:chars-in-columns string columns :width #'panel-char-columns))
@@ -408,8 +410,8 @@ or in its middle when the field's fourth element is :MIDDLE."
       (multiple-value-bind (text face width cut) (field-parts field default-face)
         (when (and width (not (integerp width)))
           (let ((columns (floor (* (abs width) row-width))))
-            (multiple-value-bind (cut cut-spans) (tuatara.display:fit-columns text (and (listp face) face) columns
-                                                                              :middle (eq cut :middle) :width #'panel-char-columns)
+            (multiple-value-bind (cut cut-spans)
+                (fit-panel-columns text (and (listp face) face) columns :middle (eq cut :middle))
               (setf text cut
                     face (if (listp face) cut-spans face)
                     width (if (minusp width) (- columns) columns)))))
@@ -420,12 +422,12 @@ or in its middle when the field's fourth element is :MIDDLE."
           (setf first nil)
           (let* ((pad (if width (max 0 (- (abs width) (panel-columns text))) 0))
                  (start (if (and width (minusp width)) (+ pos pad) pos)))
-            (when (and width (minusp width)) (write-string (make-string pad :initial-element #\Space) out))
+            (when (and width (minusp width)) (write-string (tuatara.text:spaces pad) out))
             (write-string text out)
             (cond ((null face))
                   ((listp face) (loop for (s e f) in face do (push (list (+ start s) (+ start e) f) spans)))
                   ((plusp (length text)) (push (list start (+ start (length text)) face) spans)))
-            (when (and width (plusp width)) (write-string (make-string pad :initial-element #\Space) out))
+            (when (and width (plusp width)) (write-string (tuatara.text:spaces pad) out))
             (incf pos (+ pad (length text)))))))
     (values (get-output-stream-string out) (nreverse spans))))
 
@@ -440,9 +442,9 @@ or in its middle when the field's fourth element is :MIDDLE."
 (defun shown-fields (fields)
   "FIELDS without those JOIN-FIELDS leaves out: no text and no width."
   (remove-if (lambda (field)
-               (multiple-value-bind (text face width) (field-parts field nil)
-                 (declare (ignore face))
-                 (and (zerop (length text)) (null width))))
+               (if (stringp field)
+                   (zerop (length field))
+                   (and (zerop (length (first field))) (null (third field)))))
              fields))
 
 (defun fields-columns (fields row-width)
@@ -458,10 +460,10 @@ or in its middle when the field's fourth element is :MIDDLE."
 a field whose width is a share of ROW-WIDTH takes no more than the others
 leave it (and none, less than eight); then fields give way from the left, the
 last one left cut at its end. Returns the string and its spans."
-  (let* ((fields (shown-fields fields))
-         (share-p (lambda (field) (multiple-value-bind (text face width) (field-parts field default-face)
-                                    (declare (ignore text face))
-                                    (and width (not (integerp width))))))
+  (let* ((fields (mapcar (lambda (field) (multiple-value-list (field-parts field default-face)))
+                         ;; each field's text written out once, for every measure below
+                         (shown-fields fields)))
+         (share-p (lambda (field) (let ((width (third field))) (and width (not (integerp width))))))
          (fixed (loop for field in fields
                       unless (funcall share-p field) sum (field-columns field default-face row-width)))
          (shares (count-if share-p fields))
@@ -473,17 +475,18 @@ last one left cut at its end. Returns the string and its spans."
               (loop for field in fields
                     unless (and (funcall share-p field) (< each 8))
                       collect (if (funcall share-p field)
-                                  (multiple-value-bind (text face width cut) (field-parts field default-face)
+                                  (destructuring-bind (text face width cut) field
                                     (let ((columns (min each (floor (* (abs width) row-width)))))
                                       (list text face (if (minusp width)
                                                           (- (/ columns row-width))
-                                                          (/ columns row-width)) cut)))
+                                                          (/ columns row-width))
+                                            cut)))
                                   field)))))
     ;; fields give way from the left while they do not fit
     (loop while (and (rest fields) (> (fields-columns fields row-width) limit))
           do (pop fields))
     (multiple-value-bind (string spans) (join-fields fields :row-width row-width :default-face default-face)
-      (tuatara.display:fit-columns string spans limit :width #'panel-char-columns))))
+      (fit-panel-columns string spans limit))))
 
 (defun component-positions (component string)
   "The positions of the characters of STRING that COMPONENT matches, as

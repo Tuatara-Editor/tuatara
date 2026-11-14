@@ -81,9 +81,10 @@ editor: made with a prompt the first time, as it was after."
   (let* ((working (current-buffer))
          (b (find-or-make-buffer "*ielm*" :mode 'ielm-mode
                                           :made (lambda (b)
-                                                  (tuatara.buffer:buffer-insert b 0 (substitute-command-keys *ielm-banner*))
+                                                  (tuatara.buffer:buffer-insert
+                                                   b 0 (substitute-command-keys *ielm-banner*))
                                                   (ielm-insert-prompt b)
-                                                  (setf (tuatara.buffer:buffer-undo-stack b) '())
+                                                  (tuatara.buffer:forget-history b)
                                                   (tuatara.buffer:buffer-mark-saved b)))))
     (unless (or (eq working b) (live-buffer-p (tuatara.buffer:buffer-local b 'ielm-working-buffer)))
       (setf (tuatara.buffer:buffer-local b 'ielm-working-buffer) working))
@@ -166,7 +167,8 @@ no prompt is found, or no expression follows."
                                                                        :end to))
                               :key #'third)))
             (return (and first (< (+ from (second first)) to)
-                         (tuatara.buffer:buffer-string buffer :start (+ from (first first)) :end (+ from (second first))))))))
+                         (tuatara.buffer:buffer-string buffer :start (+ from (first first))
+                                                              :end (+ from (second first))))))))
       (when (zerop line) (return nil))
       (setf line (tuatara.buffer:buffer-line-start buffer (1- line))))))
 
@@ -229,9 +231,9 @@ does."
     (cond ((notevery (lambda (c) (member c '(#\Space #\Tab))) before) (completion-at-point))
           ((< line input) nil)
           (t (unless (eq (indent-lines b line line :blank-lines t) :none)
-               (multiple-value-bind (width) (line-indentation b (tuatara.buffer:buffer-line-start b (point)))
-                 (let ((line (tuatara.buffer:buffer-line-start b (point))))
-                   (when (< (point) (+ line width)) (goto (+ line width))))))))))
+               ;; point in the blanks goes to where the text begins
+               (let ((start (tuatara.buffer:buffer-line-start b (point))))
+                 (goto (max (point) (+ start (line-indentation b start))))))))))
 
 (define-command ielm-kill-input ()
   "Take away the input after *ielm*'s last prompt."
@@ -253,18 +255,22 @@ current, (insert \"x\") putting text in it."
 (defmethod mode-syntax-highlights ((mode ielm-mode) buffer rows)
   "Colour the Lisp typed in BUFFER as Lisp, not its banner and *** lines,
 which are no Lisp, and colour its prompts over them."
-  (append (let ((plain (loop for row across rows
-                             for start = (tuatara.display:row-start row)
-                             when (and (not (tuatara.display:row-continuation-p row)) (status-line-p buffer start))
-                               collect (cons start (tuatara.display:row-end row)))))
-            (remove-if (lambda (span)
-                         (find-if (lambda (line) (and (<= (car line) (first span)) (< (first span) (cdr line)))) plain))
-                       (call-next-method)))
-          (loop for row across rows
-                for start = (tuatara.display:row-start row)
-                for prompt = (and (not (tuatara.display:row-continuation-p row)) (prompt-length-at buffer start))
-                when prompt
-                  collect (list start (+ start prompt) :minibuffer-prompt))))
+  (let ((plain (loop for row across rows
+                     for start = (tuatara.display:row-start row)
+                     when (and (not (tuatara.display:row-continuation-p row)) (status-line-p buffer start))
+                       collect (cons start (tuatara.display:row-end row)))))
+    (flet ((lisp-only (ranges)
+             (remove-if (lambda (span)
+                          (find-if (lambda (line) (and (<= (car line) (first span)) (< (first span) (cdr line))))
+                                   plain))
+                        ranges)))
+      (append (if plain (mapcar #'lisp-only (call-next-method)) (call-next-method))
+              (list (loop for row across rows
+                          for start = (tuatara.display:row-start row)
+                          for prompt = (and (not (tuatara.display:row-continuation-p row))
+                                            (prompt-length-at buffer start))
+                          when prompt
+                            collect (list start (+ start prompt) :minibuffer-prompt)))))))
 
 (defun forget-killed-working-buffer (buffer)
   "When BUFFER, killed, is *ielm*'s working buffer, forget it: the next

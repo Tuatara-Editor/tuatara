@@ -505,3 +505,152 @@ columns with margins of its own, as Word writes sections."
         (true (search (format nil "%~a (left out on import" line) template) "~a in~%~a" line template))
       (dolist (line inside)
         (true (search (format nil "~%~a~%" line) template) "~a in~%~a" line template)))))
+
+(define-test (template-import template-name-whole)
+  ;; a template's name ends where it ends: a line end after it is no part of a name
+  (true (tuatara.export::template-name-p "kea-report_2"))
+  (false (tuatara.export::template-name-p (format nil "kea~%")))
+  (false (tuatara.export::template-name-p "-kea")))
+
+(defun write-docx-parts (path parts)
+  "Write PARTS, each (NAME . TEXT), as a Word document at PATH; return PATH as a string."
+  (with-open-file (out path :direction :output :element-type '(unsigned-byte 8) :if-exists :supersede)
+    (write-sequence (tuatara.defaults::zip-octets parts) out))
+  (namestring path))
+
+(defun import-docx-into (dir source name)
+  "Import the Word document SOURCE as the template NAME, its files under DIR; its note template's path and what is
+said of it."
+  (tuatara.defaults::docx-import source name
+                                 :directory (namestring (merge-pathnames (format nil "t/~a/" name) dir))
+                                 :tex (namestring (merge-pathnames (format nil "t/~a.tex" name) dir))
+                                 :note (namestring (merge-pathnames (format nil "~a.org" name) dir))))
+
+(define-test (template-import docx-fields-in-linear-time)
+  ;; field openers with no closer, and complex fields with no end, cost each part of the text once
+  (flet ((seconds (count)
+           (let ((xml (format nil "<w:body><w:p>~{~a~}</w:p></w:body>"
+                              (make-list count :initial-element "<w:fldSimple w:instr=\"MERGEFIELD a\"><w:r><w:fldChar w:fldCharType=\"begin\"/></w:r><w:r><w:t>x</w:t></w:r>"))))
+             (max 1/1000 (least-seconds (lambda ()
+                                          (let ((tuatara.defaults::*template-import*
+                                                  (tuatara.defaults::make-template-import)))
+                                            (tuatara.defaults::docx-import-form-fields xml))))))))
+    (let ((small (seconds 1000)) (large (seconds 8000)))
+      (true (< (/ large small) 24) "~,3fs for 1,000 openers, ~,3fs for 8,000" small large))))
+
+(define-test (template-import docx-nested-controls-refused)
+  ;; controls nested past the limit are refused, never followed down
+  (with-test-directory (dir)
+    (let* ((depth 100)
+           (source (write-docx-parts
+                    (merge-pathnames "nested.docx" dir)
+                    `(("word/document.xml"
+                       . ,(format nil "<w:document ~a><w:body>~a<w:p><w:r><w:t>Hi</w:t></w:r></w:p>~a</w:body></w:document>"
+                                  *docx-report-w*
+                                  (apply #'concatenate 'string (make-list depth :initial-element "<w:sdt><w:sdtContent>"))
+                                  (apply #'concatenate 'string (make-list depth :initial-element "</w:sdtContent></w:sdt>"))))))))
+      (true (search "nests content controls"
+                    (handler-case (progn (import-docx-into dir source "nested") "")
+                      (error (e) (princ-to-string e)))))
+      (false (probe-file (merge-pathnames "t/" dir))))))
+
+(define-test (template-import docx-failed-import-leaves-nothing)
+  ;; a write that fails after others leaves nothing behind, and the import can be tried again
+  (with-test-directory (dir)
+    (let ((source (write-docx-parts
+                   (merge-pathnames "plain.docx" dir)
+                   `(("word/document.xml"
+                      . ,(format nil "<w:document ~a><w:body><w:p><w:r><w:t>Hi</w:t></w:r></w:p></w:body></w:document>"
+                                 *docx-report-w*)))))
+          (directory (namestring (merge-pathnames "t/plain/" dir)))
+          (tex (namestring (merge-pathnames "t/plain.tex" dir))))
+      (alexandria:write-string-into-file "a file" (merge-pathnames "blocked" dir))
+      (fail (tuatara.defaults::docx-import source "plain" :directory directory :tex tex
+                                                          :note (namestring (merge-pathnames "blocked/plain.org" dir))))
+      (false (probe-file directory))
+      (false (probe-file tex))
+      (true (tuatara.defaults::docx-import source "plain" :directory directory :tex tex
+                                                          :note (namestring (merge-pathnames "plain.org" dir)))))))
+
+(define-test (template-import docx-active-content-left-out)
+  ;; a document's own design file never replaces the template's; fields that run or fetch, embedded objects and
+  ;; mail merge never reach the template
+  (with-test-directory (dir)
+    (let* ((source (write-docx-parts
+                    (merge-pathnames "active.docx" dir)
+                    `(("word/document.xml"
+                       . ,(format nil "<w:document ~a><w:body><w:p><w:r><w:t>Hi</w:t></w:r><w:r><w:fldChar w:fldCharType=\"begin\"/></w:r><w:r><w:instrText> DDEAUTO cmd \"/c calc\" </w:instrText></w:r><w:r><w:fldChar w:fldCharType=\"separate\"/></w:r><w:r><w:t>shown</w:t></w:r><w:r><w:fldChar w:fldCharType=\"end\"/></w:r><w:fldSimple w:instr=\" LINK Excel.Sheet x.xlsx \"><w:r><w:t>linked</w:t></w:r></w:fldSimple><w:r><w:object><o:OLEObject r:id=\"rId7\"/></w:object></w:r></w:p></w:body></w:document>"
+                                  *docx-report-w*))
+                      ("word/_rels/document.xml.rels"
+                       . "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId7\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/oleObject\" Target=\"embeddings/oleObject1.bin\"/></Relationships>")
+                      ("word/embeddings/oleObject1.bin" . "an object")
+                      ("word/settings.xml"
+                       . ,(format nil "<w:settings ~a><w:mailMerge><w:dataSource r:id=\"rId1\"/></w:mailMerge></w:settings>" *docx-report-w*))
+                      ("tuatara.txt" . "numbers: 1\"/><w:evil/><x y=\"")))))
+      (multiple-value-bind (made words) (import-docx-into dir source "active")
+        (declare (ignore made))
+        (flet ((part (name) (alexandria:read-file-into-string (merge-pathnames (format nil "t/active/~a" name) dir))))
+          (let ((document (part "word/document.xml")))
+            (false (search "DDEAUTO" document))
+            (false (search "LINK" document))
+            (false (search "w:object" document))
+            (true (search "shown" document))
+            (true (search "linked" document)))
+          (false (search "embeddings" (part "word/_rels/document.xml.rels")))
+          (false (probe-file (merge-pathnames "t/active/word/embeddings/oleObject1.bin" dir)))
+          (false (search "mailMerge" (part "word/settings.xml")))
+          (false (search "evil" (part "tuatara.txt")))
+          (true (find-if (lambda (w) (search "DDEAUTO fields kept as their text" w)) words) "~s" words))))))
+
+(define-test (template-import latex-unclosed-brackets-in-linear-time)
+  ;; brackets that never close cost each part of the text once, however many of them there are
+  (flet ((seconds (count)
+           (let ((text (apply #'concatenate 'string (make-list count :initial-element "\\a[\\b{"))))
+             (max 1/1000 (least-seconds
+                          (lambda ()
+                            (let ((tuatara.defaults::*latex-group-ends* nil))
+                              (loop for i below (length text)
+                                    when (find (char text i) "[{")
+                                      do (tuatara.defaults::latex-group-end text i)))))))))
+    (let ((small (seconds 2000)) (large (seconds 16000)))
+      (true (< (/ large small) 24) "~,3fs for 2,000 commands, ~,3fs for 16,000" small large))))
+
+(define-test (template-import latex-names-and-source-stay-text)
+  ;; a picture's name ending the link, and raw LaTeX lines reading as Org, never become the note's structure
+  (with-test-directory (dir)
+    (let ((source (namestring (merge-pathnames "raw.tex" dir)))
+          (tuatara.defaults::*note-templates-directory* (namestring (merge-pathnames "nt/" dir))))
+      (alexandria:write-string-into-file "not really a picture" (merge-pathnames "a]]b.png" dir))
+      (alexandria:write-string-into-file
+       (format nil "\\documentclass{article}~%\\begin{document}~%\\section{Text}~%\\includegraphics{a]]b.png}~%\\begin{equation}~%#+include: \"/etc/passwd\"~%* x~%\\end{equation}~%\\end{document}~%")
+       source)
+      (let ((note (alexandria:read-file-into-string
+                   (tuatara.defaults::latex-import source "raw" :tex (namestring (merge-pathnames "out/raw.tex" dir))))))
+        (false (search "[[file:" note) "~a" note)
+        (false (cl-ppcre:scan "(?m)^(#\\+include|\\* x)" note) "~a" note)))))
+
+(define-test (template-import docx-complex-fields-made-places)
+  ;; a merge field written as a complex field, its instruction in w:instrText, is made a place
+  (let* ((tuatara.defaults::*template-import* (tuatara.defaults::make-template-import))
+         (xml (tuatara.defaults::docx-import-form-fields
+               "<w:p><w:r><w:fldChar w:fldCharType=\"begin\"/></w:r><w:r><w:instrText xml:space=\"preserve\"> MERGEFIELD Client </w:instrText></w:r><w:r><w:fldChar w:fldCharType=\"separate\"/></w:r><w:r><w:t>«Client»</w:t></w:r><w:r><w:fldChar w:fldCharType=\"end\"/></w:r></w:p>")))
+    (true (search "{{{client}}}" xml) "~a" xml)
+    (false (search "fldChar" xml) "~a" xml)))
+
+(define-test (template-import docx-section-marks-in-linear-time)
+  ;; a long section of pages turned sideways, full of headings, is marked in time in step with its length
+  (let ((tuatara.defaults::*docx-reading* (tuatara.defaults::docx-reading-of
+                                           "s.docx" (tuatara.defaults::zip-octets '(("word/document.xml" . "<w:document/>")))))
+        (sideways "<w:sectPr><w:pgSz w:w=\"16838\" w:h=\"11906\" w:orient=\"landscape\"/></w:sectPr>")
+        (upright "<w:sectPr><w:pgSz w:w=\"11906\" w:h=\"16838\"/></w:sectPr>"))
+    (flet ((seconds (count)
+             (let ((tops (loop for i below count
+                               collect (if (evenp i)
+                                           "<w:p><w:pPr><w:outlineLvl w:val=\"1\"/></w:pPr><w:r><w:t>Head</w:t></w:r></w:p>"
+                                           "<w:p><w:r><w:t>Words</w:t></w:r></w:p>"))))
+               (max 1/1000 (least-seconds
+                            (lambda ()
+                              (tuatara.defaults::docx-import-section-marks
+                               tops (make-list count :initial-element sideways) upright)))))))
+      (let ((small (seconds 500)) (large (seconds 4000)))
+        (true (< (/ large small) 24) "~,3fs for 500 elements, ~,3fs for 4,000" small large)))))

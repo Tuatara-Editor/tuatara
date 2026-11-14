@@ -53,6 +53,28 @@
   (false (tuatara.defaults::parse-bookmark-line "x	name	/path	text"))
   (false (tuatara.defaults::parse-bookmark-line "12	name")))
 
+(defun wait-for-bookmark-kinds ()
+  "Wait, five seconds at most, for the look at the bookmarks' files to end."
+  (loop repeat 500 while tuatara.defaults::*bookmark-kinds-looking* do (sleep 0.01)))
+
+(define-test (bookmarks kinds-looked-at-away-from-the-editor)
+  ;; the manager never asks the disk what a bookmark's file is on the editor's thread
+  (with-test-directory (dir)
+    (let ((threads '()) (here sb-thread:*current-thread*))
+      (tuatara.defaults::state-list-put tuatara.defaults::*bookmarks*
+                                        (list (list "seen" (namestring (merge-pathnames "seen.txt" dir)) 0 "")))
+      (sb-int:encapsulate 'tuatara.defaults::file-place-kind 'where
+                          (lambda (function path) (push sb-thread:*current-thread* threads) (funcall function path)))
+      (unwind-protect
+           (multiple-value-bind (f editor) (run-keys (list "C-x m l" #'wait-for-bookmark-kinds :tick)
+                                                     :width 120 :height 14)
+             (declare (ignore f))
+             (true threads)
+             (false (member here threads))
+             (true (cl-ppcre:scan "seen +gone" (session-text editor))))
+        (sb-int:unencapsulate 'tuatara.defaults::file-place-kind 'where)
+        (tuatara.defaults::state-list-drop tuatara.defaults::*bookmarks* (list "seen"))))))
+
 (define-test (bookmarks managed-as-buffers)
   (with-test-directory (dir)
     (let ((tuatara.defaults::*modal-editing* nil))
@@ -65,7 +87,8 @@
                (keep "directory" dir)
                (keep "alpha" (merge-pathnames "a.txt" dir))
                ;; the latest first, each with its kind, a summing-up line
-               (multiple-value-bind (f editor) (run-keys "C-x m l" :width 120 :height 14)
+               (multiple-value-bind (f editor) (run-keys (list "C-x m l" #'wait-for-bookmark-kinds :tick)
+                                                         :width 120 :height 14)
                  (declare (ignore f))
                  (let ((text (session-text editor)))
                    (let ((rows (subseq text (search "alpha" text))))
@@ -322,3 +345,16 @@
       (is string= "directory" (tuatara.defaults::file-place-kind directory))
       (is string= "file" (tuatara.defaults::file-place-kind file))
       (is string= "gone" (tuatara.defaults::file-place-kind (concatenate 'string root "none"))))))
+
+(define-test (bookmarks no-plaintext-kept-of-a-place)
+  ;; a place in an encrypted file's text keeps none of that text, only where it is
+  (let ((b (tuatara.buffer:make-buffer "notes.org.gpg" :text "the secret words")))
+    (unwind-protect
+         (progn
+           (setf (tuatara.buffer:buffer-file b) "/nowhere/notes.org.gpg"
+                 (tuatara.io:buffer-plaintext-p b) t)
+           (let ((place (tuatara.defaults::file-place-here b 4)))
+             (is string= "" (tuatara.defaults::file-place-context place))
+             (is = 4 (tuatara.defaults::file-place-offset place)))
+           (is string= "" (tuatara.defaults::text-after-place b 0)))
+      (tuatara.buffer:kill-buffer b))))

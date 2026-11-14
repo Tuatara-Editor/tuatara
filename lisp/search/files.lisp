@@ -35,54 +35,16 @@ and memory to list them; lower it for a quicker list.
 - a whole number, 1 or more: the lines; 2000 as standard."
   :values (integer 1 *))
 
-(defstruct (file-corpus (:constructor make-file-corpus (rope paths starts root)) (:copier nil))
+(define-record (file-corpus (:constructor make-file-corpus (rope paths starts root)) (:copier nil))
   "The text of files read for searching: ROPE holds them one after another,
 each ending with a newline; PATHS are their paths from ROOT, and STARTS the
 offset in ROPE where each begins, in the same order."
-  (rope nil :read-only t)
-  (paths #() :type simple-vector :read-only t)
-  (starts #() :type simple-vector :read-only t)
-  (root "" :type string :read-only t))
+  (rope nil :read-only t :documentation "The text of the files of a FILE-CORPUS, one after another.")
+  (paths #() :type simple-vector :read-only t :documentation "The paths from the root of the files of a FILE-CORPUS.")
+  (starts #() :type simple-vector :read-only t :documentation "Where each file of a FILE-CORPUS begins in its text.")
+  (root "" :type string :read-only t :documentation "The directory the paths of a FILE-CORPUS are from."))
 
-(setf (documentation 'make-file-corpus 'function) "Return the text of files read for searching (see FILE-CORPUS)."
-      (documentation 'file-corpus-p 'function) "True when OBJECT is a FILE-CORPUS."
-      (documentation 'file-corpus-rope 'function) "The text of the files of a FILE-CORPUS, one after another."
-      (documentation 'file-corpus-paths 'function) "The paths from the root of the files of a FILE-CORPUS."
-      (documentation 'file-corpus-starts 'function) "Where each file of a FILE-CORPUS begins in its text."
-      (documentation 'file-corpus-root 'function) "The directory the paths of a FILE-CORPUS are from.")
-
-(defun read-text-file (path &key most)
-  "The octets of the file at PATH, or NIL when it cannot be read or is no
-regular file. NIL too when it looks binary (a zero octet among its first 64 KB,
-as pictures, video and programs have: TUATARA.IO:BINARY-HEAD-P, as opening a
-file tells it). NIL also when it is of a kind its first octets tell
-\(TUATARA.IO:OCTETS-KIND: a PDF, a picture, an archive, a disk image; a drawing
-written as text, SVG, is text, and so is UTF-8 with a byte order mark). NIL as
-well when it is encrypted, as its name or its header says (ENCRYPTED-FILE-P).
-So only text is read for searching, and the text of an encrypted file never is.
-With MOST, a file larger than MOST octets is not read beyond its first 64 KB,
-its size known from the system: NIL, with :TOO-LARGE as a second value, so that
-a gigantic file never passes through memory for a search that would not keep
-it. Its access time is left alone where the system allows, and a named pipe
-cannot hold it up."
-  (unless (encrypted-name-p (tuatara.io:native-file-name path))
-    (ignoring-errors-reported ("reading ~a to search" path)
-      (handler-case
-          (tuatara.io:call-with-file
-           path
-           (lambda (fd path size)
-             ;; a small file read whole at once; of a larger one, the part that tells it binary
-             (let ((head (tuatara.io:read-fd-start fd path size tuatara.io:+binary-sample+ :past-size t)))
-               (unless (or (tuatara.io:binary-head-p head)
-                           (encrypted-head-p (subseq head 0 (min (length head) 200)))
-                           ;; a kind of file told by its first octets: a picture, a PDF, an archive, a disk image
-                           (not (member (nth-value 1 (tuatara.io:octets-kind head)) '(nil :svg :utf-8))))
-                 (cond ((and most (> (max size (length head)) most)) (values nil :too-large))
-                       ((< (length head) (min tuatara.io:+binary-sample+ (max 8192 (1+ size)))) head)
-                       ;; larger than the system said (/proc, /sys) or than the head: read whole
-                       (t (let ((octets (tuatara.io:read-fd-octets fd :path path :size-hint (1+ size))))
-                            (and (not (tuatara.io:binary-head-p octets)) octets))))))))
-        (tuatara.io:file-system-error (condition) (values nil condition))))))
+(setf (documentation 'make-file-corpus 'function) "Return the text of files read for searching (see FILE-CORPUS).")
 
 (defun corpus-file-at (corpus position)
   "The index in CORPUS of the file holding byte POSITION of its text."
@@ -93,43 +55,32 @@ cannot hold it up."
   "The input last searched for and its matchers, as ((INPUT REGEX) . MATCHERS),
 so that a search of many files makes them once, not once a file.")
 
-(defun search-word-matcher (word &optional crlf)
-  "A matcher for WORD as a regular expression (MAKE-PATTERN-MATCHER, as a
-search makes it), NIL when it is not one (SEARCH-INPUT-PROBLEM says why);
-with carriage return and line feed (CRLF), for text whose lines end with a
-carriage return and a newline."
-  (make-pattern-matcher word :regex t :crlf crlf))
-
 (defun search-input-problem (input regex)
   "Why INPUT cannot be searched for, as PATTERN-PROBLEM says it of a word
 that is no regular expression, with REGEX; NIL when it can."
   (and regex (some (lambda (word) (pattern-problem word t)) (tuatara.text:split-words input " "))))
 
-(defun search-input-matchers (input regex &optional crlf)
+(defun search-input-matchers (input regex)
   "The matchers of INPUT, the longest first: with REGEX, one for each of its
-words (separated by spaces, SEARCH-WORD-MATCHER), none when a word is no
-regular expression; else one for the whole of it as literal text, spaces and
-all. With carriage return and line feed (CRLF), for files whose lines end with
-a carriage return and a newline. Made once however many pieces and files the
-same input is searched in, from any thread."
+words (separated by spaces, MAKE-PATTERN-MATCHER), none when a word is no
+regular expression (SEARCH-INPUT-PROBLEM says why); else one for the whole of
+it as literal text, spaces and all. Made once however many pieces and files
+the same input is searched in, from any thread."
   (let ((key (list input regex))
         (last *search-input-matchers*))
-    (unless (equal (car last) key)
-      ;; one cons replaced whole: a thread reads the input and its matchers together
-      (setf last (cons key (vector nil nil))
-            *search-input-matchers* last))
-    (let ((slot (if crlf 1 0)))
-      (or (svref (cdr last) slot)
-          (setf (svref (cdr last) slot)
-                (if regex
-                    ;; a word that is no regular expression finds nothing, so neither do they all
-                    (let ((matchers (mapcar (lambda (word) (search-word-matcher word crlf))
-                                            (stable-sort (tuatara.text:split-words input " ")
-                                                         ;; the longest word, likely the rarest, finds the lines to
-                                                         ;; look at
-                                                         #'> :key #'length))))
-                      (and (notany #'null matchers) matchers))
-                    (list (make-pattern-matcher input :regex nil))))))))
+    (if (equal (car last) key)
+        (cdr last)
+        ;; one cons replaced whole: a thread reads the input and its matchers together
+        (cdr (setf *search-input-matchers*
+                   (cons key
+                         (if regex
+                             ;; a word that is no regular expression finds nothing, so neither do they all
+                             (let ((matchers (mapcar (lambda (word) (make-pattern-matcher word :regex t))
+                                                     ;; the longest word, likely the rarest, finds the lines to look at
+                                                     (stable-sort (tuatara.text:split-words input " ")
+                                                                  #'> :key #'length))))
+                               (and (notany #'null matchers) matchers))
+                             (list (make-pattern-matcher input :regex nil)))))))))
 
 (sb-ext:defglobal **corpus-line-endings** (make-hash-table :test 'eq :weakness :key :synchronized t)
   "For each FILE-CORPUS searched, which of its files have lines ending with a
@@ -198,7 +149,7 @@ few milliseconds on each thread, answers true, and a second value true then."
                                                  when (/= (aref crlf k) ending) return k)
                                            (length starts)))
                                  (stretch-end (if (< next (length starts)) (min to (aref starts next)) to))
-                                 (matchers (search-input-matchers input regex (= ending 1))))
+                                 (matchers (search-input-matchers input regex)))
                             (when matchers
                               (setf marked
                                     (scan-stretch from stretch-end (and carry (> carry from) carry) marked
@@ -225,7 +176,8 @@ few milliseconds on each thread, answers true, and a second value true then."
                               (let ((line (1+ (- (tuatara.text:byte->line rope line-start)
                                                  (tuatara.text:byte->line rope (aref starts file))))))
                                 (setf done (funcall give (list file line (max 0 (- s line-start))
-                                                               (tuatara.text:rope-string rope :start line-start :end text-end)))))))
+                                                               (tuatara.text:rope-string rope :start line-start
+                                                                                              :end text-end)))))))
                           (unit-of (at from) (line-holding rope at from crlf))
                           (found (start e)
                             (setf s start)
@@ -241,7 +193,9 @@ few milliseconds on each thread, answers true, and a second value true then."
                               (map-matcher-matches
                                (lambda (start e m g)
                                  (declare (ignore m g))
-                                 (if (and crossing (> e (if (>= start file-limit) (file-end (corpus-file-at corpus start)) file-limit)))
+                                 (if (and crossing (> e (if (>= start file-limit)
+                                                            (file-end (corpus-file-at corpus start))
+                                                            file-limit)))
                                      (setf crossed start)
                                      (found start e)))
                                rope first at to :bound bound :texts nil :halt halt)
@@ -268,7 +222,8 @@ few milliseconds on each thread, answers true, and a second value true then."
                          (min (* 4 (tuatara.runtime:cpu-count)) (ceiling length *search-chunk*))))
              (bounds (let ((at start))
                        (append (loop for k from 1 below chunks
-                                     collect (setf at (max at (tuatara.text:rope-line-start rope (+ start (floor (* k length) chunks))))))
+                                     collect (setf at (max at (tuatara.text:rope-line-start
+                                                               rope (+ start (floor (* k length) chunks))))))
                                (list size))))
              (froms (cons start (butlast bounds)))
              (results (tuatara.runtime:run-tasks
@@ -349,10 +304,12 @@ turns true."
                        (if (and (not whole) (null newline) growing)
                            (setf buffer (grown-octets buffer limit))
                            (let ((end (if newline (1+ newline) got))
-                                 (corpus (make-file-corpus (tuatara.text:octets->rope (coerce (subseq buffer 0 got) 'tuatara.text:octets))
+                                 (corpus (make-file-corpus (tuatara.text:octets->rope
+                                                            (coerce (subseq buffer 0 got) 'tuatara.text:octets))
                                                            (vector relative) (vector 0) root)))
                              (multiple-value-bind (lines stopped reach)
-                                 (corpus-lines corpus input :regex regex :most (- most count) :stop (lambda () (car cancel))
+                                 (corpus-lines corpus input :regex regex :most (- most count)
+                                                            :stop (lambda () (car cancel))
                                                             :parallel parallel :end end :carry carry)
                                (declare (ignore stopped))
                                (if (and reach (>= reach got) (not whole) growing)
@@ -360,7 +317,10 @@ turns true."
                                    (setf buffer (grown-octets buffer limit))
                                    (progn
                                      (dolist (candidate (line-candidates corpus
-                                                                         (mapcar (lambda (line) (list* (first line) (+ lines-before (second line)) (cddr line)))
+                                                                         (mapcar (lambda (line)
+                                                                                   (list* (first line)
+                                                                                          (+ lines-before (second line))
+                                                                                          (cddr line)))
                                                                                  lines)
                                                                          inside))
                                        (push candidate found)
@@ -384,12 +344,14 @@ its car turns true."
         (batch (* 2 (tuatara.runtime:cpu-count))))
     (loop for rest on files by (lambda (list) (nthcdr batch list))
           while (and (< count most) (not (car cancel)))
-          do (let* ((some (subseq rest 0 (min batch (length rest))))
+          do (let* ((some (loop for file in rest repeat batch collect file))
                     (results (tuatara.runtime:run-tasks
                               (coerce (mapcar (lambda (file)
                                                 (destructuring-bind (relative path) file
-                                                  (lambda () (lines-on-disk path relative root input :regex regex :cancel cancel :most most
-                                                                                                     :inside inside :parallel nil))))
+                                                  (lambda ()
+                                                    (lines-on-disk path relative root input :regex regex :cancel cancel
+                                                                                            :most most :inside inside
+                                                                                            :parallel nil))))
                                               some)
                                       'simple-vector))))
                (loop for candidates across results
@@ -418,7 +380,7 @@ the corpus's root, only those of files in it, their paths from it."
   "About how many octets of text each piece of the files read for a search
 holds: each is searched as soon as it is read.")
 
-(defstruct (corpus-gatherer (:constructor make-corpus-gatherer (limit piece give-piece give-large)) (:copier nil))
+(define-record (corpus-gatherer (:constructor make-corpus-gatherer (limit piece give-piece give-large)) (:copier nil))
   "How the text of files is taken in for searching, in pieces, by the search of
 many files and by the directories kept read alike. LIMIT is the most octets
 kept in all. PIECE is about how many each piece holds. GIVE-PIECE is a function
@@ -426,11 +388,18 @@ given each piece as it is full, its TEXTS, each (RELATIVE OCTETS STAMP), in
 order, and its SIZE, their octets with a newline after each. GIVE-LARGE is one
 given the RELATIVE and PATH of each text file too large for what is left of
 LIMIT, to be searched from disk (LINES-ON-DISK). TOTAL is the octets kept so
-far. TEXTS and SIZE are the piece being filled." limit piece give-piece
-give-large (total 0) (texts '()) (size 0))
+far. TEXTS and SIZE are the piece being filled."
+  (limit nil :documentation "The most octets of text GATHERER keeps in all.")
+  (piece nil :documentation "About how many octets each piece GATHERER gives holds.")
+  (give-piece nil :documentation "The function GATHERER gives each piece as it is full, its TEXTS and its SIZE.")
+  (give-large nil
+              :documentation "The function GATHERER gives the RELATIVE name and PATH of each text file too large for
+what is left of its limit.")
+  (total 0 :documentation "How many octets of text GATHERER has kept so far.")
+  (texts '() :documentation "The texts of the piece GATHERER is filling, latest first, each (RELATIVE OCTETS STAMP).")
+  (size 0 :documentation "The octets of the piece GATHERER is filling, with a newline after each text."))
 
-(setf (documentation 'make-corpus-gatherer 'function) "Return a CORPUS-GATHERER."
-      (documentation 'corpus-gatherer-p 'function) "True when OBJECT is a CORPUS-GATHERER.")
+(setf (documentation 'make-corpus-gatherer 'function) "Return a CORPUS-GATHERER.")
 
 (defun gather-piece (gatherer)
   "Give the piece GATHERER is filling, when it holds any text, and begin another."
@@ -470,29 +439,30 @@ large, NIL when it is not text."
 .gitignore files leave out left out) on a thread of their own, up to
 *SEARCH-FILES-LIMIT* octets, in pieces of about *SEARCH-FILES-PIECE*, each a
 FILE-CORPUS given as it is read (GATHER-TEXT-FILE); the GATHERING. A text
-file too large for what is left of the limit is given as (:LARGE RELATIVE
-PATH), to be searched from disk (LINES-ON-DISK); when the walk left files
-out, the last thing given is :LEFT-OUT."
+file too large for what is left of the limit, or past the most files read
+\(*INDEXED-FILES-MOST*), is given as (:LARGE RELATIVE PATH), to be searched
+from disk (LINES-ON-DISK)."
   (let ((limit *search-files-limit*)
         (piece *search-files-piece*)
+        (most *indexed-files-most*)
         (root (directory-name root)))
     (start-gathering
      "tuatara reading files to search"
      (lambda (give cancel)
-       (let ((gatherer (make-corpus-gatherer limit piece
-                                             (lambda (texts size)
-                                               (funcall give (make-corpus (mapcar (lambda (text) (cons (first text) (second text))) texts)
-                                                                          size root)))
-                                             (lambda (relative path) (funcall give (list :large relative path))))))
-         (multiple-value-bind (files more)
-             (files-under root :gitignore t :cancel cancel
-                               :each (lambda (path relative)
-                                       (unless (car cancel)
-                                         (gather-text-file gatherer relative path))))
-           (declare (ignore files))
-           (gather-piece gatherer)
-           (when (and more (not (car cancel)))
-             (funcall give :left-out))))))))
+       (flet ((large (relative path) (funcall give (list :large relative path))))
+         (let ((gatherer (make-corpus-gatherer limit piece
+                                               (lambda (texts size)
+                                                 (funcall give (make-corpus (mapcar (lambda (text)
+                                                                                      (cons (first text) (second text)))
+                                                                                    texts)
+                                                                            size root)))
+                                               #'large)))
+           (files-under root :gitignore t :cancel cancel :limit most
+                             :each (lambda (path relative)
+                                     (unless (car cancel)
+                                       (gather-text-file gatherer relative path)))
+                             :past (lambda (path relative) (large relative path)))
+           (gather-piece gatherer)))))))
 
 (defun make-corpus (texts size root)
   "A FILE-CORPUS of TEXTS, each (RELATIVE . OCTETS), SIZE octets with a
@@ -528,59 +498,15 @@ holds none. The files of a directory lie together, as they were read."
   "A cons whose car counts the searches over a directory kept read
 \(*INDEXED-DIRECTORIES*) under way now, for the mode line's sign of them.")
 
-(defparameter *sign-lit-seconds* 1/2
-  "The least time a sign of the mode line stays lit once its work begins or
-ends, so that work done in a moment is seen too.")
-
-(defvar *signs-lit-until* (make-hash-table :test 'eq :synchronized t)
-  "For each sign of the mode line, the internal real time it stays lit until.")
-
-(sb-ext:defglobal **sign-fader** (list nil)
-  "True in its car while a thread waits to wake the frontend once the signs
-lit last are to be drawn faint (NOTE-SIGN-WORK): one at most, however many
-signs are lit meanwhile.")
-
-(defun note-sign-work (sign &optional editor)
-  "Note that the work SIGN (a keyword: :indexing, :searching) shows began or
-ended now, from any thread, so that its sign is lit for *SIGN-LIT-SECONDS*
-however quick the work; wake EDITOR, when given, to show it lit now and
-again once the moment is over, to show it faint, a question in the minibuffer
-open or not. One thread at most waits for that moment, for every sign lit."
-  (setf (gethash sign *signs-lit-until*) (tuatara.runtime:deadline-in *sign-lit-seconds*))
-  (when editor
-    (wake-editor editor)
-    (when (null (sb-ext:compare-and-swap (car **sign-fader**) nil t))
-      (tuatara.runtime:make-guarded-thread
-       (lambda ()
-         (flet ((left ()
-                  (let ((latest 0))
-                    (maphash (lambda (sign until) (declare (ignore sign)) (setf latest (max latest until)))
-                             *signs-lit-until*)
-                    (tuatara.runtime:seconds-left latest))))
-           ;; until the last sign lit is due to fade, however often they were lit again
-           (loop
-             (let ((left (left)))
-               (when (plusp left) (sleep left)))
-             (wake-editor editor)
-             (setf (car **sign-fader**) nil)
-             ;; one lit as this one let go waits on here, unless another thread took it
-             (unless (and (plusp (left)) (null (sb-ext:compare-and-swap (car **sign-fader**) nil t)))
-               (return)))))
-       :name "tuatara sign fading"))))
-
-(defstruct (found-lines (:constructor make-found-lines (lines index words)) (:copier nil))
+(define-record (found-lines (:constructor make-found-lines (lines index words)) (:copier nil))
   "The lines a search of files found, as a list of places (STEP-PLACE): LINES,
 a vector of (PATH LINE OFFSET), in the order listed, INDEX, the one gone to
 last, and WORDS, what was searched for."
-  (lines #() :type simple-vector :read-only t)
-  (index 0 :type fixnum)
-  (words "" :type string :read-only t))
-
-(setf (documentation 'found-lines-p 'function) "True when OBJECT is a FOUND-LINES."
-      (documentation 'found-lines-lines 'function) "The lines a search of files found, each (PATH LINE OFFSET)."
-      (documentation 'found-lines-index 'function) "The line of a FOUND-LINES gone to last."
-      (documentation 'found-lines-words 'function)
-      "What the search of files that found a FOUND-LINES' lines searched for.")
+  (lines #() :type simple-vector :read-only t
+         :documentation "The lines a search of files found, each (PATH LINE OFFSET).")
+  (index 0 :type fixnum :documentation "The line of a FOUND-LINES gone to last.")
+  (words "" :type string :read-only t
+         :documentation "What the search of files that found a FOUND-LINES' lines searched for."))
 
 (defmethod places-name ((places found-lines))
   "The search for what was searched for, shortened to a few words: the search for kiwi."
@@ -630,7 +556,7 @@ without all it may find, or NIL when they are all: the search stopped at MOST
         ((not ended)
          (format nil "Only the ~:d line~:p found so far: the search had not ended" count))))
 
-(defun search-files-as-read (root prompt &key (left-out-words "Searching the first ~:d files only") preview)
+(defun search-files-as-read (root prompt &key preview)
   "Ask with PROMPT for words to find in the files under ROOT, read in the
 background meanwhile (GATHER-FILE-TEXTS), or kept read already
 \(*INDEXED-DIRECTORIES*): the lines that have them listed as they are typed,
@@ -640,30 +566,28 @@ key stops it and starts the next, so that typing never waits. What is typed is
 a regular expression's words, \\<pattern>\\[search-toggle-regex] switching to
 literal text and back, and PROMPT is shown after the kind (Regex search files
 in ~/x/: , Literal search files in ~/x/: , PATTERN-KIND-WORDS). In a directory
-under one kept read, only its files' text is searched, unless the limits cut
-that one's text short, when the directory is read from disk. Choosing, or
-leaving the question, stops the reading and the search. LEFT-OUT-WORDS says,
-with how many files were read, that the limit left some out. With PREVIEW, the
+under one kept read, only its files' text is searched. Files past the limits
+are searched from disk once the rest is (LINES-ON-DISK-MANY). Choosing, or
+leaving the question, stops the reading and the search. With PREVIEW, the
 file of the line selected is shown meanwhile, at that line, opened safely
 \(CALL-WITH-WINDOW-PREVIEW)."
-  (declare (notinline directory-index-left-out directory-index-corpora directory-index-large directory-index-root))
+  (declare (notinline directory-index-corpora directory-index-large directory-index-root))
   (multiple-value-bind (index inside) (index-for root)
-    ;; a directory under one kept read whose text was cut short by the limits may
-    ;; hold files left out: read from disk, as with no index
-    (when (and index (directory-index-left-out index) (plusp (length inside)))
-      (setf index nil inside ""))
     (let* ((reading (and (null index) (gather-file-texts root)))
            (inside (or inside ""))
            ;; the pieces of text read so far, kept read (*INDEXED-DIRECTORIES*): all there at once;
            ;; the searching thread takes them under the lock as they come
            (lock (sb-thread:make-mutex :name "search pieces"))
+           ;; woken when pieces come or all is read
+           (more-read (sb-thread:make-waitqueue :name "search pieces read"))
            (corpora (if index (coerce (directory-index-corpora index) 'list) '()))
-           ;; the text files too large to keep, each (RELATIVE PATH), searched from disk
+           ;; the text files too large to keep or past the most files, each (RELATIVE PATH), searched from
+           ;; disk; those of a reading come in at the end, after LARGE-END, its last cons
            (large (if index (directory-index-large index) '()))
+           (large-end (last large))
            (root-name (if index (directory-index-root index) (directory-name root)))
            (read-all (null reading))
            (editor *editor*)
-           (left-out nil)
            ;; the search of the input typed last, and the lines it found
            (searching nil) (searched-input nil) (found '())
            ;; true once the search of the input typed last has ended; the most lines it gives
@@ -685,12 +609,13 @@ file of the line selected is shown meanwhile, at that line, opened safely
                    (if (equal (car checked) key)
                        (cdr checked)
                        (cdr (setf checked (cons key (search-input-problem input regex)))))))
-               (piece (i)
-                 ;; the I-th piece once read, :WAIT while more may come, NIL when there are no more
+               (piece (i cancel)
+                 ;; the I-th piece, waited for while more may come; NIL when there are no more or
+                 ;; CANCEL's car turned true
                  (sb-thread:with-mutex (lock)
-                   (cond ((< i (length corpora)) (nth i corpora))
-                         (read-all nil)
-                         (t :wait))))
+                   (loop until (or (< i (length corpora)) read-all (car cancel))
+                         do (sb-thread:condition-wait more-read lock :timeout 0.1))
+                   (and (< i (length corpora)) (not (car cancel)) (nth i corpora))))
                (start-search (input)
                  (when searching (stop-gathering searching))
                  (setf searched-input (list input regex) fresh t searched-all nil
@@ -704,12 +629,8 @@ file of the line selected is shown meanwhile, at that line, opened safely
                           (unwind-protect
                               (let ((count 0))
                                 (loop for i from 0
-                                      for corpus = (loop for p = (piece i)
-                                                         while (and (eq p :wait) (not (car cancel)))
-                                                         do (sleep 0.02)
-                                                         finally (return p))
-                                      while (and corpus (not (eq corpus :wait)) (not (car cancel))
-                                                 (< count most))
+                                      for corpus = (piece i cancel)
+                                      while (and corpus (< count most))
                                       do (multiple-value-bind (from to) (corpus-range corpus inside)
                                            (when from
                                              (let ((lines (corpus-lines corpus input :regex regex :start from :end to
@@ -733,15 +654,13 @@ file of the line selected is shown meanwhile, at that line, opened safely
                      (multiple-value-bind (new done) (take-gathered reading)
                        (sb-thread:with-mutex (lock)
                          (dolist (thing new)
-                           (if (eq thing :left-out)
-                               (setf left-out t)
-                               (if (and (consp thing) (eq (first thing) :large))
-                                   (setf large (append large (list (rest thing))))
-                                   (setf corpora (append corpora (list thing))))))
-                         (when done (setf read-all t)))
-                       (when (and done left-out)
-                         (setf left-out nil)
-                         (message left-out-words (files-read)))
+                           (if (and (consp thing) (eq (first thing) :large))
+                               (let ((end (list (rest thing))))
+                                 (if large-end (setf (cdr large-end) end) (setf large end))
+                                 (setf large-end end))
+                               (setf corpora (append corpora (list thing)))))
+                         (when done (setf read-all t))
+                         (when (or new done) (sb-thread:condition-broadcast more-read)))
                        (unless done (setf working t))))
                    (when searching
                      (multiple-value-bind (new done) (take-gathered searching)
@@ -770,20 +689,20 @@ file of the line selected is shown meanwhile, at that line, opened safely
                                                            (progn (setf listing t) (finish-minibuffer))
                                                            (message "No lines found yet")))))
                              (call-with-window-preview
-                            (lambda (candidate made)
-                              (destructuring-bind (path line offset &optional text) (candidate-value candidate)
-                                (declare (ignore text))
-                                (let ((buffer (preview-file-buffer path made)))
-                                  (when buffer
-                                    (values buffer (+ (tuatara.buffer:buffer-goto-line buffer (1- line)) offset))))))
-                            (lambda (show)
-                              (completing-read (lambda ()
-                                                 (pattern-prompt regex prompt
-                                                                 (problem (editor-minibuffer-text *editor*))))
-                                               #'lines
-                                               :separator (code-char 0) :filter nil :require-match t
-                                               :source #'take :keymap *search-files-keymap*
-                                               :preview (and preview show)))))))
+                              (lambda (candidate made)
+                                (destructuring-bind (path line offset &optional text) (candidate-value candidate)
+                                  (declare (ignore text))
+                                  (let ((buffer (preview-file-buffer path made)))
+                                    (when buffer
+                                      (values buffer (+ (tuatara.buffer:buffer-goto-line buffer (1- line)) offset))))))
+                              (lambda (show)
+                                (completing-read (lambda ()
+                                                   (pattern-prompt regex prompt
+                                                                   (problem (editor-minibuffer-text *editor*))))
+                                                 #'lines
+                                                 :separator (code-char 0) :filter nil :require-match t
+                                                 :source #'take :keymap *search-files-keymap*
+                                                 :preview (and preview show)))))))
                (when listing
                  (show-search-results found (or (first searched-input) "")
                                       :cut (found-lines-cut (length found) most searched-all)))
@@ -837,8 +756,6 @@ exclude are left out; the access times of those read are not changed."
                    (read-directory-path "Search files in: " :initial (abbreviated-path here))
                    (or (project-root here) here))))
     (search-files-as-read root (format nil "search files in ~a" (abbreviated-path (directory-name root)))
-                          :left-out-words (format nil "Searched the first ~~:d files only (~:d MB)"
-                                                  (floor *search-files-limit* (* 1024 1024)))
                           :preview *preview-file-search*)))
 
 (define-command search-in-formatted ()
@@ -849,6 +766,4 @@ background meanwhile, \\<pattern>\\[search-toggle-regex] switching to literal te
 and \\<minibuffer>\\[minibuffer-finish] visits one. With
 *preview-formatted-search*, the file of the line selected is shown meanwhile,
 at that line, opened safely."
-  (search-files-as-read *formatted-file-directory* "search formatted files"
-                        :left-out-words "Searched the first ~:d files only"
-                        :preview *preview-formatted-search*))
+  (search-files-as-read *formatted-file-directory* "search formatted files" :preview *preview-formatted-search*))

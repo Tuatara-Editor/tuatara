@@ -168,7 +168,7 @@
         (true (search "*Total time*" (session-text editor)))
         (false (search "*File time*" (session-text editor)))
         (true (tuatara.frontend.fake:fake-frame-showing f "/etc/hostname out"))))
-    ;; a pattern in a block's :match is not run
+    ;; a pattern in a block's :match that could take for ever is not run
     (let ((text (format nil "* A :work:~%:LOGBOOK:~%CLOCK: [2026-10-02 Fri 08:00]--[2026-10-02 Fri 09:00] =>  1:00~%:END:~%#+BEGIN: clocktable :match \"{(a*)*b}\"~%#+END:~%")))
       (multiple-value-bind (f editor) (run-keys "M-x o r g - m o d e RET C-u 4 j C-c C-c"
                                                 :text text
@@ -176,7 +176,7 @@
                                                 :height 12)
         (true (search "| A " (session-text editor)))
         (true (search "1:00" (session-text editor)))
-        (true (tuatara.frontend.fake:fake-frame-showing f "{pattern}"))))
+        (true (tuatara.frontend.fake:fake-frame-showing f "is not run"))))
     ;; steps that would go on for ever stop, and say so; a block Org does not know leaves the block as it is
     (let ((text (format nil "* A~%:LOGBOOK:~%CLOCK: [2026-10-02 Fri 08:00]--[2026-10-02 Fri 09:00] =>  1:00~%:END:~%#+BEGIN: clocktable :step day :tstart \"<1900-01-01 Mon>\" :tend \"<2030-01-01 Tue>\" :stepskip0 t~%#+END:~%")))
       (multiple-value-bind (f editor) (run-keys "M-x o r g - m o d e RET C-u 4 j C-c C-c"
@@ -193,6 +193,21 @@
     (is equal
         (list :maxlevel "123456789012345678901234567890")
         (tuatara.defaults::dblock-read-params ":maxlevel 123456789012345678901234567890"))))
+
+(define-modal-test (org blocks-run-patterns-that-end)
+  ;; a pattern in a block's :match that cannot take for ever selects as a typed one does
+  (let ((tuatara.defaults::*org-now* (encode-universal-time 0 40 15 2 10 2026))
+        (text (format nil "* A :work:~%:LOGBOOK:~%CLOCK: [2026-10-02 Fri 08:00]--[2026-10-02 Fri 09:00] =>  1:00~%:END:~%* B :home:~%:LOGBOOK:~%CLOCK: [2026-10-02 Fri 10:00]--[2026-10-02 Fri 12:00] =>  2:00~%:END:~%#+BEGIN: clocktable :match \"{^wo}\"~%#+END:~%")))
+    (let ((after (org-text-after "C-u 8 j C-c C-c" text)))
+      (true (search "| A " after) "~a" after)
+      (false (search "| B " after) "~a" after))))
+
+(define-test (org block-parameters-nested-without-end)
+  ;; brackets nested past any use read as nothing, never as deep as the stack goes
+  (is eq :read
+      (handler-case (progn (tuatara.defaults::dblock-read-params (make-string 200000 :initial-element #\())
+                           :read)
+        (storage-condition () :stack))))
 
 (define-test (org toc-tags-read-in-a-pass)
   (is equal '("TOC" "x") (tuatara.defaults::toc-line-tags "* Contents :TOC:x:"))
@@ -503,3 +518,22 @@
              (is = 5000 (length (gethash path (tuatara.defaults::dblock-snapshot-sources)))))
         (setf (tuatara.buffer:buffer-mapping buffer) nil)
         (tuatara.buffer:kill-buffer buffer)))))
+
+(define-test (org formatted-blocks-nested-repeats-refused)
+  ;; a note's own pattern that repeats a repeated part is never run: the block stays as it was
+  (let ((tuatara.defaults::*formatted-file-directory* (formatted-notes-directory)))
+    (dolist (first '("#+BEGIN: formatted-links :regexp \"(a+)+$\""
+                     "#+BEGIN: formatted-links :not-regexp \"(x*)*y\""
+                     "#+BEGIN: denote-links :excluded-dirs-regexp \"\\\\(a+\\\\)+$\""))
+      (let ((text (format nil "~a~%old~%#+END:~%" first)))
+        (is string= text (org-text-after "C-c C-c" text) "~a" first)))))
+
+(define-test (org toc-looked-for-in-place)
+  ;; a buffer with no :TOC has its text searched in place, never taken whole, when it is saved
+  (let ((buffer (tuatara.buffer:make-buffer "no-toc" :text (format nil "* One~%Text~%* Two~%")))
+        (calls 0))
+    (sb-int:encapsulate 'tuatara.defaults::org-text-now 'counting
+                        (lambda (function &rest arguments) (incf calls) (apply function arguments)))
+    (unwind-protect (false (tuatara.defaults::toc-update buffer :quiet t))
+      (sb-int:unencapsulate 'tuatara.defaults::org-text-now 'counting))
+    (is = 0 calls)))

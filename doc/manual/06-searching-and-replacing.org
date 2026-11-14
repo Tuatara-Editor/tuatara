@@ -105,8 +105,13 @@ you mend it. Either fix it or press ~M-r~ to take it as plain text.
 | =?=        | The one before it, once or not at all | =colou?r= finds color, colour |
 | =^=, =$=   | The start, the end of a line       | =^Dear= finds lines starting with Dear |
 | =\b=       | The edge of a word                 | =\bkea\b= does not find kearns |
+| =\n=       | One line end of any kind (LF, CRLF or a lone CR) | =kea\nTui= finds a line break |
 | =a\|b=     | Either one                         | =tui\|kea=                    |
 | =(...)=    | A group; later it can be called =\1=, =\2= | =(\d+)-(\d+)=         |
+
+Outside brackets, =\n= matches any one line end, as =$= stops before it, so a
+pattern for a line break works in a file with CRLF line ends. Inside brackets,
+=[\n]= is the line feed alone.
 
 A pattern that is only an edge, such as =^$= for an empty line, is a match too.
 Searching for it goes from one empty line to the next.
@@ -388,8 +393,10 @@ By default what was read is also kept on disk between sessions
 (=*indexes-kept-on-disk*=), so that at the next start only the files that
 changed are read again. Set it to nil for a directory whose text must not be
 copied anywhere. =*search-files-limit*= is the most text Tuatara keeps for
-one search or one kept directory, 128 MB as standard. Files past it are searched
-from the disk, more slowly.
+one search or one kept directory, 128 MB as standard, and
+=*indexed-files-most*= the most files whose text it keeps, 100,000 as
+standard. Files past either are searched from the disk, more slowly, so none
+is left out.
 
 #+begin_try Try it, with a directory of notes
 1. Make a directory called =notes= in your home directory, with your file manager
@@ -413,7 +420,7 @@ from the disk, more slowly.
 
 #+table: commands search-in-files search-in-formatted search-files-list search-results-edit search-results-finish search-results-cancel next-place previous-place
 
-#+table: settings *project-root-markers* *default-directory* *search-files-min-input* *search-files-lines-limit* *search-files-limit* *search-results-save-files* *preview-file-search* *preview-formatted-search* *indexed-directories* *indexes-kept-on-disk* *indexing-indicator* *searching-indicator*
+#+table: settings *project-root-markers* *default-directory* *search-files-min-input* *search-files-lines-limit* *search-files-limit* *indexed-files-most* *search-results-save-files* *preview-file-search* *preview-formatted-search* *indexed-directories* *indexes-kept-on-disk* *indexing-indicator* *searching-indicator*
 
 ** The outline of a buffer
 

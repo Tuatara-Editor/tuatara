@@ -10,135 +10,6 @@
 
 (in-package #:tuatara.io)
 
-(defun octet-at (octets i)
-  "The octet at I of OCTETS, or NIL past their end."
-  (and (< -1 i (length octets)) (aref octets i)))
-
-(defun octets-integer (octets at count &key big-endian)
-  "The unsigned integer in COUNT octets of OCTETS from AT, least significant
-first unless BIG-ENDIAN; NIL when they are not all there."
-  (and (<= 0 at) (<= (+ at count) (length octets))
-       (loop for k below count
-             sum (ash (aref octets (+ at k)) (* 8 (if big-endian (- count k 1) k))))))
-
-(defun octets-signed (value bits)
-  "VALUE, an unsigned integer of BITS bits, as the signed one it stands for; NIL for NIL."
-  (and value (if (logbitp (1- bits) value) (- value (ash 1 bits)) value)))
-
-(declaim (inline octets-put-integer))
-(defun octets-put-integer (octets value count &key at big-endian)
-  "Write the unsigned integer VALUE as COUNT octets, least significant first
-unless BIG-ENDIAN: into OCTETS from AT, or without AT at their end, OCTETS
-then a vector with a fill pointer that grows. Returns OCTETS."
-  (dotimes (k count octets)
-    (let ((octet (ldb (byte 8 (* 8 (if big-endian (- count k 1) k))) value)))
-      (if at
-          (setf (aref octets (+ at k)) octet)
-          (vector-push-extend octet octets)))))
-
-(defun octets-at-p (octets prefix &optional (at 0))
-  "True when OCTETS hold PREFIX, a string of ASCII or a list of octets, at AT."
-  (let ((prefix (if (stringp prefix) (map 'list #'char-code prefix) prefix)))
-    (and (<= 0 at) (<= (+ at (length prefix)) (length octets))
-         (loop for o in prefix for i from at always (= o (aref octets i))))))
-
-(defun base64-value (octet)
-  "The six bits OCTET stands for in base64, or NIL for an octet that is not one of its letters."
-  (cond ((<= 65 octet 90) (- octet 65)) ((<= 97 octet 122) (- octet 71)) ((<= 48 octet 57) (+ octet 4))
-        ((= octet 43) 62) ((= octet 47) 63) (t nil)))
-
-(defun base64-octets (octets &key (start 0) (end (length octets)))
-  "The octets base64 in OCTETS from START below END stands for: what is not
-of its letters (line ends, spaces) passed over, and a = ending it."
-  (let ((out (make-array (floor (* 3 (- end start)) 4) :element-type '(unsigned-byte 8)))
-        (filled 0) (bits 0) (count 0))
-    (loop for i from start below end
-          for octet = (aref octets i)
-          until (= octet 61)
-          do (let ((value (base64-value octet)))
-               (when value
-                 (setf bits (logior (ash bits 6) value))
-                 (incf count)
-                 (when (= count 4)
-                   (setf (aref out filled) (ldb (byte 8 16) bits)
-                         (aref out (+ filled 1)) (ldb (byte 8 8) bits)
-                         (aref out (+ filled 2)) (ldb (byte 8 0) bits))
-                   (incf filled 3)
-                   (setf bits 0 count 0)))))
-    ;; what a last group cut short holds
-    (case count
-      (2 (setf (aref out filled) (ldb (byte 8 4) bits)) (incf filled 1))
-      (3 (setf (aref out filled) (ldb (byte 8 10) bits) (aref out (1+ filled)) (ldb (byte 8 2) bits)) (incf filled 2)))
-    (subseq out 0 filled)))
-
-(defparameter *base64-digits*
-  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-  "The 64 letters of base64, each standing for six bits, in order.")
-
-(defun base64-string (octets &key (start 0) (end (length octets)))
-  "The octets of OCTETS from START below END in base64, = filling its last
-group: what BASE64-OCTETS reads back."
-  (let* ((octets (coerce octets '(simple-array (unsigned-byte 8) (*))))
-         (count (- end start))
-         (out (make-string (* 4 (ceiling count 3))))
-         (digits *base64-digits*))
-    (declare (type (simple-array (unsigned-byte 8) (*)) octets)
-             (type simple-string digits out)
-             (fixnum start end count))
-    (loop for i fixnum from start below end by 3
-          for o fixnum from 0 by 4
-          do (let* ((left (- end i))
-                    (n (logior (ash (aref octets i) 16)
-                               (if (> left 1) (ash (aref octets (+ i 1)) 8) 0)
-                               (if (> left 2) (aref octets (+ i 2)) 0))))
-               (setf (schar out o) (schar digits (ldb (byte 6 18) n))
-                     (schar out (+ o 1)) (schar digits (ldb (byte 6 12) n))
-                     (schar out (+ o 2)) (if (> left 1) (schar digits (ldb (byte 6 6) n)) #\=)
-                     (schar out (+ o 3)) (if (> left 2) (schar digits (ldb (byte 6 0) n)) #\=))))
-    out))
-
-(defun octets-ascii (octets start end)
-  "The octets of OCTETS from START below END (or their end) as ASCII, a
-character standing for each; NIL when START is past their end."
-  (let ((end (min end (length octets))))
-    (and (< start end) (tuatara.text:octets-latin-1 octets :start start :end end))))
-
-(defun octets-search (needle octets &key (start 0) (end (length octets)) from-end)
-  "Where NEEDLE, a vector of octets, first stands in OCTETS from START below
-END (with FROM-END, the last place it stands), or NIL. START below 0 counts
-as 0 and END past the octets as their end; when END is then before START,
-or too near it for NEEDLE, the answer is NIL, never an error. An empty
-NEEDLE stands at START (at END, with FROM-END). Quick on simple vectors of
-octets, as files are read, so that a file of hundreds of megabytes is
-searched in well under a second."
-  (let* ((end (min end (length octets))) (start (max 0 start)))
-    (cond ((< end start) nil)
-          ((zerop (length needle)) (if from-end end start))
-          ((> (+ start (length needle)) end) nil)
-          ((and (typep needle 'tuatara.text:octets) (typep octets 'tuatara.text:octets))
-           (octets-search-simple needle octets start end from-end))
-          (t (search needle octets :start2 start :end2 end :from-end from-end)))))
-
-(defun octets-search-simple (needle octets start end from-end)
-  "OCTETS-SEARCH's work on simple vectors of octets, NEEDLE not empty and
-fitting between START and END."
-  (declare (type tuatara.text:octets needle octets) (type fixnum start end) (optimize speed (safety 0)))
-  (let ((n (length needle)) (first (aref needle 0)))
-    (declare (type fixnum n))
-    (flet ((match-p (i)
-             (declare (type fixnum i))
-             (loop for k of-type fixnum from 1 below n always (= (aref octets (+ i k)) (aref needle k)))))
-      (declare (inline match-p))
-      (if from-end
-          (loop for i of-type fixnum from (- end n) downto start
-                when (and (= (aref octets i) first) (match-p i)) return i)
-          (loop for i of-type fixnum from start to (- end n)
-                when (and (= (aref octets i) first) (match-p i)) return i)))))
-
-(defun octets-find (octets needle &key (start 0) (end (length octets)))
-  "Where the ASCII string NEEDLE first stands in OCTETS from START below END, or NIL."
-  (octets-search (tuatara.text:string-octets needle) octets :start start :end end))
-
 (defun pdf-header-at (octets)
   "Where %PDF- followed by a digit begins among the first 1,024 octets of
 OCTETS, as a PDF reader looks for it (a PDF may have other octets before its
@@ -208,14 +79,17 @@ markers are looked at."
 
 (defun jpeg-size (o)
   "The width and height of the JPEG image whose first octets are O, as two
-values, from its first frame header; NIL when that is not among O."
+values, from its first frame header; NIL when that is not among O, or gives
+a width or height of 0 (a height told only later in the file)."
   (let ((size (jpeg-segments o (lambda (marker start end)
                                  (and (member marker
                                               '(#xC0 #xC1 #xC2 #xC3 #xC5 #xC6 #xC7 #xC9 #xCA #xCB #xCD #xCE #xCF))
                                       (<= (+ start 5) end)
                                       (list (octets-integer o (+ start 3) 2 :big-endian t)
                                             (octets-integer o (+ start 1) 2 :big-endian t)))))))
-    (values (first size) (second size))))
+    (if (and size (plusp (first size)) (plusp (second size)))
+        (values (first size) (second size))
+        (values nil nil))))
 
 (defun jpeg-words (o)
   "A JPEG image described: its size, from its first frame header."
@@ -587,23 +461,28 @@ when none is among O."
 
 (defun ftyp-words (o)
   "An ISO media file described by its brand: MP4 video, a QuickTime movie,
-MPEG-4 audio, 3GP, or a HEIF or AVIF image, with its size."
+MPEG-4 audio, 3GP, or a HEIF or AVIF image, with its size; and its kind as a
+second value, :HEIF, :AVIF or :MP4."
   (let ((brand (octets-ascii o 8 12)))
-    (values (cond ((member brand '("heic" "heix" "heim" "heis" "mif1" "msf1") :test #'equal)
-                   (joined-words "HEIF image" (multiple-value-call #'size-words (ispe-size o))))
-                  ((member brand '("avif" "avis") :test #'equal)
-                   (joined-words "AVIF image" (multiple-value-call #'size-words (ispe-size o))))
-                  ((equal brand "qt  ") "QuickTime movie")
-                  ((member brand '("M4A " "M4B " "M4P ") :test #'equal) "MPEG-4 audio")
-                  ((and brand (uiop:string-prefix-p "3g" brand)) "3GP video")
-                  (t "MP4 video"))
-            (cond ((member brand '("heic" "heix" "heim" "heis" "mif1" "msf1") :test #'equal) :heif)
-                  ((member brand '("avif" "avis") :test #'equal) :avif)
-                  (t :mp4)))))
+    (flet ((brand-p (&rest brands) (member brand brands :test #'equal)))
+      (cond ((brand-p "heic" "heix" "heim" "heis" "mif1" "msf1")
+             (values (joined-words "HEIF image" (multiple-value-call #'size-words (ispe-size o))) :heif))
+            ((brand-p "avif" "avis")
+             (values (joined-words "AVIF image" (multiple-value-call #'size-words (ispe-size o))) :avif))
+            ((brand-p "qt  ") (values "QuickTime movie" :mp4))
+            ((brand-p "M4A " "M4B " "M4P ") (values "MPEG-4 audio" :mp4))
+            ((and brand (uiop:string-prefix-p "3g" brand)) (values "3GP video" :mp4))
+            (t (values "MP4 video" :mp4))))))
+
+(sb-ext:defglobal **ebml-doc-type-id** (coerce #(#x42 #x82) 'tuatara.text:octets)
+  "The two octets that begin the document type in a Matroska or WebM header.")
+
+(sb-ext:defglobal **zip-entry-mark** (coerce #(80 75 3 4) 'tuatara.text:octets)
+  "The four octets each entry of a zip archive begins with: P, K, 3 and 4.")
 
 (defun ebml-doc-type (o)
   "The document type a Matroska or WebM file names in its header, or NIL."
-  (let ((at (search (list #x42 #x82) o :end2 (min 64 (length o)))))
+  (let ((at (octets-search **ebml-doc-type-id** o :end 64)))
     (and at (octet-at o (+ at 2))
          (let ((size (logand (aref o (+ at 2)) #x7F)))
            (octets-ascii o (+ at 3) (+ at 3 size))))))
@@ -614,7 +493,7 @@ from the header before each entry's data, as far as the octets go, no more
 than MOST of them."
   (let ((names '()) (at 0) (n (length o)))
     (loop repeat most
-          while (and (<= (+ at 30) n) (octets-at-p o (list 80 75 3 4) at))
+          while (and (<= (+ at 30) n) (octets-search **zip-entry-mark** o :start at :end (+ at 4)))
           do (let* ((flags (octets-integer o (+ at 6) 2))
                     (packed (octets-integer o (+ at 18) 4))
                     (name-length (octets-integer o (+ at 26) 2))
@@ -623,7 +502,7 @@ than MOST of them."
                (push (octets-ascii o (+ at 30) (+ at 30 name-length)) names)
                ;; sizes written after the data: the next entry is the next header found
                (setf at (if (and (logbitp 3 flags) (zerop packed))
-                            (or (search (list 80 75 3 4) o :start2 (min data n)) n)
+                            (or (octets-search **zip-entry-mark** o :start data) n)
                             (+ data packed)))))
     (nreverse names)))
 
@@ -684,8 +563,8 @@ plain text, and as a second value its kind."
     (:avif "avif") (:jp2 "jp2" "jpx" "jpf" "jph") (:j2k "j2k" "j2c" "jpc" "jhc") (:jxl "jxl")
     (:psd "psd" "psb") (:xcf "xcf") (:svg "svg") (:pdf "pdf") (:postscript "ps" "eps" "ai")
     (:rtf "rtf") (:ole "doc" "xls" "ppt" "msg" "msi" "vsd" "pub" "dot" "xlt" "pot" "pps")
-    (:docx "docx" "docm" "dotx" "dotm") (:xlsx "xlsx" "xlsm" "xltx"
-                                         "xltm") (:pptx "pptx" "pptm" "potx" "potm" "ppsx" "ppsm")
+    (:docx "docx" "docm" "dotx" "dotm") (:xlsx "xlsx" "xlsm" "xltx" "xltm")
+    (:pptx "pptx" "pptm" "potx" "potm" "ppsx" "ppsm")
     (:odt "odt" "ott") (:ods "ods" "ots") (:odp "odp" "otp") (:epub "epub") (:apk "apk") (:jar "jar" "war" "ear")
     (:zip "zip" "whl" "xpi" "crx" "nupkg" "cbz" "kmz" "ipa")
     (:gzip "gz" "tgz") (:bzip2 "bz2" "tbz" "tbz2") (:xz "xz" "txz") (:zstd "zst" "zstd" "tzst") (:lz4 "lz4")

@@ -4,9 +4,10 @@
 ;;;; Loaded first with the tests, however they are run (tools/test.sh,
 ;;;; asdf:test-system, one test from a Lisp session): the tests never read the
 ;;;; developer's init file, note templates, capture templates, snippets or git
-;;;; settings, never write their state (the recent files), their trashes (the
-;;;; home one or a drive's), or their spelling word lists. Each test run has
-;;;; directories of its own for these, which REMOVE-TEST-DIRECTORIES takes
+;;;; settings, never write their state (the recent files), their cache (compiled
+;;;; packages, indexes, the debug log), their trashes (the home one or a drive's),
+;;;; or their spelling word lists. The tests have a cache of their own, and each
+;;;; run directories of its own for the rest, which REMOVE-TEST-DIRECTORIES takes
 ;;;; away. In a Lisp session that also runs the editor, loading the tests sets
 ;;;; these for that session.
 
@@ -42,11 +43,18 @@
   (ensure-directories-exist runtime)
   (sb-posix:chmod (namestring runtime) #o700)
   (setf tuatara.defaults::*runtime-directory* (namestring runtime)))
+;; Nor write in the developer's cache (their compiled packages, indexes, debug log):
+;; the tests' own, beside it so on the same drive, kept from one run to the next for
+;; what is slow to make again (the core packages are compiled apart in).
+(defvar *test-cache-directory* (uiop:xdg-cache-home "tuatara-tests/"))
+(ensure-directories-exist *test-cache-directory*)
+(sb-posix:chmod (namestring *test-cache-directory*) #o700)
+(setf tuatara-user:*cache-directory* (namestring *test-cache-directory*))
 ;; Nor touch the developer's trashes, the home one or a drive's (a USB stick's): the
 ;; tests' data home is their own, on the drive their files are made on, and they see
 ;; no drive mounted.
 (defvar *test-data-directory*
-  (merge-pathnames (format nil "test-data-~d/" (sb-posix:getpid)) (tuatara.io:cache-directory)))
+  (merge-pathnames (format nil "test-data-~d/" (sb-posix:getpid)) *test-cache-directory*))
 (ensure-directories-exist *test-data-directory*)
 (sb-posix:setenv "XDG_DATA_HOME" (namestring *test-data-directory*) 1)
 (let ((no-drives (merge-pathnames "no-drives" *test-state-directory*)))
@@ -113,8 +121,8 @@ process no longer running."
                (when (and pid (not (probe-file (format nil "/proc/~d/" pid))))
                  (uiop:delete-directory-tree dir :validate t :if-does-not-exist :ignore))))))
     (sweep (uiop:temporary-directory) "tuatara-test-state-")
-    (sweep (tuatara.io:cache-directory) "test-data-")
-    (sweep (tuatara.io:cache-directory) "test-")))
+    (sweep *test-cache-directory* "test-data-")
+    (sweep *test-cache-directory* "test-")))
 (remove-stale-test-directories)
 ;; the tests' own report template, which notes in their test directories name by its path
 (push (namestring (asdf:system-relative-pathname :tuatara "test/latex-export/"))

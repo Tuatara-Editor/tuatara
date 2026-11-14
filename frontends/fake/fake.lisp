@@ -6,7 +6,7 @@
   (:documentation "A frontend that takes its events from a queue and paints into a vector of strings.")
   (:export #:fake-frontend #:make-fake-frontend #:fake-queue-keys #:fake-queue-event #:fake-screen #:fake-screen-line
            #:fake-cursor #:fake-cursor-shape #:fake-cursor-colour #:fake-frames #:fake-history #:fake-frame-showing
-           #:fake-frame-showing-across-rows #:fake-spans
+           #:fake-frame-showing-across-rows #:fake-screen-across-rows #:fake-spans
            #:fake-row-faces #:fake-row-scales #:fake-face-history #:fake-frame-with #:fake-pending #:fake-clipboard
            #:fake-primary #:fake-titles
            #:fake-font-steps #:fake-fonts #:fake-font #:fake-toggles #:fake-font-faces #:fake-desktop-style
@@ -273,8 +273,8 @@ as the desktop's style."
       (destructuring-bind (left text spans) part
         (declare (ignore spans))
         (let ((padded (if (< (length string) (+ left (length text)))
-                          (concatenate 'string string (make-string (- (+ left (length text))
-                                                                      (length string)) :initial-element #\Space))
+                          (concatenate 'string string (tuatara.text:spaces (- (+ left (length text))
+                                                                      (length string))))
                           (copy-seq string))))
           (setf string (replace padded text :start1 left)))))
     (setf (aref (fake-screen f) row) (copy-seq string)
@@ -305,10 +305,20 @@ as the desktop's style."
           (some (lambda (row) (every (lambda (text) (search text row)) texts)) screen))
         (fake-history frontend)))
 
+(defun fake-screen-across-rows (screen)
+  "The rows of SCREEN, a frame painted, read as one line with a space where
+each row ends: for text that may be wrapped onto the next row, as a long
+question in the echo area is. A row that goes on from the one before, begun
+with the standard soft wrap sign \"↪\", is read without the sign."
+  (format nil "~{~a~^ ~}"
+          (map 'list (lambda (row)
+                       (let ((row (string-right-trim " " row)))
+                         (if (and (plusp (length row)) (char= (char row 0) #\↪))
+                             (string-left-trim " " (subseq row 1))
+                             row)))
+               screen)))
+
 (defun fake-frame-showing-across-rows (frontend text)
   "True when some frame painted so far showed TEXT, its rows read as one line
-with a space where each row ends: for text that may be wrapped onto the next
-row, as a long question in the echo area is."
-  (some (lambda (screen)
-          (search text (format nil "~{~a~^ ~}" (map 'list (lambda (row) (string-right-trim " " row)) screen))))
-        (fake-history frontend)))
+\(FAKE-SCREEN-ACROSS-ROWS)."
+  (some (lambda (screen) (search text (fake-screen-across-rows screen))) (fake-history frontend)))

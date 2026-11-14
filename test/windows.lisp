@@ -39,6 +39,21 @@ PLACE-BUFFERS call, made after the defaults."
                      :buffer (tuatara.buffer:find-buffer "*scratch*"))))
       (values f editor))))
 
+(define-test (windows histories-brought-up-to-date)
+  ;; the places a window remembers in a buffer it showed before move on with that buffer's text, so that
+  ;; the edits made while it is not shown are not kept for them
+  (with-test-buffer (growing "*growing*" :text "first line")
+    (with-test-buffer (other "*other*" :text "other")
+      (let ((window (tuatara.display:make-window growing :width 40 :height 8)))
+        (tuatara.display:set-window-buffer window other)
+        (loop repeat 200 do (tuatara.buffer:buffer-insert growing (tuatara.buffer:buffer-size growing) "more"))
+        (tuatara.display:refresh-window-history window)
+        (let ((link (tuatara.text::version-link (tuatara.buffer:buffer-version growing))))
+          (destructuring-bind (buffer start point) (first (tuatara.display:window-history window))
+            (is eq growing buffer)
+            (is eq link (tuatara.text:anchor-link start))
+            (is eq link (tuatara.text:anchor-link point))))))))
+
 (define-test (windows split-below)
   (multiple-value-bind (f editor) (run-keys "C-x 2" :text *twenty-lines* :width 40 :height 12)
     ;; eleven rows above the echo area: the upper window keeps the larger half
@@ -480,6 +495,19 @@ PLACE-BUFFERS call, made after the defaults."
     (is string= "*Messages*"
         (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
     (is = 1 (length (tuatara.command:editor-windows editor)))))
+
+(define-test (windows centred-text-width-written-on-change)
+  ;; a buffer whose text is not centred is given no column width as it is drawn; one turned on
+  ;; and off again has its width set and taken back
+  (let ((editor (nth-value 1 (run-keys "" :text (format nil "hello~%")))))
+    (false (nth-value 1 (gethash :text-width (tuatara.buffer::buffer-locals (session-buffer editor))))))
+  (let ((tuatara-user:*centred-text-width* 20))
+    (let ((editor (nth-value 1 (run-keys "M-x c e n t r e d - t e x t - m o d e RET" :text (format nil "hello~%")))))
+      (is eql 20 (tuatara.buffer:buffer-local (session-buffer editor) :text-width)))
+    (let ((editor (nth-value 1 (run-keys (list "M-x c e n t r e d - t e x t - m o d e RET"
+                                               "M-x c e n t r e d - t e x t - m o d e RET")
+                                         :text (format nil "hello~%")))))
+      (false (tuatara.buffer:buffer-local (session-buffer editor) :text-width)))))
 
 (define-test (windows centred-text)
   ;; the text in a column of *centred-text-width* columns in the middle of the window, blank either side

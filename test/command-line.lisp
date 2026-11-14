@@ -324,6 +324,19 @@ frontend, the editor, and the options read."
             (is = 0 tuatara.command:*exit-code*)
             (is string= (format nil "one~%2~%three~%") (file-text merged)))))))))
 
+(define-test (command-line merge-of-files-in-tmp)
+  ;; files lying directly in /tmp, as git mergetool writes them with mergetool.writeToTemp: merged, git merge-file
+  ;; shown the three alone
+  (with-file-in-tmp (base ".txt")
+    (with-file-in-tmp (local ".txt")
+      (with-file-in-tmp (remote ".txt")
+        (alexandria:write-string-into-file (format nil "one~%two~%three~%") base)
+        (alexandria:write-string-into-file (format nil "one~%TWO~%three~%") local)
+        (alexandria:write-string-into-file (format nil "one~%2~%three~%") remote)
+        (let ((text (tuatara.text:octets-string (tuatara.defaults::three-way-merge local base remote))))
+          (true (search "<<<<<<< local" text) "~a" text)
+          (true (search ">>>>>>> remote" text) "~a" text))))))
+
 (define-test (command-line merge-wrongly-given)
   (with-test-directory (dir)
     (let ((a (namestring (put-file (merge-pathnames "a.txt" dir) "x"))))

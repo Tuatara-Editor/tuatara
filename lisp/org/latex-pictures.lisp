@@ -69,8 +69,8 @@ The file is written into one array of its size, made once."
                        ;; the rows' octets of this block: each row its filter (none), then its pixels
                        (loop repeat length
                              do (data (if (zerop x) 0 (aref pixels (+ row-start x -1))))
-                                (when (> (incf x) row)
-                                  (setf x 0 row-start (+ row-start row))))
+                             (when (> (incf x) row)
+                               (setf x 0 row-start (+ row-start row))))
                        (incf done length))))
                  (put-integer (logior (ash (mod b 65521) 16) (mod a 65521)) 4 :big-endian t))))
       (chunk "IEND" 0 (lambda ())))
@@ -78,18 +78,18 @@ The file is written into one array of its size, made once."
 
 (defun latex-pictures-directory ()
   "Where the pictures made into PNG for the enhanced export are kept, for you
-alone: latex/pictures/ in the cache directory. Those not used for a day are deleted."
-  (let ((directory (private-cache-directory "latex/pictures/")))
-    (forget-old-copies directory)
-    directory))
+alone: latex/pictures/ in the cache directory. Those not used for a day are
+deleted when another is made (LATEX-PICTURE)."
+  (private-cache-directory "latex/pictures/"))
 
 (defun png-sixteen-bit-p (path)
   "True when the file at PATH, a PNG, has 16 bits for each colour (its
 header's bit depth), which not every PDF reader draws once in a PDF."
-  (let ((head (ignoring-errors-reported ("reading the head of ~a" path)
-                (tuatara.io:call-with-file path (lambda (fd name size)
-                                                  (declare (ignore size))
-                                                  (tuatara.io:read-fd-octets fd :path name :size-hint 32 :most 32))))))
+  (let ((head (flet ((head (fd name size)
+                       (declare (ignore size))
+                       (tuatara.io:read-fd-octets fd :path name :size-hint 32 :most 32)))
+                (ignoring-errors-reported ("reading the head of ~a" path)
+                                          (tuatara.io:call-with-file path #'head)))))
     (and head (>= (length head) 25) (= 16 (aref head 24)))))
 
 (defun latex-picture (path)
@@ -106,18 +106,21 @@ unchanged); as a second value why there is none (NIL then)."
           (t
            (let* ((stamp (tuatara.io:path-stamp path))
                   (png (tuatara.io:path-join (latex-pictures-directory)
-                                             (format nil "~36r.png" (sxhash (format nil "~a ~a ~a" path (tuatara.io:stamp-size stamp)
-                                                                                     (tuatara.io:stamp-mtime stamp)))))))
+                                             (format nil "~36r.png"
+                                                     (sxhash (format nil "~a ~a ~a" path (tuatara.io:stamp-size stamp)
+                                                                     (tuatara.io:stamp-mtime stamp)))))))
              (if (tuatara.io:path-stamp png)
                  png
                  (multiple-value-bind (image notes)
                      (tuatara.io:call-with-file path (lambda (fd name size)
                                                        (declare (ignore name size))
                                                        ;; a drawing drawn for print, not at its own small size
-                                                       (decode-image fd kind *latex-picture-largest* *latex-picture-largest*
+                                                       (decode-image fd kind *latex-picture-largest*
+                                                                     *latex-picture-largest*
                                                                      :density (and (eq kind :svg) 300))))
                    (if image
-                       (progn (tuatara.io:replace-file png (png-octets image))
+                       (progn (forget-old-copies (latex-pictures-directory))
+                              (tuatara.io:replace-file png (png-octets image))
                               png)
                        (values nil (format nil "~a could not be made into a picture LaTeX takes~{~a~}"
                                            (tuatara.io:native-file-name path) (mapcar #'car notes)))))))))))

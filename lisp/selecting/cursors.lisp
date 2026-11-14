@@ -67,17 +67,29 @@ press, which each cursor keeps for itself.")
 
 (defun settle-cursors (split)
   "Fit SPLIT's cursors after they moved: in order, those come to share a line
-made one, each place fitted to what its cursor selects, point at the real one."
-  (let* ((b (split-buffer split))
-         (ordered (sort (map 'list (lambda (place) (cons (cursor-position b place) place)) (split-places split))
-                        #'< :key #'car))
-         (kept '()) (line nil))
-    (loop for (position . place) in ordered
-          do (let ((this (tuatara.buffer:buffer-line-start b position)))
-               (if (eql this line)
-                   (when (eq place (split-primary split)) (setf (split-primary split) (first kept)))
-                   (progn (setf line this) (push place kept)))))
-    (setf (split-places split) (coerce (nreverse kept) 'simple-vector))
+made one, each place fitted to what its cursor selects, point at the real one.
+Nothing is made anew while the cursors keep their order and their lines."
+  (let ((b (split-buffer split)))
+    (unless (loop for place across (split-places split)
+                  for position = (cursor-position b place)
+                  for before = nil then after
+                  for after = position
+                  always (or (null before) (<= before after)))
+      (setf (split-places split)
+            (sort (copy-seq (split-places split)) #'< :key (lambda (place) (cursor-position b place)))))
+    (let ((places (split-places split)) (line nil) (shared 0))
+      (loop for place across places
+            for this = (tuatara.buffer:buffer-line-start b (cursor-position b place))
+            do (if (eql this line) (incf shared) (setf line this)))
+      (when (plusp shared)
+        (let ((kept (make-array (- (length places) shared))) (i 0))
+          (setf line nil)
+          (loop for place across places
+                for this = (tuatara.buffer:buffer-line-start b (cursor-position b place))
+                do (if (eql this line)
+                       (when (eq place (split-primary split)) (setf (split-primary split) (aref kept (1- i))))
+                       (progn (setf line this (aref kept i) place) (incf i))))
+          (setf (split-places split) kept))))
     (loop for place across (split-places split)
           do (cond ((place-line place)
                     (set-cursor b place (cursor-position b place) nil t (place-memory place)))
@@ -117,7 +129,7 @@ over: each as far into its place as point is into its own."
           do (multiple-value-bind (s e) (place-bounds b place)
                (set-cursor b place (max s (min e (+ s offset))) nil nil nil)))
     (setf (split-running split) nil (split-last split) nil)
-    (arm-cursors split (if (split-virtual split) *virtual-cursor-keymap* *cursor-keymap*))
+    (arm-cursors (if (split-virtual split) *virtual-cursor-keymap* *cursor-keymap*))
     ;; armed after the command's keys were weighed: the next key is weighed as ever
     (setf (editor-transient-fresh *editor*) nil)
     (settle-cursors split)
@@ -132,10 +144,9 @@ over: each as far into its place as point is into its own."
 (defvar *cursor-run-keymap* (make-keymap :name "cursors' mark run")
   "The keys of a mark run at the cursors, before the cursors' own.")
 
-(defun arm-cursors (split map)
-  "Put MAP before every other keymap for the cursors of SPLIT: a key it does
-not have ends them, doing its own job."
-  (declare (ignore split))
+(defun arm-cursors (map)
+  "Put MAP before every other keymap for the cursors of the split in force: a
+key it does not have ends them, doing its own job."
   (let ((*split-keeping* t))
     (set-transient-map *editor* map #'split-keep-p #'split-exit)))
 
@@ -154,21 +165,13 @@ there may be (PAST-LIMIT-CHOICE of *CURSORS-LIMIT*, which may ask)."
 
 (defun start-cursors (column)
   "A split of cursors with one cursor, at point; new ones go to COLUMN."
-  (when *split* (dissolve-split :quiet t))
-  (build-cursor-keymaps)
   (let* ((b (current-buffer))
-         (split (make-split b)))
-    (setf (tuatara.buffer:buffer-mark-active-p b) nil)
-    (fresh-selection b)
-    (let ((first (make-place b (point) (point))))
-      (setf (split-places split) (vector first)
-            (split-primary split) first
-            (split-cursors split) t
-            (split-column split) column
-            (split-scope split) "a column"
-            (split-tick split) (tuatara.buffer:buffer-content-number b)
-            *split* split))
-    (arm-cursors split *cursor-keymap*)
+         (split (begin-split b :cursors t :column column))
+         (first (make-place b (point) (point))))
+    (setf (split-places split) (vector first)
+          (split-primary split) first
+          *split* split)
+    (arm-cursors *cursor-keymap*)
     split))
 
 (defun add-cursors (split spots)
@@ -201,7 +204,9 @@ last newline is not one."
                         (and (< end size) (tuatara.buffer:buffer-forward-char buffer end))))))
         (when (and next (not above) (= next size)) (setf next nil))
         (unless next
-          (error (if spots (format nil "Only ~d line~:p ~a" (length spots) way) (format nil "No line ~a" way))))
+          (if spots
+              (refuse "Only ~d line~:p ~a" (length spots) way)
+              (refuse "No line ~a" way)))
         (setf line next)
         (push (tuatara.display:buffer-move-to-screen-column buffer line column) spots)))))
 
@@ -214,8 +219,7 @@ start does not take that line. NIL without a selection."
     (multiple-value-bind (s e) (tuatara.buffer:buffer-region buffer)
       (if (or (line-selection-anchor buffer) (rectangle-live-p buffer))
           (cons (tuatara.buffer:buffer-line-start buffer s)
-                (let ((end (tuatara.buffer:buffer-line-end buffer e)))
-                  (if (< end (tuatara.buffer:buffer-size buffer)) (tuatara.buffer:buffer-forward-char buffer end) end)))
+                (next-line-start buffer e))
           (whole-lines-span buffer s e)))))
 
 (defun span-lines (buffer start end cap)
@@ -304,30 +308,15 @@ and a count adds that many (negative, above). A shorter line gets its cursor
 at its end. With lines selected (\\<normal>\\[select-lines],
 \\[start-selection], or a rectangle), the first press puts a cursor on every
 one of them instead: at each line's start for \\[select-lines], else at
-point's column. The lines are counted first. Past *CURSORS-LIMIT* (or what the
-memory has room for), lines selected or a count such as \\[universal-argument]
-50000 \\[add-cursor-below], the cursors in sight stand, and the others are
-written in the background as each verb is done at those. Then
-\\<normal>\\[backward-char] \\[forward-char] \\[beginning-of-line]
-\\[end-of-line] move them all alike, those out of sight keeping one column.
-\\<*virtual-cursor-keymap*>\\[cursors-insert] \\[cursors-append]
-\\[cursors-insert-line] \\[cursors-append-line] \\[cursors-change] and
-\\[cursors-delete] act at them. Their other keys are refused, saying what
-works, and undo ends them. Every cursor then does what the real one does:
-\\<normal>\\[backward-char] \\[forward-char] \\[forward-word]
-\\[backward-word] \\[forward-sexp] \\[backward-sexp] \\[beginning-of-line]
-\\[end-of-line] move, \\[start-selection] \\[select-lines] \\[select-word] and
-the other \\`m' keys select. \\[tuatara-insert] \\[tuatara-insert-after]
-\\[tuatara-insert-line-start] \\[tuatara-insert-line-end] \\[tuatara-change]
-\\[tuatara-open-below] \\[tuatara-open-above] type at all of them.
-\\[delete-selection-or-char] \\[kill-line] \\[copy-selection-or-char]
-\\[yank-over-selection] delete, kill, copy and paste, and a delimiter wraps.
-\\[mark-run-toggle] starts a mark run, \\[undo] \\[redo] undo, \\[repeat]
-repeats, \\[split-selection] searches. \\[add-cursor-above] adds above,
-\\<*cursor-keymap*>\\[drop-last-cursor] takes back the cursor added last,
-\\[align-cursors] lines them up. A cursor never leaves its line, and cursors
-that come to share one become one. Any other key ends them and does its own
-job. \\[split-quit] lets go of the selections, and then ends them."
+point's column. Every cursor then does what the real one does: it moves,
+selects, types, deletes, copies and pastes on the keys below, a delimiter
+wraps, and any other key ends the cursors and does its own job. A cursor never
+leaves its line, and cursors that come to share one become one.
+\\{*cursor-keymap*}
+Past *CURSORS-LIMIT* (or what the memory has room for), the cursors in sight
+stand, and the others are written in the background as each verb is done at
+those; only these keys work then, the motions moving every cursor alike:
+\\{*virtual-cursor-keymap*}"
   (let ((count (prefix-argument)))
     (unless (and (not (cursors-here)) (cursors-on-selected-lines (current-buffer)))
       (add-cursors-beside (max 1 (abs (or count 1))) (and count (minusp count))))))
@@ -358,7 +347,8 @@ taken in. Refused when there are not N lines that way, the empty line after
 the last newline not one, and when SPLIT's cursors do not stand alone on lines
 one after another. Counts BUFFER's lines first, as goto-line does."
   (let* ((places (and split (sort (copy-seq (split-places split)) #'< :key (lambda (p) (cursor-position buffer p)))))
-         (lines (and split (map 'list (lambda (p) (tuatara.buffer:buffer-line-number buffer (cursor-position buffer p))) places)))
+         (lines (and split (map 'list (lambda (p)
+                                        (tuatara.buffer:buffer-line-number buffer (cursor-position buffer p))) places)))
          (total (+ n (if split (length places) 1))))
     (when (and split (not (and (every (lambda (p) (multiple-value-bind (s e) (place-bounds buffer p) (= s e))) places)
                                (loop for (a b) on lines while b always (= b (1+ a))))))
@@ -429,8 +419,8 @@ delimiter does."
         (let ((column (tuatara.display:buffer-screen-column b (point))))
           (loop for place across (split-places split)
                 unless (eq place (split-primary split))
-                  do (multiple-value-bind (start) (cursor-line-bounds b place)
-                       (set-cursor b place (tuatara.display:buffer-move-to-screen-column b start column) nil nil nil)))
+                do (multiple-value-bind (start) (cursor-line-bounds b place)
+                     (set-cursor b place (tuatara.display:buffer-move-to-screen-column b start column) nil nil nil)))
           (setf (split-column split) column)
           (settle-cursors split)))))
 
@@ -468,7 +458,7 @@ what is done there on a line shorter than that column is done at its end."
          (n (prefix)))
     (unless (member command *virtual-cursor-motions*)
       (refuse "~a does not move cursors past their limit"
-             (tuatara.frontend:key-sequence-description *this-command-keys*)))
+              (tuatara.frontend:key-sequence-description *this-command-keys*)))
     (if (eq command 'end-of-line)
         (cursors-line-end)
         (run-at-cursors split command (prefix-argument)))
@@ -482,7 +472,8 @@ what is done there on a line shorter than that column is done at its end."
                     ((forward-char backward-char)
                      (let ((right (if (eq command 'forward-char) n (- n))))
                        (cond ((not (eq column :end)) (max 0 (+ column right)))
-                             ((minusp right) (max 0 (tuatara.display:buffer-screen-column b (tuatara.buffer:buffer-point b))))
+                             ((minusp right)
+                              (max 0 (tuatara.display:buffer-screen-column b (tuatara.buffer:buffer-point b))))
                              (t :end)))))))
         (setf (virtual-column virtual) new
               (virtual-at-end virtual) (eq new :end)
@@ -497,7 +488,10 @@ what is done there on a line shorter than that column is done at its end."
 of sight move only alike (\\<*virtual-cursor-keymap*>\\[cursors-move-past-limit]
 and the line's start and end), and a motion that would take each its own way,
 or a verb they have not, is refused."
-  (message "Cursors past the limit move only alike: \\<*tuatara-normal-keymap*>\\[backward-char], \\[forward-char], \\[beginning-of-line], \\[end-of-line]; \\<*virtual-cursor-keymap*>\\[cursors-insert] \\[cursors-append] \\[cursors-insert-line] \\[cursors-append-line] \\[cursors-change] \\[cursors-delete] edit; \\[split-quit] ends them"))
+  (message "Cursors past the limit move only alike: ~
+\\<*tuatara-normal-keymap*>\\[backward-char], \\[forward-char], \\[beginning-of-line], \\[end-of-line]; ~
+\\<*virtual-cursor-keymap*>\\[cursors-insert] \\[cursors-append] \\[cursors-insert-line] \\[cursors-append-line] ~
+\\[cursors-change] \\[cursors-delete] edit; \\[split-quit] ends them"))
 
 (defun start-lines-job (buffer virtual kind &key (text "") (back 0) (forward 0) skip joins)
   "Write at the rows of VIRTUAL in BUFFER, but those the places of SKIP (a
@@ -531,7 +525,7 @@ then waits its turn, its rows and SKIP's places followed."
             (queue-if-busy buffer what (list (cons top :before) (cons bottom :before))
                            (lambda (top bottom) (start top bottom (funcall followed)))
                            :shade (block-shade buffer left (max right (1+ left)) :wide at-end
-                                                            :tab-width (virtual-tab-width virtual))
+                                               :tab-width (virtual-tab-width virtual))
                            :counted t)
             :queued)
           (start top bottom skip)))))
@@ -555,7 +549,7 @@ in the background once a verb is done at those held. Returns what to say."
                             :count (if exact rows limit) :exact exact :limit limit :setting why))
         (virtual-fill split)
         (settle-cursors split)
-        (arm-cursors split *virtual-cursor-keymap*)
+        (arm-cursors *virtual-cursor-keymap*)
         (split-hint split)))))
 
 (defun virtual-verb-place (split &key (shift 0) line-start at-end (width 0) (mode :start))
@@ -594,18 +588,12 @@ rows in sight are emptied and hold a cursor each, the real one on point's, and
 typing begins; the others are emptied and written in the background when it
 ends."
   (multiple-value-bind (limit why) (place-limit *rectangle-cursors-limit*)
-    (let ((version (tuatara.buffer:buffer-version buffer))
-          (here (point-line buffer))
-          (split (make-split buffer))
-          (before (tuatara.buffer:buffer-undo-stack buffer)))
-      (setf *killed-rectangle* (rectangle-source-of buffer)
-            (tuatara.buffer:buffer-mark-active-p buffer) nil)
-      (when *split* (dissolve-split :quiet t))
-      (build-cursor-keymaps)
-      (fresh-selection buffer)
-      (setf (split-cursors split) t (split-column split) left (split-scope split) "a column"
-            (split-tick split) (tuatara.buffer:buffer-content-number buffer)
-            (split-virtual split)
+    (setf *killed-rectangle* (rectangle-source-of buffer))
+    (let* ((version (tuatara.buffer:buffer-version buffer))
+           (here (point-line buffer))
+           (before (tuatara.buffer:buffer-undo-stack buffer))
+           (split (begin-split buffer :cursors t :column left)))
+      (setf (split-virtual split)
             (make-virtual :kind :rows
                           :top (tuatara.text:make-anchor version top :bias :before)
                           :bottom (tuatara.text:make-anchor version bottom :bias :before)
@@ -680,15 +668,16 @@ shown, as when cursors were made before it was narrowed."
          (this (editor-this-command *editor*))
          (done nil))
     (when edit (check-writable (split-buffer split)))
-    (when (some (lambda (place) (let ((p (cursor-position b place))) (/= p (tuatara.buffer:within-narrowing b p)))) places)
+    (when (some (lambda (place) (let ((p (cursor-position b place)))
+                                  (/= p (tuatara.buffer:within-narrowing b p)))) places)
       (refuse "Some cursors are outside the part of ~a shown: widen shows them again" (tuatara.buffer:buffer-name b)))
     (setf (split-repeat split) (list :run command arg edit))
     (unwind-protect
          (let ((*read-key-replay* replay))
            (loop for place across places
                  do (setf (car replay) (reverse (cdr replay)))
-                    (let ((*message-log-max* (and (eq place last) *message-log-max*)))
-                      (replay-at split place command arg edit)))
+                 (let ((*message-log-max* (and (eq place last) *message-log-max*)))
+                   (replay-at split place command arg edit)))
            (setf done t))
       (setf (editor-this-command *editor*) this)
       (unless done
@@ -769,15 +758,12 @@ cursor at its line's end types there."
   (let* ((split (live-split)) (b (split-buffer split)))
     (virtual-verb-place split :shift 1)
     (loop for place across (split-places split)
-          do (multiple-value-bind (start end) (cursor-line-bounds b place)
-               (declare (ignore start))
-               (multiple-value-bind (s e) (place-bounds b place)
-                 (declare (ignore s))
-                 (set-cursor b place
-                             (if (cursor-selecting-p place)
-                                 e
-                                 (min end (tuatara.buffer:buffer-forward-char b (cursor-position b place))))
-                             nil nil nil))))
+          do (set-cursor b place
+                         (if (cursor-selecting-p place)
+                             (nth-value 1 (place-bounds b place))
+                             (min (nth-value 1 (cursor-line-bounds b place))
+                                  (tuatara.buffer:buffer-forward-char b (cursor-position b place))))
+                         nil nil nil))
     (settle-cursors split)
     (enter-split-edit split nil :start)
     (setf (split-did split) :after)))
@@ -794,10 +780,9 @@ cursor at its line's end types there."
   "Put every cursor at the end of its line, keeping its selection."
   (let* ((split (live-split)) (b (split-buffer split)))
     (loop for place across (split-places split)
-          do (multiple-value-bind (start end) (cursor-line-bounds b place)
-               (declare (ignore start))
-               (set-cursor b place end (and (not (place-line place)) (cursor-anchor b place))
-                           (place-line place) (place-memory place))))
+          do (set-cursor b place (nth-value 1 (cursor-line-bounds b place))
+                         (and (not (place-line place)) (cursor-anchor b place))
+                         (place-line place) (place-memory place)))
     (setf (split-last split) 'end-of-line)
     (settle-cursors split)))
 
@@ -847,8 +832,10 @@ text a fold hides, but not all of it, nothing is deleted: the fold is shown
 instead, and the key pressed again deletes; a line out of sight where that
 would be is left as it is."
   (let* ((split (live-split)) (b (split-buffer split))
-         (spans (map 'list (lambda (place) (multiple-value-list (cursor-span b place (prefix) t))) (split-places split)))
-         (kills (loop for (s e selected) in spans when selected collect (tuatara.buffer:buffer-string b :start s :end e))))
+         (spans (map 'list (lambda (place) (multiple-value-list (cursor-span b place (prefix) t)))
+                     (split-places split)))
+         (kills (loop for (s e selected) in spans when selected
+                      collect (tuatara.buffer:buffer-string b :start s :end e))))
     (refuse-negative-past-limit split)
     (check-writable (split-buffer split))
     (setf (split-repeat split) (list :verb 'cursors-delete (prefix-argument)))
@@ -894,7 +881,7 @@ fold is shown instead, and the key pressed again pastes."
     (setf (split-repeat split) (list :verb 'cursors-yank (prefix-argument)))
     (cond
       ((or (null text) (zerop (kill-size text)))
-        (message "Nothing to paste"))
+       (message "Nothing to paste"))
       ((not (stringp text))
        (message "The last kill (~a) is too large to paste at every cursor" (octets-words (kill-size text))))
       ((> (* (length places) (length text) (max 1 (prefix))) *rewrite-threshold*)
@@ -902,38 +889,32 @@ fold is shown instead, and the key pressed again pastes."
                 (octets-words (kill-size text)) (and (> (prefix) 1) (prefix)) (places-phrase split (length places))
                 (octets-words (* (length places) (length text) (max 1 (prefix)))) (octets-words *rewrite-threshold*)))
       (t
-        (let* ((pieces (or (kill-parts text (length places))
-                           ;; another kill with as many lines as there are cursors: a line to each
-                           (let ((lines (mapcar (lambda (line) (string-right-trim '(#\Return) line))
-                                                (uiop:split-string (if (and (plusp (length text))
-                                                                            (char= (char text (1- (length text))) #\Newline))
-                                                                       (subseq text 0 (1- (length text)))
-                                                                       text)
-                                                                   :separator '(#\Newline)))))
-                             (and (> (length places) 1) (= (length lines) (length places)) lines))
-                           (make-list (length places) :initial-element text)))
-               (n (max 0 (prefix)))
-               (newline (tuatara.buffer:buffer-newline b))
-               (spans (map 'list (lambda (place) (multiple-value-list (cursor-paste-span b place))) places))
-               (positions (delete-spans
-                           b spans
-                           :replacements (loop for place across places
-                                               for piece in pieces
-                                               for (nil e) in spans
-                                               collect (let ((copies (let ((piece (text-for-buffer piece b)))
-                                                                       (with-output-to-string (out)
-                                                                         (dotimes (i n) (write-string piece out))))))
-                                                         (if (and (place-line place) (plusp (length copies))
-                                                                  (not (kill-ends-line-p copies))
-                                                                  (> e (nth-value 1 (cursor-line-bounds b place))))
-                                                             (concatenate 'string copies newline)
-                                                             copies))))))
-          (when positions
-            (loop for place across places
-                  for i from 0
-                  do (set-cursor b place (aref positions i) nil nil nil)))
-          (setf (split-did split) :pasted)
-          (settle-cursors split))))))
+       (let* ((pieces (or (kill-parts text (length places))
+                          ;; another kill with as many lines as there are cursors: a line to each
+                          (let ((lines (mapcar (lambda (line) (string-right-trim '(#\Return) line))
+                                               (uiop:split-string (if (kill-ends-line-p text)
+                                                                      (subseq text 0 (1- (length text)))
+                                                                      text)
+                                                                  :separator '(#\Newline)))))
+                            (and (> (length places) 1) (= (length lines) (length places)) lines))
+                          (make-list (length places) :initial-element text)))
+              (n (max 0 (prefix)))
+              (spans (map 'list (lambda (place) (multiple-value-list (cursor-paste-span b place))) places))
+              (positions (delete-spans
+                          b spans
+                          :replacements (loop for place across places
+                                              for piece in pieces
+                                              for (s e) in spans
+                                              collect (let ((copies (repeated-text (text-for-buffer piece b) n)))
+                                                        (if (place-line place)
+                                                            (values (paste-keeping-line-end b s e copies))
+                                                            copies))))))
+         (when positions
+           (loop for place across places
+                 for i from 0
+                 do (set-cursor b place (aref positions i) nil nil nil)))
+         (setf (split-did split) :pasted)
+         (settle-cursors split))))))
 
 (defun cursor-paste-span (buffer place)
   "Two values, the start and end of what a paste at PLACE's cursor replaces:
@@ -973,7 +954,7 @@ the bank is there for \\<normal>\\[copy-selection-or-char], \\[delete-selection-
          (spans (cursor-line-spans split))
          (unbanking (every (lambda (span) (lines-banked-p b span)) spans)))
     (setf (split-repeat split) (list :verb 'cursors-bank nil))
-    (dolist (span spans) (if unbanking (bank-release-span b span) (bank-span b span)))
+    (if unbanking (spend-banks b spans) (dolist (span spans) (bank-span b span)))
     (message "~:[Banked~;Unbanked~] ~a (~d banked in all)" unbanking (places-phrase split (length spans))
              (banked-line-count b))))
 
@@ -981,7 +962,7 @@ the bank is there for \\<normal>\\[copy-selection-or-char], \\[delete-selection-
   "Take every cursor's line out of the bank, leaving every other bank alone."
   (let* ((split (live-split)) (b (split-buffer split)))
     (setf (split-repeat split) (list :verb 'cursors-unbank nil))
-    (dolist (span (cursor-line-spans split)) (bank-release-span b span))
+    (spend-banks b (cursor-line-spans split))
     (message "Unbanked at ~a (~d banked in all)" (places-phrase split (length (split-places split)))
              (banked-line-count b))))
 
@@ -993,14 +974,14 @@ the mode indents it, and type at them all; the opening is one change."
          (since (tuatara.buffer:buffer-undo-stack b)))
     (loop for place across (split-places split)
           do (goto (cursor-position b place))
-             (if above
-                 (progn (goto (tuatara.buffer:buffer-line-start b (point)))
-                        (let ((*indent-new-lines* nil)) (newline))
-                        (char-motion -1)
-                        (indent-typed-line b :group t))
-                 (progn (goto (tuatara.buffer:buffer-line-end b (point)))
-                        (newline)))
-             (set-cursor b place (point) nil nil nil))
+          (if above
+              (progn (goto (tuatara.buffer:buffer-line-start b (point)))
+                     (let ((*indent-new-lines* nil)) (newline))
+                     (char-motion -1)
+                     (indent-typed-line b :group t))
+              (progn (goto (tuatara.buffer:buffer-line-end b (point)))
+                     (newline)))
+          (set-cursor b place (point) nil nil nil))
     (tuatara.buffer:merge-undo-groups b since)
     (settle-cursors split)
     (enter-split-edit split nil :start)
@@ -1022,12 +1003,14 @@ the mode indents it, and type at them all; the opening is one change."
   "Comment or uncomment every cursor's line."
   (run-at-cursors (live-split) 'toggle-comment-lines nil t))
 
-(defun case-at-cursors (split how)
-  "Change the case of every cursor's selection of SPLIT, or of the count's
-words from every cursor, never past its line, to HOW (see CASE-CHANGED); one
-change. A cursor with nothing selected moves over the words."
-  (check-writable (split-buffer split))
-  (let ((b (split-buffer split)) (n (max 1 (prefix))) (edits '()))
+(defun case-at-cursors (how verb)
+  "Change the case of every cursor's selection, or of the count's words from
+every cursor, never past its line, to HOW (see CASE-CHANGED); one change, run
+again by \\<*cursor-keymap*>\\[cursors-repeat] as VERB. A cursor with
+nothing selected moves over the words."
+  (let* ((split (live-split)) (b (split-buffer split)) (n (max 1 (prefix))) (edits '()))
+    (check-writable b)
+    (setf (split-repeat split) (list :verb verb (prefix-argument)))
     (loop for place across (split-places split)
           do (multiple-value-bind (s e)
                  (cond ((place-line place) (cursor-line-bounds b place))
@@ -1045,27 +1028,21 @@ change. A cursor with nothing selected moves over the words."
     (when edits (tuatara.buffer:buffer-edit b (coerce (nreverse edits) 'simple-vector)))
     (loop for place across (split-places split)
           unless (cursor-selecting-p place)
-            do (set-cursor b place (nth-value 1 (place-bounds b place)) nil nil nil))
+          do (set-cursor b place (nth-value 1 (place-bounds b place)) nil nil nil))
     (setf (split-did split) :edited)
     (settle-cursors split)))
 
 (define-command cursors-upcase ()
   "Put every cursor's selection in upper case, or the count's words from every cursor."
-  (let ((split (live-split)))
-    (setf (split-repeat split) (list :verb 'cursors-upcase (prefix-argument)))
-    (case-at-cursors split :up)))
+  (case-at-cursors :up 'cursors-upcase))
 
 (define-command cursors-downcase ()
   "Put every cursor's selection in lower case, or the count's words from every cursor."
-  (let ((split (live-split)))
-    (setf (split-repeat split) (list :verb 'cursors-downcase (prefix-argument)))
-    (case-at-cursors split :down)))
+  (case-at-cursors :down 'cursors-downcase))
 
 (define-command cursors-capitalise ()
   "Capitalise every cursor's selection, or the count's words from every cursor."
-  (let ((split (live-split)))
-    (setf (split-repeat split) (list :verb 'cursors-capitalise (prefix-argument)))
-    (case-at-cursors split :capital)))
+  (case-at-cursors :capital 'cursors-capitalise))
 
 (define-command cursors-undo ()
   "Undo, keeping the cursors: a change made at them all is taken back at all."
@@ -1111,14 +1088,15 @@ back and forward. The run's keys that would leave the line refuse."
           (if (some (lambda (place) (multiple-value-bind (s e) (place-bounds b place) (< s e))) (split-places split))
               (progn (loop for place across (split-places split)
                            when (place-line place)
-                             do (multiple-value-bind (start end) (cursor-line-bounds b place)
-                                  (set-cursor b place start end nil nil)))
+                           do (multiple-value-bind (start end) (cursor-line-bounds b place)
+                                (set-cursor b place start end nil nil)))
                      (setf (split-last split) 'mark-run-adopt))
-              (handler-case (reporting-errors ("selecting the words at the cursors")
-                              (run-at-cursors split 'select-word nil))
-                (error () (setf (split-last split) nil))))
+              (unless (ignoring-errors-reported ("selecting the words at the cursors")
+                                                (run-at-cursors split 'select-word nil)
+                                                t)
+                (setf (split-last split) nil)))
           (setf (split-running split) t (split-history split) '() (split-redo split) '())
-          (arm-cursors split *cursor-run-keymap*)
+          (arm-cursors *cursor-run-keymap*)
           (settle-cursors split)))))
 
 (define-command cursors-run-refuse (:interactive nil)
@@ -1161,7 +1139,7 @@ back and forward. The run's keys that would leave the line refuse."
   "End the mark run at SPLIT's cursors, keeping them: the cursors' own keys
 answer again."
   (setf (split-running split) nil)
-  (arm-cursors split *cursor-keymap*))
+  (arm-cursors *cursor-keymap*))
 
 (defun cursors-run-end (editor)
   "After a command that is not the run's, end a mark run at the cursors, keeping them."
@@ -1218,7 +1196,18 @@ same keys.")
   (remove-if (lambda (keys) (> (length (tuatara.frontend:parse-key-sequence keys)) 2))
              (where-is command (list keymap))))
 
+(defvar *cursor-keymaps-made* nil
+  "The count of bindings made (TUATARA.COMMAND::*KEYMAPS-GENERATION*) as the
+cursors' keymaps were last made, or NIL before then.")
+
 (defun build-cursor-keymaps ()
+  "Make the cursors' keymaps from the keys NORMAL state and the mark run have
+now: again only once a key has been bound since they were last made."
+  (unless (eql *cursor-keymaps-made* tuatara.command:*keymaps-generation*)
+    (make-cursor-keymaps)
+    (setf *cursor-keymaps-made* tuatara.command:*keymaps-generation*)))
+
+(defun make-cursor-keymaps ()
   "Make the cursors' keymaps from the keys NORMAL state and the mark run have now."
   (setf *cursor-keymap* (make-keymap :name "cursors")
         *cursor-run-keymap* (make-keymap :name "cursors' mark run" :parent *cursor-keymap*))
@@ -1244,8 +1233,8 @@ same keys.")
     (setf *virtual-cursor-keymap* (make-keymap :name "cursors past the limit"))
     (loop for (command . verb) in *cursor-verbs*
           when (member verb *virtual-cursor-verbs*)
-            do (dolist (keys (short-keys-of command *tuatara-normal-keymap*))
-                 (bind *virtual-cursor-keymap* keys verb)))
+          do (dolist (keys (short-keys-of command *tuatara-normal-keymap*))
+               (bind *virtual-cursor-keymap* keys verb)))
     (define-key *virtual-cursor-keymap* "C-g" 'split-quit)
     ;; the motions that move every cursor alike, those out of sight too; the cursors'
     ;; other keys refused, saying what works, rather than ending them all
@@ -1262,8 +1251,8 @@ same keys.")
                                add-cursor-below
                                add-cursor-above
                                split-selection)))
-            do (dolist (keys (short-keys-of command *tuatara-normal-keymap*))
-                 (bind *virtual-cursor-keymap* keys 'cursors-past-limit-refuse)))
+          do (dolist (keys (short-keys-of command *tuatara-normal-keymap*))
+               (bind *virtual-cursor-keymap* keys 'cursors-past-limit-refuse)))
     (loop for (command) in *cursor-global-verbs*
           do (dolist (keys (where-is command (list *global-keymap*)))
                (when (= 1 (length (tuatara.frontend:parse-key-sequence keys)))
@@ -1287,9 +1276,8 @@ them when another key is pressed."
                              cursors-run-refuse cursors-run-step-back
                              cursors-run-step-forward add-cursor-below
                              add-cursor-above)
-                           (mapcar #'cdr *cursor-verbs*)
+                           (remove 'split-selection (mapcar #'cdr *cursor-verbs*))
                            (mapcar #'cdr *cursor-global-verbs*)))
     (pushnew command *split-commands*))
-  (setf *split-commands* (remove 'split-selection *split-commands*))
   (build-cursor-keymaps)
   (pushnew 'cursors-run-end (editor-post-command-functions editor)))

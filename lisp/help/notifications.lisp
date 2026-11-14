@@ -36,12 +36,8 @@ nothing in them becomes a link or a picture."
   (list "--app-name=Tuatara" "--" title (xml-escape words)))
 
 (defun notifications-buffer ()
-  "The *Notifications* buffer, made when there is none: read-only, shown where
-*Messages* is."
-  (find-or-make-buffer "*Notifications*" :mode 'special-mode
-                                         :made (lambda (b)
-                                                 (setf (buffer-read-only-p b) t
-                                                       (buffer-kind b) :messages))))
+  "The *Notifications* buffer, made when there is none (LOG-BUFFER)."
+  (log-buffer "*Notifications*"))
 
 (defun notification-line (source title words time)
   "The line *Notifications* keeps of a notification from SOURCE told at the
@@ -75,8 +71,9 @@ same. Title and words are kept on one line, cut where they are long
         (log-notification line))
     (cond (program
            (values (ignoring-errors-reported ("starting ~a" program)
-                     (start-detached program (notify-arguments title words) :label "notification")
-                     t)))
+                                             (start-detached program (notify-arguments title words)
+                                                             :label "notification")
+                                             t)))
           ((and desktop *notify-program* (not **notify-missing-said**))
            (setf **notify-missing-said** t)
            (message "~a is not installed: notifications are kept in *Notifications* only (\\[view-notifications]); ~a"

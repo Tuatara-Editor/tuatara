@@ -192,7 +192,7 @@ version does (then with the new version's files and hashes).
 ** Line length
 
 The columns (code 120, documents 80, commit messages 72) are aims, so the
-check only lists. =tools/line-check.py [--summary] [ROOT]= prints each
+check only lists. =tools/line-check.py [--summary] [--packages] [ROOT]= prints each
 tracked code, Org and Markdown line past its column as =file:line: length=
 and the total; tables, lines that are only a link, and source and example
 blocks are left out. =--summary= gives the count for each file. ROOT is any
@@ -200,6 +200,24 @@ repository, a package's too. The test =(definitions long-lines-listed)=
 prints the total and never fails on it. =tools/git-hooks/commit-msg= adds
 Signed-off-by and warns about a subject or body line over 72; install it
 like the pre-commit hook.
+
+** Names reached across packages
+
+=tools/package-reaches.py [--summary] [--packages] [ROOT...]= lists each
+=PACKAGE::NAME= that takes a name from another Lisp package with two colons,
+because that package did not export it. Test files are left out, and so are
+references to a file's own package and those inside comments and strings.
+=--packages= looks at the package repositories beside this one as well. It
+prints the total and exits with 0: the count goes into the health report.
+=tools/line-check.py --packages= does the same for long lines.
+
+** Downloads in scripts
+
+=tools/fetch.sh= is sourced by the scripts that download. =checked_download URL
+DEST SHA256= takes the file over HTTPS only, redirects too, keeps it only when
+its SHA-256 matches, and removes it and fails otherwise; a file already there
+with that hash is not fetched again. =quicklisp_setup= prints where Quicklisp's
+=setup.lisp= is.
 
 ** The stable surface
 
@@ -261,6 +279,18 @@ Run it with =main= as BASE before a review, and say for each entry listed
 whether the new code reuses or extends it, or why it is different. The
 reviewer reads its output beside the diff.
 
+=tools/possible-copies.sh --alike-meaning [--packages] [--threshold COSINE]
+[--top N]= reads the name and docstring of every definition of the tree and
+lists the pairs a local embedding model finds alike (=tools/meaning.py= says
+how to set the model up), each with both places, the cosine and the body score
+of =--bodies=. Pairs alike in both come first. The cosine is taken after the
+mean vector is removed, and the default is 0.85 with the best 100 pairs shown. It is a list to read for merges
+and deeper functions, never a gate; the model writes nothing. Vectors are
+cached, so a run after the first embeds only what changed. A pair read and
+judged distinct goes into =test/api/kept-apart.txt= (=NAME-A NAME-B reason=,
+one to a line) and does not come back. =tools/code-health.sh= adds the list as
+its last section when the model is there.
+
 * Working in a running editor
 
 =tools/lisp-server.sh= starts SBCL with Tuatara loaded and a Swank (SLIME) or
@@ -274,7 +304,12 @@ Lisp, =M-x ielm= is a REPL, and =M-.= goes to the source of anything.
 
 - =src/= :: the core, which knows nothing of the features: text (the rope),
   buffers, display layout, the command loop, modes, input and output, the
-  sandbox, background jobs, tree-sitter.
+  sandbox, background jobs, tree-sitter. Its directories are =text/= (the rope,
+  UTF-8, the octet readers, JSON and XML), =io/= (files, system calls, programs
+  and processes, scopes and the sandbox, isolation, the file watcher, atomic
+  saves, deflate and zip), =runtime/= (settings, hooks, jobs, threads, locks,
+  records) and the ones named for what they hold: =buffer/=, =command/=,
+  =display/=, =dates/=, =modes/=, =syntax/= and =frontend/=.
 - =lisp/= :: the editor's features, written on the core: commands, the modal
   layer, Org, rimu, search, the terminal, help.
 - =frontends/= :: the window (GTK 4), the terminal (ncurses), and a fake one
@@ -289,10 +324,17 @@ through SBCL's own foreign calls (=sb-alien=), loaded when first needed by
 =foreign-library-p=: a function by =define-c-function= or =foreign-call=,
 text given to C by =with-c-string= and read back by =sap-string=
 (=src/io/posix.lisp=, =src/runtime/resources.lisp=).
+Each function made by =define-c-function= is declared inline, so a call costs
+what the bare call does and makes no garbage, which matters for the system calls
+made on every key.
 
 Tuatara carries no packages of its own: a package is loaded on asking from a
 git repository or a directory, =(load-package "NAME" :source ...)= in the init
 file, and is written, tested and kept where it lives ("Writing a package").
+The code that loads them is in =lisp/packages/=: =declare.lisp= (what
+=load-package= says and checks), =loading.lisp= (compiling and loading),
+=fetch.lisp= (getting a source and checking its signature), then the manager,
+signing, unloading and sweeping.
 
 * Writing a package
 
@@ -505,6 +547,20 @@ says what it is for.
   JPEG to the =jpeg:size= it is told, so that hint is never larger than the
   JPEG; ImageMagick's =jp2:reduce-factor= gives a crop of the reduced picture
   (7.1.2-32), so JPEG 2000 is decoded whole.
+- C is called through functions made with =define-c-function=
+  (=src/io/posix.lisp=), one for each C function, with the types =c-type=
+  knows; text goes to C and comes back in UTF-8 without garbage. Not a bare
+  =sb-alien:alien-funcall=, and not =foreign-call= in new code. The library is
+  loaded first with =foreign-library-p=.
+- A structure is written with =define-record= (=src/runtime/records.lisp=),
+  never a bare =defstruct=: it takes the same name, options and docstring,
+  and each slot is =(NAME INITIAL-VALUE :DOCUMENTATION "...")=, with =:type=
+  and =:read-only= as before. The text is the documentation of the slot's
+  reader, which help shows; a slot without it fails the compile, naming the
+  slot. The predicate, copier and constructors are documented by the macro;
+  a =setf= of =documentation= after the record says more of one. The test
+  =definitions structures-are-records= fails on a =defstruct= in the source.
+  Packages have it from =tuatara= as well.
 - Each source file starts with its name, a one-line description, and the
   copyright and license line.
 - A new setting: its name in =tuatara-user='s export list (=src/package.lisp=),

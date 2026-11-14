@@ -8,9 +8,8 @@
   (:use #:cl #:tuatara.command #:tuatara.modes #:tuatara.dates #:tuatara-user)
   (:shadowing-import-from #:tuatara.defaults #:point)
   (:import-from #:tuatara.buffer #:lf-newlines)
-  (:import-from #:tuatara.runtime #:foreign-library-p #:foreign-call #:ignoring-errors-reported #:refuse
+  (:import-from #:tuatara.runtime #:define-record #:foreign-library-p #:foreign-call #:ignoring-errors-reported #:refuse
                 #:define-setting)
-  (:import-from #:tuatara.text #:whole-number)
   (:import-from #:tuatara.defaults
                 #:address-scheme #:centred-text #:choose-display #:cursor-column #:decode-picture #:evidence-path-p
                 #:evidence-visit-reason #:hl-line #:kill-ring-save #:line-numbers #:modal-sync #:mouse-set-point
@@ -21,7 +20,7 @@
                 #:safe-directory-of
                 #:say-or-insert
                 #:set-made-text #:set-modal-state #:soft-wrap #:special-mode #:spellcheck #:take-in-clipboard
-                #:theme-terminal-colour #:uri-path #:visit-path #:visual-line)
+                #:theme-terminal-colour #:uri-path #:visit-path #:display-fill-column)
   (:documentation "The terminal in a buffer: a program run on a pseudo-terminal, its screen
 kept by the terminal library and shown as the buffer's text, keys typed there
 sent to it. The rest of the editor starts it through its command and keymap,

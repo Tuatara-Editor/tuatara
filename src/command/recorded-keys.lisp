@@ -11,7 +11,7 @@
 
 (defun start-keys-recording ()
   "Begin recording the keys typed from now on in the frame you are in, every
-one read as typed \(RECORD-EVENT), until END-KEY-RECORDING."
+one read as typed \(RECORD-EVENT), until STOP-KEYS-RECORDING."
   (setf (editor-keys-recording *editor*) (make-recording)))
 
 (defun drop-command-keys ()
@@ -44,21 +44,13 @@ named keys, which play others): past that, the innermost fails.")
 (defvar *keys-plays-within* 0
   "How many plays of recorded keys run now, one inside another.")
 
-(defun waiting-quit-p (editor)
-  "Read what is waiting to be read from EDITOR's frontend: true when \\`C-g'
-is among it, the other keys kept for later (KEEP-OR-QUIT-EVENT)."
-  (let ((frontend (frame-frontend (editor-frame editor))))
-    (loop repeat 64
-          while (tuatara.frontend:frontend-input-pending-p frontend)
-            thereis (keep-or-quit-event editor (tuatara.frontend:frontend-read-event-timeout frontend 1/100)))))
-
 (defun quit-while-playing-p ()
   "While recorded keys play, read what is waiting to be read: true when
 \\`C-g' is among it, which stops the play, the next key it gives then
 quitting what reads it; the other keys are kept for after the play. NIL
 when no keys play."
   (let ((playing (and *editor* (editor-keys-playing *editor*))))
-    (when (and playing (waiting-quit-p *editor*))
+    (when (and playing (pending-quit-p *editor*))
       (setf (playing-failed playing) :quit)
       t)))
 
@@ -124,7 +116,7 @@ command among the keys failed, its words the third value, or :QUIT."
                             words (and (stringp failed) failed))
                       (return))
                     (incf done)
-                    (when (waiting-quit-p editor)
+                    (when (pending-quit-p editor)
                       (setf stopped :quit)
                       (return))
                     (when (and outermost (tuatara.runtime:deadline-passed-p next-shown))

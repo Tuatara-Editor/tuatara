@@ -417,6 +417,18 @@ for rimu's operations to finish. Returns the frontend and the editor."
       (true (tuatara.frontend.fake:fake-frame-showing f "Made"))
       (is eq :directory (tuatara.io:path-kind path)))))
 
+(define-test (rimu-operations make-directory-failure-is-the-command-loops)
+  ;; a directory that cannot be made fails the command, so that playing recorded keys stops
+  (with-operations-tree (dir)
+    (alexandria:write-string-into-file (format nil "x~%") (here dir "afile"))
+    (let ((failed 0))
+      (sb-int:encapsulate 'tuatara.command::note-command-failed 'count
+                          (lambda (function &rest arguments) (incf failed) (apply function arguments)))
+      (unwind-protect
+           (ops-session dir (format nil "+ C-a C-k ~a C-j" (rimu-typed (namestring (here dir "afile/under/")))))
+        (sb-int:unencapsulate 'tuatara.command::note-command-failed 'count))
+      (true (plusp failed)))))
+
 (define-modal-test (rimu-operations rename-formatted)
   (with-operations-tree (dir)
     (alexandria:write-string-into-file (format nil "Some notes.~%") (here dir "notes.org"))
@@ -640,7 +652,7 @@ for rimu's operations to finish. Returns the frontend and the editor."
       (let ((buffer (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
         (is string= (namestring dir) (tuatara.buffer:buffer-local buffer 'tuatara.defaults::rimu-directory))
         (is string= "b.txt"
-            (tuatara.io:listed-name (tuatara.defaults::rimu-entry-at buffer (tuatara.buffer:buffer-point buffer))))))
+            (tuatara.io:listed-name (tuatara.defaults::list-entry-at buffer (tuatara.buffer:buffer-point buffer))))))
     (multiple-value-bind (f editor) (ops-session dir "g h g l g l")
       (declare (ignore f))
       (is string= (tuatara.io:directory-name (tuatara.io:native (tuatara.io:home-directory)) :clean t)
@@ -865,6 +877,16 @@ it did."
       (let ((f (ops-session dir "g f a . t x t RET m m m =" :width 300)))
         (true (tuatara.frontend.fake:fake-frame-showing f "3 entries are marked: mark two"))))))
 
+(define-test (rimu-operations differences-of-files-in-tmp)
+  ;; two files lying directly in /tmp are compared: diff is shown the two alone
+  (with-file-in-tmp (old ".txt")
+    (with-file-in-tmp (new ".txt")
+      (alexandria:write-string-into-file (format nil "one~%two~%") old)
+      (alexandria:write-string-into-file (format nil "one~%2~%") new)
+      (let ((text (tuatara.text:rope-string (tuatara.defaults::file-differences old new))))
+        (true (search (format nil "~%-two") text) "~a" text)
+        (true (search (format nil "~%+2") text) "~a" text)))))
+
 (define-test (rimu-operations link-onto-what-it-leads-to)
   ;; a link copied, or linked to, onto the very file it leads to is refused:
   ;; replacing that file would leave a link to nothing, its contents in the trash
@@ -1017,6 +1039,45 @@ installed. Work in the background sees 7-Zip as installed either way."
     (false (extract-failure (here dir "outer.zip") (here dir "outer/")))
     (true (probe-file (here dir "outer/z.zip")))
     (false (probe-file (here dir "outer/a.txt")))))
+
+(define-test (rimu-operations archives-read-as-a-copy)
+  ;; an archive, in a directory or lying directly in /tmp, is listed and unpacked from a sealed copy: the program
+  ;; is shown neither the file nor its directory, and the archive's access time stays as it was
+  (with-operations-tree (dir)
+    (let ((shown '()))
+      (sb-int:encapsulate 'tuatara.io:sandbox-run 'shown
+                          (lambda (function &rest arguments)
+                            (push (getf (cddr arguments) :directories) shown)
+                            (apply function arguments)))
+      (unwind-protect
+           (with-each-archive-program (program)
+             (dolist (format '("pax" "zip"))
+               (with-file-in-tmp (in-tmp (if (string= format "zip") ".zip" ".tar"))
+                 (dolist (archive (list (namestring (here dir (format nil "kept-~(~a~).~a" program format))) in-tmp))
+                   (bsdtar-make archive format "-C" (namestring dir) "a.txt" "sub")
+                   (sb-posix:utimes archive 1000 (sb-posix:stat-mtime (sb-posix:stat archive)))
+                   (setf shown '())
+                   (true (search "sub/c.txt" (tuatara.defaults::archive-listing archive)) "~a ~a" program archive)
+                   (let ((out (here dir (format nil "out-~(~a~)-~a-~a/" program format (length (namestring archive))))))
+                     (false (extract-failure archive out) "~a ~a" program archive)
+                     (is string= "alpha" (alexandria:read-file-into-string (here out "a.txt")) "~a ~a" program archive))
+                   (false (remove nil shown) "~a ~a" program archive)
+                   (is = 1000 (atime-of archive) "~a ~a" program archive)))))
+        (sb-int:unencapsulate 'tuatara.io:sandbox-run 'shown)))))
+
+(define-test (rimu-operations archives-made-of-files-in-tmp)
+  ;; files lying directly in /tmp are packed, into an archive lying there too: the program is shown the files
+  ;; alone and writes in a directory of its own, taken away after
+  (with-each-archive-program (program)
+    (with-file-in-tmp (file ".txt")
+      (with-file-in-tmp (archive (if (eq program :7zz) ".7z" ".zip"))
+        (alexandria:write-string-into-file "alpha" file)
+        (tuatara.defaults::write-archive (list file) archive)
+        (true (search (tuatara.io:native-file-name file) (tuatara.defaults::archive-listing archive)) "~a" program)
+        (false (remove-if-not (lambda (path) (search (format nil ".~a." (tuatara.io:native-file-name archive))
+                                                     (namestring path)))
+                              (uiop:subdirectories "/tmp/"))
+               "~a" program)))))
 
 (define-test (rimu-operations archives-extracted-writable)
   ;; what is extracted can be moved and deleted, whatever modes the archive
@@ -1649,6 +1710,23 @@ extra field of the AE-x kind (ID #x9901) saying strength 3."
                                                         '("kept.jpg")
                                                         '(("a" . "kept.jpg")))))))
 
+(define-test (rimu-operations pairs-left-out-in-one-pass)
+  ;; leaving out the pairs whose names are there already costs the same for each pair, however
+  ;; many there are: four times the pairs, at most about four times the time; the rest keep their order
+  (flet ((seconds-each (count)
+           (let* ((pairs (loop for i below count collect (cons (format nil "/a/~d" i) (format nil "/b/~d" i))))
+                  (there (remove-if-not #'evenp pairs :key (lambda (pair) (parse-integer (car pair) :start 3))))
+                  (start (thread-cpu-time)))
+             (loop repeat 3
+                   do (is = (- count (length there)) (length (tuatara.defaults::rimu-without-pairs pairs there))))
+             (/ (- (thread-cpu-time) start) internal-time-units-per-second count))))
+    (seconds-each 500)
+    (let ((small (seconds-each 2000)) (large (seconds-each 8000)))
+      (true (< large (* 2.5 (max small 1/1000000))) "each pair: ~,2e s of 2000, ~,2e s of 8000" small large)))
+  (let ((pairs (list (cons "a" "x/a") (cons "b" "x/b") (cons "c" "x/c"))))
+    (is equal '(("a" . "x/a") ("c" . "x/c")) (tuatara.defaults::rimu-without-pairs pairs (list (second pairs))))
+    (is eq pairs (tuatara.defaults::rimu-without-pairs pairs '()))))
+
 (define-test (rimu-operations new-files)
   (with-operations-tree (dir)
     ;; a: an empty file made there, the list on it
@@ -1658,7 +1736,7 @@ extra field of the AE-x kind (ID #x9901) saying strength 3."
       (is = 0 (length (alexandria:read-file-into-string (here dir "fresh.txt"))))
       (let ((list (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
         (is string= "fresh.txt"
-            (tuatara.io:listed-name (tuatara.defaults::rimu-entry-at list (tuatara.buffer:buffer-point list))))))
+            (tuatara.io:listed-name (tuatara.defaults::list-entry-at list (tuatara.buffer:buffer-point list))))))
     ;; a name there already, a file or a directory, is touched: its times now, its text kept
     (flet ((age (name)
              (let ((path (here dir name)))
@@ -1747,7 +1825,7 @@ extra field of the AE-x kind (ID #x9901) saying strength 3."
     ;; back from the list of the trash, the cursor is on an entry of the list
     (multiple-value-bind (f editor) (ops-session dir "g e g t q")
       (declare (ignore f))
-      (true (tuatara.defaults::rimu-entry-at (tuatara.display:window-buffer (tuatara.command:editor-window editor))
+      (true (tuatara.defaults::list-entry-at (tuatara.display:window-buffer (tuatara.command:editor-window editor))
                                              (session-point editor))))
     (is = 2 (length (uiop:directory-files (here dir "data/Trash/info/"))))
     (let ((f (ops-session dir "g t X y RET y RET" :width 300)))
@@ -2027,7 +2105,7 @@ extra field of the AE-x kind (ID #x9901) saying strength 3."
       (declare (ignore f))
       (let ((list (session-buffer editor)))
         (is string= "b.txt"
-            (tuatara.io:listed-name (tuatara.defaults::rimu-entry-at list (tuatara.buffer:buffer-point list))))
+            (tuatara.io:listed-name (tuatara.defaults::list-entry-at list (tuatara.buffer:buffer-point list))))
         (is equal (list (tuatara.io:native (here dir "b.txt"))) (tuatara.defaults::rimu-chosen-paths list))))
     ;; read again, or laid out anew, the list is narrowed again
     (dolist (keys '("g r" "I" "s" "H"))
@@ -2174,3 +2252,29 @@ extra field of the AE-x kind (ID #x9901) saying strength 3."
                    (tuatara.defaults::identifier-time (subseq (file-namestring made) 0 15))
                    ""))))))))
   (true (search "SKIP" (documentation 'tuatara.defaults::ask-formatted-file-answers 'function))))
+
+(define-test (rimu-operations names-there-left-out-in-one-pass)
+  ;; copying many files into a directory that holds every one of their names already, and leaving
+  ;; those alone: the time before anything is copied grows with their number alone, four times the
+  ;; files at most about four times the time
+  (let ((me sb-thread:*current-thread*))
+    (flet ((mine (value)
+             ;; on this thread alone, so that the rest of the editor looks at the disk as ever
+             (lambda (f &rest arguments) (if (eq sb-thread:*current-thread* me) value (apply f arguments))))
+           (seconds-each (count)
+             (let ((paths (loop for i below count collect (format nil "/nowhere/from/~d" i)))
+                   (tuatara.command::*messages-kept* (list '()))
+                   (start (thread-cpu-time)))
+               (tuatara.defaults::rimu-place-to :copy paths "/nowhere/to/" nil)
+               (/ (- (thread-cpu-time) start) internal-time-units-per-second count))))
+      (let ((faked '((tuatara.defaults::rimu-place-kind :directory) (tuatara.defaults::rimu-itself-p nil)
+                     (tuatara.io:path-stamp :there) (tuatara.io:path-kind :regular)
+                     (tuatara.defaults::yes-or-no-p* nil))))
+        (loop for (name value) in faked do (sb-int:encapsulate name 'names-there (mine value)))
+        (unwind-protect
+             (progn
+               (seconds-each 2000)
+               (let ((small (seconds-each 4000)) (large (seconds-each 16000)))
+                 (true (< large (* 2.5 (max small 1/1000000))) "each file: ~,2e s of 4000, ~,2e s of 16000"
+                       small large)))
+          (loop for (name) in faked do (sb-int:unencapsulate name 'names-there)))))))

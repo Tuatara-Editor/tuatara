@@ -365,3 +365,17 @@ a new session would."
       (ignore-errors (sb-posix:unlink name))
       (uiop:delete-directory-tree elsewhere :validate t :if-does-not-exist :ignore)
       (tuatara.syntax:user-grammar-store))))
+
+(define-test (grammars-on grammars-listed-without-making-the-store)
+  ;; naming the grammars you added makes no directory: a session started bare leaves
+  ;; its state directory as it found it
+  (let* ((directory (merge-pathnames "grammar-store/" (tuatara.io:state-directory)))
+         (name (string-right-trim "/" (uiop:native-namestring directory))))
+    (uiop:delete-directory-tree directory :validate t :if-does-not-exist :ignore)
+    (unwind-protect
+         (progn
+           (tuatara.defaults::user-grammar-names)
+           (false (probe-file directory))
+           (false (tuatara.syntax:user-grammar-store :make nil))
+           (true (tuatara.syntax:user-grammar-store)))
+      (ignore-errors (sb-posix:rmdir name)))))

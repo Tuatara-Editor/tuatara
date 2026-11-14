@@ -16,54 +16,39 @@ never in a list opened safely, as summing them reads every directory below, nor
 in one of a directory as a commit left it, whose directories are not on the disk."
   (rimu-column-allowed-p buffer 'rimu-sizes))
 
-(defun rimu-tree-size (directory &key (seen (make-hash-table :test 'equal)) wanted)
-  "The octets the files in DIRECTORY (a native name ending in /) and under it
-take, hidden ones too: each file once however many names it has (SEEN, a
-table of those counted), links not followed, and directories of another file
-system (a drive mounted below it, /proc) left out. WANTED, a function of no
-arguments, is asked every 64 directories whether the sum is still wanted: NIL is
-given when it says no."
-  (let ((total 0) (dirs 0))
-    (walk-directory directory
-                    (lambda (dir relative entry)
-                      (declare (ignore dir relative))
-                      (if (null entry)
-                          (when (and wanted (zerop (mod (incf dirs) 64)) (not (funcall wanted)))
-                            (return-from rimu-tree-size nil))
-                          (destructuring-bind (name kind size own &optional stamp) entry
-                            (declare (ignore name))
-                            (when (and (eq kind :regular) (eq own kind))
-                              (let ((key (and stamp (cons (tuatara.io:stamp-dev stamp) (tuatara.io:stamp-ino stamp)))))
-                                (unless (and key (gethash key seen))
-                                  (when key (setf (gethash key seen) t))
-                                  (incf total (or size 0)))))
-                            t)))
-                    :same-device t)
-    total))
+(defvar *rimu-size-walks* (make-hash-table :test 'equal :synchronized t)
+  "By directory, which walk of its sizes column is the latest, a number: an
+older walk of the same directory ends (RIMU-SIZE-CELLS).")
 
 (defun rimu-size-cells (directory entries)
   "The sizes column's texts for ENTRIES of DIRECTORY: :PENDING, worked out on
-a thread of its own (RIMU-TREE-SIZE for a directory) and given to the lists by
-RIMU-COLUMN-READY; the walk ends once no list of DIRECTORY shows the column."
-  (flet ((wanted ()
-           (some (lambda (buffer)
-                   (and (rimu-list-p buffer) (rimu-sizes-p buffer)
-                        (equal directory (tuatara.buffer:buffer-local buffer 'rimu-directory))))
-                 tuatara.buffer:*buffers*)))
-    (rimu-column-in-background
-     :sizes entries "tuatara rimu sizes column"
-     (lambda (names)
-       (let ((seen (make-hash-table :test 'equal)))
-         (map 'vector
-              (lambda (name)
-                (unless (member name '("." "..") :test #'string=)
-                  (let* ((path (concatenate 'string directory name))
-                         (stamp (tuatara.io:path-stamp path :follow nil :failure nil))
-                         (size (case (and stamp (tuatara.io:stamp-kind stamp))
-                                 (:directory (rimu-tree-size (concatenate 'string path "/") :seen seen :wanted #'wanted))
-                                 (:regular (tuatara.io:stamp-size stamp)))))
-                    (and size (cons (rimu-size-words size) :list-size)))))
-              names))))))
+a thread of its own (TUATARA.IO:TREE-SIZE for a directory) and given to the
+lists by RIMU-COLUMN-READY. The walk ends once no list of DIRECTORY shows the
+column, or a newer walk of DIRECTORY begins, as when it is read again after a
+change."
+  (let ((walk (sb-ext:with-locked-hash-table (*rimu-size-walks*)
+                (incf (gethash directory *rimu-size-walks* 0)))))
+    (flet ((wanted ()
+             (and (eql walk (gethash directory *rimu-size-walks*))
+                  (some (lambda (buffer)
+                          (and (rimu-list-p buffer) (rimu-sizes-p buffer)
+                               (equal directory (tuatara.buffer:buffer-local buffer 'rimu-directory))))
+                        tuatara.buffer:*buffers*))))
+      (rimu-column-in-background
+       :sizes entries "tuatara rimu sizes column"
+       (lambda (names)
+         (let ((seen (make-hash-table :test 'equal)))
+           (map 'vector
+                (lambda (name)
+                  (unless (or (member name '("." "..") :test #'string=) (not (wanted)))
+                    (let* ((path (concatenate 'string directory name))
+                           (stamp (tuatara.io:path-stamp path :follow nil :failure nil))
+                           (size (case (and stamp (tuatara.io:stamp-kind stamp))
+                                   (:directory (tuatara.io:tree-size (concatenate 'string path "/")
+                                                               :seen seen :wanted #'wanted))
+                                   (:regular (tuatara.io:stamp-size stamp)))))
+                      (and size (cons (rimu-size-words size) :list-size)))))
+                names)))))))
 
 (define-command rimu-toggle-sizes ()
   "Show or hide, before each name in this list, how much it takes: a file
@@ -74,7 +59,9 @@ whether new lists show it."
   (rimu-toggle 'rimu-sizes "Sizes shown" "Sizes hidden"))
 
 (defun install-rimu-sizes ()
-  "Make the sizes column, and bind S to show or hide it."
-  (rimu-set-column :sizes 'rimu-size-cells :place :before :align :right :shown 'rimu-sizes-p
+  "Make the sizes column, and bind S to show or hide it; refuse it in a list
+of a directory not on the disk."
+  (rimu-set-column :sizes 'rimu-size-cells :place :before :align :right :shown 'rimu-sizes-p :interim t
                    :documentation "How much the entry takes: a directory with everything under it.")
-  (define-key *rimu-keymap* "S" 'rimu-toggle-sizes))
+  (define-key *rimu-keymap* "S" 'rimu-toggle-sizes)
+  (pushnew 'rimu-toggle-sizes *rimu-disk-commands*))

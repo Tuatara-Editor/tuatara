@@ -324,6 +324,41 @@ templates those in DIRECTORY's capture-templates/ (none unless a test makes them
       (is string= (format nil "* Projects~%** Notes~%first~%** Notes~%second~%*** Item~%* Inbox~%")
           (tuatara.buffer:buffer-string buffer)))))
 
+(defun capture-headline (buffer title)
+  "The headline of BUFFER's parse now whose title is TITLE."
+  (find title (tuatara.defaults::org-headlines (tuatara.defaults::org-parse-tree (tuatara.defaults::org-parse-now buffer)))
+        :key (lambda (h) (tuatara.defaults::org-property h :raw-value)) :test #'string=))
+
+(define-test (capture refiled-clock-keeps-its-own-line)
+  ;; a clock line left open above the running one in the subtree moved: the clock stays on its own
+  (with-capture (dir agenda)
+    (alexandria:write-string-into-file
+     (format nil "* Inbox~%** Item~%:LOGBOOK:~%CLOCK: [2026-01-01 Thu 10:00]~%:END:~%*** Sub~%* Projects~%")
+     agenda :if-exists :supersede)
+    (let ((buffer (tuatara.io:visit-file agenda)))
+      (unwind-protect
+           (progn
+             (setf (tuatara.buffer:buffer-point buffer)
+                   (search "*** Sub" (tuatara.buffer:buffer-string buffer)))
+             (tuatara.defaults::org-clock-in-here buffer)
+             (tuatara.defaults::org-refile-subtree buffer (capture-headline buffer "Item") (list :olp agenda "Projects"))
+             (let* ((clock tuatara.defaults::*org-clock*)
+                    (start (tuatara.defaults::org-clock-line-start clock))
+                    (line (tuatara.buffer:buffer-string buffer :start start
+                                                               :end (tuatara.buffer:buffer-line-end buffer start))))
+               (true (search (format nil "* Projects~%** Item") (tuatara.buffer:buffer-string buffer))
+                     "~a" (tuatara.buffer:buffer-string buffer))
+               (false (search "2026-01-01" line) "~a" line)))
+        (setf tuatara.defaults::*org-clock* nil)))))
+
+(define-test (capture refile-targets-alike-in-agenda-files)
+  ;; an agenda file offers its archived and commented headings to refile into, as any file does
+  (with-capture (dir agenda)
+    (alexandria:write-string-into-file (format nil "* Tasks~%* Archive :ARCHIVE:~%* COMMENT Drafts~%") agenda
+                                       :if-exists :supersede)
+    (let ((titles (mapcar #'second (tuatara.defaults::org-file-headings (namestring agenda)))))
+      (is equal '(("Tasks") ("Archive") ("Drafts")) titles))))
+
 (define-modal-test (capture empty-question-and-windows-lines)
   (with-capture (dir agenda)
     (let ((directory (merge-pathnames "capture-templates/" dir)))
@@ -405,7 +440,14 @@ templates those in DIRECTORY's capture-templates/ (none unless a test makes them
     (let ((tuatara-user:*org-agenda-files* (list (namestring dir))))
       (is string= (namestring (merge-pathnames "agenda.org" dir)) (tuatara.defaults::org-agenda-main-file)))
     (let ((tuatara-user:*org-agenda-files* (list (concatenate 'string (namestring dir) "*.org"))))
-      (is string= (namestring (merge-pathnames "agenda.org" dir)) (tuatara.defaults::org-agenda-main-file)))))
+      (is string= (namestring (merge-pathnames "agenda.org" dir)) (tuatara.defaults::org-agenda-main-file)))
+    ;; a package's file function that asks for the main file, as a calendar package does: answered, not asked again
+    (let ((tuatara-user:*org-agenda-files* (list (namestring (merge-pathnames "main.org" dir))))
+          (tuatara:*org-agenda-file-functions*
+            (list (lambda () (list (namestring (merge-pathnames "calendars.org" (tuatara.defaults::org-agenda-main-file))))))))
+      (is string= (namestring (merge-pathnames "main.org" dir))
+          (handler-case (tuatara.defaults::org-agenda-main-file)
+            (storage-condition () "the main file asked for itself without end"))))))
 
 (define-test (capture menu-fits-a-terminal)
   ;; the choice of Tuatara's own templates is said whole within 120 columns, the first choice in sight

@@ -1,4 +1,5 @@
-;;;; lisp/selecting/digraphs.lisp --- Digraphs: two keys for a character the keyboard lacks, as Vim's and RFC 1345's.
+;;;; lisp/selecting/digraphs.lisp --- Digraphs: two keys for a character the keyboard lacks, as
+;;;; RFC 1345 lists them.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 
 (in-package #:tuatara.defaults)
@@ -32,22 +33,22 @@ start a longer digraph; \\`RET' takes a shorter one that is whole, and so does
 a key that goes on with none. \\`C-g' gives up."
   (let ((keys ""))
     (loop
-      (let* ((whole (and (plusp (length keys)) (digraph-char keys)))
-             (key (read-key (if whole
-                                (format nil (substitute-command-keys "Digraph: ~a (~a), \\`RET' or more: "
-                                                                     :marks t :for-format t)
-                                        keys whole)
-                                (format nil "Digraph: ~a" keys))))
-             (base (tuatara.frontend:key-base key))
-             (plain (and (characterp base) (not (tuatara.frontend:key-ctrl key)) (not (tuatara.frontend:key-meta key)))))
-        (cond ((quit-key-p key) (keyboard-quit-signal))
-              ((eq base :enter) (return (values keys whole)))
-              ((not plain) (return (values keys nil)))
-              (t (let ((next (concatenate 'string keys (string base))))
-                   (cond ((digraph-prefix-p next) (setf keys next))
-                         ((digraph-char next) (return (values next (digraph-char next))))
-                         (whole (return (values keys whole)))
-                         (t (return (values next nil)))))))))))
+     (let* ((whole (and (plusp (length keys)) (digraph-char keys)))
+            (key (read-key (if whole
+                               (format nil (substitute-command-keys "Digraph: ~a (~a), \\`RET' or more: "
+                                                                    :marks t :for-format t)
+                                       keys whole)
+                               (format nil "Digraph: ~a" keys))))
+            (base (tuatara.frontend:key-base key))
+            (plain (and (characterp base) (not (tuatara.frontend:key-ctrl key)) (not (tuatara.frontend:key-meta key)))))
+       (cond ((quit-key-p key) (keyboard-quit-signal))
+             ((eq base :enter) (return (values keys whole)))
+             ((not plain) (return (values keys nil)))
+             (t (let ((next (concatenate 'string keys (string base))))
+                  (cond ((digraph-prefix-p next) (setf keys next))
+                        ((digraph-char next) (return (values next (digraph-char next))))
+                        (whole (return (values keys whole)))
+                        (t (return (values next nil)))))))))))
 
 (define-command insert-digraph ()
   "Type the character a digraph stands for, the count's times: asks for its
@@ -87,36 +88,27 @@ too."
   '("Latin" "Greek" "Cyrillic" "Hebrew" "Arabic" "Symbols" "Kana" "Bopomofo" "Han" "CJK, other" "Private use")
   "The headings of the chart of every digraph, in order.")
 
-(defun unicode-name (char)
-  "CHAR's Unicode name, as the standard writes it (LATIN SMALL LETTER E WITH
-ACUTE), or an empty string for one that has none: a control character, or a
-code with no character given it yet."
-  (let ((name (char-name char)))
-    (if (and name (> (length name) 1)
-             (not (eq (sb-unicode:general-category char) :cc))
-             (not (cl-ppcre:scan "^U[0-9A-F]+$" name)))
-        (substitute #\Space #\_ (string-upcase name))
-        "")))
-
 (define-command list-digraphs ()
   "Show every digraph: the keys that type a character a keyboard lacks,
 those English text wants most first, then all of them by script, with
 the code point and name of each, and how to type them."
-  (let ((rule (make-string 50 :initial-element #\-)))
+  (let ((rule (make-string 50 :initial-element #\-))
+        (double (make-string 50 :initial-element #\=)))
     (show-help
      (with-output-to-string (out)
-       (format out "Digraphs~%~a~%~%" (make-string 50 :initial-element #\=))
+       (format out "Digraphs~%~a~%~%" double)
        (format out "A digraph is two characters that stand for one you cannot type directly.~%~
 These are the codes of RFC 1345, a standard list, each typed with an~%~
 ampersand in front of it while digraphs are on.~%~%")
        (format out "  Common digraphs~%~a~%" rule)
        (format out (substitute-command-keys
                     "  The characters English text uses most that a keyboard lacks, quotation~%~
-  marks in pairs, and the guillemets, which \\<normal>\\[select-inside-pair], \\[select-pair] and a wrap know as a pair.~%~%"
+  marks in pairs, and the guillemets, which \\<normal>\\[select-inside-pair], \\[select-pair] and ~
+a wrap know as a pair.~%~%"
                     :marks t :for-format t))
        (format out "  ~12a~22a~a~%" "DIGRAPH" "TYPE" "RESULT")
        (loop for (keys . result) in *common-digraphs*
-             do (format out "  ~12a~22a~a~%" keys (concatenate 'string "&" keys) result))
+             do (format out "  ~12a~22a~a~%" keys (digraph-rule keys) result))
        (format out "~%  How to type one~%~a~%" rule)
        (format out (substitute-command-keys
                     "  1. Press \\[digraph-input-mode] (or \\[set-input-method] and rfc1345): digraphs are on~%~
@@ -139,11 +131,10 @@ ampersand in front of it while digraphs are on.~%~%")
                      do (let ((shown (if (graphic-char-p char) (string char) " ")))
                           ;; padded by the columns the character takes, two for a wide one
                           (format out "  ~11a~a~a~11a~a~%" keys shown
-                                  (make-string (max 1 (- 8 (tuatara.display:char-columns (char shown 0))))
-                                               :initial-element #\Space)
+                                  (spaces (max 1 (- 8 (tuatara.display:char-columns (char shown 0)))))
                                   (format nil "U+~4,'0X" (char-code char))
                                   (unicode-name char))))))))
        (format out
                (substitute-command-keys "~%~a~%\\<help-mode>\\[quit-window]: quit  |  \\[regex-search-forward]: search"
                                         :marks t :for-format t)
-               (make-string 50 :initial-element #\=))))))
+               double)))))

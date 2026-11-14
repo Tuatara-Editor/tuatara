@@ -13,7 +13,7 @@ lookup of settings by major mode.")
 
 (defparameter *toggle-cases*
   '((tuatara.defaults::soft-wrap "soft-wrap-mode" "Soft wrap" "Wrap" t)
-    (tuatara.defaults::visual-line "visual-line-mode" "Visual line" nil t)
+    (tuatara.defaults::display-fill-column "display-fill-column-mode" "Fill column line" nil t)
     (tuatara.defaults::centred-text "centred-text-mode" "Centred text" "Centred" t)
     (tuatara.defaults::hl-line "hl-line-mode" "Hl-line" nil t)
     (tuatara.defaults::cursor-column "cursor-column-mode" "Cursor column" nil t)

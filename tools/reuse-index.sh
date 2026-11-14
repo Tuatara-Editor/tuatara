@@ -12,7 +12,10 @@ cd "$(dirname "$0")/.."
 . tools/inside.sh
 # this tree, never another one Quicklisp or ASDF knows of
 tree="$PWD/"
-inside sbcl --dynamic-space-size 4GB --non-interactive \
+# compiled into a cache of its own, as the tests are, never the one the editor
+# and the developer's own Lisp sessions use
+cache="$HOME/.cache/tuatara-reuse-index"
+inside env XDG_CACHE_HOME="$cache" sbcl --dynamic-space-size 4GB --non-interactive \
   --load tools/quicklisp.lisp \
   --eval "(push #p\"$tree\" asdf:*central-registry*)" \
   --eval '(ql:quickload :tuatara/tests :silent t)' \

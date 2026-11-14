@@ -1,4 +1,4 @@
-;;;; lisp/org/repeat-menu.lisp --- The menu of a repeat, opened from the date prompt: start, time, how it repeats, its days, when it ends.
+;;;; lisp/org/repeat-menu.lisp --- The menu of a repeat: start, time, how it repeats, its days, its end.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; At the date prompt of C-c C-s, C-c C-d and C-c ., C-r opens a menu of the
@@ -102,22 +102,22 @@ order, 0 for Sunday; NIL for none."
 
 (defun repeat-months (start every)
   "The months a repeat from the day number START every EVERY months comes in,
-as a rule's form takes them: t for every month, a list, or NIL when EVERY
-does not divide twelve."
-  (cond ((= every 1) "t")
+as a rule takes them: T for every month, a list, or NIL when EVERY does not
+divide twelve."
+  (cond ((= every 1) t)
         ((zerop (mod 12 every))
          (let ((month (nth-value 1 (day-date start))))
-           (format nil "'~a" (sort (loop for k below (/ 12 every) collect (1+ (mod (+ (1- month) (* k every)) 12))) #'<))))))
+           (sort (loop for k below (/ 12 every) collect (1+ (mod (+ (1- month) (* k every)) 12))) #'<)))))
 
 (defun repeat-form (arguments start end)
   "The repeat of ARGUMENTS, from the day number START until END (or with no
-end), as two values: an ORG-TS with a repeater, or the form of a timestamp
-by rule (diary-float t 1 1), or NIL when it cannot be written; and the words
-saying why not."
+end), as two values: an ORG-TS with a repeater, or an ORG-RULE with no time,
+or NIL when it cannot be written; and the words saying why not."
   (let* ((kind (repeat-kind arguments))
          (every (repeat-every arguments))
          (time (repeat-time arguments)))
     (multiple-value-bind (year month date) (day-date start)
+      (declare (ignore month date))
       (flet ((repeater (value unit &optional (day start))
                (let ((ts (org-date-ts day nil nil nil nil)))
                  (multiple-value-bind (hour minute end-hour end-minute) (read-time-range (or time ""))
@@ -125,46 +125,44 @@ saying why not."
                          (org-ts-end-hour ts) end-hour (org-ts-end-minute ts) end-minute))
                  (when value
                    (setf (org-ts-repeater ts) :cumulate (org-ts-repeat-value ts) value (org-ts-repeat-unit ts) unit))
-                 ts)))
+                 ts))
+             (rule (kind &rest arguments) (make-org-rule :kind kind :arguments arguments)))
         (cond
           ((string= kind "none") (repeater nil nil))
           ((string= kind "daily")
            ;; the days of the week switched on are the only ones it comes on
            (let ((days (repeat-weekdays-on arguments)))
-             (cond ((and days (= every 1)) (format nil "memq (calendar-day-of-week date) '~a" days))
-                   (days (format nil "and (diary-cyclic ~d ~d ~d ~d) (memq (calendar-day-of-week date) '~a)"
-                                 every month date year days))
-                   (end (format nil "diary-cyclic ~d ~d ~d ~d" every month date year))
+             (cond ((and days (= every 1)) (rule :weekdays days))
+                   (days (rule :all (list (rule :cyclic every start) (rule :weekdays days))))
+                   (end (rule :cyclic every start))
                    (t (repeater every #\d)))))
-          ((string= kind "weekdays") "memq (calendar-day-of-week date) '(1 2 3 4 5)")
+          ((string= kind "weekdays") (rule :weekdays (list 1 2 3 4 5)))
           ((string= kind "weekly")
            (let ((days (repeat-weekdays arguments start)))
-             (flet ((first-on (d) (+ start (mod (- d (weekday start)) 7))))
-               (flet ((cyclic (d)
-                        ;; the day every so many weeks, from its first at or after the start
-                        (multiple-value-bind (y m dd) (day-date (first-on d))
-                          (format nil "diary-cyclic ~d ~d ~d ~d" (* 7 every) m dd y))))
-                 (cond ((and (null (rest days)) (null end)) (repeater every #\w (first-on (first days))))
-                       ((null (rest days)) (cyclic (first days)))
-                       ((= every 1) (format nil "memq (calendar-day-of-week date) '~a" days))
-                       (t (format nil "or~{ (~a)~}" (mapcar #'cyclic days))))))))
+             (flet ((cyclic (d)
+                      ;; the day every so many weeks, from its first at or after the start
+                      (rule :cyclic (* 7 every) (+ start (mod (- d (weekday start)) 7)))))
+               (cond ((and (null (rest days)) (null end))
+                      (repeater every #\w (+ start (mod (- (first days) (weekday start)) 7))))
+                     ((null (rest days)) (cyclic (first days)))
+                     ((= every 1) (rule :weekdays days))
+                     (t (rule :any (mapcar #'cyclic days)))))))
           ((string= kind "monthly-day")
            (let ((months (repeat-months start every)))
              (cond ((null end) (repeater every #\m))
-                   (months (format nil "diary-date ~a ~d t" months date))
+                   (months (rule :date t months (nth-value 2 (day-date start))))
                    (t (values nil (format nil "Every ~d months has no end date: 12 must be a multiple of it" every))))))
           ((member kind '("monthly-nth" "monthly-last") :test #'string=)
            (let ((months (repeat-months start every)))
              (if months
-                 (format nil "diary-float ~a ~d ~d" months (weekday start)
-                         (if (string= kind "monthly-last") -1 (repeat-nth start)))
+                 (rule :float months (weekday start) (if (string= kind "monthly-last") -1 (repeat-nth start)) nil)
                  (values nil (format nil "Every ~d months on a weekday: 12 must be a multiple of it" every)))))
           ((string= kind "yearly")
-           (cond ((null end) (repeater every #\y))
-                 ((= every 1) (format nil "diary-anniversary ~d ~d" month date))
-                 (t (multiple-value-bind (last) (day-date end)
-                      (format nil "diary-date ~d ~d '~a" month date
-                              (loop for y from year to last by every collect y)))))))))))
+           (multiple-value-bind (y m d) (day-date start)
+             (declare (ignore y))
+             (cond ((null end) (repeater every #\y))
+                   ((= every 1) (rule :anniversary m d nil))
+                   (t (rule :date (loop for y from year to (day-date end) by every collect y) m d))))))))))
 
 (defun repeat-open-end (start)
   "The last day a date by rule of no end of its own that begins on the day
@@ -172,34 +170,50 @@ number START is written to take: 1 January a hundred years on."
   (day-number (+ 100 (day-date start)) 1 1))
 
 (defun repeat-rule-text (form time &optional from to)
-  "The timestamp by rule of FORM, diary-float t 1 1 say, TIME after it
-\(10:00, or NIL), taken from the day number FROM to the day TO when they are
-given: <%%(and (diary-block 11 2 2026 12 21 2026) (diary-cyclic 7 11 2 2026)) 10:00>.
-Dates are written month, day, year, the order other programs reading these
-forms take by default."
-  (if from
-      (multiple-value-bind (sy sm sd) (day-date from)
-        (multiple-value-bind (ey em ed) (day-date to)
-          ;; a form that is an and already takes the block among its own
-          (format nil "<%%(and (diary-block ~d ~d ~d ~d ~d ~d) ~:[(~a)~;~a~])~@[ ~a~]>" sm sd sy em ed ey
-                  (uiop:string-prefix-p "and " form) (if (uiop:string-prefix-p "and " form) (subseq form 4) form) time)))
-      (format nil "<%%(~a)~@[ ~a~]>" form time)))
+  "The timestamp by rule of FORM, an ORG-RULE or the text of its form
+\(diary-float t 1 1), TIME after it (10:00, or NIL), taken from the day number
+FROM to the day TO when they are given: <%%(and (diary-block 11 2 2026 12 21
+2026) (diary-cyclic 7 11 2 2026)) 10:00>. NIL for a FORM that is no rule
+ORG-RULE-FROM-DATA knows."
+  (let ((rule (if (stringp form) (org-rule-from-data (org-read-rule-data form 0 (length form))) form)))
+    (when rule
+      (let ((rule (if from
+                      ;; a rule that takes the days all its rules take has the block among its own
+                      (make-org-rule :kind :all
+                                     :arguments (list (cons (make-org-rule :kind :block :arguments (list from to))
+                                                            (if (eq (org-rule-kind rule) :all)
+                                                                (first (org-rule-arguments rule))
+                                                                (list rule)))))
+                      (copy-org-rule rule))))
+        (multiple-value-bind (hour minute end-hour end-minute) (read-time-range (or time ""))
+          (setf (org-rule-hour rule) hour (org-rule-minute rule) minute
+                (org-rule-end-hour rule) end-hour (org-rule-end-minute rule) end-minute))
+        (org-rule-text rule)))))
 
 (defun repeat-days (value from count)
   "The first COUNT days, at or after the day number FROM, that VALUE (an
-ORG-TS or the text of a timestamp by rule) comes on, as day numbers."
-  (if (stringp value)
-      (let ((rule (org-read-rule value)))
-        (loop with day = from repeat count
-              for next = (and rule (org-rule-next rule day))
-              while next collect next do (setf day (1+ next))))
+ORG-TS, an ORG-RULE or the text of a timestamp by rule) comes on, as day
+numbers."
+  (if (org-ts-p value)
       (let ((day (org-ts-day-number value)))
         (if (org-repeating-ts-p value)
             (let ((repeater (list value (org-ts-repeat-value value) (org-ts-repeat-unit value) day)))
               (loop repeat count
                     for next = (org-repeat-day repeater from :future) then (org-repeat-day repeater (1+ next) :future)
                     collect next))
-            (and (>= day from) (list day))))))
+            (and (>= day from) (list day))))
+      (let ((rule (if (stringp value) (org-read-rule value) value)))
+        (loop with day = from repeat count
+              for next = (and rule (org-rule-next rule day))
+              while next collect next do (setf day (1+ next))))))
+
+(defun repeat-ends (arguments)
+  "When the repeat of the menu's ARGUMENTS ends, as two values: after how
+many times (8x), or on which day; NIL for each it does not say. The text it
+gives as a third value."
+  (let* ((ends (repeat-argument arguments "ends"))
+         (count (and ends (cl-ppcre:scan "^\\d{1,4}x$" ends) (parse-integer ends :junk-allowed t))))
+    (values count (and ends (not count) (read-date-text ends (org-today))) ends)))
 
 (defun repeat-value (arguments)
   "What the repeat menu's ARGUMENTS write, as two values: an ORG-TS, or the
@@ -207,35 +221,34 @@ text of a timestamp by rule, or NIL; and the words saying why it cannot be
 written. An end on a day, or after so many times (8x), makes it a rule
 bounded by the days it runs (diary-block); a start after today does too
 when it is a rule, so that it comes no sooner."
-  (let* ((start (repeat-start arguments))
-         (ends (repeat-argument arguments "ends"))
-         (count (and ends (cl-ppcre:scan "^\\d{1,4}x$" ends) (parse-integer ends :junk-allowed t)))
-         (end-day (and ends (not count) (read-date-text ends (org-today))))
-         (time (repeat-time arguments)))
-    (when (and ends (not count) (not end-day))
-      (return-from repeat-value (values nil (format nil "The end, ~a, is no date" ends))))
-    (when (and time (null (read-time-range time)))
-      (return-from repeat-value (values nil (format nil "The time, ~a, is none: write 10:00 or 10:00-11:00" time))))
-    (flet ((written (end)
-             (multiple-value-bind (form why) (repeat-form arguments start end)
-               (cond ((null form) (values nil why))
-                     ((org-ts-p form) form)
-                     ;; a rule of no start of its own begins no sooner than the menu's
-                     ((or end (and (> start (org-today)) (not (string= (subseq form 0 2) "or"))))
-                      (repeat-rule-text form time start (or end (repeat-open-end start))))
-                     (t (repeat-rule-text form time))))))
-      (cond ((and end-day (< end-day start))
-             (values nil "It ends before it starts"))
-            (count
-             ;; after so many times: the last of them is its end
-             (let* ((open (written nil))
-                    (days (and open (repeat-days open start count))))
-               (cond ((null open) (written nil))
-                     ((< (length days) count) (values nil (format nil "It does not come ~d times" count)))
-                     ((string= (repeat-kind arguments) "none") open)
-                     (t (written (car (last days)))))))
-            ((and end-day (not (string= (repeat-kind arguments) "none"))) (written end-day))
-            (t (written nil))))))
+  (let ((start (repeat-start arguments))
+        (time (repeat-time arguments)))
+    (multiple-value-bind (count end-day ends) (repeat-ends arguments)
+      (when (and ends (not count) (not end-day))
+        (return-from repeat-value (values nil (format nil "The end, ~a, is no date" ends))))
+      (when (and time (null (read-time-range time)))
+        (return-from repeat-value
+          (values nil (format nil "The time, ~a, is none: write 10:00 or 10:00-11:00" time))))
+      (flet ((written (end)
+               (multiple-value-bind (form why) (repeat-form arguments start end)
+                 (cond ((null form) (values nil why))
+                       ((org-ts-p form) form)
+                       ;; a rule of no start of its own begins no sooner than the menu's
+                       ((or end (and (> start (org-today)) (not (eq (org-rule-kind form) :any))))
+                        (repeat-rule-text form time start (or end (repeat-open-end start))))
+                       (t (repeat-rule-text form time))))))
+        (cond ((and end-day (< end-day start))
+               (values nil "It ends before it starts"))
+              (count
+               ;; after so many times: the last of them is its end
+               (let* ((open (written nil))
+                      (days (and open (repeat-days open start count))))
+                 (cond ((null open) (written nil))
+                       ((< (length days) count) (values nil (format nil "It does not come ~d times" count)))
+                       ((string= (repeat-kind arguments) "none") open)
+                       (t (written (car (last days)))))))
+              ((and end-day (not (string= (repeat-kind arguments) "none"))) (written end-day))
+              (t (written nil)))))))
 
 (defun repeat-words (arguments)
   "The repeat of the menu's ARGUMENTS in words: every 2 weeks on Monday and
@@ -244,9 +257,8 @@ Wednesday, 18:00, until Mon 21 Dec 2026."
          (kind (repeat-kind arguments))
          (every (repeat-every arguments))
          (weekday (aref *weekday-names* (weekday start)))
-         (ends (repeat-argument arguments "ends"))
-         (count (and ends (cl-ppcre:scan "^\\d{1,4}x$" ends) (parse-integer ends :junk-allowed t)))
-         (end-day (and ends (not count) (read-date-text ends (org-today)))))
+         (count (nth-value 0 (repeat-ends arguments)))
+         (end-day (nth-value 1 (repeat-ends arguments))))
     (flet ((every-of (unit units)
              (if (= every 1) (format nil "Every ~a" unit) (format nil "Every ~d ~a" every units))))
       (format nil "~a~@[, ~a~]~:[~;~:*, ~a~]"
@@ -319,7 +331,8 @@ or CURRENT when nothing is read."
 (defun read-repeat-time (prompt &optional current)
   "Ask PROMPT for a time of day, 10:00 or 10:00-11:00, CURRENT offered; an
 empty answer takes it away."
-  (string-trim " " (read-string (format nil "~a(10:00 or 10:00-11:00) " prompt) :initial (or current "") :select-initial t)))
+  (string-trim " " (read-string (format nil "~a(10:00 or 10:00-11:00) " prompt)
+                                :initial (or current "") :select-initial t)))
 
 (defun read-repeat-kind (prompt &optional current)
   "Ask PROMPT how a repeat goes, the ways named from its start (REPEAT-KINDS); CURRENT the one it had."
@@ -359,13 +372,12 @@ CURRENT, what it said."
 
 (define-command repeat-menu-write ()
   "Write the repeat of the open repeat menu where the date prompt it came from
-would have written its date; say why when it cannot be written."
+would have written its date; when it cannot be written, say why and keep the
+menu open, what was set in it kept."
   (multiple-value-bind (value why) (repeat-value (menu-arguments))
-    (let ((target *repeat-menu-target*))
-      (setf *repeat-menu-target* nil)
-      (cond ((null value) (message "Not written: ~a" why))
-            ((null target) (message "No date prompt to write the repeat for"))
-            (t (funcall target value))))))
+    (cond ((null value) (message "Not written: ~a" why) (keep-menu-open))
+          ((null *repeat-menu-target*) (message "No date prompt to write the repeat for"))
+          (t (funcall (shiftf *repeat-menu-target* nil) value)))))
 
 (define-menu repeat-menu (:title "Repeat" :show repeat-menu-shows-p :summary repeat-summary :hold t)
   "Open the menu of a repeat: its start, time, how it repeats and when it
@@ -400,7 +412,8 @@ the menu from its next day."
            (append (list (format nil "start=~a" (format-day "%F" (org-ts-day-number value))))
                    (and (org-ts-hour value) (list (format nil "time=~a" (org-ts-time-text value))))
                    (and (org-repeating-ts-p value) (member unit '(#\d #\w #\m #\y))
-                        (list (format nil "repeats=~a" (ecase unit (#\d "daily") (#\w "weekly") (#\m "monthly-day") (#\y "yearly")))))
+                        (list (format nil "repeats=~a"
+                                      (ecase unit (#\d "daily") (#\w "weekly") (#\m "monthly-day") (#\y "yearly")))))
                    (and (org-repeating-ts-p value) (> n 1) (list (format nil "every=~d" n))))))
         ((stringp value)
          (let* ((rule (org-read-rule value)) (next (and rule (org-rule-next rule (org-today)))))

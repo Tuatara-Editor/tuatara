@@ -127,9 +127,10 @@ program (the desktop's primary selection); the mark at its start."
   (let ((text (tuatara.frontend:frontend-primary-selection (editor-frontend *editor*))))
     (unless (and text (plusp (length text))) (refuse "Nothing is selected anywhere"))
     (mouse-set-point)
-    (let ((p (point)))
-      (push-mark)
-      (goto (tuatara.buffer:buffer-insert (current-buffer) p (text-for-buffer text (current-buffer) p))))))
+    (when (mouse-in-text-p)
+      (let ((p (point)))
+        (push-mark)
+        (goto (tuatara.buffer:buffer-insert (current-buffer) p (text-for-buffer text (current-buffer) p)))))))
 
 (defun send-to-primary-selection ()
   "Make the text selected in the current buffer the desktop's primary
@@ -180,8 +181,7 @@ values, its start and end, within *CLICK-RUN-REACH* octets either side; on a
 bracket, the bracketed group, or the bracket alone when it has no partner. NIL
 at a line's end with nothing before it."
   (let* ((char (tuatara.buffer:buffer-char-at buffer position))
-         (before (and (plusp position)
-                      (tuatara.buffer:buffer-char-at buffer (tuatara.buffer:buffer-forward-char buffer position -1))))
+         (before (buffer-char-before buffer position))
          (class (click-class char)))
     (cond ((and char (find char tuatara.text:*openers*))
            (values position (sexp-end-after buffer position)))
@@ -210,9 +210,7 @@ break too."
   (mouse-set-point)
   (let ((b (current-buffer)))
     (when (and (mouse-in-text-p) (not (tuatara.display:hex-view-p b)))
-      (let ((end (tuatara.buffer:buffer-line-end b (point))))
-        (mouse-select (tuatara.buffer:buffer-line-start b (point))
-                      (if (< end (tuatara.buffer:buffer-size b)) (tuatara.buffer:buffer-forward-char b end) end))))))
+      (mouse-select (tuatara.buffer:buffer-line-start b (point)) (next-line-start b (point))))))
 
 ;;; Files dropped on the window
 

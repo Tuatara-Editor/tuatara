@@ -10,155 +10,10 @@
   "Names of commands run through \\[execute-extended-command], most recent
 first, the newest *HISTORY-KEPT* of them.")
 
-(defparameter *history-kept* 200
-  "How many of the newest entries a history kept while the editor runs holds:
-the commands run by name, the patterns typed, the places definitions were
-looked up from.")
-
-(defun pushed-and-kept (item history)
-  "HISTORY, a list, with ITEM pushed on it, no more than its newest
-*HISTORY-KEPT* entries."
-  (let ((history (cons item history)))
-    (when (> (length history) *history-kept*)
-      (setf (cdr (nthcdr (1- *history-kept*) history)) nil))
-    history))
-
-(defvar *pattern-history* '()
-  "The patterns typed in the questions that take a regular expression, most
-recent first, one list for them all: a search (\\[regex-search-forward]) and
-its replacements, a search filter, keep-lines and flush-lines, a split,
-sort-regexp-fields. M-p and M-n bring them back as the next is typed. Kept
-while the editor runs, never written to a file.")
-
-(defun keep-typed-pattern (text)
-  "Put TEXT, typed in a question that takes a regular expression, first in
-*PATTERN-HISTORY*, once; nothing for empty TEXT."
-  (when (plusp (length text))
-    (setf *pattern-history* (pushed-and-kept text (remove text *pattern-history* :test #'string=)))))
-
-(defvar *last-typed* 0
-  "The internal real time at which the text of a question taking a pattern
-last changed.")
-
-(defvar *toggle-pattern-kind* nil
-  "While a question other than a search's asks for a pattern (READ-PATTERN,
-\\[search-in-files]): a function of no arguments that switches it between a
-regular expression and literal text, for \\[search-toggle-regex].")
-(pushnew '*toggle-pattern-kind* *question-variables*)
-
-(defvar *pattern-finish* nil
-  "While READ-PATTERN asks: a function of no arguments that ends its question
-when what is typed can be used, and otherwise says why in the prompt.")
-(pushnew '*pattern-finish* *question-variables*)
-
-(defvar *pattern-keymap* (make-keymap :name "pattern")
-  "The keys of every question that takes a pattern, before the minibuffer's:
-\\<pattern>\\[search-toggle-regex] switches between a regular expression and literal text.")
-
-(define-keys *pattern-keymap* '(("M-r" search-toggle-regex)))
-
-(defvar *pattern-answer-keymap* (make-keymap :name "pattern-answer" :parent *pattern-keymap*)
-  "The keys of a question that takes a pattern as its answer (READ-PATTERN):
-those of *PATTERN-KEYMAP*, and \\<pattern-answer>\\[pattern-finish], which waits for a
-pattern that can be used.")
-
-(define-command pattern-finish ()
-  "In a question that takes a pattern: take what is typed, or when it cannot
-be used, say why in the prompt and wait for it to be mended
-\(\\<minibuffer>\\[minibuffer-cancel] gives up)."
-  (if *pattern-finish* (funcall *pattern-finish*) (finish-minibuffer)))
-
-(define-keys *pattern-answer-keymap* '(("RET" pattern-finish) ("C-j" pattern-finish)))
-
-(defun pattern-kind-words (regex)
-  "How a question that takes a pattern names it, first in its prompt: literal
-for literal text, else regex, or thorough regex with *REGEX-THOROUGH*; REGEX
-tells which."
-  (cond ((not regex) "literal")
-        (tuatara.syntax:*regex-thorough* "thorough regex")
-        (t "regex")))
-
-(defun pattern-prompt (regex words &optional note)
-  "The prompt of a question that takes a pattern, its kind first, as REGEX
-says (PATTERN-KIND-WORDS), then WORDS saying what is done with it, and NOTE
-in brackets when given, why the pattern cannot be used, as in Regex keep lines
-[incomplete]: ."
-  (format nil "~a ~a~@[ [~a]~]: " (string-capitalize (pattern-kind-words regex) :end 1) words note))
-
-(defun pattern-problem (text regex)
-  "Why TEXT cannot be used as a pattern, a regular expression when REGEX is
-true, else literal text; NIL when it can, or is empty."
-  (and (plusp (length text)) regex
-       (nth-value 1 (make-pattern-matcher text :regex t))))
-
-(defun refused-pattern-words (problem abort-keys)
-  "What a prompt says when a pattern was refused for PROBLEM (PATTERN-PROBLEM):
-the problem, to finish the pattern when it is incomplete or else to mend it,
-or ABORT-KEYS, a key description, to give up."
-  (format nil "~a; ~:[mend~;finish~] it, or ~a gives up" problem (string= problem "incomplete") abort-keys))
-
-(defun refusable-pattern-prompt (regex words problem refused)
-  "The prompt of a question that takes a pattern (PATTERN-PROMPT) for what
-WORDS says is done with it, PROBLEM why what is typed cannot be used
-\(PATTERN-PROBLEM) or NIL: once REFUSED, with what to do about it
-\(REFUSED-PATTERN-WORDS)."
-  (pattern-prompt regex words
-                  (and problem
-                       (if refused
-                           (refused-pattern-words problem
-                                                  (substitute-command-keys "\\<minibuffer>\\[minibuffer-cancel]"))
-                           problem))))
-
-(defun pattern-regex (text regex)
-  "TEXT, a pattern READ-PATTERN read, as a regular expression: as it is when
-REGEX is true, else literal text with every special character escaped."
-  (if regex text (cl-ppcre:quote-meta-chars text)))
-
-(defun read-pattern (words &key (initial "") count)
-  "Ask for a pattern for what WORDS says is done with it (\"keep lines\"), the
-prompt naming its kind first as a search's does (Regex keep lines: ).
-\\<pattern>\\[search-toggle-regex] switches between a regular expression and
-literal text. \\<minibuffer>\\[minibuffer-previous-history] and
-\\[minibuffer-next-history] bring back the patterns typed before
-\(*PATTERN-HISTORY*). A regular expression that cannot be used says why in the
-prompt, \\<pattern-answer>\\[pattern-finish] waiting for it to be mended.
-INITIAL is offered to begin with. COUNT, a function of what is typed and
-whether it is a regular expression, keeps a count up to date as it is typed
-and returns two values, as PATTERN-COUNT-UPDATE does: true while it counts,
-and what to show before the prompt. Returns what was typed, kept among the
-patterns typed before, and as a second value whether it is a regular
-expression."
-  (let* ((editor *editor*) (regex t) (refused nil)
-         ;; the last text and kind looked at, and why it cannot be used: worked out once
-         (checked (list nil)))
-    (labels ((typed () (editor-minibuffer-text editor))
-             (problem (text)
-               (let ((key (cons text regex)))
-                 (if (equal (car checked) key)
-                     (cdr checked)
-                     (cdr (setf checked (cons key (pattern-problem text regex)))))))
-             (prompt (text) (refusable-pattern-prompt regex words (problem text) refused)))
-      (let ((text (let ((*toggle-pattern-kind* (lambda () (setf regex (not regex) refused nil)))
-                        (*pattern-finish* (lambda ()
-                                          (if (problem (typed))
-                                              (setf refused t)
-                                              (finish-minibuffer)))))
-                    (read-string (prompt initial)
-                                 :initial initial :history *pattern-history* :keymap *pattern-answer-keymap*
-                                 :changed (lambda (text)
-                                            (declare (ignore text))
-                                            (setf *last-typed* (get-internal-real-time) refused nil))
-                                 :update (lambda ()
-                                           (multiple-value-bind (going shown)
-                                               (if count (funcall count (typed) regex) (values nil nil))
-                                             (values going (prompt (typed)) shown)))))))
-        (keep-typed-pattern text)
-        (values text regex)))))
-
 (defvar *mode-commands* (make-hash-table :test 'eq)
   "The commands made for one kind of buffer only, such as a list's own keys: for
 each, a list of conses of where it runs, a major mode's name or a function of
-a buffer (COMMANDS-FOR-BUFFERS), and what to call its buffers.")
+a buffer (COMMANDS-FOR-MODE), and what to call its buffers.")
 
 (defun commands-for-mode (mode where &rest commands)
   "Let COMMANDS run in buffers of major mode MODE only, and of the other modes
@@ -169,13 +24,6 @@ WHERE (\"the buffer list (\\[buffers])\") and do nothing, and
     (setf (gethash command *mode-commands*)
           (append (remove mode (gethash command *mode-commands*) :key #'car) (list (cons mode where))))))
 
-(defun commands-for-buffers (test where &rest commands)
-  "Let COMMANDS run only in the buffers for which TEST, the name of a function
-of a buffer, is true, and in those COMMANDS-FOR-MODE gave them; elsewhere
-they say that they work in WHERE (\"a quick edit\") and do nothing, and
-\\[execute-extended-command] does not offer them."
-  (apply #'commands-for-mode test where commands))
-
 (defvar *broken-command-places* (make-hash-table :test 'eq :weakness :key :synchronized t)
   "The places of *MODE-COMMANDS* that are no major mode and whose function is
 not there or failed (COMMAND-PLACE-P): no buffer is one of them.")
@@ -183,7 +31,7 @@ not there or failed (COMMAND-PLACE-P): no buffer is one of them.")
 (defun command-place-p (place buffer)
   "True when BUFFER is a place a command made for PLACE runs in: PLACE the
 name of a major mode, BUFFER in that mode or one made from it; else the name
-of a function of a buffer (COMMANDS-FOR-BUFFERS), true for BUFFER. A PLACE
+of a function of a buffer (COMMANDS-FOR-MODE), true for BUFFER. A PLACE
 that is neither, or whose function fails, is no place at all from then on,
 said once in the debug log: the commands made for it run nowhere, and the
 others are not hindered."
@@ -200,7 +48,7 @@ others are not hindered."
   (declare (ignore buffer))
   (and *editor* (editor-minibuffer-active *editor*) t))
 
-(apply #'commands-for-buffers 'minibuffer-active-p "the minibuffer, while it asks something"
+(apply #'commands-for-mode 'minibuffer-active-p "the minibuffer, while it asks something"
        (mapcar (lambda (name) (find-symbol name '#:tuatara.command))
                '("MINIBUFFER-NEXT-CANDIDATE" "MINIBUFFER-PREVIOUS-CANDIDATE"
                  "MINIBUFFER-COMPLETE"
@@ -209,7 +57,7 @@ others are not hindered."
                  "MINIBUFFER-FORWARD-CHAR" "MINIBUFFER-BEGINNING" "MINIBUFFER-END" "MINIBUFFER-KILL-LINE"
                  "MINIBUFFER-CLEAR" "MINIBUFFER-BACKWARD-KILL-WORD")))
 
-(apply #'commands-for-buffers 'menu-open-p "an open menu"
+(apply #'commands-for-mode 'menu-open-p "an open menu"
        (mapcar (lambda (name) (find-symbol name '#:tuatara.command))
                '("MENU-TOGGLE-SWITCH" "MENU-SET-OPTION" "MENU-ENTRY-LEFT-OUT" "MENU-ENTRY-REFUSED" "MENU-DESCRIBE")))
 
@@ -226,7 +74,7 @@ files as they are now.")
 (defun command-refusal-reason (command)
   "Why COMMAND may not run in the current buffer: :ELSEWHERE when it is made
 for buffers of another major mode, or for other buffers
-\(COMMANDS-FOR-BUFFERS); :SAFE when it changes files (*FILE-CHANGING-COMMANDS*)
+\(COMMANDS-FOR-MODE); :SAFE when it changes files (*FILE-CHANGING-COMMANDS*)
 and the buffer is opened safely; else what one of *COMMAND-REFUSAL-FUNCTIONS*
 says, the first that fails refusing it too, saying it could not be checked.
 NIL when it may run."
@@ -245,7 +93,7 @@ NIL when it may run."
 
 (defun mode-command-refusal (command)
   "What to say instead of running COMMAND, made for buffers of another major mode
-than the current buffer's, or for other buffers (COMMANDS-FOR-BUFFERS), the keys
+than the current buffer's, or for other buffers (COMMANDS-FOR-MODE), the keys
 it names written in (SUBSTITUTE-COMMAND-KEYS), or one that changes files
 \(*FILE-CHANGING-COMMANDS*) in a buffer opened safely, or what one of
 *COMMAND-REFUSAL-FUNCTIONS* says; NIL when it may run."
@@ -266,10 +114,10 @@ changes files in a buffer opened safely (MODE-COMMAND-REFUSAL)."
   (mode-command-refusal command))
 
 (defun command-candidates (&key everywhere)
-  "Completion candidates for every command that can run here (not those made
-for another kind of buffer or for keys alone), or with EVERYWHERE for every command there is:
-its key bindings in brackets right after its name, and the first sentence of
-its docstring at the right."
+  "Completion candidates for every command that can run here (not those made for
+another kind of buffer or for keys alone), or with EVERYWHERE for every command
+there is: its key bindings in brackets right after its name, and the first
+sentence of its docstring at the right."
   (let ((keymaps (active-keymaps *editor*)))
     (loop for symbol being the hash-keys of *commands*
           unless (and (not everywhere) (or (key-only-command-p symbol) (command-refusal-reason symbol)))
@@ -282,11 +130,12 @@ its docstring at the right."
 
 (defgeneric mode-completion-at-point (mode buffer position)
   (:documentation "What completing at POSITION of BUFFER in MODE offers, as
-six values. They are the start and end of the word there, the candidates for
+seven values. They are the start and end of the word there, the candidates for
 it (a list of CANDIDATE), and the functions giving what is said beside a
 candidate, its documentation, and whether a character can be part of a word
 (see COMPLETE-IN-TEXT). The last is true for the candidates to be kept in the
-order given. NIL when MODE completes nothing.")
+order given. NIL when MODE completes nothing. A LATER gives the same values
+once they come, for a mode that asks a program.")
   (:method (mode buffer position) (declare (ignore mode buffer position)) nil))
 
 (define-command completion-at-point ()
@@ -302,26 +151,27 @@ alone fits, it goes in at once. Where the mode offers nothing, the words of
 the buffers that start with the text before point, as \\[complete-word] lists
 them."
   (let ((b (current-buffer)))
-    (cond ((hex-view-here-p) (message "Nothing to complete in the hex view"))
-          ((buffer-read-only-p b) (message "Buffer is read-only: ~a" (tuatara.buffer:buffer-name b)))
-          (t (complete-at-point-in b :words t)))))
+    (when (hex-view-here-p) (refuse "Nothing to complete in the hex view"))
+    (check-writable b)
+    (complete-at-point-in b :words t)))
 
 (defun complete-at-point-in (b &key quiet words)
   "Complete the word at point of B as its major mode offers (MODE-COMPLETION-AT-POINT);
 where it offers nothing, with WORDS the words of the buffers (WORD-COMPLETION-AT-POINT),
 or with WORDS :ONLY those alone; where nothing is offered, say so, unless QUIET."
-  (multiple-value-bind (start end candidates annotate document constituent keep-order)
-      (if (eq words :only)
-          (word-completion-at-point b (point))
-          (multiple-value-bind (start end candidates annotate document constituent keep-order)
-              (mode-completion-at-point (buffer-major-mode b) b (point))
+  (flet ((complete (&optional start end candidates annotate document constituent keep-order)
+           (if (null start)
+               (unless quiet (message "Nothing to complete here"))
+               (complete-in-text b start end candidates :annotate annotate :document document :keep-order keep-order
+                                                        :constituent (or constituent #'graphic-char-p)))))
+    (if (eq words :only)
+        (multiple-value-call #'complete (word-completion-at-point b (point)))
+        (multiple-value-call #'take-answer b
+          (lambda (&optional start &rest more)
             (if (or start (not words))
-                (values start end candidates annotate document constituent keep-order)
-                (word-completion-at-point b (point)))))
-    (if (null start)
-        (unless quiet (message "Nothing to complete here"))
-        (complete-in-text b start end candidates :annotate annotate :document document :keep-order keep-order
-                                                 :constituent (or constituent #'graphic-char-p)))))
+                (apply #'complete start more)
+                (multiple-value-call #'complete (word-completion-at-point b (point)))))
+          (mode-completion-at-point (buffer-major-mode b) b (point))))))
 
 (define-command execute-extended-command ()
   "Run a command chosen by name, with completion over every command: the

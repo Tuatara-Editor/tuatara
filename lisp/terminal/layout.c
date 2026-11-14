@@ -15,15 +15,12 @@
 int main(void) {
   printf("(\n");
   V("success", GHOSTTY_SUCCESS);
-  V("no-value", GHOSTTY_NO_VALUE);
   V("opt-userdata", GHOSTTY_TERMINAL_OPT_USERDATA);
   V("opt-write-pty", GHOSTTY_TERMINAL_OPT_WRITE_PTY);
   V("opt-scrollback-max-bytes", GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_BYTES);
   V("opt-scrollback-max-lines", GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_LINES);
   V("data-title", GHOSTTY_TERMINAL_DATA_TITLE);
-  V("data-pwd", GHOSTTY_TERMINAL_DATA_PWD);
   V("data-scrollback-rows", GHOSTTY_TERMINAL_DATA_SCROLLBACK_ROWS);
-  V("data-total-rows", GHOSTTY_TERMINAL_DATA_TOTAL_ROWS);
   V("data-mode", GHOSTTY_TERMINAL_DATA_MODE);
   V("mode-config-size", sizeof(GhosttyTerminalModeConfig));
   OFF("mode-config-mode", GhosttyTerminalModeConfig, mode);
@@ -49,7 +46,6 @@ int main(void) {
   V("graphics-placement-iterator", GHOSTTY_KITTY_GRAPHICS_DATA_PLACEMENT_ITERATOR);
   V("graphics-generation", GHOSTTY_KITTY_GRAPHICS_DATA_GENERATION);
   V("placement-image-id", GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_IMAGE_ID);
-  V("placement-z", GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_Z);
   V("placement-virtual", GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_IS_VIRTUAL);
   V("placement-columns", GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_COLUMNS);
   V("placement-rows", GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_ROWS);
@@ -57,7 +53,6 @@ int main(void) {
   V("image-height", GHOSTTY_KITTY_GRAPHICS_IMAGE_DATA_HEIGHT);
   V("image-format", GHOSTTY_KITTY_GRAPHICS_IMAGE_DATA_FORMAT);
   V("image-data-pointer", GHOSTTY_KITTY_GRAPHICS_IMAGE_DATA_PIXELS);
-  V("image-data-length", GHOSTTY_KITTY_GRAPHICS_IMAGE_DATA_EXPECTED_LEN);
   V("image-generation", GHOSTTY_KITTY_GRAPHICS_IMAGE_DATA_GENERATION);
   V("image-format-rgb", GHOSTTY_KITTY_IMAGE_FORMAT_RGB);
   V("image-format-rgba", GHOSTTY_KITTY_IMAGE_FORMAT_RGBA);
@@ -80,7 +75,6 @@ int main(void) {
   OFF("sys-image-length", GhosttySysImage, data_len);
   V("compress-incremental", GHOSTTY_TERMINAL_COMPRESSION_MODE_INCREMENTAL);
   V("compress-pending", GHOSTTY_TERMINAL_COMPRESSION_RESULT_PENDING);
-  V("compress-complete", GHOSTTY_TERMINAL_COMPRESSION_RESULT_COMPLETE);
   V("data-memory-usage", GHOSTTY_TERMINAL_DATA_MEMORY_USAGE);
   V("memory-size", sizeof(GhosttyTerminalMemoryUsage));
   OFF("memory-compression-supported", GhosttyTerminalMemoryUsage, compression_supported);
@@ -88,16 +82,13 @@ int main(void) {
   OFF("memory-primary-compressed-pages", GhosttyTerminalMemoryUsage, primary_compressed_pages);
   OFF("memory-primary-pages", GhosttyTerminalMemoryUsage, primary_pages);
   OFF("memory-alternate-resident", GhosttyTerminalMemoryUsage, alternate_resident_bytes);
-  V("rs-dirty", GHOSTTY_RENDER_STATE_DATA_DIRTY);
   V("rs-row-iterator", GHOSTTY_RENDER_STATE_DATA_ROW_ITERATOR);
   V("rs-cursor", GHOSTTY_RENDER_STATE_DATA_CURSOR);
-  V("rs-colors", GHOSTTY_RENDER_STATE_DATA_COLORS);
   V("row-cells", GHOSTTY_RENDER_STATE_ROW_DATA_CELLS);
   V("cell-style", GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_STYLE);
   V("cell-graphemes-len", GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_LEN);
   V("cell-graphemes-buf", GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_BUF);
   V("cell-bg-color", GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_BG_COLOR);
-  V("cell-fg-color", GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_FG_COLOR);
   V("cell-has-styling", GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_HAS_STYLING);
   V("cell-raw", GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_RAW);
   V("raw-wide", GHOSTTY_CELL_DATA_WIDE);
@@ -110,7 +101,6 @@ int main(void) {
   OFF("string-pointer", GhosttyString, ptr);
   OFF("string-length", GhosttyString, len);
   V("cursor-bar", GHOSTTY_CURSOR_STYLE_BAR);
-  V("cursor-block", GHOSTTY_CURSOR_STYLE_BLOCK);
   V("cursor-underline", GHOSTTY_CURSOR_STYLE_UNDERLINE);
   V("cursor-hollow", GHOSTTY_CURSOR_STYLE_BLOCK_HOLLOW);
   V("style-size", sizeof(GhosttyStyle));
@@ -128,10 +118,6 @@ int main(void) {
   OFF("cursor-y", GhosttyRenderStateCursor, viewport_y);
   OFF("cursor-visible", GhosttyRenderStateCursor, visible);
   OFF("cursor-style", GhosttyRenderStateCursor, visual_style);
-  V("colors-size", sizeof(GhosttyRenderStateColors));
-  OFF("colors-background", GhosttyRenderStateColors, background);
-  OFF("colors-foreground", GhosttyRenderStateColors, foreground);
-  V("rgb-size", sizeof(GhosttyColorRgb));
   OFF("style-fg", GhosttyStyle, fg_color);
   OFF("style-bg", GhosttyStyle, bg_color);
   OFF("color-tag", GhosttyStyleColor, tag);
@@ -154,12 +140,14 @@ int main(void) {
       K("q", GHOSTTY_KEY_Q), K("r", GHOSTTY_KEY_R), K("s", GHOSTTY_KEY_S), K("t", GHOSTTY_KEY_T),
       K("u", GHOSTTY_KEY_U), K("v", GHOSTTY_KEY_V), K("w", GHOSTTY_KEY_W), K("x", GHOSTTY_KEY_X),
       K("y", GHOSTTY_KEY_Y), K("z", GHOSTTY_KEY_Z),
-      K("0", GHOSTTY_KEY_DIGIT_0), K("1", GHOSTTY_KEY_DIGIT_1), K("2", GHOSTTY_KEY_DIGIT_2), K("3", GHOSTTY_KEY_DIGIT_3),
-      K("4", GHOSTTY_KEY_DIGIT_4), K("5", GHOSTTY_KEY_DIGIT_5), K("6", GHOSTTY_KEY_DIGIT_6), K("7", GHOSTTY_KEY_DIGIT_7),
-      K("8", GHOSTTY_KEY_DIGIT_8), K("9", GHOSTTY_KEY_DIGIT_9),
+      K("0", GHOSTTY_KEY_DIGIT_0), K("1", GHOSTTY_KEY_DIGIT_1), K("2", GHOSTTY_KEY_DIGIT_2),
+      K("3", GHOSTTY_KEY_DIGIT_3), K("4", GHOSTTY_KEY_DIGIT_4), K("5", GHOSTTY_KEY_DIGIT_5),
+      K("6", GHOSTTY_KEY_DIGIT_6), K("7", GHOSTTY_KEY_DIGIT_7), K("8", GHOSTTY_KEY_DIGIT_8),
+      K("9", GHOSTTY_KEY_DIGIT_9),
       K("`", GHOSTTY_KEY_BACKQUOTE), K("\\", GHOSTTY_KEY_BACKSLASH), K("[", GHOSTTY_KEY_BRACKET_LEFT),
-      K("]", GHOSTTY_KEY_BRACKET_RIGHT), K(",", GHOSTTY_KEY_COMMA), K("=", GHOSTTY_KEY_EQUAL), K("-", GHOSTTY_KEY_MINUS),
-      K(".", GHOSTTY_KEY_PERIOD), K("'", GHOSTTY_KEY_QUOTE), K(";", GHOSTTY_KEY_SEMICOLON), K("/", GHOSTTY_KEY_SLASH),
+      K("]", GHOSTTY_KEY_BRACKET_RIGHT), K(",", GHOSTTY_KEY_COMMA), K("=", GHOSTTY_KEY_EQUAL),
+      K("-", GHOSTTY_KEY_MINUS), K(".", GHOSTTY_KEY_PERIOD), K("'", GHOSTTY_KEY_QUOTE),
+      K(";", GHOSTTY_KEY_SEMICOLON), K("/", GHOSTTY_KEY_SLASH),
       K(" ", GHOSTTY_KEY_SPACE),
       K(":backspace", GHOSTTY_KEY_BACKSPACE), K(":enter", GHOSTTY_KEY_ENTER), K(":tab", GHOSTTY_KEY_TAB),
       K(":escape", GHOSTTY_KEY_ESCAPE), K(":delete", GHOSTTY_KEY_DELETE), K(":insert", GHOSTTY_KEY_INSERT),

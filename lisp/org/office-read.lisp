@@ -1,4 +1,4 @@
-;;;; lisp/org/office-read.lisp --- Excel workbooks and PowerPoint presentations read as Org text, by Tuatara itself, safely.
+;;;; lisp/org/office-read.lisp --- Excel workbooks and PowerPoint presentations read as Org text, safely.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; An Excel workbook (.xlsx, .xlsm, .xltx, .xltm) and a PowerPoint
@@ -27,6 +27,14 @@
   "The most cells of an Excel workbook read as text, all its sheets together:
 the cells past them are left out, and the note says where it stopped.")
 
+(defparameter *sheet-most-columns* 16384
+  "The most columns a sheet has, as Excel and LibreOffice count them (A to XFD):
+a column past them is none.")
+
+(defparameter *sheet-most-rows* 1048576
+  "The most rows a sheet has, as Excel and LibreOffice count them: a row past
+them is none.")
+
 (defun docx-unlisted-parts (directory listed)
   "The parts of the document being read directly in DIRECTORY (xl/worksheets/,
 ppt/slides/), XML ones, that are not among LISTED, the names of those its own
@@ -36,7 +44,7 @@ list names: parts its program never shows, sorted."
               when (and (uiop:string-prefix-p directory name) (uiop:string-suffix-p name ".xml")
                         (not (find #\/ name :start (length directory)))
                         (not (member name listed :test #'string-equal)))
-                collect name)
+              collect name)
         #'string<))
 
 ;;; Excel workbooks
@@ -161,56 +169,123 @@ there)."
 NIL for one that names none, or a place past the largest sheet."
   (multiple-value-bind (match parts) (cl-ppcre:scan-to-strings "^\\$?([A-Za-z]{1,3})\\$?(\\d{1,7})$" (or reference ""))
     (when match
-      (let ((column (reduce (lambda (n c) (+ (* n 26) (- (char-code (char-upcase c)) 64))) (aref parts 0) :initial-value 0))
+      (let ((column (reduce (lambda (n c) (+ (* n 26) (- (char-code (char-upcase c)) 64))) (aref parts 0)
+                            :initial-value 0))
             (row (parse-integer (aref parts 1))))
-        (and (<= 1 column 16384) (<= 1 row 1048576) (values column row))))))
+        (and (<= 1 column *sheet-most-columns*) (<= 1 row *sheet-most-rows*) (values column row))))))
+
+(defun sheet-place (column row)
+  "The name of the cell in COLUMN and ROW of a sheet, both counted from 1: B12."
+  (format nil "~a~d" (sheet-column-letters column) row))
+
+(define-record (sheet-cells (:constructor make-sheet-cells (left)) (:copier nil))
+  "The cells of a sheet being read, gathered to be written (SHEET-CELLS-WRITE),
+whatever kind of file holds them: LEFT, how many it may hold at most;
+HIDDEN-COLUMNS, a bit for each column, 1 for one hidden; ROWS, each (NUMBER
+HIDDEN CELLS), CELLS each (COLUMN . VALUE), the latest row and cell first;
+FORMULAS and COMMENTS, each (PLACE . TEXT), the latest first; COUNT, how many
+cells it holds; CUT, the place of the first cell left out once it is full, or
+NIL."
+  (left nil :documentation "How many more cells SHEET-CELLS may hold.")
+  (hidden-columns (make-array (1+ *sheet-most-columns*) :element-type 'bit :initial-element 0)
+                  :documentation "A bit for each column of SHEET-CELLS, 1 for a hidden one.")
+  (rows '()
+        :documentation "The rows of SHEET-CELLS, each (NUMBER HIDDEN CELLS) with CELLS each (COLUMN . VALUE), the
+latest row and cell first.")
+  (formulas '() :documentation "The formulas of SHEET-CELLS, each (PLACE . TEXT), the latest first.")
+  (comments '() :documentation "The comments of SHEET-CELLS, each (PLACE . TEXT), the latest first.")
+  (count 0 :documentation "How many cells SHEET-CELLS holds.")
+  (cut nil :documentation "The place of the first cell SHEET-CELLS left out once it was full, or NIL."))
+
+(defun sheet-hide-columns (cells from to)
+  "Mark the columns FROM to TO of the sheet CELLS gathers hidden, both counted
+from 1 and both marked; those past *SHEET-MOST-COLUMNS* are none."
+  (let ((start (max 1 from)) (end (min (1+ to) (1+ *sheet-most-columns*))))
+    (when (< start end)
+      (fill (sheet-cells-hidden-columns cells) 1 :start start :end end))))
+
+(defun sheet-add-cell (cells row column value &key hidden formula comment)
+  "Add to CELLS the cell in COLUMN of ROW, HIDDEN when the row is hidden: its
+VALUE, its FORMULA and the COMMENT on it, text no longer than
+*OFFICE-VALUE-LENGTH-LIMIT* characters or NIL, their length taken from the room
+left for the note (OFFICE-SPEND). True when it was added; NIL when CELLS holds
+as many as it may, the first cell's place so refused kept as where they stop."
+  (when (>= (sheet-cells-count cells) (sheet-cells-left cells))
+    (unless (sheet-cells-cut cells)
+      (setf (sheet-cells-cut cells) (sheet-place column row)))
+    (return-from sheet-add-cell nil))
+  (office-spend (+ (length value) (length formula) (length comment)))
+  (incf (sheet-cells-count cells))
+  (let ((last (first (sheet-cells-rows cells))))
+    (if (and last (= (first last) row))
+        (push (cons column value) (third last))
+        (push (list row hidden (list (cons column value))) (sheet-cells-rows cells))))
+  (when formula
+    (push (cons (sheet-place column row) formula) (sheet-cells-formulas cells)))
+  (when comment
+    (push (cons (sheet-place column row) comment) (sheet-cells-comments cells)))
+  t)
+
+(defun sheet-cells-write (cells out)
+  "Write to OUT the cells CELLS gathered as SHEET-WRITE-ROWS does, then the
+comments on them. Returns how many cells there were."
+  (sheet-write-rows (reverse (mapcar (lambda (row) (list (first row) (second row) (reverse (third row))))
+                                     (sheet-cells-rows cells)))
+                    (lambda (c) (= 1 (bit (sheet-cells-hidden-columns cells) (min c *sheet-most-columns*))))
+                    (reverse (sheet-cells-formulas cells))
+                    (sheet-cells-cut cells)
+                    out)
+  (when (sheet-cells-comments cells)
+    (format out "Comments on its cells:~%")
+    (loop for (place . text) in (reverse (sheet-cells-comments cells))
+          do (format out "- ~a :: ~a~%" place text))
+    (terpri out))
+  (sheet-cells-count cells))
 
 (defun sheet-write (tree out strings styles date1904 left)
   "Write to OUT the cells of TREE, a workbook's sheet, as SHEET-WRITE-ROWS
 does: values as SHEET-CELL-VALUE gives them from STRINGS, STYLES and
 DATE1904, formulas as written, at most LEFT cells, each no longer than
 *OFFICE-VALUE-LENGTH-LIMIT* characters. Returns how many cells were written."
-  (let ((hidden-columns (make-array 16385 :element-type 'bit :initial-element 0))
+  (let ((cells (make-sheet-cells left))
         (masters (make-hash-table :test 'equal))
-        (rows '()) (formulas '()) (count 0) (cut nil) (row-at 0))
+        (row-at 0))
     (dolist (column (xml-find-all tree "col" :local t))
       (when (member (xml-attribute column "hidden") '("1" "true") :test #'equal)
         (let ((from (whole-number (xml-attribute column "min")))
               (to (whole-number (xml-attribute column "max"))))
           (when (and from to (<= 1 from to))
-            (fill hidden-columns 1 :start (min from 16385) :end (min (1+ to) 16385))))))
-    (block cells
+            (sheet-hide-columns cells from to)))))
+    (block rows
       (dolist (row (xml-find-all tree "row" :local t))
         (let ((number (or (whole-number (xml-attribute row "r")) (1+ row-at)))
               (hidden (member (xml-attribute row "hidden") '("1" "true") :test #'equal))
-              (column-at 0) (cells '()))
+              (column-at 0))
           (setf row-at number)
           (dolist (cell (xml-local-children row "c"))
-            (let ((column (or (sheet-cell-place (xml-attribute cell "r")) (1+ column-at))))
-              (setf column-at column)
-              (let* ((value (office-value (sheet-cell-value cell strings styles date1904)))
-                     (formula (first (xml-local-children cell "f")))
-                     (place (format nil "~a~d" (sheet-column-letters column) number)))
-                (when (or (plusp (length value)) formula)
-                  (when (>= count left)
-                    (setf cut place)
-                    (when cells (push (list number hidden (nreverse cells)) rows))
-                    (return-from cells))
-                  (incf count)
-                  (push (cons column value) cells)
-                  (when formula
-                    (let ((text (office-value (xml-all-text formula *office-value-length-limit*)))
-                          (shared (xml-attribute formula "si")))
-                      (when (and shared (plusp (length text))) (setf (gethash shared masters) place))
-                      (push (cons place (cond ((plusp (length text)) (format nil "=~a" (org-safe-line text)))
-                                              (shared (format nil
-                                                              "as ~a's, shared"
-                                                              (or (gethash shared masters) "another cell")))
-                                              (t "a formula of no text")))
-                            formulas)))))))
-          (when cells (push (list number hidden (nreverse cells)) rows)))))
-    (sheet-write-rows (nreverse rows) (lambda (c) (= 1 (bit hidden-columns (min c 16384)))) (nreverse formulas) cut out)
-    count))
+            (let* ((column (setf column-at (or (sheet-cell-place (xml-attribute cell "r")) (1+ column-at))))
+                   (value (tuatara.display:shorten-string (sheet-cell-value cell strings styles date1904)
+                                                          *office-value-length-limit*))
+                   (formula (first (xml-local-children cell "f")))
+                   (text (and formula (sheet-formula-text formula masters (sheet-place column number)))))
+              (when (and (or (plusp (length value)) formula)
+                         (not (sheet-add-cell cells number column value :hidden hidden :formula text)))
+                (return-from rows)))))))
+    (sheet-cells-write cells out)))
+
+(defun sheet-formula-text (formula masters place)
+  "The text of FORMULA, the f element of the cell at PLACE, as the note lists
+it: =A1+B1 as written, no longer than *OFFICE-VALUE-LENGTH-LIMIT* characters;
+a formula shared from another cell named by that cell's place, which MASTERS,
+a table of the shared formulas met by their number, keeps."
+  (let ((text (tuatara.display:shorten-string (xml-all-text formula *office-value-length-limit*)
+                                              *office-value-length-limit*))
+        (shared (xml-attribute formula "si")))
+    (when (and shared (plusp (length text)))
+      (setf (gethash shared masters) place))
+    (cond ((plusp (length text)) (format nil "=~a" (org-safe-line text)))
+          (shared (format nil "as ~a's, shared" (or (gethash shared masters) "another cell")))
+          (t "a formula of no text"))))
 
 (defun sheet-write-rows (rows hidden-column-p formulas cut out)
   "Write to OUT the cells of a sheet as an Org table: ROWS, each (NUMBER
@@ -246,14 +321,16 @@ stopped (*SHEET-MOST-CELLS*), is said, or NIL."
                                             (loop for c in columns
                                                   collect (progn (loop while (and sorted (< (caar sorted) c))
                                                                        do (pop sorted))
-                                                                 (if (and sorted (= (caar sorted) c)) (org-safe-line (cdr (pop sorted))) "")))))))
+                                                                 (if (and sorted (= (caar sorted) c))
+                                                                     (org-safe-line (cdr (pop sorted))) "")))))))
                 out))))
     (when formulas
       (format out "Formulas, as written; the values above are their results as last saved, none worked out here:~%")
       (loop for (place . text) in formulas do (format out "- ~a :: ~a~%" place text))
       (terpri out))
     (when cut
-      (format out "Only the first ~:d cells are read: from ~a on, this sheet and those after it are left out (*sheet-most-cells*).~%~%"
+      (format out "Only the first ~:d cells are read: from ~a on, this sheet and those after it are left out ~
+(*sheet-most-cells*).~%~%"
               *sheet-most-cells* cut))))
 
 (defun xlsx-read-note (path &key octets cancel)
@@ -300,13 +377,16 @@ its car turns true. Signals ZIP-ERROR or an error when it cannot be read."
                                 (when part (push part listed))
                                 (cond ((equal state "hidden") (incf hidden))
                                       ((equal state "veryHidden") (incf very-hidden)))
-                                (format s "* Sheet ~d: ~a~@[ ~a~]~%" n (org-safe-line (or (xml-attribute sheet "name") ""))
+                                (format s "* Sheet ~d: ~a~@[ ~a~]~%" n
+                                        (org-safe-line (or (xml-attribute sheet "name") ""))
                                         (cond ((equal state "hidden") "(hidden)")
                                               ((equal state "veryHidden")
                                                "(very hidden: only a program can show it again)")))
                                 (cond ((uiop:string-suffix-p type "/chartsheet") (format s "A chart, no cells.~%~%"))
                                       (t (when (search "acrosheet" type)
-                                           (format s "A sheet of macros (Excel 4.0): its formulas are a program, never run.~%~%"))
+                                           (format s
+                                                   "A sheet of macros (Excel 4.0): its formulas are a program, never ~
+run.~%~%"))
                                          (when (uiop:string-suffix-p type "/dialogsheet")
                                            (format s "A dialogue sheet.~%~%"))
                                          (read-sheet part s)))))
@@ -316,19 +396,21 @@ its car turns true. Signals ZIP-ERROR or an error when it cannot be read."
                        (read-sheet part s))))))
         (office-note path
                      (docx-read-about path :what "workbook" :program "Excel" :usual "xl/workbook.xml"
-                                           :more (with-output-to-string (s)
-                                                   (format s "- Sheets :: ~d~@[, ~d hidden~]~@[, ~d very hidden~]~%"
-                                                           (length sheets) (and (plusp hidden) hidden)
-                                                           (and (plusp very-hidden) very-hidden))
-                                                   (let ((connections (let ((tree (docx-reading-part "xl/connections.xml")))
-                                                                        (and tree
-                                                                             (xml-find-all tree "connection" :local t)))))
-                                                     (when connections
-                                                       (format s "- Data connections :: ~{~a~^, ~} (none made)~%"
-                                                               (mapcar (lambda (c)
-                                                                         (org-safe-line (or (xml-attribute c "name")
-                                                                                            "unnamed"))) connections))))
-                                                   (format s "- Values :: as last saved with the file; no formula is worked out here~%")))
+                                      :more (with-output-to-string (s)
+                                              (format s "- Sheets :: ~d~@[, ~d hidden~]~@[, ~d very hidden~]~%"
+                                                      (length sheets) (and (plusp hidden) hidden)
+                                                      (and (plusp very-hidden) very-hidden))
+                                              (let ((connections (let ((tree (docx-reading-part "xl/connections.xml")))
+                                                                   (and tree
+                                                                        (xml-find-all tree "connection" :local t)))))
+                                                (when connections
+                                                  (format s "- Data connections :: ~{~a~^, ~} (none made)~%"
+                                                          (mapcar (lambda (c)
+                                                                    (org-safe-line (or (xml-attribute c "name")
+                                                                                       "unnamed"))) connections))))
+                                              (format s
+                                                      "- Values :: as last saved with the file; no formula is worked ~
+out here~%")))
                      body)))))
 
 ;;; PowerPoint presentations
@@ -345,6 +427,13 @@ fields' text joined, a line break a space."
                        (t (mapc #'walk (xml-children node)))))))
       (mapc #'walk (xml-children paragraph)))))
 
+(defun slide-cell-text (cell)
+  "The text of CELL, a cell of a table on a slide, on one line as an Org table
+holds it, its length taken from the room left for the note (OFFICE-VALUE)."
+  (org-safe-line (office-value (format nil "~{~a~^ ~}"
+                                       (mapcar (lambda (p) (string-trim " " (slide-paragraph-text p)))
+                                               (xml-find-all cell "p" :local t))))))
+
 (defun slide-placeholder (shape)
   "The kind of placeholder SHAPE of a slide is (title, ctrTitle, body), or NIL
 for a shape of its own; a placeholder of no kind given is body."
@@ -355,6 +444,27 @@ for a shape of its own; a placeholder of no kind given is body."
   "True when SHAPE is a slide's title."
   (member (slide-placeholder shape) '("title" "ctrTitle") :test #'equal))
 
+(defun slide-item (out text level)
+  "Write to OUT TEXT, a paragraph of a slide, as an item of a list indented by
+its LEVEL (at most 8), its length taken from the room left for the note
+\(OFFICE-SPEND); nothing for an empty one."
+  (office-spend (length text))
+  (when (plusp (length text))
+    (format out "~a- ~a~%" (spaces (* 2 (min 8 level))) (org-safe-line text))))
+
+(defun slide-write-as-note (out heading hidden title write-text write-notes)
+  "Write to OUT a slide of a presentation being read: a heading, HEADING
+\(Slide 3), marked (hidden) when HIDDEN is true, with its TITLE when it has
+one; then what WRITE-TEXT, a function of a stream, writes to it; then what
+WRITE-NOTES, one too or NIL, writes, under a heading Speaker notes of its own
+when it writes anything."
+  (format out "* ~a~:[~; (hidden)~]~@[: ~a~]~%" heading hidden (and (plusp (length title)) (org-safe-line title)))
+  (funcall write-text out)
+  (let ((notes (and write-notes (with-output-to-string (s) (funcall write-notes s)))))
+    (when (plusp (length notes))
+      (format out "** Speaker notes~%~a" notes)))
+  (terpri out))
+
 (defun slide-write-shapes (tree out &key only)
   "Write to OUT the text of the shapes of TREE, a slide or its notes, in
 their order, as Org text, each paragraph an item of a list, indented by its
@@ -363,12 +473,9 @@ title left out (it is the heading). With ONLY, a placeholder kind, the text
 of those shapes alone (body, a notes page's notes)."
   (labels ((paragraphs (shape)
              (dolist (paragraph (xml-find-all shape "p" :local t))
-               (let ((text (string-trim " " (slide-paragraph-text paragraph))))
-                 (office-spend (length text))
-                 (when (plusp (length text))
-                   (let* ((look (first (xml-local-children paragraph "pPr")))
-                          (level (min 8 (or (whole-number (xml-attribute look "lvl")) 0))))
-                     (format out "~a- ~a~%" (make-string (* 2 level) :initial-element #\Space) (org-safe-line text)))))))
+               (let ((look (first (xml-local-children paragraph "pPr"))))
+                 (slide-item out (string-trim " " (slide-paragraph-text paragraph))
+                             (or (whole-number (xml-attribute look "lvl")) 0)))))
            (walk (node)
              (let ((local (xml-local-name node)))
                (cond ((null local))
@@ -379,11 +486,7 @@ of those shapes alone (body, a notes page's notes)."
                      ((equal local "tbl")
                       (fresh-line out)
                       (org-write-table-rows (loop for row in (xml-local-children node "tr")
-                                                  collect (loop for cell in (xml-local-children row "tc")
-                                                                collect (org-safe-line (office-value
-                                                                                   (format nil "~{~a~^ ~}"
-                                                                                           (mapcar (lambda (p) (string-trim " " (slide-paragraph-text p)))
-                                                                                                   (xml-find-all cell "p" :local t)))))))
+                                                  collect (mapcar #'slide-cell-text (xml-local-children row "tc")))
                                             out))
                      ((equal local "pic")
                       (let* ((names (first (xml-find-all node "cNvPr" :local t)))
@@ -405,25 +508,22 @@ order, HIDDEN when it is hidden: a heading with its title, its text
          (title (and tree (format nil "~{~a~^ ~}"
                                   (loop for shape in (xml-find-all tree "sp" :local t)
                                         when (slide-title-p shape)
-                                          append (loop for p in (xml-find-all shape "p" :local t)
-                                                       for text = (string-trim " " (slide-paragraph-text p))
-                                                       when (plusp (length text)) collect text)))))
-         (hidden (or hidden (and tree (member (xml-attribute (xml-root tree) "show") '("0" "false") :test #'equal)))))
-    (format out "* ~a~:[~; (hidden)~]~@[: ~a~]~%"
-            (if number
-                (format nil "Slide ~d" number)
-                (format nil "Slide part ~a (in the file, named by no list of slides)" (org-safe-line part)))
-            hidden (and title (plusp (length title)) (org-safe-line title)))
-    (if (null tree)
-        (format out "Its part is not in the file.~%~%")
-        (let ((notes (docx-related (docx-part-relations part) "/notesSlide")))
-          (slide-write-shapes tree out)
-          (let ((notes-tree (and notes (docx-reading-part (getf notes :target)))))
-            (when notes-tree
-              (let ((text (with-output-to-string (s) (slide-write-shapes notes-tree s :only "body"))))
-                (when (plusp (length text))
-                  (format out "** Speaker notes~%~a" text)))))
-          (terpri out)))))
+                                        append (loop for p in (xml-find-all shape "p" :local t)
+                                                     for text = (string-trim " " (slide-paragraph-text p))
+                                                     when (plusp (length text)) collect text)))))
+         (hidden (or hidden (and tree (member (xml-attribute (xml-root tree) "show") '("0" "false") :test #'equal))))
+         (notes (and tree (docx-related (docx-part-relations part) "/notesSlide")))
+         (notes-tree (and notes (docx-reading-part (getf notes :target)))))
+    (slide-write-as-note out
+                         (if number
+                             (format nil "Slide ~d" number)
+                             (format nil "Slide part ~a (in the file, named by no list of slides)"
+                                     (org-safe-line part)))
+                         hidden title
+                         (if tree
+                             (lambda (s) (slide-write-shapes tree s))
+                             (lambda (s) (format s "Its part is not in the file.~%")))
+                         (and notes-tree (lambda (s) (slide-write-shapes notes-tree s :only "body"))))))
 
 (defun pptx-read-note (path &key octets cancel)
   "The PowerPoint presentation at PATH as an Org note, from its OCTETS when they
@@ -447,7 +547,8 @@ car turns true. Signals ZIP-ERROR or an error when it cannot be read."
                         do (let* ((part (docx-relation-target relations (xml-attribute id "r:id")))
                                   (before (and part (gethash part listed))))
                              (office-spend 80)
-                             (cond (before (format s "* Slide ~d: slide ~d again (~a)~%~%" n before (org-safe-line part)))
+                             (cond (before (format s "* Slide ~d: slide ~d again (~a)~%~%" n before
+                                                   (org-safe-line part)))
                                    (t (when part (setf (gethash part listed) n))
                                       (slide-write (or part "") n nil s)))))
                   (dolist (part (docx-unlisted-parts "ppt/slides/"

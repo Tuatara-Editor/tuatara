@@ -636,9 +636,8 @@ is not offered by M-x either; NIL when it runs there."
          (tuatara.defaults::*latex-mono-font* latin))
     (when latin
       ;; a note that sets no look of its own: the article style, its fonts chosen
-      (multiple-value-bind (latex named map missing)
-          (tuatara.defaults::org-latex-document (format nil "* One~%Done ✓ and a hieroglyph 𓀀.~%") :enhanced t)
-        (declare (ignore named map))
+      (destructuring-bind (&key latex missing &allow-other-keys)
+          (tuatara.defaults::org-latex-parts (format nil "* One~%Done ✓ and a hieroglyph 𓀀.~%") :enhanced t)
         (true (search "\\usepackage{parskip}" latex))
         (true (search (format nil "\\setmainfont{~a}" latin) latex))
         ;; the code font's ligatures off: :: and // are copied from the PDF as written
@@ -693,9 +692,9 @@ is not offered by M-x either; NIL when it runs there."
     (alexandria:write-byte-vector-into-file *tiny-png* (merge-pathnames "photo.png" dir) :if-exists :supersede)
     (let ((file (namestring (merge-pathnames "notes.org" dir)))
           (text (format nil "[[file:drawing.svg]]~%~%[[file:photo.png]]~%~%[[file:broken.svg]]~%")))
-      (multiple-value-bind (latex named map missing notes)
+      (multiple-value-bind (latex named notes)
           (tuatara.defaults::org-latex-document text :file file :enhanced t)
-        (declare (ignore named map missing))
+        (declare (ignore named))
         ;; a PNG or the like as it is; a drawing made into a PNG in the cache, drawn for print
         (true (search (format nil "{~a}" (namestring (merge-pathnames "photo.png" dir))) latex))
         (let* ((at (search "latex/pictures/" latex))
@@ -767,17 +766,17 @@ is not offered by M-x either; NIL when it runs there."
 (define-test (latex-export redactions-read-back)
   ;; hidden text is written one way and read back by the one pattern: as plain
   ;; words for the Word document's titles, as as many letters for a table's width
-  (let* ((tuatara.defaults::*org-latex* (tuatara.defaults::make-org-latex "" nil nil))
-         (hidden (tuatara.defaults::org-latex-redaction "redact" "Bo Raglan")))
+  (let* ((tuatara.defaults::*org-export* (tuatara.defaults::make-org-latex "" nil nil))
+         (hidden (tuatara.defaults::org-export-redaction "redact" "Bo Raglan")))
     (false (search "Bo Raglan" hidden))
     (is equalp (list hidden #("9"))
         (multiple-value-list (cl-ppcre:scan-to-strings tuatara.defaults::*org-redaction-scanner* hidden)))
     (is string= "About [redacted]" (tuatara.defaults::docx-plain-title (concatenate 'string "About " hidden)))
-    (is string= "About nnnnnnnnn" (tuatara.defaults::org-latex-visible-text (concatenate 'string "About " hidden)))
+    (is string= "About nnnnnnnnn" (tuatara.defaults::org-export-visible-text (concatenate 'string "About " hidden)))
     ;; the Word document's part alone
     (is string= "[redacted]" (tuatara.defaults::docx-plain-title "@@docx:redacted:3@@"))
     ;; shown when not hidden
-    (is string= "Ann Napier" (tuatara.defaults::org-latex-redaction "protect" "Ann Napier"))))
+    (is string= "Ann Napier" (tuatara.defaults::org-export-redaction "protect" "Ann Napier"))))
 
 (define-test (latex-export redactions-checked)
   ;; found: the whole (any case), a word of it alone, a token a hidden part completes; never a time that only ends alike
@@ -871,7 +870,7 @@ is not offered by M-x either; NIL when it runs there."
         (is = 1 (count-matches "The words beside it" latex))
         (true (< (search "The words beside it" latex) (search "includegraphics" latex))))))
   ;; what cannot be is said, with the drawer's line, and left out
-  (let ((notes (nth-value 4 (tuatara.defaults::org-latex-document
+  (let ((notes (nth-value 2 (tuatara.defaults::org-latex-document
                              (format nil "Text~%~%:EXPORT:~%colour: red~%widths: 1cm~%:END:~%- item~%") :enhanced t))))
     (true (find-if (lambda (n) (search "Line 3, an :EXPORT: drawer: colour is no setting" n)) notes))
     (true (find-if (lambda (n) (search "widths does not apply to list" n)) notes))))
@@ -1149,7 +1148,7 @@ its text's size in half points, when given."
 
 (define-test (latex-export digests-within-their-columns)
   ;; a long digest goes on to the next line every *LATEX-CODE-RUN-LIMIT* characters
-  (is = 16 (tuatara.defaults::org-latex-longest-piece (format nil "=~a=" (make-string 64 :initial-element #\a))))
+  (is = 16 (tuatara.defaults::org-export-longest-piece (format nil "=~a=" (make-string 64 :initial-element #\a))))
   (true (search "\\texttt{d41d8cd98f00b204\\codebreak{}e9800998ecf8427e}"
                 (tuatara.defaults::org-latex-document (format nil "=d41d8cd98f00b204e9800998ecf8427e=~%") :enhanced t)))
   ;; a table of five columns of code and prose, too wide for its longest parts at the normal
@@ -1190,8 +1189,8 @@ its text's size in half points, when given."
     (true (search "\\texttt{\\textbackslash{}d\\{1,2\\}\\textbackslash{}/\\codebreak{}"
                   (funcall enhanced (format nil "=\\d{1,2}\\/\\d{4}=~%")))))
   ;; the longest part of a cell that cannot go on to the next line
-  (is = 7 (tuatara.defaults::org-latex-longest-piece "=org-export-latex-pdf= C-x"))
-  (is = 0 (tuatara.defaults::org-latex-longest-piece ""))
+  (is = 7 (tuatara.defaults::org-export-longest-piece "=org-export-latex-pdf= C-x"))
+  (is = 0 (tuatara.defaults::org-export-longest-piece ""))
   ;; wrapping columns share in proportion to their text, each at least as wide as its longest part
   (is equal '(1/2 3/2) (tuatara.defaults::org-latex-column-shares '(1 3) '(1 1) 100))
   (is equal '(2/5 8/5) (tuatara.defaults::org-latex-column-shares '(5 95) '(10 10) 50))
@@ -1281,7 +1280,7 @@ its text's size in half points, when given."
       (true (search "{|l r|}" (funcall latex "box header")))
       ;; a word it does not take, said
       (true (find-if (lambda (n) (search "lines: dotted is none of top" n))
-                     (nth-value 4
+                     (nth-value 2
                                 (tuatara.defaults::org-latex-document (funcall note "top dotted")
                                                                       :file file
                                                                       :enhanced t))))))
@@ -1335,9 +1334,9 @@ its text's size in half points, when given."
       (false (search "PAGEREF" (subseq docx (or (search "Hidden" docx) 0) (+ 400 (or (search "Hidden" docx) 0)))))
       (is = 1 (count-matches "PAGEREF" docx))))
   ;; a length that is none goes nowhere into the LaTeX, and is said
-  (multiple-value-bind (latex a b c notes)
+  (multiple-value-bind (latex a notes)
       (tuatara.defaults::org-latex-document (format nil ":EXPORT:~%space before: 0pt}\\input{x}\\vspace{0pt~%:END:~%Text.~%") :enhanced t)
-    (declare (ignore a b c))
+    (declare (ignore a))
     (false (search "\\input{x}" latex))
     (true (find-if (lambda (n) (search "is no length" n)) notes))))
 
@@ -1445,9 +1444,11 @@ its text's size in half points, when given."
            (tuatara-user:*export-trusted-directories* (list (namestring (merge-pathnames "notes/setup/" dir)))))
       (ensure-directories-exist made)
       (alexandria:write-string-into-file (format nil "#+export_file_name: setup/mine~%Text.~%") file)
-      (let ((f (export-session file (list (export-command "org-export-docx") "n o RET") :width 300)))
+      (let ((f (export-session file (list (export-command "org-export-docx") "n o RET")
+                               :width (width-for dir (+ 300 (length (namestring dir)))))))
         (true (tuatara.frontend.fake:fake-frame-showing f "#+EXPORT_FILE_NAME writes "))
-        (true (tuatara.frontend.fake:fake-frame-showing f "trusted directories."))
+        ;; the question's details are wrapped at the help column: where the path leads the break falls
+        (true (tuatara.frontend.fake:fake-frame-showing-across-rows f "logos or trusted directories."))
         (true (tuatara.frontend.fake:fake-frame-showing f "Export to "))
         (false (probe-file made))))))
 
@@ -1492,7 +1493,7 @@ its text's size in half points, when given."
   ;; a column the editor sets to the right is set to the right in the export too: hex, NaN and inf are numbers
   (let ((table (format nil "| Name | Mask | Value |~%| a | 0xff | inf |~%| b | 0x1F | NaN |~%")))
     (is equal '(:left :right :right)
-        (tuatara.defaults::org-table-alignments '(("Name" "Mask" "Value") ("a" "0xff" "inf") ("b" "0x1F" "NaN")) 3))
+        (tuatara.defaults::org-table-alignments '(#("Name" "Mask" "Value") #("a" "0xff" "inf") #("b" "0x1F" "NaN")) 3))
     (true (search "\\begin{tabular}{lrr}" (tuatara.defaults::org-latex-document table)))))
 
 (define-test (latex-export code-indentation-as-tangled)
@@ -1568,8 +1569,8 @@ its text's size in half points, when given."
       (let ((file (namestring (merge-pathnames "note.org" note-directory)))
             (text (format nil "#+setupfile: sub/setup.org~%#+setupfile: ../private/setup.org~%~%[[file:sub/pic.png]]~%~%[[file:../private/pic.png]]~%~%[[file:link.png]]~%")))
         (let ((tuatara-user:*export-trusted-directories* '()))
-          (multiple-value-bind (latex named lines missing notes) (tuatara.defaults::org-latex-document text :file file)
-            (declare (ignore named lines missing))
+          (multiple-value-bind (latex named notes) (tuatara.defaults::org-latex-document text :file file)
+            (declare (ignore named))
             (true (search "insidemark" latex))
             (false (search "outsidemark" latex))
             (true (search "sub/pic.png}" latex))
@@ -1585,8 +1586,8 @@ its text's size in half points, when given."
             (is = 3 (count-if (lambda (n) (search "outside the note's directory" n)) notes) "~s" notes)))
         ;; a directory trusted: taken in from there too
         (let ((tuatara-user:*export-trusted-directories* (list (namestring outside))))
-          (multiple-value-bind (latex named lines missing notes) (tuatara.defaults::org-latex-document text :file file)
-            (declare (ignore named lines missing))
+          (multiple-value-bind (latex named notes) (tuatara.defaults::org-latex-document text :file file)
+            (declare (ignore named))
             (true (search "outsidemark" latex))
             (true (search "private/pic.png}" latex))
             (false (find-if (lambda (n) (search "outside the note's directory" n)) notes))))))))
@@ -1699,6 +1700,35 @@ Shut in.
           '(vector (unsigned-byte 8)))
   "A PNG picture of one pixel, for the tests.")
 
+(define-test (latex-export error-lines-found-quickly)
+  ;; the line of each missing character is found without counting the note's lines again each time
+  (flet ((seconds (lines)
+           (let* ((text (with-output-to-string (out) (dotimes (k lines) (format out "line ~d~%" k))))
+                  (job (tuatara.export::make-pdf-export nil "/notes/kea.org" :org :file nil nil nil)))
+             (setf (tuatara.export::pdf-export-tex job) "/notes/kea.tex"
+                   (tuatara.export::pdf-export-text job) text
+                   (tuatara.export::pdf-export-map job) (list (list 1 (- (length text) 20) (1- (length text)))))
+             (let ((start (get-internal-real-time)))
+               (dotimes (k 300) (tuatara.export::error-place job (list :line (+ 1 (mod k 3)))))
+               (/ (- (get-internal-real-time) start) internal-time-units-per-second)))))
+    (let ((small (seconds 20000)) (large (seconds 320000)))
+      (true (< large (+ 0.2 (* 4 small))) "20,000 lines in ~,3f s, 320,000 in ~,3f s" small large))))
+
+(define-test (latex-export sockets-never-shown-whole)
+  ;; /tmp and the runtime directory hold other programs' sockets: never shown whole to LaTeX shut in
+  (false (tuatara.export::shown-whole-p "/tmp/"))
+  (let ((runtime (tuatara.io:own-variable "XDG_RUNTIME_DIR")))
+    (when (and runtime (plusp (length runtime)))
+      (false (tuatara.export::shown-whole-p runtime)))))
+
+(define-test (latex-export places-the-sandbox-refuses-never-shown-whole)
+  ;; what the sandbox will not show a program is not offered it whole either: one of its own
+  ;; directories, a directory holding your programs' sockets
+  (false (tuatara.export::shown-whole-p "/usr"))
+  (false (tuatara.export::shown-whole-p "/run"))
+  (true (tuatara.io:shown-place-p "/opt/texlive"))
+  (false (tuatara.io:shown-place-p "/etc/")))
+
 (define-test (latex-export pictures-from-elsewhere)
   ;; a picture the document includes from a directory it does not see: shown to LaTeX, that file alone, read
   ;; only, once its contents say it is a picture; a file named as one that is not, never
@@ -1718,8 +1748,12 @@ Shut in.
           (tuatara.export::latex-picture-files tex (list (format nil "\\includegraphics{~a}" logo) fake)))
       (false (tuatara.export::latex-picture-files tex '()))
       (false (tuatara.export::latex-picture-files tex (list "an unrelated template")))
+      ;; a name the trusted text has only as a piece of a longer name, or in words, is not its picture
+      (false (tuatara.export::latex-picture-files
+              tex (list (format nil "\\includegraphics{~a.bak}" logo) (format nil "% the logo is ~a" logo))))
       (let ((job (tuatara.export::make-pdf-export nil tex :org :file nil nil nil)))
-        (setf (tuatara.export::pdf-export-trusted job) (list logo fake))
+        (setf (tuatara.export::pdf-export-trusted job)
+              (list (format nil "\\includegraphics{~a}" logo) (format nil "\\includegraphics{~a}" fake)))
         (destructuring-bind (&key directories &allow-other-keys)
             (tuatara.export::latex-sandbox-places job tex (stand-in-latex dir "xelatex") "/build/")
           (true (member logo directories :test #'string=))
@@ -1817,9 +1851,10 @@ Shut in.
 
 (define-test (latex-export pictures-only-from-own-templates)
   ;; a note's own raw LaTeX cannot have a file from elsewhere shown to LaTeX: only its template's text is trusted
-  (let ((trusted (nth-value 5 (tuatara.defaults::org-latex-document
-                               (format nil "#+latex: \\includegraphics{/elsewhere/passport.pdf}~%Words.~%")
-                               :enhanced t))))
+  (let ((trusted (getf (tuatara.defaults::org-latex-parts
+                             (format nil "#+latex: \\includegraphics{/elsewhere/passport.pdf}~%Words.~%")
+                             :enhanced t)
+                            :trusted)))
     (true trusted)
     (false (some (lambda (text) (search "/elsewhere/passport.pdf" text)) trusted))))
 
@@ -1861,7 +1896,7 @@ Shut in.
 (define-test (latex-export setting-faults-said)
   ;; spacing: wibble and align: sideways said after both exports, with the drawer's line
   (let* ((text (format nil "Intro.~%~%:EXPORT:~%spacing: wibble~%align: sideways~%:END:~%Words.~%"))
-         (latex-notes (nth-value 4 (tuatara.defaults::org-latex-document text :enhanced t)))
+         (latex-notes (nth-value 2 (tuatara.defaults::org-latex-document text :enhanced t)))
          (docx-notes (nth-value 2 (tuatara.defaults::org-docx-document text))))
     (dolist (notes (list latex-notes docx-notes))
       (true (find-if (lambda (n) (search "Line 3, an :EXPORT: drawer: spacing: wibble is none of" n)) notes) "~s" notes)
@@ -1870,9 +1905,9 @@ Shut in.
 
 (define-test (latex-export table-header-and-alignment)
   ;; the header is the rows above the first rule when rows follow it, in both exports
-  (let* ((tuatara.defaults::*org-latex-text* (format nil "| a | 1 |~%|---+---|~%| b | 22 |~%"))
+  (let* ((tuatara.defaults::*org-export-text* (format nil "| a | 1 |~%|---+---|~%| b | 22 |~%"))
          (table (let ((found nil))
-                  (tuatara.defaults::org-walk-tree (tuatara.defaults::org-parse tuatara.defaults::*org-latex-text*)
+                  (tuatara.defaults::org-walk-tree (tuatara.defaults::org-parse tuatara.defaults::*org-export-text*)
                                                     (lambda (node)
                                                       (when (eq (tuatara.defaults::org-node-type node)
                                                                 'tuatara.defaults::table)
@@ -1972,8 +2007,8 @@ Shut in.
                        do (format s "#+macro: ~a ~{~a~}~%" name
                                   (make-list 10 :initial-element (if next (format nil "{{{~a}}}" next) "word "))))
                  (format s "{{{a}}}~%"))))
-    (multiple-value-bind (latex named lines missing notes) (tuatara.defaults::org-latex-document text)
-      (declare (ignore named lines missing))
+    (multiple-value-bind (latex named notes) (tuatara.defaults::org-latex-document text)
+      (declare (ignore named))
       (true (< (length latex) 30000) "~:d characters" (length latex))
       (true (find-if (lambda (n) (search "left as written" n)) notes) "~s" notes))
     ;; one call whose value alone is past the limit: left as it is
@@ -1996,8 +2031,8 @@ Shut in.
         (format out "#+title: Big setup~%~a~%" (make-string 5000 :initial-element #\x)))
       (let ((text (format nil "#+setupfile: setup.org~%Text.~%")))
         (let ((tuatara.defaults::*org-file-read-limit* 1000))
-          (multiple-value-bind (latex named lines missing notes) (tuatara.defaults::org-latex-document text :file file)
-            (declare (ignore named lines missing))
+          (multiple-value-bind (latex named notes) (tuatara.defaults::org-latex-document text :file file)
+            (declare (ignore named))
             (false (search "Big setup" latex))
             (true (find-if (lambda (n) (search "setup file larger than" n)) notes) "~s" notes)))
         (true (search "Big setup" (tuatara.defaults::org-latex-document text :file file)))))))
@@ -2389,9 +2424,9 @@ Shut in.
       (quickly (lambda () (is equal '() (tuatara.export::hidden-spans openings :org))))
       (let ((text (format nil "#+title: ~a)}}}~%" openings)))
         (tuatara.defaults::with-org-note-keywords (text nil)
-          (tuatara.defaults::org-latex-read-options tuatara.defaults::*org-latex*)
-          (quickly (lambda () (tuatara.defaults::org-latex-check-hidden openings openings nil)))
-          (quickly (lambda () (tuatara.defaults::org-latex-check-hidden text text nil))))))))
+          (tuatara.defaults::org-export-read-options tuatara.defaults::*org-export*)
+          (quickly (lambda () (tuatara.defaults::org-export-check-hidden openings openings nil)))
+          (quickly (lambda () (tuatara.defaults::org-export-check-hidden text text nil))))))))
 
 (defun stand-in-tex-helpers (directory &key (engine "xelatex") also)
   "Stand-ins in DIRECTORY for a LaTeX program, ENGINE, and for biber, bibtex and
@@ -2687,3 +2722,81 @@ and it runs (biber and bibtex asked their version: a biber built for other libra
                 (delete-file log)
                 (export-session tex (export-command "export-latex-compile-pdf") :width 250)
                 (false (probe-file log)))))))))
+
+(define-test (latex-export private-characters-exported)
+  ;; a note's own private-use characters, those Nerd Fonts draw, never read as the export's marks
+  (let* ((text (format nil "* Head~%Glyphs ~c and ~c5~c here.~%" (code-char #xE000) (code-char #xE000) (code-char #xE001)))
+         (latex (tuatara.defaults::org-latex-document text)))
+    (true (search (format nil "~c and ~c5~c here" (code-char #xE000) (code-char #xE000) (code-char #xE001)) latex)
+          "~a" latex)))
+
+(define-test (latex-export file-names-latex-cannot-take)
+  ;; braces and backslashes in a web address are encoded; a picture whose name LaTeX reads as markup is left out, said
+  (is string= "https://example.org/a\\%7Bb\\%7D\\%5Cc\\%20d\\#e"
+      (tuatara.defaults::latex-url "https://example.org/a{b}\\c%20d#e"))
+  (with-test-directory (dir)
+    (let ((note (namestring (merge-pathnames "note.org" dir))))
+      (with-open-file (out (merge-pathnames "100%.png" dir) :direction :output :element-type '(unsigned-byte 8))
+        (write-sequence (png-octets 4 4) out))
+      (multiple-value-bind (latex a notes)
+          (tuatara.defaults::org-latex-document (format nil "Text~%~%[[file:100%.png]]~%") :file note)
+        (declare (ignore a))
+        (false (search "includegraphics" latex) "~a" latex)
+        (true (find-if (lambda (n) (search "LaTeX cannot take a file named" n)) notes) "~s" notes)))))
+
+(define-test (latex-export picture-cache-cleaned-when-one-is-made)
+  ;; asking where converted pictures are kept does not look through them all
+  (let ((calls 0))
+    (sb-int:encapsulate 'tuatara.defaults::forget-old-copies 'counting
+                        (lambda (function &rest arguments) (incf calls) (apply function arguments)))
+    (unwind-protect (dotimes (i 3) (tuatara.defaults::latex-pictures-directory))
+      (sb-int:unencapsulate 'tuatara.defaults::forget-old-copies 'counting))
+    (is = 0 calls)))
+
+(define-test (latex-export fontconfig-asked-once)
+  ;; what fontconfig says of the fonts installed is asked once while they are unchanged
+  (let ((calls 0))
+    (sb-int:encapsulate 'tuatara.io:find-program 'counting
+                        (lambda (function &rest arguments) (incf calls) (apply function arguments)))
+    (unwind-protect
+         (dotimes (i 3) (tuatara.defaults::fontconfig-output "fc-list" ":" "-f" "%{family}\\n"))
+      (sb-int:unencapsulate 'tuatara.io:find-program 'counting))
+    (true (<= calls 1) "~d calls" calls)))
+
+(define-test (latex-export docx-empty-list-item)
+  ;; an item with nothing in it is an empty paragraph of the list, not a failed export
+  (let ((text (docx-text (tuatara.defaults::org-docx-document (format nil "+~%+ empty item above~%")))))
+    (true (search "empty item above" text))))
+
+(define-test (latex-export orgs-own-tag-keywords)
+  ;; #+exclude_tags: and #+select_tags: are read as the export_ spellings are
+  (let ((excluded (tuatara.defaults::org-latex-document
+                   (format nil "#+exclude_tags: private~%* Kept~%Open.~%* Hidden :private:~%Secret.~%* Plain :noexport:~%Shown.~%")))
+        (selected (tuatara.defaults::org-latex-document
+                   (format nil "#+select_tags: pick~%* Left~%Out.~%* Chosen :pick:~%In.~%"))))
+    (true (search "Open." excluded))
+    (false (search "Secret." excluded))
+    (true (search "Shown." excluded) "a tag list of the note replaces the default")
+    (true (search "In." selected))
+    (false (search "Out." selected))))
+
+(define-test (latex-export drawer-list-in-options)
+  ;; #+options: d: takes a list as one value; another drawer named in it is left out
+  (flet ((latex-with (options)
+           (tuatara.defaults::org-latex-document
+            (format nil "~a~%* A~%:NOTES:~%Private note.~%:END:~%:LOGBOOK:~%Logged.~%:END:~%:OTHER:~%Other text.~%:END:~%"
+                    options))))
+    (let ((latex (latex-with "#+options: d:(not \"EXPORT\" \"LOGBOOK\" \"NOTES\")")))
+      (false (search "Private note." latex))
+      (false (search "Logged." latex))
+      (true (search "Other text." latex)))
+    (let ((latex (latex-with "#+options: d:(\"NOTES\") toc:nil")))
+      (true (search "Private note." latex))
+      (false (search "Other text." latex)))))
+
+(define-test (latex-export empty-caption-is-no-caption)
+  ;; an empty #+caption: gives no caption, as in Org: no empty "Figure N:" or table title
+  (let ((latex (tuatara.defaults::org-latex-document
+                (format nil "#+caption:~%| a | b |~%~%#+caption: Named~%| c | d |~%"))))
+    (is = 1 (length (cl-ppcre:all-matches-as-strings "\\\\caption\\{" latex)))
+    (true (search "Named" latex))))

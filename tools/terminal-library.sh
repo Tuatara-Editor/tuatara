@@ -21,6 +21,7 @@
 # Usage: tools/terminal-library.sh [TARGET]  (does nothing when it is up to date)
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
+. "$root/tools/fetch.sh"
 pin="$root/lisp/terminal/library.pin"
 target="${1:-x86_64-linux-gnu.2.28}"
 field() { awk -F'\t' -v k="$1" '$1 == k { print $2 }' "$pin"; }
@@ -67,12 +68,7 @@ from_package() {
 cache="$root/build/licence-cache"
 from_address() {
   mkdir -p "$licences/$1" "$cache"
-  if ! echo "$4  $cache/$4" | sha256sum -c --status 2>/dev/null; then
-    curl -fsSL --max-time 60 --retry 3 -o "$cache/$4.part" "$3" || missing "$1" "$3"
-    echo "$4  $cache/$4.part" | sha256sum -c --status ||
-      { rm -f "$cache/$4.part"; missing "$1" "$3 is not the file expected"; }
-    mv "$cache/$4.part" "$cache/$4"
-  fi
+  checked_download "$3" "$cache/$4" "$4" || missing "$1" "$3"
   cp "$cache/$4" "$licences/$1/$2"
 }
 # simdutf, copied into Ghostty's sources: its licences at its version, and the

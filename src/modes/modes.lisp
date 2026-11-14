@@ -8,7 +8,7 @@
 
 (in-package #:tuatara.modes)
 
-(defstruct (mode-info (:constructor make-mode-info (name)) (:copier nil))
+(define-record (mode-info (:constructor make-mode-info (name)) (:copier nil))
   "What the editor knows about major mode NAME. It holds its PARENT mode, DOC,
 the LIGHTER shown in the mode line, its KEYMAP, the MODAL-CLASS it gives modal
 editing (:editing, :support, :excluded, or NIL to inherit), and its HOOKS.
@@ -19,35 +19,22 @@ NIL to inherit.
 LARGEST is the most octets a file opened in the mode may have (LARGEST-FILE).
 KNOWN-MODAL-CLASS is the modal class it gives its buffers once worked out
 along its inheritance, NIL until then."
-  (name nil :read-only t)
-  (parent nil)
-  (doc "")
-  (lighter "")
-  (keymap nil)
-  (modal-class nil)
-  (hooks '())
-  (comment nil)
-  (block-comment nil)
-  (largest nil)
-  (known-modal-class nil))
-
-(setf (documentation 'mode-info-p 'function) "True when OBJECT is a MODE-INFO."
-      (documentation 'mode-info-name 'function) "The mode's name, a symbol naming its class."
-      (documentation 'mode-info-parent 'function) "The parent mode's name, or NIL for the root."
-      (documentation 'mode-info-doc 'function) "What the mode is for."
-      (documentation 'mode-info-lighter 'function) "The name shown in the mode line."
-      (documentation 'mode-info-keymap 'function) "The mode's keymap; its parent is the parent mode's keymap."
-      (documentation 'mode-info-modal-class 'function) "The modal class the mode sets, or NIL to inherit."
-      (documentation 'mode-info-known-modal-class 'function) "The modal class the mode gives its
-buffers once worked out, or NIL until then."
-      (documentation 'mode-info-largest 'function) "The most octets a file opened in the mode may
-have, a number or a variable holding one; NIL for no limit."
-      (documentation 'mode-info-hooks 'function) "Functions called with the buffer when the mode is entered."
-      (documentation 'mode-info-comment 'function) "The marker of the mode's comments at the start
+  (name nil :read-only t :documentation "The mode's name, a symbol naming its class.")
+  (parent nil :documentation "The parent mode's name, or NIL for the root.")
+  (doc "" :documentation "What the mode is for.")
+  (lighter "" :documentation "The name shown in the mode line.")
+  (keymap nil :documentation "The mode's keymap; its parent is the parent mode's keymap.")
+  (modal-class nil :documentation "The modal class the mode sets, or NIL to inherit.")
+  (hooks '() :documentation "Functions called with the buffer when the mode is entered.")
+  (comment nil :documentation "The marker of the mode's comments at the start
 of a line and what commenting a line puts there, as a list of two strings; NIL
-to inherit."
-      (documentation 'mode-info-block-comment 'function) "What begins and ends the mode's comments
+to inherit.")
+  (block-comment nil :documentation "What begins and ends the mode's comments
 that have an end, as a list of two strings; NIL to inherit.")
+  (largest nil :documentation "The most octets a file opened in the mode may
+have, a number or a variable holding one; NIL for no limit.")
+  (known-modal-class nil :documentation "The modal class the mode gives its
+buffers once worked out, or NIL until then."))
 
 (defvar *modes* (make-hash-table :test 'eq)
   "Every major mode's MODE-INFO, keyed by the mode's name.")
@@ -123,7 +110,8 @@ made from."
   (loop for info being the hash-values of *modes*
         do (setf (mode-info-known-modal-class info) nil)))
 
-(defun register-major-mode (name parent doc &key lighter modal-class comment block-comment extensions file-names interpreters patterns largest-file)
+(defun register-major-mode (name parent doc &key lighter modal-class comment block-comment extensions file-names
+                                                 interpreters patterns largest-file)
   "Record major mode NAME with PARENT, DOC and the rest, creating its keymap
 on first registration (a re-registration keeps the keymap and its bindings) and
 replacing its auto-mode rules. Called by DEFINE-MAJOR-MODE."
@@ -146,7 +134,8 @@ replacing its auto-mode rules. Called by DEFINE-MAJOR-MODE."
     (dolist (p patterns) (push (list p name (cl-ppcre:create-scanner p)) *auto-mode-patterns*))
     name))
 
-(defmacro define-major-mode (name parent doc &key lighter modal-class comment block-comment extensions file-names interpreters patterns largest-file (interactive t))
+(defmacro define-major-mode (name parent doc &key lighter modal-class comment block-comment extensions file-names
+                                                interpreters patterns largest-file (interactive t))
   "Define major mode NAME as a subclass of mode PARENT (NIL only for the root),
 documented by DOC. LIGHTER is the mode-line name (derived from NAME by
 default); MODAL-CLASS is :editing, :support or :excluded for modal editing (inherited
@@ -193,9 +182,9 @@ installed and before its hooks run. Methods should call CALL-NEXT-METHOD.")
 
 (defgeneric mode-syntax-highlights (mode buffer rows)
   (:documentation "Syntax colours for the text laid out in ROWS of BUFFER, as a list of
-(START END FACE) byte ranges; NIL when MODE colours nothing. The list may be one
-MODE keeps, lent until the text changes or is parsed again: read, never
-changed or kept.")
+lists of (START END FACE) byte ranges, painted in turn, a later list over an
+earlier one; NIL when MODE colours nothing. The lists may be ones MODE keeps,
+lent until the text changes or is parsed again: read, never changed or kept.")
   (:method (mode buffer rows) (declare (ignore mode buffer rows)) nil))
 
 (defgeneric mode-marks-point-p (mode)
@@ -430,9 +419,11 @@ saying so."
                        (and (plusp end)
                             (let ((octets (tuatara.text:rope-octets rope :start 0 :end end)))
                               ;; a Windows file's first line ends with a carriage return too
-                              (string-right-trim '(#\Return)
-                                                 (tuatara.text:lenient-string octets :end (or (tuatara.text:octets-line-end-position octets 0 (length octets))
-                                                                              (length octets)))))))))
+                              (string-right-trim
+                               '(#\Return)
+                               (tuatara.text:lenient-string
+                                octets :end (or (tuatara.text:octets-line-end-position octets 0 (length octets))
+                                                (length octets)))))))))
     (let* ((wanted (if path (mode-for-file path first-line) 'fundamental-mode))
            (mode (mode-for-size wanted (tuatara.text:rope-octet-length rope))))
       (unless (eq mode wanted)

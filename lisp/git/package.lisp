@@ -7,35 +7,36 @@
 (uiop:define-package #:tuatara.git
   (:use #:cl #:tuatara.command #:tuatara.modes #:tuatara.dates #:tuatara-user)
   (:import-from #:tuatara.io #:directory-name)
-  (:import-from #:tuatara.runtime #:reporting-errors #:ignoring-errors-reported #:refusal #:refuse #:define-setting)
+  (:import-from #:tuatara.runtime #:define-record #:reporting-errors #:ignoring-errors-reported #:refusal #:refuse
+                #:define-setting)
   (:import-from #:tuatara.defaults
-                #:*after-save-functions* #:*command-refusal-functions* #:*file-changing-commands* #:*global-keymap*
-                #:*made-text-keymap* #:*rimu-keymap* #:*trust-changed-functions*
-                #:ask-project-trust #:buffer-in-mode #:buffer-private-directory #:call-with-details-shown #:check-not-saving #:column-text
-                #:commands-for-buffers #:commands-for-mode #:conflict-look-through #:delete-private-directory
-                #:diff-files #:diff-mode #:drop-selection #:entry-lines #:entry-member #:show-file-metadata
-                #:directory-holds-evidence-p
-                #:ssh-askpass-window-p
-                #:follow-directories-for
-                #:forget-abandoned-directories
-                #:fresh-made-buffer
-                #:git-commit-mode #:git-rebase-mode #:goto-shown #:kill-text #:killed-job-buffer-p #:rimu-archive-list
-                #:list-entry-at #:list-folded #:list-section-at #:list-step-entry #:list-toggle-all-folds
-                #:list-toggle-fold #:make-owned-directory #:make-rimu-listing #:marked-directory #:new-private-directory
-                #:open-externally #:paths-changed #:private-cache-directory #:private-directory
-                #:project-look-only-reason #:project-trusted-p #:quit-window #:read-native-path #:read-new-native-path
-                #:read-whole-number #:real-directory #:rename-path-following #:render-made-table-list #:render-pieces
-                #:rimu-buffer-name #:rimu-column-allowed-p #:rimu-column-in-background #:rimu-diff #:rimu-directory
-                #:rimu-directory-p #:rimu-duplicates #:rimu-enter #:rimu-entry-at #:rimu-find #:rimu-find-text
-                #:rimu-git #:rimu-goto-file #:rimu-home #:rimu-last-directory #:rimu-list-p #:rimu-make-list
-                #:rimu-path #:rimu-quick-edit #:rimu-reading-layout #:rimu-rewound #:rimu-show-directory
-                #:rimu-show-layout #:rimu-source #:rimu-source-buffer-name #:rimu-source-call-with-entry
+                #:*after-save-functions* #:ask-project-trust #:buffer-in-mode #:buffer-private-directory
+                #:call-answering-ssh #:call-with-details-shown #:check-not-saving #:column-text
+                #:*command-refusal-functions*
+                #:commands-for-mode #:conflict-look-through #:delete-private-directory #:diff-files #:diff-mode
+                #:directory-holds-evidence-p #:drop-selection #:entry-lines #:entry-member #:*file-changing-commands*
+                #:directories-followed-changed #:follow-directories-for #:forget-abandoned-directories
+                #:fresh-made-buffer #:git-commit-mode
+                #:git-rebase-mode #:*global-keymap* #:goto-shown #:kill-text #:killed-job-buffer-p #:list-entry-at
+                #:list-folded #:list-section-at #:list-step-entry #:list-toggle-all-folds #:list-toggle-fold
+                #:list-toggle-section #:*made-text-keymap* #:make-owned-directory #:make-rimu-listing
+                #:marked-directory #:new-private-directory #:open-externally #:paths-changed #:private-cache-directory
+                #:private-directory #:project-look-only-reason #:project-trusted-p #:quit-window #:read-native-path
+                #:read-new-native-path #:read-whole-number #:real-directory #:rename-path-following
+                #:render-made-table-list #:render-pieces #:rimu-archive-list #:rimu-buffer-name #:rimu-column-allowed-p
+                #:rimu-column-in-background #:rimu-diff #:rimu-directory #:rimu-directory-p #:*rimu-disk-commands*
+                #:rimu-duplicates #:rimu-enter #:rimu-find #:rimu-find-text #:rimu-git #:rimu-goto-file #:rimu-home
+                #:*rimu-keymap* #:rimu-last-directory #:rimu-list-p #:rimu-make-list #:rimu-path #:rimu-quick-edit
+                #:rimu-reading-layout #:rimu-rewound #:rimu-set-column #:rimu-show-directory #:rimu-show-layout
+                #:rimu-show-nearest #:rimu-source #:rimu-source-buffer-name #:rimu-source-call-with-entry
                 #:rimu-source-listing #:rimu-source-open #:rimu-source-refusal-words #:rimu-source-shown
-                #:rimu-source-taken #:rimu-source-top #:*rimu-disk-commands*
-                #:rimu-toggle #:rimu-toggle-picture #:rimu-toggle-sizes #:rimu-update #:rimu-verify-files
-                #:save-buffer-with-care #:save-buffers-kill-editor #:say-in-background #:sectioned-pieces
-                #:set-made-text #:rimu-set-column #:show-list-text #:shown-file #:special-mode #:table-list-rows
-                #:text-columns #:list-toggle-section #:trash-changed #:view-made-text #:visit-path)
+                #:rimu-source-taken #:rimu-source-top #:rimu-toggle #:rimu-toggle-picture
+                #:rimu-update #:rimu-verify-files #:save-buffer-with-care #:save-buffers-kill-editor
+                #:plain-path-p #:say-in-background #:sectioned-pieces #:set-made-text #:show-file-metadata
+                #:show-list-text #:shown-file #:special-mode #:ssh-askpass-window-p #:ssh-refusal-words
+                #:table-list-rows #:text-columns #:trash-changed
+                #:*trust-changed-functions* #:trusted-project-key #:trusted-project-key-current-p #:view-made-text
+                #:visit-path)
   (:documentation "Git from the editor. Every git command is run, never
 through a shell nor on the editor's thread, with what keeps a repository not
 trusted from running anything of its own. It has the status, log, commits,

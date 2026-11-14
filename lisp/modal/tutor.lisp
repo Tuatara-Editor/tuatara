@@ -40,18 +40,24 @@ stand in it, a list of (START . END) byte offsets."
     (loop for (start . end) in (tuatara.buffer:buffer-local buffer 'tutor-keys)
           for s = (tuatara.text:anchor-position start version)
           for e = (tuatara.text:anchor-position end version)
-          when (and (< s e) (< s to) (> e from))
+          while (< s to)
+          when (and (< s e) (> e from))
             collect (list s e :tutor-key))))
 
 (defun tutor-pattern-highlights (buffer from to)
   "The arrows and the names of the states in BUFFER between FROM and TO."
   (let* ((text (tuatara.buffer:buffer-string buffer :start from :end to))
          (ranges '()))
-    (flet ((offset (i) (+ from (tuatara.text:string-octet-length text :end i))))
-      (loop for (regex face) in '(("---->" :tutor-arrow)
-                                  ("\\b(?:NORMAL|INSERT|SUPPORT)\\b|TUATARA\\[[NISE]\\]" :tutor-state))
-            do (cl-ppcre:do-matches (s e regex text)
-                 (push (list (offset s) (offset e) face) ranges))))
+    (loop for (regex face) in '(("---->" :tutor-arrow)
+                                ("\\b(?:NORMAL|INSERT|SUPPORT)\\b|TUATARA\\[[NISE]\\]" :tutor-state))
+          do (let ((char 0) (octet from))
+               ;; the matches come in order, so each offset is counted on from the last
+               (flet ((offset (i)
+                        (incf octet (tuatara.text:string-octet-length text :start char :end i))
+                        (setf char i)
+                        octet))
+                 (cl-ppcre:do-matches (s e regex text)
+                   (push (list (offset s) (offset e) face) ranges)))))
     ranges))
 
 (defmethod mode-syntax-highlights ((mode tuatara-tutor-mode) buffer rows)
@@ -59,13 +65,12 @@ stand in it, a list of (START . END) byte offsets."
   (when (plusp (length rows))
     (let ((from (tuatara.display:row-start (aref rows 0)))
           (to (tuatara.display:row-end (aref rows (1- (length rows))))))
-      (append (tutor-pattern-highlights buffer from to) (tutor-key-highlights buffer from to)))))
+      (list (tutor-pattern-highlights buffer from to) (tutor-key-highlights buffer from to)))))
 
 (define-command tuatara-tutor ()
-  "Open the tutor: an ordinary buffer holding its own lessons, to learn
-the modal keys by editing it as it says, with every key the one you have. Coming back
-to it finds it as you left it; kill the buffer and open it again for a fresh
-copy."
+  "Open the tutor, a buffer of lessons on the modal keys that you learn by
+editing it as it says. The keys it names are the ones you have. Coming back to
+it finds it as you left it; kill the buffer and open it again for a fresh copy."
   (let ((existing (tuatara.buffer:find-buffer "*Tutor*")))
     (if existing
         (show-buffer existing)
@@ -79,7 +84,7 @@ copy."
                                         (tuatara.text:make-anchor version e :bias :before))))))
           (set-major-mode b 'tuatara-tutor-mode)
           ;; the lessons are where undo stops, not a change it takes back
-          (setf (tuatara.buffer:buffer-undo-stack b) '() (tuatara.buffer:buffer-redo-stack b) '())
+          (tuatara.buffer:forget-history b)
           (tuatara.buffer:buffer-mark-saved b)
           (setf (tuatara.buffer:buffer-point b) 0)
           (show-buffer b)))))

@@ -13,7 +13,7 @@
 
 (in-package #:tuatara.defaults)
 
-(defstruct (org-table-model (:conc-name org-table-))
+(define-record (org-table-model (:conc-name org-table-))
   "An Org table as its fields: INDENT, the white space before its rows. ROWS,
 each :RULE or a list of its fields' text. ROW, FIELD and OFFSET, where point is
 \(the row, the field, the character of the field's text, or :START before the
@@ -21,7 +21,19 @@ spaces that align it). BEGIN and END, the characters of its rows in the text.
 NEWLINE, true when they end with one. FORMULAS, the formulas of its #+TBLFM:
 line, FORMULAS-END where that line ends (NIL when it has none), FORMULAS-CHANGED
 true when they are to be written."
-  indent rows row field offset begin end newline formulas formulas-end formulas-changed)
+  (indent nil :documentation "The white space before the rows of an Org table.")
+  (rows nil :documentation "The rows of an Org table, each :RULE or a list of the text of its fields.")
+  (row nil :documentation "The row of an Org table where point is.")
+  (field nil :documentation "The field of an Org table where point is.")
+  (offset nil
+          :documentation "Where point is in its field: a character of the field's text, or :START before the spaces
+that align it.")
+  (begin nil :documentation "The character of the text where the rows of an Org table begin.")
+  (end nil :documentation "The character of the text where the rows of an Org table end.")
+  (newline nil :documentation "True when the rows of an Org table end with a line end.")
+  (formulas nil :documentation "The formulas of the #+TBLFM: line of an Org table.")
+  (formulas-end nil :documentation "Where the #+TBLFM: line of an Org table ends, or NIL when it has none.")
+  (formulas-changed nil :documentation "True when the formulas of an Org table are to be written."))
 
 (defun org-table-at (tree text position)
   "The Org table (not a table.el one) of TREE, a parse of TEXT, whose rows hold
@@ -40,7 +52,7 @@ the line of the character POSITION, or NIL."
 (defun org-table-line-fields (line)
   "The raw fields of the table row LINE, each (START . END) of LINE: what is between its bars."
   (let* ((first-bar (position #\| line))
-         (trimmed-end (length (string-right-trim " 	" line)))
+         (trimmed-end (length (string-right-trim *org-blanks* line)))
          (fields '()))
     (when first-bar
       (loop with start = (1+ first-bar)
@@ -70,7 +82,7 @@ the line of the character POSITION, or NIL."
                        field (max 0 (1- (count #\| line :end at))))
                  (let ((raw (nth field (org-table-line-fields line))))
                    (setf offset (if raw
-                                    (let ((content-start (or (position-if-not (lambda (c) (member c '(#\Space #\Tab))) line
+                                    (let ((content-start (or (position-if-not #'space-or-tab-char-p line
                                                                               :start (car raw) :end (cdr raw))
                                                              (cdr raw))))
                                       (max 0 (- at content-start)))
@@ -83,7 +95,7 @@ the line of the character POSITION, or NIL."
                  collect (if (org-table-rule-line-p line)
                              :rule
                              (loop for (s . e) in (org-table-line-fields line)
-                                   collect (string-trim " 	" (subseq line s e))))))))
+                                   collect (string-trim *org-blanks* (subseq line s e))))))))
 
 (defun org-table-columns (model)
   "How many columns MODEL's table has: the fields of its longest row."
@@ -103,7 +115,8 @@ with arguments as them ({{{R(John Otago)}}} as John Otago), while links are show
 
 (defun org-table-number-p (field)
   "True when FIELD reads as a number."
-  (cl-ppcre:scan "(?i)^(?:[<>]?[-+^.0-9]*[0-9][-+^.0-9eEdDx()%:]*|[<>]?[-+]?0x[0-9a-f]+|[<>]?[-+]?[0-9]+#[0-9a-z]+|nan|[-+u]?inf)$"
+  (cl-ppcre:scan #.(concatenate 'string "(?i)^(?:[<>]?[-+^.0-9]*[0-9][-+^.0-9eEdDx()%:]*|[<>]?[-+]?0x[0-9a-f]+"
+                                "|[<>]?[-+]?[0-9]+#[0-9a-z]+|nan|[-+u]?inf)$")
                  field))
 
 (defun org-table-cookie-p (field)
@@ -122,31 +135,39 @@ not empty are numbers."
                (numbers (count-if #'org-table-number-p filled)))
           (if (and filled (>= numbers (* 1/2 (length filled)))) :right :left)))))
 
+(defun org-row-field (row column)
+  "The field of ROW, a vector of a table's fields, in COLUMN; \"\" past its last."
+  (if (< column (length row)) (svref row column) ""))
+
 (defun org-table-alignments (rows columns)
-  "How each of COLUMNS columns of ROWS is aligned, :LEFT, :RIGHT or :CENTRE, as
-`org-column-alignment' decides."
+  "How each of COLUMNS columns of ROWS, each a vector of fields or :RULE, is
+aligned, :LEFT, :RIGHT or :CENTRE, as `org-column-alignment' decides."
   (loop for column below columns
         collect (org-column-alignment (loop for row in rows
                                             unless (eq row :rule)
-                                              collect (or (nth column row) "")))))
+                                              collect (org-row-field row column)))))
 
 (defun org-table-render (model)
-  "MODEL's table aligned, as text, and where point goes in it, as a character after its BEGIN."
-  (let* ((rows (org-table-rows model))
+  "MODEL's table aligned, as text, and where point goes in it, as a character
+after its BEGIN. Each field is measured once."
+  (let* ((rows (loop for row in (org-table-rows model)
+                     collect (if (eq row :rule) row (coerce row 'simple-vector))))
+         (shown (loop for row in rows
+                      collect (if (eq row :rule) row (map 'simple-vector #'org-string-columns row))))
          (columns (org-table-columns model))
          (widths (loop for column below columns
-                       collect (max 1 (loop for row in rows
+                       collect (max 1 (loop for row in shown
                                             unless (eq row :rule)
-                                              maximize (org-string-columns (or (nth column row) ""))))))
+                                              maximize (if (< column (length row)) (svref row column) 0)))))
          (alignments (org-table-alignments rows columns))
          (indent (org-table-indent model))
          (point 0))
     (values
      (with-output-to-string (out)
        (loop for row in rows
+             for row-columns in shown
              for index from 0
-             for row-start = (file-position out)
-             do (when (plusp index) (write-char #\Newline out) (incf row-start))
+             do (when (plusp index) (write-char #\Newline out))
                 (write-string indent out)
                 (write-char #\| out)
                 (when (and (= index (org-table-row model)) (or (eq row :rule) (zerop columns)))
@@ -161,8 +182,8 @@ not empty are numbers."
                       (loop for column below columns
                             for width in widths
                             for alignment in alignments
-                            for field = (or (nth column row) "")
-                            for room = (- width (org-string-columns field))
+                            for field = (org-row-field row column)
+                            for room = (- width (if (< column (length row-columns)) (svref row-columns column) 0))
                             for left = (case alignment (:right room) (:centre (floor room 2)) (t 0))
                             do (write-char #\Space out)
                                (when (and (= index (org-table-row model))
@@ -170,10 +191,11 @@ not empty are numbers."
                                  ;; gone to (:START), the field's start, before what aligns it, as Org goes there
                                  (setf point (if (eq (org-table-offset model) :start)
                                                  (file-position out)
-                                                 (+ (file-position out) left (min (org-table-offset model) (length field))))))
-                               (write-string (make-string left :initial-element #\Space) out)
+                                                 (+ (file-position out) left
+                                                    (min (org-table-offset model) (length field))))))
+                               (write-string (spaces left) out)
                                (write-string field out)
-                               (write-string (make-string (- room left) :initial-element #\Space) out)
+                               (write-string (spaces (- room left)) out)
                                (write-string " |" out))
                       (when (zerop columns) (write-char #\| out))
                       (when (and (= index (org-table-row model)) (>= (org-table-field model) columns))
@@ -231,7 +253,7 @@ something sets PARSE to the parse ORG-TABLE-ASK gives. BODY returning
 table's, and the file is not parsed for it."
   (let ((buffer (gensym)) (text (gensym)) (position (gensym)) (table (gensym)) (result (gensym)))
     `(let* ((,buffer (current-buffer))
-            (,parse (and (uiop:string-prefix-p "|" (string-left-trim " 	" (buffer-line-head ,buffer (point))))
+            (,parse (and (uiop:string-prefix-p "|" (string-left-trim *org-blanks* (buffer-line-head ,buffer (point))))
                          (org-parse-now ,buffer))))
        (when ,parse
          (let* ((,text (org-parse-text ,parse))
@@ -271,7 +293,8 @@ table's, and the file is not parsed for it."
   "TEXT, Org text, as a field of an Org table holds it: on one line (an Org
 line break and each line end a space), each | written \\vert{}, which shows
 as |."
-  (cl-ppcre:regex-replace-all "\\|" (substitute #\Space #\Newline (cl-ppcre:regex-replace-all "\\\\\\\\\\n" text " ")) "\\\\vert{}"))
+  (cl-ppcre:regex-replace-all "\\|" (substitute #\Space #\Newline (cl-ppcre:regex-replace-all "\\\\\\\\\\n" text " "))
+                              "\\\\vert{}"))
 
 (defun org-write-table-rows (rows out &key (indent "") (rule t))
   "Write ROWS to OUT as an Org table, each a list of its fields' Org text

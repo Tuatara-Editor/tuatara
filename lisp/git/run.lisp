@@ -10,22 +10,64 @@
 
 (in-package #:tuatara.git)
 
-(defparameter *git-safety* '("--no-lazy-fetch" "--literal-pathspecs" "-c" "core.fsmonitor=false" "-c" "log.showSignature=false" "-c" "core.pager=cat")
+(defparameter *git-safety*
+  '("--no-lazy-fetch" "--literal-pathspecs"
+    "-c" "core.fsmonitor=false" "-c" "log.showSignature=false" "-c" "core.pager=cat")
   "Options every git command gets (RUN-GIT): no fetching of objects a partial
 clone lacks, no file-system monitor, no signatures checked and no pager; and
 the files named taken as they are, never as patterns (a file called * is
 that file alone), but in the commands *GIT-OWN-PATHSPECS* names.")
+
+(defparameter *git-english* (list "LC_ALL=C")
+  "What git is given where the words it prints are looked for (a refused
+delete, a stopped rebase, a bisection's end): its messages in English whatever
+the language the person works in.")
 
 (defparameter *git-own-pathspecs* '("stash")
   "The git commands given no paths that run git again on paths of their own
 \(:/ for the whole tree), run without --literal-pathspecs, which would take
 those as names of files.")
 
+(defvar *git-lazy-fetch-option* :unknown
+  "Whether the git found has the --no-lazy-fetch option (version 2.43 on):
+:UNKNOWN until GIT-SAFETY first asks, then true or NIL.")
+
+(defun git-version-numbers (git)
+  "The numbers of the version of the program GIT, as git --version prints it
+\(git version 2.43.0 is (2 43 0)); NIL when it says none."
+  (multiple-value-bind (output said code) (tuatara.io:filter-through-program (list git "--version") nil)
+    (declare (ignore said))
+    (and (eql code 0)
+         (let* ((text (tuatara.text:lenient-string output))
+                (start (position-if #'digit-char-p text)))
+           (and start
+                (loop for from = start then (1+ end)
+                      for end = (position-if-not #'digit-char-p text :start from)
+                      for number = (parse-integer text :start from :end end :junk-allowed t)
+                      while number
+                      collect number
+                      while (and end (char= (char text end) #\.) (< (1+ end) (length text)))))))))
+
+(defun git-has-lazy-fetch-option-p ()
+  "True when the git found takes --no-lazy-fetch (from version 2.43), asked
+of it once."
+  (when (eq *git-lazy-fetch-option* :unknown)
+    (setf *git-lazy-fetch-option*
+          (let* ((git (tuatara.io:find-program "git"))
+                 (version (and git (ignoring-errors-reported ("asking ~a for its version" git)
+                                     (git-version-numbers git)))))
+            (and version (or (> (first version) 2) (and (= (first version) 2) (>= (or (second version) 0) 43)))))))
+  *git-lazy-fetch-option*)
+
 (defun git-safety (arguments)
-  "The options of *GIT-SAFETY* git is given to run with ARGUMENTS."
-  (if (member (first (git-command-words arguments)) *git-own-pathspecs* :test #'equal)
-      (remove "--literal-pathspecs" *git-safety* :test #'string=)
-      *git-safety*))
+  "The options of *GIT-SAFETY* git is given to run with ARGUMENTS, leaving out
+what the git found does not know."
+  (let ((options (if (member (first (git-command-words arguments)) *git-own-pathspecs* :test #'equal)
+                     (remove "--literal-pathspecs" *git-safety* :test #'string=)
+                     *git-safety*)))
+    (if (and (member "--no-lazy-fetch" options :test #'string=) (not (git-has-lazy-fetch-option-p)))
+        (remove "--no-lazy-fetch" options :test #'string=)
+        options)))
 
 (defparameter *git-commands-leaving-the-work-tree*
   '("status" "log" "diff" "show" "blame" "cat-file" "rev-parse" "ls-files" "ls-tree" "for-each-ref" "rev-list"
@@ -116,13 +158,14 @@ runs."
               (and (equal command "submodule") (equal (first plain) "add") (cddr plain))))))
 
 (defun git-writes-work-tree-p (arguments)
-  "True when git run with ARGUMENTS may write in the repository's working files,
-every command but those of *GIT-COMMANDS-LEAVING-THE-WORK-TREE*, and of the rest
-these only as they are given. They are apply with --cached or --check (not
---index), reset without --hard, --merge, --keep or --recurse-submodules, restore
-of --staged alone, rm --cached, stash list and show, worktree list, submodule
-status and summary, bisect log, sparse-checkout list, format-patch --stdout,
-bundle list-heads and verify, and archive with no file to write."
+  "True when git run with ARGUMENTS may write in the repository's working files.
+Every command does but those of *GIT-COMMANDS-LEAVING-THE-WORK-TREE*, and these
+only as they are given:
+apply with --cached or --check (not --index), reset without --hard, --merge,
+--keep or --recurse-submodules, restore of --staged alone, rm --cached, stash
+list and show, worktree list, submodule status and summary, bisect log,
+sparse-checkout list, format-patch --stdout, bundle list-heads and verify, and
+archive with no file to write."
   (destructuring-bind (&optional command &rest more) (git-command-words arguments)
     (flet ((given (&rest options) (some (lambda (option) (member option more :test #'string=)) options))
            (then (&rest words) (and more (member (first more) words :test #'string=))))
@@ -152,17 +195,18 @@ is written (CHECK-GIT-WRITING)."))
 
 (defun check-git-writing (directory arguments &optional environment)
   "Signal TUATARA.IO:WRITING-REFUSED, the directory named, when git run with
-ARGUMENTS in DIRECTORY and ENVIRONMENT would write in a place nothing is written
-in, an evidence directory. That is so when its repository or working directory, found
-from where it runs (-C, --git-dir, --work-tree, GIT_DIR, GIT_WORK_TREE:
-GIT-PLACES), is in one, where it writes its .git. It is also so when it writes
-the repository's working files (GIT-WRITES-WORK-TREE-P) and the repository holds
-one (TUATARA.IO:CHECK-TREE-WRITING). It is so too when a file or directory it is
-told to write (GIT-OUTPUT-PATHS), or any word given it taken as a path
-\(CHECK-GIT-ARGUMENTS), is in one. Whether the repository holds one is told from
-the setting (DIRECTORY-HOLDS-EVIDENCE-P); returns those words then, for its hooks
-to be left out (RUN-GIT-PROGRAM). Nothing is looked at while no place is
-refused."
+ARGUMENTS in DIRECTORY and ENVIRONMENT would write in an evidence directory.
+It is refused in four cases.
+The repository or working directory, found from where git runs (-C, --git-dir,
+--work-tree, GIT_DIR, GIT_WORK_TREE: GIT-PLACES), is in one, for git writes its
+.git there.
+The command writes the repository's working files (GIT-WRITES-WORK-TREE-P) and
+the repository holds one (TUATARA.IO:CHECK-TREE-WRITING).
+A file or directory the command is told to write (GIT-OUTPUT-PATHS) is in one.
+Any word given to it, taken as a path (CHECK-GIT-ARGUMENTS), is in one.
+Whether the repository holds one is told from the setting
+\(DIRECTORY-HOLDS-EVIDENCE-P); those words are returned then, for the hooks to
+be left out (RUN-GIT-PROGRAM). Nothing is looked at while no place is refused."
   (when (tuatara.io:writing-refused-anywhere-p)
     (handler-case (check-git-places directory arguments environment)
       (git-refused (e) (error e))
@@ -175,23 +219,23 @@ refused."
   "CHECK-GIT-WRITING's looks, refusing in the words of a write refused."
   (let* ((words (git-command-words arguments))
          (doing (format nil "run git ~a in" (or (first words) ""))))
-      (multiple-value-bind (here git-dir work-tree others) (git-places directory arguments environment)
-        (let ((top (or work-tree (ignoring-errors-reported ("finding the repository of ~a" here)
-                                   (repository-top here)))))
-          (dolist (place (remove nil (list git-dir top)))
-            (tuatara.io:check-writing place doing))
-          (dolist (place others)
-            (tuatara.io:check-tree-writing place doing))
-          (dolist (path (git-output-paths words))
-            (when (and path (plusp (length path)))
-              (tuatara.io:check-tree-writing (if (uiop:string-prefix-p "/" path) path (tuatara.io:path-join here path))
-                                             (format nil "have git ~a write" (first words)))))
-          (check-git-arguments here arguments (format nil "have git ~a write" (first words)))
-          (when top
-            (let ((holding (directory-holds-evidence-p top)))
-              (when (and holding (git-writes-work-tree-p arguments))
-                (error 'tuatara.io:writing-refused :operation doing :path top :reason holding))
-              holding))))))
+    (multiple-value-bind (here git-dir work-tree others) (git-places directory arguments environment)
+      (let ((top (or work-tree (ignoring-errors-reported ("finding the repository of ~a" here)
+                                 (repository-top here)))))
+        (dolist (place (remove nil (list git-dir top)))
+          (tuatara.io:check-writing place doing))
+        (dolist (place others)
+          (tuatara.io:check-tree-writing place doing))
+        (dolist (path (git-output-paths words))
+          (when (and path (plusp (length path)))
+            (tuatara.io:check-tree-writing (if (uiop:string-prefix-p "/" path) path (tuatara.io:path-join here path))
+                                           (format nil "have git ~a write" (first words)))))
+        (check-git-arguments here arguments (format nil "have git ~a write" (first words)))
+        (when top
+          (let ((holding (directory-holds-evidence-p top)))
+            (when (and holding (git-writes-work-tree-p arguments))
+              (error 'tuatara.io:writing-refused :operation doing :path top :reason holding))
+            holding))))))
 
 (defun git-argument-places (word)
   "The paths a word given to git may name: the word itself, what follows its
@@ -262,41 +306,42 @@ until \\[git] asks for it there (FORGET-GIT-SHADOW).")
 
 (defun run-git (directory arguments &key cancel line environment errors input seconds limit)
   "Run git with ARGUMENTS (a list of strings, never through a shell) in
-DIRECTORY, with *GIT-SAFETY* and never asking for a password on a terminal,
-on the thread calling it, which is never the editor's: what it printed, as octets, and true as a second value when it
-succeeded. With LINE, a function, each line it prints is given to it as text
-as it comes, in place of the octets, until LINE returns true, which counts as
-success. CANCEL, a cons, stops it when its car turns true; on the thread of a
-job, stopping the job ends git at once. The process is ended however it
-stops. ENVIRONMENT, NAME=VALUE strings, is added to git's; with ERRORS what it
-says on its error output (*GIT-SAID-LIMIT* octets of it at most) is read apart
-from what it prints, as text, the fourth value; INPUT, a string, is given
-on its standard input. With SECONDS, git is ended once it has run that long,
-as if stopped. Git printing more octets than LIMIT (*PROGRAM-OUTPUT-LIMIT* when it is
-NIL), or with LINE a line longer than that, is ended, NIL and NIL given,
-and true as a third value. NIL, and no process at all, when
-DIRECTORY is in no repository (REPOSITORY-TOP), or when git is not found
-\(FIND-PROGRAM). In a repository you trust (PROJECT-TRUSTED-P) git looks
-for no repository above its top and takes no bare one it finds on the way.
-In any other (never asked, answered look only, one that is, is in or holds
-an evidence directory, or one whose .git leads into such a one,
-see GIT-READS-ONLY-P) git only reads, on a shadow of the repository, and runs
-none of its programs (CALL-GIT-READING). ENVIRONMENT is not given it, it is
-ended after *GIT-READING-SECONDS* when SECONDS gives no time, and a command
-that would do more is refused, GIT-REFUSED signalled; once git has run too
-long there, git is not run there again this session (NOTE-GIT-TIMED-OUT)
-until \\[git] asks for it."
+DIRECTORY and return what it printed, as octets, and true as a second value
+when it succeeded. It runs on the thread calling it, which is never the
+editor's, with *GIT-SAFETY*, and never asks for a password on a terminal.
+NIL, and no process at all, when DIRECTORY is in no repository
+\(REPOSITORY-TOP) or git is not found (FIND-PROGRAM).
+
+With LINE, a function, each line git prints is given to it as text as it
+comes, in place of the octets, until it returns true, which counts as success.
+CANCEL, a cons, stops git when its car turns true; on the thread of a job,
+stopping the job ends git at once. The process is ended however it stops.
+ENVIRONMENT, NAME=VALUE strings, is added to git's. With ERRORS, what git says
+on its error output (*GIT-SAID-LIMIT* octets of it at most) is read apart as
+text, the fourth value. INPUT, a string, is given on its standard input. With
+SECONDS, git is ended once it has run that long, as if stopped. Git printing
+more octets than LIMIT (*PROGRAM-OUTPUT-LIMIT* when it is NIL), or with LINE a
+line longer than that, is ended, NIL and NIL given, and true as a third value.
+
+In a repository you trust, git looks for no repository above its top and takes
+no bare one it finds on the way. In any other, git only reads, on a shadow of
+the repository, and runs none of its programs: see GIT-READS-ONLY-P for which
+those are, and CALL-GIT-READING for how. ENVIRONMENT is not given to it, it is
+ended after *GIT-READING-SECONDS* when SECONDS gives no time, and a command that
+would do more is refused, GIT-REFUSED signalled; the disk failing while its
+shadow is made gives NIL, any other error reaching the caller. Once git has
+run too long there, git is not run there again this session
+\\(NOTE-GIT-TIMED-OUT) until \\[git] asks for it."
   (let* ((git (tuatara.io:find-program "git"))
          (top (ignoring-errors-reported ("finding the repository of ~a" directory) (repository-top directory))))
     (cond ((not (and git top)) (values nil nil))
           ((not (git-reads-only-p top))
-           (run-git-program git directory arguments :cancel cancel :line line :errors errors :input input
-                                                    :seconds seconds
-                                                    :limit limit
-                                                    :options (list "-c" "safe.bareRepository=explicit")
-                                                    :environment (cons (format nil "GIT_CEILING_DIRECTORIES=~a"
-                                                                               (string-right-trim "/" (tuatara.io:parent-path top)))
-                                                                       environment)))
+           (run-git-program git directory arguments
+                            :cancel cancel :line line :errors errors :input input :seconds seconds :limit limit
+                            :options (list "-c" "safe.bareRepository=explicit")
+                            :environment (cons (format nil "GIT_CEILING_DIRECTORIES=~a"
+                                                       (string-right-trim "/" (tuatara.io:parent-path top)))
+                                               environment)))
           ((gethash top *git-timed-out*) (values nil nil))
           (t
            (let ((timed-out (list nil)))
@@ -310,8 +355,9 @@ until \\[git] asks for it."
                                                             :seconds (or seconds *git-reading-seconds*) :limit limit
                                                             :reading t :environment looking-environment
                                                             :timed-out timed-out))))
+                   ;; refused: said by the caller; the disk failing under the shadow: no answer
                    (git-refused (e) (error e))
-                   (error () (values nil nil)))
+                   ((or tuatara.io:file-system-error file-error stream-error) () (values nil nil)))
                (when (car timed-out) (note-git-timed-out top))))))))
 
 (defun git-object-name (revision path)

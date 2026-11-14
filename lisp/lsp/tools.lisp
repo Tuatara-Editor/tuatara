@@ -2,12 +2,12 @@
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; A language server is a program of its own, installed apart from Tuatara,
-;;;; that knows a language: what is wrong in a file, what may come next, where
-;;;; a name is defined. A formatter lays code out as the language's own tools
-;;;; would. Which of them go with which language comes from what Helix knows
-;;;; (usual-tools.lisp, made from its languages.toml), with what marks a
-;;;; language's project; *LANGUAGE-SERVERS* and *LANGUAGE-FORMATTERS* change
-;;;; it for a language. M-x check-health says which are installed.
+;;;; that knows a language: what is wrong in a file, what may come next, where a
+;;;; name is defined. A formatter lays code out as the language's own tools
+;;;; would. Which of them go with which language comes from the table in
+;;;; usual-tools.lisp, with what marks a language's project; *LANGUAGE-SERVERS*
+;;;; and *LANGUAGE-FORMATTERS* change it for a language. M-x check-health says
+;;;; which are installed.
 
 (in-package #:tuatara.lsp)
 
@@ -108,9 +108,9 @@ not known (none of a program's) left out."
     (loop for server in (if chosen (rest chosen) (getf (language-tools language) :servers))
           for known = (and (stringp server) (gethash server *known-language-servers*))
           when (consp server)
-            collect (list :name (first server) :command server)
+          collect (list :name (first server) :command server)
           when known
-            collect (list* :name server known))))
+          collect (list* :name server known))))
 
 (defparameter *usual-formatters-beside-servers*
   '(("rust" "rustfmt" "--edition" "2021")
@@ -138,10 +138,19 @@ NIL for none."
   (getf (language-tools language) :roots))
 
 (defparameter *brought-language-servers-directory* ".local/share/tuatara/language-servers/"
-  "Where, from the home directory, the language servers brought to this machine
-by \\[server-bring-language-server] are kept: a directory of the editor's own,
-looked in after the PATH (BROUGHT-LANGUAGE-SERVER), so that nothing of yours
-is hidden and the commands ssh runs need no PATH of their own.")
+  "Where, from the home directory of a server reached over ssh, the language
+servers \\[server-bring-language-server] brings to it are kept: a directory of
+the editor's own, looked in after the PATH, so that nothing of yours is hidden
+and the commands ssh runs need no PATH of their own. On this machine they are
+kept in tuatara/language-servers/ in the data home
+\\(BROUGHT-LANGUAGE-SERVERS-HERE).")
+
+(defun brought-language-servers-here ()
+  "The directory of the language servers brought to this machine, looked in
+after the PATH (BROUGHT-LANGUAGE-SERVER): tuatara/language-servers/ in the
+data home ($XDG_DATA_HOME, else .local/share/ in the home directory), a native
+name ending in /."
+  (tuatara.io:native (merge-pathnames "tuatara/language-servers/" (tuatara.io:data-home))))
 
 (defun language-server-program-name-p (name)
   "True when NAME can name a language server's program in that directory: one
@@ -151,11 +160,11 @@ to 64 ASCII letters, digits, ., _ and -, not starting with . or -."
        (every (lambda (c) (and (< (char-code c) 128) (or (alphanumericp c) (find c "._-")))) name)))
 
 (defun brought-language-server (name)
-  "The full name of the program NAME in *BROUGHT-LANGUAGE-SERVERS-DIRECTORY*, or
-NIL when it is not there, or that directory or the file is a link, another's, or
-writable by anyone else."
+  "The full name of the program NAME among the language servers brought to
+this machine (BROUGHT-LANGUAGE-SERVERS-HERE), or NIL when it is not there, or
+that directory or the file is a link, another's, or writable by anyone else."
   (when (language-server-program-name-p name)
-    (let* ((directory (tuatara.io:path-join (tuatara.io:home-directory) *brought-language-servers-directory*))
+    (let* ((directory (brought-language-servers-here))
            (path (tuatara.io:path-join directory name)))
       (flet ((yours (path kind)
                (let ((stamp (tuatara.io:path-stamp path :follow nil :failure nil)))
@@ -190,7 +199,7 @@ servers likewise, joined by commas, brought after one brought here by
   (flet ((word (name command)
            (let ((found (installed-program command)))
              (format nil "~a~:[~; ✓~]~:[~; brought~]" name found
-                     (and found (search *brought-language-servers-directory* found))))))
+                     (and found (uiop:string-prefix-p (brought-language-servers-here) found))))))
     (let ((formatter (language-formatter-command language)))
       (values (and formatter (word (tuatara.io:native-file-name (first formatter)) formatter))
               (let ((servers (language-server-commands language)))

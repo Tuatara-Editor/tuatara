@@ -189,3 +189,19 @@ back and C-M-, goes forward again.")
     (true (<= (length tuatara.defaults::*xref-back*) 2))
     (true (<= (length tuatara.defaults::*xref-forward*) 2))))
 
+
+(define-test (xref list-made-again-from-a-later-answer)
+  ;; the definitions a mode finds by asking a program, given later: the list made again shows them
+  (flet ((definition (summary) (tuatara.defaults::make-definition summary "here.lisp" (lambda () nil))))
+    (multiple-value-bind (f editor)
+        (run-keys (list (lambda ()
+                          (tuatara.defaults::show-definitions
+                           "foo" (list (definition "(defun foo-before)"))
+                           :again (lambda ()
+                                    (tuatara.command:later (lambda (give)
+                                                             (funcall give (list (definition "(defun foo-after)"))))))))
+                        (lambda () (tuatara.defaults::xref-refill (tuatara.command:current-buffer))))
+                  :width 100)
+      (declare (ignore f))
+      (is string= "*xref*" (current-name editor))
+      (true (search "foo-after" (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*xref*")))))))

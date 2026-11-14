@@ -1,11 +1,11 @@
 ;;;; lisp/files/differences.lisp --- two files or directories compared, by diff shut in.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; As Emacs's M-x diff and dired's = do, with GNU diff: M-x diff-files
-;;;; compares the file shown with another, = in rimu the two entries marked.
-;;;; The differences are shown unified, as git shows them, in diff-mode;
+;;;; Two files or directories compared with GNU diff: M-x diff-files compares
+;;;; the file shown with another, = in rimu the two entries marked. The
+;;;; differences are shown unified, as git shows them, in diff-mode;
 ;;;; directories are compared with all in them. diff runs in the sandbox
-;;;; (TUATARA.IO:SANDBOX-RUN), seeing only the directories of the two, read only.
+;;;; (TUATARA.IO:SANDBOX-RUN), seeing only the two, read only.
 
 (in-package #:tuatara.defaults)
 
@@ -17,47 +17,44 @@ sooner.
 - a whole number of octets: the limit, 64 MB as standard."
   :values (integer 0 *))
 
-(defun sandbox-seen-directory (path)
-  "The directory a program shut in the sandbox is shown to see the file or
-directory at PATH: the directory itself, else the one the file is in."
-  (let ((real (tuatara.io:real-place path)))
-    (if (eq :directory (tuatara.io:path-kind real)) real (tuatara.io:parent-path real))))
+(defun sandbox-shown-paths (paths)
+  "What a program shut in the sandbox comparing or merging the files or
+directories PATHS is shown of them: each alone, read only, but /dev/null,
+which the sandbox has of its own."
+  (remove-duplicates (remove "/dev/null" paths :test #'string=) :test #'string=))
 
 (defun file-differences (old new &key cancel)
   "The differences between OLD and NEW, two files or two directories, as diff
 --unified writes them: the lines of OLD taken out after -, those of NEW put
-in after +, three lines around each change. Directories are compared with all in
-them, a file only one holds compared with none, /dev/null as an empty file, links as links, never
-followed; of files that are not text, only that they differ; a file and a
-directory, the file with the one of its name in the directory. Times are written
-in your time zone (SANDBOX-TIME-ZONE). An empty rope
-when they are the same. diff, shut in, sees only their directories, read only.
-Stopped when CANCEL's car turns true; an error saying why when they cannot be
-compared, or the differences are longer than *DIFFERENCES-LIMIT*."
-  (flet ((seen (path) (sandbox-seen-directory path)))
-    (multiple-value-bind (output outcome said)
-        (tuatara.io:sandbox-run "diff" (append (list "--unified" "--recursive" "--no-dereference")
-                                               ;; a file missing on one side counts as empty only between two
-                                               ;; directories
-                                               (and (eq :directory (tuatara.io:path-kind old))
-                                                    (eq :directory (tuatara.io:path-kind new))
-                                                    (list "--new-file"))
-                                               (list "--" (tuatara.io:real-place old) (tuatara.io:real-place new)))
-                                :output-limit *differences-limit* :cancel cancel :ended-well '(0 1)
-                                :environment (sandbox-time-zone)
-                                :directories (remove-duplicates (mapcar #'seen (remove "/dev/null" (list old new) :test #'equal))
-                                                                :test #'string=))
-      (unless (eq outcome :done)
-        (refuse "~a" (sandbox-outcome-words outcome said :label "diff")))
-      (tuatara.text:octets->rope (coerce output 'tuatara.text:octets)))))
+in after +, three lines around each change. Directories are compared with
+all in them, a file only one holds compared with none, /dev/null as an empty
+file, links as links, never followed; of files that are not text, only that
+they differ; a file and a directory, the file with the one of its name in
+the directory. Times are written in your time zone (SANDBOX-TIME-ZONE). An
+empty rope when they are the same. diff, shut in, sees only the two, read
+only. Stopped when CANCEL's car turns true; an error saying why when they
+cannot be compared, or the differences are longer than *DIFFERENCES-LIMIT*."
+  (multiple-value-bind (output outcome said)
+      (tuatara.io:sandbox-run "diff" (append (list "--unified" "--recursive" "--no-dereference")
+                                             ;; a file missing on one side counts as empty only between two
+                                             ;; directories
+                                             (and (eq :directory (tuatara.io:path-kind old))
+                                                  (eq :directory (tuatara.io:path-kind new))
+                                                  (list "--new-file"))
+                                             (list "--" (tuatara.io:real-place old) (tuatara.io:real-place new)))
+                              :output-limit *differences-limit* :cancel cancel :ended-well '(0 1)
+                              :environment (sandbox-time-zone) :directories (sandbox-shown-paths (list old new)))
+    (unless (eq outcome :done)
+      (refuse "~a" (sandbox-outcome-words outcome said :label "diff")))
+    (tuatara.text:octets->rope (coerce output 'tuatara.text:octets))))
 
-(defstruct (differences-job (:include tuatara.runtime:job) (:constructor make-differences-job (buffer old new))
-                            (:copier nil))
+(define-record (differences-job (:include tuatara.runtime:job) (:constructor make-differences-job (buffer old new))
+                               (:copier nil))
   "The differences between the files OLD and NEW being found for BUFFER, a
 job; ROPE, those found."
-  old new rope)
-
-(setf (documentation 'differences-job-p 'function) "True when OBJECT is a DIFFERENCES-JOB.")
+  (old nil :documentation "The path of the older file that DIFFERENCES-JOB compares.")
+  (new nil :documentation "The path of the newer file that DIFFERENCES-JOB compares.")
+  (rope nil :documentation "The differences DIFFERENCES-JOB found, as a rope, NIL until it is done."))
 
 (tuatara.runtime:define-job-words differences-job
   :doing "Comparing"
@@ -77,9 +74,9 @@ job; ROPE, those found."
                                      (abbreviated-path old)
                                      (abbreviated-path new))
                              rope)
-                         (format nil
-                                 "~~a and ~a could not be compared: ~~a~~%"
-                                 (cl-ppcre:regex-replace-all "~" (abbreviated-path new) "~~")))))
+                         (lambda (why)
+                           (format nil "~a and ~a could not be compared: ~a~%"
+                                   (abbreviated-path old) (abbreviated-path new) why)))))
 
 (defun show-differences (old new)
   "Show the differences between OLD and NEW, two files or directories, in a buffer
@@ -88,13 +85,10 @@ of their own in another window, found in the background (FILE-DIFFERENCES);
 two others of the same names is left as it is."
   (let* ((name (format nil "*Diff: ~a and ~a*" (tuatara.io:native-file-name old) (tuatara.io:native-file-name new)))
          (before (tuatara.buffer:find-buffer name))
-         (buffer (fresh-made-buffer (if (and before (not (equal (tuatara.buffer:buffer-local before 'compared) (list old new))))
-                                        (tuatara.buffer:unique-buffer-name name)
-                                        name)
+         (taken (and before (not (equal (tuatara.buffer:buffer-local before 'compared) (list old new)))))
+         (buffer (fresh-made-buffer (if taken (tuatara.buffer:unique-buffer-name name) name)
                                     'diff-mode
-                                    (format nil
-                                            "Comparing ~a with ~a...~%"
-                                            (abbreviated-path old)
+                                    (format nil "Comparing ~a with ~a...~%" (abbreviated-path old)
                                             (abbreviated-path new)))))
     (setf (tuatara.buffer:buffer-local buffer 'compared) (list old new)
           (buffer-given-directory buffer) (tuatara.io:parent-path new))

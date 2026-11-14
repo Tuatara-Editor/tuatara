@@ -114,10 +114,7 @@ the first, the rest left blank below it."
     (when (plusp extra)
       ;; the blank lines go after the cursor, which stays where it is
       (let ((p (point)))
-        (tuatara.buffer:buffer-insert b p (tuatara.buffer:unjoined-line-ends
-                                           b p (with-output-to-string (out)
-                                                 (dotimes (i extra) (write-string (tuatara.buffer:buffer-newline b) out))))
-                                      :group t)
+        (insert-blank-lines b p extra :group t)
         (goto p)))
     (tuatara-insert)))
 
@@ -134,12 +131,7 @@ blank above it."
     (char-motion -1)
     (indent-typed-line b :group t)
     (when (plusp extra)
-      (let ((at (tuatara.buffer:buffer-line-start b (point))))
-        (tuatara.buffer:buffer-insert b at (tuatara.buffer:unjoined-line-ends
-                                            b at (with-output-to-string (out)
-                                                   (dotimes (i extra)
-                                                     (write-string (tuatara.buffer:buffer-newline b) out))))
-                                      :group t))
+      (insert-blank-lines b (tuatara.buffer:buffer-line-start b (point)) extra :group t)
       (move-to-line-end))
     (tuatara-insert)))
 
@@ -412,7 +404,8 @@ each consulted in its state before that state's keys.")
 LEADER): NORMAL and support states, lists and the calendar, and the modes'
 own NORMAL and support keys for their own leader keys."
   (append (mapcar (lambda (map) (cons map *tuatara-leader-keymap*))
-                  (list *tuatara-normal-keymap* *tuatara-support-keymap* *tuatara-list-keymap* *tuatara-calendar-keymap*))
+                  (list *tuatara-normal-keymap* *tuatara-support-keymap* *tuatara-list-keymap*
+                        *tuatara-calendar-keymap*))
           (loop for (name . map) being the hash-keys of *mode-layers* using (hash-value leader)
                 when (eq map :leader)
                   append (loop for state in '(:normal :support)
@@ -536,7 +529,6 @@ such a command by themselves (*NON-MODAL-REPEAT-KEYS*)."
   (label-keys *tuatara-leader-keymap* *tuatara-leader-labels*)
   (tuatara-normal-claim-wrap-keys))
 
-
 (defun modal-sync-after-background (editor)
   "After work from the background, which can show a buffer of its own (a
 commit's message), bring EDITOR's modal state in line with the buffer shown,
@@ -592,27 +584,35 @@ input-method-LABEL, on its key; & . and - are taken.
 (defparameter *input-method-own-keys* '("&" "." "-")
   "The keys under the leader's i that are Tuatara's own.")
 
+(defun input-method-key-name (label)
+  "The name of the command LABEL gives for an input method key, input-method-LABEL,
+in TUATARA.DEFAULTS."
+  (intern (string-upcase (format nil "input-method-~a"
+                                 (string-trim "-" (cl-ppcre:regex-replace-all "[^A-Za-z0-9]+" (string-downcase label)
+                                                                              "-"))))
+          :tuatara.defaults))
+
 (defun input-method-key-command (label method)
   "The command, named input-method-LABEL, that turns METHOD on as
-\\[set-input-method] does, calling it LABEL; made when it is not there."
-  (let ((name (intern (string-upcase (format nil "input-method-~a"
-                                             (string-trim "-" (cl-ppcre:regex-replace-all "[^A-Za-z0-9]+" (string-downcase label) "-"))))
-                      :tuatara.defaults)))
-    (setf (symbol-function name) (lambda () (turn-on-input-method method label))
-          (documentation name 'function)
-          (format nil "Turn on the ~a input method, ~a (*input-method-keys*)." label method)
-          (gethash name *commands*) (symbol-function name))
-    name))
+\\[set-input-method] does, calling it LABEL; made when it is not there. NIL,
+and nothing made, when the name is that of a function that is no such command."
+  (let ((name (input-method-key-name label)))
+    (unless (and (fboundp name) (not (get name 'input-method-key)))
+      (setf (get name 'input-method-key) t)
+      (install-command name
+                       (lambda () (turn-on-input-method method label))
+                       (format nil "Turn on the ~a input method, ~a (*input-method-keys*)." label method)))))
 
 (defun install-input-method-keys ()
   "Bind the leader's i keys *INPUT-METHOD-KEYS* names, once the init file has
 set it: each to a command turning its method on. An entry that is not three
-strings, names no input method, or takes one of Tuatara's own keys is left
-out, and said."
+strings, names no input method, takes one of Tuatara's own keys, or has a label
+that would replace a function of the editor is left out, and said."
   (dolist (entry (setting-list '*input-method-keys* *input-method-keys*))
-    (if (and (listp entry) (= (length entry) 3) (every #'stringp entry)
-             (find-input-method (third entry))
-             (not (member (first entry) *input-method-own-keys* :test #'string=)))
-        (define-key *tuatara-leader-keymap* (format nil "i ~a" (first entry))
-          (input-method-key-command (second entry) (third entry)))
-        (message "*input-method-keys*: ~s is left out" entry))))
+    (let ((command (and (listp entry) (= (length entry) 3) (every #'stringp entry)
+                        (find-input-method (third entry))
+                        (not (member (first entry) *input-method-own-keys* :test #'string=))
+                        (input-method-key-command (second entry) (third entry)))))
+      (if command
+          (define-key *tuatara-leader-keymap* (format nil "i ~a" (first entry)) command)
+          (message "*input-method-keys*: ~s is left out" entry)))))

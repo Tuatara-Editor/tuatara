@@ -4,10 +4,13 @@
 # Writes, section by section with the counts first: definitions whose bodies
 # are alike (the package repositories in ../tuatara-packages/*/ included),
 # functions and macros nothing calls, functions and files over the size
-# limits, functions that only call another with their own arguments, whether
-# the reuse index is current, and the definitions this tree adds to main with
-# the entries of the index nearest to them. The editor's code is loaded once,
-# for the sections that need it.
+# limits, lines past the column limits and names taken from another package
+# with two colons (the package repositories included), functions that only
+# call another with their own arguments, whether
+# the reuse index is current, the definitions this tree adds to main with
+# the entries of the index nearest to them and, when the local embedding model
+# is there (tools/meaning.py), the pairs of definitions alike by meaning. The
+# editor's code is loaded once, for the sections that need it.
 # Usage: tools/code-health.sh [REPORT-FILE]
 #   Without REPORT-FILE the report goes to standard output.
 set -euo pipefail
@@ -34,17 +37,22 @@ inside sbcl --dynamic-space-size 4GB --non-interactive \
   { cat "$work/load.log" >&2; exit 1; }
 tools/possible-copies.sh --bodies --packages >"$work/1-bodies"
 tools/possible-copies.sh --pass-through >"$work/5-pass"
+{ tools/line-check.py --summary --packages | tail -n 1; tools/line-check.py --summary --packages | head -n -1; } >"$work/2-lines"
+{ tools/package-reaches.py --summary --packages | tail -n 1; tools/package-reaches.py --summary --packages | head -n -1; } >"$work/8-reaches"
 { tools/possible-copies.sh main || echo "possible-copies.sh main failed"; } >"$work/7-copies.body"
 { echo "$(grep -c '^[^ ]' "$work/7-copies.body") definitions added to main here have near matches in the reuse index"
   cat "$work/7-copies.body"; } >"$work/7-copies"
+sections="1-bodies 2-lines 3-dead 4-sizes 5-pass 6-index 7-copies 8-reaches"
+tools/possible-copies.sh --alike-meaning --packages >"$work/9-meaning"
+if head -n 1 "$work/9-meaning" | grep -q '^no meaning model'; then :; else sections="$sections 9-meaning"; fi
 report() {
   echo "Code health of $(git rev-parse --short HEAD) on $(git rev-parse --abbrev-ref HEAD), $(date +%Y-%m-%d)"
   echo
   echo "Counts"
-  for section in 1-bodies 3-dead 4-sizes 5-pass 6-index 7-copies; do
+  for section in $sections; do
     echo "  $(head -n 1 "$work/$section")"
   done
-  for section in 1-bodies 3-dead 4-sizes 5-pass 6-index 7-copies; do
+  for section in $sections; do
     echo
     echo "== $(head -n 1 "$work/$section")"
     tail -n +2 "$work/$section"

@@ -294,6 +294,11 @@ A file on your computer opens in Tuatara, in another window. A web or mail
 address opens in your desktop's own program. Programs can also write links of
 their own (=ls --hyperlink=), and Tuatara follows those the same way.
 
+An address does not end in a full stop, comma, semicolon, colon, quote or
+bracket, which close a sentence and not the address (RFC 3986, appendix C). A
+closing bracket stays when its opening one is inside the address, as in
+=https://en.wikipedia.org/wiki/Kea_(bird)=.
+
 The history view works the same: put the cursor on a link and press =C-c C-o=.
 
 #+table: commands terminal-open-link

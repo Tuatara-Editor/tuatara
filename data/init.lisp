@@ -28,8 +28,8 @@
   :config
 
   ;;; Keys
-  ;; C- is Control, M- Meta, S- Shift; C-h k shows what a key does, C-h f where a
-  ;; command is.
+  ;; C- is Control, M- Meta, S- Shift; C-h k shows what a key does, C-h f where
+  ;; a command is.
 
   ;; A key of your own, in every buffer and both modal states.
   ;; (bind-key "C-c t" 'toggle-light-dark-theme)
@@ -40,9 +40,10 @@
   ;; Only in CSV buffers.
   ;; (bind-key "C-c e" 'end-of-buffer :map 'csv-mode)
 
-  ;; SPC m l only in Org and Markdown and the modes made from them; bound without
-  ;; :mode, the same key stays as it is everywhere else.
-  ;; (bind-key "m l" 'org-store-link :map :leader :mode '(org-mode markdown-mode))
+  ;; SPC m l only in Org and Markdown and the modes made from them; bound
+  ;; without :mode, the same key stays as it is everywhere else.
+  ;; (bind-key "m l" 'org-store-link :map :leader
+  ;;           :mode '(org-mode markdown-mode))
 
   ;; The leader's keys after , in NORMAL state, the lists and the calendar, SPC
   ;; freed; C-x SPC opens them everywhere. Not set: "SPC".
@@ -125,7 +126,7 @@
   ;; (bind-key "t h" 'hl-line-mode :map :leader)
   ;; (bind-key "t |" 'cursor-column-mode :map :leader)
   ;; (bind-key "t l" 'soft-wrap-mode :map :leader)
-  ;; (bind-key "t v" 'visual-line-mode :map :leader)
+  ;; (bind-key "t v" 'display-fill-column-mode :map :leader)
   ;; (bind-key "t c" 'centred-text-mode :map :leader)
   ;; (bind-key "t i" 'invisible-characters-mode :map :leader)
   ;; (bind-key "i" nil :map :leader :label "input")
@@ -147,8 +148,8 @@
   ;;   :faces-from ao-dark
   ;;   :palette ((ground "#000000")))
 
-  ;; And in force (the roles are in lisp/theme.lisp: ground, text, comment, blue,
-  ;; selection ...)
+  ;; And in force (the roles are in lisp/theme.lisp: ground, text, comment,
+  ;; blue, selection ...)
   ;; (load-theme 'my-ao)
 
   ;; What M-x toggle-light-dark-theme turns to. Not set: ao-light.
@@ -190,8 +191,8 @@
   ;; terminal draws them, kitty and Ghostty.
   ;; (setf *tui-pictures* nil)
 
-  ;; In a terminal the mouse left to it, its own selection. Not set: t: as in the
-  ;; window, Shift held for the terminal's.
+  ;; In a terminal the mouse left to it, its own selection. Not set: t: as in
+  ;; the window, Shift held for the terminal's.
   ;; (setf *tui-mouse* nil)
 
   ;; Colours in a terminal said outright, for one that does not say (COLORTERM
@@ -268,8 +269,8 @@
 
   ;;; Modal editing (NORMAL and INSERT states) and Escape
 
-  ;; No NORMAL and INSERT states: each mode's keys and the global ones alone. Not
-  ;; set: t.
+  ;; No NORMAL and INSERT states: each mode's keys and the global ones alone.
+  ;; Not set: t.
   ;; (setf *modal-editing* nil)
 
   ;; Have the keys that comment a line move on to the next line afterwards.
@@ -303,15 +304,16 @@
   ;; (push "C-;" *terminal-editor-keys*)
   ;; (bind-key "C-;" 'terminal-send-escape :mode 'terminal)
 
-  ;; Never the kitty keyboard protocol in a terminal. Not set: :auto: asked of the
-  ;; terminal; with it Escape and Alt arrive whole.
+  ;; Never the kitty keyboard protocol in a terminal. Not set: :auto: asked of
+  ;; the terminal; with it Escape and Alt arrive whole.
   ;; (setf *kitty-keyboard* nil)
 
   ;;; Editing: tabs, indentation, pairs, filling
   ;; TAB indents where the mode indents, else goes on to the next tab stop; C-z
   ;; TAB goes to it anywhere; C-q TAB puts a tab in
 
-  ;; Tab stops every 8 columns: where TAB goes, how wide a tab shows. Not set: 4.
+  ;; Tab stops every 8 columns: where TAB goes, how wide a tab shows. Not set:
+  ;; 4.
   ;; (setf *tab-width* 8)
 
   ;; TAB and indentation put tabs in, not spaces. Not set: nil.
@@ -332,8 +334,8 @@
   ;; C indented two columns a level (4)
   ;; (set-indentation 'c 2)
 
-  ;; tabs where a language's own tools require them, spaces everywhere else; a ;;
-  ;; in front of one gives it spaces
+  ;; tabs where a language's own tools require them, spaces everywhere else; a
+  ;; ;; in front of one gives it spaces
 
   ;; Make: a recipe line must begin with a tab.
   (set-indent-tabs-mode 'makefile t)
@@ -365,7 +367,8 @@
   ;; And Kconfig.
   (set-indent-tabs-mode 'kconfig t)
 
-  ;; New lines at column 0 (RET, o, O). Not set: t: indented as the mode indents.
+  ;; New lines at column 0 (RET, o, O). Not set: t: indented as the mode
+  ;; indents.
   ;; (setf *indent-new-lines* nil)
 
   ;; An ( typed puts ) after the cursor, and the other pairs the same. Not set:
@@ -394,8 +397,8 @@
   ;; git's commit messages to 70. Not set: 72.
   ;; (setf *git-commit-fill-column* 70)
 
-  ;; Two spaces between sentences: M-e, M-a and filling go by them. Not set: nil:
-  ;; one; a file may say its own.
+  ;; Two spaces between sentences: M-e, M-a and filling go by them. Not set:
+  ;; nil: one; a file may say its own.
   ;; (setf *sentence-end-double-space* t)
 
   ;; Full stops of your own abbreviations end no sentence, for M-e, M-a and
@@ -442,7 +445,8 @@
   ;; (setf *kill-ring-max* 60)
 
   ;; Undo keeps at most 256 MB of changes a buffer; past it the oldest can no
-  ;; longer be undone. Not set: nil, every change kept back to the file as opened.
+  ;; longer be undone. Not set: nil, every change kept back to the file as
+  ;; opened.
   ;; (setf *undo-limit* (* 256 1024 1024))
 
   ;; Marks kept a buffer, for C-u C-SPC to go back through, and across
@@ -527,11 +531,10 @@
   ;; nzphone: 021 123 4567, (09) 123 4567, +64 21 123 4567, 0064 9 123 4567,
   ;; +64 (0)21 123 4567, 0800 123 456. Not set: Tuatara's only.
   ;; (define-named-pattern "nzlocal" "an NZ number after its 0 or +64"
-  ;;   "(?:[34679][ -]?[0-9]{3}[ -]?[0-9]{4}|2[0-9][ -]?[0-9]{3,4}[ -]?[0-9]{3,4}|(?:800|508)[ -]?[0-9]{3}[
-  ;;   -]?[0-9]{3})")
-  ;; (define-named-pattern "nzphone" "a New Zealand phone number, national or international"
-  ;;   "(?<![0-9+])(?:(?:\\+|00)64[ -]?(?:\\(0\\)[ -]?)?[[:nzlocal:]]|0[[:nzlocal:]]|\\(0[34679]\\)[ -]?[0-9]{3}[
-  ;;   -]?[0-9]{4})(?![0-9])")
+  ;;   "(?:[34679][ -]?[0-9]{3}[ -]?[0-9]{4}|2[0-9][ -]?[0-9]{3,4}[ -]?[0-9]{3,4}|(?:800|508)[ -]?[0-9]{3}[ -]?[0-9]{3})")
+  ;; (define-named-pattern "nzphone"
+  ;;   "a New Zealand phone number, national or international"
+  ;;   "(?<![0-9+])(?:(?:\\+|00)64[ -]?(?:\\(0\\)[ -]?)?[[:nzlocal:]]|0[[:nzlocal:]]|\\(0[34679]\\)[ -]?[0-9]{3}[ -]?[0-9]{4})(?![0-9])")
 
   ;;; Showing: line numbers, the line and column of point, wrapping, spelling
 
@@ -560,8 +563,8 @@
   ;; The column, in a colour of its own (:hl-line's)
   ;; (set-face :cursor-column :bg "#1f2937")
 
-  ;; Long lines wrap at a word's edge in every buffer, as C-x T l does in one. Not
-  ;; set: nil.
+  ;; Long lines wrap at a word's edge in every buffer, as C-x T l does in one.
+  ;; Not set: nil.
   ;; (setf *global-soft-wrap-mode* t)
 
   ;; Wrapping by major mode, before the global setting. Help (describe-function,
@@ -588,15 +591,15 @@
   ;; The text centred in every buffer, as C-x T o does in one. Not set: nil.
   ;; (setf *global-centred-text-mode* t)
 
-  ;; A line down every window at the fill column, as C-x T v does in one. Not set:
-  ;; nil.
-  ;; (setf *global-visual-line-mode* t)
+  ;; A line down every window at the fill column, as C-x T v does in one. Not
+  ;; set: nil.
+  ;; (setf *global-display-fill-column-mode* t)
 
   ;; That line by major mode, before the global setting.
-  ;; (setf *visual-line-modes* '((text-mode . t)))
+  ;; (setf *display-fill-column-modes* '((text-mode . t)))
 
   ;; The line's colour.
-  ;; (set-face :visual-line :bg "#540b0c")
+  ;; (set-face :display-fill-column :bg "#540b0c")
 
   ;; Characters that draw nothing shown as their codes (<FEFF>, <200B>) in every
   ;; buffer, as C-x T i does in one. Not set: nil.
@@ -605,7 +608,8 @@
   ;; Shown as their codes by major mode, before the global setting.
   ;; (setf *invisible-characters-modes* '((csv-mode . t)))
 
-  ;; Files opened safely show them as any buffer does. Not set: t: as their codes.
+  ;; Files opened safely show them as any buffer does. Not set: t: as their
+  ;; codes.
   ;; (setf *invisible-characters-when-safe* nil)
 
   ;; Right-to-left text (Hebrew, Arabic) shown in the order it is read: :auto,
@@ -615,7 +619,8 @@
   ;; (setf *global-text-direction-mode* :right-to-left)
 
   ;; The same by major mode, before the global setting.
-  ;; (setf *text-direction-modes* '((org-mode . :right-to-left) (csv-mode . nil)))
+  ;; (setf *text-direction-modes*
+  ;;       '((org-mode . :right-to-left) (csv-mode . nil)))
 
   ;; Files opened safely show right-to-left text in the order it is read too.
   ;; Not set: nil: in the order it is stored.
@@ -675,7 +680,8 @@
   ;; Files in these directories always open safely. Not set: none.
   ;; (setf *safe-directories* '("~/Downloads/"))
 
-  ;; Files with NUL octets (programs, pictures) open as usual. Not set: t: safely.
+  ;; Files with NUL octets (programs, pictures) open as usual. Not set: t:
+  ;; safely.
   ;; (setf *open-binary-files-safely* nil)
 
   ;; Files with NUL octets open as text, not in the hex view. Not set: t.
@@ -701,12 +707,12 @@
   ;; C-x m m sets one, C-x m b goes to one, C-x m l manages them. Not set: 1000.
   ;; (setf *bookmarks-kept* 5000)
 
-  ;; C-x m m asks no categories; C-x m l, c sets them. Not set: t: asked after the
-  ;; name.
+  ;; C-x m m asks no categories; C-x m l, c sets them. Not set: t: asked after
+  ;; the name.
   ;; (setf *bookmark-set-asks-categories* nil)
 
-  ;; The file selected shown while choosing one (C-x C-f, C-x C-r), opened safely.
-  ;; Not set: nil.
+  ;; The file selected shown while choosing one (C-x C-f, C-x C-r), opened
+  ;; safely. Not set: nil.
   ;; (setf *preview-files* t)
 
   ;; The same while choosing a note with C-x n o. Not set: nil.
@@ -718,24 +724,24 @@
   ;; The line found shown while searching files with M-s g. Not set: nil.
   ;; (setf *preview-file-search* t)
 
-  ;; Save the files that lines found by M-s g (C-c C-l lists them, C-c C-c there writes the lines
-  ;; you changed back) are written into; nil leaves each changed and not saved for you to look at.
-  ;; Not set: t.
+  ;; Save the files that lines found by M-s g (C-c C-l lists them, C-c C-c there
+  ;; writes the lines you changed back) are written into; nil leaves each
+  ;; changed and not saved for you to look at. Not set: t.
   ;; (setf *search-results-save-files* nil)
 
   ;; The buffer selected shown while choosing one (C-x b). Not set: nil.
   ;; (setf *preview-buffers* t)
 
-  ;; Files, directories and windows as they were, when starting without files. Not
-  ;; set: nil.
+  ;; Files, directories and windows as they were, when starting without files.
+  ;; Not set: nil.
   ;; (setf *keep-session* t)
 
-  ;; The session written every 60 seconds while it changes, for a crash. Not set:
-  ;; 30.
+  ;; The session written every 60 seconds while it changes, for a crash. Not
+  ;; set: 30.
   ;; (setf *keep-session-interval* 60)
 
-  ;; No copies of changes not saved. Not set: t: written now and then to a copy of
-  ;; their own, never the file; M-x recover-file.
+  ;; No copies of changes not saved. Not set: t: written now and then to a copy
+  ;; of their own, never the file; M-x recover-file.
   ;; (setf *auto-save* nil)
 
   ;; Where those copies are kept, for you alone. Not set: auto-save/ in
@@ -758,8 +764,8 @@
   ;; and puts it back. Not set: nil: every save a new file, whole.
   ;; (setf *save-in-place* t)
 
-  ;; C-x i (insert-formatted-note-template) reads other files of up to 64 MB. Not set: 16
-  ;; MB.
+  ;; C-x i (insert-formatted-note-template) reads other files of up to 64 MB.
+  ;; Not set: 16 MB.
   ;; (setf *insert-file-limit* (* 64 1024 1024))
 
   ;; Your name: an export's author without #+author:, %author% and $AUTHOR. Not
@@ -768,13 +774,13 @@
 
   ;;; Windows: where buffers such as help and *Messages* are shown
   ;; One line a rule, for buffers by name ("*Messages*"), by kind (:help,
-  ;; :messages) or by major mode ('help-mode); of the rules that fit a buffer, the
-  ;; one made last counts. The places: :here this window, :other another (split
-  ;; off one if need be), :below and :beside a new window below or right of this
-  ;; one, :bottom and :right across the whole bottom or down the whole right side,
-  ;; :nowhere. :size is a fraction of the screen (0.3), rows or columns (12), or
-  ;; :fit; :keep t keeps the window for them, q closing it; :select t moves you
-  ;; there. M-x describe-buffer-places lists the rules.
+  ;; :messages) or by major mode ('help-mode); of the rules that fit a buffer,
+  ;; the one made last counts. The places: :here this window, :other another
+  ;; (split off one if need be), :below and :beside a new window below or right
+  ;; of this one, :bottom and :right across the whole bottom or down the whole
+  ;; right side, :nowhere. :size is a fraction of the screen (0.3), rows or
+  ;; columns (12), or :fit; :keep t keeps the window for them, q closing it;
+  ;; :select t moves you there. M-x describe-buffer-places lists the rules.
 
   ;; As standard.
   ;; (place-buffers :messages :bottom :size 0.3 :keep t :select t)
@@ -822,14 +828,14 @@
   ;; No window under 20 columns when splitting. Not set: 10.
   ;; (setf *window-min-width* 20)
 
-  ;; Moved to the window help shows in (C-h f, C-h k ...), q there closing it. Not
-  ;; set: nil.
+  ;; Moved to the window help shows in (C-h f, C-h k ...), q there closing it.
+  ;; Not set: nil.
   ;; (setf *help-window-select* t)
 
   ;;; Searching files as you type (M-s g, C-x n g)
 
-  ;; Directories kept read in memory and current: C-x n o, C-x n g and M-s g there
-  ;; answer at once. Not set: none.
+  ;; Directories kept read in memory and current: C-x n o, C-x n g and M-s g
+  ;; there answer at once. Not set: none.
   ;; (setf *indexed-directories* (list *formatted-file-directory*))
 
   ;; Indexes in memory only, read whole at each start. Not set: t: kept in the
@@ -846,12 +852,16 @@
   ;; Up to 5,000 matching lines listed. Not set: 2,000.
   ;; (setf *search-files-lines-limit* 5000)
 
+  ;; The text of up to 200,000 files in memory for searches and each index.
+  ;; Not set: 100,000; those past it searched from disk.
+  ;; (setf *indexed-files-most* 200000)
+
   ;; What marks a project, all of which M-s g searches. Not set: '(".git"
   ;; ".project").
   ;; (setf *project-root-markers* '(".git" ".project" "Cargo.toml"))
 
-  ;; The mode line's sign for kept directories: a Nerd Font glyph. Not set: "U"; nil:
-  ;; none.
+  ;; The mode line's sign for kept directories: a Nerd Font glyph. Not set: "U";
+  ;; nil: none.
   ;; (setf *indexing-indicator* "")
 
   ;; The sign lit while they are searched. Not set: "S"; nil: none.
@@ -865,8 +875,8 @@
   ;; Lines *Messages* keeps. Not set: 1000.
   ;; (setf *message-log-max* 5000)
 
-  ;; Start in debug mode: what the editor does goes to *Debug*. Not set: nil; M-x
-  ;; debug-mode, C-h E.
+  ;; Start in debug mode: what the editor does goes to *Debug*. Not set: nil;
+  ;; M-x debug-mode, C-h E.
   ;; (setf *debug-mode* t)
 
   ;; Garbage left for its collection to come when it comes, maybe between two
@@ -932,8 +942,8 @@
   ;; The keyword of journal entries' names. Not set: "journal".
   ;; (setf *journal-keyword* "diary")
 
-  ;; Titles with the time; :day, :day-date-month-year-12h, "Week %V, %A", "", nil
-  ;; to ask. Not set: :day-date-month-year.
+  ;; Titles with the time; :day, :day-date-month-year-12h, "Week %V, %A", "",
+  ;; nil to ask. Not set: :day-date-month-year.
   ;; (setf *journal-title-format* :day-date-month-year-24h)
 
   ;; An entry a week; :monthly, :yearly. Not set: :daily.
@@ -961,12 +971,13 @@
   ;; Days with agenda entries marked only on m. Not set: t: at once.
   ;; (setf *calendar-mark-days* nil)
 
-  ;; C-c C-s and C-c C-d ask for the date without the calendar below. Not set: t,
-  ;; as Org.
+  ;; C-c C-s and C-c C-d ask for the date without the calendar below. Not set:
+  ;; t, as Org.
   ;; (setf *org-read-date-popup-calendar* nil)
 
-  ;; Dates asked for at the prompt, not first chosen in the calendar below (h j k l
-  ;; move, m marks, u unmarks, RET writes the days chosen at the prompt). Not set: t.
+  ;; Dates asked for at the prompt, not first chosen in the calendar below (h j
+  ;; k l move, m marks, u unmarks, RET writes the days chosen at the prompt).
+  ;; Not set: t.
   ;; (setf *org-read-date-in-calendar* nil)
   )
 
@@ -979,7 +990,7 @@
   ;; links, SPC t L how links show.
   ;; (bind-key "t L" 'org-toggle-link-display :map :leader :mode 'org-mode)
   ;; (bind-key "O" nil :map :leader :label "org")
-  ;; (bind-key "O l" 'org-insert-link :map :leader :mode 'org-mode)
+  ;; (bind-key "O l" 'insert-link :map :leader :mode '(org-mode markdown-mode latex-mode))
   ;; (bind-key "O o" 'org-open-at-point :map :leader :mode 'org-mode)
   ;; (bind-key "O s" 'org-store-link :map :leader)
   ;; (bind-key "O b" 'org-update-all-dblocks :map :leader :mode 'org-mode)
@@ -1006,13 +1017,19 @@
   ;; Linked pictures drawn among the lines in every buffer. Not set: nil.
   ;; (setf *global-inline-pictures-mode* t)
 
+  ;; A note's #+STARTUP: inlineimages or latexpreview shows its pictures and
+  ;; formulas as it opens. Not set: nil: its words only turn them off.
+  ;; (setf *org-startup-shows-pictures* t)
+
   ;; Those pictures, where nothing gives their width, 600 pixels wide. Not set:
   ;; t: their own width.
   ;; (setf *inline-picture-width* 600)
 
   ;; Formulas shown as pictures drawn with the braket package too. Not set:
   ;; amsmath and amssymb.
-  ;; (setf *formula-preamble* (format nil "\\usepackage{amsmath}~%\\usepackage{amssymb}~%\\usepackage{braket}"))
+  ;; (setf *formula-preamble*
+  ;;       (format nil "\\usepackage{amsmath}~%\\usepackage{amssymb}~%~
+  ;;                    \\usepackage{braket}"))
 
   ;; A headline level's colour, bold or not (levels 1 to 8)
   ;; (set-face :org-level-1 :fg "#99c7ff" :bold t)
@@ -1086,8 +1103,8 @@
   ;; already.
   ;; (push '("desktop" . "ini") *org-src-languages*)
 
-  ;; C-c C-v t makes missing directories for every block. Not set: nil: :mkdirp yes
-  ;; ones.
+  ;; C-c C-v t makes missing directories for every block. Not set: nil: :mkdirp
+  ;; yes ones.
   ;; (setf *code-files-make-directories* t)
 
   ;; #+BEGIN: hello :who "you" made with C-c C-c or C-c C-x C-u.
@@ -1133,8 +1150,8 @@
   ;; The deadline a task had logged when it changes. Not set: nil.
   ;; (setf *org-log-redeadline* :time)
 
-  ;; The files the agenda reads, and where capture puts tasks; directories and * ?
-  ;; patterns too. Not set: '("~/org/agenda.org").
+  ;; The files the agenda reads, and where capture puts tasks; directories and *
+  ;; ? patterns too. Not set: '("~/org/agenda.org").
   ;; (setf *org-agenda-files* '("~/notes/*.org"))
 
   ;; Changes made from the agenda saved at once: t for every agenda file, or a
@@ -1206,8 +1223,8 @@
   ;; (push '("w" "Work" :tags-todo "work" :header "Work")
   ;;       *org-agenda-custom-commands*)
 
-  ;; C-c C-q puts tags to end at column 77, as Org; positive: to start there. Not
-  ;; set: 0: a space after the text.
+  ;; C-c C-q puts tags to end at column 77, as Org; positive: to start there.
+  ;; Not set: 0: a space after the text.
   ;; (setf *org-tags-column* -77)
 
   ;; C-c C-w moves a heading under these files' headings, to that level.
@@ -1215,10 +1232,10 @@
   ;;       '((:agenda-files . 3) (:this-file . 3)
   ;;         ("~/notes/projects.org" . 2)))
 
-  ;; Your capture templates are there, a file each; M-x org-capture-template-copy
-  ;; copies one of Tuatara's (t TODO, n note, j journal, m meeting). Not set:
-  ;; nil: capture-templates/ in the configuration directory,
-  ;; ~/.config/tuatara/capture-templates/.
+  ;; Your capture templates are there, a file each; M-x
+  ;; org-capture-template-copy copies one of Tuatara's (t TODO, n note, j
+  ;; journal, m meeting). Not set: nil: capture-templates/ in the configuration
+  ;; directory, ~/.config/tuatara/capture-templates/.
   ;; (setf *capture-template-directories* (list "~/notes/capture/"))
 
   ;; Capture from anywhere with C-c c (C-x a c)
@@ -1240,8 +1257,8 @@
   ;; M-x org-export-latex-pdf and the -buffer, -xdg, -enhanced ones;
   ;; export-latex-compile-pdf.
 
-  ;; Lualatex first, xelatex when it fails. Not set: '("xelatex" "lualatex"); full
-  ;; paths for programs elsewhere.
+  ;; Lualatex first, xelatex when it fails. Not set: '("xelatex" "lualatex");
+  ;; full paths for programs elsewhere.
   ;; (setf *latex-engines* '("lualatex" "xelatex"))
 
   ;; The enhanced export's text font, for notes setting none. Not set: the first
@@ -1251,16 +1268,16 @@
   ;; Its sans-serif font. Not set: Libertinus Sans, Noto Sans ...
   ;; (setf *latex-sans-font* "Noto Sans")
 
-  ;; Its font for code. Not set: your window's font when installed, else JetBrains
-  ;; Mono ...
+  ;; Its font for code. Not set: your window's font when installed, else
+  ;; JetBrains Mono ...
   ;; (setf *latex-mono-font* "JetBrains Mono")
 
-  ;; Commands hiding their argument, for M-x export-check-redactions. Not set: '("R" "D"
-  ;; "redact").
+  ;; Commands hiding their argument, for M-x export-check-redactions. Not set:
+  ;; '("R" "D" "redact").
   ;; (setf *latex-redaction-commands* '("R" "D" "anon"))
 
-  ;; Besides a note's own directory and your note templates' directory, where its export
-  ;; may take #+SETUPFILE files and pictures from. Not set: none.
+  ;; Besides a note's own directory and your note templates' directory, where
+  ;; its export may take #+SETUPFILE files and pictures from. Not set: none.
   ;; (setf *export-trusted-directories* '("~/notes/latex/" "~/notes/pictures/"))
 
   ;; The directory of the pictures your templates ask a note for: #+logo: a name
@@ -1290,9 +1307,10 @@
 
   ;;; Language servers and formatting (C-c in code lists their keys)
 
-  ;; Projects whose servers start by themselves (they run the project's code);
-  ;; others: M-x lsp asks once. Not set: none.
-  ;; (setf *lsp-trusted-projects* '("~/src/"))
+  ;; Projects trusted to run their own code: their servers start by themselves,
+  ;; git runs their hooks and M-x compile their builds; others are asked once.
+  ;; Not set: none.
+  ;; (setf *trusted-projects* '("~/src/"))
 
   ;; Servers for these languages alone; '(:not markdown) all but these. Not set:
   ;; t: every one with a server.
@@ -1320,8 +1338,8 @@
   ;; What is known where the cursor rests shown after 1 second. Not set: 0.5.
   ;; (setf *lsp-idle-delay* 1)
 
-  ;; A problem the cursor rests on said in the echo area. Not set: :box: under the
-  ;; cursor; nil: not said.
+  ;; A problem the cursor rests on said in the echo area. Not set: :box: under
+  ;; the cursor; nil: not said.
   ;; (setf *lsp-diagnostics-display* :echo)
 
   ;; Problems underlined with dots; :line, :background on a ground of their
@@ -1339,8 +1357,8 @@
   ;; No call's parameters in the echo area. Not set: t.
   ;; (setf *lsp-signature-help* nil)
 
-  ;; No type or signature of the thing under the cursor in the echo area. Not set:
-  ;; t.
+  ;; No type or signature of the thing under the cursor in the echo area. Not
+  ;; set: t.
   ;; (setf *lsp-hover-echo* nil)
 
   ;; The other uses of the name under the cursor not lit. Not set: t.
@@ -1362,8 +1380,8 @@
   ;; The face a kind of name is coloured in.
   ;; (push '("parameter" . :variable.other) *lsp-semantic-faces*)
 
-  ;; Servers not told of their project's files changed by other programs. Not set:
-  ;; t.
+  ;; Servers not told of their project's files changed by other programs. Not
+  ;; set: t.
   ;; (setf *lsp-watch-files* nil)
 
   ;; build/ directories not watched either (target, node_modules ...)
@@ -1407,8 +1425,8 @@
 (load-package "terminal"
   :config
 
-  ;; Keys kept for the editor while you type in it, the rest going to the program.
-  ;; Not set: as standard.
+  ;; Keys kept for the editor while you type in it, the rest going to the
+  ;; program. Not set: as standard.
   ;; (setf *terminal-editor-keys* '("C-x" "M-x" "C-g" "C-\\" "C-q" "C-s"))
 
   ;; C-g to the program, C-\ alone stopping typing there.
@@ -1445,7 +1463,8 @@
   ;; Seconds quiet before its history is compressed. Not set: 10; nil: never.
   ;; (setf *terminal-compress-after* 30)
 
-  ;; Octets of pictures it keeps for kitty icat, yazi ... Not set: 64 MB; 0: none.
+  ;; Octets of pictures it keeps for kitty icat, yazi ... Not set: 64 MB; 0:
+  ;; none.
   ;; (setf *terminal-picture-memory* (* 256 1024 1024))
   )
 
@@ -1542,7 +1561,8 @@
   ;; :auto: its window on a desktop, else the terminal.
   ;; (setf *gpg-passphrase-from* :terminal)
 
-  ;; No window of its risks when the minibuffer asks for a passphrase. Not set: t.
+  ;; No window of its risks when the minibuffer asks for a passphrase. Not set:
+  ;; t.
   ;; (setf *gpg-loopback-warning* nil)
 
   ;; A file wiped is written over 3 times before it is deleted. Not set: 1; more
@@ -1565,19 +1585,21 @@
   ;; 16 MB of them. Not set: 64 MB.
   ;; (setf *differences-limit* (* 16 1024 1024))
 
-  ;; M-x show-file-metadata names the owners of an encrypted file's keys from your
-  ;; keyring (runs gpg --list-keys; the file is never given to it); nil: the
-  ;; key IDs alone. Not set: :ask each time.
+  ;; M-x show-file-metadata names the owners of an encrypted file's keys from
+  ;; your keyring (runs gpg --list-keys; the file is never given to it); nil:
+  ;; the key IDs alone. Not set: :ask each time.
   ;; (setf *metadata-look-up-key-owners* t)
 
   ;;; Evidence directories
 
   ;; Evidence directories: their files always open safely, and nothing is ever
   ;; written in them. * is any one directory, ** any directories; (:name ...) a
-  ;; directory's name, (:regex ...) case directories with :then the evidence in each.
-  ;; Not set: none, nothing checked.
-  ;; (setf *evidence-directories* '("~/cases/*/evidence/"
-  ;;                            (:regex "^[0-9]{4}-[0-9]{4}$" :within "~/cases/" :then "evidence")))
+  ;; directory's name, (:regex ...) case directories with :then the evidence in
+  ;; each. Not set: none, nothing checked.
+  ;; (setf *evidence-directories*
+  ;;       '("~/cases/*/evidence/"
+  ;;         (:regex "^[0-9]{4}-[0-9]{4}$" :within "~/cases/"
+  ;;          :then "evidence")))
 
   ;;; Clients of a daemon
 
@@ -1643,7 +1665,8 @@
   ;; Each entry's last commit after its name. Not set: nil; G in a list.
   ;; (setf *rimu-git-info* t)
 
-  ;; Each entry's size, a directory's with all under it. Not set: nil; S in a list.
+  ;; Each entry's size, a directory's with all under it. Not set: nil; S in a
+  ;; list.
   ;; (setf *rimu-directory-sizes* t)
 
   ;; D and x delete for good, asked twice. Not set: t: to the trash.
@@ -1652,13 +1675,13 @@
   ;; Lists read again only with r. Not set: t: when their directory changes.
   ;; (setf *rimu-follow-changes* nil)
 
-  ;; A bookmark to a directory, or a list going out of a project, lists it in a new
-  ;; list. Not set: t: in the list of its project used last (of no project for a
-  ;; directory in none), moved there, when there is one.
+  ;; A bookmark to a directory, or a list going out of a project, lists it in a
+  ;; new list. Not set: t: in the list of its project used last (of no project
+  ;; for a directory in none), moved there, when there is one.
   ;; (setf *rimu-reuse-lists* nil)
 
-  ;; Copying, moving and deleting directories go down through 400 directories one
-  ;; inside another; deeper is refused. Not set: 200.
+  ;; Copying, moving and deleting directories go down through 400 directories
+  ;; one inside another; deeper is refused. Not set: 200.
   ;; (setf *directory-tree-depth-limit* 400)
   )
 
@@ -1670,8 +1693,8 @@
   ;; C-c C-s sets the separator of one, C-x / L keeps its header at the top,
   ;; C-x / t takes its first line as a header or a record.
 
-  ;; Fields always apart by semicolons. Not set: :detect: what the first line has
-  ;; most of.
+  ;; Fields always apart by semicolons. Not set: :detect: what the first line
+  ;; has most of.
   ;; (setf *csv-separator* #\;)
 
   ;; The header of a CSV, or of a log once C-x / t makes one, kept at the top as
@@ -1695,8 +1718,8 @@
 ;; (package-source "mine" "https://example.org/my-packages.git")
 
 ;; A package from a source: fetched in the background the first time (the
-;; repository's newest tag by date), its directory example alone, kept for the next
-;; start; asked about before it is compiled and loaded. M-x package-manager
+;; repository's newest tag by date), its directory example alone, kept for the
+;; next start; asked about before it is compiled and loaded. M-x package-manager
 ;; lists them, M-x package-update fetches them again, and M-x
 ;; package-remove-unused deletes what is kept of sources nothing names now.
 ;; (load-package "example" :source "mine")
@@ -1728,9 +1751,9 @@
 ;;   (setf *example-program* "/usr/local/bin/example"))
 
 ;; A version of your choosing: a tag, branch or commit as written, or "latest"
-;; for the newest commit. :file names its first file when it is not
-;; example.lisp or load.lisp, :directory its directory when that is not example/. Not
-;; set: the newest tag.
+;; for the newest commit. :file names its first file when it is not example.lisp
+;; or load.lisp, :directory its directory when that is not example/. Not set:
+;; the newest tag.
 ;; (load-package "example" :source "mine" :version "v1.2.0" :directory "lisp"
 ;;               :file "start.lisp")
 
@@ -1741,11 +1764,12 @@
 ;; was signed, is refused until M-x package-trust-again; unsigned sources stay
 ;; usable.
 ;; (package-source "mine" "https://example.org/my-packages.git"
-;;                 :signers '("SHA256:hdVZ5mzqXcO1EQf8N4u9MJvZb7TfsHkLqR2wPaXyC0s"))
+;;   :signers '("SHA256:hdVZ5mzqXcO1EQf8N4u9MJvZb7TfsHkLqR2wPaXyC0s"))
 
 ;; A source over http:// or git://, whose transport is not encrypted (a server
 ;; inside your organisation): refused unless its load-package says :plain t.
-;; (load-package "example" :source "http://git.example.org/example.git" :plain t)
+;; (load-package "example" :source "http://git.example.org/example.git"
+;;   :plain t)
 
 ;; A package from a directory of your disk, without naming a source first.
 ;; (load-package "mine" :source "~/src/mine/")

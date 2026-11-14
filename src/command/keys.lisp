@@ -108,6 +108,11 @@ command's name."
 a list of (STAMP KEYMAPS MARKS FOR-FORMAT RESULT), STAMP saying how the
 keymaps and the commands were then.")
 
+(defun escape-format-tildes (text)
+  "TEXT with each ~ doubled, to be written as it is by FORMAT as part of a
+control string."
+  (cl-ppcre:regex-replace-all "~" text "~~"))
+
 (defun substitute-command-keys (string &key keymap marks for-format)
   "STRING with keys written in, as WRITE-COMMAND-KEYS writes them (which see
 for KEYMAP, MARKS and FOR-FORMAT): worked out once for a text while the
@@ -148,7 +153,7 @@ in is doubled, STRING being a control string for FORMAT."
       string
       (let ((out (make-string-output-stream)) (i 0) (n (length string)) (map keymap))
         (flet ((put-key (text)
-                 (let ((text (if for-format (cl-ppcre:regex-replace-all "~" text "~~") text)))
+                 (let ((text (if for-format (escape-format-tildes text) text)))
                    (write-string (mark-key text) out)))
                (closing (char start)
                  (position char string :start start)))
@@ -180,8 +185,7 @@ in is doubled, STRING being a control string for FORMAT."
                                         (setf map named)
                                         (when named
                                           (let ((summary (keymap-summary named)))
-                                            (write-string (if for-format (cl-ppcre:regex-replace-all "~" summary "~~") summary)
-                                                          out))))
+                                            (write-string (if for-format (escape-format-tildes summary) summary) out))))
                                     (setf i (1+ close))))))
                            ;; \`KEYS'
                            (t

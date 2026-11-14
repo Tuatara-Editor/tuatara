@@ -1,13 +1,13 @@
 ;;;; lisp/org/checklist.lisp --- List items with a checkbox kept as tasks: ticked, clocked and logged.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; An item with a checkbox, - [ ] call Anna Raglan, is a task as a TODO headline is:
-;;;; the agenda lists it (an open box TODO, a ticked one DONE), and C-c C-t
-;;;; ticks it, C-c C-x C-i clocks in on it and C-c C-z notes on it, on its line
-;;;; in the file or on its line in the agenda. What is logged of it goes into a
-;;;; :LOGBOOK: drawer of its own, set in under it, newest first, as Org lets a
-;;;; drawer stand in an item; Emacs keeps those lines, and counts their time
-;;;; towards the headline the item is under.
+;;;; An item with a checkbox, - [ ] call Anna Raglan, is a task as a TODO
+;;;; headline is: the agenda lists it (an open box TODO, a ticked one DONE), and
+;;;; C-c C-t ticks it, C-c C-x C-i clocks in on it and C-c C-z notes on it, on
+;;;; its line in the file or on its line in the agenda. What is logged of it
+;;;; goes into a :LOGBOOK: drawer of its own, set in under it, newest first, as
+;;;; Org lets a drawer stand in an item; Emacs keeps those lines, and counts
+;;;; their time towards the headline the item is under.
 
 (in-package #:tuatara.defaults)
 
@@ -26,14 +26,12 @@
 (defun org-checkbox-title (item text)
   "ITEM's text on its first line after its bullet and checkbox: what it is about."
   (let* ((line (org-line-at text (org-node-begin item)))
-         (groups (nth-value 1 (cl-ppcre:scan-to-strings "^[ \\t]*\\S+[ \\t]+\\[[ X-]\\][ \\t]*(.*)$" line))))
-    (string-trim " 	" (if groups (aref groups 0) line))))
+         (end (nth-value 1 (cl-ppcre:scan *org-checkbox-line-scanner* line))))
+    (string-trim *org-blanks* (if end (subseq line end) line))))
 
 (defun org-item-indent (item text)
   "The spaces lines under ITEM begin with: as far in as the text after its bullet."
-  (let* ((line (org-line-at text (org-node-begin item)))
-         (indent (- (length line) (length (string-left-trim " 	" line)))))
-    (make-string (+ indent (length (string-trim " " (org-property item :bullet))) 1) :initial-element #\Space)))
+  (spaces (1+ (- (org-item-after-bullet item text) (org-node-begin item)))))
 
 (defun org-item-own-end (item)
   "Where ITEM's own text ends: at its first sub-item, else at its end."
@@ -48,9 +46,9 @@ is in it; NIL otherwise."
     (when logbook
       (let* ((line-end (string-line-end text logbook))
              (next (min (length text) (1+ line-end))))
-        (when (string= (string-trim '(#\Space #\Tab) (subseq text logbook line-end))
+        (when (string= (string-trim *org-blanks* (subseq text logbook line-end))
                        (org-state-note "DONE" "TODO" (org-now)))
-          (if (string-equal (string-trim '(#\Space #\Tab) (subseq text next (string-line-end text next))) ":END:")
+          (if (string-equal (string-trim *org-blanks* (subseq text next (string-line-end text next))) ":END:")
               (list (string-line-start text (1- logbook)) (min (length text) (1+ (string-line-end text next))) "")
               (list logbook next "")))))))
 
@@ -116,9 +114,9 @@ is."
           (when (and *org-todo-follows-checkboxes* (org-property headline :todo-keyword) (org-cookies-of headline text)
                      (plusp total))
             (let* ((keyword (org-property headline :todo-keyword))
-                   (sequence (org-keyword-sequence text))
+                   (sequence (org-keyword-sequence (org-parse-todo-keywords parse)))
                    (cycled (member keyword sequence :test #'string=))
-                   (done-keywords (cdr (org-todo-keywords-of text)))
+                   (done-keywords (cdr (org-parse-todo-keywords parse)))
                    (is-done (member keyword done-keywords :test #'string=))
                    (target (cond ((not cycled) nil)
                                  ((and (= done total) (not is-done))

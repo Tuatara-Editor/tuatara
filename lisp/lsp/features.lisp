@@ -1,16 +1,16 @@
-;;;; lisp/lsp/features.lisp --- What language servers do for a buffer: completion, definitions, help, renames, fixes,
-;;;; layout.
+;;;; lisp/lsp/features.lisp --- What language servers do for a buffer: completion, definitions, renames, layout.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; In a buffer open in a language server, M-x completion-at-point offers what
 ;;;; the server offers, M-x xref-find-definitions goes where it says a name is
-;;;; defined, M-x lsp-find-references lists where it is used, M-x lsp-describe-thing-at-point
-;;;; shows what the server knows of it, the echo area shows the parameters of
-;;;; the call the cursor rests in, else what the thing under it is, its other
-;;;; uses in the file are shown in :symbol-highlight, M-x lsp-rename renames it everywhere,
-;;;; M-x lsp-code-actions offers the server's fixes, and M-x format-buffer and
-;;;; M-x format-region lay out code as the server does. Of several servers for
-;;;; one language, each does what the language leaves to it.
+;;;; defined, M-x lsp-find-references lists where it is used, M-x
+;;;; lsp-describe-thing-at-point shows what the server knows of it, the echo
+;;;; area shows the parameters of the call the cursor rests in, else what the
+;;;; thing under it is, its other uses in the file are shown in
+;;;; :symbol-highlight, M-x lsp-rename renames it everywhere, M-x
+;;;; lsp-code-actions offers the server's fixes, and M-x format-buffer and M-x
+;;;; format-region lay out code as the server does. Of several servers for one
+;;;; language, each does what the language leaves to it.
 
 (in-package #:tuatara.lsp)
 
@@ -82,6 +82,69 @@ whole text no server sees (a note: its blocks are seen apart)."
       (let ((server (doc-server-offers doc capability feature)))
         (and server (values doc server))))))
 
+;; the doc and server a question is asked of, or the sentence saying there is none
+(defmacro with-lsp-server ((doc server) (buffer capability feature &key (position nil positioned) none else) &body body)
+  "Run BODY with DOC and SERVER bound to the document of BUFFER and its server
+that offers CAPABILITY for FEATURE, BUFFER's changes sent first so that what
+is asked is asked of its text as it is. With POSITION, the document is the
+one showing it (LSP-DOC-AT), else the one of the whole text
+\(LSP-SERVER-OFFERS). With no such server, NONE is said, if given, and ELSE
+is the value."
+  `(progn
+     (lsp-in-step ,buffer)
+     (multiple-value-bind (,doc ,server)
+         ,(if positioned
+              `(lsp-doc-at ,buffer ,position ,capability ,feature)
+              `(lsp-server-offers ,buffer ,capability ,feature))
+       (if (null ,server)
+           (progn ,@(and none `((message ,none))) ,else)
+           (progn ,@body)))))
+
+(defun lsp-failure-said (server what error)
+  "Say that SERVER could not do WHAT (\"describe what is here\") and why when
+ERROR, what a question to it came to as LSP-REQUEST gives it (a time out,
+the server's words); true then."
+  (when error
+    (message "~a could not ~a: ~a" (lsp-server-name server) what (lsp-error-words error))
+    t))
+
+(defun lsp-ask-doc (server doc method params what then)
+  "Ask SERVER METHOD with PARAMS of DOC and call THEN with the result on the
+editor's thread once it comes, when DOC is as it was asked of; else say that
+SERVER could not do WHAT, or that the text changed meanwhile. The editor goes on
+meanwhile; *LSP-WAIT* seconds is the longest the answer is waited for."
+  (let ((version (lsp-doc-version doc)))
+    (lsp-request server method params
+                 (lambda (result error)
+                   (cond ((lsp-failure-said server what error))
+                         ((not (doc-unchanged-p doc version))
+                          (message "~a changed meanwhile: not ~a"
+                                   (tuatara.buffer:buffer-name (lsp-doc-buffer doc)) what))
+                         (t (funcall then result))))
+                 :seconds *lsp-wait*)))
+
+(defun lsp-later (doc server method params what then &optional (else (constantly nil)))
+  "A LATER asking SERVER METHOD with PARAMS of DOC, for a command that takes
+its answer when it comes (TAKE-ANSWER): its values are those THEN gives of
+the result, while DOC is as it was asked of, *LSP-WAIT* seconds at most. When
+THEN gives NIL, or the server could not answer (said: it could not do WHAT),
+stopped meanwhile included, they are those ELSE, a function of no arguments,
+gives, values or a LATER. The same question of DOC asked again before the
+answer comes takes its place: only the newer one is answered."
+  (let ((version (lsp-doc-version doc))
+        (buffer (lsp-doc-buffer doc)))
+    (later (lambda (give)
+             (flet ((offer (&optional first &rest more)
+                      (if first
+                          (apply give first more)
+                          (multiple-value-call #'take-answer buffer give (funcall else)))))
+               (lsp-ask-anew doc method server method params
+                             (lambda (result error)
+                               (cond ((lsp-failure-said server what error) (offer))
+                                     ((doc-unchanged-p doc version)
+                                      (multiple-value-call #'offer (funcall then result)))))
+                             :seconds *lsp-wait*))))))
+
 (defun markup-source (contents)
   "CONTENTS, what a server says of a thing (a string, MarkupContent, MarkedString
 or a list of them), as one Markdown text: a MarkedString's code in a fence."
@@ -119,27 +182,31 @@ two values (WORD-BOUNDS-AT); both POSITION when there is none."
   (multiple-value-bind (start end) (lsp-word-bounds buffer position)
     (and (< start end) (tuatara.buffer:buffer-string buffer :start start :end end))))
 
+(defvar *completions-resolved* (make-hash-table :test 'eq :weakness :key)
+  "The completions servers offered whose details have been asked for
+\(LSP-RESOLVE-COMPLETION), each kept only while the completion is.")
+
 (defun lsp-resolve-completion (server item)
   "Ask SERVER, once, for what it leaves out of ITEM, a completion it offered,
 until it is chosen (its documentation, what it is); put in ITEM once it comes,
 for the box beside the list to show."
-  (when (and (not (tuatara.text:json-get item "tuatara-asked"))
+  (when (and (not (gethash item *completions-resolved*))
              (tuatara.text:json-true-p (tuatara.text:json-get (lsp-server-capabilities server)
                                                               "completionProvider"
                                                               "resolveProvider")))
+    (setf (gethash item *completions-resolved*) t)
     (lsp-request server "completionItem/resolve" item
                  (lambda (result error)
                    (when (and (null error) (hash-table-p result))
                      (dolist (key '("documentation" "detail"))
                        (let ((value (tuatara.text:json-get result key)))
-                         (when value (setf (gethash key item) value)))))))
-    ;; noted once sent, so that the server never sees it
-    (setf (gethash "tuatara-asked" item) t)))
+                         (when value (setf (gethash key item) value)))))))))
 
 (defun completion-item-insert (item)
   "What ITEM, a completion a server offers, puts in: its edit's text, its text,
 or its label."
-  (or (tuatara.text:json-text item "textEdit" "newText") (tuatara.text:json-text item "insertText") (tuatara.text:json-text item "label") ""))
+  (or (tuatara.text:json-text item "textEdit" "newText") (tuatara.text:json-text item "insertText")
+      (tuatara.text:json-text item "label") ""))
 
 (defun lsp-completion-item-text (item)
   "What ITEM, a completion a server offers, is matched by and shown as: what
@@ -157,7 +224,8 @@ it puts in; for a snippet (put in by LSP-SNIPPET-INSERTED), its label."
 server's snippet, the snippet in its place, its fields to fill in."
   (let ((item (candidate-value candidate)))
     (when (snippet-item-p item)
-      (put-snippet buffer start end (make-snippet (tuatara.text:json-text item "label") nil (completion-item-insert item))))))
+      (put-snippet buffer start end
+                   (make-snippet (tuatara.text:json-text item "label") nil (completion-item-insert item))))))
 
 (defun completion-items (result)
   "The completions RESULT, a server's answer, offers, as a list: a list's
@@ -186,33 +254,35 @@ label when that is not what it puts in."
                               (let ((label (tuatara.text:json-text item "label")))
                                 (and label (string/= label (candidate-string candidate)) label))))))
 
-(defun lsp-completion-at-point (buffer position)
+(defun lsp-completion-at-point (buffer position else)
   "What a server offers to complete at POSITION of BUFFER, as
-MODE-COMPLETION-AT-POINT gives it: the word's start and end, the candidates,
-and the functions giving what is said beside each and its documentation; NIL
-when no server completes there, or does not answer in time."
-  (lsp-in-step buffer)
-  (multiple-value-bind (doc server) (lsp-doc-at buffer position "completionProvider" "completion")
-    (when server
-      (let ((items (completion-items (lsp-request-now server "textDocument/completion" (doc-params doc server position)))))
-        (when items
-          (values (lsp-completion-start buffer doc server items position) position
-                  (mapcar (lambda (item) (make-candidate (lsp-completion-item-text item) :value item)) items)
-                  #'lsp-completion-annotation
-                  (lambda (candidate)
-                    (let ((item (candidate-value candidate)))
-                      (unless (tuatara.text:json-get item "documentation")
-                        (lsp-resolve-completion server item))
-                      (markup-text (tuatara.text:json-get item "documentation"))))
-                  #'lsp-word-char-p))))))
+MODE-COMPLETION-AT-POINT gives it, a LATER (LSP-LATER): the word's start and
+end, the candidates, and the functions giving what is said beside each and
+its documentation. When no server completes there, or it offers nothing or
+does not answer in time, what ELSE, a function of no arguments, gives."
+  (with-lsp-server (doc server) (buffer "completionProvider" "completion" :position position :else (funcall else))
+    (lsp-later doc server "textDocument/completion" (doc-params doc server position) "complete"
+               (lambda (result)
+                 (let ((items (completion-items result)))
+                   (when items
+                     (values (lsp-completion-start buffer doc server items position) position
+                             (mapcar (lambda (item) (make-candidate (lsp-completion-item-text item) :value item))
+                                     items)
+                             #'lsp-completion-annotation
+                             (lambda (candidate)
+                               (let ((item (candidate-value candidate)))
+                                 (unless (tuatara.text:json-get item "documentation")
+                                   (lsp-resolve-completion server item))
+                                 (markup-text (tuatara.text:json-get item "documentation"))))
+                             #'lsp-word-char-p))))
+               else)))
 
 (defmethod mode-completion-at-point :around (mode buffer position)
-  "In a buffer open in a language server that completes, what the server offers; else what the mode offers."
-  (multiple-value-bind (start end candidates annotate document constituent)
-      (and (buffer-servers buffer) (lsp-completion-at-point buffer position))
-    (if start
-        (values start end candidates annotate document constituent)
-        (call-next-method))))
+  "In a buffer open in a language server that completes, what the server
+offers once it answers; else, or when it offers nothing, what the mode offers."
+  (if (buffer-servers buffer)
+      (lsp-completion-at-point buffer position (lambda () (call-next-method)))
+      (call-next-method)))
 
 ;;; Definitions and references
 
@@ -237,28 +307,35 @@ shown without their lines, so that hundreds of them never hold the editor up.")
 still be read for their lines (*LSP-LOCATION-FILES-TOTAL*); NIL when they are
 not counted.")
 
+(defun location-file-lines (server path)
+  "The lines of the file at PATH, for the places SERVER names in it, as a
+vector: read when it is in SERVER's project, not in *SAFE-DIRECTORIES*, no
+larger than *LSP-LOCATION-FILE-LARGEST* and than the octets left to read
+\(*LSP-LOCATION-FILES-TOTAL*); else none. Each file read once while
+*LOCATION-FILES* keeps them."
+  (or (and *location-files* (gethash path *location-files*))
+      (let ((lines (if (and (or (null *location-octets-left*) (plusp *location-octets-left*))
+                            (tuatara.io:really-within-p path (lsp-server-root server))
+                            (not (safe-directory-of path)))
+                       (let* ((limit (min *lsp-location-file-largest* (or *location-octets-left* most-positive-fixnum)))
+                              (text (handler-case (tuatara.io:file-text path :limit limit
+                                                                        :too-large (constantly "") :missing "")
+                                      ;; a file that cannot be read shows no line
+                                      (tuatara.io:file-system-error () ""))))
+                         (when *location-octets-left* (decf *location-octets-left* (length text)))
+                         (coerce (uiop:split-string text :separator '(#\Newline)) 'vector))
+                       #())))
+        (when *location-files* (setf (gethash path *location-files*) lines))
+        lines)))
+
 (defun location-line (server path line)
   "The text of the 0-based LINE of the file at PATH, for a place SERVER names:
-from the buffer that has it open, else from the file when it is in SERVER's
-project, not in *SAFE-DIRECTORIES*, no larger than *LSP-LOCATION-FILE-LARGEST*
-and than the octets left to read (*LSP-LOCATION-FILES-TOTAL*); empty
-otherwise. At most *LSP-LOCATION-LINE-LENGTH* characters of it."
+from the buffer that has it open, else from the file (LOCATION-FILE-LINES);
+empty otherwise. At most *LSP-LOCATION-LINE-LENGTH* characters of it."
   (let* ((open (buffer-visiting path))
          (text (if open
                    (rope-line-text (tuatara.buffer:buffer-text open) line)
-                   (let ((lines (and *location-files* (gethash path *location-files*))))
-                     (unless lines
-                       (setf lines (if (and (or (null *location-octets-left*) (plusp *location-octets-left*))
-                                            (tuatara.io:really-within-p path (lsp-server-root server))
-                                            (not (safe-directory-of path)))
-                                       (let ((text (handler-case (tuatara.io:file-text path :limit (min *lsp-location-file-largest* (or *location-octets-left* most-positive-fixnum))
-                                                                                            :too-large (constantly "") :missing "")
-                                                     ;; a file that cannot be read shows no line
-                                                     (tuatara.io:file-system-error () ""))))
-                                         (when *location-octets-left* (decf *location-octets-left* (length text)))
-                                         (coerce (uiop:split-string text :separator '(#\Newline)) 'vector))
-                                       #()))
-                       (when *location-files* (setf (gethash path *location-files*) lines)))
+                   (let ((lines (location-file-lines server path)))
                      (if (< -1 line (length lines)) (aref lines line) "")))))
     (string-trim '(#\Space #\Tab) (subseq text 0 (min (length text) *lsp-location-line-length*)))))
 
@@ -295,22 +372,41 @@ identifier (URI) names, as a DEFINITION."
                              (values buffer at)
                              (values nil (format nil "~a is no file here" (if path (abbreviated-path path) uri)))))))))
 
-(defun lsp-locations
-    (buffer method capability feature &key (position (tuatara.buffer:buffer-point buffer)) extra-params)
+(defun location-definitions (server result)
+  "RESULT, the places SERVER named (a Location, or a vector of Locations or
+LocationLinks), as DEFINITIONs, those naming no place left out; the files read
+for their lines each read once, *LSP-LOCATION-FILES-TOTAL* octets in all."
+  (let ((*location-files* (make-hash-table :test 'equal))
+        (*location-octets-left* *lsp-location-files-total*))
+    (remove nil (map 'list (lambda (location) (lsp-location-definition server location))
+                     (if (hash-table-p result) (vector result) (tuatara.text:json-items result))))))
+
+(defun location-params (doc server position extra-params)
+  "The parameters asking SERVER of the thing at POSITION of DOC, with
+EXTRA-PARAMS (keys and values) added."
+  (let ((params (doc-params doc server position)))
+    (loop for (key value) on extra-params by #'cddr do (setf (gethash key params) value))
+    params))
+
+(defun lsp-locations (buffer method capability feature else &key (position (tuatara.buffer:buffer-point buffer)))
   "The places the server of BUFFER that offers CAPABILITY names for the thing
-at POSITION (point), asked by METHOD, with EXTRA-PARAMS (keys and values)
-added to the question, as DEFINITIONs; :NONE when no server offers it."
-  (lsp-in-step buffer)
-  (multiple-value-bind (doc server) (lsp-doc-at buffer position capability feature)
-    (if (null server)
-        :none
-        (let ((params (doc-params doc server position))
-              (*location-files* (make-hash-table :test 'equal))
-              (*location-octets-left* *lsp-location-files-total*))
-          (loop for (key value) on extra-params by #'cddr do (setf (gethash key params) value))
-          (let ((result (lsp-request-now server method params)))
-            (remove nil (map 'list (lambda (location) (lsp-location-definition server location))
-                             (if (hash-table-p result) (vector result) (tuatara.text:json-items result)))))))))
+at POSITION (point), asked by METHOD, as DEFINITIONs, a LATER (LSP-LATER).
+When no server offers it, or it names none or does not answer in time (said
+in the echo area), what ELSE, a function of no arguments, gives."
+  (with-lsp-server (doc server) (buffer capability feature :position position :else (funcall else))
+    (lsp-later doc server method (doc-params doc server position) "find that"
+               (lambda (result) (location-definitions server result))
+               else)))
+
+(defun lsp-ask-locations (buffer method capability feature then &key position extra-params)
+  "Ask the server of BUFFER that offers CAPABILITY for FEATURE, by METHOD with
+EXTRA-PARAMS (keys and values) added, for the places it names for the thing at
+POSITION, and call THEN with them as DEFINITIONs once they come, while BUFFER
+is as it was asked of (LSP-ASK-DOC). The editor goes on meanwhile. :NONE when
+no server offers it."
+  (with-lsp-server (doc server) (buffer capability feature :position position :else :none)
+    (lsp-ask-doc server doc method (location-params doc server position extra-params) "find that"
+                 (lambda (result) (funcall then (location-definitions server result))))))
 
 (defmethod mode-name-at-point :around (mode buffer position)
   "In a buffer open in a server that finds definitions, the word at point; else as the mode finds it."
@@ -319,26 +415,24 @@ added to the question, as DEFINITIONs; :NONE when no server offers it."
 
 (defmethod mode-find-definitions :around (mode buffer name)
   "In a buffer open in a server that finds definitions, where the server says
-the name at point is defined; else as the mode finds them."
-  (let ((server (nth-value 1
-                           (lsp-doc-at buffer
-                                       (tuatara.buffer:buffer-point buffer)
-                                       "definitionProvider"
-                                       "goto-definition"))))
-    (cond ((null server) (call-next-method))
-          ((string= name "") '())
-          ((equal name (lsp-word-at buffer (tuatara.buffer:buffer-point buffer)))
-           (let ((found (lsp-locations buffer "textDocument/definition" "definitionProvider" "goto-definition")))
-             (if (and (listp found) found) found (let ((own (call-next-method))) (if (eq own :none) '() own)))))
-          (t (let ((own (call-next-method))) (if (eq own :none) '() own))))))
+the name at point is defined, once it answers, *LSP-WAIT* seconds at most;
+else, or when it names none, as the mode finds them."
+  (flet ((own ()
+           (let ((own (call-next-method)))
+             (if (eq own :none) '() own))))
+    (let* ((point (tuatara.buffer:buffer-point buffer))
+           (server (nth-value 1 (lsp-doc-at buffer point "definitionProvider" "goto-definition"))))
+      (cond ((null server) (call-next-method))
+            ((string= name "") '())
+            ((equal name (lsp-word-at buffer point))
+             (lsp-locations buffer "textDocument/definition" "definitionProvider" "goto-definition" #'own))
+            (t (own))))))
 
-(defun show-server-places (found title again &key (none "No language server here finds that") (nothing "None the server knows of") one-at-once)
+(defun show-server-places (found title again &key (nothing "None the server knows of") one-at-once)
   "Show FOUND, the places a server names (DEFINITIONs), in *xref* under TITLE,
 AGAIN a function giving them anew; with ONE-AT-ONCE, go to the only one at
-once. NONE is said when FOUND is :NONE (no server asked), NOTHING when there
-are none."
-  (cond ((eq found :none) (message "~a" none))
-        ((null found) (message "~a" nothing))
+once. NOTHING is said when there are none."
+  (cond ((null found) (message "~a" nothing))
         ((and one-at-once (null (rest found))) (push-xref-marker) (go-to-definition (first found)))
         (t (push-xref-marker)
            (show-definitions title found :again again))))
@@ -346,18 +440,25 @@ are none."
 (defun lsp-go-to-locations (method capability feature what &key extra-params one-at-once title)
   "Show where the server of the current buffer that offers CAPABILITY says,
 asked by METHOD with EXTRA-PARAMS, the thing at point has WHAT
-\(\"implementations\"), in *xref* (SHOW-SERVER-PLACES, ONE-AT-ONCE as it
-takes it), under TITLE or WHAT of the thing's name."
+\(\"implementations\"), in *xref* once it answers (SHOW-SERVER-PLACES,
+ONE-AT-ONCE as it takes it), under TITLE or WHAT of the thing's name."
   (let* ((buffer (current-buffer))
          (position (point))
-         (name (or (lsp-word-at buffer position) "this")))
-    (show-server-places (lsp-locations buffer method capability feature :extra-params extra-params)
-                        (or title (format nil "~a of ~a" what name))
-                        (lambda () (lsp-locations buffer method capability feature :extra-params extra-params
-                                                                               :position (min position (tuatara.buffer:buffer-size buffer))))
-                        :none (format nil "No language server here finds ~a" what)
-                        :nothing (format nil "No ~a the server knows of" what)
-                        :one-at-once one-at-once)))
+         (title (or title (format nil "~a of ~a" what (or (lsp-word-at buffer position) "this")))))
+    (labels ((ask (then)
+               (lsp-ask-locations buffer method capability feature then
+                                  :position (min position (tuatara.buffer:buffer-size buffer))
+                                  :extra-params extra-params))
+             (again ()
+               ;; the list kept until the server answers, then shown anew
+               (ask (lambda (found) (when found (show-definitions title found :again #'again))))
+               nil))
+      (when (eq (ask (lambda (found)
+                       (show-server-places found title #'again
+                                           :nothing (format nil "No ~a the server knows of" what)
+                                           :one-at-once one-at-once)))
+                :none)
+        (message "No language server here finds ~a" what)))))
 
 (define-command lsp-find-implementations ()
   "Go to the implementations of the thing at point (of a trait, an interface,
@@ -383,21 +484,16 @@ a function's result), as its language server finds it."
 
 (define-command lsp-describe-thing-at-point ()
   "Show what the language server knows of the thing at point (its type, its
-documentation) in *Help*."
+documentation) in *Help*, once it answers."
   (let ((buffer (current-buffer)))
-    (lsp-in-step buffer)
-    (multiple-value-bind (doc server) (lsp-doc-at buffer (point) "hoverProvider" "hover")
-      (if (null server)
-          (message "No language server here describes things")
-          (multiple-value-bind (result error)
-              (lsp-request-now server "textDocument/hover" (doc-params doc server (point)))
-            (let ((text (and result (markup-text (tuatara.text:json-get result "contents")))))
-              (cond (error (message "~a could not describe what is here: ~a"
-                                    (lsp-server-name server)
-                                    (lsp-error-words error)))
-                    ((or (null text) (zerop (length text))) (message "~a knows nothing of what is here"
-                                                                     (lsp-server-name server)))
-                    (t (show-help (format nil "~a~%~%(~a)~%" text (lsp-server-name server)))))))))))
+    (with-lsp-server (doc server) (buffer "hoverProvider" "hover" :position (point)
+                                          :none "No language server here describes things")
+      (lsp-ask-doc server doc "textDocument/hover" (doc-params doc server (point)) "describe what is here"
+                   (lambda (result)
+                     (let ((text (and result (markup-text (tuatara.text:json-get result "contents")))))
+                       (if (or (null text) (zerop (length text)))
+                           (message "~a knows nothing of what is here" (lsp-server-name server))
+                           (show-help (format nil "~a~%~%(~a)~%" text (lsp-server-name server))))))))))
 
 (defun lsp-signature-words (result)
   "RESULT, a server's signature help, as a line: the signature, the parameter
@@ -410,8 +506,9 @@ the cursor is at named."
                                          (1- (length signatures)))))))
          (label (tuatara.text:json-text signature "label"))
          (parameter (tuatara.text:json-text signature "parameters"
-                               (or (tuatara.text:json-integer signature "activeParameter") (tuatara.text:json-integer result "activeParameter") -1)
-                               "label")))
+                                            (or (tuatara.text:json-integer signature "activeParameter")
+                                                (tuatara.text:json-integer result "activeParameter") -1)
+                                            "label")))
     (and label (if parameter (format nil "~a  — ~a" label parameter) label))))
 
 (defun hover-summary (contents)
@@ -425,8 +522,8 @@ line of words."
                  (first blocks)))
          (line (if code
                    (format nil "~{~a~^ ~}" (remove "" (mapcar (lambda (l) (string-trim '(#\Space #\Tab) l))
-                                                               (uiop:split-string code :separator '(#\Newline)))
-                                                    :test #'string=))
+                                                              (uiop:split-string code :separator '(#\Newline)))
+                                                   :test #'string=))
                    (find-if (lambda (l) (plusp (length l)))
                             (mapcar (lambda (l) (string-trim '(#\Space #\Tab) l))
                                     (uiop:split-string (markup-text contents) :separator '(#\Newline)))))))
@@ -470,6 +567,15 @@ POSITION is (LSP-ECHO-HOVER)."
 (defvar *lsp-most-highlights* 2000
   "The most uses of the name the cursor rests on that are shown in a buffer.")
 
+(defun symbol-highlight-items (doc server result)
+  "RESULT, SERVER's answer of a name's uses in DOC, as the places to show them
+in :symbol-highlight, each (START END FACE), *LSP-MOST-HIGHLIGHTS* at most."
+  (loop for h across (tuatara.text:json-items result)
+        for i below *lsp-most-highlights*
+        for (start end) = (multiple-value-list (doc-range-bytes doc server (tuatara.text:json-get h "range")))
+        when start
+        collect (list start end :symbol-highlight)))
+
 (defun lsp-ask-symbol-highlights (buffer position)
   "Ask the server of BUFFER that finds a name's uses for those of the name at
 POSITION in its file, and show them once they come, while the cursor is still
@@ -483,12 +589,7 @@ there."
                                 (eql (tuatara.buffer:buffer-point buffer) position))
                        (setf (tuatara.buffer:buffer-local buffer 'lsp-symbol-highlights)
                              (make-placed (tuatara.buffer:buffer-version buffer)
-                                          (loop for h across (tuatara.text:json-items result)
-                                                for i below *lsp-most-highlights*
-                                                for (start end) = (multiple-value-list
-                                                                   (doc-range-bytes doc server (tuatara.text:json-get h "range")))
-                                                when start
-                                                  collect (list start end :symbol-highlight))))))))))
+                                          (symbol-highlight-items doc server result)))))))))
 
 (defun symbol-highlights-here-p (buffer position)
   "True when POSITION of BUFFER is within one of the uses of a name shown."
@@ -558,7 +659,8 @@ goes, or two overlap."
           do (multiple-value-bind (start end) (funcall range-bytes (tuatara.text:json-get e "range"))
                (unless start (return-from text-edits nil))
                (let ((text (or (tuatara.text:json-text e "newText") "")))
-                 (push (tuatara.text:make-edit start end (and (plusp (length text)) (tuatara.text:string-octets text))) made))))
+                 (push (tuatara.text:make-edit start end (and (plusp (length text)) (tuatara.text:string-octets text)))
+                       made))))
     ;; edits at one place go in in the order the server gave them
     (let ((sorted (stable-sort (nreverse made) #'< :key #'tuatara.text:edit-start)))
       (and (loop for (a b) on sorted while b always (<= (tuatara.text:edit-end a) (tuatara.text:edit-start b)))
@@ -589,7 +691,9 @@ second value how many files it would make, rename or delete."
     (loop for change across (tuatara.text:json-items edit "documentChanges")
           do (if (tuatara.text:json-get change "kind")
                  (incf others)
-                 (push (cons (tuatara.text:json-text change "textDocument" "uri") (tuatara.text:json-get change "edits")) changes)))
+                 (push (cons (tuatara.text:json-text change "textDocument" "uri")
+                             (tuatara.text:json-get change "edits"))
+                       changes)))
     (values (nreverse changes) others)))
 
 (defun lsp-apply-file-edits (server uri edits)
@@ -621,7 +725,8 @@ change; else words saying why not."
   "The question whether to make SERVER's change of the files at PATHS: one it
 ASKED for of itself, or one that reaches outside its project."
   (let ((outside (remove-if (lambda (p) (tuatara.io:really-within-p p (lsp-server-root server))) paths)))
-    (format nil "~a ~:[would change~;asks to change~] ~d file~:p~:[~*~; (~:*~d outside ~a)~]: ~{~a~^, ~}~:[~;, ...~]; change ~:[it~;them~]?"
+    (format nil "~a ~:[would change~;asks to change~] ~d file~:p~:[~*~; (~:*~d outside ~a)~]: ~
+                 ~{~a~^, ~}~:[~;, ...~]; change ~:[it~;them~]?"
             (lsp-server-name server) asked (length paths)
             (and outside (length outside)) (abbreviated-path (lsp-server-root server))
             (mapcar #'abbreviated-path (subseq (or outside paths) 0 (min 4 (length (or outside paths)))))
@@ -655,15 +760,16 @@ what was left alone, or NIL."
   (let ((answer *lsp-answer*)
         (asked (zerop (lsp-server-acting server))))
     (defer-action
-     (lambda ()
-       (multiple-value-bind (files left)
-           (lsp-apply-workspace-edit server (tuatara.text:json-get params "edit") :asked asked)
-         (cond ((null files) (message "~a's change not made" (lsp-server-name server)))
-               ((or (plusp files) left)
-                (message "~a changed ~d file~:p~@[ (~a)~]~@[; ~a~]" (lsp-server-name server) files (tuatara.text:json-text params "label") left)))
-         (funcall answer (if (and files (null left))
-                             (tuatara.text:json-object "applied" t)
-                             (tuatara.text:json-object "applied" :false "failureReason" (or left "not made")))))))
+        (lambda ()
+          (multiple-value-bind (files left)
+              (lsp-apply-workspace-edit server (tuatara.text:json-get params "edit") :asked asked)
+            (cond ((null files) (message "~a's change not made" (lsp-server-name server)))
+                  ((or (plusp files) left)
+                   (message "~a changed ~d file~:p~@[ (~a)~]~@[; ~a~]"
+                            (lsp-server-name server) files (tuatara.text:json-text params "label") left)))
+            (funcall answer (if (and files (null left))
+                                (tuatara.text:json-object "applied" t)
+                                (tuatara.text:json-object "applied" :false "failureReason" (or left "not made")))))))
     :later))
 
 (define-command lsp-rename ()
@@ -673,20 +779,23 @@ nothing saved (\\[save-some-buffers] saves them). Asked first when it would
 change files outside the project."
   (let* ((buffer (current-buffer))
          (old (lsp-word-at buffer (point))))
-    (multiple-value-bind (doc server) (lsp-doc-at buffer (point) "renameProvider" "rename-symbol")
-      (if (null server)
-          (message "No language server here renames things")
-          (let ((new (read-string (format nil "Rename ~@[~a ~]to: " old) :initial (or old "") :select-initial t)))
-            (lsp-in-step buffer)
-            (multiple-value-bind (result error)
-                (lsp-request-now server "textDocument/rename"
-                                 (let ((params (doc-params doc server (point)))) (setf (gethash "newName" params) new) params))
-              (cond (error (message "~a could not rename ~:[this~;~:*~a~]: ~a" (lsp-server-name server) old (lsp-error-words error)))
-                    ((not (hash-table-p result)) (message "Nothing to rename here"))
-                    (t (multiple-value-bind (files left) (lsp-apply-workspace-edit server result)
-                         (if files
-                             (message "Renamed in ~d file~:p; not saved~@[; ~a~]" files left)
-                             (message "Not renamed")))))))))))
+    (with-lsp-server (doc server) (buffer "renameProvider" "rename-symbol" :position (point)
+                                          :none "No language server here renames things")
+      (let ((new (read-string (format nil "Rename ~@[~a ~]to: " old) :initial (or old "") :select-initial t)))
+        (lsp-in-step buffer)
+        (lsp-ask-doc server doc "textDocument/rename"
+                     (let ((params (doc-params doc server (point)))) (setf (gethash "newName" params) new) params)
+                     (format nil "rename ~:[this~;~:*~a~]" old)
+                     (lambda (result)
+                       (if (not (hash-table-p result))
+                           (message "Nothing to rename here")
+                           ;; it may ask first, as a command of its own
+                           (defer-action
+                               (lambda ()
+                                 (multiple-value-bind (files left) (lsp-apply-workspace-edit server result)
+                                   (if files
+                                       (message "Renamed in ~d file~:p; not saved~@[; ~a~]" files left)
+                                       (message "Not renamed"))))))))))))
 
 (defun code-action-params (doc server start end diagnostics &optional only)
   "What a server is asked for the changes it offers for DOC from START to END
@@ -708,24 +817,30 @@ the kinds wanted, or NIL for all."
   "Offer the language server's fixes and changes for the selection, or for
 point: those for what it found wrong there first; the one chosen is made."
   (let ((buffer (current-buffer)))
-    (lsp-in-step buffer)
-    (multiple-value-bind (doc server) (lsp-doc-at buffer (point) "codeActionProvider" "code-action")
-      (if (null server)
-          (message "No language server here offers changes")
-          (multiple-value-bind (start end) (if (tuatara.buffer:buffer-mark-active-p buffer)
-                                               (tuatara.buffer:buffer-region buffer)
-                                               (values (point) (point)))
-            (multiple-value-bind (result error)
-                (lsp-request-now server "textDocument/codeAction"
-                                 (code-action-params doc server start end (diagnostics-in buffer start end)))
-              (let ((actions (remove-if-not (lambda (a) (tuatara.text:json-text a "title"))
-                                            (coerce (tuatara.text:json-items result) 'list))))
-                (cond (error (message "~a could not offer changes: ~a" (lsp-server-name server) (lsp-error-words error)))
-                      ((null actions) (message "~a offers nothing here" (lsp-server-name server)))
-                      (t (let ((action (completing-read-value "Change: " (mapcar (lambda (a) (make-candidate (tuatara.text:json-text a "title") :value a)) actions)
-                                                              :require-match t :keep-order t)))
-                           (when (hash-table-p action)
-                             (lsp-do-action server action))))))))))))
+    (with-lsp-server (doc server) (buffer "codeActionProvider" "code-action" :position (point)
+                                          :none "No language server here offers changes")
+      (multiple-value-bind (start end) (if (tuatara.buffer:buffer-mark-active-p buffer)
+                                           (tuatara.buffer:buffer-region buffer)
+                                           (values (point) (point)))
+        (lsp-ask-doc server doc "textDocument/codeAction"
+                     (code-action-params doc server start end (diagnostics-in buffer start end))
+                     "offer changes"
+                     (lambda (result)
+                       (let ((actions (remove-if-not (lambda (a) (tuatara.text:json-text a "title"))
+                                                     (coerce (tuatara.text:json-items result) 'list))))
+                         (if (null actions)
+                             (message "~a offers nothing here" (lsp-server-name server))
+                             ;; chosen as a command of its own, which asks
+                             (defer-action
+                                 (lambda ()
+                                   (let ((action (completing-read-value
+                                                  "Change: "
+                                                  (mapcar (lambda (a) (make-candidate (tuatara.text:json-text a "title")
+                                                                                      :value a))
+                                                          actions)
+                                                  :require-match t :keep-order t)))
+                                     (when (hash-table-p action)
+                                       (lsp-do-action server action)))))))))))))
 
 (defun title-in-a-sentence (title)
   "TITLE, a server's name for an action (Import `HashMap`), as it reads
@@ -768,38 +883,28 @@ about first as LSP-APPLY-WORKSPACE-EDIT asks; not made, its command is not run."
 
 (define-lsp-client-command "rust-analyzer.showReferences" (server arguments)
   ;; the file, the place, and the places to show (a lens's implementations, references)
-  (let ((locations (and (> (length arguments) 2) (tuatara.text:json-items arguments 2)))
-        (*location-files* (make-hash-table :test 'equal))
-        (*location-octets-left* *lsp-location-files-total*))
-    (show-server-places (remove nil (map 'list (lambda (l) (lsp-location-definition server l)) locations))
-                        "places" nil :nothing "Nowhere to show")))
+  (let ((locations (if (> (length arguments) 2) (tuatara.text:json-items arguments 2) #())))
+    (show-server-places (location-definitions server locations) "places" nil :nothing "Nowhere to show")))
 
 (define-command lsp-organise-imports ()
   "Have the language server put the file's imports in order, as its own
 action for that does it (unused ones taken out, where it does that), once it
 answers, when the file is still as it was asked of."
   (let ((buffer (current-buffer)))
-    (lsp-in-step buffer)
-    (multiple-value-bind (doc server) (lsp-server-offers buffer "codeActionProvider" "code-action")
-      (if (null server)
-          (message "No language server here puts imports in order")
-          (let ((version (lsp-doc-version doc)))
-            (lsp-request server "textDocument/codeAction"
-                         (code-action-params doc server 0 (tuatara.buffer:buffer-size buffer) '() #("source.organizeImports"))
-                         (lambda (result error)
-                           (let ((action (and (null error)
-                                              (find-if (lambda (a) (let ((kind (tuatara.text:json-text a "kind")))
-                                                                     (and kind (uiop:string-prefix-p "source.organizeImports" kind))))
-                                                       (tuatara.text:json-items result)))))
-                             (cond (error (message "~a could not put imports in order: ~a"
-                                                   (lsp-server-name server)
-                                                   (lsp-error-words error)))
-                                   ((not (doc-unchanged-p doc version))
-                                    (message "~a changed meanwhile: imports not put in order"
-                                             (tuatara.buffer:buffer-name buffer)))
-                                   ;; made as a command of its own, which may ask first
-                                   (action (defer-action (lambda () (lsp-do-action server action))))
-                                   (t (message "~a has nothing to put in order here" (lsp-server-name server))))))))))))
+    (with-lsp-server (doc server) (buffer "codeActionProvider" "code-action"
+                                          :none "No language server here puts imports in order")
+      (lsp-ask-doc server doc "textDocument/codeAction"
+                   (code-action-params doc server 0 (tuatara.buffer:buffer-size buffer) '() #("source.organizeImports"))
+                   "put imports in order"
+                   (lambda (result)
+                     (let ((action (find-if (lambda (a)
+                                              (let ((kind (tuatara.text:json-text a "kind")))
+                                                (and kind (uiop:string-prefix-p "source.organizeImports" kind))))
+                                            (tuatara.text:json-items result))))
+                       (if action
+                           ;; made as a command of its own, which may ask first
+                           (defer-action (lambda () (lsp-do-action server action)))
+                           (message "~a has nothing to put in order here" (lsp-server-name server)))))))))
 
 (defun lsp-formatting-options (buffer)
   "How BUFFER is indented, as a server's formatting is told."
@@ -815,26 +920,24 @@ it was laid out already, or why nothing changed: the server's own words when
 it failed, no answer within *FORMAT-SECONDS*, its changes not saying where
 they go, or the buffer changed meanwhile. NIL when no server lays it out."
   (let ((range (and start end)))
-    (multiple-value-bind (doc server)
-        (lsp-server-offers buffer (if range "documentRangeFormattingProvider" "documentFormattingProvider") "format")
-      (when server
-        (lsp-in-step buffer)
-        (let ((version (tuatara.buffer:buffer-version buffer)))
-          (lsp-request server (if range "textDocument/rangeFormatting" "textDocument/formatting")
-                       (tuatara.text:json-object "textDocument" (doc-identifier doc)
-                                                 "options" (lsp-formatting-options buffer)
-                                                 "range" (if range (doc-range doc server start end) :omit))
-                       (lambda (result error)
-                         (when (live-buffer-p buffer)
-                           (let* ((made (and (null error) (doc-text-edits doc server result)))
-                                  (formatted (finish-formatting buffer (lsp-server-name server) version
-                                                                (cond (error (lsp-error-words error :seconds *format-seconds*
-                                                                                                    :setting '*format-seconds*))
-                                                                      ((null made) "its changes say not where they go"))
-                                                                (lambda () (put-in-edits buffer made)))))
-                             (when then (funcall then buffer formatted)))))
-                       :seconds *format-seconds*)
-          server)))))
+    (with-lsp-server (doc server) (buffer (if range "documentRangeFormattingProvider" "documentFormattingProvider")
+                                          "format")
+      (let ((version (tuatara.buffer:buffer-version buffer)))
+        (lsp-request server (if range "textDocument/rangeFormatting" "textDocument/formatting")
+                     (tuatara.text:json-object "textDocument" (doc-identifier doc)
+                                               "options" (lsp-formatting-options buffer)
+                                               "range" (if range (doc-range doc server start end) :omit))
+                     (lambda (result error)
+                       (when (live-buffer-p buffer)
+                         (let* ((made (and (null error) (doc-text-edits doc server result)))
+                                (why (cond (error (lsp-error-words error :seconds *format-seconds*
+                                                                   :setting '*format-seconds*))
+                                           ((null made) "its changes say not where they go")))
+                                (formatted (finish-formatting buffer (lsp-server-name server) version why
+                                                              (lambda () (put-in-edits buffer made)))))
+                           (when then (funcall then buffer formatted)))))
+                     :seconds *format-seconds*)
+        server))))
 
 (defun servers-not-formatting-words (buffer &optional part)
   "Why no language server lays out BUFFER's code, or with PART the part of
@@ -849,7 +952,8 @@ or formats whole files only."
                      (mapcar (lambda (s)
                                (format nil "~a ~a" (lsp-server-name s)
                                        (cond ((eq (lsp-server-status s) :starting) "is still starting")
-                                             ((not (lsp-feature-allowed-p s "format")) "leaves formatting to other servers")
+                                             ((not (lsp-feature-allowed-p s "format"))
+                                              "leaves formatting to other servers")
                                              ((and part (server-offers-p s "documentFormattingProvider" "format"))
                                               "formats whole files only")
                                              (t "does not format code"))))
@@ -899,13 +1003,15 @@ a server found wrong, or a name."
 
 (defun install-lsp-features (editor)
   "Show what servers know of where the cursor rests: what they found wrong,
-the parameters of the call, what the thing is; bind code's keys under \\`C-c'."
+the parameters of the call, what the thing is; ask for the inlay hints of the
+lines shown as they are drawn; bind code's keys under \\`C-c'."
   (pushnew 'lsp-note-rest (editor-post-command-functions editor))
   (pushnew 'lsp-rest-tick *tick-functions*)
   (pushnew 'symbol-highlights *highlight-functions*)
+  (pushnew 'note-hint-view *view-change-functions*)
   (pushnew 'code-context-keys *key-hint-focus-functions*)
   (pushnew 'lsp-snippet-inserted *popup-insert-functions*)
   (let ((keymap (mode-keymap 'prog-mode)))
     (loop for (keys command label) in *code-context-keys*
           do (define-key keymap keys command)
-             (set-key-label keymap keys label))))
+          (set-key-label keymap keys label))))

@@ -1,4 +1,4 @@
-;;;; lisp/files/bookmarks.lisp --- Places in files kept by name, between sessions: Emacs's bookmarks.
+;;;; lisp/files/bookmarks.lisp --- Places in files kept by name, between sessions.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; M-x bookmark-set keeps where point is in the current file (or the directory a
@@ -38,6 +38,11 @@ passed over (STATE-LINE-FIELDS)."
   "The categories TEXT names apart by commas, each once, blanks around them
 taken away."
   (remove-duplicates (split-choices text) :test #'string= :from-end t))
+
+(defun bookmark-clean-name (text)
+  "TEXT, a bookmark's name as typed, as the name kept: each tab a space, the
+spaces around it taken off."
+  (string-trim " " (substitute #\Space #\Tab text)))
 
 (defun bookmark-categories (bookmark)
   "The categories BOOKMARK is in, a list of names; none for one in no category."
@@ -102,10 +107,8 @@ none are chosen."
          (place (file-place-here buffer)))
     (if (null place)
         (message "~a has no file to keep a place in" (tuatara.buffer:buffer-name buffer))
-        (let ((name (string-trim " " (substitute #\Space #\Tab
-                                                 (let ((offered (tuatara.buffer:buffer-name buffer)))
-                                                   (completing-read "Set bookmark: " (bookmark-names)
-                                                                    :default offered))))))
+        (let ((name (bookmark-clean-name (completing-read "Set bookmark: " (bookmark-names)
+                                                          :default (tuatara.buffer:buffer-name buffer)))))
           (if (zerop (length name))
               (message "No name: no bookmark set")
               (let* ((old (find-bookmark name))
@@ -233,15 +236,42 @@ many categories there are; with none, how to set one."
                                       (length (bookmark-category-names)))))
       (list (format nil "   No bookmarks: ~a sets one~%" (substitute-command-keys "\\[bookmark-set]")))))
 
+(defvar *bookmark-kinds* (make-hash-table :test 'equal :synchronized t)
+  "What each bookmark's file or directory is (FILE-PLACE-KIND), by its path,
+as looked at in the background since the bookmark manager was last opened.")
+
+(defvar *bookmark-kinds-looked* (list 0)
+  "A cons whose car counts the looks at bookmarks' files that ended
+\(LOOK-AT-BOOKMARK-KINDS), so that the manager is shown again after each.")
+
+(defvar *bookmark-kinds-looking* nil
+  "True while a thread looks at bookmarks' files (LOOK-AT-BOOKMARK-KINDS).")
+
+(defun look-at-bookmark-kinds (paths)
+  "Look at what each of PATHS is (FILE-PLACE-KIND) on a thread of its own,
+for the bookmark manager: a file on a drive that does not answer never holds
+the editor up. Nothing is started while a look is under way."
+  (unless *bookmark-kinds-looking*
+    (setf *bookmark-kinds-looking* t)
+    (tuatara.runtime:make-guarded-thread
+     (lambda ()
+       (unwind-protect
+            (dolist (path paths)
+              (setf (gethash path *bookmark-kinds*) (file-place-kind path)))
+         (setf *bookmark-kinds-looking* nil)
+         (sb-ext:atomic-incf (car *bookmark-kinds-looked*))))
+     :name "tuatara bookmark kinds")))
+
 (defun bookmarks-render (list &optional (point :line))
   "Fill LIST, the bookmark manager, with its sections (BOOKMARK-SECTIONS,
 SECTIONED-PIECES) and a summing-up line (BOOKMARKS-SUMMARY); marks kept on
-those still there, a mark kept by the bookmark's name and its section."
-  (let ((kinds (make-hash-table :test 'equal)))
+those still there, a mark kept by the bookmark's name and its section. What
+each file or directory is comes from a look in the background
+\(LOOK-AT-BOOKMARK-KINDS): blank until it ends."
+  (let ((unknown '()))
     (flet ((kind (bookmark)
-             ;; each file looked at once
-             (or (gethash (second bookmark) kinds)
-                 (setf (gethash (second bookmark) kinds) (file-place-kind (second bookmark))))))
+             (or (gethash (second bookmark) *bookmark-kinds*)
+                 (progn (pushnew (second bookmark) unknown :test #'string=) ""))))
       (render-table-list
        list *bookmarks-columns* (bookmark-sections)
        (lambda (bookmark mark section) (declare (ignore section)) (bookmark-cells bookmark mark #'kind))
@@ -249,13 +279,16 @@ those still there, a mark kept by the bookmark's name and its section."
        :marked-by (lambda (bookmark section) (cons (first bookmark) section))
        :after (cons (string #\Newline) (bookmarks-summary (state-list-entries *bookmarks*) #'kind))
        :point point
-       :refill (lambda (list) (bookmarks-render list :keep))))))
+       :refill (lambda (list) (bookmarks-render list :keep)))
+      (when unknown (look-at-bookmark-kinds unknown)))))
 
 (defun bookmarks-key (list)
   "What the bookmark manager LIST shows, cheaply: the bookmarks in their
-order; another key means the list is out of date (KEEP-SHOWN-CURRENT)."
+order, and how many looks at their files ended; another key means the list is
+out of date (KEEP-SHOWN-CURRENT)."
   (declare (ignore list))
-  (mapcar (lambda (b) (list (first b) (second b) (bookmark-categories b))) (state-list-entries *bookmarks*)))
+  (cons (car *bookmark-kinds-looked*)
+        (mapcar (lambda (b) (list (first b) (second b) (bookmark-categories b))) (state-list-entries *bookmarks*))))
 
 (keep-shown-current 'bookmarks-mode 'bookmarks-key)
 
@@ -279,6 +312,7 @@ deletion, each from its section only. Deleted from category a, a bookmark stays
 in category b, and goes only when it is in no other. \\[bookmark-rename] renames
 one."
   (let ((list (buffer-in-mode "*Bookmarks*" 'bookmarks-mode)))
+    (clrhash *bookmark-kinds*)
     (show-buffer list)
     (bookmarks-render list 3)))
 
@@ -354,9 +388,8 @@ in; a name another bookmark has already is taken from it after asking."
   (let ((bookmark (list-member-at (current-buffer))))
     (if (null bookmark)
         (message "No bookmark on this line")
-        (let ((name (string-trim " " (substitute #\Space #\Tab
-                                                 (read-string (format nil "Rename ~a to: " (first bookmark))
-                                                              :initial (first bookmark) :select-initial t)))))
+        (let ((name (bookmark-clean-name (read-string (format nil "Rename ~a to: " (first bookmark))
+                                                      :initial (first bookmark) :select-initial t))))
           (when (and (plusp (length name)) (string/= name (first bookmark))
                      (or (null (find-bookmark name))
                          (yes-or-no-p* (format nil "~a is the name of another bookmark: replace that one?" name))))
@@ -371,8 +404,9 @@ goes to one, \\`C-x m l' manages them (\\[bookmark-manager]), \\`C-x m d' delete
 and the manager's own."
   (define-keys *global-keymap* '(("C-x m m" bookmark-set) ("C-x m b" bookmark-jump) ("C-x m l" bookmark-manager)
                                  ("C-x m d" bookmark-delete)))
-  (define-keys *bookmarks-keymap* '(("RET" list-visit) ("l" list-visit) ("o" list-visit-other) ("h" quit-window)
-                                    ("r" bookmark-rename) ("c" bookmark-set-categories))))
+  (define-keys *bookmarks-keymap* '(("RET" list-visit) ("l" list-visit) ("C-f" list-visit) ("o" list-visit-other)
+                                    ("h" quit-window) ("C-b" quit-window) ("r" bookmark-rename)
+                                    ("c" bookmark-set-categories))))
 
 (commands-for-mode 'bookmarks-mode "the bookmark manager (\\[bookmark-manager])"
                    'list-visit 'list-visit-other 'bookmark-rename

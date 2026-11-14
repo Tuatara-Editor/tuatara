@@ -53,11 +53,11 @@ versions' setting."
       (dolist (directory (list kept (directory-namestring (tuatara.packages::package-fasl (merge-pathnames "x" kept)))))
         (when (probe-file directory)
           (uiop:delete-directory-tree (pathname directory)
-                                      :validate (lambda (p) (search "/tuatara/packages/" (namestring p)))))))
+                                      :validate (lambda (p) (uiop:subpathp p *test-cache-directory*))))))
     (let ((fasls (directory-namestring (tuatara.packages::package-fasl (merge-pathnames "x" dir)))))
       (when (probe-file fasls)
         (uiop:delete-directory-tree (pathname fasls)
-                                    :validate (lambda (p) (search "/tuatara/packages/" (namestring p)))))))
+                                    :validate (lambda (p) (uiop:subpathp p *test-cache-directory*))))))
   (tuatara.defaults::state-list-drop tuatara.packages::*removed-packages*
                                      (tuatara.defaults::state-list-entries tuatara.packages::*removed-packages*))
   (setf tuatara.packages::*declared-packages* '()
@@ -565,7 +565,7 @@ after."
         (is equal '() (remove-if-not (lambda (p) (search ".new" (namestring p)))
                                      (uiop:directory-files (directory-namestring fasl))))
         (uiop:delete-directory-tree (pathname (directory-namestring fasl))
-                                    :validate (lambda (p) (search "/tuatara/packages/" (namestring p))))))))
+                                    :validate (lambda (p) (uiop:subpathp p *test-cache-directory*)))))))
 
 (define-test (packages private-directories-kept-private)
   ;; a directory of yours there already, open to others, is made yours alone; one not yours
@@ -669,6 +669,31 @@ after."
              (false (package-test-version))
              (false (directory (merge-pathnames ".fetching-*/" (tuatara.packages:packages-directory)))))
         (setf tuatara.defaults::*package-size-limit* most)))))
+
+(define-test (packages fetch-size-looked-at-lightly)
+  ;; while a fetch goes on, what git receives is looked at every second and the whole of what
+  ;; it has fetched only every five seconds, not walked through each second
+  (with-test-directory (dir)
+    (let* ((scratch (namestring dir))
+           (pack (format nil "~aprobe/.git/objects/pack/" scratch))
+           (walks 0))
+      (dotimes (i 50)
+        (alexandria:write-string-into-file "x" (ensure-directories-exist (format nil "~afiles/d~d/f" scratch i))))
+      (ensure-directories-exist pack)
+      (sb-int:encapsulate 'tuatara.io:tree-size 'counted
+                          (lambda (function directory &rest more)
+                            (when (equal directory scratch) (incf walks))
+                            (apply function directory more)))
+      (unwind-protect
+           (progn
+             (tuatara.packages::call-within-package-size scratch "here" (lambda () (sleep 3.5)))
+             (is = 1 walks "the whole walked through at the end alone")
+             (let ((tuatara.defaults::*package-size-limit* 1000))
+               (alexandria:write-string-into-file (make-string 2000 :initial-element #\p)
+                                                  (format nil "~apack-1.pack" pack))
+               (fail (tuatara.packages::call-within-package-size scratch "here" (lambda () (sleep 1.5)))
+                   'tuatara.packages::package-too-large)))
+        (sb-int:unencapsulate 'tuatara.io:tree-size 'counted)))))
 
 (define-test (packages arguments-checked)
   ;; what could be taken for one of git's options, or a file outside the package's directory
@@ -1588,3 +1613,55 @@ entry file of a package of a source nothing names, kept in it."
             (makunbound symbol)
             (unintern symbol :tuatara-user))))
       (delete-package package))))
+
+(define-test (packages fingerprint-and-name-forms)
+  ;; a key's fingerprint and a package's name are told by one reader each
+  (let ((sha (format nil "SHA256:~a" (make-string 43 :initial-element #\a))))
+    (true (tuatara.packages::signer-fingerprint-p sha))
+    (true (tuatara.packages::signer-fingerprint-p (format nil "~{~a~}" (make-list 10 :initial-element "abcd"))))
+    (false (tuatara.packages::signer-fingerprint-p "SHA256:abc"))
+    (false (tuatara.packages::signer-fingerprint-p (make-string 41 :initial-element #\a)))
+    (true (tuatara.packages::signer-fingerprint-p "unsigned" :stored t))
+    (false (tuatara.packages::signer-fingerprint-p "unsigned"))
+    (true (tuatara.packages::signer-fingerprint-p (format nil "key:~a" (make-string 40 :initial-element #\A)) :stored t))
+    (false (tuatara.packages::signer-fingerprint-p (make-string 40 :initial-element #\a) :stored t))
+    ;; the state files of earlier releases are read as those releases wrote them
+    (true (tuatara.packages::signer-fingerprint-p "SHA256:abcDEF0123456789+/=" :stored t))
+    (true (tuatara.packages::signer-fingerprint-p (make-string 50 :initial-element #\A) :stored t)))
+  (true (tuatara.packages::package-name-p "my-pkg2"))
+  (false (tuatara.packages::package-name-p "-pkg"))
+  (false (tuatara.packages::package-name-p "Pkg"))
+  (false (tuatara.packages::package-name-p nil)))
+
+(define-test (packages failure-kept-once-for-a-name)
+  ;; a package that failed twice has one reason kept, the latest, and none after it is cleared
+  (let ((tuatara.packages::*package-failures* '()))
+    (tuatara.packages::note-package-failure "one" "first")
+    (tuatara.packages::note-package-failure "two" "other")
+    (tuatara.packages::note-package-failure "one" "second")
+    (is equal '(("one" . "second") ("two" . "other")) tuatara.packages::*package-failures*)
+    (tuatara.packages::clear-package-failure "one")
+    (is equal '(("two" . "other")) tuatara.packages::*package-failures*)))
+
+(define-test (packages whole-clone-only-when-partial-fails)
+  ;; a fetch tries the whole repository again only when git's words say a partial clone cannot be had
+  (with-package-repository (dir where)
+    (flet ((fetching (words)
+             (sb-int:encapsulate 'tuatara.packages::package-git 'partial-test
+                                 (lambda (function directory &rest arguments)
+                                   (if (and words (member "--filter=blob:none" arguments :test #'string=)
+                                            (equal (first arguments) "fetch") (search "/files-" directory))
+                                       (tuatara.runtime:refuse "~a" words)
+                                       (apply function directory arguments))))
+             (unwind-protect
+                  (handler-case (list :kept (tuatara.packages::fetch-package "pkgone" where nil))
+                    (error (condition) (list :failed (princ-to-string condition))))
+               (sb-int:unencapsulate 'tuatara.packages::package-git 'partial-test))))
+      (let ((refused (fetching "git fetch: fatal: No space left on device")))
+        (is eq :failed (first refused))
+        (true (search "No space left" (second refused))))
+      (dolist (words '("git fetch: fatal: filtering not recognized by server"
+                       "git fetch: fatal: filter blob:none not supported"))
+        (let ((kept (fetching words)))
+          (is eq :kept (first kept) "~a" words)
+          (true (probe-file (second kept))))))))

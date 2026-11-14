@@ -3,23 +3,18 @@
 
 (in-package #:tuatara.command)
 
-(defstruct (keymap (:constructor %make-keymap (name up)) (:copier nil))
+(define-record (keymap (:constructor %make-keymap (name %parent)) (:copier nil))
   "A keymap: bindings from key specs to commands (symbols) or nested keymaps
-for prefix keys, with an optional parent, UP, consulted for keys not bound
-here (KEYMAP-PARENT), and an optional DEFAULT, the command typing runs for
-any key bound neither here nor in its parents, the keymaps after it never
-looked at (KEYMAPS-LOOKUP)."
-  (name nil :read-only t)
-  (up nil :type (or null keymap))
-  (table (make-hash-table :test 'equal) :type hash-table :read-only t)
-  (default nil :type symbol))
-
-(setf (documentation 'keymap-p 'function) "True when OBJECT is a KEYMAP."
-      (documentation 'keymap-name 'function) "The name of KEYMAP, for help."
-      (documentation 'keymap-up 'function) "KEYMAP's parent, as KEYMAP-PARENT gives it."
-      (documentation 'keymap-table 'function) "The hash table of KEYMAP's own bindings."
-      (documentation 'keymap-default 'function) "The command KEYMAP runs for a key it and its
-parents do not bind, or NIL.")
+for prefix keys, with an optional parent consulted for keys not bound here
+\(KEYMAP-PARENT), and an optional DEFAULT, the command typing runs for any
+key bound neither here nor in its parents, the keymaps after it never looked
+at (KEYMAPS-LOOKUP)."
+  (name nil :read-only t :documentation "The name of KEYMAP, for help.")
+  (%parent nil :type (or null keymap) :documentation "KEYMAP's parent, set through (SETF KEYMAP-PARENT) alone.")
+  (table (make-hash-table :test 'equal) :type hash-table :read-only t
+         :documentation "The hash table of KEYMAP's own bindings.")
+  (default nil :type symbol :documentation "The command KEYMAP runs for a key it and its
+parents do not bind, or NIL."))
 
 (defconstant +key-open+ (code-char #xFDD0)
   "The mark before a key written into a text (a Unicode noncharacter, found in
@@ -33,9 +28,9 @@ no real text).")
   (or (char= char +key-open+) (char= char +key-close+)))
 
 (defvar *keymaps-generation* 0
-  "A count that goes up each time a key is bound or a parent given, so that what is worked out from
-the keymaps (WHERE-IS,
-SUBSTITUTE-COMMAND-KEYS) is kept until they change.")
+  "A count that goes up each time a key is bound or a parent given, so that
+what is worked out from the keymaps (WHERE-IS, SUBSTITUTE-COMMAND-KEYS) is
+kept until they change.")
 
 (defvar *keymaps-lock* (sb-thread:make-mutex :name "keymaps")
   "Held while a keymap's bindings change or are walked (MAP-KEYMAP-BINDINGS),
@@ -48,13 +43,13 @@ so that work on another thread reads them whole.")
 (declaim (inline keymap-parent))
 (defun keymap-parent (keymap)
   "The keymap consulted when a key is not bound in KEYMAP."
-  (keymap-up keymap))
+  (keymap-%parent keymap))
 
 (defun (setf keymap-parent) (parent keymap)
   "Make PARENT the keymap consulted when a key is not bound in KEYMAP."
   (with-keymaps-held
     (incf *keymaps-generation*)
-    (setf (keymap-up keymap) parent)))
+    (setf (keymap-%parent keymap) parent)))
 
 (defun make-keymap (&key name parent)
   "Return an empty keymap called NAME whose unbound keys fall through to PARENT."

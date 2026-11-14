@@ -38,15 +38,8 @@ ql_setup_sha256=549fe3e7e0f2669daede98437c99cd60e02c0b8536d3d135c9aa9d346ed951b6
 ql_asdf_url=https://beta.quicklisp.org/asdf/3.2.1/asdf.lisp
 ql_asdf_sha256=51912f3f7c2c62c204f515d97346d56011528399bbf0a76a123318343ebd8bf0
 
-fetch() {  # download $1 to $2, kept only when its SHA-256 is $3
-  curl -sSfL --retry 3 -o "$2.part" "$1"
-  if ! echo "$3  $2.part" | sha256sum -c --status; then
-    rm -f "$2.part"
-    echo "$1 is not the file expected: not used" >&2
-    exit 1
-  fi
-  mv "$2.part" "$2"
-}
+. "$root/tools/fetch.sh"
+fetch() { checked_download "$@" || exit 1; }
 
 echo "== SBCL"
 fetch "$sbcl_url" "$work/sbcl.tar.bz2" "$sbcl_sha256"

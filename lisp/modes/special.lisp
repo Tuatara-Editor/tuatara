@@ -96,9 +96,8 @@ number of SPANS)."
           (and (plusp (length spans)) (cons spans (span-ends spans)))))
   (setf (tuatara.buffer:buffer-local buffer :buttons) buttons
         (tuatara.buffer:buffer-local buffer 'list-key)
-        (if key-p key (let ((kind (shown-list-kind buffer))) (and kind (funcall (second kind) buffer))))
-        (tuatara.buffer:buffer-undo-stack buffer) '()
-        (tuatara.buffer:buffer-redo-stack buffer) '())
+        (if key-p key (let ((kind (shown-list-kind buffer))) (and kind (funcall (second kind) buffer)))))
+  (tuatara.buffer:forget-history buffer)
   (when refill
     (setf (tuatara.buffer:buffer-local buffer :refill) refill))
   (tuatara.buffer:buffer-mark-saved buffer)
@@ -111,8 +110,7 @@ starts; the first found by halves, so O(log n + those found)."
   (let ((made (tuatara.buffer:buffer-local buffer 'made-spans)))
     (when made
       (destructuring-bind (spans . ends) made
-        (let ((low 0) (high (length spans)))
-          (setf low (tuatara.runtime:bisect (middle low high) (<= (aref ends middle) from)) high low)
+        (let ((low (tuatara.runtime:bisect (middle 0 (length spans)) (<= (aref ends middle) from))))
           (loop for i from low below (length spans)
                 for span = (svref spans i)
                 while (< (first span) to)
@@ -129,7 +127,7 @@ out for a window, what a fold or a search filter hides between them left out
   "Colour the text a command made in BUFFER as it was made, else as its mode
 colours text."
   (if (tuatara.buffer:buffer-local buffer 'made-spans)
-      (made-spans-shown buffer rows)
+      (list (made-spans-shown buffer rows))
       (call-next-method)))
 
 (defun piece-parts (piece)
@@ -172,10 +170,26 @@ function of the buffer and the position, gives the entry there."
   (let ((finder (tuatara.buffer:buffer-local buffer :entry-at)))
     (if finder
         (funcall finder buffer position)
-        (let ((entries (tuatara.buffer:buffer-local buffer 'list-entries))
-              (index (- (tuatara.buffer:buffer-line-number buffer position)
-                        (tuatara.buffer:buffer-local buffer 'list-first-line 0))))
-          (and (< -1 index (length entries)) (elt entries index))))))
+        (list-line-entry buffer (tuatara.buffer:buffer-line-number buffer position)))))
+
+(defun list-line-entry (buffer line)
+  "The entry RENDER-PIECES was given for LINE (from 0) of the list BUFFER, or
+NIL for a line that shows none."
+  (let ((entries (tuatara.buffer:buffer-local buffer 'list-entries))
+        (index (- line (tuatara.buffer:buffer-local buffer 'list-first-line 0))))
+    (and (< -1 index (length entries)) (elt entries index))))
+
+(defun list-shown-entries (buffer)
+  "The entries the list BUFFER shows, in their order, as a list, those its
+lines leave out (NIL) skipped; as a second value, a vector of the line (from
+0) each is on."
+  (let ((first (tuatara.buffer:buffer-local buffer 'list-first-line 0)) (shown '()) (lines '()))
+    (map nil (let ((line first))
+               (lambda (entry)
+                 (when entry (push entry shown) (push line lines))
+                 (incf line)))
+         (tuatara.buffer:buffer-local buffer 'list-entries #()))
+    (values (nreverse shown) (coerce (nreverse lines) 'vector))))
 
 (defun render-pieces
     (buffer pieces &key (point :keep) (entries nil entries-p) (first-line 0) keys (key nil key-p) refill
@@ -229,7 +243,9 @@ CAPTURE is NIL, when it is that whole list being narrowed again. Returns BUFFER.
                ;; where POSITION is: its line, its column, and the index among ENTRIES of its entry
                (let ((line (line-of position)))
                  (list line
-                       (if (and line (eq point :keep)) (- position (tuatara.buffer:buffer-line-start buffer position)) 0)
+                       (if (and line (eq point :keep))
+                           (- position (tuatara.buffer:buffer-line-start buffer position))
+                           0)
                        (and entries-p (member point '(:keep :line)) line (not (eq old-entries :none))
                             ;; an entry made again is found by its likeness, the one on the same line first
                             (let ((entry (list-entry-at buffer position))
@@ -552,9 +568,23 @@ the bookmark's place, the file; with OTHER in another window. What
 \\[list-visit] and \\[list-visit-other] do there; in a list in sections, ENTRY is a member of
 a section (ENTRY-MEMBER).")
   (:method (mode list entry other)
-    "A list whose entries open nothing says so."
-    (declare (ignore mode list entry other))
-    (message "Nothing to open on this line")))
+    "A list whose entries name a file and line (ENTRY-PLACE) opens the file at
+that line in another window, selected, or with OTHER the list kept selected;
+a list whose entries open nothing says so."
+    (declare (ignore list))
+    (multiple-value-bind (file line) (entry-place mode entry)
+      (if file
+          (keeping-list-selected other (lambda () (show-file-line file line :other t)))
+          (message "Nothing to open on this line")))))
+
+(defun keeping-list-selected (keep function)
+  "Call FUNCTION, which shows something in another window and selects it, and
+return what it returns; with KEEP, the window selected before, the list's, is
+selected again afterwards while it is still there."
+  (let ((here (current-window)))
+    (multiple-value-prog1 (funcall function)
+      (when (and keep (member here (editor-windows)))
+        (select-window here)))))
 
 (defgeneric visit-section (mode list section other)
   (:documentation "What \\[list-visit] and \\[list-visit-other] do on the heading of SECTION in
@@ -698,7 +728,7 @@ in, as MAP-SET-IN-PIECES sets them."
   (if (zerop columns)
       pieces
       (let ((out '()))
-        (map-set-in-pieces (lambda (piece) (push piece out)) pieces (make-string columns :initial-element #\Space))
+        (map-set-in-pieces (lambda (piece) (push piece out)) pieces (spaces columns))
         (nreverse out))))
 
 (defun sectioned-pieces (list sections title row &key count after section-face section-note (margin 0))
@@ -762,7 +792,7 @@ after its heading in :warning, or NIL. The sections are kept for
                           (if inner
                               (put inner section (concatenate 'string indent "  "))
                               (let ((spaces (let ((columns (+ margin (length indent))))
-                                              (and (plusp columns) (make-string columns :initial-element #\Space)))))
+                                              (and (plusp columns) (spaces columns)))))
                                 (dolist (member members)
                                   (multiple-value-bind (row-pieces row-entries) (funcall row member section)
                                     (add spaces row-pieces (or row-entries (list (list :member member section))))))
@@ -797,7 +827,11 @@ pieces added, in order, as RENDER-PIECES and PIECES-TEXT take them."
   (let ((pieces (gensym "PIECES")))
     `(let ((,pieces '()))
        (flet ((,put (text &optional face action)
-                (push (cond ((consp text) text) (action (list text face action)) (face (cons text face)) (t text)) ,pieces)))
+                (push (cond ((consp text) text)
+                            (action (list text face action))
+                            (face (cons text face))
+                            (t text))
+                      ,pieces)))
          (declare (ignorable #',put))
          ,@body)
        (nreverse ,pieces))))
@@ -893,7 +927,8 @@ a million characters whole."
     (tuatara.buffer:buffer-string buffer :start start
                                          :end (if (<= (- end start) octets)
                                                   end
-                                                  (tuatara.text:rope-char-start (tuatara.buffer:buffer-text buffer) (+ start octets))))))
+                                                  (tuatara.text:rope-char-start (tuatara.buffer:buffer-text buffer)
+                                                                                (+ start octets))))))
 
 (defun hanging-columns (head &key cells)
   "The columns in where the text of the line beginning HEAD starts, once its
@@ -921,7 +956,7 @@ false). The rows then continue under their own text."
            (columns (cond ((integerp hang) (min 30 (+ hang (row-indent buffer line-start))))
                           (hang (hanging-columns (buffer-line-head buffer line-start 128) :cells t))
                           (t 0))))
-      (and (plusp columns) (make-string columns :initial-element #\Space)))))
+      (and (plusp columns) (spaces columns)))))
 
 (defun set-hanging (buffer hang)
   "Make the rows a long line of BUFFER wraps into continue under their own
@@ -938,9 +973,9 @@ whole unless ELIDE."
     (cond ((and (> columns width) (not elide)) text)
           ((> columns width)
            (let ((cut (values (tuatara.display:fit-columns text '() width :ellipsis "..."))))
-             (concatenate 'string cut (make-string (max 0 (- width (text-columns cut))) :initial-element #\Space))))
-          (right (concatenate 'string (make-string (- width columns) :initial-element #\Space) text))
-          (t (concatenate 'string text (make-string (- width columns) :initial-element #\Space))))))
+             (concatenate 'string cut (spaces (- width (text-columns cut))))))
+          (right (concatenate 'string (spaces (- width columns)) text))
+          (t (concatenate 'string text (spaces (- width columns)))))))
 
 (defun table-list-cell-text (cell)
   "The text of CELL, a string or (TEXT . FACE) as TABLE-ROW-PIECES takes it."
@@ -1011,7 +1046,9 @@ that \\[search-filter-show-records] can try a pattern on one column."
   (let ((texts (make-hash-table :test 'eq)) (first nil))
     (flet ((row (item section)
              (multiple-value-bind (pieces cell-texts)
-                 (kept-row-pieces columns (funcall cells item (entry-mark list (funcall marked-by item section)) section) item texts)
+                 (kept-row-pieces columns
+                                  (funcall cells item (entry-mark list (funcall marked-by item section)) section)
+                                  item texts)
                (unless first (setf first cell-texts))
                pieces)))
       (when keep-marks
@@ -1049,7 +1086,8 @@ the first row's, shown as an example. TITLES NIL: the list has no columns."
   "The text of COLUMN (from 0) of ENTRY's row in LIST, a table made by
 RENDER-TABLE-LIST, as it was last drawn; NIL when it has none."
   (let* ((table (tuatara.buffer:buffer-local list 'list-table))
-         (cells (and table (gethash (if (and (consp entry) (eq (first entry) :member)) (second entry) entry) (second table)))))
+         (cells (and table (gethash (if (and (consp entry) (eq (first entry) :member)) (second entry) entry)
+                                    (second table)))))
     (and cells (< column (length cells)) (svref cells column))))
 
 (defun list-table-columns (list)
@@ -1264,10 +1302,11 @@ of its first line, passing over the headings of its sections."
 
 (defun entry-list-keys (mode where)
   "Give the lists of major MODE, WHERE in words for those elsewhere, the keys
-of a list whose entries are opened: \\`RET' and \\`l' open the entry on the
-line (\\[list-visit]), \\`o' in another window (\\[list-visit-other]), \\`h' goes back
-\(\\[quit-window]), \\`n' and \\`p' go to the next entry and the one before; the
-commands run there (COMMANDS-FOR-MODE)."
-  (define-keys (mode-keymap mode) '(("RET" list-visit) ("l" list-visit) ("o" list-visit-other) ("h" quit-window)
+of a list whose entries are opened: \\`RET', \\`l' and \\`C-f' open the entry on
+the line (\\[list-visit]), \\`o' in another window (\\[list-visit-other]), \\`h' and
+\\`C-b' go back (\\[quit-window]), \\`n' and \\`p' go to the next entry and the one
+before; the commands run there (COMMANDS-FOR-MODE)."
+  (define-keys (mode-keymap mode) '(("RET" list-visit) ("l" list-visit) ("C-f" list-visit) ("o" list-visit-other)
+                                    ("h" quit-window) ("C-b" quit-window)
                                     ("n" list-next-entry) ("p" list-previous-entry)))
   (commands-for-mode mode where 'list-visit 'list-visit-other 'list-next-entry 'list-previous-entry))

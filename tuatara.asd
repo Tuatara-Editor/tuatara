@@ -5,7 +5,7 @@
   :description "Tuatara: an Emacs-shaped editor in Common Lisp."
   :author "Michael A Jones <yardquit@pm.me>"
   :license "GPL-3.0-or-later"
-  :version "0.90.27"
+  :version "0.90.28"
   :depends-on ("tuatara/core")
   :in-order-to ((test-op (test-op "tuatara/tests"))))
 
@@ -19,25 +19,26 @@ and the frontend interface. Depends on nothing under lisp/ or frontends/."
   :components ((:file "package")
                (:file "version")
                (:module "runtime"  :serial t :components
-                        ((:file "package") (:file "host") (:file "resources") (:file "stopping") (:file "debug")
-                         (:file "pool") (:file "threads") (:file "jobs") (:file "hooks") (:file "settings")))
-               (:module "dates"    :serial t :components ((:file "package") (:file "dates")))
+                        ((:file "package") (:file "records") (:file "host") (:file "resources") (:file "stopping")
+                         (:file "debug") (:file "pool") (:file "threads") (:file "locks") (:file "jobs") (:file "hooks")
+                         (:file "settings")))
                (:module "text"     :serial t :components
                         ((:file "package") (:file "utf8") (:file "mapping") (:file "rope") (:file "edits")
-                         (:file "strings") (:file "version") (:file "json") (:file "xml") (:file "escapes")))
+                         (:file "strings") (:file "octets") (:file "version") (:file "json") (:file "xml")
+                         (:file "escapes")))
                (:module "buffer"   :serial t :components ((:file "package") (:file "buffer")))
                (:module "io"       :serial t :components
-                        ((:file "package") (:file "posix") (:file "kinds") (:file "in-place") (:file "files")
-                         (:file "sandbox") (:file "operations") (:file "zip")))
-               ;; time zones, read from the system's zoneinfo files as io reads files
-               (:module "zones"    :pathname "dates" :components ((:file "zones")))
+                        ((:file "package") (:file "posix") (:file "kinds") (:file "in-place") (:file "isolation")
+                         (:file "files") (:file "watch") (:file "save") (:file "programs") (:file "processes")
+                         (:file "scopes") (:file "sandbox") (:file "operations") (:file "deflate") (:file "zip")))
+               (:module "dates"    :serial t :components ((:file "package") (:file "dates") (:file "zones")))
                (:module "syntax"   :serial t :components
                         ((:file "package") (:file "named-patterns") (:file "search") (:file "helper")
                          (:file "tree-sitter") (:file "parsing") (:file "highlight") (:file "navigation")))
                (:module "frontend" :serial t :components ((:file "package") (:file "interface")))
                (:module "display"  :serial t :components
-                        ((:file "package") (:file "faces") (:file "width") (:file "bidi") (:file "layout")
-                         (:file "folds") (:file "hex") (:file "window") (:file "splits")))
+                        ((:file "package") (:file "faces") (:file "width") (:file "fill") (:file "bidi")
+                         (:file "layout") (:file "folds") (:file "hex") (:file "window") (:file "splits")))
                ;; the painter interface as messages to a frontend in another process, which paints with faces
                (:module "remote"   :pathname "frontend" :serial t :components ((:file "messages") (:file "remote")))
                (:module "command"  :serial t :components
@@ -80,24 +81,24 @@ and the frontend interface. Depends on nothing under lisp/ or frontends/."
                                                                                                        "git-commit")))
                (:module "editing" :serial t :components
                         ((:file "state") (:file "your-name") (:file "diff") (:file "tabs") (:file "choosing")
-                         (:file "commands") (:file "extended-command") (:file "sentences") (:file "simple")
-                         (:file "pairs") (:file "comments") (:file "paren") (:file "case") (:file "mouse")
-                         (:file "font") (:file "font-list") (:file "selection") (:file "lists") (:file "narrowing")
-                         (:file "sort") (:file "records") (:file "enchant") (:file "toggles") (:file "spellcheck")
-                         (:file "windows") (:file "frames") (:file "own-files") (:file "snippets") (:file "fill")
-                         (:file "hl-line") (:file "cursor-column") (:file "soft-wrap") (:file "centred-text")
-                         (:file "visual-line") (:file
-                                                "user-lisp") (:file
-                                                              "recorded-keys") (:file
-                                                                                "shown-files") (:file "conflicts")))
+                         (:file "questions") (:file "commands") (:file "extended-command") (:file "sentences")
+                         (:file "simple") (:file "pairs") (:file "comments") (:file "paren") (:file "case")
+                         (:file "mouse") (:file "font") (:file "font-list") (:file "selection") (:file "lists")
+                         (:file "narrowing") (:file "sort") (:file "records") (:file "enchant") (:file "toggles")
+                         (:file "spellcheck") (:file "windows") (:file "frames") (:file "own-files")
+                         (:file "snippets") (:file "fill") (:file "hl-line") (:file "cursor-column")
+                         (:file "soft-wrap") (:file "centred-text") (:file "display-fill-column") (:file "user-lisp")
+                         (:file "recorded-keys") (:file "shown-files") (:file "conflicts")))
+               (:module "buffer-commands" :pathname "buffers" :components ((:file "commands")))
                (:module "files"   :serial t :components
-                        ((:file "visiting") (:file "files") (:file "trust") (:file "grammars") (:file "hash")
-                         (:file "external") (:file "own-programs") (:file "walk") (:file "evidence") (:file "formatted")
-                         (:file "paths-in-text") (:file "rename-formatted") (:file "recent") (:file "auto-save")
-                         (:file "session") (:file "wipe") (:file "archives") (:file "differences") (:file "merging")
-                         (:file "places") (:file
-                                           "file-places") (:file
-                                                           "bookmarks") (:file "file-local") (:file "next-place")))
+                        ((:file "gathering") (:file "encrypted-names") (:file "visiting") (:file "standard-input")
+                         (:file "files") (:file "trust") (:file "grammars") (:file "hash")
+                         (:file "private-directories") (:file "outside-programs") (:file "external")
+                         (:file "own-programs") (:file "glob") (:file "gitignore") (:file "listing") (:file "walk")
+                         (:file "evidence") (:file "formatted") (:file "paths-in-text") (:file "rename-formatted")
+                         (:file "recent") (:file "auto-save") (:file "session") (:file "wipe") (:file "archives")
+                         (:file "differences") (:file "merging") (:file "places") (:file "file-places")
+                         (:file "bookmarks") (:file "file-local") (:file "next-place")))
                (:module "viewers" :serial t :components
                         ((:file "hex") (:file "decode") (:file "pdf-view") (:file "image-view")
                          (:file "inline-pictures") (:file "office-view") (:file "pdf-reader") (:file "synctex")
@@ -107,26 +108,30 @@ and the frontend interface. Depends on nothing under lisp/ or frontends/."
                         ((:file "lisp") (:file "lisp-indent") (:file "tree-indent") (:file "latex") (:file "org")))
                (:module "word-completion" :pathname "editing" :components ((:file "word-completion")))
                (:module "org"     :serial t :components
-                        ((:file "syntax") (:file "parts") (:file "fontify") (:file "dates") (:file "indent")
-                         (:file "fold") (:file "edit") (:file "schedule") (:file "repeat-menu") (:file "items")
-                         (:file "tables") (:file "formulas") (:file "tangle") (:file "toc") (:file "links")
-                         (:file "linking") (:file "clock") (:file "checklist") (:file "agenda") (:file "dblock")
-                         (:file "agenda-view") (:file "notify") (:file "formatted-blocks") (:file "latex-fonts")
-                         (:file "latex-pictures") (:file "latex") (:file "latex-languages") (:file "export-settings")
-                         (:file "pictures") (:file "docx") (:file "docx-templates") (:file "docx-read")
-                         (:file "office-read") (:file "odf-read") (:file "template-import") (:file "docx-import")
-                         (:file "latex-import") (:file "refile") (:file "capture") (:file "prose")
-                                                   (:static-file "template-org" :pathname
-                                                                 "../../data/latex-templates/org.tex")
-                                                   (:static-file "template-article" :pathname
-                                                                 "../../data/latex-templates/article.tex")
-                                                   (:file "latex-templates")
-                                                   (:static-file "org-html-css" :pathname "../../data/org-html.css")
-                                                   (:file "html")))
+                        ((:file "syntax") (:file "parts") (:file "parse") (:file "fontify") (:file "properties")
+                         (:file "dates") (:file "indent") (:file "fold") (:file "edit") (:file "schedule")
+                         (:file "repeat-menu") (:file "items") (:file "tables") (:file "formulas") (:file "tangle")
+                         (:file "toc") (:file "links") (:file "linking") (:file "clock") (:file "checklist")
+                         (:file "agenda") (:file "dblock") (:file "agenda-view") (:file "notify")
+                         (:file "formatted-blocks") (:file "latex-fonts") (:file "latex-pictures") (:file "latex")
+                         (:file "latex-languages") (:file "export-settings") (:file "pictures") (:file "foreign-text")
+                         (:file "docx") (:file "docx-templates") (:file "docx-read") (:file "office-read")
+                         (:file "odf-read") (:file "template-import") (:file "docx-import") (:file "latex-import")
+                         (:file "refile") (:file "capture") (:file "prose")
+                         (:static-file "template-org" :pathname "../../data/latex-templates/org.tex")
+                         (:static-file "template-article" :pathname "../../data/latex-templates/article.tex")
+                         (:file "latex-templates") (:static-file "org-html-css" :pathname "../../data/org-html.css")
+                         (:file "html")))
+               (:module "formatted-links" :pathname "files" :components ((:file "formatted-links")))
+               (:module "markdown-links" :pathname "modes" :components ((:file "markdown-links")))
+               (:module "prose" :pathname "editing" :components ((:file "prose")))
                (:module "journal" :serial t :components ((:file "journal")))
+               (:file "mode-line-signs")
+               (:file "jobs")
                (:module "search"  :serial t :components
-                        ((:file "replace") (:file "substitute") (:file "rewrite") (:file "jobs") (:file "incremental")
-                         (:file "filters") (:file "files") (:file "results") (:file "indexed") (:file "outline")))
+                        ((:file "replace") (:file "matcher") (:file "substitute") (:file "rewrite")
+                         (:file "incremental") (:file "filters") (:file "files") (:file "results") (:file "indexed")))
+               (:file "outline")
                (:module "compile" :serial t :components ((:file "compile")))
                (:module "export"  :serial t :components ((:file "export") (:file "redactions") (:file "templates") (:file "pdf-sync")
                                                           (:file "formulas")))
@@ -172,8 +177,8 @@ and the frontend interface. Depends on nothing under lisp/ or frontends/."
                (:static-file "starter-init" :pathname "../data/init.lisp")
                (:file "config")
                (:module "packages" :serial t
-                :components ((:file "signing") (:file "packages") (:file "compile-apart") (:file "manager")
-                             (:file "sweep") (:file "unload")))
+                :components ((:file "signing") (:file "declare") (:file "loading") (:file "compile-apart")
+                             (:file "fetch") (:file "manager") (:file "sweep") (:file "unload")))
                (:file "scratch")
                (:file "daemon")
                (:file "servers")

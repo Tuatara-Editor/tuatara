@@ -147,11 +147,6 @@ the names it is given to the file RECORD, as xdg-open would open them."
       (tuatara.defaults::program-health-words "mailboxes" nil "install readpst"))
   (is string= "outside Tuatara by xdg-open, on asking"
       (tuatara.defaults::program-health-words "outside Tuatara" "xdg-open" "" :how "on asking"))
-  ;; a likelihood shown in a face by how likely
-  (is eq :info (tuatara.defaults::likelihood-face 97.2))
-  (is eq :info (tuatara.defaults::likelihood-face 80))
-  (is eq :warning (tuatara.defaults::likelihood-face 50))
-  (is eq :error (tuatara.defaults::likelihood-face 3.1))
   ;; *open-externally-programs*: a program of your choosing for a type, its arguments before the name,
   ;; the exact type before its group; the desktop's program for a type with none
   (with-rimu-tree (dir)

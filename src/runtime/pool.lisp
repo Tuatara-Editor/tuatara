@@ -65,36 +65,26 @@ file's lines, searching) always leaves the editor's own thread room to
 answer keys, on a machine with few processors as on one with many."
   (max 1 (floor (* 9 (cpu-count)) 10)))
 
-(defstruct (batch (:constructor make-batch (tasks)) (:copier nil))
+(define-record (batch (:constructor make-batch (tasks)) (:copier nil))
   "A set of TASKS (thunks) being run: RESULTS and ERRORS by task index, NEXT
 the index the next worker takes, REMAINING the tasks not yet finished, and
 DONE, signalled when REMAINING reaches zero."
-  (tasks #() :type simple-vector :read-only t)
-  (results #() :type simple-vector)
-  (errors #() :type simple-vector)
-  (next (list 0) :read-only t)
-  (remaining (list 0) :read-only t)
-  (done (sb-thread:make-semaphore :count 0) :read-only t))
+  (tasks #() :type simple-vector :read-only t :documentation "The thunks of the batch.")
+  (results #() :type simple-vector :documentation "The results of the batch's tasks, by index.")
+  (errors #() :type simple-vector :documentation "The errors the batch's tasks signalled, by index, or NIL.")
+  (next (list 0) :read-only t :documentation "A cons whose car is the index of the next task to take.")
+  (remaining (list 0) :read-only t :documentation "A cons whose car counts the tasks not yet finished.")
+  (done (sb-thread:make-semaphore :count 0) :read-only t
+        :documentation "The semaphore signalled when the last task finishes."))
 
-(setf (documentation 'make-batch 'function) "Return a batch for TASKS, a simple-vector of thunks."
-      (documentation 'batch-p 'function) "True when OBJECT is a BATCH."
-      (documentation 'batch-tasks 'function) "The thunks of the batch."
-      (documentation 'batch-results 'function) "The results of the batch's tasks, by index."
-      (documentation 'batch-errors 'function) "The errors the batch's tasks signalled, by index, or NIL."
-      (documentation 'batch-next 'function) "A cons whose car is the index of the next task to take."
-      (documentation 'batch-remaining 'function) "A cons whose car counts the tasks not yet finished."
-      (documentation 'batch-done 'function) "The semaphore signalled when the last task finishes.")
+(setf (documentation 'make-batch 'function) "Return a batch for TASKS, a simple-vector of thunks.")
 
-(defstruct (pool (:constructor %make-pool (size)) (:copier nil))
+(define-record (pool (:constructor %make-pool (size)) (:copier nil))
   "The worker pool: SIZE threads waiting on MAILBOX for batches to help with."
-  (size 1 :type fixnum :read-only t)
-  (mailbox (sb-concurrency:make-mailbox :name "tuatara pool") :read-only t)
-  (threads '()))
-
-(setf (documentation 'pool-p 'function) "True when OBJECT is a POOL."
-      (documentation 'pool-size 'function) "How many worker threads the pool has."
-      (documentation 'pool-mailbox 'function) "Where batches wait for a free worker."
-      (documentation 'pool-threads 'function) "The pool's worker threads.")
+  (size 1 :type fixnum :read-only t :documentation "How many worker threads the pool has.")
+  (mailbox (sb-concurrency:make-mailbox :name "tuatara pool") :read-only t
+           :documentation "Where batches wait for a free worker.")
+  (threads '() :documentation "The pool's worker threads."))
 
 (defvar *pool* nil
   "The worker pool, made on first use with as many workers as WORKER-COUNT says.")
@@ -129,9 +119,8 @@ signal DONE when the last task of the batch finishes."
             (let ((pool (%make-pool (worker-count))))
               (setf (pool-threads pool)
                     (loop for i below (pool-size pool)
-                          collect
-                          (tuatara.runtime:make-guarded-thread #'worker-loop :name (format nil "tuatara worker ~a" i)
-                                                               :arguments (list pool))))
+                          collect (make-guarded-thread #'worker-loop :name (format nil "tuatara worker ~a" i)
+                                                                     :arguments (list pool))))
               (setf *pool* pool))))))
 
 (defvar *task-wrappers* '()

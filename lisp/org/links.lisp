@@ -27,12 +27,12 @@
 
 (defun org-hidden-chars (tree from to)
   "The parts of TREE from character FROM below TO hidden while links are shown
-as their labels, as (START . END) characters, in order: of a bracket link,
-[[target][ and ]] around a label, [[ and ]] around a target alone; of a call
-of a macro with arguments, {{{name( and )}}} around them (redact and protect
-among them); and each entity, \\dollar{}, as (START END TEXT), TEXT the
-character it stands for, shown in its place. As a second value, the calls'
-own (START . END)."
+as their labels, each (START END TEXT), characters in order, TEXT what is
+shown in their place: of a bracket link, [[target][ and ]] around a label,
+[[ and ]] around a target alone; of a call of a macro with arguments,
+{{{name( and )}}} around them (redact and protect among them), TEXT empty for
+these; and each entity, \\dollar{}, TEXT the character it stands for. As a
+second value, the calls' own (START . END)."
   (let ((found '()) (calls '()))
     (labels ((walk (node)
                (when (and (< (org-node-begin node) to) (> (max (org-node-end node) (1+ (org-node-begin node))) from))
@@ -40,17 +40,17 @@ own (START . END)."
                        (end (- (org-node-end node) (org-node-post-blank node))))
                    (cond ((and (eq (org-node-type node) 'link) (eq (org-property node :format) 'bracket))
                           (if (org-node-contents-begin node)
-                              (progn (push (cons begin (org-node-contents-begin node)) found)
-                                     (push (cons (org-node-contents-end node) end) found))
-                              (progn (push (cons begin (+ begin 2)) found)
-                                     (push (cons (- end 2) end) found))))
+                              (progn (push (list begin (org-node-contents-begin node) "") found)
+                                     (push (list (org-node-contents-end node) end "") found))
+                              (progn (push (list begin (+ begin 2) "") found)
+                                     (push (list (- end 2) end "") found))))
                          ((eq (org-node-type node) 'entity)
                           (push (list begin end (gethash (org-property node :name) *org-entities*)) found))
                          ((and (eq (org-node-type node) 'macro) (org-property node :args))
                           (let ((open (+ begin 3 (length (org-property node :key)) 1)))
                             (when (< open (- end 4))
-                              (push (cons begin open) found)
-                              (push (cons (- end 4) end) found)
+                              (push (list begin open "") found)
+                              (push (list (- end 4) end "") found)
                               (push (cons begin end) calls))))
                          (t
                           (when (eq (org-node-type node) 'headline)
@@ -95,10 +95,8 @@ begin (*LAYOUT-PROBE*), never put in place of the window's own."
                                            (org-view-char buffer view from)
                                            (org-view-char buffer view to))
                        (flet ((octet-of (char) (org-view-byte buffer view char)))
-                         (setf ranges (nconc ranges (loop for (s . e) in pieces
-                                                          collect (if (consp e)
-                                                                      (list (octet-of s) (octet-of (first e)) (second e) nil)
-                                                                      (list (octet-of s) (octet-of e) "" nil))))
+                         (setf ranges (nconc ranges (loop for (s e text) in pieces
+                                                          collect (list (octet-of s) (octet-of e) text nil)))
                                calls (nconc calls (loop for (s . e) in view-calls
                                                         collect (cons (octet-of s) (octet-of e)))))))
                      (setf current nil
@@ -137,6 +135,18 @@ an edit emptied left out."
           when (and s e (< s e) (< s end) (> e start))
             collect (list s e text nil))))
 
+(defun org-line-holds-octet-p (buffer position octets)
+  "True when the line of BUFFER that octet POSITION is on holds one of OCTETS,
+a list: a cheap test of whether it can hold a link (a colon or a bracket) or
+markup shown otherwise (a bracket, a backslash or a brace), read with no copy
+of the line. A line of more than 4096 octets is taken to hold one, unread."
+  (let ((rope (tuatara.buffer:buffer-text buffer))
+        (start (tuatara.buffer:buffer-line-start buffer position))
+        (end (tuatara.buffer:buffer-line-end buffer position)))
+    (or (> (- end start) 4096)
+        (loop for octet in octets
+              thereis (tuatara.text:rope-find-octet rope octet :start start :end end)))))
+
 (defun keep-point-out-of-hidden-markup (editor)
   "Post-command function: in an Org buffer showing links as their labels, a
 point the command moved into a hidden part of a link goes past it the way it
@@ -144,12 +154,15 @@ was going, so that point never rests in what is not shown; into a macro
 call, it shows that call's braces instead. On an entity shown as its
 character, point rests at its start, the character, and goes past the rest."
   (let ((buffer (tuatara.display:window-buffer (editor-window editor))))
-    (when (and (typep (buffer-major-mode buffer) 'org-mode) (org-links-descriptive-p buffer))
+    (when (and (typep (buffer-major-mode buffer) 'org-mode) (org-links-descriptive-p buffer)
+               ;; a line with no [ ] \ { or } hides nothing: the common case, read with no parse
+               (org-line-holds-octet-p buffer (tuatara.buffer:buffer-point buffer) '(91 93 92 123 125)))
       (let* ((point (tuatara.buffer:buffer-point buffer))
              (line (tuatara.buffer:buffer-line-start buffer point))
              (hidden (find-if (lambda (r) (and (if (plusp (length (third r))) (< (first r) point) (<= (first r) point))
                                                (< point (second r))))
-                              (org-hidden-ranges-shown buffer line (1+ (tuatara.buffer:buffer-line-end buffer point)) :cache nil)))
+                              (org-hidden-ranges-shown buffer line (1+ (tuatara.buffer:buffer-line-end buffer point))
+                                                       :cache nil)))
              (before (and (eq (car *point-before-command*) buffer) (cdr *point-before-command*))))
         (when hidden
           (let ((start (first hidden)) (end (second hidden)))
@@ -192,7 +205,8 @@ node) is true of, or NIL."
   (let ((property (org-find-in-tree tree
                                     (lambda (node) (and (eq (org-node-type node) 'node-property)
                                                         (string-equal (org-property node :key) key)
-                                                        (string= (string-trim " " (or (org-property node :value) "")) value))))))
+                                                        (string= (string-trim " " (or (org-property node :value) ""))
+                                                                 value))))))
     (loop for node = property then (org-node-parent node)
           while node
           when (eq (org-node-type node) 'headline) return node)))
@@ -318,87 +332,6 @@ for in the background (ORG-SEARCH-NOTES). True: it is looked for."
                     (lambda (path) (show-buffer (visit-path path))))
   t)
 
-(defun denote-files-scanner (query)
-  "A scanner for QUERY as denote:query-filenames: links match names, ignoring case;
-QUERY that is no regular expression is matched as text."
-  (tuatara.syntax:compile-pattern query :case-fold t :or-text t))
-
-(defun denote-files-matching (query files)
-  "Those of FILES, your files with formatted names, each a list whose first is
-its path from *FORMATTED-FILE-DIRECTORY*, whose path QUERY matches as
-denote:query-filenames: links match (DENOTE-FILES-SCANNER)."
-  (let ((scanner (denote-files-scanner query)))
-    (remove-if-not (lambda (file) (cl-ppcre:scan scanner (car file))) files)))
-
-(defun formatted-files-scanner (regex)
-  "A scanner for REGEX, a regular expression, ignoring case unless it has a
-capital letter (smart case); NIL when it is no regular expression."
-  (ignoring-errors-reported ("reading the pattern ~a" regex) (tuatara.syntax:compile-pattern regex)))
-
-(defun formatted-files-matching (regex files)
-  "Those of FILES, your files with formatted names, each a list whose first is
-its path from *FORMATTED-FILE-DIRECTORY*, whose path REGEX, a regular
-expression, matches, ignoring case unless it has a capital letter; NIL when
-REGEX is no regular expression."
-  (let ((scanner (formatted-files-scanner regex)))
-    (and scanner (remove-if-not (lambda (file) (cl-ppcre:scan scanner (car file))) files))))
-
-(defun read-formatted-files-query (words matching)
-  "Ask for a regular expression the names of your files with formatted names are
-to match, for what WORDS says is done with it, The prompt names its kind first
-as a search's does (Regex match file names: ). The files MATCHING (a function of
-a regular expression and the files) gives are listed as it is typed, the files
-found in the background meanwhile \(CALL-WITH-FORMATTED-FILES);
-\\<pattern>\\[search-toggle-regex] switches to literal text and back.
-\\<pattern-answer>\\[pattern-finish] takes what is typed, whichever file is
-selected, be it a regular expression or literal text with its special characters
-escaped; a regular expression that cannot be used says why in the prompt,
-waiting for it to be mended."
-  (let ((typed "") (regex t) (refused nil))
-    (call-with-formatted-files
-     (lambda (listed source)
-       (let ((*toggle-pattern-kind* (lambda () (setf regex (not regex))))
-             (*pattern-finish* (lambda ()
-                               (if (pattern-problem (editor-minibuffer-text *editor*) regex)
-                                   (setf refused (editor-minibuffer-text *editor*))
-                                   (finish-minibuffer)))))
-         (completing-read (lambda ()
-                            (let ((text (editor-minibuffer-text *editor*)))
-                              (refusable-pattern-prompt regex words (pattern-problem text regex) (equal refused text))))
-                          (lambda (input)
-                            (setf typed input)
-                            (mapcar #'third (funcall matching (pattern-regex input regex) (funcall listed))))
-                          :filter nil
-                          :select (lambda (candidates input) (declare (ignore candidates input)) :input) :reselect t
-                          :source source :keymap *pattern-answer-keymap*
-                          :none (format nil "none in ~a" (abbreviated-path (directory-name *formatted-file-directory*)))))))
-    (keep-typed-pattern typed)
-    (pattern-regex typed regex)))
-
-(defun show-formatted-files (title keep)
-  "List your files with formatted names whose path from
-*FORMATTED-FILE-DIRECTORY* KEEP is true of, found in the background, under
-TITLE, to choose one to visit (READ-FORMATTED-FILE)."
-  (let ((chosen (read-formatted-file title :keep keep :preview t)))
-    (when chosen
-      (visit-path (concatenate 'string (directory-name *formatted-file-directory*) chosen)))))
-
-(defun follow-formatted-files-link (regex)
-  "List your files with formatted names whose names REGEX matches, to choose
-one to visit, as a link match-formatted-files-link makes is followed."
-  (let ((scanner (formatted-files-scanner regex)))
-    (if (null scanner)
-        (message "~a is no regular expression" regex)
-        (show-formatted-files (format nil "Files matching ~a: " regex)
-                              (lambda (relative) (cl-ppcre:scan scanner relative))))))
-
-(defun follow-denote-files-link (query)
-  "List your files with formatted names whose names QUERY matches, to choose
-one to visit, where a denote:query-filenames: link leads."
-  (let ((scanner (denote-files-scanner query)))
-    (show-formatted-files (format nil "Files matching ~a: " query)
-                          (lambda (relative) (cl-ppcre:scan scanner relative)))))
-
 (defun insert-link-text (buffer region link)
   "Put LINK in BUFFER in place of REGION, (START END) octets, or at point when
 REGION is NIL, point after it."
@@ -425,62 +358,17 @@ selected, else asked for, SUGGESTED offered selected, to take or type over."
   (when (or (search "]]" label) (and (plusp (length label)) (char= (char label (1- (length label))) #\])))
     "a label ending in ] or holding ]] would end the link early"))
 
-(define-command match-formatted-files-link ()
-  "Insert a link to your files with formatted names whose names match a
-regular expression, asked for, the files it matches listed as it is typed:
-[[formatted-match:REGEX][LABEL]]. The text selected becomes the link, its
-label; with none, the label is asked for, REGEX offered. Following it (\\`RET'
-or \\[org-open-at-point] in Org) lists the files in *FORMATTED-FILE-DIRECTORY*
-and under it whose path from there REGEX matches, ignoring case unless it has
-a capital letter, to visit one. Brackets in it are written \\=\\[ and \\=\\]
-in the link. It is Tuatara's own kind of link, which other Org programs do not
-follow; match-denote-files-link makes one that other programs reading
-denote: links follow too."
-  (let* ((buffer (current-buffer))
-         (region (selected-region buffer))
-         (regex (read-formatted-files-query "match file names" #'formatted-files-matching)))
-    (cond ((string= (string-trim " " regex) "") (message "No link inserted: nothing to match"))
-          ((null (formatted-files-scanner regex)) (message "No link inserted: ~a is no regular expression" regex))
-          (t (let* ((label (read-link-label region buffer (if (find #\] regex) "matching files" regex)))
-                    (problem (link-label-problem label)))
-               (if problem
-                   (message "No link inserted: ~a" problem)
-                   (insert-link-text buffer region
-                                     (org-link-text (format nil "~a:~a" *formatted-files-link-type* regex) label))))))))
-
-(defun match-denote-files-link-text (query label extension)
-  "The denote: link to the files whose names QUERY matches, labelled LABEL, as
-written in a file ending in EXTENSION: [[denote:query-filenames:QUERY][LABEL]]
-in Org (and others), [LABEL](denote:query-filenames:QUERY) in Markdown,
-<denote:query-filenames:QUERY> in text, which has no label."
-  (cond ((string-equal extension ".md") (format nil "[~a](denote:query-filenames:~a)" label query))
-        ((string-equal extension ".txt") (format nil "<denote:query-filenames:~a>" query))
-        (t (org-link-text (format nil "denote:query-filenames:~a" query) label))))
-
-(define-command match-denote-files-link ()
-  "Insert a link to your files with formatted names whose names match what is
-asked for, the files it matches listed as it is typed, as a denote: link,
-which other programs reading those links follow too,
-written [[denote:query-filenames:TEXT][LABEL]]; in Markdown
-[LABEL](denote:query-filenames:TEXT) and in text files
-<denote:query-filenames:TEXT>. The text selected becomes the link, its label; with
-none, the label is asked for, TEXT offered. Following it (\\`RET' or
-\\[org-open-at-point] in Org) lists the files in *FORMATTED-FILE-DIRECTORY* and
-under it whose names match, ignoring case, to visit one. Brackets and
-parentheses in what is matched are refused, as these links cannot hold them."
-  (let* ((buffer (current-buffer))
-         (region (selected-region buffer))
-         (query (read-formatted-files-query "match file names (Denote)" #'denote-files-matching))
-         (file (tuatara.buffer:buffer-file buffer))
-         (extension (if file (name-extension (tuatara.io:native-file-name file)) ".org")))
-    (cond ((string= (string-trim " " query) "") (message "No link inserted: nothing to match"))
-          ((or (find #\[ query) (find #\] query) (find #\( query) (find #\) query))
-           (message "No link inserted: denote links take no brackets or parentheses"))
-          (t (let* ((label (if (string-equal extension ".txt") "" (read-link-label region buffer query)))
-                    (problem (link-label-problem label)))
-               (if problem
-                   (message "No link inserted: ~a" problem)
-                   (insert-link-text buffer region (match-denote-files-link-text query label extension))))))))
+(defun insert-labelled-link (buffer region suggested link-of &key label (problem #'link-label-problem))
+  "Put the link LINK-OF, a function of its label, gives in BUFFER in place of
+REGION or at point (INSERT-LINK-TEXT), its label LABEL when given, else asked
+for (READ-LINK-LABEL, SUGGESTED offered); said instead, nothing inserted, when
+the label cannot be one: PROBLEM, a function of the label, says why, or NIL
+\(as standard LINK-LABEL-PROBLEM, for an Org link). True when it was inserted."
+  (let* ((label (or label (read-link-label region buffer suggested)))
+         (problem (funcall problem label)))
+    (if problem
+        (progn (message "No link inserted: ~a" problem) nil)
+        (progn (insert-link-text buffer region (funcall link-of label)) t))))
 
 (defparameter *org-address-link-types* '("http" "https" "ftp" "mailto" "news" "doi")
   "The types of link that lead to an address outside the note: web, mail,
@@ -536,22 +424,13 @@ identifier, or a web or mail address in the desktop's program, after asking."
           (org-follow-link parse link)
           (message "No link here")))))
 
-(defun org-line-may-hold-link-p (buffer position)
-  "True unless the line of BUFFER that octet POSITION is on surely holds no
-link: a line of more than 4096 octets may; a shorter one holds none when it
-has no colon, [[ or ]]."
-  (let ((start (tuatara.buffer:buffer-line-start buffer position))
-        (end (tuatara.buffer:buffer-line-end buffer position)))
-    (or (> (- end start) 4096)
-        (let ((line (tuatara.buffer:buffer-string buffer :start start :end end)))
-          (or (find #\: line) (search "[[" line) (search "]]" line))))))
-
 (defun org-follow-link-at-point (buffer)
   "For \\`RET' in NORMAL state: follow the Org link point is on, when BUFFER is
 in Org mode and *ORG-RETURN-FOLLOWS-LINK* is true; true when it did. A line
-that can hold no link (ORG-LINE-MAY-HOLD-LINK-P) is not parsed for one."
+with no colon or bracket (ORG-LINE-HOLDS-OCTET-P), so holding no link, is
+not parsed for one."
   (when (and *org-return-follows-link* (typep (buffer-major-mode buffer) 'org-mode)
-             (org-line-may-hold-link-p buffer (tuatara.buffer:buffer-point buffer)))
+             (org-line-holds-octet-p buffer (tuatara.buffer:buffer-point buffer) '(58 91 93)))
     (let* ((parse (org-parse-now buffer))
            (link (and parse (org-link-at (org-parse-tree parse) (org-parse-point parse)))))
       (when link
@@ -563,12 +442,6 @@ that can hold no link (ORG-LINE-MAY-HOLD-LINK-P) is not parsed for one."
 go to the row below, aligned; else a new line, as \\`RET' does in text."
   (unless (or (org-follow-link-at-point (current-buffer)) (org-table-next-row))
     (newline)))
-
-(defun install-markdown-links ()
-  "Bind Markdown's keys for links: \\`C-c C-o' follows the one point is on, and
-\\`RET' in NORMAL state does too."
-  (define-key (mode-keymap 'markdown-mode) "C-c C-o" 'markdown-follow-link-at-point)
-  (pushnew 'markdown-follow-link-for-return *enter-dwim-functions*))
 
 (defun install-org-links (editor)
   "Bind Org's keys for links: \\`C-c C-o' follows the one at point, \\`RET' too

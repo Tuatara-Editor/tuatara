@@ -4,7 +4,7 @@
 (in-package #:tuatara.tests)
 
 (define-test definitions
-  :description "No function, macro or command is defined twice in one package, where the later would quietly replace the earlier; no two tests have one name; the core asks the host, never a variable holding one function; the octets of a mapped file are read through the text layer alone; no source file names a package of a higher layer.")
+  :description "No function, macro or command is defined twice in one package, where the later would quietly replace the earlier; no two tests have one name; the core asks the host, never a variable holding one function; the octets of a mapped file are read through the text layer alone; no source file names a package of a higher layer; no source file holds a tab character.")
 
 (defun source-files (top)
   "Every Lisp source file under the directory TOP of the repository (\"lisp\", \"src\")."
@@ -85,6 +85,19 @@ the package's name and the reader's name in lower case."
           (push (format nil "~a::~a in ~a" package name file) clashes))))
     (true (null clashes) "Defined over a structure's slot reader: ~{~a~^; ~}" clashes)))
 
+(define-test (definitions structures-are-records)
+  ;; a structure is written with DEFINE-RECORD, which keeps each slot's
+  ;; documentation with the slot, never with a plain DEFSTRUCT
+  (let ((plain '()) (records 0))
+    (dolist (top '("src" "lisp" "frontends" "tools"))
+      (dolist (file (source-files top))
+        (let ((text (uiop:read-file-string file)))
+          (incf records (length (cl-ppcre:all-matches-as-strings "(?m)^\\(define-record " text)))
+          (when (cl-ppcre:scan "(?m)^\\s*\\(defstruct [^,\\s]" text)
+            (push (file-namestring file) plain)))))
+    (true (> records 250))
+    (is equal '() plain)))
+
 (define-test (definitions tests-named-once)
   ;; a test's name is its own whatever its parent: one defined again replaces the
   ;; first, which then never runs
@@ -111,8 +124,13 @@ the package's name and the reader's name in lower case."
     (format t "~&~a~%List: tools/line-check.py ~a (without --summary, a line each)~%" total root)
     (true (search "lines past the column" total))))
 
+(define-test (definitions sources-without-tabs)
+  ;; a tab in the text a program writes is written as #\Tab or ~c, never typed into the source
+  (let ((tabbed (remove-if-not (lambda (file) (find #\Tab (uiop:read-file-string file))) (core-source-files))))
+    (false tabbed "~{~a~^, ~}" (mapcar #'file-namestring tabbed))))
+
 (defparameter *mapped-octets-read-elsewhere*
-  '(("files.lisp" "a save writes what the kernel did not copy of a stretch it noted read (NOTE-READ) first")
+  '(("save.lisp" "a save writes what the kernel did not copy of a stretch it noted read (NOTE-READ) first")
     ("sort.lisp" "a sort merges its own files of sorted lines, which are taken away after the merge"))
   "The files outside src/text that read a mapping's octets themselves
 \(MAPPING-SAP), each with why that leaves no file in memory.")
@@ -132,24 +150,24 @@ the package's name and the reader's name in lower case."
 
 (defparameter *package-layers*
   '(("tuatara" . 0) ("tuatara-user" . 0) ("tuatara.runtime" . 0)
-    ("tuatara.dates" . 1) ("tuatara.text" . 1)
+    ("tuatara.text" . 1)
     ("tuatara.buffer" . 2)
     ("tuatara.io" . 3)
-    ("tuatara.syntax" . 4)
+    ("tuatara.dates" . 4) ("tuatara.syntax" . 4)
     ("tuatara.display" . 5) ("tuatara.frontend" . 5) ("tuatara.command" . 5) ("tuatara.modes" . 5)
     ("tuatara.defaults" . 6) ("tuatara.git" . 6) ("tuatara.lsp" . 6) ("tuatara.compile" . 6)
     ("tuatara.packages" . 6) ("tuatara.export" . 6) ("tuatara.terminal-emulator" . 6)
     ("tuatara.frontend.fake" . 7) ("tuatara.frontend.tui" . 7) ("tuatara.frontend.gtk" . 7)
     ("tuatara.gtk" . 7) ("tuatara.terminal" . 7))
   "The layers of Tuatara's packages, low to high: the runtime and the settings,
-dates and the text model, buffers, files and processes, syntax, the display and
+the text model, buffers, files and processes, dates (whose time zones are read
+from files) and syntax, the display and
 the command loop with its modes, the defaults and the features, and the
 frontends. A source file's package may name packages of its own layer or a
 lower one.")
 
 (defparameter *layering-exceptions*
-  '(("zones.lisp" "tuatara.io"
-     "time zones are read from the system's zoneinfo files as any file is, through io's reading"))
+  '()
   "The source files that name a package of a higher layer, each with the package
 it names and why that is allowed. Questions the lower layers ask what is loaded
 above them go through the host's generic functions, which need no entry.")
@@ -204,7 +222,7 @@ the exceptions allow."
   ;; the layers are the packages' real order: a lower layer never names a higher one
   (let ((violations (layer-violations)))
     (is equal '() violations "A file names a package of a higher layer: ~{~a~^; ~}" violations))
-  ;; the scan sees what an exception covers
+  ;; the scan sees a package named before a symbol
   (true (find "tuatara.io" (layer-references (merge-pathnames "src/dates/zones.lisp"
                                                               (asdf:system-source-directory "tuatara")))
               :key #'car :test #'string=))

@@ -49,15 +49,10 @@ home directory there; \"\" for that home directory. A / at the end is kept."
   (let* ((path (cond ((string= path "~") "")
                      ((uiop:string-prefix-p "~/" path) (subseq path 2))
                      (t path)))
-         (absolute (uiop:string-prefix-p "/" path))
-         (parts '()))
-    (dolist (part (uiop:split-string path :separator "/"))
-      (cond ((member part '("" ".") :test #'string=))
-            ((and (string= part "..") parts (string/= (first parts) "..")) (pop parts))
-            ((and (string= part "..") absolute))
-            (t (push part parts))))
-    (let ((joined (format nil "~:[~;/~]~{~a~^/~}" absolute (reverse parts))))
-      (if (and parts (uiop:string-suffix-p path "/")) (concatenate 'string joined "/") joined))))
+         (clean (tuatara.io:clean-path path :relative (not (uiop:string-prefix-p "/" path)))))
+    (if (and (uiop:string-suffix-p path "/") (not (member clean '("" "/") :test #'string=)))
+        (concatenate 'string clean "/")
+        clean)))
 
 (defun remote-name-parts (name)
   "The machine and the path NAME names, /ssh:HOST:PATH, two values: HOST as
@@ -70,8 +65,8 @@ a host ssh could take for something else (HOST-REFUSAL)."
 
 (defun remote-parent-directory-name (host path)
   "The name of the directory holding PATH on HOST, ending in /."
-  (let ((slash (position #\/ path :from-end t)))
-    (remote-name host (if slash (subseq path 0 (1+ slash)) ""))))
+  (let ((directory (tuatara.io:path-directory-and-name path)))
+    (remote-name host (if (string= directory "./") "" directory))))
 
 (defun remote-stamp (attributes)
   "ATTRIBUTES of a file on another machine (SFTP-TAKE-ATTRIBUTES) as a
@@ -125,7 +120,7 @@ asked to put a question to you for them (*SSH-MAY-ASK*)."
 
 ;;; The buffer of a file on another machine
 
-(defstruct (remote-file (:constructor make-remote-file (host path)) (:copier nil))
+(define-record (remote-file (:constructor make-remote-file (host path)) (:copier nil))
   "What a buffer visiting a copy of a file on another machine knows of it. HOST
 is the machine, as ssh takes it, and PATH is the file's path there, from the
 root. ATTRIBUTES are those the file had as last read or written there (NIL when
@@ -135,27 +130,17 @@ none. EVIDENCE is why it is evidence, or NIL. TRUSTED is true when HOST is a
 trusted server. PARTLY is true while a save that failed half-way left the file
 there partly written. ARRIVAL is how the file stands as it comes: an ARRIVAL
 while part of it has not arrived, NIL once all of it is here."
-  (host "" :type string :read-only t)
-  (path "" :type string :read-only t)
-  (attributes nil)
-  (sum nil)
-  (sent nil)
-  (evidence nil)
-  (trusted nil)
-  (partly nil)
-  (arrival nil))
+  (host "" :type string :read-only t :documentation "The machine holding FILE, as ssh takes it.")
+  (path "" :type string :read-only t :documentation "Where FILE is on its machine, from the root.")
+  (attributes nil :documentation "FILE's attributes as last read or written, or NIL.")
+  (sum nil :documentation "FILE's SHA-256 sum as last read or written, or NIL.")
+  (sent nil :documentation "The content number of the text last on FILE's machine, or NIL.")
+  (evidence nil :documentation "Why FILE is evidence, in words, or NIL.")
+  (trusted nil :documentation "True when FILE's machine is a trusted server.")
+  (partly nil :documentation "True while a failed save left FILE partly written there.")
+  (arrival nil :documentation "How FILE stands as it arrives, or NIL once all of it is here."))
 
-(setf (documentation 'make-remote-file 'function) "A REMOTE-FILE for PATH on HOST."
-      (documentation 'remote-file-p 'function) "True when OBJECT is a REMOTE-FILE."
-      (documentation 'remote-file-host 'function) "The machine holding FILE, as ssh takes it."
-      (documentation 'remote-file-path 'function) "Where FILE is on its machine, from the root."
-      (documentation 'remote-file-attributes 'function) "FILE's attributes as last read or written, or NIL."
-      (documentation 'remote-file-sum 'function) "FILE's SHA-256 sum as last read or written, or NIL."
-      (documentation 'remote-file-sent 'function) "The content number of the text last on FILE's machine, or NIL."
-      (documentation 'remote-file-evidence 'function) "Why FILE is evidence, in words, or NIL."
-      (documentation 'remote-file-trusted 'function) "True when FILE's machine is a trusted server."
-      (documentation 'remote-file-partly 'function) "True while a failed save left FILE partly written there."
-      (documentation 'remote-file-arrival 'function) "How FILE stands as it arrives, or NIL once all of it is here.")
+(setf (documentation 'make-remote-file 'function) "A REMOTE-FILE for PATH on HOST.")
 
 (defun buffer-remote (buffer)
   "The REMOTE-FILE BUFFER visits a copy of, or NIL."
@@ -174,18 +159,23 @@ while part of it has not arrived, NIL once all of it is here."
                     (string= (remote-file-host remote) host) (string= (remote-file-path remote) path))))
            tuatara.buffer:*buffers*))
 
+(defun remote-beside-real-path (host path)
+  "PATH, a path on HOST, with the directory holding it made real there (links
+followed) and its own name after that, from the root; refused when that
+directory is not there."
+  (multiple-value-bind (directory name) (tuatara.io:path-directory-and-name path)
+    (format nil "~a/~a" (string-right-trim "/" (remote-real-path host directory)) name)))
+
 (defun remote-place-real-path (host path)
   "Where the place PATH, a path on HOST, really is: the directory it is in where
 that really is there, with PATH's own name after it, not followed when it
 is a link; NIL when that directory is not there. Any other failure is
 signalled."
-  (let* ((path (if (string= path "/") path (string-right-trim "/" path)))
-         (slash (position #\/ path :from-end t)))
+  (let ((path (if (string= path "/") path (string-right-trim "/" path))))
     (handler-case
         (if (member path '("" "/") :test #'string=)
             (remote-real-path host path)
-            (format nil "~a/~a" (string-right-trim "/" (remote-real-path host (if slash (subseq path 0 (1+ slash)) "")))
-                    (subseq path (if slash (1+ slash) 0))))
+            (remote-beside-real-path host path))
       (sftp-refusal (condition)
         (if (remote-missing-p condition) nil (error condition))))))
 
@@ -222,18 +212,18 @@ directories at the front where those really are there (REMOTE-KEPT-REAL-PATH)."
   (loop for entry in (remote-machine-entries rules host)
         for given = (evidence-entry-given entry)
         collect (let* ((written (first (evidence-entry-pattern entry)))
-                           (glob (subseq written (remote-prefix-length written)))
-                           (end (glob-fixed-end glob))
-                           (real (and (plusp end) (remote-kept-real-path host (subseq glob 0 end)))))
-                      (make-evidence-entry given :glob (remove-duplicates
-                                                        (list (remote-name host glob)
-                                                              (remote-name host (if real
-                                                                                    (concatenate
-                                                                                     'string (string-right-trim "/" real)
-                                                                                     (subseq glob end))
-                                                                                    glob)))
-                                                        :test #'string=)
-                                           nil nil))))
+                       (glob (subseq written (remote-prefix-length written)))
+                       (end (glob-fixed-end glob))
+                       (real (and (plusp end) (remote-kept-real-path host (subseq glob 0 end)))))
+                  (make-evidence-entry given :glob (remove-duplicates
+                                                    (list (remote-name host glob)
+                                                          (remote-name host (if real
+                                                                                (concatenate
+                                                                                 'string (string-right-trim "/" real)
+                                                                                 (subseq glob end))
+                                                                                glob)))
+                                                    :test #'string=)
+                                       nil nil))))
 
 (defun remote-evidence (host names)
   "The evidence directory a place on HOST is, or is in, by *EVIDENCE-DIRECTORIES*,
@@ -290,8 +280,8 @@ copy here or remembers it."
 
 ;;; Reading
 
-(defstruct (remote-read-job (:include tuatara.runtime:job) (:constructor make-remote-read-job (buffer remote safe))
-                            (:copier nil))
+(define-record (remote-read-job (:include tuatara.runtime:job) (:constructor make-remote-read-job (buffer remote safe))
+                               (:copier nil))
   "A file on another machine being read for BUFFER, a job: REMOTE, the
 REMOTE-FILE as asked for (its path as typed), SAFE, true for a safe visit;
 then PATH, where it is there, links followed; DIRECTORY, the private directory of
@@ -300,16 +290,23 @@ there yet, or :DIRECTORY. AGAIN, true when it is read again for a buffer
 visiting it. ARRIVAL, an ARRIVAL, and FD, the open copy, for a file read in
 two parts (REMOTE-EARLY-P): the first read before it opens, by this job; the
 rest after it opened by another of these, whose REST is true."
-  remote safe path directory copy kind again arrival fd rest)
-
-(setf (documentation 'remote-read-job-p 'function) "True when OBJECT is a REMOTE-READ-JOB.")
+  (remote nil :documentation "The REMOTE-FILE REMOTE-READ-JOB reads, as asked for.")
+  (safe nil :documentation "True when REMOTE-READ-JOB is a safe visit.")
+  (path nil :documentation "The path of the file on the other machine, links followed.")
+  (directory nil :documentation "The private directory of the copy of the file here.")
+  (copy nil :documentation "The path of the copy here.")
+  (kind nil :documentation "The kind of the file: :FILE, :NEW for a file not there yet, or :DIRECTORY.")
+  (again nil :documentation "True when the file is read again for a buffer visiting it.")
+  (arrival nil :documentation "The ARRIVAL for a file read in two parts (REMOTE-EARLY-P).")
+  (fd nil :documentation "The open copy (a file descriptor, FD) of a file read in two parts.")
+  (rest nil :documentation "True for the job reading the rest of a file read in two parts, after another opened it."))
 
 (tuatara.runtime:define-job-words remote-read-job
-  :doing "Reading"
-  :description (format nil "Reading ~a" (remote-name (remote-file-host (remote-read-job-remote job))
-                                                     (remote-file-path (remote-read-job-remote job))))
-  :verb "read it"
-  :left-words "nothing read")
+    :doing "Reading"
+    :description (format nil "Reading ~a" (remote-name (remote-file-host (remote-read-job-remote job))
+                                                       (remote-file-path (remote-read-job-remote job))))
+    :verb "read it"
+    :left-words "nothing read")
 
 (defconstant +remote-most-arriving+ (ash 1 46)
   "The most octets a server may say a file holds and have it opened before it
@@ -367,8 +364,8 @@ it is read, or ended sooner than it said, or room here runs short (REMOTE-CHECK-
                                                         (loop for (from . to) in (arrival-holes arrival)
                                                               sum (- to from))))
                                    (let ((wanted (arrival-wanted arrival)))
-                                   (when (and wanted (null (arrival-absent arrival (car wanted) (cdr wanted) nil)))
-                                     (setf (arrival-wanted arrival) nil)
+                                     (when (and wanted (null (arrival-absent arrival (car wanted) (cdr wanted) nil)))
+                                       (setf (arrival-wanted arrival) nil)
                                        (when wake (funcall wake))))
                                    (when *arrival-hook* (funcall *arrival-hook*))))
       (when (< (arrival-end arrival) (arrival-size arrival))
@@ -386,10 +383,7 @@ needs (REMOTE-EARLY-P), the copy its whole size and left open for the rest."
          (attributes (remote-attributes host (if (string= asked "") "." asked)))
          (path (if attributes
                    (remote-real-path host asked)
-                   (let ((slash (position #\/ asked :from-end t)))
-                     (format nil "~a/~a"
-                             (string-right-trim "/" (remote-real-path host (if slash (subseq asked 0 (1+ slash)) "")))
-                             (subseq asked (if slash (1+ slash) 0)))))))
+                   (remote-beside-real-path host asked))))
     (setf (remote-read-job-path job) path
           (remote-read-job-kind job) (case (remote-kind attributes)
                                        ((nil) (if attributes :file :new))
@@ -405,7 +399,7 @@ needs (REMOTE-EARLY-P), the copy its whole size and left open for the rest."
         (multiple-value-bind (fd copy)
             (tuatara.io:create-free-file directory
                                          (lambda (n) (format nil "~a~:[.~d~;~*~]" (tuatara.io:native-file-name path)
-                                                              (= n 1) n)))
+                                                             (= n 1) n)))
           (setf (remote-read-job-copy job) copy)
           (let ((size (or (getf attributes :size) 0)))
             (if (remote-early-p size job)
@@ -488,10 +482,10 @@ rimu in its place."
     (cond ((eq :directory (remote-read-job-kind job))
            (let ((windows (buffer-windows placeholder)))
              (rimu-show-directory (remote-name host path) :safe (remote-read-job-safe job)
-                                                          :show (lambda (list)
-                                                                  (dolist (window windows)
-                                                                    (tuatara.display:set-window-buffer
-                                                                     window list :remember nil))))
+                                  :show (lambda (list)
+                                          (dolist (window windows)
+                                            (tuatara.display:set-window-buffer
+                                             window list :remember nil))))
              (tuatara.buffer:kill-buffer placeholder)))
           (t
            (let ((buffer (if other
@@ -541,16 +535,16 @@ named and placed after the file there, its copy's directory deleted with it."
                         (setf said *file-view-said*)))))
          (buffer (or view
                      (let ((tuatara.buffer:*find-file-functions* (remote-find-file-functions (remote-file-trusted remote)))
-                          ;; read where it is being written: nothing need keep others' changes from it
-                          (tuatara.io:*lease-large-files* (and (not arrival) tuatara.io:*lease-large-files*))
-                          (tuatara.io:*clone-large-files* (and (not arrival) tuatara.io:*clone-large-files*))
-                          (tuatara.io:*snapshot-large-files* (and (not arrival) tuatara.io:*snapshot-large-files*))
-                          ;; mapped whatever the limit is now: the rest is not here to read whole
-                          (tuatara.io:*memory-read-limit* (if arrival 0 tuatara.io:*memory-read-limit*)))
-                      (handler-bind ((serious-condition (lambda (condition)
-                                                          (declare (ignore condition))
-                                                          (close-remote-copy job))))
-                        (tuatara.io:visit-file copy :safe safe))))))
+                           ;; read where it is being written: nothing need keep others' changes from it
+                           (tuatara.io:*lease-large-files* (and (not arrival) tuatara.io:*lease-large-files*))
+                           (tuatara.io:*clone-large-files* (and (not arrival) tuatara.io:*clone-large-files*))
+                           (tuatara.io:*snapshot-large-files* (and (not arrival) tuatara.io:*snapshot-large-files*))
+                           ;; mapped whatever the limit is now: the rest is not here to read whole
+                           (tuatara.io:*memory-read-limit* (if arrival 0 tuatara.io:*memory-read-limit*)))
+                       (handler-bind ((serious-condition (lambda (condition)
+                                                           (declare (ignore condition))
+                                                           (close-remote-copy job))))
+                         (tuatara.io:visit-file copy :safe safe))))))
     (unless view (show-binary-in-hex buffer))
     (setf (remote-file-attributes final) (remote-file-attributes remote)
           (remote-file-sum final) (remote-file-sum remote)
@@ -623,9 +617,9 @@ on its way, or never came when the transfer ended early."
     (when arrival
       (loop for (from . to) in (arrival-holes arrival)
             when (and (< from end) (> to start))
-              collect (list from to
-                            (format nil "[~a ~:[not arrived~;on its way~]]" (octets-words (- to from)) running)
-                            :fold-ellipsis)))))
+            collect (list from to
+                          (format nil "[~a ~:[not arrived~;on its way~]]" (octets-words (- to from)) running)
+                          :fold-ellipsis)))))
 
 (defun remote-arrival-over (buffer)
   "All of BUFFER's file is here, or it is read again whole: forget that it
@@ -693,8 +687,8 @@ yet, or NIL when what is there is here."
 
 ;;; Saving
 
-(defstruct (remote-write-job (:include tuatara.runtime:job)
-                             (:constructor make-remote-write-job (buffer remote copy content)) (:copier nil))
+(define-record (remote-write-job (:include tuatara.runtime:job)
+                                (:constructor make-remote-write-job (buffer remote copy content)) (:copier nil))
   "The copy of a file on another machine being sent there for BUFFER, a job.
 REMOTE is its REMOTE-FILE. COPY is the copy's path here. CONTENT is the content
 number of the text saved in it. ATTRIBUTES and SUM are the file's there once
@@ -702,16 +696,22 @@ written. IN-PLACE is why it was written in place, in words, or NIL when it was
 replaced (REMOTE-UPLOAD). WHOLE is true to write it over a file there left
 partly written, whatever it is now. PARTLY is true once the job left the file
 there partly written."
-  remote copy content attributes sum in-place whole partly)
-
-(setf (documentation 'remote-write-job-p 'function) "True when OBJECT is a REMOTE-WRITE-JOB.")
+  (remote nil :documentation "The REMOTE-FILE REMOTE-WRITE-JOB sends.")
+  (copy nil :documentation "The path of the copy here that REMOTE-WRITE-JOB sends.")
+  (content nil :documentation "The content number of the text saved in the copy.")
+  (attributes nil :documentation "The attributes of the file on the other machine once written.")
+  (sum nil :documentation "The sum of the file on the other machine once written.")
+  (in-place nil
+            :documentation "Why the file was written in place, in words, or NIL when it was replaced (REMOTE-UPLOAD).")
+  (whole nil :documentation "True when the file is written over one there left partly written, whatever it is now.")
+  (partly nil :documentation "True once REMOTE-WRITE-JOB left the file there partly written."))
 
 (tuatara.runtime:define-job-words remote-write-job
-  :doing "Sending"
-  :description (format nil "Sending ~a" (remote-name (remote-file-host (remote-write-job-remote job))
-                                                     (remote-file-path (remote-write-job-remote job))))
-  :verb "send it"
-  :left-words "the file there as it was")
+    :doing "Sending"
+    :description (format nil "Sending ~a" (remote-name (remote-file-host (remote-write-job-remote job))
+                                                       (remote-file-path (remote-write-job-remote job))))
+    :verb "send it"
+    :left-words "the file there as it was")
 
 (defun remote-changed-words (remote attributes)
   "Why the file of REMOTE, whose attributes there are now ATTRIBUTES (NIL:

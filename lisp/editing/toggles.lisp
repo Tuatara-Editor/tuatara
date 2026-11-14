@@ -4,18 +4,18 @@
 ;;;; Soft wrap, the line at the fill column, centred text, the highlighted line,
 ;;;; line numbers and the characters that draw nothing shown as their codes
 ;;;; (defined here, on in a file opened safely) are each made by
-;;;; define-display-toggle, and so behave
-;;;; alike: on in a buffer as it chose for itself, else as the list for its
-;;;; major mode says, else as the setting for every buffer says; a command for
-;;;; the buffer and global- the same for every buffer, which say "Soft wrap on"
-;;;; and "Soft wrap off in every buffer"; and a word in the mode line for those
-;;;; that move the text about (Wrap, Centred). Each way of showing is read
-;;;; afresh whenever a window is drawn, so a change shows at once.
+;;;; define-display-toggle, and so behave alike: on in a buffer as it chose for
+;;;; itself, else as the list for its major mode says, else as the setting for
+;;;; every buffer says; a command for the buffer and global- the same for every
+;;;; buffer, which say "Soft wrap on" and "Soft wrap off in every buffer"; and a
+;;;; word in the mode line for those that move the text about (Wrap, Centred).
+;;;; Each way of showing is read afresh whenever a window is drawn, so a change
+;;;; shows at once.
 
 (in-package #:tuatara.defaults)
 
-(defstruct (display-toggle (:constructor make-display-toggle (name label key lookup global modes values word never))
-                           (:copier nil) (:predicate nil))
+(define-record (display-toggle (:constructor make-display-toggle (name label key lookup global modes values word never))
+                              (:copier nil) (:predicate nil))
   "A way of showing text made by define-display-toggle. It holds its NAME and
 the LABEL its messages begin with. KEY is the buffer-local key a buffer's own
 choice is kept under. LOOKUP is its function of a buffer. GLOBAL and MODES are
@@ -24,7 +24,17 @@ it takes when on, each (VALUE WORD), WORD words or a function of the buffer,
 or NIL for every buffer, that returns them. WORD is what the mode line shows
 while it is on, or NIL for none. NEVER, NIL or a list (FUNCTION WHERE) as
 define-display-toggle's UNLESS, says where it cannot work."
-  name label key lookup global modes values word never)
+  (name nil :documentation "The name of TOGGLE.")
+  (label nil :documentation "The label the messages of TOGGLE begin with.")
+  (key nil :documentation "The buffer-local key a buffer's own choice of TOGGLE is kept under.")
+  (lookup nil :documentation "The function of a buffer that gives its choice of TOGGLE.")
+  (global nil :documentation "The name of the global setting of TOGGLE.")
+  (modes nil :documentation "The name of the list of modes TOGGLE is on in.")
+  (values nil
+          :documentation "The values TOGGLE takes when on, each (VALUE WORD), or WORDS or a function of the buffer, or
+NIL for every buffer, that returns them.")
+  (word nil :documentation "What the mode line shows while TOGGLE is on, NIL for nothing.")
+  (never nil :documentation "Where TOGGLE cannot work: NIL, or a list (FUNCTION WHERE)."))
 
 (defvar *display-toggles* '()
   "Every way of showing text define-display-toggle has made, as
@@ -133,34 +143,34 @@ entry, and VALUES-DOC the list of values that ends it."
                               what example global command default-modes)
             values-doc)))
 
-(defmacro define-display-toggle (name label doc &key command lookup global default global-doc
-                                                     what example (values '((t "on"))) values-doc mode-line unless where default-modes)
+(defmacro define-display-toggle (name label doc &key command lookup global default global-doc what example
+                                                     (values '((t "on"))) values-doc mode-line unless where
+                                                     default-modes)
   "Define NAME, a way of showing a buffer's text that is switched on and off:
-LOOKUP, a function of a buffer (the current one unless given) true where it
-is on, or the value it takes there of VALUES: the buffer's own choice, made
-with COMMAND; else what *NAME-MODES*, a list of (MODE . VALUE), says of its
-major mode or the nearest mode that mode is made from (MODE-SETTING); else
+LOOKUP, a function of a buffer (the current one unless given) true where it is
+on, or the value it takes there of VALUES: the buffer's own choice, made with
+COMMAND; else what *NAME-MODES*, a list of (MODE . VALUE), says of its major
+mode or the nearest mode that mode is made from (MODE-SETTING); else
 DEFAULT-MODES, a list of (MODE . VALUE) of the same kind, for modes the list
-leaves out; else GLOBAL, the setting for every buffer, DEFAULT unless the init file sets it
-\(its docstring GLOBAL-DOC, or one made from WHAT). Never where UNLESS, a list
-\(FUNCTION WHERE), says so of the buffer, WHERE saying where in words; at
-VALUE (its first value unless given), where WHERE, a list (FUNCTION WHERE
-VALUE), says so of a buffer that made no choice of its own, whatever its
-major mode and GLOBAL say. COMMAND,
-documented by DOC, switches it for the current buffer, and global-COMMAND for
-every buffer (SWITCH-DISPLAY); each says LABEL and what it did. WHAT says in
-a few words what it does, as \"wrap long lines at a word's edge\", and
-EXAMPLE gives an example of the list of modes, for the documentation. VALUES,
-each (VALUE WORD), are what it is when on, the first the one COMMAND switches
-to; one, T and on, unless given. VALUES-DOC, when there are others, lists
-what each does, a line \"- VALUE: what it does.\" for NIL and each, for the
-documentation of both settings. WORD is said after LABEL once it is set: words,
-or the name of a function of the buffer (NIL when set for every buffer) that
-returns them, where what it does differs from buffer to buffer. MODE-LINE is the word the mode line shows
-while it is on, or NIL for none. Defined by a package (its Lisp package uses
-TUATARA), GLOBAL and *NAME-MODES* are settings of the package, as
-DEFINE-PACKAGE-SETTING makes them, so NAME and GLOBAL begin with the
-package's name."
+leaves out; else GLOBAL, the setting for every buffer, DEFAULT unless the init
+file sets it (its docstring GLOBAL-DOC, or one made from WHAT). Never where
+UNLESS, a list (FUNCTION WHERE), says so of the buffer, WHERE saying where in
+words; at VALUE (its first value unless given), where WHERE, a list (FUNCTION
+WHERE VALUE), says so of a buffer that made no choice of its own, whatever its
+major mode and GLOBAL say. COMMAND, documented by DOC, switches it for the
+current buffer, and global-COMMAND for every buffer (SWITCH-DISPLAY); each says
+LABEL and what it did. WHAT says in a few words what it does, as \"wrap long
+lines at a word's edge\", and EXAMPLE gives an example of the list of modes, for
+the documentation. VALUES, each (VALUE WORD), are what it is when on, the first
+the one COMMAND switches to; one, T and on, unless given. VALUES-DOC, when there
+are others, lists what each does, a line \"- VALUE: what it does.\" for NIL and
+each, for the documentation of both settings. WORD is said after LABEL once it
+is set: words, or the name of a function of the buffer (NIL when set for every
+buffer) that returns them, where what it does differs from buffer to buffer.
+MODE-LINE is the word the mode line shows while it is on, or NIL for none.
+Defined by a package (its Lisp package uses TUATARA), GLOBAL and *NAME-MODES*
+are settings of the package, as DEFINE-PACKAGE-SETTING makes them, so NAME and
+GLOBAL begin with the package's name."
   (check-type doc string "a docstring for the command")
   (let* ((package-p (member (find-package '#:tuatara) (package-use-list *package*)))
          (modes (intern (format nil "*~a-MODES*" (symbol-name name))))
@@ -203,9 +213,9 @@ package's name."
          ,(filled-docstring "~a The buffer keeps its choice whatever ~a and ~a say; ~a" doc modes global count-doc)
          (switch-display ',name))
        (define-command ,global-command ()
-         ,(filled-docstring "~a, in every buffer, or stop, while the editor runs (~a in the init file keeps it); a buffer ~
-                       that chose with \\[~(~a~)], and the modes ~a names, keep theirs; ~a"
-                  what-capital global command modes count-doc)
+         ,(filled-docstring "~a, in every buffer, or stop, while the editor runs (~a in the init file keeps ~
+                             it); a buffer that chose with \\[~(~a~)], and the modes ~a names, keep theirs; ~a"
+                            what-capital global command modes count-doc)
          (switch-display ',name :everywhere t))
        (setf *display-toggles*
              (cons (make-display-toggle ',name ,label ,key ',lookup ',global ',modes ',values ,mode-line ',unless)

@@ -97,7 +97,8 @@ options shape it."
 (define-command git-log-branches ()
   "List the commits of every branch, the repository's own and its remotes'."
   (with-git-repository (top switches)
-    (git-show-log top "Log of every branch" (append (git-log-menu-arguments switches) (list "--branches" "--remotes")))))
+    (git-show-log top "Log of every branch"
+                  (append (git-log-menu-arguments switches) (list "--branches" "--remotes")))))
 
 (define-command git-log-all ()
   "List the commits of every reference: branches, remotes' branches, tags, stashes."
@@ -107,11 +108,9 @@ options shape it."
 (define-command git-log-file ()
   "List the commits that changed the file on point's line of a status, or
 the current file, following it across renames."
-  (with-git-repository (top switches)
-    (call-with-git-file top "No file here to list the log of"
-                        (lambda (path)
-                          (git-show-log top (format nil "Log of ~a" (escape-controls path))
-                                        (append (git-log-menu-arguments switches) (list "--follow" "--" path)))))))
+  (with-git-file (top path :switches switches :missing "No file here to list the log of")
+    (git-show-log top (format nil "Log of ~a" (escape-controls path))
+                  (append (git-log-menu-arguments switches) (list "--follow" "--" path)))))
 
 (define-command git-reflog ()
   "List where HEAD has been, the latest first: each commit it was at and what
@@ -215,7 +214,8 @@ buffer of its own; the diff menu's switches shape it."
                  (when from
                    (let ((to (git-read-name (format nil "Changes from ~a to: " from) names :default current)))
                      (when to
-                       (git-show-diff top (format nil "*git diff ~a..~a*" from to) (append switches (list from to "--")))))))))))
+                       (git-show-diff top (format nil "*git diff ~a..~a*" from to)
+                                      (append switches (list from to "--")))))))))))
 
 (define-command git-diff-commit ()
   "Show a commit asked for (the one on the line first): what it says and its changes."
@@ -244,4 +244,5 @@ its switches shape them. \\`C-h' there lists every action."
 (defun install-git-log ()
   "Bind the log menu to L and the diff menu to d in a status, and RET, l and h in a log."
   (define-keys *git-status-keymap* '(("L" git-log-menu) ("d" git-diff-menu)))
-  (define-keys *git-log-keymap* '(("RET" git-log-show) ("l" git-log-show) ("h" quit-window))))
+  (define-keys *git-log-keymap* '(("RET" git-log-show) ("l" git-log-show) ("C-f" git-log-show)
+                                  ("h" quit-window) ("C-b" quit-window))))

@@ -335,7 +335,7 @@ the buffer killed."
              ;; ... not elsewhere
              (multiple-value-bind (f editor) (run-keys "C-c e" :text "abc")
                (is = 0 (session-point editor))
-               (true (tuatara.frontend.fake:fake-frame-showing f "C-c e is undefined")))))
+               (true (tuatara.frontend.fake:fake-frame-showing f "C-c is undefined")))))
       (ignore-errors (delete-file file))
       (tuatara-user:unbind-key "C-c e" :map 'tuatara.defaults::csv-mode))))
 
@@ -487,3 +487,27 @@ the buffer killed."
     (let ((f (csv-spans "C-e C-x / t" (format nil "id,name,town~%1,a,b~%"))))
       (true (last-screen-has f "col 2"))
       (false (last-screen-has f "col 2 town")))))
+
+(define-test (modes org-line-starting-with-emphasis-is-prose)
+  ;; a headline is stars and a blank; a line that opens with *bold* text is filled like any other
+  (let ((org (make-instance 'tuatara.defaults::org-mode)))
+    (flet ((unfilled (text) (tuatara.defaults::mode-unfilled-line-p org text)))
+      (true (unfilled "* Headline"))
+      (true (unfilled "*** Deeper"))
+      (false (unfilled "*note* the rest of the line"))
+      (false (unfilled "**bold** words")))))
+
+(define-test (modes injection-names-compiled-once)
+  ;; the languages' injection names are compiled when a language is defined, not again for each name the text of
+  ;; a file brings, and the names remembered stay bounded
+  (let ((compiled 0)
+        (tuatara.defaults::*injection-languages* (make-hash-table :test #'equalp)))
+    (sb-int:encapsulate 'cl-ppcre:create-scanner 'counting
+                        (lambda (function &rest arguments) (incf compiled) (apply function arguments)))
+    (unwind-protect
+         (progn
+           (dotimes (i 1200)
+             (tuatara.defaults::language-for-injection (format nil "no-such-language-~d" i)))
+           (is = 0 compiled)
+           (true (< (hash-table-count tuatara.defaults::*injection-languages*) 1100)))
+      (sb-int:unencapsulate 'cl-ppcre:create-scanner 'counting))))

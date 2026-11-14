@@ -60,6 +60,23 @@ return the text after, and the frontend."
   ;; the same typing in the insert state
   (is string= "zero zero" (word-keys "i M-/" :text "zero ze")))
 
+(define-test (word-completion name-characters-by-mode)
+  ;; which characters make a name: hyphens where the mode joins names with them, Lisp's own in Lisp
+  (flet ((name-p (mode char) (tuatara.defaults::mode-name-char-p (make-instance mode) char)))
+    (true (name-p 'tuatara.defaults::text-mode #\-))
+    (false (name-p 'tuatara.defaults::python-mode #\-))
+    (true (name-p 'tuatara.defaults::python-mode #\_))
+    (true (name-p 'tuatara.defaults::css-mode #\-))
+    (true (name-p 'tuatara.defaults::lisp-mode #\*))
+    (true (name-p 'tuatara.defaults::lisp-mode #\:))
+    (false (name-p 'tuatara.defaults::lisp-mode #\())
+    (false (name-p 'tuatara.defaults::text-mode #\Space))))
+
+(define-test (word-completion lisp-names-whole)
+  ;; in Lisp a word is a whole name as written, its stars and colons with it
+  (is string= "*print-base* *print-base*"
+      (word-keys (list "M-x l i s p - m o d e RET" "M-/") :text "*print-base* *pr")))
+
 (define-test (word-completion case)
   (is string= "Foobar foobar" (word-keys "M-/" :text "Foobar foo"))
   (is string= "foobar FOOBAR" (word-keys "M-/" :text "foobar FOO"))

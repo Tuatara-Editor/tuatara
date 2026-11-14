@@ -18,7 +18,7 @@
   (:use #:cl #:tuatara.gtk)
   (:import-from #:tuatara.io #:null-pointer #:null-pointer-p #:sap-string)
   (:import-from #:tuatara.frontend #:make-event-queue #:queue-push #:queue-pop #:queue-empty-p)
-  (:import-from #:tuatara.runtime #:define-setting)
+  (:import-from #:tuatara.runtime #:define-record #:define-setting)
   (:import-from #:tuatara-user #:*gui-font* #:*gui-renderer* #:*gui-padding* #:*window-colours-from-desktop*)
   (:documentation "The GTK4 frontend: Tuatara in a window of its own, one drawing area painted with Pango and Cairo.")
   (:export #:gtk-frontend #:make-gtk-frontend #:run-in-window #:run-window-client #:show-in-window #:gdk-key
@@ -90,26 +90,22 @@ of two lists of three numbers from 0 to 1, or NIL; kept by GTK's thread.")
 
 ;;; Frames from the editor to GTK
 
-(defstruct (frame (:constructor make-frame (rows)) (:copier nil))
+(define-record (frame (:constructor make-frame (rows)) (:copier nil))
   "What the window shows: ROWS, a vector with each row's (STRING FACE SPANS
 SCALES OVER PARTS) or NIL, the cursor at CURSOR-ROW and CURSOR-COLUMN, CURSOR-SHAPE :block, :bar
 or :underline, in CURSOR-COLOUR (as faces take colours; NIL for the text's),
 and IMAGES, the pictures over the rows, each (IMAGE ROW COLUMN COLUMNS ROWS
 OFFSET), as TUATARA.FRONTEND:FRONTEND-PUT-IMAGE takes them."
-  (rows #() :type simple-vector)
-  (cursor-row 0) (cursor-column 0) (cursor-shape :block) (cursor-colour nil)
-  (images '()))
+  (rows #() :type simple-vector :documentation "The rows of FRAME, each (STRING FACE SPANS SCALES OVER PARTS) or NIL.")
+  (cursor-row 0 :documentation "The row FRAME's cursor is on.")
+  (cursor-column 0 :documentation "The column FRAME's cursor is at.")
+  (cursor-shape :block :documentation "The shape of FRAME's cursor, :block, :bar or :underline.")
+  (cursor-colour nil :documentation "The colour of FRAME's cursor, as faces take
+colours, or NIL for the text's.")
+  (images '() :documentation "The pictures over FRAME's rows, each (IMAGE ROW
+COLUMN COLUMNS ROWS OFFSET)."))
 
-(setf (documentation 'make-frame 'function) "A FRAME showing ROWS, its cursor at the top left."
-      (documentation 'frame-p 'function) "True when OBJECT is a FRAME."
-      (documentation 'frame-rows 'function) "The rows of FRAME, each (STRING FACE SPANS SCALES OVER PARTS) or NIL."
-      (documentation 'frame-cursor-row 'function) "The row FRAME's cursor is on."
-      (documentation 'frame-cursor-column 'function) "The column FRAME's cursor is at."
-      (documentation 'frame-cursor-shape 'function) "The shape of FRAME's cursor, :block, :bar or :underline."
-      (documentation 'frame-cursor-colour 'function) "The colour of FRAME's cursor, as faces take
-colours, or NIL for the text's."
-      (documentation 'frame-images 'function) "The pictures over FRAME's rows, each (IMAGE ROW
-COLUMN COLUMNS ROWS OFFSET).")
+(setf (documentation 'make-frame 'function) "A FRAME showing ROWS, its cursor at the top left.")
 
 ;;; The frontend
 
@@ -124,8 +120,10 @@ COLUMN COLUMNS ROWS OFFSET).")
 text's baseline is, in pixels.")
    (columns :initform 80 :accessor gtk-columns :documentation "The width of the window in cells.")
    (rows :initform 24 :accessor gtk-rows :documentation "The height of the window in cells.")
-   (lock :initform (sb-thread:make-mutex :name "window") :reader gtk-lock :documentation "Guards what both threads read.")
-   (changed :initform (sb-thread:make-waitqueue :name "window") :reader gtk-changed :documentation "Where the editor waits for the window's size or the clipboard.")
+   (lock :initform (sb-thread:make-mutex :name "window") :reader gtk-lock
+         :documentation "Guards what both threads read.")
+   (changed :initform (sb-thread:make-waitqueue :name "window") :reader gtk-changed
+            :documentation "Where the editor waits for the window's size or the clipboard.")
    (sized :initform nil :accessor gtk-sized :documentation "True once the window knows its size.")
    (queue :initarg :queue :initform (make-event-queue) :reader gtk-queue
           :documentation "Events for the editor, the queue every window of one editor shares.")
@@ -143,11 +141,12 @@ asked for and not yet made.")
    (focused :initform t :accessor gtk-focused :documentation "True while the window has the keyboard focus.")
    (clipboard-out :initform nil :accessor gtk-clipboard-out :documentation "Text on its way to the clipboard.")
    (primary-out :initform nil :accessor gtk-primary-out :documentation "Text on its way to the primary selection.")
-   (clipboard-in :initform nil :accessor gtk-clipboard-in :documentation "The clipboard's text as
-last read, or :waiting.")
+   (clipboard-in :initform nil :accessor gtk-clipboard-in :documentation "The text of the clipboard or
+primary selection as last read for a paste: :WAITING while the read is under way, :NONE when it held no
+text, NIL when no read is wanted.")
    (clipboard-kept :initform nil :accessor gtk-clipboard-kept
                    :documentation "The clipboard's text, read in the background each time it
-changes; NIL until it is watched.")
+changes once a paste has asked for it; NIL until it is watched.")
    (clipboard-reads :initform nil :accessor gtk-clipboard-reads
                     :documentation "How many reads of the changed clipboard are under way, or NIL
 while it is not watched.")
@@ -165,7 +164,8 @@ past the text is told again and again, to scroll.")
 shown at the cursor until it is typed, or NIL.")
    (font-steps :initform 0 :accessor gtk-font-steps :documentation "The steps the font is scaled by
 from its size, each 1.2 times the last.")
-   (pointer-shape :initform "text" :accessor gtk-pointer-shape :documentation "The name of the pointer's shape over the window now.")
+   (pointer-shape :initform "text" :accessor gtk-pointer-shape
+                  :documentation "The name of the pointer's shape over the window now.")
    (toggles :initform '() :accessor gtk-toggles :documentation "The window states the editor asked
 to turn to or from, not yet done, oldest first.")
    (face-fonts :initform (make-hash-table :test 'equal) :reader gtk-face-fonts :documentation "The
@@ -217,7 +217,9 @@ area stands on the grid, (X . Y) in pixels.")
 colour, stretched across it, under the rows.")
    (ground-colour :initform nil :accessor gtk-ground-colour :documentation "The colour GTK-GROUND
 shows, three numbers from 0 to 1, or NIL before it shows one.")
-   (pictures :initform (make-array 0 :adjustable t :fill-pointer 0) :reader gtk-pictures :documentation "The pictures on the grid, each (PICTURE X Y TEXTURE WIDTH HEIGHT) as it was last placed (PLACE-PICTURE).")
+   (pictures :initform (make-array 0 :adjustable t :fill-pointer 0) :reader gtk-pictures
+             :documentation "The pictures on the grid, each (PICTURE X Y TEXTURE WIDTH HEIGHT) as it was last
+placed (PLACE-PICTURE).")
    (on-card :initform nil :accessor gtk-on-card :documentation "True while the rows are shown as
 pictures the graphics card draws, NIL while the drawing area paints the whole
 frame.")
@@ -365,8 +367,7 @@ taking the editor down with GTK's thread, never unwinding through GTK."
 
 (defmethod tuatara.frontend:frontend-description ((f gtk-frontend))
   (format nil "in a GTK ~d.~d window"
-          (tuatara.runtime:foreign-call "gtk_get_major_version" sb-alien:unsigned-int)
-          (tuatara.runtime:foreign-call "gtk_get_minor_version" sb-alien:unsigned-int)))
+          (gtk-get-major-version) (gtk-get-minor-version)))
 
 (defmethod tuatara.frontend:frontend-health ((f gtk-frontend))
   (list (cons "Display" "a window of its own (GTK 4), 24-bit colour")
@@ -415,6 +416,15 @@ whose characters all have one width."
        (when (or (not monospace) (pango-font-family-is-monospace family))
          (push (pango-font-family-get-name family) names))))
     (sort names #'string-lessp)))
+
+(defun font-family-installed-p (name)
+  "True when a font family called NAME is installed, whatever the case of its
+letters. The font map is asked for the name as it is first; every family is
+listed only when it has none of that name."
+  (load-gtk-libraries)
+  (with-gtk-float-traps
+    (or (not (null-pointer-p (pango-font-map-get-family (pango-cairo-font-map-get-default) name)))
+        (member name (font-families) :test #'string-equal))))
 
 (defmethod tuatara.frontend:frontend-fonts ((f gtk-frontend))
   (font-families :monospace t))
@@ -471,7 +481,7 @@ with FONT the full name that chooses each at SIZE (Pango units), sorted by name.
     (let* ((description (pango-font-description-from-string name))
            (family (pango-font-description-get-family description)))
       (unwind-protect
-           (when (and family (member family (font-families) :test #'string-equal))
+           (when (and family (font-family-installed-p family))
              (when (zerop (pango-font-description-get-size description))
                (pango-font-description-set-size description (font-size-in-use)))
              (let ((full (pango-font-description-to-string description)))
@@ -569,7 +579,7 @@ use; nothing is done while they are."
   "The text of F's clipboard, or with PRIMARY its primary selection: as kept
 when it is watched (the clipboard), once a change being read is in, or, a
 second gone, as it was before it; else read on GTK's thread, a second at
-most; NIL when there is none."
+most, and the clipboard watched from then on; NIL when there is none."
   (sb-thread:with-mutex ((gtk-lock f))
     ;; watched: the text kept, once a change being read is in (a second at most)
     (when (and (not primary) (gtk-clipboard-reads f))
@@ -582,6 +592,10 @@ most; NIL when there is none."
     (tuatara.runtime:wait-on-until (gtk-changed f) (gtk-lock f) (lambda () (not (eq (gtk-clipboard-in f) :waiting))) 1)
     (let ((text (gtk-clipboard-in f)))
       (setf (gtk-clipboard-in f) nil)
+      ;; the first paste starts the watch, as the terminal does: what is copied is kept only for an editor that pastes
+      (unless (or primary (gtk-clipboard-reads f))
+        (setf (gtk-clipboard-reads f) 0)
+        (g-idle-add (callback on-watch-clipboard) (window-data f)))
       (and (stringp text) text))))
 
 (defmethod tuatara.frontend:frontend-begin-frame ((f gtk-frontend))

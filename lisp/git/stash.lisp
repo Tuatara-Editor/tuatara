@@ -11,8 +11,7 @@
 
 (defun git-stash-at-point ()
   "The stash on point's line of a status, or NIL."
-  (let ((entry (and (git-here) (list-entry-at))))
-    (and (eq (first entry) :stash) (second entry))))
+  (git-entry-at :stash))
 
 (defun git-ask-stash (prompt top then)
   "Ask with PROMPT for a stash of the repository at TOP, offered with their
@@ -30,7 +29,8 @@ with its name (stash@{0}); said so when there is none."
                                                                         (escape-controls (second s)))
                                                                 :value (first s)))
                                               stashes))
-                          (default (find (or at (first (first stashes))) candidates :key #'candidate-result :test #'equal))
+                          (default (find (or at (first (first stashes))) candidates
+                                         :key #'candidate-result :test #'equal))
                           (name (completing-read prompt candidates :require-match t :keep-order t
                                                                    :default (and default (candidate-string default)))))
                      (when (git-name-p name) (funcall then name))))))))

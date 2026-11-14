@@ -64,7 +64,7 @@ since their commit."
     (with-test-directory (out)
       (let ((marker (namestring (merge-pathnames "ran" out)))
             (top (namestring dir))
-            (tuatara-user:*lsp-trusted-projects* '()))
+            (tuatara-user:*trusted-projects* '()))
         (hostile-repository dir marker)
         (with-looked-at-only (dir)
           (true (tuatara.defaults::project-look-only-reason top))
@@ -80,7 +80,7 @@ since their commit."
             (true (search "+changed" (tuatara.text:octets-string octets))))
           (is equal '() (markers marker)))
         ;; the same repository trusted: its programs do run, so the settings above were in force
-        (let ((tuatara-user:*lsp-trusted-projects* (list top)))
+        (let ((tuatara-user:*trusted-projects* (list top)))
           (tuatara.git:run-git top '("status" "--porcelain"))
           (tuatara.git:run-git top '("diff"))
           (true (markers marker)))))))
@@ -128,7 +128,7 @@ since their commit."
     (scratch-repository dir :trusted nil)
     (alexandria:write-string-into-file (format nil "one~%two~%") (merge-pathnames "a.txt" dir) :if-exists :supersede)
     (let* ((tuatara.defaults::*modal-editing* nil)
-           (tuatara-user:*lsp-trusted-projects* '())
+           (tuatara-user:*trusted-projects* '())
            (top (tuatara.git:repository-top (namestring dir)))
            (real (tuatara.defaults::real-directory top)))
       (flet ((status () (tuatara.git::git-buffer-of top 'tuatara.git::git-status-mode)))
@@ -175,7 +175,7 @@ since their commit."
   (with-test-directory (dir)
     (scratch-repository dir)
     (let* ((tuatara.defaults::*modal-editing* nil)
-           (tuatara-user:*lsp-trusted-projects* '())
+           (tuatara-user:*trusted-projects* '())
            (top (tuatara.git:repository-top (namestring dir)))
            (real (tuatara.defaults::real-directory top)))
       (unwind-protect
@@ -202,7 +202,7 @@ since their commit."
                (true (tuatara.frontend.fake:fake-frame-showing-across-rows f "(y, l or n)"))
                (true (tuatara.defaults::project-trusted-p top))
                (false (tuatara.defaults::project-look-only-reason top))))
-        (tuatara.defaults::state-list-drop tuatara.defaults::*lsp-trusted* (list real))))))
+        (tuatara.defaults::state-list-drop tuatara.defaults::*trusted* (list real))))))
 
 (define-test (git look-only-list-fails-closed)
   ;; the list of projects looked at only is kept as every list is; a line of a later release naming a directory,
@@ -269,7 +269,7 @@ since their commit."
   (with-test-directory (dir)
     (let* ((repos (namestring (merge-pathnames "r/" dir)))
            (marks (namestring (ensure-directories-exist (merge-pathnames "m/" dir))))
-           (tuatara-user:*lsp-trusted-projects* '()))
+           (tuatara-user:*trusted-projects* '()))
       (uiop:run-program (list "sh"
                               (namestring (asdf:system-relative-pathname :tuatara
                                                                          "test/git-look-only/hostile-repositories.sh"))
@@ -320,7 +320,7 @@ since their commit."
         ;; a directory with an empty .git of its own inside a repository is no way to its settings
         (is eq :refused (nth-value 1 (run "nest/X" '("status" "--porcelain"))))
         ;; a bare repository inside a trusted one is never taken for it
-        (let ((tuatara-user:*lsp-trusted-projects* (list (repo "holder"))))
+        (let ((tuatara-user:*trusted-projects* (list (repo "holder"))))
           (true (tuatara.defaults::project-trusted-p (repo "holder")))
           (run "holder/inner.git" '("status" "--porcelain"))
           (run "holder/inner.git" '("log")))
@@ -332,17 +332,17 @@ since their commit."
     (let* ((outer (namestring dir))
            (inner (namestring (ensure-directories-exist (merge-pathnames "case/" dir))))
            (deeper (namestring (ensure-directories-exist (merge-pathnames "case/sub/" dir))))
-           (tuatara-user:*lsp-trusted-projects* (list outer)))
+           (tuatara-user:*trusted-projects* (list outer)))
       (true (tuatara.defaults::project-trusted-p inner))
       (with-looked-at-only (inner)
         (false (tuatara.defaults::project-trusted-p inner))
         (false (tuatara.defaults::project-trusted-p deeper))
         (true (tuatara.defaults::project-look-only-reason deeper))
-        (let ((tuatara-user:*lsp-trusted-projects* '()))
-          (tuatara.defaults::state-list-put tuatara.defaults::*lsp-trusted*
+        (let ((tuatara-user:*trusted-projects* '()))
+          (tuatara.defaults::state-list-put tuatara.defaults::*trusted*
                                             (list (tuatara.defaults::real-directory inner)))
           (unwind-protect (false (tuatara.defaults::project-trusted-p inner))
-            (tuatara.defaults::state-list-drop tuatara.defaults::*lsp-trusted*
+            (tuatara.defaults::state-list-drop tuatara.defaults::*trusted*
                                                (list (tuatara.defaults::real-directory inner)))))))))
 
 (define-test (git reading-words-parsed)
@@ -393,7 +393,7 @@ since their commit."
     (with-test-directory (out)
       (scratch-repository dir :trusted nil)
       (let ((marker (namestring (merge-pathnames "ran" out)))
-            (tuatara-user:*lsp-trusted-projects* '()))
+            (tuatara-user:*trusted-projects* '()))
         (unwind-protect
              (progn
                (sb-posix:setenv "GIT_CONFIG_PARAMETERS" (format nil "'core.fsmonitor'='touch ~a-fsmonitor'" marker) 1)
@@ -432,7 +432,7 @@ in the private cache, not those of other sessions sharing the cache."
   (with-test-directory (dir)
     (let* ((repos (namestring (merge-pathnames "r/" dir)))
            (marks (namestring (ensure-directories-exist (merge-pathnames "m/" dir))))
-           (tuatara-user:*lsp-trusted-projects* '()))
+           (tuatara-user:*trusted-projects* '()))
       (uiop:run-program (list "sh"
                               (namestring (asdf:system-relative-pathname :tuatara
                                                                          "test/git-look-only/hostile-repositories.sh"))
@@ -481,7 +481,7 @@ in the private cache, not those of other sessions sharing the cache."
         ;; a trusted directory whose .git leads into a repository looked at only reads it only
         (with-looked-at-only ((repo "lookedat"))
           (let ((snapshot (repository-snapshot (repo "lookedat")))
-                (tuatara-user:*lsp-trusted-projects* (list (repo "trustedwt"))))
+                (tuatara-user:*trusted-projects* (list (repo "trustedwt"))))
             (true (tuatara.git::git-reads-only-p (repo "trustedwt")))
             (run "trustedwt" '("status" "--porcelain"))
             (run "trustedwt" '("diff"))
@@ -494,7 +494,7 @@ in the private cache, not those of other sessions sharing the cache."
     (scratch-repository dir :trusted nil)
     (let ((hash (string-trim '(#\Newline) (git-output dir "rev-parse" "HEAD")))
           (tags (ensure-directories-exist (merge-pathnames ".git/refs/tags/" dir)))
-          (tuatara-user:*lsp-trusted-projects* '())
+          (tuatara-user:*trusted-projects* '())
           (walks 0))
       (dotimes (i 20000)
         (with-open-file (out (merge-pathnames (format nil "t~d" i) tags) :direction :output)
@@ -543,7 +543,7 @@ in the private cache, not those of other sessions sharing the cache."
                              (namestring dir)
                              (format nil "odd~%Look only: none~c31m~c/" (code-char 27) (code-char #x202E))))
            (repo (namestring (ensure-directories-exist (merge-pathnames "repo/" dir))))
-           (tuatara-user:*lsp-trusted-projects* '()))
+           (tuatara-user:*trusted-projects* '()))
       (ensure-directories-exist odd)
       (scratch-repository odd :trusted nil)
       (scratch-repository repo :trusted nil)
@@ -577,7 +577,7 @@ in the private cache, not those of other sessions sharing the cache."
     (git-output dir "commit" "-q" "--allow-empty" "-m" "Second")
     (let ((top (namestring dir))
           (first (string-trim '(#\Newline) (git-output dir "rev-parse" "HEAD~1")))
-          (tuatara-user:*lsp-trusted-projects* '()))
+          (tuatara-user:*trusted-projects* '()))
       (flet ((main ()
                (string-trim '(#\Newline)
                             (tuatara.text:octets-string (tuatara.git:run-git top '("rev-parse" "refs/heads/main"))))))
@@ -605,7 +605,7 @@ in the private cache, not those of other sessions sharing the cache."
     (let* ((top (namestring dir))
            (blob (string-trim '(#\Newline) (git-output dir "rev-parse" "HEAD:a.txt")))
            (object (merge-pathnames (format nil ".git/objects/~a/~a" (subseq blob 0 2) (subseq blob 2)) dir))
-           (tuatara-user:*lsp-trusted-projects* '()))
+           (tuatara-user:*trusted-projects* '()))
       (unwind-protect
            (progn
              (delete-file object)
@@ -652,3 +652,54 @@ in the private cache, not those of other sessions sharing the cache."
                        (tuatara.io:writing-refused () t))
                      "~a into evidence not refused" (car setting))
             (sb-posix:unsetenv (car setting))))))))
+
+(define-test (git reads-only-answer-kept)
+  ;; whether git only reads a repository is found once, and again when trust or its .git changes
+  (with-test-directory (dir)
+    (scratch-repository dir)
+    (let ((top (namestring dir)) (looks 0))
+      (sb-int:encapsulate 'tuatara.git::git-real-directories-or-nil 'count-looks
+                          (lambda (function &rest arguments) (incf looks) (apply function arguments)))
+      (unwind-protect
+           (progn
+             (false (tuatara.git::git-reads-only-p top))
+             (false (tuatara.git::git-reads-only-p top))
+             (is = 1 looks)
+             (forget-trusted-under dir)
+             (true (tuatara.git::git-reads-only-p top))
+             (trust-test-repository dir)
+             (false (tuatara.git::git-reads-only-p top))
+             (is = 2 looks)
+             ;; .git made a file naming a directory elsewhere: looked at again
+             (sb-posix:rename (concatenate 'string top ".git") (concatenate 'string top "elsewhere"))
+             (put-file (merge-pathnames ".git" dir) (format nil "gitdir: ~aelsewhere~%" top))
+             (false (tuatara.git::git-reads-only-p top))
+             (is = 3 looks))
+        (sb-int:unencapsulate 'tuatara.git::git-real-directories-or-nil 'count-looks)))))
+
+(define-test (git shadow-failure-not-taken-for-no-repository)
+  ;; a failure of the shadow's own code reaches the caller; one of the disk under it gives no answer
+  (with-test-directory (dir)
+    (scratch-repository dir :trusted nil)
+    (flet ((failing (condition)
+             (sb-int:encapsulate 'tuatara.git::take-git-shadow 'fail
+                                 (lambda (function &rest arguments)
+                                   (declare (ignore function arguments))
+                                   (error condition)))))
+      (unwind-protect
+           (progn
+             (failing (make-condition 'simple-error :format-control "broken" :format-arguments '()))
+             (true (handler-case (progn (tuatara.git:run-git (namestring dir) '("log" "-1")) nil)
+                     (simple-error () t)))
+             (sb-int:unencapsulate 'tuatara.git::take-git-shadow 'fail)
+             (failing (make-condition 'tuatara.io:file-system-error :operation "copy" :path "x" :reason "full"))
+             (is equal '(nil nil) (multiple-value-list (tuatara.git:run-git (namestring dir) '("log" "-1")))))
+        (sb-int:unencapsulate 'tuatara.git::take-git-shadow 'fail)))))
+
+(define-test (git shadow-settings-text)
+  (let ((tab (string #\Tab)))
+    (is string= (format nil "[core]~%~arepositoryformatversion = 0~%~abare = false~%~alogallrefupdates = false~%" tab tab tab)
+        (tuatara.git::git-shadow-settings-text nil))
+    (is string= (format nil "[core]~%~arepositoryformatversion = 1~%~abare = false~%~alogallrefupdates = false~%[extensions]~%~aobjectformat = sha256~%"
+                        tab tab tab tab)
+        (tuatara.git::git-shadow-settings-text '(("objectformat" "sha256"))))))

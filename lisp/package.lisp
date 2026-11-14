@@ -9,22 +9,26 @@
            #:switch-to-buffer #:insert #:widen #:narrow-to-region)
   (:shadowing-import-from #:tuatara.display #:define-theme)
   (:import-from #:tuatara.display #:define-face #:set-face-attributes)
-  (:import-from #:tuatara.io #:octets-integer #:octets-signed #:octets-words #:directory-name)
+  (:import-from #:tuatara.io #:octets-integer #:octets-signed #:octets-words #:directory-name #:walk-directory)
   (:import-from #:tuatara.io #:fd-octets #:crc32 #:zip-octets #:zip-entries #:zip-entry-octets #:inflate #:zip-error
                 #:*zip-largest-entry* #:*zip-largest-ratio*)
-  (:import-from #:tuatara.buffer #:buffer-read-only-p)
+  (:import-from #:tuatara.buffer #:buffer-read-only-p #:buffer-char-before #:next-line-start)
   (:import-from #:tuatara.buffer #:buffer-crlf-p #:lf-newlines #:crlf-newlines #:cr-newlines #:text-for-buffer)
-  (:import-from #:tuatara.runtime #:foreign-library-p #:foreign-call #:jobs-of
+  (:import-from #:tuatara.runtime #:define-record #:foreign-library-p #:foreign-call #:jobs-of #:close-fd-quietly
+                #:with-fd-closed-on-error
                 #:reporting-errors #:ignoring-errors-reported #:refusal #:refuse #:*secret-at-hand*
                 #:run-hook #:run-hook-until-success #:run-hook-until-done #:call-hook-function
                 #:hook-function-name #:define-setting #:setting-values-words #:setting-value-fault)
   (:import-from #:tuatara.display #:next-tab-stop)
-  (:import-from #:tuatara.text #:word-char-p #:name-char-p #:number-formatter)
+  (:import-from #:tuatara.text #:word-char-p #:name-char-p #:number-formatter #:blank-text-p #:space-or-tab-char-p
+                #:search-count #:spaces)
   (:import-from #:tuatara.text #:string-line-start #:string-line-end #:xml-entity #:xml-tag-end #:xml-text-value
                 #:utf-16-text #:parse-decimal #:whole-number #:+fnv-offset+
-                #:xml-name #:xml-attribute #:xml-children #:xml-child #:xml-root #:xml-local-name #:xml-local-children #:xml-find-all #:xml-all-text)
+                #:xml-name #:xml-attribute #:xml-children #:xml-child #:xml-root #:xml-local-name
+                #:xml-local-children #:xml-find-all #:xml-all-text)
   (:import-from #:tuatara.text #:xml-first-text #:xml-parse #:*xml-deepest* #:*xml-most-elements* #:xml-escape
-                #:xml-elements #:xml-element #:xml-top-elements #:xml-element-inner #:xml-element-inside #:xml-replace-elements #:xml-value)
+                #:xml-elements #:xml-element #:xml-top-elements #:xml-element-inner #:xml-element-inside
+                #:xml-replace-elements #:xml-value)
   (:documentation "The defaults compiled into the image: the base editing commands, the
 standard key bindings, the modal editing layer (TUATARA NORMAL and INSERT), and the setup function that installs
 them into an editor.")
@@ -35,7 +39,16 @@ them into an editor.")
            #:*tuatara-support-keymap*
            #:*tuatara-list-keymap*
            #:*tuatara-leader-keymap*
-           #:*global-keymap* #:*tuatara-normal-bindings* #:buffer-modal-class))
+           #:*global-keymap* #:*tuatara-normal-bindings* #:buffer-modal-class
+           ;; what the program's start (frontends/tui/main.lisp) and its window use
+           #:*starter-config* #:*daemon-default-name* #:*ssh-program* #:*client-nursery-octets*
+           #:run-bounded #:ssh-environment #:set-collection-policy #:plain-path-p #:daemon-path #:ssh-settings
+           #:ssh-option-arguments #:gpgconf-path #:write-starter-config #:tuatara-tutor #:start-bare
+           #:ssh-askpass-window-p #:show-start-places #:server-permissions #:say-started-bare #:run-daemon-editor
+           #:openssh-version #:open-start-frames #:open-daemon #:merge-files-into #:make-owned-directory
+           #:host-refusal #:forget-abandoned-directories #:end-daemon-on-terminate #:directory-refusal
+           #:delete-private-directory #:data-file-text #:daemon-name-p #:daemon-directory #:config-path
+           #:compare-paths))
 
 (in-package #:tuatara.defaults)
 

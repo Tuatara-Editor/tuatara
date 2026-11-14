@@ -33,25 +33,35 @@ ENDS says (RECORD-ENDS), a line each when ENDS is NIL."
       (let ((line-end (tuatara.text:rope-line-end rope start)))
         (values line-end (min (tuatara.text:rope-octet-length rope) (1+ line-end))))))
 
-(defun make-record-memo ()
-  "What LINE-RECORD keeps of the last record one thread found."
-  (vector nil 0 0 0 :unknown))
+(define-record (record-memo (:constructor make-record-memo ()) (:copier nil))
+  "What LINE-RECORD keeps of the last record one thread found: the ROPE it is
+in, where it STARTs, where the text of its last line ends (TEXT-END), where
+the line AFTER it starts, and the VERDICT RECORD-VERDICT gave it, :UNKNOWN
+until then."
+  (rope nil :documentation "The rope MEMO's record is in, NIL before one was found.")
+  (start 0 :type fixnum :documentation "Where the record of MEMO starts, an octet.")
+  (text-end 0 :type fixnum :documentation "Where the text of the last line of the record of MEMO ends, an octet.")
+  (after 0 :type fixnum :documentation "Where the line after the record of MEMO starts, an octet.")
+  (verdict :unknown :documentation "What RECORD-VERDICT gave the record of MEMO, :UNKNOWN until then."))
+
+(setf (documentation 'make-record-memo 'function) "A RECORD-MEMO that knows no record yet.")
 
 (defun line-record (memo rope line next ends)
   "The record of ROPE holding its line from LINE to NEXT (the start of the
 line after it), records ending as ENDS says (RECORD-ENDS): three values,
 where it starts, where the text of its last line ends and where the line
-after it starts. MEMO (MAKE-RECORD-MEMO), kept by one thread, holds the last
-record found and what was decided of it in its fifth place, so that the
-record's other lines, and the record after it, are known at once."
-  (declare (type simple-vector memo) (type fixnum line next))
-  (unless (and (eq rope (svref memo 0)) (<= (svref memo 1) line) (< line (svref memo 3)))
-    (let ((start (if (and (eq rope (svref memo 0)) (= line (svref memo 3))) line (rope-record-start rope line))))
-      (multiple-value-bind (text-end after) (funcall ends rope start)
-        (setf (svref memo 0) rope (svref memo 1) start
-              (svref memo 2) text-end (svref memo 3) (max after next)
-              (svref memo 4) :unknown))))
-  (values (svref memo 1) (svref memo 2) (svref memo 3)))
+after it starts. MEMO (a RECORD-MEMO), kept by one thread, holds the last
+record found and what was decided of it, so that the record's other lines,
+and the record after it, are known at once."
+  (declare (type record-memo memo) (type fixnum line next))
+  (let ((same (eq rope (record-memo-rope memo))))
+    (unless (and same (<= (record-memo-start memo) line) (< line (record-memo-after memo)))
+      (let ((start (if (and same (= line (record-memo-after memo))) line (rope-record-start rope line))))
+        (multiple-value-bind (text-end after) (funcall ends rope start)
+          (setf (record-memo-rope memo) rope (record-memo-start memo) start
+                (record-memo-text-end memo) text-end (record-memo-after memo) (max after next)
+                (record-memo-verdict memo) :unknown)))))
+  (values (record-memo-start memo) (record-memo-text-end memo) (record-memo-after memo)))
 
 (defun record-text-end (rope text-end crlf)
   "TEXT-END, where a record's last line of ROPE ends, before the carriage
@@ -65,13 +75,12 @@ line ending at TEXT-END (its line ends carriage return and line feed (CRLF)
 when CRLF is true), true or NIL. The record's text is read up to LIMIT octets
 and decoded into the string in HOLDER's car (DECODE-INTO). Decided once a
 record: MEMO, LINE-RECORD's for that record, keeps it for its other lines."
-  (if (eq (svref memo 4) :unknown)
-      (setf (svref memo 4)
-            (let ((octets (tuatara.text:rope-octets rope
-                                                    :start start
-                                                    :end (min (record-text-end rope text-end crlf) (+ start limit)))))
+  (if (eq (record-memo-verdict memo) :unknown)
+      (setf (record-memo-verdict memo)
+            (let ((octets (tuatara.text:rope-octets
+                           rope :start start :end (min (record-text-end rope text-end crlf) (+ start limit)))))
               (and (funcall decide (car holder) (decode-into octets 0 (length octets) holder)) t)))
-      (svref memo 4)))
+      (record-memo-verdict memo)))
 
 (defun record-line (buffer start)
   "The text of BUFFER's record from START, a line start, its last line end
@@ -92,7 +101,8 @@ header left out (LIST-HEADER-P)."
          (size (tuatara.text:rope-octet-length rope))
          (ends (record-ends buffer)))
     (loop repeat *record-keys-looked-at*
-          for at = (records-start rope (if (list-header-p buffer) 1 0) ends) then (nth-value 1 (record-bounds rope at ends))
+          for at = (records-start rope (if (list-header-p buffer) 1 0) ends)
+            then (nth-value 1 (record-bounds rope at ends))
           while (< at size)
           collect (record-line buffer at))))
 
@@ -109,7 +119,9 @@ number, SAMPLE the first record's value. Named by FIELDS, else by the header
 when the first line is one (LIST-HEADER-P)."
   (let* ((header (list-header-p buffer))
          (top (record-line buffer 0))
-         (sample (if header (record-line buffer (records-start (tuatara.buffer:buffer-text buffer) 1 (record-ends buffer))) top))
+         (sample (if header
+                     (record-line buffer (records-start (tuatara.buffer:buffer-text buffer) 1 (record-ends buffer)))
+                     top))
          (keys (record-fields-keys fields)))
     (flet ((value (text field) (let ((v (record-field-value fields text field))) (and v (plusp (length v)) v))))
       (if keys
@@ -136,8 +148,8 @@ record\" or $*); :UNKNOWN for anything else."
           (t (let ((number (whole-number (string-left-trim "$" answer))))
                (if (and number (>= number 0)) number :unknown))))))
 
-(defun read-offered-field
-    (offered keyed prompt &key (words (lambda (field) (if (integerp field) (format nil "$~d" field) field))))
+(defun read-offered-field (offered keyed prompt
+                           &key (words (lambda (field) (if (integerp field) (format nil "$~d" field) field))))
   "Ask with PROMPT for one of OFFERED, fields as OFFERED-FIELDS gives them,
 offering the whole record first, then each by its name, or by its number
 from 0 when it has none, the first record's value beside it; with KEYED, any
@@ -148,7 +160,8 @@ record. An error for no such field."
                            (loop for (name field sample) in offered
                                  for shown = (and sample (tuatara.display:shorten-string sample 40 :one-line t))
                                  collect (if name
-                                             (make-candidate name :annotation (format nil "~:[~*~;$~d ~]~@[~a~]" (integerp field) field shown))
+                                             (make-candidate name :annotation (format nil "~:[~*~;$~d ~]~@[~a~]"
+                                                                                      (integerp field) field shown))
                                              (make-candidate (format nil "$~d" field) :annotation (or shown ""))))))
          (answer (completing-read prompt candidates :keep-order t))
          (field (answered-field answer offered keyed)))
@@ -208,12 +221,10 @@ characters stands, fields being apart by spaces and tabs (TEXT-FIELD-BOUNDS)."
   "A RECORD-FIELDS-EACH for fields apart by the character SEPARATOR, none
 quoted."
   (lambda (text length field fn)
-    (block separated-each-field
-     (let ((start 0))
-      (dotimes (i field)
+    (let ((start 0))
+      (dotimes (i field (funcall fn text start (or (position separator text :start start :end length) length)))
         (let ((at (position separator text :start start :end length)))
-          (if at (setf start (1+ at)) (return-from separated-each-field nil))))
-      (funcall fn text start (or (position separator text :start start :end length) length))))))
+          (if at (setf start (1+ at)) (return nil)))))))
 
 (defmethod mode-record-fields ((mode log-mode) buffer)
   "A log's words, apart by spaces, named by its header when the first line is one."
@@ -242,7 +253,9 @@ quoted."
 before it left out, the value's quotes taken off, a comment after an unquoted
 one left out."
   (let* ((start (or (position-if-not #'space-or-tab-char-p text :end length) length))
-         (start (if (and (<= (+ start 7) length) (string= "export " text :start2 start :end2 (+ start 7))) (+ start 7) start))
+         (start (if (and (<= (+ start 7) length) (string= "export " text :start2 start :end2 (+ start 7)))
+                    (+ start 7)
+                    start))
          (equals (position #\= text :start start :end length)))
     (when equals
       (case field
@@ -252,7 +265,8 @@ one left out."
                   (close (and quote (position quote text :start (1+ from) :end length))))
              (if close
                  (funcall fn text (1+ from) close)
-                 (funcall fn text from (trimmed-end text from (or (search " #" text :start2 from :end2 length) length))))))))))
+                 (funcall fn text from
+                          (trimmed-end text from (or (search " #" text :start2 from :end2 length) length))))))))))
 
 (defmethod mode-record-fields ((mode dotenv-mode) buffer)
   "An environment file's name and value."
@@ -263,9 +277,13 @@ one left out."
   "The name (field 0, with its extras in brackets), the versions asked for
 \(field 1) or the markers after ; (field 2) of a line of a Python
 requirements file, a comment after # left out."
-  (let* ((end (trimmed-end text 0 (or (search " #" text :end2 length) (and (plusp length) (char= (char text 0) #\#) 0) length)))
+  (let* ((end (trimmed-end text 0 (or (search " #" text :end2 length)
+                                      (and (plusp length) (char= (char text 0) #\#) 0)
+                                      length)))
          (start (or (position-if-not #'space-or-tab-char-p text :end end) end))
-         (name-end (or (position-if-not (lambda (c) (or (alphanumericp c) (find c "._-[],"))) text :start start :end end) end))
+         (name-end (or (position-if-not (lambda (c) (or (alphanumericp c) (find c "._-[],")))
+                                        text :start start :end end)
+                       end))
          (semicolon (or (position #\; text :start name-end :end end) end)))
     (flet ((give (from to)
              (let ((from (or (position-if-not #'space-or-tab-char-p text :start from :end to) to)))

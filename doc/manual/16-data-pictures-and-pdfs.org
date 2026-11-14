@@ -207,7 +207,8 @@ When you are not sure of a pattern, try it with ~C-x / f~ first. You see what
 would be kept, and nothing is lost if you got it wrong.
 
 The same keys work in other files that hold one record on each line, such as a
-log. The setting =*line-record-modes*= names the modes that count. A log has
+log, which ~M-x log-mode~ turns on for a file the ending =.log= does not
+name. The setting =*line-record-modes*= names the modes that count. A log has
 no header until ~C-x / t~ makes its first line one, and its columns are its
 words, apart by spaces.
 
@@ -224,7 +225,7 @@ words, apart by spaces.
    other three are shown. Press ~C-x / r~ again.
 #+end_try
 
-#+table: commands search-filter-show-records search-filter-hide-records search-filter-regex search-filter-list search-filter-remove search-filter-remove-all list-keep-records list-delete-records
+#+table: commands log-mode search-filter-show-records search-filter-hide-records search-filter-regex search-filter-list search-filter-remove search-filter-remove-all list-keep-records list-delete-records
 
 #+table: settings *line-record-modes*
 

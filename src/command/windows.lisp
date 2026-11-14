@@ -28,7 +28,7 @@ BUFFER, or NIL."
   "True when EDITOR has one window only."
   (null (tuatara.display:area-parent (editor-window editor))))
 
-(defun fit-windows (editor &optional (panel (length (panel-rows editor))))
+(defun fit-windows (editor &optional (panel (panel-height editor)))
   "Lay the windows out on the rows above the panel, PANEL rows: made for a
 panel of one row, the windows along the bottom then give up what a taller
 panel takes, so that the others stay as they are. Returns the rows the windows
@@ -109,6 +109,17 @@ window; signals an error when there is not enough room."
   "Of WINDOWS, the one selected last."
   (reduce (lambda (a b) (if (> (tuatara.display:window-use-time b) (tuatara.display:window-use-time a)) b a))
           windows))
+
+(defun least-recent-window (windows)
+  "Of WINDOWS, the one selected longest ago."
+  (reduce (lambda (a b) (if (< (tuatara.display:window-use-time b) (tuatara.display:window-use-time a)) b a))
+          windows))
+
+(defun window-kept-elsewhere-p (window buffer &optional (editor *editor*))
+  "True when WINDOW is kept for buffers other than BUFFER (PLACE-BUFFERS with
+:keep) and is not EDITOR's only window, so that BUFFER goes in another."
+  (let ((rule (tuatara.display:window-kept window)))
+    (and rule (not (one-window-p editor)) (not (buffer-place-fits-p rule buffer)))))
 
 (defun remove-window (&optional (window (editor-window *editor*)))
   "Delete WINDOW, the selected window by default: its room goes to the window
@@ -208,22 +219,17 @@ seen from WINDOW's point, or NIL."
 
 ;;; Where buffers are shown
 
-(defstruct (buffer-place (:constructor make-buffer-place (which place size keep select)) (:copier nil))
+(define-record (buffer-place (:constructor make-buffer-place (which place size keep select)) (:copier nil))
   "A rule of PLACE-BUFFERS: the buffers WHICH names are shown in PLACE, SIZE
 big, in a window kept for them when KEEP, and selected when SELECT."
-  (which '() :read-only t)
-  (place :other :read-only t)
-  (size nil :read-only t)
-  (keep nil :read-only t)
-  (select nil :read-only t))
+  (which '() :read-only t :documentation "The buffers a rule is for: names, kinds and major modes.")
+  (place :other :read-only t :documentation "Where a rule shows its buffers.")
+  (size nil :read-only t :documentation "How big a rule makes a new window, or NIL for half.")
+  (keep nil :read-only t :documentation "True when a rule's window is kept for its buffers.")
+  (select nil :read-only t :documentation "True when a rule's window is selected."))
 
 (setf (documentation 'make-buffer-place 'function) "Return a rule of where buffers are shown (see PLACE-BUFFERS)."
-      (documentation 'buffer-place-p 'function) "True when OBJECT is a rule of where buffers are shown."
-      (documentation 'buffer-place-which 'function) "The buffers a rule is for: names, kinds and major modes."
-      (documentation 'buffer-place-place 'function) "Where a rule shows its buffers."
-      (documentation 'buffer-place-size 'function) "How big a rule makes a new window, or NIL for half."
-      (documentation 'buffer-place-keep 'function) "True when a rule's window is kept for its buffers."
-      (documentation 'buffer-place-select 'function) "True when a rule's window is selected.")
+      (documentation 'buffer-place-p 'function) "True when OBJECT is a rule of where buffers are shown.")
 
 (defvar *buffer-places* '()
   "The rules of where buffers are shown, the rule made last first: PLACE-BUFFERS
@@ -414,10 +420,7 @@ has *SPLIT-WIDTH-THRESHOLD* columns, below a lone window when it has room.
 NIL when no window may be split."
   (let* ((windows (remove-if #'tuatara.display:window-kept (editor-windows)))
          (largest (and windows (reduce (lambda (a b) (if (> (window-area-size b) (window-area-size a)) b a)) windows)))
-         (least (and windows
-                     (reduce (lambda (a b)
-                               (if (< (tuatara.display:window-use-time b) (tuatara.display:window-use-time a)) b a))
-                             windows))))
+         (least (and windows (least-recent-window windows))))
     (dolist (window (remove-duplicates (remove nil (list largest least))))
       (let ((height (tuatara.display:area-height window))
             (width (tuatara.display:area-width window))
@@ -468,6 +471,30 @@ brings back, and is kept for RULE's buffers when RULE says so. Returns WINDOW."
       (setf (tuatara.display:window-kept window) rule))
     window))
 
+(defun window-for-place (buffer place rule other)
+  "The window DISPLAY-BUFFER shows BUFFER in for PLACE, neither :here nor
+:nowhere, and RULE, its rule of where it goes or NIL: one showing it already
+\(but the selected one with OTHER), else one kept for RULE's buffers, else a
+new one, else the other window used least lately that is kept for nothing,
+else the selected window, kept for nothing from then on."
+  (let* ((editor *editor*)
+         (selected (editor-window editor))
+         (windows (editor-windows editor))
+         (keep (and rule (buffer-place-keep rule))))
+    (or (let ((showing (find buffer windows :key #'tuatara.display:window-buffer)))
+          (and showing (not (and other (eq showing selected))) showing))
+        (let ((kept (and keep (find rule windows :key #'tuatara.display:window-kept))))
+          (and kept (show-in-window kept buffer rule)))
+        (let ((new (new-window-for buffer place rule)))
+          (when new
+            (setf (tuatara.display:window-quit-restore new) :delete)
+            (when keep (setf (tuatara.display:window-kept new) rule))
+            new))
+        (let ((spare (remove-if (lambda (w) (or (eq w selected) (tuatara.display:window-kept w))) windows)))
+          (and spare (show-in-window (least-recent-window spare) buffer rule)))
+        (progn (setf (tuatara.display:window-kept selected) nil)
+               (show-in-window selected buffer rule)))))
+
 (defun display-buffer (buffer &key other at)
   "Show BUFFER in a window as the rules of PLACE-BUFFERS say, in another window
 when no rule is for it (as the place :other), and return the window; NIL when
@@ -482,37 +509,12 @@ been killed is not shown: that is an error."
          (place (if rule (buffer-place-place rule) :other))
          (selected (editor-window editor)))
     (fit-windows editor)
-    (when (and (eq place :here)
-               (or other (and (tuatara.display:window-kept selected) (not (one-window-p editor))
-                              (not (buffer-place-fits-p (tuatara.display:window-kept selected) buffer)))))
+    (when (and (eq place :here) (or other (window-kept-elsewhere-p selected buffer editor)))
       (setf place :other))
-    (let ((window
-            (case place
-              (:nowhere nil)
-              (:here (show-in-window selected buffer rule))
-              (t
-               (let ((windows (editor-windows editor)))
-                 (or (let ((showing (find buffer windows :key #'tuatara.display:window-buffer)))
-                       (and showing (not (and other (eq showing selected))) showing))
-                     (let ((kept (and rule (buffer-place-keep rule)
-                                      (find rule windows :key #'tuatara.display:window-kept))))
-                       (and kept (show-in-window kept buffer rule)))
-                     (let ((new (new-window-for buffer place rule)))
-                       (when new
-                         (setf (tuatara.display:window-quit-restore new) :delete)
-                         (when (and rule (buffer-place-keep rule))
-                           (setf (tuatara.display:window-kept new) rule))
-                         new))
-                     (let ((spare (remove-if (lambda (w)
-                                               (or (eq w selected) (tuatara.display:window-kept w))) windows)))
-                       (and spare
-                            (show-in-window (reduce (lambda (a b)
-                                                      (if (< (tuatara.display:window-use-time b)
-                                                             (tuatara.display:window-use-time a)) b a))
-                                                    spare)
-                                            buffer rule)))
-                     (progn (setf (tuatara.display:window-kept selected) nil)
-                            (show-in-window selected buffer rule))))))))
+    (let ((window (case place
+                    (:nowhere nil)
+                    (:here (show-in-window selected buffer rule))
+                    (t (window-for-place buffer place rule other)))))
       (when (and window rule (buffer-place-select rule))
         (select-window window editor))
       (when window
@@ -551,23 +553,31 @@ will do, with OTHER true) and select its window. Returns the window."
     (when window (select-window window))
     window))
 
+(defun retire-window (window replacement &key (remember t))
+  "Take WINDOW off the buffer it shows: close it when it was made for that
+buffer or is kept for buffers like it and is not the only window; else show
+in it the buffer REPLACEMENT, a function of no arguments, gives, the window
+no longer kept for anything and quitting it bringing nothing back. REMEMBER
+is as SET-WINDOW-BUFFER takes it."
+  (if (and (tuatara.display:area-parent window)
+           (or (eq (tuatara.display:window-quit-restore window) :delete) (tuatara.display:window-kept window)))
+      (remove-window window)
+      (progn
+        (setf (tuatara.display:window-quit-restore window) nil
+              (tuatara.display:window-kept window) nil)
+        (tuatara.display:set-window-buffer window (funcall replacement) :remember remember))))
+
 (defun leave-window (&optional (window (editor-window *editor*)))
   "Put WINDOW back as it was before its buffer was shown in it: close it when
 it was made for the buffer or is kept for buffers like it, else show the
-buffer it showed before."
+buffer it showed before (RETIRE-WINDOW)."
   (let ((restore (tuatara.display:window-quit-restore window)))
-    (if (and (tuatara.display:area-parent window)
-             (or (eq restore :delete) (tuatara.display:window-kept window)))
-        (remove-window window)
-        (progn
-          (setf (tuatara.display:window-quit-restore window) nil
-                (tuatara.display:window-kept window) nil)
-          (tuatara.display:set-window-buffer window
-                                             (if (and (typep restore 'tuatara.buffer:buffer) (live-buffer-p restore)
-                                                      (not (eq restore (tuatara.display:window-buffer window))))
-                                                 restore
-                                                 (replacement-buffer window)))
-          (fit-windows *editor*)))))
+    (retire-window window (lambda ()
+                            (if (and (typep restore 'tuatara.buffer:buffer) (live-buffer-p restore)
+                                     (not (eq restore (tuatara.display:window-buffer window))))
+                                restore
+                                (replacement-buffer window))))
+    (fit-windows *editor*)))
 
 (defun replace-buffer-in-windows (buffer &optional client)
   "BUFFER is being killed: close the windows made or kept for it (all but the
@@ -589,14 +599,6 @@ leaves a buffer other clients have too."
                (setf (tuatara.display:window-quit-restore window) nil)))
            (dolist (window (editor-windows editor))
              (when (eq (tuatara.display:window-buffer window) buffer)
-               (if (and (tuatara.display:area-parent window)
-                        (or (tuatara.display:window-kept window)
-                            (eq (tuatara.display:window-quit-restore window) :delete)))
-                   (remove-window window)
-                   (progn
-                     (setf (tuatara.display:window-kept window) nil
-                           (tuatara.display:window-quit-restore window) nil)
-                     (tuatara.display:set-window-buffer window (replacement-buffer window buffer)
-                                                        :remember nil)))))))))))
+               (retire-window window (lambda () (replacement-buffer window buffer)) :remember nil)))))))))
 
 (pushnew 'replace-buffer-in-windows tuatara.buffer:*kill-buffer-functions*)

@@ -75,60 +75,31 @@ to show it."
   (ignore-errors (host-wake *host*))
   nil)
 
-(defun lock-fd (fd &key shared (wait 0))
-  "Take a lock on the file open as file descriptor (FD), shared with others
-that take it SHARED, else held alone: true when it was had, waiting at most
-WAIT seconds for another holder to let it go. The lock goes when FD is
-closed or the process ends."
-  (wait-until (lambda ()
-                ;; LOCK_SH 1 or LOCK_EX 2, with LOCK_NB 4: never blocked in the call itself
-                (zerop (sb-alien:alien-funcall
-                        (sb-alien:extern-alien "flock" (function sb-alien:int sb-alien:int sb-alien:int))
-                        fd (logior (if shared 1 2) 4))))
-              wait :interval 1/200))
-
-(defun unlock-fd (fd)
-  "Let go of the lock LOCK-FD took on the file open as file descriptor (FD),
-for every descriptor of it duplicated from FD too."
-  ;; LOCK_UN 8
-  (sb-alien:alien-funcall (sb-alien:extern-alien "flock" (function sb-alien:int sb-alien:int sb-alien:int)) fd 8)
+(defun close-fd-quietly (fd &optional control &rest arguments)
+  "Close the file descriptor (FD) FD, letting an error in closing it go, for use
+where another error is already being handled or nothing is left to tell. With
+CONTROL, a format control, and ARGUMENTS saying which file FD is, the error is
+reported in the debug log while debug mode is on (REPORTING-ERRORS). An FD of
+NIL is left alone. Returns NIL."
+  (declare (dynamic-extent arguments))
+  (when fd
+    (handler-case
+        (handler-bind ((error (lambda (condition)
+                                (when (and control *debug-on*)
+                                  (report-error "closing ~?" (list control (copy-list arguments)) condition)))))
+          (sb-posix:close fd))
+      (error () nil)))
   nil)
 
-(defun log-in-use-p (native)
-  "True when another session has the log at NATIVE open (OPEN-ROTATED-LOG
-holds a shared lock on it for as long as it writes there)."
-  (let ((fd (handler-case (sb-posix:open native sb-posix:o-rdonly)
-              (sb-posix:syscall-error () nil))))
-    (and fd
-         (unwind-protect (not (lock-fd fd))
-           (sb-posix:close fd)))))
-
-(defun close-fd-quietly (fd)
-  "Close the file descriptor (FD); an error from the system is let go, for use
-where another error is already being handled."
-  (handler-case (sb-posix:close fd)
-    (sb-posix:syscall-error () nil)))
-
-(defun open-rotated-log (native &key rotate (keep 3))
-  "A descriptor open for writing at the end of the log at NATIVE, made
-readable and writable by you alone from the start, holding a shared lock on
-it while it is open. With ROTATE (once a session), when no other session is
-writing to it, a new one is begun, the logs of the sessions before kept as
-NATIVE.1, the one just before, to NATIVE.KEEP; while a session writes to the
-log no other puts it aside: one beginning meanwhile writes after its lines.
-The debug log and the log of standard error are kept so. An error when it
-cannot be opened."
-  (when (and rotate (not (log-in-use-p native)))
-    (flet ((name (n) (if (zerop n) native (format nil "~a.~d" native n))))
-      (loop for n from (1- keep) downto 0
-            do (handler-case (sb-posix:rename (name n) (name (1+ n)))
-                 (sb-posix:syscall-error () nil)))))
-  (let ((fd (sb-posix:open native (logior sb-posix:o-wronly sb-posix:o-creat sb-posix:o-append) #o600)))
-    (handler-bind ((error (lambda (e) (declare (ignore e)) (close-fd-quietly fd))))
-      (handler-case (sb-posix:fchmod fd #o600)
-        (sb-posix:syscall-error () nil))
-      (lock-fd fd :shared t)
-      fd)))
+(defmacro with-fd-closed-on-error ((fd &optional control &rest arguments) &body body)
+  "Run BODY and return what it returns; when an error leaves BODY, the file
+descriptor FD, a form evaluated after BODY has begun, is closed first
+\(CLOSE-FD-QUIETLY with CONTROL and ARGUMENTS), and the error goes on to
+whatever handles it. For a descriptor that BODY hands on when it succeeds."
+  `(handler-bind ((error (lambda (condition)
+                           (declare (ignore condition))
+                           (close-fd-quietly ,fd ,@(when control `(,control ,@arguments))))))
+     ,@body))
 
 (defun open-debug-log ()
   "Open the debug log for writing at its end (OPEN-ROTATED-LOG), for you
@@ -142,7 +113,7 @@ one just before, to debug.log.3. NIL when there is no debug log to open."
           (ensure-directories-exist path)
           (let ((fd (open-rotated-log native :rotate (not *debug-log-begun*))))
             (setf *debug-log-begun* t)
-            (handler-bind ((error (lambda (e) (declare (ignore e)) (close-fd-quietly fd))))
+            (with-fd-closed-on-error (fd)
               (sb-sys:make-fd-stream fd :output t :external-format :utf-8 :buffering :full
                                         :auto-close t :file native))))
       ((or file-error sb-posix:syscall-error) () nil))))
@@ -175,6 +146,25 @@ ARGUMENTS, as an error (a REFUSAL): the command stops and the words are told
 as they are, a secret at hand or not. ARGUMENTS may name a buffer, a file or
 a key, never hold a buffer's text."
   (error 'refusal :format-control control :format-arguments arguments))
+
+(declaim (inline control-code-p))
+(defun control-code-p (code)
+  "True when CODE is a control character's: 0 to 31, 127 to 159."
+  (or (< code 32) (<= 127 code 159)))
+
+(defun one-line (text)
+  "TEXT on one line: each run of line ends, tabs and other control
+characters in it one space, and the spaces at its ends left out, so that it
+can be shown or written where a line is expected (a name, a value, a reason
+given by a program). NIL for NIL."
+  (and text
+       (let ((out (make-string-output-stream)) (blank nil))
+         (loop for c across text
+               do (if (control-code-p (char-code c))
+                      (setf blank t)
+                      (progn (when blank (write-char #\Space out) (setf blank nil))
+                             (write-char c out))))
+         (string-trim " " (get-output-stream-string out)))))
 
 (defun failure-words (condition &key said)
   "CONDITION, an error caught, in words, for the debug log or, with SAID true,
@@ -285,7 +275,8 @@ the editor works, it looks once a second. Returns the watching thread."
                                   "~&Tuatara: the editor has been busy for ~d s; the calls under way:~%~{  ~a~%~}"
                                   (round (seconds-since since)) lines)
                           (finish-output *error-output*)
-                          (queue-debug-report :error (format nil "busy for ~d s:~{~%    ~a~}" (round (seconds-since since)) lines)))))
+                          (queue-debug-report :error (format nil "busy for ~d s:~{~%    ~a~}"
+                                                             (round (seconds-since since)) lines)))))
                    (sb-thread:interrupt-thread-error () nil)))))))
    :name "tuatara hang watch"))
 
@@ -405,5 +396,3 @@ still leaves a trace."
              (stream-error () nil))
            (setf *debug-log-stream* nil))))
   (setf *debug-on* (and on t)))
-
-

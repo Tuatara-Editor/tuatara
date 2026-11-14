@@ -92,11 +92,14 @@ and a capture template's %^T; the calendar is shown as
 - nil: it begins at the prompt."
   :values boolean)
 
-(defstruct (org-date-choice (:copier nil))
+(define-record (org-date-choice (:copier nil))
   "The days chosen in the calendar while Org's date question begins there:
 MARKED, the day numbers marked; SEVERAL, true when more than one may be;
 PROMPT, the question asked; KEYMAP, its keys once it is answered at the prompt."
-  (marked '()) several prompt keymap)
+  (marked '() :documentation "The day numbers marked in the calendar for ORG-DATE-CHOICE.")
+  (several nil :documentation "True when ORG-DATE-CHOICE may take more than one day.")
+  (prompt nil :documentation "The question ORG-DATE-CHOICE asks.")
+  (keymap nil :documentation "The keys of ORG-DATE-CHOICE once the question is answered at the prompt."))
 
 (defvar *org-date-choosing* nil
   "While Org's date question is answered in the calendar, nothing typed at the
@@ -104,10 +107,10 @@ prompt yet (*ORG-READ-DATE-IN-CALENDAR*): its ORG-DATE-CHOICE; NIL otherwise.")
 (pushnew '*org-date-choosing* *question-variables*)
 
 (defparameter *org-date-choose-keys*
-  '(("h" org-calendar-backward-day) ("<left>" org-calendar-backward-day)
-    ("l" org-calendar-forward-day) ("<right>" org-calendar-forward-day)
-    ("k" org-calendar-backward-week) ("<up>" org-calendar-backward-week)
-    ("j" org-calendar-forward-week) ("<down>" org-calendar-forward-week)
+  '(("h" org-calendar-backward-day) ("C-b" org-calendar-backward-day) ("<left>" org-calendar-backward-day)
+    ("l" org-calendar-forward-day) ("C-f" org-calendar-forward-day) ("<right>" org-calendar-forward-day)
+    ("k" org-calendar-backward-week) ("C-p" org-calendar-backward-week) ("<up>" org-calendar-backward-week)
+    ("j" org-calendar-forward-week) ("C-n" org-calendar-forward-week) ("<down>" org-calendar-forward-week)
     ("m" org-date-choose-mark) ("u" org-date-choose-unmark)
     ("RET" org-date-choose-write))
   "The keys of Org's date question while it is answered in the calendar
@@ -225,7 +228,22 @@ when TEXT is one day alone, or not such."
                 (loop for ends in read
                       collect (format nil "~{~a~^--~}"
                                       (loop for (day . own) in ends
-                                            collect (org-ts-text (apply #'org-date-ts day (if (first own) own time)))))))))))
+                                            collect (org-ts-text
+                                                     (apply #'org-date-ts day (if (first own) own time)))))))))))
+
+(defun org-date-prompt-other (typed &key repeating several)
+  "What Org's date prompt reads of TYPED when it is no date, and the words
+shown for it, as two values; NIL for nothing: several days as the calendar
+writes them, (:SEVERAL TEXT), with SEVERAL; a timestamp typed whole, an
+ORG-TS; with REPEATING, a timestamp by rule typed whole, its text, or a repeat
+in words (ORG-WORDS-REPEAT)."
+  (let ((dates (and several (org-read-several-dates typed (org-today))))
+        (ts (org-read-ts typed)))
+    (cond (dates (values (list :several dates) dates))
+          (ts (values ts (org-ts-text ts)))
+          ((and repeating (org-read-rule typed)) (values typed typed))
+          (repeating (let ((value (org-words-repeat typed (org-now))))
+                       (values value (and value (org-repeat-words value))))))))
 
 (defun read-org-date (prompt &key repeating several keymap)
   "Ask PROMPT for a date as any date is asked for (READ-DATE), what it reads
@@ -265,21 +283,8 @@ or of several timestamps, or NIL when what was typed is no date."
                                :typed (lambda (input)
                                         (when (plusp (length input)) (org-date-choosing-end))
                                         *org-date-choosing*)
-                               :none (lambda (typed)
-                                       (if (stringp typed)
-                                           (or (let ((text (and several (org-read-several-dates typed (org-today)))))
-                                                 (and text (list :several text)))
-                                               (org-read-ts typed)
-                                               (and repeating (org-read-rule typed) typed)
-                                               (and repeating (org-words-repeat typed (org-now))))
-                                           typed))
-                               :also (and (or repeating several)
-                                          (lambda (typed)
-                                            (let ((text (and several (org-read-several-dates typed (org-today)))))
-                                              (if text
-                                                  (values (list :several text) text)
-                                                  (let ((value (and repeating (org-words-repeat typed (org-now)))))
-                                                    (values value (and value (org-repeat-words value))))))))
+                               :other (lambda (typed)
+                                        (org-date-prompt-other typed :repeating repeating :several several))
                                :keymap first-keys)
            (cond ((or (org-ts-p time) (stringp time)) time)
                  ((and (consp time) (eq (first time) :several)) (second time))
@@ -337,6 +342,22 @@ INPUT says neither."
                                           (or until (length input)))))
                 (and until (after until)))))))
 
+(defparameter *org-repeat-opening-words*
+  '(("every") ("each") ("everyday" "every" "day") ("daily" "every" "day") ("weekly" "every" "week")
+    ("monthly" "every" "month") ("yearly" "every" "year"))
+  "The words a repeat in words is begun with (ORG-WORDS-REPEAT), each with the
+words it stands for when it is one of every day, week, month or year.")
+
+(defparameter *org-repeat-opening-scanner*
+  (cl-ppcre:create-scanner (format nil "(?i)(?:^|\\s)(?:~{~a~^|~})(?:\\s|$)"
+                                   (mapcar #'first *org-repeat-opening-words*)))
+  "A word of *ORG-REPEAT-OPENING-WORDS* standing alone.")
+
+(defun org-repeat-words-p (text)
+  "True when TEXT holds a word a repeat in words is begun with (every,
+each, daily ...: *ORG-REPEAT-OPENING-WORDS*)."
+  (and (cl-ppcre:scan *org-repeat-opening-scanner* text) t))
+
 (defun org-words-repeat (input now)
   "INPUT, a repeat in words, read at the universal time NOW, as
 ORG-WORDS-REPEAT-PLAIN reads it, and from and to when it says them
@@ -362,8 +383,9 @@ begin from and none to end."
             (multiple-value-bind (value arguments) (org-words-repeat-plain head (day-universal-time start 12 0))
               (cond ((null value) nil)
                     ((null end) (and (org-ts-p value) value))
-                    (t (let ((*org-now* now))
-                         (values (repeat-value (append arguments (list (format nil "ends=~a" (format-day "%F" end)))))))))))))))
+                    (t (let ((*org-now* now)
+                             (ends (format nil "ends=~a" (format-day "%F" end))))
+                         (values (repeat-value (append arguments (list ends)))))))))))))
 
 (defun org-words-repeat-plain (input now)
   "INPUT, a repeat in words, read at the universal time NOW, or NIL when it is
@@ -381,12 +403,7 @@ everyday and daily are every day, weekly, monthly and yearly likewise. It is
 written as the repeat menu writes it (REPEAT-FORM), from the menu's
 arguments for it, which are the second value."
   (let* ((words (loop for w in (cl-ppcre:split "[\\s,]+" (string-downcase (string-trim " " input)))
-                      for whole = (cdr (assoc w
-                                              '(("everyday" "every" "day")
-                                                ("daily" "every" "day")
-                                                ("weekly" "every" "week")
-                                                ("monthly" "every" "month") ("yearly" "every" "year"))
-                                              :test #'string=))
+                      for whole = (cdr (assoc w *org-repeat-opening-words* :test #'string=))
                       unless (member w '("" "of" "the" "on" "at") :test #'string=)
                         append (or whole (list w))))
          (time (find-if #'read-time-range words))
@@ -452,7 +469,7 @@ it writes, and for one by rule when it next comes."
   "Where in TEXT, a repeat in words, the date the calendar writes goes: after
 the last of from, or to or until once from is said, or until alone; NIL when
 TEXT is no repeat in words (every, each, daily ...) or says none of them."
-  (when (cl-ppcre:scan "(?i)(?:^|\\s)(?:every|each|everyday|daily|weekly|monthly|yearly)(?:\\s|$)" text)
+  (when (org-repeat-words-p text)
     (let ((from (cl-ppcre:scan "(?i)(?:^|\\s)from(?:\\s|$)" text)) (place nil))
       (cl-ppcre:do-scans (s e rs re (if from
                                         "(?i)(?:^|\\s)(?:from|to|until|till)(?:\\s|$)"
@@ -477,7 +494,7 @@ answered in the calendar (*ORG-DATE-CHOOSING*), the calendar's day alone moves."
              (day (if (zerop months) (+ from days) (day-months-on from months)))
              (text (editor-minibuffer-text *editor*))
              (time (multiple-value-bind (start end) (find-time-range text) (and start (subseq text start end))))
-             (words (cl-ppcre:scan "(?i)(?:^|\\s)(?:every|each|everyday|daily|weekly|monthly|yearly)(?:\\s|$)" text))
+             (words (org-repeat-words-p text))
              (place (and words (org-repeat-date-place text)))
              (new (cond (place (format nil "~a~a~a" (subseq text 0 place)
                                        (if (char= (char text (1- place)) #\Space) "" " ")
@@ -562,6 +579,29 @@ where it has none of its own."
   "Say that what was typed at a date prompt is no date, with the kinds it reads."
   (message "That is no date: fri, +3d, 10-15, sep 30 or 2026-12-24 14:00"))
 
+(defun org-planning-tokens-with (tokens keyword text)
+  "The planning line's TOKENS, each (KEYWORD . TIMESTAMP), with KEYWORD's
+timestamp TEXT, put first when it had none, or KEYWORD taken away when TEXT
+is NIL; a CLOSED: goes when a date is given, the task open again."
+  (let ((open (if text (remove "CLOSED" tokens :key #'car :test #'string=) tokens)))
+    (cond ((null text) (remove keyword open :key #'car :test #'string=))
+          ((assoc keyword open :test #'string=)
+           (mapcar (lambda (token) (if (string= (car token) keyword) (cons keyword text) token)) open))
+          (t (cons (cons keyword text) open)))))
+
+(defun org-plan-log-note (keyword old new)
+  "The note logged when the planning KEYWORD's timestamp OLD is changed for
+NEW (NIL when it is taken away), as *ORG-LOG-RESCHEDULE* and
+*ORG-LOG-REDEADLINE* say; NIL when none is."
+  (let ((deadline-p (string= keyword "DEADLINE")))
+    (and old (if deadline-p *org-log-redeadline* *org-log-reschedule*)
+         (format nil "- ~a \"~a\" on ~a"
+                 (cond ((and deadline-p new) "New deadline from")
+                       (deadline-p "Removed deadline, was")
+                       (new "Rescheduled from")
+                       (t "Not scheduled, was"))
+                 (org-inactive-text old) (org-timestamp-text (org-now))))))
+
 (defun org-plan (keyword new)
   "Give the task point is under the planning KEYWORD (\"SCHEDULED\" or
 \"DEADLINE\") with the ORG-TS NEW, or take it away when NEW is NIL, logging the
@@ -578,43 +618,41 @@ date that does not repeat, which would end its repeats: that is said."
                  (planning-p (and first-line (org-planning-line-p first-line)))
                  (tokens (and planning-p (org-planning-tokens first-line)))
                  (old (cdr (assoc keyword tokens :test #'string=)))
-                 (new-text (cond ((null new) nil)
-                                 ((stringp new) new)
-                                 (t (org-ts-text (org-ts-keep-cycle new (and old (org-read-ts old)))))))
-                 (tokens (cond ((and new old)
-                                (mapcar (lambda (tk) (if (string= (car tk) keyword) (cons keyword new-text) tk))
-                                        (remove "CLOSED" tokens :key #'car :test #'string=)))
-                               (new (cons (cons keyword new-text) (remove "CLOSED" tokens :key #'car :test #'string=)))
-                               (t (remove keyword tokens :key #'car :test #'string=))))
-                 (planning (format nil "~{~a~^ ~}" (mapcar (lambda (tk) (format nil "~a: ~a" (car tk) (cdr tk))) tokens)))
-                 (deadline-p (string= keyword "DEADLINE"))
-                 (log (and old (if deadline-p *org-log-redeadline* *org-log-reschedule*)))
-                 (note (and log (format nil "- ~a \"~a\" on ~a"
-                                        (cond ((and deadline-p new) "New deadline from")
-                                              (deadline-p "Removed deadline, was")
-                                              (new "Rescheduled from")
-                                              (t "Not scheduled, was"))
-                                        (org-inactive-text old) (org-timestamp-text (org-now)))))
-                 (entry (org-entry-with-log headline text (and note (list note)) *org-log-into-drawer*))
-                 (entry-line-end (or (position #\Newline entry) (length entry)))
-                 (body (if (< entry-line-end (length entry)) (subseq entry (1+ entry-line-end)) ""))
-                 (lines (org-text-lines body))
-                 (lines (append (and (plusp (length planning)) (list planning)) (if planning-p (rest lines) lines)))
-                 (new-entry (org-entry-from-lines (subseq text begin line-end) lines (org-ends-with-newline-p entry))))
+                 (deadline-p (string= keyword "DEADLINE")))
             (cond ((and (null new) (null old))
                    (message "~:[Not scheduled~;No deadline~]" deadline-p))
                   ;; a date by rule is changed for another repeat, never quietly ended by one date
                   ((and old (org-ts-p new) (not (org-repeating-ts-p new)) (org-rule-text-p old))
                    (message (substitute-command-keys
-                             "~a repeats by rule, ~a: one date would end its repeats. Type a repeat (every weekday 9:00) or C-r at the date prompt for the repeat menu; t at the question moves one time; \\<org-mode>\\[universal-argument] \\[org-schedule] takes it away")
+                             "~a repeats by rule, ~a: one date would end its repeats. Type a repeat ~
+(every weekday 9:00) or C-r at the date prompt for the repeat menu; t at the question moves one time; ~
+\\<org-mode>\\[universal-argument] \\[org-schedule] takes it away")
                             (org-property headline :raw-value) old))
-                  (t (org-replace-chars parse begin end new-entry
+                  (t
+                   (let* ((new-text (cond ((null new) nil)
+                                          ((stringp new) new)
+                                          (t (org-ts-text (org-ts-keep-cycle new (and old (org-read-ts old)))))))
+                          (planning (format nil "~{~a~^ ~}"
+                                            (mapcar (lambda (token) (format nil "~a: ~a" (car token) (cdr token)))
+                                                    (org-planning-tokens-with tokens keyword new-text))))
+                          (note (org-plan-log-note keyword old new))
+                          (entry (org-entry-with-log headline text (and note (list note)) *org-log-into-drawer*))
+                          (entry-line-end (or (position #\Newline entry) (length entry)))
+                          (body (if (< entry-line-end (length entry)) (subseq entry (1+ entry-line-end)) ""))
+                          (lines (org-text-lines body))
+                          (new-entry (org-entry-from-lines
+                                      (subseq text begin line-end)
+                                      (append (and (plusp (length planning)) (list planning))
+                                              (if planning-p (rest lines) lines))
+                                      (org-ends-with-newline-p entry))))
+                     (org-replace-chars parse begin end new-entry
                                         :point (cond ((<= position line-end) position)
                                                      ((>= position end)
                                                       (+ position (- (length new-entry) (- end begin))))
                                                      (t begin)))
-                     (message "~:[~a~;~*~a~]" new (if deadline-p "Deadline taken away" "Scheduling taken away")
-                              (format nil "~a: ~a" keyword new-text)))))))))
+                     (if new
+                         (message "~a: ~a" keyword new-text)
+                         (message (if deadline-p "Deadline taken away" "Scheduling taken away")))))))))))
 
 (define-command org-schedule ()
   "Schedule the task point is under (\\`C-c C-s'): the
@@ -663,7 +701,8 @@ one after another (*ORG-READ-DATE-IN-CALENDAR*)."
        (if active
            (with-org-structure (parse buffer tree text position)
              (org-replace-chars parse position position ts :point (+ position (length ts))))
-           (message "~a" (substitute-command-keys "A date by rule is an active timestamp only: \\[org-time-stamp] writes it"))))
+           (message "~a" (substitute-command-keys
+                          "A date by rule is an active timestamp only: \\[org-time-stamp] writes it"))))
       (t
         (with-org-structure (parse buffer tree text position)
           (multiple-value-bind (from to) (org-timestamp-around text position)

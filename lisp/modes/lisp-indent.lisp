@@ -14,23 +14,19 @@
 
 ;;; Reading the text
 
-(defstruct (lisp-frame (:constructor make-lisp-frame (open start)) (:copier nil))
+(define-record (lisp-frame (:constructor make-lisp-frame (open start)) (:copier nil))
   "A list open at the place looked at: OPEN, the octet of its opening bracket;
 START, where it starts with any quote or other mark before the bracket; and the
 complete expressions inside it so far, COUNT of them, the start and end of
 each in turn in ELEMENTS, the oldest first."
-  (open 0 :type fixnum :read-only t)
-  (start 0 :type fixnum :read-only t)
-  (elements (load-time-value (make-array 0 :element-type 'fixnum) t) :type (simple-array fixnum (*)))
-  (count 0 :type fixnum))
+  (open 0 :type fixnum :read-only t :documentation "The octet of the list's opening bracket.")
+  (start 0 :type fixnum :read-only t :documentation "Where the list starts, marks before its bracket included.")
+  (elements (load-time-value (make-array 0 :element-type 'fixnum) t) :type (simple-array fixnum (*))
+            :documentation "The start and end of each complete expression in the list in turn, the oldest first.")
+  (count 0 :type fixnum :documentation "How many complete expressions the list holds so far."))
 
-(setf (documentation 'make-lisp-frame 'function) "A LISP-FRAME for the list opened at OPEN, marks before it from START."
-      (documentation 'lisp-frame-p 'function) "True when OBJECT is a LISP-FRAME."
-      (documentation 'lisp-frame-open 'function) "The octet of the list's opening bracket."
-      (documentation 'lisp-frame-start 'function) "Where the list starts, marks before its bracket included."
-      (documentation 'lisp-frame-elements 'function)
-      "The start and end of each complete expression in the list in turn, the oldest first."
-      (documentation 'lisp-frame-count 'function) "How many complete expressions the list holds so far.")
+(setf (documentation 'make-lisp-frame 'function)
+      "A LISP-FRAME for the list opened at OPEN, marks before it from START.")
 
 (declaim (inline frame-add))
 (defun frame-add (frame start end)
@@ -63,43 +59,48 @@ each in turn in ELEMENTS, the oldest first."
 (defconstant +lisp-chunk+ 65536
   "How many octets reading Lisp text takes from the text at a time.")
 
-(defstruct (lisp-scan (:constructor make-lisp-scan (rope position)) (:copier nil))
+(define-record (lisp-scan (:constructor make-lisp-scan
+                             (rope position &key on-element (elements-kept t)
+                                                 (chunk (make-array 0 :element-type '(unsigned-byte 8)))
+                                                 (size (if rope (tuatara.text:rope-octet-length rope) 0))))
+                         (:copier nil))
   "ROPE's Lisp, read from the start of a top-level form up to octet POSITION.
 STACK is the lists open there, the innermost first. PREFIX is where the marks
 before an expression not yet read begin, or NIL. INSIDE is :STRING when POSITION
 is inside a string that the octet DELIMITER ends and that began at STRING-START,
 :COMMENT when inside block comments nested DEPTH deep, else NIL. CHUNK holds
-ROPE's octets from CHUNK-START, read ahead."
-  (rope nil :read-only t)
-  (position 0 :type fixnum)
-  (stack '())
-  (prefix nil)
-  (inside nil)
-  (delimiter 0 :type fixnum)
-  (string-start 0 :type fixnum)
-  (depth 0 :type fixnum)
-  (chunk (make-array 0 :element-type '(unsigned-byte 8)) :type (simple-array (unsigned-byte 8) (*)))
-  (chunk-start 0 :type fixnum))
+ROPE's octets from CHUNK-START, read ahead. SIZE is where the text ends. With
+no ROPE, CHUNK is the whole text. ON-ELEMENT, when given, is called with the
+start, the end and the depth of each complete expression. With ELEMENTS-KEPT
+NIL, the lists open keep none of the expressions inside them, and nothing is
+made for each one."
+  (rope nil :read-only t :documentation "The text read.")
+  (size 0 :type fixnum :read-only t :documentation "Where the text ends.")
+  (on-element nil :type (or null function) :read-only t
+              :documentation "The function called with the start, end and depth of each complete expression, or NIL.")
+  (elements-kept t :read-only t
+                 :documentation "Whether the lists open keep the expressions inside them (LISP-FRAME-ELEMENTS).")
+  (position 0 :type fixnum :documentation "The octet reading goes on from.")
+  (stack '() :documentation "The lists open where reading stopped, the innermost first.")
+  (prefix nil :documentation "Where the marks before an expression not yet read begin, or NIL.")
+  (inside nil :documentation ":STRING or :COMMENT when reading stopped inside one, else NIL.")
+  (delimiter 0 :type fixnum :documentation "The octet ending the string reading stopped inside.")
+  (string-start 0 :type fixnum :documentation "Where the string reading stopped inside begins.")
+  (depth 0 :type fixnum :documentation "How deeply the block comments reading stopped inside nest.")
+  (chunk (make-array 0 :element-type '(unsigned-byte 8)) :type (simple-array (unsigned-byte 8) (*))
+         :documentation "Octets of the text read ahead.")
+  (chunk-start 0 :type fixnum :documentation "The offset of the first octet read ahead."))
 
-(setf (documentation 'make-lisp-scan 'function) "A LISP-SCAN of ROPE about to read from POSITION, nothing open."
-      (documentation 'lisp-scan-p 'function) "True when OBJECT is a LISP-SCAN."
-      (documentation 'lisp-scan-rope 'function) "The text read."
-      (documentation 'lisp-scan-position 'function) "The octet reading goes on from."
-      (documentation 'lisp-scan-stack 'function) "The lists open where reading stopped, the innermost first."
-      (documentation 'lisp-scan-prefix 'function) "Where the marks before an expression not yet read begin, or NIL."
-      (documentation 'lisp-scan-inside 'function) ":STRING or :COMMENT when reading stopped inside one, else NIL."
-      (documentation 'lisp-scan-delimiter 'function) "The octet ending the string reading stopped inside."
-      (documentation 'lisp-scan-string-start 'function) "Where the string reading stopped inside begins."
-      (documentation 'lisp-scan-depth 'function) "How deeply the block comments reading stopped inside nest."
-      (documentation 'lisp-scan-chunk 'function) "Octets of the text read ahead."
-      (documentation 'lisp-scan-chunk-start 'function) "The offset of the first octet read ahead.")
+(setf (documentation 'make-lisp-scan 'function) "A LISP-SCAN of ROPE about to read from POSITION, nothing open.")
 
 (defun advance-scan (scan target)
   "Read SCAN's text on to octet TARGET, or just past it when an expression or a
 comment runs over it, and return SCAN."
   (declare (type lisp-scan scan) (type fixnum target) (optimize speed))
   (let* ((rope (lisp-scan-rope scan))
-         (size (tuatara.text:rope-octet-length rope))
+         (size (lisp-scan-size scan))
+         (on-element (lisp-scan-on-element scan))
+         (elements-kept (lisp-scan-elements-kept scan))
          (i (lisp-scan-position scan))
          (stack (lisp-scan-stack scan))
          (prefix (lisp-scan-prefix scan))
@@ -110,15 +111,16 @@ comment runs over it, and return SCAN."
                (declare (type fixnum j))
                (let ((k (- j base)))
                  (declare (type fixnum k))
-                 (cond ((< -1 k (length chunk)) (aref chunk k))
-                       ((< -1 j size)
+                 (cond ((not (< -1 j size)) 0)
+                       ((< -1 k (length chunk)) (aref chunk k))
+                       (t
                         (setf base (max 0 (- j 16))
                               chunk (tuatara.text:rope-octets rope :start base :end (min size (+ base +lisp-chunk+))))
-                        (aref chunk (- j base)))
-                       (t 0))))
+                        (aref chunk (- j base))))))
              (element (start end)
                (declare (type fixnum start end))
-               (when stack (frame-add (first stack) (or prefix start) end))
+               (when (and stack elements-kept) (frame-add (first stack) (or prefix start) end))
+               (when on-element (funcall on-element (or prefix start) end (length stack)))
                (setf prefix nil))
              (finish-string ()
                ;; on through the string to its end; NIL when TARGET comes first
@@ -213,6 +215,26 @@ comment runs over it, and return SCAN."
           (lisp-scan-chunk-start scan) base)
     scan))
 
+(defun lisp-elements (octets &key (elements t) (end (length octets)))
+  "The complete expressions in OCTETS, Lisp text, as a list of (START END
+DEPTH), in the order they end: atoms, strings and bracketed lists, START and
+END offsets into OCTETS, a quote or other prefix before one counting as part of
+it, DEPTH the brackets around it. Comments (; to the end of the line, #| |#,
+nested) are skipped, and so is the character after #\\, as the reader skips
+them, so that brackets there count for nothing. An unclosed list is no element,
+though what is complete inside it is. The second value lists where the lists
+still open at the end begin, the innermost first (at a quote or other prefix
+before its bracket, when it has one). With ELEMENTS NIL, only that second
+value is worked out, the first NIL: nothing is made for each element. Only
+the octets below END are read."
+  (declare (type (simple-array (unsigned-byte 8) (*)) octets))
+  (let* ((found '())
+         (scan (make-lisp-scan nil 0 :chunk octets :size end :elements-kept nil
+                                     :on-element (and elements
+                                                      (lambda (start end depth) (push (list start end depth) found))))))
+    (advance-scan scan end)
+    (values (nreverse found) (mapcar #'lisp-frame-start (lisp-scan-stack scan)))))
+
 ;;; Where a line lines up
 
 (defparameter *lisp-body-indent* 2
@@ -260,41 +282,34 @@ comment runs over it, and return SCAN."
             ("if-let" 2) ("if-let*" 2) ("when-let" 1) ("when-let*" 1) ("and-let*" 1)
             ("with-temp-file" 1) ("with-timeout" 1)
             ;; the init file's own: a package's settings after :config
-            ("load-package" 1))))
+            ("load-package" lisp-indent-arguments-as-body) ("package-source" . "load-package"))))
     (dolist (entry methods table)
       (unless (gethash (first entry) table)
         (setf (gethash (first entry) table)
-              (if (stringp (cdr entry))
-                  (gethash (cdr entry) table)
-                  (second entry))))))
+              (cond ((stringp (cdr entry)) (gethash (cdr entry) table))
+                    ((eq (second entry) 'defun) (gethash "defun" table))
+                    (t (second entry)))))))
   "Each macro's indentation method, by name in lower case: an integer (that
 many distinguished arguments, then a body), a list (how each argument is
-indented, see LISP-INDENT-259), or the name of a function doing it.")
+indented, see LISP-INDENT-BY-METHOD), or the name of a function doing it.")
 
-(defparameter *lisp-defun-method* '(4 &lambda &body)
+(defparameter *lisp-defun-method* (gethash "defun" *lisp-indent-methods*)
   "The method of forms indented as defun is.")
 
-(defstruct (lisp-line (:constructor make-lisp-line (rope point frames moved text)) (:copier nil))
+(define-record (lisp-line (:constructor make-lisp-line (rope point frames moved text)) (:copier nil))
   "What indenting one line needs: the text, ROPE; the octet POINT the line
 starts at; the FRAMES open there, the innermost first; MOVED, NIL or a table of
 the lines before it indented in the same pass, each line's start to (COLUMN .
 WIDTH), the column its text moves to and the octets of blanks it begins with
 now; and TEXT, the line without the blanks it begins with (LISP-LINE-HEAD)."
-  (rope nil :read-only t)
-  (point 0 :type fixnum :read-only t)
-  (frames '() :read-only t)
-  (moved nil :read-only t)
-  (text "" :type string :read-only t))
+  (rope nil :read-only t :documentation "The text.")
+  (point 0 :type fixnum :read-only t :documentation "The octet the line starts at.")
+  (frames '() :read-only t :documentation "The lists open at the line, the innermost first.")
+  (moved nil :read-only t :documentation "The lines before indented in the same pass: start to (COLUMN . WIDTH).")
+  (text "" :type string :read-only t
+        :documentation "The line without the blanks it begins with, its first *LISP-LINE-HEAD* octets."))
 
-(setf (documentation 'make-lisp-line 'function) "A LISP-LINE from its parts."
-      (documentation 'lisp-line-p 'function) "True when OBJECT is a LISP-LINE."
-      (documentation 'lisp-line-rope 'function) "The text."
-      (documentation 'lisp-line-point 'function) "The octet the line starts at."
-      (documentation 'lisp-line-frames 'function) "The lists open at the line, the innermost first."
-      (documentation 'lisp-line-moved 'function)
-      "The lines before indented in the same pass: start to (COLUMN . WIDTH)."
-      (documentation 'lisp-line-text 'function)
-      "The line without the blanks it begins with, its first *LISP-LINE-HEAD* octets.")
+(setf (documentation 'make-lisp-line 'function) "A LISP-LINE from its parts.")
 
 (defun lisp-octet (line position)
   "The octet at POSITION of LINE's text, or 0 outside it."
@@ -394,26 +409,37 @@ bracket; else under the first expression on the line of the last one."
 
 (defun lisp-indent-call-method (line method path frame sexp-column normal-indent)
   "Apply METHOD for the form in FRAME to the line at PATH: call it when it
-names a function, else read it as a list (LISP-INDENT-259)."
+names a function, else read it as a list (LISP-INDENT-BY-METHOD)."
   (if (and method (symbolp method))
       (funcall method line path frame sexp-column normal-indent)
-      (lisp-indent-259 line method path frame sexp-column normal-indent)))
+      (lisp-indent-by-method line method path frame sexp-column normal-indent)))
+
+(defparameter *lambda-list-keyword-pattern*
+  "&(optional|rest|key|allow-other-keys|aux|whole|body|environment)([ \\t]|$)"
+  "Matches a lambda-list keyword and the blank or line end after it.")
+
+(defparameter *lambda-list-keyword-scanner*
+  (cl-ppcre:create-scanner (concatenate 'string "(?im)" *lambda-list-keyword-pattern*))
+  "Finds the lambda-list keywords in text.")
+
+(defparameter *lambda-list-keyword-first-scanner*
+  (cl-ppcre:create-scanner (concatenate 'string "(?im)^" *lambda-list-keyword-pattern*))
+  "Tells whether a line begins with a lambda-list keyword.")
 
 (defun lisp-lambda-list-indent (line sexp-column containing)
   "The column in a lambda list for LINE: a lambda-list keyword under the list's
 first element, other parameters after the last keyword before them, indented
 by two."
-  (let ((keyword "(?im)&(optional|rest|key|allow-other-keys|aux|whole|body|environment)([ \\t]|$)"))
-    (if (cl-ppcre:scan (concatenate 'string "^" keyword) (lisp-line-text line))
-        (1+ sexp-column)
-        (let* ((text (lisp-text line containing (max containing (1- (lisp-line-point line)))))
-               (found nil))
-          (cl-ppcre:do-matches (s e keyword text) (setf found s))
-          (if found
-              (+ (lisp-column line (+ containing (tuatara.text:string-octet-length text :end found))) 2)
-              (1+ sexp-column))))))
+  (if (cl-ppcre:scan *lambda-list-keyword-first-scanner* (lisp-line-text line))
+      (1+ sexp-column)
+      (let* ((text (lisp-text line containing (max containing (1- (lisp-line-point line)))))
+             (found nil))
+        (cl-ppcre:do-matches (s e *lambda-list-keyword-scanner* text) (setf found s))
+        (if found
+            (+ (lisp-column line (+ containing (tuatara.text:string-octet-length text :end found))) 2)
+            (1+ sexp-column)))))
 
-(defun lisp-indent-259 (line method path frame sexp-column normal-indent)
+(defun lisp-indent-by-method (line method path frame sexp-column normal-indent)
   "Indent by METHOD the line at PATH in the form in FRAME whose bracket is at
 SEXP-COLUMN. METHOD is a list saying how each argument in turn is indented:
 an integer, that many columns from the bracket; NIL, by default; &lambda, as a
@@ -428,39 +454,50 @@ indented and ENTRIES how its own arguments are."
              (loop while n
                    do (setf tem (car method))
                       (cond ((and tail (not (or (consp tem) (symbolp tem))))
-                             (return-from lisp-indent-259 normal-indent))
+                             (return-from lisp-indent-by-method normal-indent))
                             ((eq tem '&body)
-                             (return-from lisp-indent-259
+                             (return-from lisp-indent-by-method
                                (if (and (= n 0) (null p)) (+ sexp-column *lisp-body-indent*) normal-indent)))
                             ((eq tem '&rest)
                              (setf tail (> n 0) n 0 method (cdr method)))
                             ((> n 0)
                              (setf n (1- n) method (cdr method))
-                             (when (< n 0) (return-from lisp-indent-259 normal-indent)))
+                             (when (< n 0) (return-from lisp-indent-by-method normal-indent)))
                             ((null tem)
-                             (return-from lisp-indent-259
+                             (return-from lisp-indent-by-method
                                (if (consp normal-indent) normal-indent (list normal-indent containing))))
                             ((eq tem '&lambda)
-                             (return-from lisp-indent-259
+                             (return-from lisp-indent-by-method
                                (cond ((null p) (list (+ sexp-column 4) containing))
-                                     ((null (cdr p)) (list (lisp-lambda-list-indent line sexp-column containing) containing))
+                                     ((null (cdr p))
+                                      (list (lisp-lambda-list-indent line sexp-column containing) containing))
                                      (t normal-indent))))
                             ((integerp tem)
-                             (return-from lisp-indent-259
+                             (return-from lisp-indent-by-method
                                (if (null p) (list (+ sexp-column tem) containing) normal-indent)))
                             ((symbolp tem)
-                             (return-from lisp-indent-259 (funcall tem line path frame sexp-column normal-indent)))
+                             (return-from lisp-indent-by-method
+                               (funcall tem line path frame sexp-column normal-indent)))
                             (t
                              ;; destructuring: (&whole X ...)
                              (if p
                                  (setf method (cddr tem) n nil)
                                  (let ((whole (cadr tem)))
-                                   (return-from lisp-indent-259
+                                   (return-from lisp-indent-by-method
                                      (cond (tail normal-indent)
                                            ((null whole) (list normal-indent containing))
                                            ((integerp whole) (list (+ sexp-column whole) containing))
                                            (t (funcall whole line path frame sexp-column normal-indent))))))))))
     nil))
+
+(defun lisp-indent-arguments-as-body (line path frame sexp-column normal-indent)
+  "Indent every argument after the first line as a body, even when that line
+holds more than the form's name: an init file's (load-package \"name\"
+:source ...) keeps its keywords two columns in, never lined up under the name."
+  (declare (ignore frame))
+  (if (cdr path)
+      normal-indent
+      (list (+ sexp-column *lisp-body-indent*) (lisp-frame-open (first (lisp-line-frames line))))))
 
 (defun lisp-indent-tagbody (line path frame sexp-column normal-indent &optional (body 3))
   "Indent a tagbody's tags by 1 and its forms by BODY (3)."
@@ -480,7 +517,7 @@ in from its bracket, and the body as a tagbody's, its tags by 1 and its forms
 by 2."
   (if (>= (car path) 3)
       (lisp-indent-tagbody line path frame sexp-column normal-indent *lisp-body-indent*)
-      (lisp-indent-259 line '((&whole nil &rest) (&whole nil &rest 1)) path frame sexp-column normal-indent)))
+      (lisp-indent-by-method line '((&whole nil &rest) (&whole nil &rest 1)) path frame sexp-column normal-indent)))
 
 (defun lisp-indent-defmethod (line path frame sexp-column normal-indent)
   "Indent defmethod as defun, each qualifier between the name and the lambda
@@ -493,7 +530,7 @@ form, which is the method's own form unless the method is inside another."
                                        (and (lisp-symbol-octet-p b) (not (member b '(35 92 124)))))
                                count t)
                          0)))
-    (lisp-indent-259 line (if (plusp qualifiers)
+    (lisp-indent-by-method line (if (plusp qualifiers)
                               (append '(4) (make-list qualifiers :initial-element 4) '(&lambda &body))
                               *lisp-defun-method*)
                      path frame sexp-column normal-indent)))
@@ -509,16 +546,20 @@ than lambda."
             (+ *lisp-body-indent* -1 (lisp-column line (1+ (lisp-frame-open outer))))
             (+ sexp-column *lisp-body-indent*)))))
 
+(defun lisp-name-without-package (name)
+  "NAME, the name of a form in lower case, without the package it is written
+with, as cl:loop is loop."
+  (let ((colon (position #\: name)))
+    (if colon (string-left-trim ":" (subseq name colon)) name)))
+
 (defun lisp-method-of (name)
   "The indentation method of the form NAME, in lower case: its own, or that of
 the name after its package prefix; NIL when none."
   (multiple-value-bind (method found) (gethash name *lisp-indent-methods*)
-    (cond (found (if (eq method 'defun) *lisp-defun-method* method))
-          ((cl-ppcre:scan ":[^:]+" name)
-           (let ((short (subseq name (1+ (position #\: name)))))
-             (setf short (string-left-trim ":" short))
-             (let ((method (gethash short *lisp-indent-methods*)))
-               (if (eq method 'defun) *lisp-defun-method* method)))))))
+    (if found
+        method
+        (let ((short (lisp-name-without-package name)))
+          (and (string/= short name) (values (gethash short *lisp-indent-methods*)))))))
 
 (defun lisp-form-name (line frame)
   "The name of the form FRAME is, in lower case, or NIL when its first
@@ -569,8 +610,9 @@ bracket. The innermost form, with no method of its own, is indented as defun
 when its name begins with def, and as one argument then a body when it begins
 with with-, without- or do-."
   (let* ((frames (lisp-line-frames line))
-         (innermost (first frames)))
-    (when (cl-ppcre:scan "^\\((?i)loop" (lisp-text line (lisp-frame-open innermost) (+ (lisp-frame-open innermost) 5)))
+         (innermost (first frames))
+         (innermost-name (lisp-form-name line innermost)))
+    (when (and innermost-name (string= "loop" (lisp-name-without-package innermost-name)))
       (return-from common-lisp-indent (lisp-loop-indent line innermost)))
     (let ((depth 0) (path '()) (calculated nil) (tentative nil)
           ;; the innermost list's column, whichever form's method decides
@@ -578,20 +620,17 @@ with with-, without- or do-."
       (loop for (frame . outer) on frames
             while (and (not calculated) (< depth 3))
             do (let* ((open (lisp-frame-open frame))
-                      (name (let ((name (lisp-form-name line frame)))
-                              ;; a name with no method of its own is taken without its package
-                              (if (and name (not (nth-value 1 (gethash name *lisp-indent-methods*)))
-                                       (position #\: name))
-                                  (string-left-trim ":" (subseq name (position #\: name)))
-                                  name)))
+                      (name (lisp-form-name line frame))
+                      (short (and name (lisp-name-without-package name)))
                       (method (and name (lisp-method-of name)))
                       (tentative-defun nil)
                       (before (lisp-octet line (1- open)))
                       (before2 (lisp-octet line (- open 2))))
                  (push (lisp-frame-count frame) path)
                  (when (and name (null method) (null (cdr path)))
-                   (cond ((cl-ppcre:scan "^def" name) (setf tentative-defun t))
-                         ((cl-ppcre:scan "^(with|without|do)-" name) (setf method '(&lambda &body)))))
+                   (cond ((uiop:string-prefix-p "def" short) (setf tentative-defun t))
+                         ((some (lambda (prefix) (uiop:string-prefix-p prefix short)) '("with-" "without-" "do-"))
+                          (setf method '(&lambda &body)))))
                  (cond ((and (= before 39) (not (= before2 35)))          ; '(
                         (setf calculated (1+ sexp-column)))
                        ((progn
@@ -608,7 +647,8 @@ with with-, without- or do-."
                                 normal-indent tentative)))
                        ((integerp method)
                         (setf calculated (cond ((cdr path) normal-indent)
-                                               ((<= (car path) method) (list (+ sexp-column 4) (lisp-frame-open innermost)))
+                                               ((<= (car path) method)
+                                                (list (+ sexp-column 4) (lisp-frame-open innermost)))
                                                ((= (car path) (1+ method)) (+ sexp-column *lisp-body-indent*))
                                                (t normal-indent))))
                        (t (setf calculated (lisp-indent-call-method line method path frame sexp-column normal-indent))))
@@ -689,7 +729,8 @@ octets back: then the start of the first line within it."
                     (if (plusp position) (lisp-text-start rope (1- position) *lisp-indent-reach*) 0))))
     (cond ((and start (<= (- position start) *lisp-indent-reach*)) start)
           ((<= position *lisp-indent-reach*) 0)
-          (t (let ((newline (tuatara.text:rope-find-line-end rope :start (- position *lisp-indent-reach*) :end position)))
+          (t (let ((newline (tuatara.text:rope-find-line-end rope :start (- position *lisp-indent-reach*)
+                                                                  :end position)))
                (if newline (1+ newline) position))))))
 
 (defparameter *lisp-line-head* 256
@@ -701,7 +742,8 @@ begins with that change where it goes.")
   "The text of the line of ROPE from LINE below LINE-END past the blanks it
 begins with, no more than *LISP-LINE-HEAD* octets of it."
   (let ((text (tuatara.text:rope-skip-octets rope line tuatara.text:*blank-line-octets* :bound line-end)))
-    (tuatara.text:octets-string (tuatara.text:rope-octets rope :start text :end (min line-end (+ text *lisp-line-head*))))))
+    (tuatara.text:octets-string
+     (tuatara.text:rope-octets rope :start text :end (min line-end (+ text *lisp-line-head*))))))
 
 (defun lisp-indent-lines (rope start end &optional syntax blank-lines)
   "How the lines of ROPE from the one holding octet START to the one holding

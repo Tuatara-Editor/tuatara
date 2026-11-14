@@ -16,7 +16,8 @@
   :lighter "TOML"
   :comment "#"
   :extensions ("toml")
-  :file-names ("pdm.lock" "poetry.lock" "Cargo.lock" "uv.lock" "containers.conf" "mounts.conf" "policy.conf" "registries.conf" "storage.conf")
+  :file-names ("pdm.lock" "poetry.lock" "Cargo.lock" "uv.lock" "containers.conf" "mounts.conf" "policy.conf"
+               "registries.conf" "storage.conf")
   :patterns ("/containers\\.conf\\.d/[^/]*\\.conf$" "/containers\\.conf\\.modules/[^/]*\\.conf$"))
 
 (define-language toml
@@ -26,8 +27,12 @@
 (define-major-mode json-mode prog-mode
   "JSON data."
   :lighter "JSON"
-  :extensions ("json" "arb" "ipynb" "geojson" "gltf" "webmanifest" "avsc" "ldtk" "ldtkl" "sublime-build" "sublime-color-scheme" "sublime-commands" "sublime-completions" "sublime-keymap" "sublime-macro" "sublime-menu" "sublime-mousemap" "sublime-project" "sublime-settings" "sublime-theme" "sublime-workspace" "code-workspace")
-  :file-names ("flake.lock" ".babelrc" ".bowerrc" ".jscrc" ".jslintrc" ".vuerc" "composer.lock" ".watchmanconfig" ".swift-format" "devenv.lock" "devbox.lock" "manifest.lock" "deno.lock")
+  :extensions ("json" "arb" "ipynb" "geojson" "gltf" "webmanifest" "avsc" "ldtk" "ldtkl" "sublime-build"
+               "sublime-color-scheme" "sublime-commands" "sublime-completions" "sublime-keymap" "sublime-macro"
+               "sublime-menu" "sublime-mousemap" "sublime-project" "sublime-settings" "sublime-theme"
+               "sublime-workspace" "code-workspace")
+  :file-names ("flake.lock" ".babelrc" ".bowerrc" ".jscrc" ".jslintrc" ".vuerc" "composer.lock" ".watchmanconfig"
+               ".swift-format" "devenv.lock" "devbox.lock" "manifest.lock" "deno.lock")
   :patterns ("/[^/]*\\.js\\.map$" "/[^/]*\\.ts\\.map$" "/[^/]*\\.css\\.map$" "/\\.pytest_cache/v/cache/[^/]*$"))
 
 (define-language json
@@ -139,7 +144,8 @@
   :lighter "INI"
   :comment "#"
   :extensions ("ini" "desktop" "cfg" "directory")
-  :file-names ("mimeapps.list" ".editorconfig" ".npmrc" "hgrc" "npmrc" "rclone.conf" ".wslconfig" ".buckconfig" ".buckconfig.local")
+  :file-names ("mimeapps.list" ".editorconfig" ".npmrc" "hgrc" "npmrc" "rclone.conf" ".wslconfig" ".buckconfig"
+               ".buckconfig.local")
   :patterns ("/\\.aws/config$" "/\\.buckconfig\\.d/[^/]*$" "/etc/buckconfig$" "/etc/buckconfig\\.d/[^/]*$"))
 
 (define-language ini
@@ -244,7 +250,8 @@
   "systemd unit files."
   :lighter "Systemd"
   :comment "#"
-  :extensions ("service" "automount" "device" "mount" "nspawn" "path" "scope" "slice" "socket" "swap" "target" "timer" "container" "kube" "network" "volume" "build" "image")
+  :extensions ("service" "automount" "device" "mount" "nspawn" "path" "scope" "slice" "socket" "swap" "target" "timer"
+               "container" "kube" "network" "volume" "build" "image")
   :patterns ("/systemd/(?:.*/)?[^/]*\\.conf$" "/containers/systemd/(?:.*/)?[^/]*\\.pod$"))
 
 (define-language systemd
@@ -255,12 +262,8 @@
   "Environment files (.env)."
   :lighter "Dotenv"
   :comment "#"
-  :file-names (".env" ".envrc"
-                      "_environment"
-                      "_environment.local"
-                      "_environment.required"
-                      ".bazeliskrc"
-                      ".gitlab-ci-local-env")
+  :file-names (".env" ".envrc" "_environment" "_environment.local" "_environment.required" ".bazeliskrc"
+               ".gitlab-ci-local-env")
   :patterns ("/\\.env\\.[^/]*$" "/\\.envrc\\.[^/]*$" "/_environment-[^/]*$"))
 
 (define-language env
@@ -324,7 +327,8 @@
 
 (define-language prisma
   "Prisma schemas, parsed with tree-sitter-prisma."
-  :grammar "prisma" :modes (prisma-mode) :indent 2 :queries "prisma" :injection-names "prisma" :definitions :textobjects)
+  :grammar "prisma" :modes (prisma-mode) :indent 2 :queries "prisma" :injection-names "prisma"
+  :definitions :textobjects)
 
 (define-major-mode kdl-mode prog-mode
   "KDL documents."
@@ -341,7 +345,7 @@
   :lighter "HOCON"
   :comment "#"
   :patterns ("/(?:.*/)?src/[^/]*/resources/(?:.*/)?[^/]*\\.conf$" "/[^/]*scalafmt[^/]*\\.conf$"
-                                                                  "/[^/]*scalafix[^/]*\\.conf$"))
+             "/[^/]*scalafix[^/]*\\.conf$"))
 
 (define-language hocon
   "HOCON configuration files, parsed with tree-sitter-hocon."
@@ -447,16 +451,9 @@
   :lighter "Debian-Control"
   :comment "#"
   :extensions ("dsc" "changes")
-  :patterns ("/debian/control$" "/debian/copyright$"
-                                "/debian/watch$"
-                                "/debian/changelog$"
-                                "/debian/source/format$"
-                                "/debian/source/options$"
-                                "/debian/source/local-options$"
-                                "/debian/tests/control$"
-                                "/debian/upstream/metadata$"
-                                "/debian/rules$"
-                                "/etc/apt/sources\\.list\\.d/[^/]*\\.sources$"))
+  :patterns ("/debian/control$" "/debian/copyright$" "/debian/watch$" "/debian/changelog$" "/debian/source/format$"
+             "/debian/source/options$" "/debian/source/local-options$" "/debian/tests/control$"
+             "/debian/upstream/metadata$" "/debian/rules$" "/etc/apt/sources\\.list\\.d/[^/]*\\.sources$"))
 
 (define-language debian
   "The control files of Debian's packages, parsed with tree-sitter-debian."

@@ -23,6 +23,7 @@
 # ~/quicklisp, else ~/.local/share/quicklisp.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
+. "$root/tools/fetch.sh"
 list="$root/tools/lisp-archives.sha256"
 # the Quicklisp set the list is made from; its libraries are checked one by
 # one, so its index files are not
@@ -31,12 +32,8 @@ dist_url=https://beta.quicklisp.org/dist/quicklisp/2026-01-01
 fail() { echo "tools/lisp-archives.sh: $*" >&2; exit 1; }
 
 quicklisp_dir() {  # the directory given, else where Quicklisp is installed
-  local dir setup
   if [ -n "${1:-}" ]; then echo "$1"; return; fi
-  for setup in "${QUICKLISP_SETUP:-}" "$HOME/quicklisp/setup.lisp" "$HOME/.local/share/quicklisp/setup.lisp"; do
-    if [ -n "$setup" ] && [ -f "$setup" ]; then dirname "$setup"; return; fi
-  done
-  fail "Quicklisp is not installed: see HACKING.org"
+  dirname "$(quicklisp_setup)" || exit 1
 }
 
 entries() {  # the list's lines: hash, then archive name
@@ -45,12 +42,7 @@ entries() {  # the list's lines: hash, then archive name
 }
 
 download() {  # download $1 to $2, kept only when its SHA-256 is $3
-  curl -sSfL --retry 3 -o "$2.part" "$1" || { rm -f "$2.part"; fail "$1 could not be downloaded"; }
-  if ! echo "$3  $2.part" | sha256sum -c --status; then
-    rm -f "$2.part"
-    fail "$1 is not the file expected: not used"
-  fi
-  mv "$2.part" "$2"
+  checked_download "$1" "$2" "$3" || exit 1
 }
 
 https_url() {  # the archive's address in the index, over HTTPS

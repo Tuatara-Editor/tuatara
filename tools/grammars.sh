@@ -53,7 +53,7 @@ if [ "${1:-}" = --record ]; then
     record="all $*"
   fi
 fi
-wanted="$(cat "$root/syntax/grammars.tsv" "$root/syntax/grammar-inputs.sha256" "$root/syntax/syntax.c" "$root/syntax/helper.c" "$root/syntax/safe-ctype.h" "$root/syntax/counted-memory.h" "$root"/syntax/patches/*.patch "$root"/syntax/licenses/*.txt "$0" "$root/tools/grammar-build.sh" "$root/tools/licence-names.sh" 2>/dev/null | sha256sum | cut -c1-16)"
+wanted="$(cat "$root/syntax/grammars.tsv" "$root/syntax/grammar-inputs.sha256" "$root/syntax/syntax.c" "$root/syntax/helper.c" "$root/syntax/safe-ctype.h" "$root/syntax/counted-memory.h" "$root"/syntax/patches/*.patch "$root"/syntax/licenses/*.txt "$0" "$root/tools/grammar-build.sh" "$root/tools/fetch.sh" "$root/tools/licence-names.sh" 2>/dev/null | sha256sum | cut -c1-16)"
 if [ -z "$record" ] && [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$wanted" ]; then exit 0; fi
 mkdir -p "$out" "$sources" "$root/build/tools"
 . "$root/tools/inside.sh"
@@ -61,12 +61,12 @@ inside bash -euo pipefail -c '
 root="$1"; out="$2"; sources="$3"; record="$4"
 manifest() { grep -v "^#" "$root/syntax/grammars.tsv" | grep -v "^[[:space:]]*$"; }
 . "$root/tools/grammar-build.sh"
+. "$root/tools/fetch.sh"
 fetch() { fetch_grammar "$sources/$1" "$2" "$3"; }  # fetch repository $2 at commit $3 into $sources/$1
 cli="$root/build/tools/tree-sitter"
 get_cli() {  # download the tree-sitter program from $1 unless it is there, checked against SHA-256 $2
   if [ ! -x "$cli" ] || [ "$(cat "$cli.sha256" 2>/dev/null)" != "$2" ]; then
-    curl -sSfL -o "$cli.gz" "$1"
-    echo "$2  $cli.gz" | sha256sum -c --quiet
+    checked_download "$1" "$cli.gz" "$2" || exit 1
     gunzip -f "$cli.gz"; chmod +x "$cli"
     echo "$2" > "$cli.sha256"
   fi

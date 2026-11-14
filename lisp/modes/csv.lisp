@@ -34,9 +34,9 @@ a pattern does not match, the mode line saying how many it leaves."
 
 (defvar *csv-colouring* nil
   "How CSV and TSV buffers are set to be coloured: :RICH each column in its own
-colour, cycling through eight; :SPARSE only the
-separators, the quoted fields and the lines that start with #; :NONE nothing; NIL, the default, as set for text-mode
-or every buffer, else rich. Set it in the init file with
+colour, cycling through eight; :SPARSE only the separators, the quoted fields
+and the lines that start with #; :NONE nothing; NIL, the default, as set for
+text-mode or every buffer, else rich. Set it in the init file with
 (set-colouring 'csv-mode :sparse); \\[rotate-colouring] in a CSV buffer goes on
 to the next.")
 
@@ -57,25 +57,41 @@ a longer line is coloured up to here.")
 
 (defconstant +quote-octet+ 34 "The octet of the double quote that encloses fields.")
 
-(defmacro do-csv-octets ((octet position quoted) (rope start end) &body body)
+(defmacro do-csv-octets ((octet position quoted) (rope start end &key (quote '+quote-octet+) delimiter)
+                         &body body)
   "Run BODY for each octet of ROPE from START below END, read where the text is
 kept and nothing copied: OCTET bound to it and POSITION to where it is.
-QUOTED names a variable of the caller's, true inside double quotes: BODY sees
-it as it was before the octet, and a double quote turns it over after. BODY
-leaves the whole with RETURN, whose value the form then has; else NIL."
+QUOTED names a variable of the caller's, true inside quotes: BODY sees it as
+it was before the octet. QUOTE is the octet of the quote that encloses fields.
+Without DELIMITER every quote turns QUOTED over after it. With DELIMITER, the
+octet that separates fields, a quote opens a quoted field only where a field
+begins (at START, after DELIMITER or a line end), and two quotes inside one
+stand for one quote, BODY seeing QUOTED true for the second. BODY leaves the
+whole with RETURN, whose value the form then has; else NIL."
   (let ((node (gensym "NODE")) (from (gensym "FROM")) (to (gensym "TO")) (at (gensym "AT"))
-        (i (gensym "I")) (visit (gensym "VISIT")))
+        (i (gensym "I")) (visit (gensym "VISIT")) (q (gensym "QUOTE")) (d (gensym "DELIMITER"))
+        (before (gensym "BEFORE")) (closed (gensym "CLOSED")) (doubled (gensym "DOUBLED")))
     `(block nil
-       (let ((,at ,start))
-         (declare (type fixnum ,at))
+       (let ((,at ,start) (,q ,quote) (,d ,delimiter)
+             ;; the octet before, NIL at START; whether it closed a quoted field
+             (,before nil) (,closed nil))
+         (declare (type fixnum ,at) (type (unsigned-byte 8) ,q) (type (or null (unsigned-byte 8)) ,d ,before))
          (flet ((,visit (,node ,from ,to)
                   (declare (type fixnum ,from ,to))
                   (loop for ,i of-type fixnum from ,from below ,to
-                        do (let ((,octet (tuatara.text:piece-octet ,node ,i))
-                                 (,position (+ ,at (- ,i ,from))))
+                        do (let* ((,octet (tuatara.text:piece-octet ,node ,i))
+                                  (,position (+ ,at (- ,i ,from)))
+                                  (,doubled (and ,d ,closed (= ,octet ,q))))
                              (declare (type (unsigned-byte 8) ,octet) (type fixnum ,position) (ignorable ,position))
+                             (when ,doubled (setf ,quoted t))
+                             (setf ,closed nil)
                              ,@body
-                             (when (= ,octet +quote-octet+) (setf ,quoted (not ,quoted)))))
+                             (cond ((or ,doubled (/= ,octet ,q)))
+                                   ((null ,d) (setf ,quoted (not ,quoted)))
+                                   (,quoted (setf ,quoted nil ,closed t))
+                                   ((or (null ,before) (= ,before ,d) (= ,before 10) (= ,before 13))
+                                    (setf ,quoted t)))
+                             (setf ,before ,octet)))
                   (incf ,at (- ,to ,from))))
            (declare (dynamic-extent #',visit))
            (when (< ,at ,end)
@@ -178,7 +194,8 @@ again while it is open."
   (call-next-method)
   (multiple-value-bind (octet found) (separator-octet *csv-separator* (tuatara.buffer:buffer-text buffer))
     (setf (tuatara.buffer:buffer-local buffer :csv-delimiter) octet
-          (tuatara.buffer:buffer-local buffer :csv-detecting) (and (eq *csv-separator* :detect) (if found :done :open))))
+          (tuatara.buffer:buffer-local buffer :csv-detecting)
+          (and (eq *csv-separator* :detect) (if found :done :open))))
   (pushnew 'csv-note-change (tuatara.buffer:buffer-change-functions buffer))
   (set-header-lock buffer (and *list-header-lock* (list-header-p buffer))))
 
@@ -260,14 +277,16 @@ start of the text when that is within +CSV-SCAN-LIMIT+ octets, or the start
 of the first line within them, taken to begin a record."
   (cond (known known)
         ((<= line-start +csv-scan-limit+) 0)
-        (t (let ((newline (tuatara.text:rope-find-line-end rope :start (- line-start +csv-scan-limit+) :end line-start)))
+        (t (let ((newline (tuatara.text:rope-find-line-end rope :start (- line-start +csv-scan-limit+)
+                                                                :end line-start)))
              (if newline (1+ newline) line-start)))))
 
-(defun record-starts-between (rope anchor line-start)
+(defun record-starts-between (rope anchor line-start &key (quote +quote-octet+) delimiter)
   "Read ROPE from ANCHOR, a record's start, below LINE-START, a line's: two
 values, the last line start at or before LINE-START outside quotes, which
 begins the record holding that line, and the record starts met every
-+CSV-RECORD-CHECKPOINT+ octets on the way, the last first."
++CSV-RECORD-CHECKPOINT+ octets on the way, the last first. QUOTE and
+DELIMITER are as DO-CSV-OCTETS takes them."
   (declare (type fixnum anchor line-start))
   (let ((start anchor) (quoted nil) (found '()) (checkpoint (+ anchor +csv-record-checkpoint+))
         ;; a carriage return outside quotes just read: a line end unless a newline comes next
@@ -278,7 +297,7 @@ begins the record holding that line, and the record starts met every
              (when (>= start checkpoint)
                (push start found)
                (setf checkpoint (+ start +csv-record-checkpoint+)))))
-      (do-csv-octets (b at quoted) (rope anchor line-start)
+      (do-csv-octets (b at quoted) (rope anchor line-start :quote quote :delimiter delimiter)
         (when (and return-before (/= b 10)) (line-ended at))
         (setf return-before (and (= b 13) (not quoted)))
         (when (and (= b 10) (not quoted)) (line-ended (1+ at))))
@@ -290,16 +309,13 @@ begins the record holding that line, and the record starts met every
 NOW, a later one, leave it as it was: the start of the first change (the
 text's end when there is none, MOST-POSITIVE-FIXNUM); NIL when that is not
 known, VERSION not before NOW or the text swapped whole."
-  (let ((v version) (low most-positive-fixnum))
-    (loop
-      (when (eq v now) (return low))
-      (let ((next (tuatara.text:version-next v)))
-        (unless next (return nil))
-        (let ((batch (tuatara.text:version-batch next)))
-          (when (tuatara.text:batch-swap batch) (return nil))
-          (loop for edit across (tuatara.text:batch-edits batch)
-                do (setf low (min low (tuatara.text:edit-start edit)))))
-        (setf v next)))))
+  (let ((batches (tuatara.text:version-batches version now))
+        (low most-positive-fixnum))
+    (unless (eq batches :whole)
+      (dolist (batch batches low)
+        (when (tuatara.text:batch-swap batch) (return nil))
+        (loop for edit across (tuatara.text:batch-edits batch)
+              do (setf low (min low (tuatara.text:edit-start edit))))))))
 
 (defun csv-record-start (buffer line-start)
   "Where the record holding the line of BUFFER starting at LINE-START begins: a
@@ -331,25 +347,31 @@ up. Complexity: O(the octets read)."
             (cons version (if (> (length kept) 512) (subseq kept 0 512) kept)))
       start)))
 
-(defun rope-record-start (rope line-start)
+(defun rope-record-start (rope line-start &key (quote +quote-octet+) delimiter)
   "Where the record of ROPE, CSV text, holding the line starting at
 LINE-START begins (as CSV-RECORD-START finds it, nothing kept): for work on a
-copy of a text, on any thread."
-  (values (record-starts-between rope (record-scan-anchor rope line-start nil) line-start)))
+copy of a text, on any thread. QUOTE is the octet of the quote that encloses
+fields, a double quote unless given. Without DELIMITER every quote opens or
+closes a quoted field; with DELIMITER, the octet that separates fields, a
+quote opens one only where a field begins, and two quotes inside one stand
+for one."
+  (values (record-starts-between rope (record-scan-anchor rope line-start nil) line-start
+                                 :quote quote :delimiter delimiter)))
 
-(defun csv-record-end (rope start)
+(defun csv-record-end (rope start &key (quote +quote-octet+) delimiter)
   "Where the record of ROPE, CSV text, beginning at START ends: a quoted field
 may hold line breaks, so the first line end after START outside quotes. Two
 values: that line end (the end of the text when there is none), and the start
 of the line after it. No more than +CSV-SCAN-LIMIT+ octets are read: a record
-not ended within them ends with its first line."
+not ended within them ends with its first line. QUOTE and DELIMITER are as
+ROPE-RECORD-START takes them."
   (declare (type fixnum start))
   (let* ((size (tuatara.text:rope-octet-length rope))
          (stop (min size (+ start +csv-scan-limit+)))
          (quoted nil)
          ;; a carriage return outside quotes just read: a line end unless a newline comes next
          (return-before nil))
-    (do-csv-octets (b at quoted) (rope start stop)
+    (do-csv-octets (b at quoted) (rope start stop :quote quote :delimiter delimiter)
       (when (and return-before (/= b 10))
         (return-from csv-record-end (values (1- at) at)))
       (setf return-before (and (= b 13) (not quoted)))
@@ -410,7 +432,7 @@ COLOURING* says."
                           (multiple-value-bind (row-ranges f q) (csv-scan rope start end delimiter field quoted)
                             (add row-ranges)
                             (setf field f quoted q carried t)))))))
-      (cdr ranges))))
+      (list (cdr ranges)))))
 
 (defun csv-field-spans (text start end delimiter spans &optional (first 0) last)
   "Put where the fields of the record in TEXT, a string, from START below END
@@ -575,7 +597,8 @@ CSV buffer."
   (let* ((buffer (current-buffer))
          (current (csv-delimiter buffer))
          (candidates (append (loop for (name . char) in *csv-separator-names*
-                                   collect (make-candidate name :annotation (if (member char '(#\Tab #\Space)) "" (string char))))
+                                   collect (make-candidate name :annotation (if (member char '(#\Tab #\Space))
+                                                                                "" (string char))))
                              (list (make-candidate "detect" :annotation "what the first line has most of"))))
          (answer (completing-read "Separator: " candidates :keep-order t :default (separator-name current)))
          (detect (string-equal answer "detect")))

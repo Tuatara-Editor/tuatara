@@ -24,8 +24,9 @@ that ended, every buffer of its group), \\[list-unmark-entry] unmarks it,
 \\[list-unmark-all] unmarks them all, \\[list-toggle-marks] swaps marked and
 unmarked. \\[buffers-save] saves the marked buffers, \\[list-delete-marked]
 kills them after asking (on a heading, every buffer of that project or client's
-group), \\[list-execute] kills those marked for deletion. \\[revert-buffer]
-lists them again, as the list does by itself while it is shown, marks kept. The
+group), \\[list-execute] kills those marked for deletion.
+\\[buffers-keep-client] makes the client whose group the cursor is in the
+persistent one. \\[revert-buffer] lists them again, as the list does by itself while it is shown, marks kept. The
 modal keys that move, select and copy work as in any support buffer;
 \\<normal>\\[start-selection] and \\[select-lines] select."
   :lighter "Buffers" :interactive nil)
@@ -261,42 +262,17 @@ which of them ended or are kept; another key means the list is out of date
 (define-command buffers ()
   "List every live buffer in *Buffers*, those used most recently first, in a
 section for each project (a directory holding .git or .project,
-*PROJECT-ROOT-MARKERS*: its files, the directories of it listed and the buffers
-standing in them), the project of the buffer used last first, then one for those
-in none. Each heading says the project's directory name and how many buffers it
-holds. In an editor running in the background, a group for each client instead:
-this client's open, the other clients' folded, then those of clients that ended,
-the last to end first, each under a faint heading saying when it ended. A
-client's group whose buffers are in more than one project holds a section for
-each, its heading and rows set in under the group's, folded on its own. Then
-come those of the buffers every client is offered (*Messages*). A buffer opened
-from another group becomes this client's too. Where they are shows in the last
-column, a rimu list's directory there too. \\<buffers-mode>\\[list-visit] on the
-heading of a client that ended takes its buffers up into this client, as
-starting tuatara --client with no files does for the last to end, and
-\\[list-mark-for-deletion] there marks every buffer of its group for deletion.
-\\[list-toggle-fold] folds or unfolds a section, \\[list-toggle-all-folds] all
-of them. \\[list-delete-marked] on a heading kills the buffers of the project or
-client's group, a project's within a group those of that client alone, as
-\\[kill-project-buffers] does from any of them. Each line
-shows a buffer's marks (> marked, D marked for deletion, * modified, %
-read-only), name, size, major mode and file; names in stars (*Messages*),
-read-only buffers, help and marked names each set apart in a face of their own;
-the number of buffers, their size and files summed up at the end.
-\\<support>\\[next-line] and \\[previous-line] move,
-\\<buffers-mode>\\[list-visit] or \\`RET' opens the buffer on the line,
-\\[list-visit-other] in another window, \\[quit-window] returns.
-\\[list-mark-entry] marks the buffer on the line, \\[list-mark-for-deletion]
-marks it for deletion, \\[list-unmark-entry] unmarks it, \\[list-unmark-all]
-unmarks them all, \\[list-toggle-marks] swaps marked and unmarked, a count
-marking as many. \\[buffers-keep-client] makes the client whose group the
-cursor is in the persistent one. \\[buffers-save] saves the marked buffers (the
-one on the line when none is), \\[list-delete-marked] kills them after asking,
-\\[list-execute] kills those marked for deletion. \\[revert-buffer] lists them
-again, marks kept, as the list does by itself while it is shown.
-\\<support>\\[beginning-of-buffer], \\`g e', \\[start-selection],
-\\[copy-selection-or-char] and the other modal keys that read and select work as
-in any support buffer."
+*PROJECT-ROOT-MARKERS*), the project of the buffer used last first, then one
+for those in none. Each heading says the project's directory name and how many
+buffers it holds. In an editor running in the background there is a group for
+each client instead: this client's open, the other clients' folded, then those
+of clients that ended, the last to end first, then the buffers every client is
+offered (*Messages*). A group whose buffers are in more than one project holds
+a section for each, folded on its own. A buffer opened from another group
+becomes this client's too. Each line shows a buffer's marks (> marked, D marked
+for deletion, * modified, % read-only), name, size, major mode and where it is,
+with the number of buffers, their size and files summed up at the end.
+\\<buffers-mode>\\[describe-bindings] lists the keys of the list."
   (let ((list (buffer-in-mode "*Buffers*" 'buffers-mode)))
     (show-buffer list)
     ;; the other clients' groups shown folded, this client's open
@@ -500,7 +476,8 @@ each has."
 (defun install-buffers ()
   "Bind the *Buffers* keys and the global entry points."
   (entry-list-keys 'buffers-mode "the buffer list (\\[buffers])")
-  (define-keys *buffers-keymap* '(("s" buffers-save) ("K" buffers-keep-client) ("h" buffers-fold-heading)))
+  (define-keys *buffers-keymap* '(("s" buffers-save) ("K" buffers-keep-client) ("h" buffers-fold-heading)
+                                  ("C-b" buffers-fold-heading)))
   (define-keys *global-keymap* '(("C-x C-b" buffers) ("C-x p k" kill-project-buffers))))
 
 (commands-for-mode 'buffers-mode "the buffer list (\\[buffers])" 'buffers-save)

@@ -51,17 +51,6 @@ begin at its parent's first line."
      query tree rope start end)
     table))
 
-(defun text-column (rope position moved)
-  "The column of POSITION in ROPE, a tab to the next tab stop, its line
-taken as indented when MOVED, the table of lines indented before it in the
-same pass (or NIL), has it: each line's start to (COLUMN . WIDTH), the column
-its text moves to and the octets of blanks it begins with now."
-  (let* ((start (tuatara.text:rope-line-start rope position))
-         (move (and moved (gethash start moved))))
-    (text-columns (tuatara.text:rope-string rope :start (if move (min position (+ start (cdr move))) start)
-                                                   :end position)
-                   (if move (car move) 0))))
-
 (defun line-indent-column (rope line)
   "The column the text of line number LINE of ROPE begins at."
   (nth-value 2 (rope-line-blanks rope (tuatara.text:line->byte rope line))))
@@ -210,7 +199,8 @@ in *Messages*, when the buffer has no syntax tree."
                ;; from the text before the first line, which may reach on to it (@extend)
                (from (let* ((low (max 0 (- first 4096)))
                             (text (tuatara.text:rope-octets rope :start low :end first))
-                            (last (position-if-not (lambda (octet) (member octet tuatara.text:*blank-octets*)) text :from-end t)))
+                            (last (position-if-not (lambda (octet) (member octet tuatara.text:*blank-octets*))
+                                                   text :from-end t)))
                        (if last (+ low last) first)))
                (captures (indent-captures (language-compiled-query language :indent) tree rope from
                                           (tuatara.text:rope-line-end rope stop)))

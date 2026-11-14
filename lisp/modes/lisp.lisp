@@ -42,72 +42,14 @@ quote mark, a comma, a semicolon or a double quote."
   (let ((code (char-code char)))
     (or (> code 255) (and (lisp-symbol-octet-p code) (/= code 124)))))
 
-(defun lisp-elements (octets &key (elements t) (end (length octets)))
-  "The complete expressions in OCTETS, Lisp text, as a list of (START END
-DEPTH), in the order they end: atoms, strings and bracketed lists, START and
-END offsets into OCTETS, a quote or other prefix before one counting as part of
-it, DEPTH the brackets around it. Comments (; to the end of the line, #| |#,
-nested) are skipped, and so is the character after #\\, as the reader skips
-them, so that brackets there count for nothing. An unclosed list is no element,
-though what is complete inside it is. The second value lists where the lists
-still open at the end begin, the innermost first (at a quote or other prefix
-before its bracket, when it has one). With ELEMENTS NIL, only that second
-value is worked out, the first NIL: nothing is made for each element. Only
-the octets below END are read."
-  (declare (type (simple-array (unsigned-byte 8) (*)) octets))
-  (let ((collect elements) (elements '()) (opens '()) (n end) (i 0) (prefix nil))
-    (labels ((at (j) (if (< j n) (aref octets j) 0))
-             (element (start end)
-               (when collect (push (list (or prefix start) end (length opens)) elements))
-               (setf prefix nil)))
-      (loop while (< i n)
-            do (let ((b (at i)))
-                 (cond
-                   ((member b '(32 9 10 12 13)) (incf i))
-                   ((= b 59) (setf i (or (tuatara.text:octets-line-end-position octets i n) n)))              ; ;
-                   ((and (= b 35) (= (at (1+ i)) 124))                                   ; #| |#
-                    (setf i (nested-comment-end #'at i n)))
-                   ((= b 40) (push (or prefix i) opens) (setf prefix nil) (incf i))    ; (
-                   ((= b 41) (when opens
-                               (let ((open (pop opens)))
-                                 (when collect (push (list open (1+ i) (length opens)) elements)))) ; )
-                    (setf prefix nil) (incf i))
-                   ((= b 34)                                                             ; "..."
-                    (let ((j (1+ i)))
-                      (loop while (and (< j n) (/= (at j) 34))
-                            do (when (= (at j) 92) (incf j))
-                               (incf j))
-                      (element i (min n (1+ j)))
-                      (setf i (min n (1+ j)))))
-                   ((member b '(39 96)) (unless prefix (setf prefix i)) (incf i))      ; ' `
-                   ((= b 44) (unless prefix (setf prefix i)) (incf i)                   ; , ,@
-                    (when (= (at i) 64) (incf i)))
-                   ((and (= b 35) (member (at (1+ i)) '(39 43 45 46)))                 ; #' #+ #- #.
-                    (unless prefix (setf prefix i)) (incf i 2))
-                   ((and (= b 35) (= (at (1+ i)) 40))                                   ; #( a vector
-                    (unless prefix (setf prefix i)) (incf i))
-                   (t                                                                     ; an atom
-                    (let ((j i))
-                      (when (and (= b 35) (= (at (1+ j)) 92)) (incf j 3))               ; #\x: x is itself
-                      (loop while (and (< j n) (lisp-symbol-octet-p (at j)))
-                            do (case (at j)
-                                 (92 (incf j 2))                                          ; \x
-                                 (124 (let ((close (position 124 octets :start (min n (1+ j)) :end n)))   ; |...|
-                                        (setf j (if close (1+ close) n))))
-                                 (t (incf j))))
-                      (element i (min j n))
-                      (setf i (max (1+ i) (min j n)))))))))
-    (values (nreverse elements) opens)))
-
 (defun lisp-text-start (rope position &optional reach block)
   "Where to start reading ROPE to find the expressions around POSITION: the
 start of the nearest line at or before it that begins with an open bracket,
 taken to be where a top-level form begins (LINE-OPENER-BEFORE, reading into
 BLOCK when given); else the text's start. With REACH, looked for no further
 than REACH octets back: NIL when it is not found there."
-  (or (line-opener-before rope (1+ (min position (1- (tuatara.text:rope-octet-length rope)))) :openers '(40)
-                                                                                    :reach (or reach most-positive-fixnum)
-                                                                                    :block block)
+  (or (line-opener-before rope (1+ (min position (1- (tuatara.text:rope-octet-length rope))))
+                          :openers '(40) :reach (or reach most-positive-fixnum) :block block)
       (and (null reach) 0)))
 
 (defun expression-before (buffer position)
@@ -206,9 +148,30 @@ for it. On the editor's thread only."
         (let ((open (first (nth-value 1 (lisp-elements octets :elements nil :end n)))))
           (when (and open (= (aref octets open) 40))
             (let* ((from (position-if-not (lambda (b) (member b '(32 9 10 12 13))) octets :start (1+ open) :end n))
-                   (to (and from (position-if (lambda (b) (member b '(32 9 10 12 13 40 41 34 59 39 96))) octets :start from :end n))))
+                   (to (and from (position-if (lambda (b) (member b '(32 9 10 12 13 40 41 34 59 39 96)))
+                                              octets :start from :end n))))
               (when (and from (not (member (aref octets from) '(40 41 34 59 39 96 35 44))))
                 (tuatara.text:octets-string octets :start from :end (or to n))))))))))
+
+(defun lisp-signature-at (buffer)
+  "The parameters of the function or macro whose call point is in, in BUFFER,
+or NIL. The call is read again only once the text or point changed, and the
+parameters only when it is another call, or the text changed."
+  (let* ((version (tuatara.buffer:buffer-version buffer))
+         (point (tuatara.buffer:buffer-point buffer))
+         (package (lisp-package buffer))
+         (seen (tuatara.buffer:buffer-local buffer 'lisp-eldoc-seen)))
+    (destructuring-bind (&optional seen-version seen-point seen-name seen-package seen-signature) seen
+      (if (and seen (eq seen-version version) (eql seen-point point))
+          seen-signature
+          (let* ((name (ignoring-errors-reported ("finding the call around point in ~a"
+                                                  (tuatara.buffer:buffer-name buffer))
+                         (operator-at buffer point)))
+                 (signature (if (and name (equal name seen-name) (eq seen-version version) (eq seen-package package))
+                                seen-signature
+                                (and name (lisp-signature (lisp-symbol-named name package))))))
+            (setf (tuatara.buffer:buffer-local buffer 'lisp-eldoc-seen) (list version point name package signature))
+            signature)))))
 
 (defun lisp-eldoc (editor)
   "Post-command function: in a Lisp buffer, when the echo area has nothing else
@@ -217,18 +180,7 @@ to say, show the parameters of the function or macro whose call point is in."
     (when (and (null (editor-message editor))
                (typep (buffer-major-mode buffer) 'lisp-mode)
                (tuatara.buffer:buffer-indexed-p buffer))
-      ;; the operator read again only once the text or point changed
-      (let* ((version (tuatara.buffer:buffer-version buffer))
-             (point (tuatara.buffer:buffer-point buffer))
-             (seen (tuatara.buffer:buffer-local buffer 'lisp-eldoc-seen))
-             (name (if (and seen (eq (first seen) version) (eql (second seen) point))
-                       (third seen)
-                       (let ((name (ignoring-errors-reported ("finding the call around point in ~a"
-                                                              (tuatara.buffer:buffer-name buffer))
-                                     (operator-at buffer point))))
-                         (setf (tuatara.buffer:buffer-local buffer 'lisp-eldoc-seen) (list version point name))
-                         name)))
-             (signature (and name (lisp-signature (lisp-symbol-named name (lisp-package buffer))))))
+      (let ((signature (lisp-signature-at buffer)))
         (when signature
           (setf (editor-message editor) signature))))))
 
@@ -357,32 +309,32 @@ working buffer; else the one shown in the selected window."
                      (warnings 0)
                      (trace nil)
                      (outcome
-                       (catch 'stop-evaluation
-                         (let ((sb-ext:*invoke-debugger-hook*
-                                 (lambda (condition hook) (declare (ignore hook))
-                                   (when (or *debug-on-error* tuatara.runtime:*debug-on*)
-                                     (setf trace (capture-backtrace :stop 'evaluate-forms)))
-                                   (throw 'stop-evaluation (list :error condition))))
-                               (*debugger-hook*
-                                 (lambda (condition hook) (declare (ignore hook))
-                                   (when (or *debug-on-error* tuatara.runtime:*debug-on*)
-                                     (setf trace (capture-backtrace :stop 'evaluate-forms)))
-                                   (throw 'stop-evaluation (list :error condition)))))
-                           (handler-case
-                               (handler-bind ((warning (lambda (w) (declare (ignore w)) (incf warnings)))
-                                              (error (lambda (e) (declare (ignore e))
-                                                       ;; the calls under way, before they are unwound
-                                                       (when (or *debug-on-error* tuatara.runtime:*debug-on*)
-                                                         (setf trace (capture-backtrace :stop 'evaluate-forms))))))
-                                 (multiple-value-bind (values count) (evaluate-forms text (car box) box)
-                                   (list :values values count)))
-                             ;; the empty input run dry: say what that means here
-                             (end-of-file (e)
-                               (list :error (if (member (stream-error-stream e) (list input io))
-                                                (make-condition 'simple-error :format-control
-                                                                "end of file: code evaluated in the editor has no input to read")
-                                                e)))
-                             (serious-condition (e) (list :error e)))))))
+                       (flet ((note-trace ()
+                                ;; the calls under way, before they are unwound
+                                (when (or *debug-on-error* tuatara.runtime:*debug-on*)
+                                  (setf trace (capture-backtrace :stop 'evaluate-forms))))
+                              (give-up (condition hook)
+                                (declare (ignore hook))
+                                (throw 'stop-evaluation (list :error condition))))
+                         (catch 'stop-evaluation
+                           (let ((sb-ext:*invoke-debugger-hook* (lambda (condition hook)
+                                                                  (note-trace)
+                                                                  (give-up condition hook)))
+                                 (*debugger-hook* (lambda (condition hook)
+                                                    (note-trace)
+                                                    (give-up condition hook))))
+                             (handler-case
+                                 (handler-bind ((warning (lambda (w) (declare (ignore w)) (incf warnings)))
+                                                (error (lambda (e) (declare (ignore e)) (note-trace))))
+                                   (multiple-value-bind (values count) (evaluate-forms text (car box) box)
+                                     (list :values values count)))
+                               ;; the empty input run dry: say what that means here
+                               (end-of-file (e)
+                                 (list :error (if (member (stream-error-stream e) (list input io))
+                                                  (make-condition 'simple-error :format-control
+                                                                  "end of file: code evaluated in the editor has no input to read")
+                                                  e)))
+                               (serious-condition (e) (list :error e))))))))
                 (when (and (consp outcome) (eq (first outcome) :error))
                   (tuatara.runtime:debug-report :error "evaluating Lisp: ~a~{~%    ~a~}" (second outcome) trace))
                 (setf result (list :outcome outcome :output (get-output-stream-string output)
@@ -454,7 +406,8 @@ value is said after what was evaluated, on one line: (setf x 1) => 1."
          (lines (tuatara.text:split-words (getf result :output) '(#\Newline)))
          (warnings (getf result :warnings))
          (note (let ((parts (remove nil (list (and (plusp warnings) (format nil "~d warning~:p" warnings))
-                                              (and lines (not printing) (format nil "printed ~d line~:p" (length lines)))))))
+                                              (and lines (not printing)
+                                                   (format nil "printed ~d line~:p" (length lines)))))))
                  ;; an argument to MESSAGE, which writes in the keys of its control string only
                  (and parts (format nil (substitute-command-keys "  (~{~a~^, ~}: \\[view-echo-area-messages])"
                                                                  :marks t :for-format t)
@@ -470,9 +423,10 @@ value is said after what was evaluated, on one line: (setf x 1) => 1."
           (t (destructuring-bind (values count) (rest outcome)
                (let ((*package* (getf result :package)))
                  (cond (printing
-                        (goto (tuatara.buffer:buffer-insert buffer print-at (with-output-to-string (out)
-                                                                         (terpri out)
-                                                                         (write-output-and-values out (getf result :output) values))))
+                        (goto (tuatara.buffer:buffer-insert
+                               buffer print-at (with-output-to-string (out)
+                                                 (terpri out)
+                                                 (write-output-and-values out (getf result :output) values))))
                         (when note (message "~a" (string-left-trim " " note))))
                        (insert-at
                         (goto (tuatara.buffer:buffer-insert buffer insert-at
