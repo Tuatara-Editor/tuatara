@@ -1236,11 +1236,13 @@ printf 'Source: foo\\nChecksums-Sha256:\\n %s 4 foo_1.0.orig.tar.xz\\nFiles:\\n 
         (is string= "abc" (uiop:read-file-string file))))))
 
 (define-test (tools release-sources-named-for-this-machine)
-  ;; the second file of a release, the sources, is looked through for this machine's names as the first is
-  (let ((release (uiop:read-file-string (tools-script "release.sh"))))
-    (true (search "done < <(find \"$pack\" -type f -print0)" release))
-    (true (< (search "done < <(find \"$pack\" -type f -print0)" release)
-             (search "tar -C \"$pack\" -cf - tuatara-sources" release)))))
+  ;; the second file of a release, the sources, is looked through for this machine's names as the first is,
+  ;; but for the archives of pinned commits, the same on every machine: a path their authors wrote (a CI
+  ;; runner's home) is theirs
+  (let* ((release (uiop:read-file-string (tools-script "release.sh")))
+         (scan "done < <(find \"$pack\" -type f ! -path \"$top/ghostty/*\" ! -path \"$top/grammars/*\" -print0)"))
+    (true (search scan release))
+    (true (< (search scan release) (search "tar -C \"$pack\" -cf - tuatara-sources" release)))))
 
 (defun run-python-tool (name &rest arguments)
   "What the script NAME of tools/ prints, run with ARGUMENTS."

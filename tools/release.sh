@@ -180,11 +180,14 @@ tuatara/syntax/grammars.tsv names, under the licence it names there, which the
 build patches as tuatara/syntax/patches/ says. tuatara/HACKING.org says how to
 build it.
 EOF
-# the sources are given to others too: nothing in them names this machine
+# the sources are given to others too: nothing in them names this machine. The
+# terminal library and the grammars are archives of the commits they are pinned
+# at, the same on every machine, so a path they name is their authors' own (a
+# CI runner's home among them) and is let be.
 named=0
 while IFS= read -r -d '' file; do
   if names_this_machine "$file"; then named=1; fi
-done < <(find "$pack" -type f -print0)
+done < <(find "$pack" -type f ! -path "$top/ghostty/*" ! -path "$top/grammars/*" -print0)
 if [ "$named" = 1 ]; then
   echo "tools/release.sh: files of the sources name this machine's home directory or user, where shown above: not released" >&2
   exit 1
