@@ -154,6 +154,7 @@ main article td:not(:last-child) kbd, main article td:not(:last-child) code { wh
   nav.toc { position: sticky; top: 0; align-self: start; max-height: 100vh; overflow-y: auto; box-sizing: border-box;
     border-right: 0; }
   .site main { border-left: 1px solid var(--rule); }
+  main article { padding-inline: 5%; }
 }
 @media print {
   nav.toc, .node { display: none; }
