@@ -1,4 +1,4 @@
-% Created 2026-11-14 Sat 21:21 with Tuatara, template article
+% Created 2026-11-15 Sun 09:08 with Tuatara, template article
 % Intended LaTeX compiler: xelatex
 %
 % The enhanced export's own look, for a note that sets none of its own
@@ -11627,6 +11627,15 @@ altogether, so the heading moves left. If you want a compact agenda:
       *org-agenda-untimed-text* nil
       *org-agenda-event-kind-text* nil)
 \end{Verbatim}
+
+The agenda is a list, so \texttt{C-x / s} keeps the lines that hold a pattern, and
+\texttt{C-x / f} and \texttt{C-x / h} keep or hide the entries whose one column holds it.
+The columns are \texttt{category}, \texttt{time}, \texttt{kind}, \texttt{keyword}, \texttt{priority},
+\texttt{heading}, \texttt{tags}, \texttt{date} and \texttt{file}. \texttt{date} is the day the entry is listed
+under, written \texttt{2026-10-01 Thu}, and \texttt{file} is the path of the note it comes
+from. A pattern is a regular expression, or literal text after \texttt{M-r}. Typing
+\texttt{2026-10-01} under \texttt{date} keeps the entries of that day, and under \texttt{heading}
+it keeps none, whatever the date line says.
 
 \texttt{*org-\codebreak{}agenda-\codebreak{}date-\codebreak{}in-\codebreak{}title*} is \texttt{nil}: a date written in a heading, such as
 \texttt{Dentist <2026-10-15 Thu 14:00>}, is taken out of the title on the agenda,
