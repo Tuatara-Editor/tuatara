@@ -42,7 +42,8 @@ Signals an error naming the slot and RECORD when it gives none, so that a
 record compiles only with every slot documented."
   (let ((documentation (and (consp slot) (consp (rest slot)) (getf (cddr slot) :documentation))))
     (unless (stringp documentation)
-      (error "The slot ~s of the record ~s has no documentation: write it as (~(~a~) INITIAL-VALUE :DOCUMENTATION \"...\")"
+      (error (concatenate 'string "The slot ~s of the record ~s has no documentation: "
+                          "write it as (~(~a~) INITIAL-VALUE :DOCUMENTATION \"...\")")
              (if (consp slot) (first slot) slot) record (if (consp slot) (first slot) slot)))
     documentation))
 
@@ -116,3 +117,12 @@ name."
                               ,(format nil "Make ~a, each argument the slot of its name, whose reader's ~
 documentation says what it holds." thing))))
        ',name)))
+
+(defun document-accessors (class-name)
+  "Give each reader and writer of the slots the class CLASS-NAME declares the
+documentation of its slot, as DEFINE-RECORD does for a record's accessors."
+  (dolist (slot (sb-mop:class-direct-slots (find-class class-name)))
+    (let ((text (documentation slot t)))
+      (when text
+        (dolist (name (append (sb-mop:slot-definition-readers slot) (sb-mop:slot-definition-writers slot)))
+          (setf (documentation name 'function) text))))))

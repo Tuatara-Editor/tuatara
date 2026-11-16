@@ -512,3 +512,15 @@ shown, by an ordinary change of the buffer."
            (false (tuatara.defaults::look-only-reason-of job "/nonexistent/project/"))
            (is = 3 asked))
       (sb-int:unencapsulate 'tuatara.defaults::directory-holds-evidence-p 'looking))))
+
+(define-test (search-results line-unreadable-is-one-line-not-written)
+  ;; a line that cannot be read as it was found is said not to hold the text found, not an error that ends
+  ;; the writing back of the file's other lines
+  (let ((buffer (tuatara.buffer:make-buffer "unreadable line" :text (format nil "one~%two~%"))))
+    (sb-int:encapsulate 'tuatara.buffer:buffer-string 'broken
+                        (lambda (function &rest arguments) (declare (ignore function arguments)) (error "half a character")))
+    (unwind-protect
+         (is equal "the line no longer holds the text found"
+             (nth-value 1 (tuatara.defaults::line-write-edit buffer nil "new" 0 3)))
+      (sb-int:unencapsulate 'tuatara.buffer:buffer-string 'broken)
+      (tuatara.buffer:kill-buffer buffer))))

@@ -259,7 +259,7 @@ something it says has changed."
                     (or virtual (and *split-typing* (< (hash-table-count (split-typing-live *split-typing*)) n)))
                     t))
          (selecting (and cursors (eq phase :select) (not virtual) (not running)
-                         (some #'cursor-selecting-p (split-places split))))
+                         (cursors-selecting-p split)))
          (key (list phase cursors running kept selecting n (and virtual (virtual-exact virtual))
                     (and virtual (virtual-count virtual)) (split-scope split) (split-hidden split)
                     tuatara.command:*keymaps-generation*))
@@ -465,7 +465,7 @@ nothing is."
                            (region-rectangle-rows b))
                    (if wide "the block's rows" "the block")))
           ((banked-p b)
-           (let* ((banked (banked-spans b))
+           (let* ((banked (coerce (banked-spans-now b) 'list))
                   (lines (span-line-count b banked)))
              (multiple-value-bind (start end) (selection-range)
                (values (tuatara.text:merge-ranges
@@ -692,7 +692,8 @@ the lines BANKED for it are spent. Returns its reminder."
 (defun banked-for-split (buffer whole)
   "The lines banked in BUFFER that a split about to be made there spends: none
 for one over the whole buffer, or while a split or a rectangle is there."
-  (and (not whole) (not (split-here-p buffer)) (not (rectangle-live-p buffer)) (banked-spans buffer)))
+  (and (not whole) (not (split-here-p buffer)) (not (rectangle-live-p buffer))
+       (coerce (banked-spans-now buffer) 'list)))
 
 (defun hold-virtual-matches (buffer regexp scope words whole first &key (move t) count)
   "Hold the matches of REGEXP in SCOPE of BUFFER, named WORDS (the whole buffer
@@ -805,7 +806,7 @@ BEGIN[\\s\\S]*?END around a large block, can be missed;
                                           (if (block-scope-p scope)
                                               (stretch-pattern-count counter b '() "" t)
                                               (stretch-pattern-count counter b scope regexp t :every t))))))
-            (stop-pattern-count counter)))
+            (tuatara.runtime:stop-background-work (pattern-count-job counter))))
       (if (zerop (length regexp))
           (message "Nothing to split on")
           (multiple-value-bind (scope words) (split-ranges whole wide)
@@ -1693,8 +1694,8 @@ result taken in too (which is no typing of yours)."
 
 (defun place-at (split position)
   "The place of SPLIT that POSITION is in or at the edge of, or NIL."
-  (let* ((b (split-buffer split)) (places (split-places split)) (lo 0) (hi (length places)))
-    (setf lo (tuatara.runtime:bisect (mid lo hi) (<= (place-bounds b (aref places mid)) position)) hi lo)
+  (let* ((b (split-buffer split)) (places (split-places split))
+         (lo (tuatara.runtime:bisect (mid 0 (length places)) (<= (place-bounds b (aref places mid)) position))))
     ;; the last place starting at or before POSITION, or the one after when an
     ;; empty place stands just there
     (loop for i from (max 0 (- lo 1)) below (min (length places) (+ lo 1))

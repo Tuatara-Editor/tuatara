@@ -82,10 +82,19 @@ for a size larger than a megabyte, new octets. BODY must not keep it."
 (defconstant +raw-byte-base+ #xDC00
   "A raw byte B decodes to the character with code B plus this.")
 
-(declaim (inline raw-byte-code-p))
+(declaim (inline raw-byte-code-p raw-byte-octet))
 (defun raw-byte-code-p (code)
   "True when CODE is the code of a raw byte's character, U+DC80..U+DCFF."
   (<= #xDC80 code #xDCFF))
+
+(defun raw-byte-octet (code)
+  "The octet a raw byte's character of code CODE (RAW-BYTE-CODE-P) stands for."
+  (- code +raw-byte-base+))
+
+(defun raw-byte-char (octet)
+  "The character the raw byte OCTET, 128 to 255, is read as where it is not
+part of well-formed UTF-8: what RAW-BYTE-OCTET takes back."
+  (code-char (+ +raw-byte-base+ octet)))
 
 ;;; Line ends
 ;;;
@@ -109,6 +118,20 @@ line (LINE-END-OCTET-P); a carriage return at AVAIL - 1 is taken to end one."
   (declare (type octets octets) (type fixnum i avail))
   (line-end-octet-p (aref octets i) (and (< (1+ i) avail) (aref octets (1+ i)))))
 
+(declaim (inline octet-ends-line-p))
+(defun octet-ends-line-p (octets i end avail)
+  "True when the octet at index I of OCTETS, read below END, ends a line
+\(OCTETS-LINE-END-P, the text ending at AVAIL): a newline, or a carriage
+return no newline follows; one at END - 1 is taken for none when AVAIL is
+NIL, the text going on past END unread."
+  (declare (type octets octets) (type fixnum i end) (type (or null fixnum) avail))
+  (let ((b (aref octets i)))
+    (or (= b 10)
+        (and (= b 13)
+             (if (< (1+ i) end)
+                 (/= 10 (aref octets (1+ i)))
+                 (and avail (octets-line-end-p octets i avail)))))))
+
 (defun octets-line-end-position (octets start end &optional (avail end))
   "The index of the first octet of OCTETS from START below END that ends a
 line (OCTETS-LINE-END-P, the text ending at AVAIL), or NIL. AVAIL NIL says
@@ -116,13 +139,7 @@ the text goes on past END unread: a carriage return at END - 1, whose next
 octet is not known, is then taken for none. Complexity: O(END - START)."
   (declare (type octets octets) (type fixnum start end) (type (or null fixnum) avail) (optimize speed))
   (loop for i of-type fixnum from start below end
-        do (let ((b (aref octets i)))
-             (when (or (= b 10)
-                       (and (= b 13)
-                            (if (< (1+ i) end)
-                                (/= 10 (aref octets (1+ i)))
-                                (and avail (octets-line-end-p octets i avail)))))
-               (return i)))))
+        when (octet-ends-line-p octets i end avail) return i))
 
 (defun octets-line-end-position-backward (octets start end &optional (avail end))
   "The index of the last octet of OCTETS from START below END that ends a
@@ -131,13 +148,7 @@ the text goes on past END unread, as OCTETS-LINE-END-POSITION has it.
 Complexity: O(END - START)."
   (declare (type octets octets) (type fixnum start end) (type (or null fixnum) avail) (optimize speed))
   (loop for i of-type fixnum from (1- end) downto start
-        do (let ((b (aref octets i)))
-             (when (or (= b 10)
-                       (and (= b 13)
-                            (if (< (1+ i) end)
-                                (/= 10 (aref octets (1+ i)))
-                                (and avail (octets-line-end-p octets i avail)))))
-               (return i)))))
+        when (octet-ends-line-p octets i end avail) return i))
 
 (declaim (inline line-text-ends-p))
 (defun line-text-ends-p (octets i avail crlf)
@@ -316,6 +327,13 @@ PATTERN, the other bits clear."
     (declare (type (unsigned-byte 64) x nonzero))
     (logandc1 nonzero +ascii-mask+)))
 
+(declaim (inline word-pair-newlines))
+(defun word-pair-newlines (a b)
+  "How many newlines the two words A and B, sixteen octets of text one after
+the other, hold."
+  (declare (type (unsigned-byte 64) a b) (optimize speed (safety 0)))
+  (logcount (logior (word-octets-of a +newlines+) (ash (word-octets-of b +newlines+) -1))))
+
 (declaim (inline word-holds-p))
 (defun word-holds-p (word pattern)
   "True when one of the eight octets of WORD equals the one in its place in
@@ -343,6 +361,9 @@ holds a carriage return."
                 (logcount (logandc2 ,returns (logior (ash ,newlines -8)
                                                      (if (eql ,next 10) +last-octet-top+ 0))))))))))
 
+(declaim (inline %memchr))
+(define-c-function ("memchr" %memchr) :pointer (sap :pointer) (octet :int) (count :size))
+
 (declaim (inline sap-holds-return-p))
 (defun sap-holds-return-p (sap start end)
   "True when a carriage return is among the octets at SAP from offset START
@@ -351,10 +372,7 @@ are its newlines alone."
   (declare (type sb-sys:system-area-pointer sap) (type fixnum start end))
   (and (< start end)
        (/= 0 (sb-sys:sap-int
-              (sb-alien:alien-funcall
-               (sb-alien:extern-alien "memchr" (function sb-sys:system-area-pointer sb-sys:system-area-pointer
-                                                         sb-alien:int sb-alien:unsigned-long))
-               (sb-sys:sap+ sap start) 13 (- end start))))))
+              (%memchr (sb-sys:sap+ sap start) 13 (- end start))))))
 
 (defun summarise-sap (sap start end)
   "Scan the octets at SAP from offset START, which must start a character,
@@ -389,8 +407,7 @@ Complexity: O(END - START)."
                     do (let ((a (sb-sys:sap-ref-64 sap i)) (b (sb-sys:sap-ref-64 sap (+ i 8))))
                          (declare (type (unsigned-byte 64) a b))
                          (unless (zerop (logand (logior a b) +ascii-mask+)) (return))
-                         (incf lines (logcount (logior (word-octets-of a +newlines+)
-                                                       (ash (word-octets-of b +newlines+) -1))))
+                         (incf lines (word-pair-newlines a b))
                          (incf chars 16) (incf utf16 16) (incf i 16)))
               (loop while (<= (+ i 8) end)
                     do (let ((word (sb-sys:sap-ref-64 sap i)))
@@ -441,8 +458,7 @@ for. Complexity: O(END - START)."
                    (incf i)))
         (progn
           (loop while (<= (+ i 16) end)
-                do (incf lines (logcount (logior (word-octets-of (sb-sys:sap-ref-64 sap i) +newlines+)
-                                                 (ash (word-octets-of (sb-sys:sap-ref-64 sap (+ i 8)) +newlines+) -1))))
+                do (incf lines (word-pair-newlines (sb-sys:sap-ref-64 sap i) (sb-sys:sap-ref-64 sap (+ i 8))))
                    (incf i 16))
           (loop while (<= (+ i 8) end)
                 do (incf lines (logcount (word-octets-of (sb-sys:sap-ref-64 sap i) +newlines+)))
@@ -482,12 +498,19 @@ up to where it goes wrong; else the one octet at I."
                 (incf k)
                 (setf state next))))))
 
-(defun octets-string (octets &key (start 0) (end (length octets)) replacement)
+(defun octets-string (octets &key (start 0) (end (length octets)) replacement base)
   "OCTETS from START below END as a string: well-formed UTF-8 decoded, every
 other octet as its raw byte's character (U+DC80..U+DCFF); with REPLACEMENT, a
 character, each piece of what is not UTF-8 as that character instead (a
-sequence cut short as one, any other octet as one each)."
+sequence cut short as one, any other octet as one each). With BASE, octets
+that are all ASCII give a base string, which takes a quarter of the memory."
   (declare (type octets octets) (type fixnum start end) (type (or null character) replacement))
+  (when (and base (loop for i of-type fixnum from start below end always (< (aref octets i) #x80)))
+    (let ((text (make-string (- end start) :element-type 'base-char)))
+      (loop for i of-type fixnum from start below end
+            for k of-type fixnum from 0
+            do (setf (schar text k) (code-char (aref octets i))))
+      (return-from octets-string text)))
   (let ((out (make-string (- end start))) (n 0) (i start))
     (declare (type fixnum n i))
     (loop while (< i end)
@@ -552,7 +575,7 @@ that vector and where the next octet goes."
                       (loop for i of-type fixnum from start below end do (body (char-code (char string i))))))))
     (each-code (code)
        (cond ((< code #x80) (put code))
-             ((raw-byte-code-p code) (put (- code +raw-byte-base+)))
+             ((raw-byte-code-p code) (put (raw-byte-octet code)))
              ((<= #xD800 code #xDFFF) (put #xEF) (put #xBF) (put #xBD))
              ((< code #x800)
               (put (logior #xC0 (ash code -6)))
@@ -579,3 +602,20 @@ to, as U+FFFD."
                                                 :element-type
                                                 '(unsigned-byte 8)) 0 :start start :end end)
         (subseq out 0 at))))
+
+;;; Hashes of octets
+
+(defconstant +fnv-offset+ #xcbf29ce484222325 "FNV-1a's starting value for 64-bit hashes.")
+
+(defconstant +fnv-prime+ 1099511628211 "FNV-1a's multiplier for 64-bit hashes.")
+
+(declaim (inline octets-hash))
+(defun octets-hash (octets &key (start 0) (end (length octets)) (hash +fnv-offset+))
+  "The 64-bit FNV-1a hash of OCTETS from START below END, carried on from HASH:
+the hash of a text read in pieces is that of each piece in turn, each begun
+from the hash of the pieces before it."
+  (declare (type octets octets) (type fixnum start end) (type (unsigned-byte 64) hash)
+           (optimize speed))
+  (loop for i of-type fixnum from start below end
+        do (setf hash (ldb (byte 64 0) (* (logxor hash (aref octets i)) +fnv-prime+))))
+  hash)

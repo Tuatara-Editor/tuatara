@@ -30,26 +30,50 @@ format (ELF) program with the AppImage type 2 mark."
   "The directory, ending in /, where the AppImage PROGRAM is unpacked, unpacking
 it the first time: run with --appimage-extract, outside the sandbox, as it is
 your own program, into appimages/NAME/ in the cache, NAME its file's, once for
-each version of it, the older ones deleted. CANCEL, a cons, a job's, is
-heeded once it is done."
+each version of it, the older ones deleted. It is unpacked under the lock of
+unpacking.lock there, so that a second unpacking of it at the same time, in
+this session or another, waits for the first and takes what it made, and it
+counts as unpacked only once the file unpacked is written beside it, after
+all of it. CANCEL, a cons, a job's, is heeded while the lock is waited for
+and once the unpacking is done."
   (let* ((stamp (tuatara.io:path-stamp program))
          (root (private-cache-directory
                 (format nil "appimages/~a/" (attachment-file-name (tuatara.io:native-file-name program) "program"))))
-         (directory (tuatara.io:path-join root (format nil "~d-~d/" (tuatara.io:stamp-size stamp) (tuatara.io:stamp-mtime stamp))))
-         (unpacked (concatenate 'string directory "squashfs-root/")))
-    (unless (eq :regular (tuatara.io:path-kind (concatenate 'string unpacked "AppRun")))
-      (dolist (old (ignoring-errors-reported ("listing ~a" root) (tuatara.io:directory-entries root)))
-        (ignoring-errors-reported ("deleting ~a~a" root (first old))
-          (tuatara.io:delete-tree (tuatara.io:path-join root (first old)))))
-      (tuatara.io:ensure-private-directory directory)
-      (let ((ended-well (nth-value 1 (tuatara.io:program-output (list program "--appimage-extract")
-                                                                :capture nil :seconds 600 :directory directory))))
-        (when (car cancel)
-          (ignoring-errors-reported ("deleting ~a" directory) (tuatara.io:delete-tree directory))
-          (tuatara.runtime:job-check-stop))
-        (unless (and ended-well (eq :regular (tuatara.io:path-kind (concatenate 'string unpacked "AppRun"))))
-          (ignoring-errors-reported ("deleting ~a" directory) (tuatara.io:delete-tree directory))
-          (refuse "~a could not be unpacked" (abbreviated-path program)))))
+         (version (format nil "~d-~d" (tuatara.io:stamp-size stamp) (tuatara.io:stamp-mtime stamp)))
+         (directory (tuatara.io:path-join root (format nil "~a/" version)))
+         (unpacked (concatenate 'string directory "squashfs-root/"))
+         (app-run (concatenate 'string unpacked "AppRun"))
+         (done (concatenate 'string directory "unpacked")))
+    (unless (eq :regular (tuatara.io:path-kind done :follow nil))
+      (tuatara.io:ensure-private-directory root)
+      (let ((lock (loop with lock-file = (tuatara.io:path-join root "unpacking.lock")
+                        repeat 600
+                        thereis (tuatara.io:open-lock-file lock-file :wait 1)
+                        do (when (car cancel)
+                             (tuatara.runtime:job-check-stop)
+                             (refuse "Stopped before ~a was unpacked" (abbreviated-path program)))
+                        finally (refuse "~a is being unpacked elsewhere still" (abbreviated-path program)))))
+        (unwind-protect
+             (unless (eq :regular (tuatara.io:path-kind done :follow nil))
+               (dolist (old (ignoring-errors-reported ("listing ~a" root) (tuatara.io:directory-entries root)))
+                 (unless (member (first old) (list version "unpacking.lock") :test #'string=)
+                   (ignoring-errors-reported ("deleting ~a~a" root (first old))
+                     (tuatara.io:delete-tree (tuatara.io:path-join root (first old))))))
+               ;; what an unpacking that did not end left
+               (when (tuatara.io:path-kind directory :follow nil)
+                 (ignoring-errors-reported ("deleting ~a" directory) (tuatara.io:delete-tree directory)))
+               (tuatara.io:ensure-private-directory directory)
+               (let ((ended-well (nth-value 1 (tuatara.io:program-output (list program "--appimage-extract")
+                                                                         :capture nil :seconds 600
+                                                                         :directory directory))))
+                 (when (car cancel)
+                   (ignoring-errors-reported ("deleting ~a" directory) (tuatara.io:delete-tree directory))
+                   (tuatara.runtime:job-check-stop))
+                 (unless (and ended-well (eq :regular (tuatara.io:path-kind app-run)))
+                   (ignoring-errors-reported ("deleting ~a" directory) (tuatara.io:delete-tree directory))
+                   (refuse "~a could not be unpacked" (abbreviated-path program)))
+                 (tuatara.io:write-private-file done "")))
+          (sb-posix:close lock))))
     unpacked))
 
 (defun shut-in-program (program cancel)

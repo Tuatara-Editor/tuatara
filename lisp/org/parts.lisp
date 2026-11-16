@@ -30,21 +30,10 @@ waits at most, once after each change, for its parse in the background, so
 that what is typed rarely shows in the colours of the parse before.")
 
 (define-record (org-state (:constructor make-org-state ()) (:copier nil))
-  "What the parse of an Org buffer, or of a part of one (ORG-PART), is: TREE,
-the parse of TEXT, the text at VERSION. RESULT, the latest parse a worker made,
-\(TREE TEXT VERSION RETURNS LANGUAGES PLACES FAILED), put there in one step,
-FAILED what went wrong when there is no TREE, PLACES where the parts are in a
-whole buffer's parse with the snapshot it was made of, let go once taken
-\(ORG-KEEP-WHOLE-PLACES). WORKER, the thread parsing in the background, one at a
-time, and WANTED, the VERSION, SOURCE, KEYWORDS and whether its lines end with
-carriage return and line feed (CRLF) of what it parses next, the latest asked
-for \(ORG-WANT-PARSE), guarded by LOCK, DONE woken as each parse is put in
-RESULT, WAITED the last version colouring waited for. RETURNS, where TEXT, with
-the carriage returns before its newlines left out, lost one
-\(ORG-STRIP-RETURNS). PARSE-SECONDS, how long the worker's last parse took.
-FAILED, what went wrong when the latest parse could not be made, the text then
-read as holding nothing Org shows (ORG-PARSE-FAILED). PARSE, for a whole buffer,
-its TREE as an ORG-PARSE (ORG-BUFFER-PARSE)."
+  "What the parse of an Org buffer, or of a part of one (ORG-PART), is, and the
+background work making it. A worker parses what was asked for last (ORG-WANT-PARSE)
+and puts the result in one step; the slots hold the parse, the text and version
+it is of, and what the worker is doing."
   (version -1 :documentation "The version of the text of ORG-STATE that its parse is of, -1 before any.")
   (tree nil :documentation "The parse of the text of ORG-STATE.")
   (text nil :documentation "The text ORG-STATE parses.")
@@ -70,27 +59,10 @@ KEYWORDS and CRLF.")
   (parse nil :documentation "The parse of ORG-STATE, for a whole buffer, its tree as an ORG-PARSE (ORG-BUFFER-PARSE)."))
 
 (define-record (org-part (:constructor make-org-part (level &optional todo-lines)) (:copier nil))
-  "A part of an Org buffer: the headline of LEVEL stars beginning it with the
-text under it before the next headline, or for LEVEL 0 the text before the first
-headline; LEVEL NIL while a change has left it to be split again. TODO-LINES,
-where its #+TODO: lines (#+SEQ_TODO:, #+TYP_TODO:) begin, and CODE-LINES, where
-the lines that may say where its source blocks are and what they are begin
-\(ORG-LINE-KIND's :CODE), octets from its start; COMMENTED, true when its
-headline's line has the word COMMENT. PARSE, its parse once made, (TREE TEXT
-RETURNS), the characters of TEXT counted from the part's start; STATE, for a
-part larger than *ORG-PARSE-AT-ONCE*, the ORG-STATE parsing it in the background
-instead; RETURNS, where its text lost a carriage return before a newline once
-that is asked for (:UNKNOWN before). CHANGED, the number of the buffer's version
-its text last changed in, and CHANGED-AT, the internal real time it did.
-TOUCHED, while changes within this one part alone wait to be taken in, what was
-known of it before and the octets they touched: (LEVEL COMMENTED LOW HIGH
-TODO-LINES CODE-LINES), the lines moved where the changes moved them. WHOLE,
-where it is in the buffer's whole parse (ORG-BUFFER-TREE) as last made, (TREE
-NODE START LENGTH RETURNS-BEFORE CURRENT): NODE its headline there (the whole
-TREE for the text before the first headline), START and LENGTH its characters in
-that parse's text, RETURNS-BEFORE the carriage returns that text lost before
-START. CURRENT false once the part changed, the parse then only shown until its
-own is made. BLOCKS, what ORG-BLOCKS-KEY takes of it, once worked out."
+  "A part of an Org buffer: the headline beginning it with the text under it
+before the next headline, or the text before the first headline. It keeps its
+own parse once made, and what is needed to find its place again after a change
+to the buffer."
   (level nil
          :documentation "The number of stars of the headline beginning an ORG-PART, 0 for the text before the first
 headline, NIL while a change has left it to be split again.")
@@ -121,12 +93,8 @@ START LENGTH RETURNS-BEFORE CURRENT).")
   (blocks nil :documentation "What ORG-BLOCKS-KEY takes of an ORG-PART, once worked out."))
 
 (define-record (org-parts (:constructor make-org-parts ()) (:copier nil))
-  "An Org buffer as its parts, in order: COUNT of them, STARTS, where each
-begins in octets, and PARTS, each an ORG-PART, vectors with room for more.
-VERSION, the buffer's version they are of; BYTES, its size then;
-TODO-KEYWORDS, the TODO keywords its #+TODO: lines set, (NOT-DONE . DONE) as
-ORG-PARSE takes them. SUMS and ADDS, room ORG-PARTS-TAKE-EDITS keeps
-between changes for the moves of the parts."
+  "An Org buffer as its parts, in order, with the version and size of the
+buffer they are of. The vectors have room for more parts."
   (version nil :documentation "The version of the buffer ORG-PARTS is of.")
   (bytes 0 :type fixnum :documentation "The size in octets of the buffer ORG-PARTS is of, at its version.")
   (count 0 :type fixnum :documentation "How many parts ORG-PARTS holds.")
@@ -724,14 +692,9 @@ NIL when there are none."
              within)))))
 
 (define-record (org-snapshot (:constructor make-org-snapshot (parts keywords entries crlf whole version)) (:copier nil))
-  "What the parse of a whole Org buffer is made from, taken from its PARTS
-\(ORG-PARTS) at one version. ENTRIES is a vector of (PART LEVEL SOURCE) in
-order, SOURCE the part's own parse (TREE TEXT RETURNS), or (:WHOLE NODE START
-LENGTH TEXT RETURNS) where the whole parse made before holds it as it is, or the
-part's text, a string or (ROPE START END). Or, for a whole parse made afresh,
-WHOLE, the whole text, a string or a rope. The TODO KEYWORDS the parts are
-parsed with; carriage return and line feed (CRLF), true when its lines end that
-way; VERSION, the number of the buffer's version it was taken at."
+  "What the parse of a whole Org buffer is made from: its parts (ORG-PARTS)
+taken at one version, each with the parse or the text it is made from, or the
+whole text when the parse is made afresh."
   (parts nil :documentation "The ORG-PARTS an ORG-SNAPSHOT is taken from.")
   (keywords nil :documentation "The TODO keywords the parts of an ORG-SNAPSHOT are parsed with.")
   (entries nil :documentation "The parts of an ORG-SNAPSHOT in order, a vector of (PART LEVEL SOURCE).")

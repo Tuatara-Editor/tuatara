@@ -253,6 +253,13 @@ frontend, the editor, and the options read."
       (let ((options (tuatara.terminal::read-options (list "--tutor" a) :directory (namestring dir))))
         (true (search "--tutor takes no files" (getf options :error)))))))
 
+(define-test (command-line one-way-to-tell-a-terminal)
+  ;; the terminal's frontend and the window's ask the one TERMINAL-P whether a descriptor is a terminal
+  (is eq (symbol-function 'tuatara.io:terminal-p) (symbol-function 'tuatara.terminal::terminal-p))
+  (with-test-directory (dir)
+    (with-open-file (out (merge-pathnames "plain" dir) :direction :output)
+      (false (tuatara.io:terminal-p (sb-sys:fd-stream-fd out))))))
+
 (define-test (command-line started-bare)
   ;; -Q: no init file, a state directory of its own that goes with the session, the real one untouched
   (with-test-directory (dir)

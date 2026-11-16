@@ -3,7 +3,8 @@
 
 (defpackage #:tuatara.text
   (:use #:cl #:alexandria)
-  (:import-from #:tuatara.runtime #:define-record #:one-line #:control-code-p)
+  (:import-from #:tuatara.runtime #:define-record #:one-line #:control-code-p #:define-c-function #:+o-cloexec+
+                #:duplicate-fd)
   (:documentation "The text model: a rope of UTF-8 leaves with cached counts, mapped files, edit
 batches, versions and anchors.")
   (:export #:escape-sequence-end #:sgr-parameters #:sgr-changes #:c1-control-p #:xml-entity #:xml-tag-end
@@ -13,10 +14,12 @@ batches, versions and anchors.")
    #:xml-elements #:xml-element #:xml-top-elements #:xml-element-inner #:xml-element-inside #:xml-replace-elements
    #:xml-value
    #:octet-at #:octets-integer #:octets-signed #:octets-put-integer #:octets-at-p #:base64-octets #:base64-string
-   #:octets-ascii #:octets-search #:octets-find
-   #:command-words #:version-numbers #:version-at-least-p #:search-count #:spaces
+   #:octets-ascii #:octets-search #:octets-find #:needle-at-p #:scan-chunk #:scan-chunk-backward
+   #:+near-octets+
+   #:command-words #:shell-quoted #:software-version-numbers #:software-version-at-least-p #:search-count #:spaces
+   #:octets-words
    #:utf-16-text #:parse-decimal #:whole-number #:split-words #:number-formatter #:merge-ranges
-   #:+fnv-offset+ #:+fnv-prime+ #:octets-hash #:rope-hash #:string-hash #:nul-fields
+   #:*blank-characters* #:blank-char-p #:lowercase-hex-p #:+fnv-offset+ #:+fnv-prime+ #:octets-hash #:rope-hash #:string-hash #:nul-fields
    ;; JSON
    #:json-read #:json-path-bounds #:json-write #:json-object #:json-get #:json-integer #:json-text #:json-items
    #:json-true-p #:json-error #:json-error-position #:json-error-text #:*json-deepest*
@@ -69,9 +72,11 @@ batches, versions and anchors.")
    #:check-rope #:summarise #:continuation-byte-p
    ;; strict UTF-8
    #:octets-decode #:octets-char-start-p #:octets-pending #:octets-string #:octets-first-line #:string-octets
-   #:put-string-octets #:string-octet-length #:char-octet-length #:lenient-string #:raw-byte-code-p #:control-code-p
+   #:put-string-octets #:string-octet-length #:char-octet-length #:lenient-string #:raw-byte-code-p #:raw-byte-octet #:raw-byte-char
+   #:file-advise #:control-code-p
    #:crlf-octets-p #:line-text-end #:rope-line-text-end #:rope-line-text-ends-p #:rope-line-start-p #:rope-crlf-p
    #:*openers* #:*closers* #:*opening-octets* #:*closing-octets* #:*bracket-octets* #:rope-invalid
    ;; octets and lines of plain strings
-   #:octets-latin-1 #:word-char-p #:name-char-p #:charset-text #:octets-hex #:*hex-pairs* #:string-line-start
+   #:octets-latin-1 #:word-char-p #:letter-or-mark-p #:name-char-p #:charset-text #:octets-hex #:*hex-pairs*
+   #:string-line-start
    #:string-line-end #:one-line #:natural-string-lessp))

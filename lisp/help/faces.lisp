@@ -32,12 +32,18 @@ a description, but the samples the list of fonts makes."
 
 (defun face-candidates ()
   "Completion candidates for every face a theme can colour, each with the
-first sentence of its description beside it."
-  (mapcar (lambda (name)
-            (make-candidate (face-name-text name)
-                            :annotation (list (documentation-field (face-doc-of name) 1/2))
-                            :value name))
-          (listed-faces)))
+first sentence of its description beside it: made again only when a face
+has come or gone, or a key been bound (HELP-CANDIDATES), not when a face's
+description is changed in place."
+  (let ((faces (listed-faces)))
+    (help-candidates :faces (list tuatara.command:*keymaps-generation* faces)
+                     (lambda ()
+                       (mapcar (lambda (name)
+                                 (make-candidate (face-name-text name)
+                                                 :annotation (lambda ()
+                                                               (list (documentation-field (face-doc-of name) 1/2)))
+                                                 :value name))
+                               faces)))))
 
 ;;; One face described
 
@@ -190,12 +196,13 @@ value: (:SECTION TITLE) for a title, the face's name for its line."
                    :refill (lambda (list) (face-list-render list :keep)))))
 
 (define-command list-faces ()
-  "List every face a theme can colour in *Faces*, in sections by the first
-word of their names: each face's name, a sample drawn in it as the theme in
-force draws it, and the first sentence of what it colours. \\<face-list-mode>\\[list-visit]
-on a face shows all that is known of it, as \\[describe-face] does;
-\\[search-filter-regex] narrows the list to the faces whose lines match;
-\\[revert-buffer] lists them again, after a theme is loaded or a face set."
+  "List every face a theme can colour in *Faces*, in sections by the first word
+of their names: each face's name, a sample drawn in it as the theme in force
+draws it, and the first sentence of what it colours.
+\\<face-list-mode>\\[list-visit] on a face shows all that is known of it, as
+\\[describe-face] does; \\[search-filter-regex] narrows the list to the faces
+whose lines match; \\[revert-buffer] lists them again, after a theme is loaded
+or a face set."
   (let ((list (set-search-filtering (buffer-in-mode "*Faces*" 'face-list-mode)
                                     :nouns "faces" :heading #'consp)))
     (face-list-render list :start)

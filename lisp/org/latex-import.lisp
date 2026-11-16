@@ -90,7 +90,9 @@ spaces, its length and every other character as they were."
 
 (defvar *latex-group-ends* nil
   "The ends of the groups of the text last read by LATEX-GROUP-END: (TEXT .
-ENDS), ENDS a table of where each group opening at a position ends.")
+ENDS), ENDS a table of where each group opening at a position ends. Each
+import has its own (LATEX-IMPORT), so that two read at once on two threads
+never share it.")
 
 (defun latex-group-ends (text)
   "A table of where each group of TEXT ends, by the position it opens at: for
@@ -114,14 +116,16 @@ that never ends is not in it. TEXT is read once."
   "Where the group TEXT opens at START ({ or [) ends: the position after its
 closing } or ], braces within counted, an escaped one not; NIL when it never
 ends. The ends of all of TEXT's groups are found once (LATEX-GROUP-ENDS)."
-  (unless (eq (car *latex-group-ends*) text)
-    (setf *latex-group-ends* (cons text (latex-group-ends text))))
-  (values (gethash start (cdr *latex-group-ends*))))
+  (let ((kept *latex-group-ends*))
+    (unless (eq (car kept) text)
+      (setf kept (cons text (latex-group-ends text))
+            *latex-group-ends* kept))
+    (values (gethash start (cdr kept)))))
 
 (defun latex-skip-space (text i &optional (end (length text)))
   "The first position from I in TEXT that is no space, tab or single line end."
   (let ((lines 0))
-    (loop while (and (< i end) (member (char text i) '(#\Space #\Tab #\Newline #\Return)))
+    (loop while (and (< i end) (blank-char-p (char text i)))
           do (when (char= (char text i) #\Newline) (incf lines))
           (when (> lines 1) (return))
           (incf i))
@@ -171,8 +175,8 @@ in TEXT, as two values: where the \\end begins and where it ends; nested
 ones of the same name counted. NIL when it is not closed before END."
   (let ((open (format nil "\\begin{~a}" name)) (close (format nil "\\end{~a}" name)) (depth 1) (i start))
     (loop
-     (let ((o (search open text :start2 i :end2 end))
-           (c (search close text :start2 i :end2 end)))
+     (let* ((c (search close text :start2 i :end2 end))
+            (o (and c (search open text :start2 i :end2 c))))
        (cond ((null c) (return nil))
              ((and o (< o c)) (incf depth) (setf i (+ o (length open))))
              (t (decf depth)
@@ -229,17 +233,25 @@ START below END, as two values: its start and its name; NIL when it has none."
 (defparameter *latex-org-tables* '("tabular" "tabular*" "tabularx" "tabulary" "longtable" "xltabular" "tabu")
   "Environments that are tables.")
 
+(defparameter *latex-ligatures-scanner* (cl-ppcre:create-scanner "---|--|``|''|~")
+  "The ligatures of LaTeX's plain text for quotes and dashes, and its tie, as
+LATEX-ORG-WORDS finds them.")
+
+(defparameter *latex-line-start-scanner* (cl-ppcre:create-scanner "\\n[ \\t]*")
+  "A line end and the blanks after it, as LATEX-ORG-WORDS finds them.")
+
 (defun latex-org-words (text)
   "Plain TEXT of a LaTeX document as an Org note's words (ORG-ESCAPED-WORDS),
 its lines after the first begun with *LATEX-ORG-INDENT*, its ligatures for
-quotes and dashes the characters they make."
-  (let* ((text (cl-ppcre:regex-replace-all "---" text "—"))
-         (text (cl-ppcre:regex-replace-all "--" text "–"))
-         (text (cl-ppcre:regex-replace-all "``" text "“"))
-         (text (cl-ppcre:regex-replace-all "''" text "”"))
-         (text (substitute #\Space #\~ text))
+quotes and dashes the characters they make, a tie a space."
+  (let* ((text (cl-ppcre:regex-replace-all *latex-ligatures-scanner* text
+                                           (lambda (match)
+                                             (cond ((string= match "---") "—") ((string= match "--") "–")
+                                                   ((string= match "``") "“") ((string= match "''") "”")
+                                                   (t " ")))
+                                           :simple-calls t))
          (text (org-guarded-lines (org-escaped-words text))))
-    (cl-ppcre:regex-replace-all "\\n[ \\t]*" text
+    (cl-ppcre:regex-replace-all *latex-line-start-scanner* text
                                 (lambda (match) (declare (ignore match)) (format nil "~%~a" *latex-org-indent*))
                                 :simple-calls t)))
 
@@ -383,9 +395,7 @@ CLOSE-END. Returns CLOSE-END."
       ((member env '("verbatim" "Verbatim" "lstlisting" "minted" "alltt") :test #'string=)
        (let ((from (if (string= env "minted") (nth-value 1 (latex-arguments text stop 1 close)) stop)))
          (format out "~%#+begin_example~%~a~&#+end_example~%"
-                 (cl-ppcre:regex-replace-all "(?m)^(\\*|#\\+|,)"
-                                             (string-trim '(#\Newline) (subseq *latex-org-source* from close))
-                                             ",\\1"))))
+                 (org-escape-block (string-trim '(#\Newline) (subseq *latex-org-source* from close))))))
       ((member env *latex-org-tables* :test #'string=)
        ;; past the width and the column spec
        (let ((from (nth-value 1
@@ -433,8 +443,10 @@ another kind."
         ((member name '(" " "," ";" ":" "!" "/" "@") :test #'string=) (write-char #\Space plain) after)
         ((string= name "-") after)
         ((assoc name *latex-org-accents* :test #'string=)
-         (multiple-value-bind (args stop) (latex-arguments text after 1 end)
+         (multiple-value-bind (args stop)
+             (latex-arguments text (if (alpha-char-p (char name 0)) (latex-skip-space text after end) after) 1 end)
            (let* ((m (latex-mandatory args))
+                  (after (if (alpha-char-p (char name 0)) (latex-skip-space text after end) after))
                   (letter (cond (m (subseq text (car m) (cdr m)))
                                 ((< after end) (prog1 (string (char text after)) (setf stop (1+ after))))
                                 (t ""))))
@@ -586,10 +598,13 @@ note's: its blank lines at most one, its footnotes at the end."
 (defun latex-import-plain (start end)
   "The words of the document being read from START below END, as a field's
 example: on one line, nothing escaped."
-  (let ((*latex-org-pictures* '()) (*latex-org-media* nil))
+  (let ((*latex-org-pictures* '()) (*latex-org-media* nil) (*latex-org-footnotes* '()))
     (string-trim " " (cl-ppcre:regex-replace-all (format nil "\\s+|~a" *org-zero-width-space*)
-                                                 (with-output-to-string (s)
-                                                   (let ((*latex-org-indent* "")) (latex-org start end s)))
+                                                 (cl-ppcre:regex-replace-all
+                                                  "\\[fn:\\d+\\]"
+                                                  (with-output-to-string (s)
+                                                    (let ((*latex-org-indent* "")) (latex-org start end s)))
+                                                  "")
                                                  " "))))
 
 (defun latex-import-camel-words (name)
@@ -773,20 +788,6 @@ unchecked."
         (template-import-note #.(concatenate 'string "no sandbox is ready here: LaTeX runs the template unshut, and "
                                              "what files it reads is unchecked"))))))
 
-(defun latex-import-apply-edits (text edits)
-  "TEXT with EDITS made, each (START END REPLACEMENT), none overlapping another:
-REPLACEMENT in place of the text from START below END."
-  (with-output-to-string (out)
-    (let ((at 0))
-      (dolist (edit (stable-sort (copy-list edits) (lambda (a b) (or (< (first a) (first b))
-                                                                     (and (= (first a) (first b))
-                                                                          (< (second a) (second b)))))))
-        (destructuring-bind (start end replacement) edit
-          (write-string text out :start at :end start)
-          (write-string replacement out)
-          (setf at end)))
-      (write-string text out :start at))))
-
 (defun latex-import (path name &key (tex (concatenate 'string (latex-templates-directory) name ".tex"))
                                  (note (concatenate 'string (note-templates-directory) name ".org")))
   "Make of the LaTeX document at PATH the template NAME, TEX, and its note
@@ -805,6 +806,7 @@ cannot be read; writes over nothing that exists."
          (*latex-org-pictures* '())
          (*latex-org-appendix* nil)
          (*latex-org-drawers* nil)
+         (*latex-group-ends* nil)
          (begin (search "\\begin{document}" text))
          (finish (and begin (search "\\end{document}" text :start2 begin))))
     (template-import-check-free (list tex note media))
@@ -835,7 +837,7 @@ cannot be read; writes over nothing that exists."
                                                     "% Made the Tuatara template ~a from ~a by "
                                                     "export-template-from-latex: each field a~%"
                                                     "% place, {{{body}}} the note's text. Change it as you like.~%~a")
-                                   name (tuatara.io:native-file-name path) (latex-import-apply-edits source edits)))))
+                                   name (tuatara.io:native-file-name path) (text-with-edits source edits)))))
       (setf template (latex-import-without-outside-files template))
       (when (search "\\input" text) (template-import-note "its \\input files not read (the template still names them)"))
       (template-import-commit

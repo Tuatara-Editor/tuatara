@@ -58,7 +58,7 @@ MACROLET's macros run their own code as they expand, so one is refused."
                            ((and (consp x) (not (gethash x seen)))
                             (setf (gethash x seen) t)
                             (or (holds-macrolet-p (car x) seen) (holds-macrolet-p (cdr x) seen))))))
-            (cond ((find-if-not (lambda (c) (member c '(#\Space #\Tab #\Newline #\Return #\Page))) text :start end)
+            (cond ((find-if-not #'blank-char-p text :start end)
                    (values nil "the text holds more than the one expression"))
                   ((holds-macrolet-p form (make-hash-table :test 'eq))
                    (values nil "it holds a macrolet, whose macros would run as it expands"))
@@ -83,20 +83,23 @@ prefix argument put it in after the call."
             (let* ((result (and (not refusal)
                                 (run-evaluation (list (list (if all 'sb-cltl2:macroexpand-all 'macroexpand-1)
                                                             (list 'quote form)))
-                                                b :typed t)))
-                   (outcome (getf result :outcome)))
-              (cond (refusal (message "Not expanded: ~a" refusal))
-                    ((eq outcome :stopped) (message "Expanding stopped"))
-                    ((eq (first outcome) :error)
-                     (message "Error: ~a" (tuatara.runtime:failure-words (second outcome) :said t))
-                     (when (getf result :backtrace)
-                       (show-backtrace (second outcome) (getf result :backtrace))))
-                    (t (let ((expansion (expansion-text (first (second outcome)) (getf result :package)
-                                                        (tuatara.display:window-width (current-window)))))
-                         (if insert
-                             (goto (tuatara.buffer:buffer-insert
-                                    b end (format nil "~%~a" (string-trim '(#\Newline) expansion))))
-                             (show-expansion expansion)))))))))))
+                                                b :typed t))))
+              (unwind-protect
+                   (cond (refusal (message "Not expanded: ~a" refusal))
+                         ((eq (evaluation-kind result) :stopped) (message "Expanding stopped"))
+                         ((eq (evaluation-kind result) :error)
+                          (message "Error: ~a" (evaluation-error-words result))
+                          (show-evaluation-backtrace result))
+                         (t (let ((expansion (expansion-text (first (evaluation-values result))
+                                                             (evaluation-package result)
+                                                             (tuatara.display:window-width (current-window)))))
+                              (if insert
+                                  (goto (tuatara.buffer:buffer-insert
+                                         b end (format nil "~%~a" (string-trim '(#\Newline) expansion))))
+                                  (show-expansion expansion)))))
+                ;; the settings put back said, whatever became of the expansion
+                (when result
+                  (say-settings-put-back result)))))))))
 
 (define-command pp-macroexpand-last-expression ()
   "Show what the macro call at point expands to, once (MACROEXPAND-1),

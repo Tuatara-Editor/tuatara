@@ -68,7 +68,17 @@ path.")
 ;;; Reading the text
 
 (defparameter *org-blanks* '(#\Space #\Tab)
-  "The blanks Org's lines and fields are trimmed of: spaces and tabs.")
+  "The blanks Org's lines and fields are trimmed of: spaces and tabs. A line
+of them alone is blank (ORG-BLANK-LINE-P).")
+
+(defparameter *org-white-space* '(#\Space #\Tab #\Newline #\Return #\Page)
+  "The characters Org takes as white space around markup in a line, as
+before and after *bold* (ORG-SPACE-P): the blanks, line ends and page breaks.")
+
+(defparameter *org-zero-width-space* (string (code-char #x200B))
+  "The zero-width space set into words from a file where Org would otherwise
+read them as markup: it shows as nothing, and Org reads the words beside it as
+words.")
 
 (defvar *org-text* ""
   "The text being parsed.")
@@ -105,7 +115,7 @@ FROM and found it first at FOUND, or, FOUND NIL, not before the stretch's end
 They are (NOT-DONE . DONE): TODO and WAIT for tasks open, DONE and CANCELLED
 for tasks closed. A file's #+TODO: line, such as #+TODO: TODO NEXT | DONE,
 sets its own instead."
-  :values "(NOT-DONE . DONE), each a list of keywords as text")
+  :values (cons (list-of string) (list-of string)))
 
 (defparameter *org-cancel-keywords* '("CANCELLED" "CANCELED")
   "The done keywords that cancel a task rather than finish it, in the order
@@ -140,9 +150,11 @@ sets its own instead."
   (org-line-at *org-text* position))
 
 (defun org-blank-line-p (position)
-  "True when the line beginning at POSITION holds only spaces and tabs."
+  "True when the line beginning at POSITION holds only spaces, tabs and
+carriage returns (BLANK-CHAR-P, as ORG-SKIP-BLANKS-FORWARD skips them): a line
+ending in CR LF in a file whose other lines end in LF alone is blank too."
   (loop for i from position below (org-line-end position)
-        always (member (char *org-text* i) '(#\Space #\Tab #\Return))))
+        always (blank-char-p (char *org-text* i))))
 
 (defun org-skip-blanks-forward (position limit)
   "POSITION past the spaces, tabs, returns and newlines from it, short of LIMIT."
@@ -180,16 +192,22 @@ after its -, + or number."
   (let ((begin (org-node-begin item)))
     (+ begin (org-leading-blanks text begin) (length (string-trim *org-blanks* (org-property item :bullet))))))
 
+(defun org-blank-columns (string start &optional limit)
+  "The columns taken by the spaces and tabs of STRING from START on, a tab to the
+next multiple of eight, and the index after them. With LIMIT, they are read only
+while the columns are below it."
+  (let ((column 0) (i start))
+    (loop while (and (< i (length string)) (or (null limit) (< column limit)))
+          do (case (char string i)
+               (#\Space (incf column))
+               (#\Tab (setf column (tuatara.display:next-tab-stop column 8)))
+               (t (return)))
+             (incf i))
+    (values column i)))
+
 (defun org-indentation (position)
   "The columns of spaces and tabs the line beginning at POSITION begins with, a tab to the next multiple of eight."
-  (loop with column = 0
-        for i from position below (length *org-text*)
-        for c = (char *org-text* i)
-        do (case c
-             (#\Space (incf column))
-             (#\Tab (setf column (tuatara.display:next-tab-stop column 8)))
-             (t (return column)))
-        finally (return column)))
+  (values (org-blank-columns *org-text* position)))
 
 (defvar *org-scanners* (make-hash-table :test 'equal :synchronized t)
   "The anchored scanners made from the patterns ORG-LOOKING-AT and ORG-SCAN are given.")
@@ -359,6 +377,10 @@ parentheses and the time are groups, in that order (ORG-READ-RULE)."
 
 (defparameter *org-headline-re* "\\*+ "
   "A headline's start: stars, then a space (a tab after them makes no headline).")
+
+(defparameter *org-headline-line-scanner* (cl-ppcre:create-scanner (concatenate 'string "^" *org-headline-re*))
+  "A scanner for a headline's start (*ORG-HEADLINE-RE*) at the start of a line
+given alone, or of where its scan starts.")
 
 (defparameter *org-clock-line*
   (let ((stamp (format nil "\\[(~a)\\]" (org-timestamp-body)))
@@ -887,29 +909,29 @@ blank lines its own."
 
 ;;; Lesser elements of one line or a few
 
-(defun org-comment-parser (position limit)
-  "The comment lines from POSITION (each # then a space, or # alone)."
-  (let ((p position) (lines '()))
-    (loop while (and (< p limit) (org-looking-at "[ \\t]*#(?: |$)" p))
-          do (multiple-value-bind (ok after) (org-looking-at "[ \\t]*# ?" p)
+(defun org-prefixed-lines (start limit line-pattern prefix-pattern)
+  "The run of lines from START, before LIMIT, that LINE-PATTERN matches the
+start of: two values, their text after what PREFIX-PATTERN matches, the lines
+joined by newlines, and where the line after the run starts."
+  (let ((p start) (lines '()))
+    (loop while (and (< p limit) (org-looking-at line-pattern p))
+          do (multiple-value-bind (ok after) (org-looking-at prefix-pattern p)
                (declare (ignore ok))
                (push (subseq *org-text* after (org-line-end p)) lines))
              (setf p (org-next-line p)))
-    (org-finish (make-org-node 'comment :begin position :post-affiliated position
-                                        :properties (list :value (format nil "~{~a~^~%~}" (nreverse lines))))
+    (values (format nil "~{~a~^~%~}" (nreverse lines)) p)))
+
+(defun org-comment-parser (position limit)
+  "The comment lines from POSITION (each # then a space, or # alone)."
+  (multiple-value-bind (value p) (org-prefixed-lines position limit "[ \\t]*#(?: |$)" "[ \\t]*# ?")
+    (org-finish (make-org-node 'comment :begin position :post-affiliated position :properties (list :value value))
                 p limit)))
 
 (defun org-fixed-width-parser (position start limit affiliated)
   "The fixed-width lines from START (each : then a space, or : alone)."
-  (let ((p start) (lines '()))
-    (loop while (and (< p limit) (org-looking-at "[ \\t]*:(?: |$)" p))
-          do (multiple-value-bind (ok after) (org-looking-at "[ \\t]*: ?" p)
-               (declare (ignore ok))
-               (push (subseq *org-text* after (org-line-end p)) lines))
-             (setf p (org-next-line p)))
-    (org-finish (org-element-with-affiliated
-                 (make-org-node 'fixed-width :properties (list :value (format nil "~{~a~^~%~}" (nreverse lines))))
-                 position start affiliated)
+  (multiple-value-bind (value p) (org-prefixed-lines start limit "[ \\t]*:(?: |$)" "[ \\t]*: ?")
+    (org-finish (org-element-with-affiliated (make-org-node 'fixed-width :properties (list :value value))
+                                             position start affiliated)
                 p limit
                 ;; its blank lines counted from the end of its last line
                 :count-from (if (and (plusp p) (= p (org-line-start p)) (eql (org-char (1- p)) #\Newline)) (1- p) p))))
@@ -1015,6 +1037,21 @@ a comma before each line beginning with * or #+ (or with commas and then one
 of them), after its blanks, so that no line of it ends the block or begins a
 heading or a keyword."
   (cl-ppcre:regex-replace-all "(?m)^([ \\t]*)(,*[*]|,*#\\+)" value "\\1,\\2"))
+
+(defun text-with-edits (text edits)
+  "TEXT with EDITS made, each (START END REPLACEMENT), none overlapping another:
+REPLACEMENT in place of the text from START below END. The text is written
+once, whatever the number of edits."
+  (with-output-to-string (out)
+    (let ((at 0))
+      (dolist (edit (stable-sort (copy-list edits) (lambda (a b) (or (< (first a) (first b))
+                                                                     (and (= (first a) (first b))
+                                                                          (< (second a) (second b)))))))
+        (destructuring-bind (start end replacement) edit
+          (write-string text out :start at :end start)
+          (write-string replacement out)
+          (setf at end)))
+      (write-string text out :start at))))
 
 (defun org-src-header (parameters)
   "PARAMETERS of a #+BEGIN_SRC line split: the language, the switches (-n,
@@ -1244,7 +1281,7 @@ are never closed."
 (defun org-object-types (type)
   "The objects an element or object of TYPE may hold."
   (case type
-    ((bold italic underline strike-through) (remove-if (lambda (o) (member o '(line-break))) *org-standard-objects*))
+    ((bold italic underline strike-through) (remove 'line-break *org-standard-objects*))
     ((radio-target link) '(bold code entity export-snippet inline-babel-call inline-src-block italic latex-fragment
                            macro statistics-cookie strike-through subscript superscript underline verbatim))
     (table-row '(table-cell))
@@ -1252,7 +1289,6 @@ are never closed."
     (table-cell '(bold code entity export-snippet footnote-reference italic latex-fragment link macro radio-target
                   strike-through subscript superscript target timestamp underline verbatim citation))
     (headline (remove 'line-break *org-standard-objects*))
-    ((footnote-reference) *org-standard-objects*)
     ((subscript superscript) (remove 'line-break *org-standard-objects*))
     (t *org-standard-objects*)))
 
@@ -1337,10 +1373,17 @@ tells."
                 (return object))
               (setf p (1+ candidate)))))))))
 
+(defparameter *org-emphasis-types*
+  '((#\* . bold) (#\/ . italic) (#\_ . underline) (#\~ . code) (#\= . verbatim) (#\+ . strike-through))
+  "The character that marks each kind of emphasis, and the kind.")
+
 (defun org-object-at (p types)
   "The object of TYPES beginning at P, or NIL."
   (let ((c (org-char p)))
-    (flet ((try (type parser) (and (member type types) (funcall parser p))))
+    (flet ((try (type parser) (and (member type types) (funcall parser p)))
+           (emphasis ()
+             (let ((type (cdr (assoc c *org-emphasis-types*))))
+               (and (member type types) (org-emphasis-parser p c type)))))
       (cond
         ((org-looking-at "(?i)call_" p (min (length *org-text*) (+ p 5)))
          (try 'inline-babel-call #'org-inline-babel-call-parser))
@@ -1348,14 +1391,10 @@ tells."
          (try 'inline-src-block #'org-inline-src-block-parser))
         (t
          (case c
-           (#\^ (try 'superscript #'org-superscript-parser))
-           (#\_ (or (try 'subscript #'org-subscript-parser)
-                    (try 'underline (lambda (p) (org-emphasis-parser p #\_ 'underline)))))
-           (#\* (try 'bold (lambda (p) (org-emphasis-parser p #\* 'bold))))
-           (#\/ (try 'italic (lambda (p) (org-emphasis-parser p #\/ 'italic))))
-           (#\~ (try 'code (lambda (p) (org-emphasis-parser p #\~ 'code))))
-           (#\= (try 'verbatim (lambda (p) (org-emphasis-parser p #\= 'verbatim))))
-           (#\+ (try 'strike-through (lambda (p) (org-emphasis-parser p #\+ 'strike-through))))
+           (#\^ (and (member 'superscript types) (org-script-parser p 'superscript)))
+           (#\_ (or (and (member 'subscript types) (org-script-parser p 'subscript))
+                    (emphasis)))
+           ((#\* #\/ #\~ #\= #\+) (emphasis))
            (#\@ (try 'export-snippet #'org-export-snippet-parser))
            (#\{ (try 'macro #'org-macro-parser))
            (#\$ (try 'latex-fragment #'org-latex-fragment-parser))
@@ -1383,8 +1422,8 @@ tells."
     node))
 
 (defun org-space-p (c)
-  "True when C is white space: a space, a tab, a line end, a carriage return or a page break."
-  (member c '(#\Space #\Tab #\Newline #\Return #\Page)))
+  "True when C is white space around markup (*ORG-WHITE-SPACE*)."
+  (member c *org-white-space*))
 
 (defun org-emphasis-parser (p mark type)
   "The emphasis of TYPE marked by MARK at P (*bold*, /italic/...): MARK after
@@ -1433,11 +1472,12 @@ LaTeX that is written in math mode."
        table)))
 
 (defparameter *org-entities* (org-entity-table)
-  "Org's entities (\\alpha...), each name with the character it stands for, as Org 9.7 has them.")
+  "Org's entities (\\alpha...), each name with the character it stands for, as
+data/org-entities.txt lists them.")
 
 (defparameter *org-entities-latex* (org-entity-table t)
   "Org's entities (\\alpha...), each name with its LaTeX and whether that is
-math, (LATEX . MATH), as Org 9.7 has them.")
+math, (LATEX . MATH), as data/org-entities.txt lists them.")
 
 (defun org-entity-parser (p)
   "The entity at P: \\NAME, a name Org knows, ended by {} or what is not a letter."
@@ -1588,9 +1628,6 @@ split at each comma not after a backslash, each trimmed."
             (setf (org-node-contents-begin node) (+ p 2) (org-node-contents-end node) (1- match-end))
             (setf (org-node-contents-begin node) (1+ p) (org-node-contents-end node) (+ p 1 (length plain))))
         (org-object-finish node match-end)))))
-
-(defun org-subscript-parser (p) "The subscript at P." (org-script-parser p 'subscript))
-(defun org-superscript-parser (p) "The superscript at P." (org-script-parser p 'superscript))
 
 (defun org-balanced-end (p open close)
   "Where the bracketed text beginning at P with OPEN ends, just past its CLOSE,

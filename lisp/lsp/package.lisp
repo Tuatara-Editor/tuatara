@@ -11,22 +11,27 @@
   (:import-from #:tuatara.runtime #:define-record #:reporting-errors #:ignoring-errors-reported #:refusal #:refuse
                 #:run-hook-until-success #:define-setting)
   (:import-from #:tuatara.defaults
-                #:*after-save-functions* #:*before-save-functions* #:*code-file-extensions* #:*trusted*
+                #:*after-save-functions* #:*before-save-functions* #:*code-file-extensions*
                 #:*outside-work-functions* #:*places-in-force* #:*save-path* #:*save-then*
                 #:*selection-ranges-functions*
-                #:add-gutter-provider #:buffer-in-mode #:buffer-indent-tabs-p #:buffer-tab-width #:buffer-visiting
-                #:commands-for-mode #:directories-followed-changed #:follow-directories-for #:glob-alternatives
+                #:add-gutter-provider #:buffer-in-mode #:buffer-language #:buffer-indent-tabs-p #:buffer-tab-width
+                #:buffer-visiting
+                #:commands-for-mode #:directories-followed-changed #:entry-list-keys #:follow-directories-for
+                #:forget-project-trust
+                #:glob-alternatives
                 #:glob-match #:go-to-definition
                 #:goto #:goto-shown #:indent-lines #:indent-region #:language-modes #:language-name #:language-p
-                #:keep-shown-current #:list-entry-noun #:list-visit #:make-definition #:make-snippet #:marked-directory
-                #:mode-completion-at-point #:mode-language #:mode-find-definitions #:mode-name-at-point #:mode-outline
+                #:keep-shown-current #:keeping-list-selected #:list-entry-noun #:list-visit #:make-definition
+                #:make-snippet #:marked-directory
+                #:mode-completion-at-point #:mode-language #:mode-find-definitions #:mode-finds-definitions-p
+                #:mode-name-at-point #:mode-outline
                 #:org-block-header-arguments #:org-blocks-key #:org-buffer-parse #:org-buffer-parts
                 #:org-commented-p #:org-mode #:org-node-children #:org-node-type #:org-parse-current-p
                 #:org-parse-tree #:org-part-at #:org-part-code-lines #:org-part-index #:org-part-start
                 #:org-parts-count #:org-property #:org-src-language #:path-uri #:places-buffer #:places-name
                 #:prog-mode #:project-root #:project-trusted-p #:push-xref-marker #:put-snippet #:put-text-by-lines
-                #:real-directory #:render-pieces #:safe-directory-of #:save-buffer-with-care
-                #:say-places-end #:show-definitions #:show-help #:special-mode #:src-block #:state-list-drop
+                #:region-or-point #:render-pieces #:safe-directory-of #:save-buffer-with-care
+                #:say-places-end #:selected-region-or-say #:show-definitions #:show-help #:special-mode #:src-block
                 #:step-place #:trusted-when-asked-p #:uri-path #:use-places #:visit-entry #:visit-path
                 #:walk-directory #:word-bounds-at #:xref-find-definitions #:xref-go-back)
   (:documentation "Language servers and formatters: a server run for each project and language,

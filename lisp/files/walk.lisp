@@ -92,23 +92,25 @@ none is left out; such a search is slower.
   :values (integer 1 *))
 
 (defun files-under (root &key (limit *indexed-files-most*) gitignore each past cancel directories hidden)
-  "The regular files in the directory ROOT and its subdirectories, as a list of
-\(PATH . RELATIVE), RELATIVE the path from ROOT, by name within each directory:
-hidden files and directories (names starting with a dot) and backups left
-out, links to directories not followed, and with GITIGNORE what git leaves
-out, that is the .gitignore files there and, in a repository, those above
-ROOT, the repository's .git/info/exclude and your excludes file
-\(OUTER-GITIGNORE-RULES). At most LIMIT of them, *INDEXED-FILES-MOST* as
-standard; a second value is true when there were more. PAST, a function, is
-called with the path and the relative path of each found past LIMIT, and the
-walk goes on; without it, the walk ends there. With DIRECTORIES, the
-subdirectories in place of the files, each before what is in it, both its
-paths ending in /; with DIRECTORIES :ALSO, both. With HIDDEN, names starting
-with a dot are walked too, each directory then read from the disk. With EACH,
-a function, it is called with the path and the relative path of each as it is
-found, and none are listed; CANCEL, a cons, stops the walk when its car turns
-true. Each directory is listed as DIRECTORY-LISTING lists it: from the index
-of a directory kept read, else from the disk."
+  "The entries that are no directories in the directory ROOT and its
+subdirectories, as a list of (PATH . RELATIVE), RELATIVE the path from ROOT, by
+name within each directory: files, and as they are, never followed or
+opened, links (to files or to directories) and the other kinds (named pipes,
+sockets, devices), so that a caller that reads them looks at each first.
+Hidden files and directories (names starting with a dot) and backups are left
+out, and with GITIGNORE what git leaves out, that is the .gitignore files there
+and, in a repository, those above ROOT, the repository's .git/info/exclude and
+your excludes file (OUTER-GITIGNORE-RULES). At most LIMIT of them,
+*INDEXED-FILES-MOST* as standard; a second value is true when there were more.
+PAST, a function, is called with the path and the relative path of each found
+past LIMIT, and the walk goes on; without it, the walk ends there. With
+DIRECTORIES, the subdirectories in place of the files, each before what is in
+it, both its paths ending in /; with DIRECTORIES :ALSO, both. With HIDDEN, names
+starting with a dot are walked too, each directory then read from the disk. With
+EACH, a function, it is called with the path and the relative path of each as it
+is found, and none are listed; CANCEL, a cons, stops the walk when its car turns
+true. Each directory is listed as DIRECTORY-LISTING lists it: from the index of
+a directory kept read, else from the disk."
   (let ((found '()) (count 0) (more nil) (rules-of (make-hash-table :test 'equal)) (root (directory-name root)))
     (setf (gethash root rules-of) (and gitignore (outer-gitignore-rules root)))
     (flet ((give (path inside)

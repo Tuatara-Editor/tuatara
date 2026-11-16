@@ -93,44 +93,19 @@ the other ways, {{{NAME:date=d MMMM yyyy}}} a date written in Word's pattern
 field has it; {{{#NAME}}}...{{{/NAME}}} is kept when NAME has a value that
 is not empty, {{{^NAME}}}...{{{/NAME}}} when it has none. A brace before a
 place, as in \\title{{{{title}}}}, stays a brace."
-  (let ((n (length template)))
-    (labels ((place-at (i)
-               ;; the place at I, read as the Word half reads its places (TEMPLATE-PLACE), and its end
-               (when (and (<= (+ i 3) n) (string= "{{{" template :start2 i :end2 (+ i 3)))
-                 (let ((place (template-place (subseq template i (min n (+ i 120))))))
-                   (when (and place (< (getf place :end) 100))
-                     (values place (+ i (getf place :end)))))))
-             (value (place)
-               (let ((key (getf place :name)) (date (getf place :date)))
-                 (if date
-                     ;; a date written in the pattern given, else the value as it is
-                     (let ((given (funcall field key :raw)))
-                       (multiple-value-bind (y m d) (and given (docx-date-parts given))
-                         (if y
-                             (latex-escape (docx-format-date date y m d))
-                             (funcall field key :text))))
-                     ;; a picture's size is the Word half's: here its path alone
-                     (funcall field key (getf place :way)))))
-             (fill-from (start end out)
-               ;; fill from START below END into OUT; returns where it stopped
-               (let ((i start))
-                 (loop while (< i end)
-                       do (multiple-value-bind (place after) (place-at i)
-                            ;; {{{{ is a brace, then a place: its name holds no brace
-                            (cond ((null place) (write-char (char template i) out) (incf i))
-                                  ((member (getf place :condition) '(#\# #\^))
-                                   (let* ((key (getf place :name))
-                                          (closing (format nil "{{{/~a}}}" key))
-                                          (stop (search closing template :start2 after :test #'char-equal))
-                                          (present (let ((v (funcall field key :text))) (and v (plusp (length v))))))
-                                     (unless stop
-                                       (refuse "The template has ~a with no {{{/~a}}}" (subseq template i after) key))
-                                     (when (if (char= (getf place :condition) #\#) present (not present))
-                                       (fill-from after stop out))
-                                     (setf i (+ stop (length closing)))))
-                                  ;; a condition's end with no beginning: nothing
-                                  ((getf place :condition) (setf i after))
-                                  (t (write-string (or (value place) "") out)
-                                     (setf i after))))))))
-      (with-output-to-string (out)
-        (fill-from 0 n out)))))
+  (flet ((value (place)
+           (let ((key (getf place :name)) (date (getf place :date)))
+             (if date
+                 ;; a date written in the pattern given, else the value as it is
+                 (let ((given (funcall field key :raw)))
+                   (multiple-value-bind (y m d) (and given (docx-date-parts given))
+                     (if y
+                         (latex-escape (docx-format-date date y m d))
+                         (funcall field key :text))))
+                 ;; a picture's size is the Word half's: here its path alone
+                 (funcall field key (getf place :way))))))
+    (with-output-to-string (out)
+      (map-template-text template
+                         (lambda (words) (write-string words out))
+                         (lambda (place) (write-string (or (value place) "") out))
+                         (lambda (name) (let ((v (funcall field name :text))) (and v (plusp (length v)))))))))

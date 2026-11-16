@@ -368,26 +368,30 @@ list starts on its first line, on a screen WIDTH by HEIGHT."
            (true (tuatara.buffer:find-buffer "*Messages*")))
       (when (tuatara.buffer:live-buffer-p odd) (tuatara.buffer:kill-buffer odd))
       (let ((l (tuatara.buffer:find-buffer "*Buffers*"))) (when l (tuatara.buffer:kill-buffer l)))))
-  (is string= "a^Ib^Mc" (tuatara.command:escape-controls (format nil "a~cb~cc" #\Tab #\Return)))
+  (is string= "a^Ib^Mc" (tuatara.display:escape-controls (format nil "a~cb~cc" #\Tab #\Return)))
+  ;; one function for it, the display's, which the package API names as the display does
+  (is eq 'tuatara.display:escape-controls (find-symbol "ESCAPE-CONTROLS" :tuatara))
+  (true (search "tuatara.display:escape-controls"
+                (uiop:read-file-string (asdf:system-relative-pathname :tuatara "lisp/api.lisp"))))
   ;; a question in the echo area writes them out as a message does: a name in it hides nothing
   (let ((tuatara.command:*editor* (nth-value 1 (run-keys ""))))
     (tuatara.command::echo "Delete ~a? " (format nil "nl~%name~c.txt" (code-char #x202E)))
     (is string= "Delete nl^Jname<202E>.txt? " (tuatara.command:editor-message tuatara.command:*editor*)))
   (is string= "rtl<202E>gnp.exe<2066>\\x85"
-      (tuatara.command:escape-controls (format nil
+      (tuatara.display:escape-controls (format nil
                                                "rtl~cgnp.exe~c~c"
                                                (code-char #x202E)
                                                (code-char #x2066)
                                                (code-char #x85))))
   (is string= "zw<200B>sp<FEFF>"
-      (tuatara.command:escape-controls (format nil "zw~csp~c" (code-char #x200B) (code-char #xFEFF))))
+      (tuatara.display:escape-controls (format nil "zw~csp~c" (code-char #x200B) (code-char #xFEFF))))
   ;; joiners stay, for the emoji and scripts they build
   (let ((family (format nil "~c~c~c" (code-char #x1F468) (code-char #x200D) (code-char #x1F469))))
-    (is eq family (tuatara.command:escape-controls family)))
-  (multiple-value-bind (text spans) (tuatara.command:escape-controls (format nil "a~cbc" #\Tab) '((0 1 :x) (2 4 :y)))
+    (is eq family (tuatara.display:escape-controls family)))
+  (multiple-value-bind (text spans) (tuatara.display:escape-controls (format nil "a~cbc" #\Tab) '((0 1 :x) (2 4 :y)))
     (is string= "a^Ibc" text)
     (is equal '((0 1 :x) (3 5 :y)) spans))
-  (let ((plain "plain")) (is eq plain (tuatara.command:escape-controls plain))))
+  (let ((plain "plain")) (is eq plain (tuatara.display:escape-controls plain))))
 
 (define-test (buffers marks-take-a-count)
   ;; C-u 2 m marks two buffers, C-u 2 u unmarks them again

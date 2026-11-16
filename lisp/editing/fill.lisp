@@ -46,16 +46,10 @@ and \\[fill-region], wrapped at by \\[soft-wrap-mode] and marked by
 \\[display-fill-column-mode], while the editor runs: a count given first
 (\\[universal-argument] 72 \\[set-fill-column]), or else the column asked for,
 the buffer's offered, which \\<minibuffer>\\[minibuffer-finish] alone keeps."
-  (let* ((b (current-buffer))
-         (was (buffer-fill-column b))
-         (n (prefix-argument))
-         (column (if (and (integerp n) (plusp n))
-                     n
-                     (read-whole-number "Set fill column (now ~d): " was :refusal "Not a column."))))
-    (setf (tuatara.buffer:buffer-local b :fill-column) column)
-    (if (= column was)
-        (message "Fill column stays ~d" column)
-        (message "Fill column set to ~d (was ~d)" column was))))
+  (let ((b (current-buffer)))
+    (unless (take-fill-column-argument b)
+      (keep-fill-column b (read-whole-number "Set fill column (now ~d): " (buffer-fill-column b)
+                                             :refusal "Not a column.")))))
 
 (defun fill-prefix-of (text characters)
   "The run at the start of TEXT made of CHARACTERS: a line's fill prefix."
@@ -140,8 +134,8 @@ returns true; that value, or NIL."
 
 (defun markdown-table-or-fence-p (text)
   "True when TEXT, a line of Markdown, is a table's line (| first) or a code
-fence (``` or ~~~)."
-  (cl-ppcre:scan "^\\s*(?:\\||```|~~~)" text))
+fence (MARKDOWN-FENCE-P)."
+  (or (markdown-fence-p text) (cl-ppcre:scan "^\\s*\\|" text)))
 
 (defmethod mode-unfilled-line-p ((mode markdown-mode) text)
   "True for a table row or a fence line of Markdown, which filling leaves as it
@@ -173,19 +167,32 @@ after its marker."
         (not (eq (and comment t) (and comments t)))
         (and comment (blank-text-p (string-left-trim '(#\; #\# #\/ #\- #\! #\* #\Space #\Tab) text))))))
 
+(defparameter *item-mark*
+  (format nil "(?:[~a]|[0-9]+[.)]|[A-Za-z]\\))" "-+•‣◦⁃·–*")
+  "A regular expression for the mark of a list item: one of the signs -, +, •,
+‣, ◦, ⁃, ·, – and *, a number with . or ), or a letter with ).")
+
+(defparameter *item-start-scanner*
+  (cl-ppcre:create-scanner (concatenate 'string "^" *item-mark* "(?:[ \\t]|$)"))
+  "Matches a list item's mark at the start of a text, then a blank or the end.")
+
+(defparameter *lone-item-mark-scanner* (cl-ppcre:create-scanner (concatenate 'string "^" *item-mark* "$"))
+  "Matches a word that is a list item's mark alone (*ITEM-MARK*): filling never
+begins a line with one, or the line would begin an item.")
+
 (defun list-item-start-p (buffer text)
   "True when TEXT, a line of BUFFER, begins an item of a list (after its
-indentation, and in a comment after the comment's marker): -, +, •, a
-number with . or ), a letter with ), or an indented *. Each item is a
-paragraph of its own, as Org fills one."
+indentation, and in a comment after the comment's marker): a mark as
+*ITEM-MARK* says, a * only when indented. Each item is a paragraph of its own,
+as Org fills one."
   (let* ((marker (mode-comment-syntax (buffer-major-mode buffer)))
          (words (string-left-trim '(#\Space #\Tab) text))
          (words (if (and marker (comment-line-p buffer text))
                     (string-left-trim (concatenate 'string marker (list #\Space #\Tab)) words)
                     words)))
-    (or (cl-ppcre:scan "^(?:[-+•‣◦⁃]|[0-9]+[.)]|[A-Za-z]\\))(?:[ \t]|$)" words)
-        ;; * at the start of a line is an Org heading, indented an item
-        (and (cl-ppcre:scan "^\\*(?:[ \t]|$)" words) (find (char text 0) '(#\Space #\Tab))))))
+    (and (cl-ppcre:scan *item-start-scanner* words)
+         ;; * at the start of a line is an Org heading, indented an item
+         (or (char/= (char words 0) #\*) (find (char text 0) '(#\Space #\Tab))))))
 
 (defun paragraph-lines (buffer line low high separator-p &optional item-start-p)
   "Two values: the starts of the first and the last line of the paragraph of
@@ -291,31 +298,35 @@ or more, or the line's end, follow it."
                       (let ((next (position-if-not (lambda (c) (member c '(#\Space #\Tab))) line :start to)))
                         (or (null next) (>= (- next to) 2))))))
 
-(defparameter *item-mark-re* "(?:[-+•‣◦⁃·–*]|[0-9]+[.)]|[A-Za-z]\\))[ \t]+$"
-  "A list item's mark at the end of the text before its words: -, +, a bullet
-sign, 1. or 1), a), and the blanks after it.")
+(defparameter *item-mark-re* (cl-ppcre:create-scanner (concatenate 'string *item-mark* "[ \\t]+$"))
+  "A list item's mark (*ITEM-MARK*) at the end of the text before its words,
+and the blanks after it.")
 
-(defparameter *item-head-re* "^(.*?)((?:[-+•‣◦⁃·–*]|[0-9]+[.)]|[A-Za-z]\\))[ \t]+(?:\\[[ xX-]\\][ \t]+)?)$"
+(defparameter *item-head-re*
+  (cl-ppcre:create-scanner (concatenate 'string "^(.*?)(" *item-mark* "[ \\t]+(?:\\[[ xX-]\\][ \\t]+)?)$"))
   "The text before a list item's words: what comes before its mark (an
-indentation, a comment's marker), then the mark, its blanks and any check box.")
+indentation, a comment's marker), then the mark (*ITEM-MARK*), its blanks and
+any check box.")
 
 (defun fill-lines (lines column characters &key double-space)
   "LINES of one paragraph filled to COLUMN: the words re-flowed, each line
 starting with the first line's prefix (made of CHARACTERS) or the second line's
 after it. A paragraph whose first line begins with a list's mark (-, 1., a),
 after a comment's marker too), and a check box after it ([ ], [X], [-]),
-continues under its words. This holds whatever its other lines began with. With
-DOUBLE-SPACE, a word ending a sentence that had two blanks or a line end after
-it is followed by two spaces. A list of strings."
+continues under its words. This holds whatever its other lines began with. A
+word that is an item's mark alone (– or 2.) is never put at the start of a
+line, where it would begin an item. With DOUBLE-SPACE, a word ending a
+sentence that had two blanks or a line end after it is followed by two spaces.
+A list of strings."
   (let* ((first (let* ((line (first lines))
                        (prefix (fill-prefix-of line characters))
                        ;; a number or letter marking an item belongs to the prefix as a - does
-                       (head (or (nth-value 1 (cl-ppcre:scan "^(?:[0-9]+[.)]|[A-Za-z]\\))[ \t]+" line
+                       (head (or (nth-value 1 (cl-ppcre:scan "^(?:[0-9]+[.)]|[A-Za-z]\\))[ \\t]+" line
                                                              :start (length prefix)))
                                  (length prefix)))
                        ;; and so does a check box after the mark
                        (box (and (cl-ppcre:scan *item-mark-re* (subseq line 0 head))
-                                 (nth-value 1 (cl-ppcre:scan "^\\[[ xX-]\\][ \t]+" line :start head)))))
+                                 (nth-value 1 (cl-ppcre:scan "^\\[[ xX-]\\][ \\t]+" line :start head)))))
                   (subseq line 0 (or box head))))
          (item (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings *item-head-re* first)
                  (and match
@@ -335,6 +346,10 @@ it is followed by two spaces. A list of strings."
                       (setf current (concatenate 'string prefix word)
                             width (text-columns current)))
                      ((<= (+ width (length gap) (text-columns word)) column)
+                      (setf current (concatenate 'string current gap word))
+                      (incf width (+ (length gap) (text-columns word))))
+                     ;; a mark alone stays on its line, even past COLUMN
+                     ((cl-ppcre:scan *lone-item-mark-scanner* word)
                       (setf current (concatenate 'string current gap word))
                       (incf width (+ (length gap) (text-columns word))))
                      (t (push current out)
@@ -380,23 +395,26 @@ as shown. True when there was a paragraph."
                                 (when (or more ends-with-newline) (write-string newline out)))))
              (point (point))
              (inside (and (<= start point end)
-                          (count-if-not (lambda (c) (member c '(#\Space #\Tab #\Newline #\Return)))
-                                        (tuatara.buffer:buffer-string buffer :start start :end point)))))
+                          (count-if-not #'blank-char-p (tuatara.buffer:buffer-string buffer :start start :end point)))))
         (unless (string= text filled)
           (tuatara.buffer:buffer-replace buffer start end filled)
           (when inside
             (let ((p start) (seen 0))
               (loop while (and (< seen inside) (< p (tuatara.buffer:buffer-size buffer)))
-                    do (unless (member (tuatara.buffer:buffer-char-at buffer p) '(#\Space #\Tab #\Newline #\Return))
+                    do (unless (blank-char-p (tuatara.buffer:buffer-char-at buffer p))
                          (incf seen))
                        (setf p (tuatara.buffer:buffer-forward-char buffer p)))
               (goto p))))
         t))))
 
 (defun keep-fill-column (buffer column)
-  "Make COLUMN BUFFER's fill column from now on, while the editor runs, and say so."
-  (setf (tuatara.buffer:buffer-local buffer :fill-column) column)
-  (message "Fill column ~d for this buffer" column))
+  "Make COLUMN BUFFER's fill column from now on, while the editor runs, and say
+so, with the column it was."
+  (let ((was (buffer-fill-column buffer)))
+    (setf (tuatara.buffer:buffer-local buffer :fill-column) column)
+    (if (= column was)
+        (message "Fill column stays ~d" column)
+        (message "Fill column ~d for this buffer (was ~d)" column was))))
 
 (defun take-fill-column-argument (buffer)
   "When the prefix argument is a number, make it BUFFER's fill column from now
@@ -458,35 +476,32 @@ fill-paragraph fills one, the lines before and after the selection left as
 they are: the column asked for first, or given by a count, and kept as the
 buffer's. A selection of more than *REWRITE-THRESHOLD* octets is refused."
   (let ((b (current-buffer)))
-    (multiple-value-bind (start end) (tuatara.buffer:buffer-region b)
-      (if (and start (< start end) (tuatara.buffer:buffer-mark-active-p b)
-               (not (too-large-here-p start end "Filling")))
-          (let* ((p (tuatara.buffer:buffer-line-start b start))
-                 ;; to the end of the selection's last line, its line break too
-                 (last (if (= end (tuatara.buffer:buffer-line-start b end))
-                           end
-                           (tuatara.buffer:buffer-forward-char b (tuatara.buffer:buffer-line-end b end))))
-                 (ends (tuatara.text:make-anchor (tuatara.buffer:buffer-version b) last :bias :after))
-                 (count 0)
-                 (*verbatim-carried* (list nil)))
-            (ask-fill-column b)
-            (loop while (< p (tuatara.text:anchor-position ends (tuatara.buffer:buffer-version b)))
-                  do (multiple-value-bind (s e) (paragraph-bounds b p)
-                       (if s
-                           (progn (fill-paragraph-at
-                                   b p :from (tuatara.buffer:buffer-line-start b start)
-                                   :to (tuatara.text:anchor-position ends (tuatara.buffer:buffer-version b)))
-                                  (incf count)
-                                  (multiple-value-bind (s2 e2) (paragraph-bounds b s)
-                                    (declare (ignore s2))
-                                    (setf p (or e2 e))))
-                           (let ((next (tuatara.buffer:buffer-forward-char b (tuatara.buffer:buffer-line-end b p))))
-                             (when (= next p) (return))
-                             (setf p next)))))
-            (setf (tuatara.buffer:buffer-mark-active-p b) nil)
-            (if (and (zerop count) (typep (buffer-major-mode b) 'prog-mode))
-                (message "Nothing filled: ~a mode fills only comments"
-                         (tuatara.modes:mode-lighter (type-of (buffer-major-mode b))))
-                (message "Filled ~d paragraph~:p to column ~d" count (buffer-fill-column b))))
-          (unless (and start (< start end) (tuatara.buffer:buffer-mark-active-p b))
-            (message "No selection: fill-region was not run"))))))
+    (multiple-value-bind (start end) (selected-region-or-say b 'fill-region)
+      (when (and start (not (too-large-here-p start end "Filling")))
+        (let* ((p (tuatara.buffer:buffer-line-start b start))
+               ;; to the end of the selection's last line, its line break too
+               (last (if (= end (tuatara.buffer:buffer-line-start b end))
+                         end
+                         (tuatara.buffer:buffer-forward-char b (tuatara.buffer:buffer-line-end b end))))
+               (ends (tuatara.text:make-anchor (tuatara.buffer:buffer-version b) last :bias :after))
+               (count 0)
+               (*verbatim-carried* (list nil)))
+          (ask-fill-column b)
+          (loop while (< p (tuatara.text:anchor-position ends (tuatara.buffer:buffer-version b)))
+                do (multiple-value-bind (s e) (paragraph-bounds b p)
+                     (if s
+                         (progn (fill-paragraph-at
+                                 b p :from (tuatara.buffer:buffer-line-start b start)
+                                 :to (tuatara.text:anchor-position ends (tuatara.buffer:buffer-version b)))
+                                (incf count)
+                                (multiple-value-bind (s2 e2) (paragraph-bounds b s)
+                                  (declare (ignore s2))
+                                  (setf p (or e2 e))))
+                         (let ((next (tuatara.buffer:buffer-forward-char b (tuatara.buffer:buffer-line-end b p))))
+                           (when (= next p) (return))
+                           (setf p next)))))
+          (setf (tuatara.buffer:buffer-mark-active-p b) nil)
+          (if (and (zerop count) (typep (buffer-major-mode b) 'prog-mode))
+              (message "Nothing filled: ~a mode fills only comments"
+                       (tuatara.modes:mode-lighter (type-of (buffer-major-mode b))))
+              (message "Filled ~d paragraph~:p to column ~d" count (buffer-fill-column b))))))))

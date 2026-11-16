@@ -55,9 +55,9 @@ word goes on past. Every other key does what it always does.")
     (define-key map "RET" 'popup-insert)
     map)
   "The keys of the list of completions beside the cursor while a candidate is
-chosen, over *POPUP-KEYMAP*: \\`RET' puts the chosen one in. A list that
-opened by itself as a path was typed has none chosen until \\<popup>\\[popup-next] or \\[popup-previous],
-and \\`RET' then ends the line as it always does.")
+chosen, over *POPUP-KEYMAP*: \\`RET' puts the chosen one in. A list that opened
+by itself as a path was typed has none chosen until \\<popup>\\[popup-next] or
+\\[popup-previous], and \\`RET' then ends the line as it always does.")
 
 (defun popup-keys (editor)
   "The keymap of the completion list shown in EDITOR, or NIL when none is: a
@@ -74,9 +74,9 @@ buffer's list has no keys while the minibuffer reads."
 ;;; The word completed
 
 (defun popup-word-p (popup word)
-  "True when WORD can still be the word POPUP completes: not too long, and
-made of its constituents, or of spaces too once \\<popup>\\[popup-insert-separator] put one
-in."
+  "True when WORD can still be the word POPUP completes: not too long, and made
+of its constituents, or of spaces too once \\<popup>\\[popup-insert-separator]
+put one in."
   (and (<= (length word) *popup-reach*)
        (every (lambda (c)
                 (or (funcall (popup-constituent popup) c)
@@ -198,17 +198,19 @@ for that is more than its text (a language server's snippet).")
   "Put CANDIDATE's text in place of the word POPUP completes, the cursor after
 it, and close the list, whether the text could go in or not; then call
 *POPUP-INSERT-FUNCTIONS*."
-  (unwind-protect
-       (multiple-value-bind (start end) (popup-region popup)
-         (when start
-           (let ((text (candidate-string candidate)) (target (popup-target popup)) (editor *editor*))
-             (if (eq target :minibuffer)
-                 (replace-minibuffer-text start end text editor)
-                 (let ((after (tuatara.buffer:buffer-replace target start end text)))
-                   (setf (tuatara.buffer:buffer-point target) after)
-                   (close-popup *editor*)
-                   (tuatara.runtime:run-hook *popup-insert-functions* target candidate start after))))))
-    (close-popup *editor*)))
+  (let ((inserted nil))
+    (unwind-protect
+         (multiple-value-bind (start end) (popup-region popup)
+           (when start
+             (let ((text (candidate-string candidate)) (target (popup-target popup)) (editor *editor*))
+               (if (eq target :minibuffer)
+                   (replace-minibuffer-text start end text editor)
+                   (let ((after (tuatara.buffer:buffer-replace target start end text)))
+                     (setf (tuatara.buffer:buffer-point target) after
+                           inserted (list target candidate start after)))))))
+      (close-popup *editor*))
+    (when inserted
+      (apply #'tuatara.runtime:run-hook *popup-insert-functions* inserted))))
 
 ;;; Keys
 
@@ -584,6 +586,21 @@ ROOM-COLUMNS wide and *NOTE-LIMITS* high. Returns the rows and the box's width."
                       width)
             width)))
 
+(defvar *note-rows-kept* nil
+  "The rows NOTE-ROWS last made for a note, as (PARAGRAPHS ROOM-COLUMNS ROWS
+WIDTH LIMITS), so that a frame drawn again with the note shown breaks nothing anew.")
+
+(defun kept-note-rows (paragraphs room-columns)
+  "The rows of the box of PARAGRAPHS (NOTE-ROWS) and its width, made again only
+when PARAGRAPHS or ROOM-COLUMNS differ from when they were last asked for."
+  (let ((kept *note-rows-kept*))
+    (unless (and kept (eq (first kept) paragraphs) (eql (second kept) room-columns)
+                (equal (fifth kept) *note-limits*))
+      (setf kept (multiple-value-bind (rows width) (note-rows paragraphs room-columns)
+                   (list paragraphs room-columns rows width *note-limits*))
+            *note-rows-kept* kept))
+    (values (third kept) (fourth kept))))
+
 (defun note-boxes (editor tree-rows)
   "The box of EDITOR's note (SHOW-NOTE) as POPUP-BOXES gives boxes, under the
 cursor's row, over it where there is no room under it (BOX-TOP); NIL when
@@ -595,7 +612,7 @@ there is no note, or the cursor has left it, or the minibuffer reads."
                    (eql position (tuatara.buffer:buffer-point buffer)))
           (multiple-value-bind (row column) (text-anchor window position)
             (when row
-              (multiple-value-bind (rows width) (note-rows paragraphs (editor-width editor))
+              (multiple-value-bind (rows width) (kept-note-rows paragraphs (editor-width editor))
                 (multiple-value-bind (top fit) (box-top row (length rows) (- tree-rows (1+ row)))
                   (when (plusp fit)
                     (list (list top (max 0 (min column (- (editor-width editor) width))) (subseq rows 0 fit)))))))))))))

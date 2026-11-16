@@ -57,6 +57,11 @@ without a name (a lambda, a top-level form)."
   "The name of the function called on the backtrace's line at POSITION."
   (backtrace-call-name buffer position))
 
+(defmethod mode-finds-definitions-p ((mode backtrace-mode) buffer)
+  "A backtrace looks up where the functions it calls are defined."
+  (declare (ignore buffer))
+  t)
+
 (defmethod mode-find-definitions ((mode backtrace-mode) buffer name)
   "Where the function NAME, read in TUATARA-USER, is defined."
   (declare (ignore buffer))

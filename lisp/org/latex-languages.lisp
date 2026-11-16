@@ -70,10 +70,10 @@
      "Taula"    "Figura"  "Taula de continguts"))
   "The languages a note's #+LANGUAGE: may name, each (CODE NAME POLYGLOSSIA
 BABEL PATTERNS PACKAGE TABLE FIGURE CONTENTS). CODE is the ISO code, the
-language's name, its name for polyglossia and for babel (NIL where babel cannot
-set it with the fonts pdflatex has), the ending of the hyphenation patterns'
-file \(loadhyph-PATTERNS.tex) and the TeX Live package holding it, and the words
-Word's export prints for a table, a picture and the contents.")
+language's name, its name for polyglossia and for babel, the ending of the
+hyphenation patterns' file \(loadhyph-PATTERNS.tex) and the TeX Live package
+holding it, and the words Word's export prints for a table, a picture and the
+contents.")
 
 (defun export-language (code)
   "The row of *EXPORT-LANGUAGES* for CODE, a language code as #+LANGUAGE: gives
@@ -124,10 +124,7 @@ the document keeps LaTeX's own (~{~a~^, ~})"
                          code (mapcar #'first *export-languages*))
             "")
            (modern (format nil "\\usepackage{polyglossia}~%\\setmainlanguage{~a}~%" (third row)))
-           ((fourth row) (format nil "\\usepackage[~a]{babel}~%" (fourth row)))
-           (t (export-note "~a cannot be set by ~a; the document keeps LaTeX's own language (#+latex_compiler: xelatex)"
-                           (second row) engine)
-              "")))))))
+           (t (format nil "\\usepackage[~a]{babel}~%" (fourth row)))))))))
 
 (defun org-latex-language-row ()
   "The row of *EXPORT-LANGUAGES* for the note being written when it

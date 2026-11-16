@@ -13,11 +13,6 @@
 
 (in-package #:tuatara.defaults)
 
-(defparameter *org-zero-width-space* (string (code-char #x200B))
-  "The zero-width space set into words from a file where Org would otherwise
-read them as markup: it shows as nothing, and Org reads the words beside it as
-words.")
-
 (defun org-escaped-words (text)
   "TEXT, words a file given to you holds, written so that the note made from
 it reads them as those words and never as markup that writes into an export as

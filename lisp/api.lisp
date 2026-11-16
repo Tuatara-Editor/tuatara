@@ -8,8 +8,8 @@
 ;;;; and these are the names it may use (*API*, and *API-FROM-LIBRARIES* of
 ;;;; the libraries it is built with): they keep their meaning, everything
 ;;;; else Tuatara may change. Positions are octets from 0 into a buffer's text
-;;;; as it is now, as the core counts them; the Emacs names that count
-;;;; characters from 1 (point, goto-char) are an init file's, never here.
+;;;; as it is now, as the core counts them; the names that count characters
+;;;; from 1 (point, goto-char) are an init file's, never here.
 ;;;; Loaded last, when every name below is defined.
 
 (in-package #:tuatara.defaults)
@@ -151,7 +151,7 @@ takes). :ARGUMENTS is what its form says, as ORG-READ-RULE reads them. :HOUR,
     tuatara.command:*buffers-asked-about* read-date tuatara.dates:read-date-text read-path read-file-path
     read-directory-path read-native-path read-new-native-path read-whole-number tuatara.command:wait-interruptibly
     tuatara.command:wait-until-interruptibly tuatara.command:first-line tuatara.text:one-line read-decimal-number
-    read-fraction fraction-p read-several pattern-regex
+    read-fraction fraction-p read-several pattern-regex tuatara.command:read-password tuatara.command:wipe-string
     ;; telling what has just happened, on the desktop and in *Notifications*
     notify
     ;; lists and text made by a command
@@ -165,7 +165,8 @@ takes). :ARGUMENTS is what its form says, as ORG-READ-RULE reads them. :HOUR,
     list-visit-other list-execute list-delete-marked entry-list-keys list-step-entry list-next-entry list-previous-entry
     preview-entry entry-preview-width entry-preview-keys list-toggle-preview side-preview-note
     ;; menus, help and switches
-    tuatara.command:define-menu tuatara.command:menu-arguments show-help show-help-pieces write-filled *help-column*
+    tuatara.command:define-menu tuatara.command:menu-arguments tuatara.command:keep-menu-open show-help
+    show-help-pieces write-filled *help-column*
     define-display-toggle
     ;; work in the background
     tuatara.runtime:job tuatara.runtime:start-job-thread tuatara.runtime:job-check-stop tuatara.runtime:job-cancel
@@ -240,7 +241,7 @@ takes). :ARGUMENTS is what its form says, as ORG-READ-RULE reads them. :HOUR,
     pdf-stream-filters pdf-stream-octets *pdf-picture-filters* pdf-object-stream-offsets pdf-packed-object
     map-pdf-content
     ;; octets shown as a hex dump, text shortened, and text from a file with its control characters shown
-    show-octets-in-hex tuatara.text:octets-hex tuatara.display:shorten-string tuatara.command:escape-controls
+    show-octets-in-hex tuatara.text:octets-hex tuatara.display:shorten-string tuatara.display:escape-controls
     tuatara.text:xml-unprefixed
     ;; programs from outside, shut in
     tuatara.io:find-program tuatara.io:program-missing tuatara.io:program-output tuatara.io:sandbox-run
@@ -250,13 +251,15 @@ takes). :ARGUMENTS is what its form says, as ORG-READ-RULE reads them. :HOUR,
     tuatara.io:read-stream-octets tuatara.io:sandbox-find-program run-on-copies copies-original-names
     run-on-copies-for-report sandbox-outcome-words sandbox-pdf program-health-words user-program-path
     start-detached open-externally-file new-private-directory private-cache-directory private-state-directory
-    tuatara.io:replace-file tuatara.io:memory-file sandbox-font-directories pdf-view-make
+    tuatara.io:replace-file tuatara.io:memory-file tuatara.io:call-with-memory-file
+    sandbox-font-directories pdf-view-make
     ;; pictures turned into pixels in the sandbox, and their pixels read
     decode-picture tuatara.frontend:image-width tuatara.frontend:image-height tuatara.frontend:image-channels
     tuatara.frontend:image-pixels write-private-copy attachment-file-name
     ;; rimu, the file manager
     rimu-mode *rimu-keymap* rimu-chosen-paths rimu-paths-marked-anywhere rimu-paths-marked-apart *rimu-master-mark*
-    rimu-mark-master rimu-chosen rimu-marks rimu-unmark-paths rimu-take-out rimu-mark-and-go-on rimu-each-line rimu-show-paths
+    rimu-mark-master rimu-chosen rimu-marks rimu-unmark-paths rimu-take-out rimu-mark-and-go-on rimu-each-line
+    rimu-show-paths
     rimu-show-file rimu-leads-to rimu-list-p rimu-list-directory rimu-path rimu-set-column
     ;; delimited data, regular expressions, and lines changed all at once
     csv-mode tsv-mode filter-lines filter-line-matcher mode-record-fields make-record-fields csv-delimiter csv-fields

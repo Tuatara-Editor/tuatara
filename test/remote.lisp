@@ -52,7 +52,9 @@ which returns the client's exit code."
   ((direct :initarg :direct :reader tee-direct
            :documentation "A fake frontend painted directly, whose events the editor reads.")
    (remote :initarg :remote :reader tee-remote
-           :documentation "A remote frontend painted alongside."))
+           :documentation "A remote frontend painted alongside.")
+   (local :initarg :local :reader tee-local
+          :documentation "The fake frontend the remote one's client paints on."))
   (:documentation "A frontend painting each frame both on a fake frontend and through a remote one, read and
 asked as the fake one is: the two then paint for the same calls."))
 
@@ -110,10 +112,11 @@ asked as the fake one is: the two then paint for the same calls."))
 (defmethod tuatara.frontend:frontend-end-frame ((f tee-frontend))
   (tuatara.frontend:frontend-end-frame (tee-direct f))
   (tuatara.frontend:frontend-end-frame (tee-remote f))
-  ;; a client that keeps up: each frame taken to be sent before the next is painted, none left out for a newer
-  (loop repeat 1000
-        until (zerop (tuatara.frontend::outbox-fill (tuatara.frontend::remote-unsent (tee-remote f))))
-        do (sleep 0.001)))
+  ;; a client that keeps up: each frame painted by the client before the next is painted, none left out for a
+  ;; newer, however busy the machine
+  (tuatara.runtime:wait-until (lambda () (>= (tuatara.frontend.fake:fake-frames (tee-local f))
+                                             (tuatara.frontend.fake:fake-frames (tee-direct f))))
+                              10 :interval 1/1000))
 
 (defmethod tuatara.frontend:frontend-set-title ((f tee-frontend) title)
   (tuatara.frontend:frontend-set-title (tee-direct f) title)
@@ -140,7 +143,7 @@ client's fake, the remote frontend, and the client's exit code."
             tuatara.defaults::*search-lit* nil tuatara.defaults::*search-lit-shown* nil)
       (funcall queue direct)
       (without-grammar-questions
-        (tuatara.command:run-editor (make-instance 'tee-frontend :direct direct :remote remote)
+        (tuatara.command:run-editor (make-instance 'tee-frontend :direct direct :remote remote :local local)
                                     :setup #'tuatara.defaults:install-defaults
                                     :buffer (tuatara.buffer:find-buffer "*scratch*")))
       (values direct local remote (client-done runner)))))
@@ -167,12 +170,12 @@ its number, size, channels, pixels and place: lists EQUAL compares."
         (kept (format nil "a~cb" (code-char #xAD))))
     (is string= "abcde" (tuatara.frontend::shown-words hiding))
     (is string= "abcde" (tuatara.frontend::far-text hiding))
-    (is string= "a<202E>b<200B>c<2066>d<FEFF>e" (tuatara.command:escape-controls hiding))
+    (is string= "a<202E>b<200B>c<2066>d<FEFF>e" (tuatara.display:escape-controls hiding))
     (is string= "words" (tuatara.frontend::shown-words (format nil "wo~crds~c" (code-char 27) (code-char 7))))
     ;; a soft hyphen draws nothing either, but is shown as it is everywhere
     (is string= kept (tuatara.frontend::shown-words kept))
     (is string= kept (tuatara.frontend::far-text kept))
-    (is string= kept (tuatara.command:escape-controls kept))
+    (is string= kept (tuatara.display:escape-controls kept))
     (true (tuatara.display:invisible-code-p #xAD))
     (false (tuatara.display:hiding-code-p #xAD))
     (true (tuatara.display:hiding-code-p #x202E))))
@@ -675,17 +678,16 @@ octets); two values: the client and the editor's end of the socket."
         ;; numbered from 0, as the session's first picture is
         (images (loop for id below 17 collect (tuatara.frontend::%make-image 2 2 3 (tuatara.text:make-octets 12) id))))
     (multiple-value-bind (remote client runner) (connect-remote local)
-      (flet ((paint (pictures)
+      (flet ((paint (pictures frames)
                (tuatara.frontend:frontend-begin-frame remote)
                (loop for image in pictures for row from 0
                      do (tuatara.frontend:frontend-put-image remote image row 0 1 1))
                (tuatara.frontend:frontend-end-frame remote)
-               ;; taken to be sent before the next, so that the client paints both
-               (loop repeat 1000
-                     until (zerop (tuatara.frontend::outbox-fill (tuatara.frontend::remote-unsent remote)))
-                     do (sleep 0.001))))
-        (paint images)
-        (paint (rest images)))
+               ;; painted by the client before the next is sent, so that it paints both
+               (tuatara.runtime:wait-until (lambda () (>= (tuatara.frontend.fake:fake-frames local) frames))
+                                           10 :interval 1/1000)))
+        (paint images 1)
+        (paint (rest images) 2))
       (tuatara.frontend:frontend-stop remote)
       (is eql 0 (client-done runner))
       (destructuring-bind (newer older) (subseq (tuatara.frontend.fake:fake-image-history local) 0 2)
@@ -1892,3 +1894,76 @@ as messages from an editor; the client."
         (sb-int:unencapsulate 'tuatara.io:poll-fd 'idle-polls)
         (sb-posix:close ours)
         (sb-posix:close theirs)))))
+
+(defun inbox-of (octets-writer)
+  "An inbox holding the fields OCTETS-WRITER puts in an outbox, to be taken from the first."
+  (let ((box (tuatara.frontend::make-outbox)))
+    (funcall octets-writer box)
+    (let ((inbox (tuatara.frontend::make-inbox nil :client
+                                               :octets (subseq (tuatara.frontend::outbox-octets box) 0
+                                                               (tuatara.frontend::outbox-fill box))
+                                               :end (tuatara.frontend::outbox-fill box))))
+      (setf (tuatara.frontend::inbox-at inbox) 0
+            (tuatara.frontend::inbox-stop inbox) (tuatara.frontend::outbox-fill box))
+      inbox)))
+
+(define-test (remote colours-from-an-editor-are-hex-or-refused)
+  ;; a colour string that is not #rrggbb is not sent, and is refused where it is read
+  (false (tuatara.frontend::take-colour
+          (inbox-of (lambda (box) (tuatara.frontend::put-colour box "red")))))
+  (is equal "#00ff7f" (tuatara.frontend::take-colour
+                       (inbox-of (lambda (box) (tuatara.frontend::put-colour box "#00ff7f")))))
+  (fail (tuatara.frontend::take-colour
+         (inbox-of (lambda (box)
+                     (tuatara.frontend::put-number box 3 1)
+                     (tuatara.frontend::put-text box "red"))))
+      tuatara.frontend:malformed-message))
+
+(define-test (remote request-past-the-bounds-refused-in-words)
+  (let ((request (tuatara.frontend:make-request
+                  :directory "/" :files (loop repeat 5000 collect (list "/a" nil nil)))))
+    (fail (tuatara.frontend::refuse-unsendable-request request) tuatara.runtime:refusal)))
+
+(define-test (remote special-keys-pinned-to-their-wire-numbers)
+  (is equalp #(:enter :tab :backspace :escape :up :down :left :right :home :end :page-up :page-down :delete :insert
+               :f1 :f2 :f3 :f4 :f5 :f6 :f7 :f8 :f9 :f10 :f11 :f12 :wheel-up :wheel-down
+               :down-mouse-1 :drag-mouse-1 :up-mouse-1 :mouse-2 :double-mouse-1 :triple-mouse-1)
+      tuatara.frontend::*special-keys*))
+
+(define-test (remote only-the-last-frame-of-a-run-is-painted)
+  (let* ((local (tuatara.frontend.fake:make-fake-frontend :width 20 :height 3))
+         (client (tuatara.frontend::%make-remote-client
+                  -1 local (tuatara.frontend::make-inbox nil :client :octets (tuatara.text:make-octets 16) :end 0))))
+    (tuatara.frontend:frontend-start local)
+    (let ((before (tuatara.frontend.fake:fake-frames local)))
+      (setf (tuatara.frontend::remote-client-arrived client)
+            (list (list :frame (list :row 0 "second" nil nil nil nil nil))
+                  (list :frame (list :row 0 "first" nil nil nil nil nil))))
+      (tuatara.frontend::paint-arrived client)
+      (is = 1 (- (tuatara.frontend.fake:fake-frames local) before))
+      (true (search "second" (tuatara.frontend.fake:fake-screen-line local 0))))))
+
+(define-test (remote far-editor-raises-no-window-without-the-keyboard)
+  ;; what a far editor asks of the window before it has the keyboard is kept, and done once it has
+  (let* ((local (make-instance 'queued-fake-frontend :width 20 :height 3))
+         (client (tuatara.frontend::%make-remote-client
+                  -1 local (tuatara.frontend::make-inbox nil :client :octets (tuatara.text:make-octets 16) :end 0)))
+         (focused nil))
+    (setf (tuatara.frontend::remote-client-far client) t)
+    (tuatara.frontend:frontend-start local)
+    (sb-int:encapsulate 'tuatara.frontend:frontend-focused-p 'test-focus
+                        (lambda (function frontend) (declare (ignore function frontend)) focused))
+    (unwind-protect
+         (let ((raised (tuatara.frontend.fake:fake-raised local)))
+           (setf (tuatara.frontend::remote-client-arrived client) (list (list :raise)))
+           (tuatara.frontend::paint-arrived client)
+           (is = raised (tuatara.frontend.fake:fake-raised local) "not raised without the keyboard")
+           (setf focused t)
+           (tuatara.frontend::paint-arrived client)
+           (is = (1+ raised) (tuatara.frontend.fake:fake-raised local) "raised once it has it"))
+      (sb-int:unencapsulate 'tuatara.frontend:frontend-focused-p 'test-focus))))
+
+(define-test (remote font-name-refused-in-words-before-it-is-sent)
+  (let ((remote (make-instance 'tuatara.frontend:remote-frontend :fd -1)))
+    (fail (tuatara.frontend:frontend-set-font remote (format nil "Mono~cBold" #\Tab)) tuatara.runtime:refusal)
+    (fail (tuatara.frontend:frontend-set-font remote (make-string 300 :initial-element #\a)) tuatara.runtime:refusal)))

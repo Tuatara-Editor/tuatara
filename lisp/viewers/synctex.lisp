@@ -131,12 +131,18 @@ out of range."
                                     (when v2 (setf h v d v2)))))))))
                       (values tag line x y w h d))))))))))))
 
+(declaim (inline synctex-input-line-key))
+(defun synctex-input-line-key (tag line)
+  "The number a record of the input TAG at LINE is sorted by in a SYNCTEX's
+index: its input, then its line."
+  (+ (ash tag 32) line #x80000000))
+
 (defun synctex-key (records record)
-  "The number RECORD of RECORDS is sorted by in a SYNCTEX's index: its input,
-then its line."
+  "The number RECORD of RECORDS is sorted by in a SYNCTEX's index
+\(SYNCTEX-INPUT-LINE-KEY)."
   (declare (type (simple-array (signed-byte 32) (*)) records) (type fixnum record))
   (let ((at (* record +synctex-stride+)))
-    (+ (ash (logand (aref records at) #xffffff) 32) (aref records (+ at 1)) #x80000000)))
+    (synctex-input-line-key (logand (aref records at) #xffffff) (aref records (+ at 1)))))
 
 (defun sorted-synctex-records (records count)
   "The first COUNT records of RECORDS by input and line, those of one line in
@@ -301,16 +307,15 @@ Found in SYNCTEX's index by halves."
         (first nil) (leaf nil) (after nil) (after-line 0) (before-line 0) (before-tag nil))
     (flet ((tag-of (record) (logand (aref records (* record +synctex-stride+)) #xffffff))
            (line-of (record) (aref records (1+ (* record +synctex-stride+))))
-           (leaf-p (record) (plusp (ash (aref records (* record +synctex-stride+)) -24)))
-           (key (tag line) (+ (ash tag 32) line #x80000000)))
+           (leaf-p (record) (plusp (ash (aref records (* record +synctex-stride+)) -24))))
       (dolist (tag tags)
-        (let ((at (synctex-indexed synctex (key tag line))))
+        (let ((at (synctex-indexed synctex (synctex-input-line-key tag line))))
           (loop for i from at below (length index)
                 for record = (aref index i)
-                while (= (synctex-key records record) (key tag line))
+                while (= (synctex-key records record) (synctex-input-line-key tag line))
                 do (when (or (null first) (< record first)) (setf first record))
                    (when (and (leaf-p record) (or (null leaf) (< record leaf))) (setf leaf record)))
-          (let ((next (synctex-indexed synctex (key tag (1+ line)))))
+          (let ((next (synctex-indexed synctex (synctex-input-line-key tag (1+ line)))))
             (when (< next (length index))
               (let ((record (aref index next)))
                 (when (and (= (tag-of record) tag)
@@ -323,7 +328,7 @@ Found in SYNCTEX's index by halves."
                 (setf before-line (line-of record) before-tag tag))))))
       (or (and leaf (eq (synctex-page-of synctex leaf) (synctex-page-of synctex first)) leaf)
           first after
-          (and before-tag (aref index (synctex-indexed synctex (key before-tag before-line))))))))
+          (and before-tag (aref index (synctex-indexed synctex (synctex-input-line-key before-tag before-line))))))))
 
 (defun synctex-place (synctex file line)
   "Where LINE (from 1) of FILE is on the pages SYNCTEX describes, as five

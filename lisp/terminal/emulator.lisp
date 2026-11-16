@@ -96,6 +96,118 @@ layout the first time it is needed."
       `(layout-cell-value (load-time-value (layout-cell ,key)))
       form))
 
+;;; The library's C functions
+
+(declaim (inline %ghostty-terminal-new %ghostty-terminal-free %ghostty-terminal-set %ghostty-terminal-get
+                 %ghostty-terminal-resize %ghostty-terminal-vt-write %ghostty-terminal-compress %ghostty-build-info
+                 %ghostty-alloc %ghostty-sys-set %ghostty-render-state-new %ghostty-render-state-free
+                 %ghostty-render-state-update %ghostty-render-state-get %ghostty-render-state-clean
+                 %ghostty-render-state-row-iterator-new %ghostty-render-state-row-iterator-free
+                 %ghostty-render-state-row-iterator-next %ghostty-render-state-row-iterator-next-dirty
+                 %ghostty-render-state-row-get %ghostty-render-state-row-cells-new
+                 %ghostty-render-state-row-cells-free %ghostty-render-state-row-cells-next
+                 %ghostty-render-state-row-cells-get %ghostty-row-get %ghostty-cell-get %ghostty-key-encoder-new
+                 %ghostty-key-encoder-free %ghostty-key-encoder-set-from-terminal %ghostty-key-encoder-encode
+                 %ghostty-key-event-new %ghostty-key-event-free %ghostty-key-event-set-action
+                 %ghostty-key-event-set-key %ghostty-key-event-set-mods %ghostty-key-event-set-unshifted-codepoint
+                 %ghostty-mouse-encoder-new %ghostty-mouse-encoder-free %ghostty-mouse-encoder-set-from-terminal
+                 %ghostty-mouse-event-new %ghostty-mouse-event-free %ghostty-paste-encode %ghostty-kitty-graphics-get
+                 %ghostty-kitty-graphics-image %ghostty-kitty-graphics-image-get
+                 %ghostty-kitty-graphics-placement-iterator-new %ghostty-kitty-graphics-placement-iterator-free
+                 %ghostty-kitty-graphics-placement-next %ghostty-kitty-graphics-placement-get
+                 %ghostty-kitty-graphics-placement-render-info %tuatara-terminal-key-text %tuatara-terminal-mouse
+                 %tuatara-terminal-link %tuatara-terminal-text %tuatara-terminal-text-free %memmem))
+
+(define-c-function ("ghostty_terminal_new" %ghostty-terminal-new) :int
+  (allocator :pointer) (place :pointer) (columns :uint16) (rows :uint16))
+(define-c-function ("ghostty_terminal_free" %ghostty-terminal-free) :void (terminal :pointer))
+(define-c-function ("ghostty_terminal_set" %ghostty-terminal-set) :int
+  (terminal :pointer) (option :int) (value :pointer))
+(define-c-function ("ghostty_terminal_get" %ghostty-terminal-get) :int (terminal :pointer) (what :int) (place :pointer))
+(define-c-function ("ghostty_terminal_resize" %ghostty-terminal-resize) :int
+  (terminal :pointer) (columns :uint16) (rows :uint16) (cell-width :uint32) (cell-height :uint32))
+(define-c-function ("ghostty_terminal_vt_write" %ghostty-terminal-vt-write) :void
+  (terminal :pointer) (data :pointer) (size :size))
+(define-c-function ("ghostty_terminal_compress" %ghostty-terminal-compress) :int
+  (terminal :pointer) (how :int) (result :pointer))
+(define-c-function ("ghostty_build_info" %ghostty-build-info) :int (what :int) (place :pointer))
+(define-c-function ("ghostty_alloc" %ghostty-alloc) :pointer (allocator :pointer) (size :size))
+(define-c-function ("ghostty_sys_set" %ghostty-sys-set) :int (what :int) (value :pointer))
+(define-c-function ("ghostty_render_state_new" %ghostty-render-state-new) :int (allocator :pointer) (place :pointer))
+(define-c-function ("ghostty_render_state_free" %ghostty-render-state-free) :void (state :pointer))
+(define-c-function ("ghostty_render_state_update" %ghostty-render-state-update) :int
+  (state :pointer) (terminal :pointer))
+(define-c-function ("ghostty_render_state_get" %ghostty-render-state-get) :int
+  (state :pointer) (what :int) (place :pointer))
+(define-c-function ("ghostty_render_state_clean" %ghostty-render-state-clean) :int (state :pointer))
+(define-c-function ("ghostty_render_state_row_iterator_new" %ghostty-render-state-row-iterator-new) :int
+  (allocator :pointer) (place :pointer))
+(define-c-function ("ghostty_render_state_row_iterator_free" %ghostty-render-state-row-iterator-free) :void
+  (iterator :pointer))
+(define-c-function ("ghostty_render_state_row_iterator_next" %ghostty-render-state-row-iterator-next) :bool
+  (iterator :pointer))
+(define-c-function ("ghostty_render_state_row_iterator_next_dirty" %ghostty-render-state-row-iterator-next-dirty) :bool
+  (iterator :pointer) (row :pointer))
+(define-c-function ("ghostty_render_state_row_get" %ghostty-render-state-row-get) :int
+  (iterator :pointer) (what :int) (place :pointer))
+(define-c-function ("ghostty_render_state_row_cells_new" %ghostty-render-state-row-cells-new) :int
+  (allocator :pointer) (place :pointer))
+(define-c-function ("ghostty_render_state_row_cells_free" %ghostty-render-state-row-cells-free) :void (cells :pointer))
+(define-c-function ("ghostty_render_state_row_cells_next" %ghostty-render-state-row-cells-next) :bool (cells :pointer))
+(define-c-function ("ghostty_render_state_row_cells_get" %ghostty-render-state-row-cells-get) :int
+  (cells :pointer) (what :int) (place :pointer))
+(define-c-function ("ghostty_row_get" %ghostty-row-get) :int (row :uint64) (what :int) (place :pointer))
+(define-c-function ("ghostty_cell_get" %ghostty-cell-get) :int (cell :uint64) (what :int) (place :pointer))
+(define-c-function ("ghostty_key_encoder_new" %ghostty-key-encoder-new) :int (allocator :pointer) (place :pointer))
+(define-c-function ("ghostty_key_encoder_free" %ghostty-key-encoder-free) :void (encoder :pointer))
+(define-c-function ("ghostty_key_encoder_set_from_terminal" %ghostty-key-encoder-set-from-terminal) :void
+  (encoder :pointer) (terminal :pointer))
+(define-c-function ("ghostty_key_encoder_encode" %ghostty-key-encoder-encode) :int
+  (encoder :pointer) (event :pointer) (out :pointer) (size :size) (length :pointer))
+(define-c-function ("ghostty_key_event_new" %ghostty-key-event-new) :int (allocator :pointer) (place :pointer))
+(define-c-function ("ghostty_key_event_free" %ghostty-key-event-free) :void (event :pointer))
+(define-c-function ("ghostty_key_event_set_action" %ghostty-key-event-set-action) :void (event :pointer) (action :int))
+(define-c-function ("ghostty_key_event_set_key" %ghostty-key-event-set-key) :void (event :pointer) (key :int))
+(define-c-function ("ghostty_key_event_set_mods" %ghostty-key-event-set-mods) :void (event :pointer) (mods :uint16))
+(define-c-function ("ghostty_key_event_set_unshifted_codepoint" %ghostty-key-event-set-unshifted-codepoint) :void
+  (event :pointer) (code :uint32))
+(define-c-function ("ghostty_mouse_encoder_new" %ghostty-mouse-encoder-new) :int (allocator :pointer) (place :pointer))
+(define-c-function ("ghostty_mouse_encoder_free" %ghostty-mouse-encoder-free) :void (encoder :pointer))
+(define-c-function ("ghostty_mouse_encoder_set_from_terminal" %ghostty-mouse-encoder-set-from-terminal) :void
+  (encoder :pointer) (terminal :pointer))
+(define-c-function ("ghostty_mouse_event_new" %ghostty-mouse-event-new) :int (allocator :pointer) (place :pointer))
+(define-c-function ("ghostty_mouse_event_free" %ghostty-mouse-event-free) :void (event :pointer))
+(define-c-function ("ghostty_paste_encode" %ghostty-paste-encode) :int
+  (data :pointer) (size :size) (bracketed :bool) (out :pointer) (room :size) (written :pointer))
+(define-c-function ("ghostty_kitty_graphics_get" %ghostty-kitty-graphics-get) :int
+  (graphics :pointer) (what :int) (place :pointer))
+(define-c-function ("ghostty_kitty_graphics_image" %ghostty-kitty-graphics-image) :pointer
+  (graphics :pointer) (id :uint32))
+(define-c-function ("ghostty_kitty_graphics_image_get" %ghostty-kitty-graphics-image-get) :int
+  (image :pointer) (what :int) (place :pointer))
+(define-c-function ("ghostty_kitty_graphics_placement_iterator_new" %ghostty-kitty-graphics-placement-iterator-new) :int
+  (allocator :pointer) (place :pointer))
+(define-c-function ("ghostty_kitty_graphics_placement_iterator_free"
+                    %ghostty-kitty-graphics-placement-iterator-free) :void
+  (iterator :pointer))
+(define-c-function ("ghostty_kitty_graphics_placement_next" %ghostty-kitty-graphics-placement-next) :bool
+  (iterator :pointer))
+(define-c-function ("ghostty_kitty_graphics_placement_get" %ghostty-kitty-graphics-placement-get) :int
+  (iterator :pointer) (what :int) (place :pointer))
+(define-c-function ("ghostty_kitty_graphics_placement_render_info" %ghostty-kitty-graphics-placement-render-info) :int
+  (iterator :pointer) (image :pointer) (terminal :pointer) (info :pointer))
+(define-c-function ("tuatara_terminal_key_text" %tuatara-terminal-key-text) :void
+  (event :pointer) (text :pointer) (size :size))
+(define-c-function ("tuatara_terminal_mouse" %tuatara-terminal-mouse) :int
+  (encoder :pointer) (event :pointer) (action :int) (button :int) (mods :int) (column :int) (row :int)
+  (columns :int) (rows :int) (pressed :int) (out :pointer) (size :size) (length :pointer))
+(define-c-function ("tuatara_terminal_link" %tuatara-terminal-link) :int
+  (terminal :pointer) (history :int) (column :int) (row :int) (out :pointer) (size :size) (length :pointer))
+(define-c-function ("tuatara_terminal_text" %tuatara-terminal-text) :int
+  (terminal :pointer) (styled :int) (out :pointer) (length :pointer))
+(define-c-function ("tuatara_terminal_text_free" %tuatara-terminal-text-free) :void (text :pointer) (length :size))
+(define-c-function ("memmem" %memmem) :pointer (haystack :pointer) (size :size) (needle :pointer) (needle-size :size))
+
 ;;; An emulator
 
 (define-record (emulator (:constructor %make-emulator) (:copier nil))
@@ -209,7 +321,7 @@ what you type is never dropped.")
 
 (defmacro alien-address (alien)
   "The address of ALIEN, a variable of WITH-ALIEN, for the library to put an
-answer in: given to FOREIGN-CALL as a SYSTEM-AREA-POINTER."
+answer in: given to the library's functions as a pointer."
   `(sb-alien:alien-sap (sb-alien:addr ,alien)))
 
 (defun out-pointer (function &rest arguments)
@@ -220,35 +332,32 @@ return the pointer, or signal an error when it returns other than success."
       (unless (eql result (vt :success)) (refuse "The terminal library refused (~d)" result)))
     place))
 
-(defmacro vt-new (constructor &rest arguments)
-  "Make one of the terminal library's objects with its C function CONSTRUCTOR,
-which takes the library's own allocator, a place for the object, then
-ARGUMENTS (each a list of an alien type and a value); return the object, or
-signal an error when the library refuses."
-  `(out-pointer (lambda (place)
-                  (foreign-call ,constructor sb-alien:int (sb-sys:system-area-pointer (tuatara.io:null-pointer))
-                                (sb-sys:system-area-pointer place) ,@arguments))))
+(defun vt-new (constructor &rest arguments)
+  "Make one of the terminal library's objects with CONSTRUCTOR, its function
+taking the library's own allocator, a place for the object, then ARGUMENTS;
+return the object, or signal an error when the library refuses."
+  (out-pointer (lambda (place) (apply constructor (tuatara.io:null-pointer) place arguments))))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defparameter *library-objects*
-    '((emulator-terminal nil "ghostty_terminal_free")
-      (emulator-placements nil "ghostty_kitty_graphics_placement_iterator_free")
-      (emulator-render-state "ghostty_render_state_new" "ghostty_render_state_free")
-      (emulator-iterator "ghostty_render_state_row_iterator_new" "ghostty_render_state_row_iterator_free")
-      (emulator-cells "ghostty_render_state_row_cells_new" "ghostty_render_state_row_cells_free")
-      (emulator-encoder "ghostty_key_encoder_new" "ghostty_key_encoder_free")
-      (emulator-event "ghostty_key_event_new" "ghostty_key_event_free")
-      (emulator-mouse-encoder "ghostty_mouse_encoder_new" "ghostty_mouse_encoder_free")
-      (emulator-mouse-event "ghostty_mouse_event_new" "ghostty_mouse_event_free"))
+    '((emulator-terminal nil %ghostty-terminal-free)
+      (emulator-placements nil %ghostty-kitty-graphics-placement-iterator-free)
+      (emulator-render-state %ghostty-render-state-new %ghostty-render-state-free)
+      (emulator-iterator %ghostty-render-state-row-iterator-new %ghostty-render-state-row-iterator-free)
+      (emulator-cells %ghostty-render-state-row-cells-new %ghostty-render-state-row-cells-free)
+      (emulator-encoder %ghostty-key-encoder-new %ghostty-key-encoder-free)
+      (emulator-event %ghostty-key-event-new %ghostty-key-event-free)
+      (emulator-mouse-encoder %ghostty-mouse-encoder-new %ghostty-mouse-encoder-free)
+      (emulator-mouse-event %ghostty-mouse-event-new %ghostty-mouse-event-free))
     "The terminal library's objects an emulator holds: each its slot's reader,
-the C function that makes it from no more than a place for it (NIL for one
+the library's function that makes it from no more than a place for it (NIL for one
 made otherwise, the terminal, which takes its size, and the pictures'
 iterator, made only when pictures are on), and the one that frees it."))
 
 (defmacro make-library-objects (emulator)
   "Make EMULATOR's objects of *LIBRARY-OBJECTS* that need no more than a place."
   `(setf ,@(loop for (slot constructor) in *library-objects*
-                 when constructor append `((,slot ,emulator) (vt-new ,constructor)))))
+                 when constructor append `((,slot ,emulator) (vt-new #',constructor)))))
 
 (defmacro free-library-objects (emulator)
   "Free each of EMULATOR's objects of *LIBRARY-OBJECTS* it has, the terminal
@@ -256,22 +365,19 @@ last, and forget them."
   `(progn ,@(loop for (slot nil free) in (reverse *library-objects*)
                   collect `(let ((object (,slot ,emulator)))
                              (when object
-                               (foreign-call ,free sb-alien:void (sb-sys:system-area-pointer object))
+                               (,free object)
                                (setf (,slot ,emulator) nil))))))
 
 (defun set-size-option (terminal option value)
   "Set the terminal library's OPTION of TERMINAL to VALUE, a size."
   (sb-alien:with-alien ((place (sb-alien:unsigned 64) value))
-    (foreign-call "ghostty_terminal_set" sb-alien:int (sb-sys:system-area-pointer terminal) (sb-alien:int option)
-                  (sb-sys:system-area-pointer (alien-address place)))))
+    (%ghostty-terminal-set terminal option (alien-address place))))
 
 (defun library-size (terminal what)
   "The size the terminal library keeps of TERMINAL as WHAT (a :data- value of
 its layout), or NIL when it gives none."
   (sb-alien:with-alien ((place (sb-alien:unsigned 64) 0))
-    (and (eql (vt :success) (foreign-call "ghostty_terminal_get" sb-alien:int (sb-sys:system-area-pointer terminal)
-                                          (sb-alien:int what)
-                                          (sb-sys:system-area-pointer (alien-address place))))
+    (and (eql (vt :success) (%ghostty-terminal-get terminal what (alien-address place)))
          place)))
 
 (defun terminal-library-version ()
@@ -280,9 +386,7 @@ says it, such as \"1.0.0\"; NIL when there is no such library here."
   (when (terminal-library-p)
     (sb-alien:with-alien ((place (array (sb-alien:unsigned 64) 2)))
       (when (eql (vt :success)
-                 (foreign-call "ghostty_build_info" sb-alien:int
-                               (sb-alien:int 5) ; GHOSTTY_BUILD_INFO_VERSION_STRING
-                               (sb-sys:system-area-pointer (sb-alien:alien-sap place))))
+                 (%ghostty-build-info (vt :build-info-version) (sb-alien:alien-sap place)))
         (let ((start (sb-sys:int-sap (sb-alien:deref place 0))))
           (coerce (loop for at below (min 64 (sb-alien:deref place 1))
                         collect (code-char (sb-sys:sap-ref-8 start at)))
@@ -310,9 +414,7 @@ it."
 CELL-WIDTH by CELL-HEIGHT pixels (0 when not known), by which it sizes
 pictures given no size in cells. To be called holding the library, or
 before its reader starts."
-  (foreign-call "ghostty_terminal_resize" sb-alien:int (sb-sys:system-area-pointer (emulator-terminal emulator))
-                ((sb-alien:unsigned 16) columns) ((sb-alien:unsigned 16) rows)
-                ((sb-alien:unsigned 32) cell-width) ((sb-alien:unsigned 32) cell-height)))
+  (%ghostty-terminal-resize (emulator-terminal emulator) columns rows cell-width cell-height))
 
 (defun terminal-environment (environment)
   "The variables a terminal's program gets: ENVIRONMENT (NAME=VALUE strings),
@@ -339,7 +441,7 @@ drawn. Returns the EMULATOR; an error when the library cannot be loaded."
   (unless (terminal-library-p)
     (refuse "The terminal library is not there (tools/terminal-library.sh builds it)"))
   (let* ((id (1+ (sb-ext:atomic-incf (car *emulator-count*))))
-         (terminal (vt-new "ghostty_terminal_new" ((sb-alien:unsigned 16) columns) ((sb-alien:unsigned 16) rows)))
+         (terminal (vt-new #'%ghostty-terminal-new columns rows))
          (emulator (%make-emulator :id id :terminal terminal :columns columns :rows rows :wake wake
                                    :cell-width cell-width :cell-height cell-height))
          (started nil))
@@ -354,17 +456,9 @@ drawn. Returns the EMULATOR; an error when the library cannot be loaded."
            (when (and (plusp cell-width) (plusp cell-height))
              (resize-library emulator columns rows cell-width cell-height))
            (set-size-option terminal (vt :opt-scrollback-max-bytes) scrollback-bytes)
-           (foreign-call "ghostty_terminal_set"
-                         sb-alien:int
-                         (sb-sys:system-area-pointer terminal)
-                         (sb-alien:int (vt :opt-userdata))
-                         (sb-sys:system-area-pointer (sb-sys:int-sap id)))
-           (foreign-call "ghostty_terminal_set"
-                         sb-alien:int
-                         (sb-sys:system-area-pointer terminal)
-                         (sb-alien:int (vt :opt-write-pty))
-                         (sb-sys:system-area-pointer
-                          (sb-alien:alien-sap (sb-alien:alien-callable-function 'tuatara-terminal-write-pty))))
+           (%ghostty-terminal-set terminal (vt :opt-userdata) (sb-sys:int-sap id))
+           (%ghostty-terminal-set terminal (vt :opt-write-pty)
+                                  (sb-alien:alien-sap (sb-alien:alien-callable-function 'tuatara-terminal-write-pty)))
            (make-library-objects emulator)
            (sync-input-state emulator)
            (setf (gethash id *emulators*) emulator)
@@ -394,7 +488,7 @@ drawn. Returns the EMULATOR; an error when the library cannot be loaded."
             (progn (free-library-objects emulator)
                    (remhash id *emulators*)))))))
 
-(defparameter +leaving-the-other-screen+
+(defparameter *leaving-the-other-screen*
   (coerce (list 27 91 63 49 48 52 57 108) '(vector (unsigned-byte 8)))
   "The octets of the sequence that leaves the alternate screen and puts the cursor back (ESC [ ? 1 0 4 9 l).")
 
@@ -406,18 +500,12 @@ without having gone there (a login's logout does) would else put the cursor back
 where it was saved long ago, inside the text. The start of such a sequence at
 the very end is kept: moved to the start of BUFFER, its length returned, for the
 next read to go on after it."
-  (let ((terminal (emulator-terminal emulator)) (start 0) (size (length +leaving-the-other-screen+)))
+  (let ((terminal (emulator-terminal emulator)) (start 0) (size (length *leaving-the-other-screen*)))
     (flet ((pass (from to)
              (when (< from to)
-               (foreign-call "ghostty_terminal_vt_write" sb-alien:void (sb-sys:system-area-pointer terminal)
-                             (sb-sys:system-area-pointer (sb-sys:sap+ buffer from))
-                             ((sb-alien:unsigned 64) (- to from))))))
+               (%ghostty-terminal-vt-write terminal (sb-sys:sap+ buffer from) (- to from)))))
       (loop
-        (let ((found (sb-alien:alien-funcall
-                      (sb-alien:extern-alien "memmem" (function sb-sys:system-area-pointer sb-sys:system-area-pointer
-                                                                sb-alien:unsigned-long sb-sys:system-area-pointer
-                                                                sb-alien:unsigned-long))
-                      (sb-sys:sap+ buffer start) (- count start) leaving size)))
+        (let ((found (%memmem (sb-sys:sap+ buffer start) (- count start) leaving size)))
           (when (zerop (sb-sys:sap-int found)) (return))
           (let ((at (sb-sys:sap- found buffer)))
             (pass start at)
@@ -440,13 +528,18 @@ next read to go on after it."
 time and give it to the library, stepping aside while the editor wants a
 frame, and keep what the program asks of keys, the mouse and pastes
 (SYNC-INPUT-STATE); wake the editor when something changed after quiet. Ends
-when the program's side of the pseudo-terminal is gone."
+when the program's side of the pseudo-terminal is gone, or once the emulator
+is stopped (STOP-EMULATOR) and the read under way returns: a program outside
+the terminal's group that keeps it open (one run in a session of its own)
+keeps the reader waiting until it writes or ends."
   (let ((fd (emulator-fd emulator)) (held 0))
     (unwind-protect
-         (tuatara.io:with-foreign-memory (buffer (+ *terminal-read-size* (length +leaving-the-other-screen+)))
-           (loop for octet across +leaving-the-other-screen+ for at from *terminal-read-size*
+         (tuatara.io:with-foreign-memory (buffer (+ *terminal-read-size* (length *leaving-the-other-screen*)))
+           (loop for octet across *leaving-the-other-screen* for at from *terminal-read-size*
                  do (setf (sb-sys:sap-ref-8 buffer at) octet))
            (loop
+             ;; ended by STOP-EMULATOR: its descriptor is about to be closed, and its number may be another's
+             (when (emulator-closed emulator) (return))
              (let ((got (loop (multiple-value-bind (got errno) (sb-unix:unix-read fd (sb-sys:sap+ buffer held)
                                                                                   (- *terminal-read-size* held))
                                 ;; a signal (a program the sandbox ran ending) is no end
@@ -455,6 +548,7 @@ when the program's side of the pseudo-terminal is gone."
                (sb-thread:with-mutex ((emulator-lock emulator))
                  (loop while (emulator-wanted emulator)
                        do (sb-thread:condition-wait (emulator-turn emulator) (emulator-lock emulator)))
+                 (when (emulator-closed emulator) (return))
                  (setf held (write-to-library emulator buffer (+ held got) (sb-sys:sap+ buffer *terminal-read-size*)))
                  (when (emulator-placements emulator) (keep-placements-within-bounds emulator))
                  (sync-input-state emulator))
@@ -530,10 +624,7 @@ the library (WITH-EMULATOR-TURN)."
   (tuatara.io:with-foreign-memory (sap (vt :mode-config-size) :zero t)
     (setf (sb-sys:sap-ref-16 sap (vt :mode-config-mode)) mode)
     (and (eql (vt :success)
-              (foreign-call "ghostty_terminal_get"
-                            sb-alien:int
-                            (sb-sys:system-area-pointer (emulator-terminal emulator))
-                            (sb-alien:int (vt :data-mode)) (sb-sys:system-area-pointer sap)))
+              (%ghostty-terminal-get (emulator-terminal emulator) (vt :data-mode) sap))
          (/= 0 (sb-sys:sap-ref-8 sap (vt :mode-config-value))))))
 
 (defun sync-input-state (emulator)
@@ -547,11 +638,8 @@ less. To be called holding the library, once its output has been given to it, so
 that typing never waits for the library."
   (let ((terminal (emulator-terminal emulator)))
     (sb-thread:with-mutex ((emulator-input-lock emulator))
-      (foreign-call "ghostty_key_encoder_set_from_terminal" sb-alien:void
-                    (sb-sys:system-area-pointer (emulator-encoder emulator)) (sb-sys:system-area-pointer terminal))
-      (foreign-call "ghostty_mouse_encoder_set_from_terminal" sb-alien:void
-                    (sb-sys:system-area-pointer (emulator-mouse-encoder emulator))
-                    (sb-sys:system-area-pointer terminal)))
+      (%ghostty-key-encoder-set-from-terminal (emulator-encoder emulator) terminal)
+      (%ghostty-mouse-encoder-set-from-terminal (emulator-mouse-encoder emulator) terminal))
     (setf (emulator-bracketed-paste-p emulator) (emulator-mode-p emulator (vt :mode-bracketed-paste))
           (emulator-alternate-screen-p emulator) (eql (library-size terminal (vt :data-active-screen))
                                                       (vt :screen-alternate))
@@ -597,53 +685,46 @@ means something to a terminal."
       (with-emulator-input (emulator)
         (let ((event (emulator-event emulator))
               (utf8 (and text (sb-ext:string-to-octets text :external-format :utf-8 :null-terminate t))))
-          (foreign-call "ghostty_key_event_set_action"
-                        sb-alien:void
-                        (sb-sys:system-area-pointer event)
-                        (sb-alien:int (vt :key-press)))
-          (foreign-call "ghostty_key_event_set_key"
-                        sb-alien:void
-                        (sb-sys:system-area-pointer event)
-                        (sb-alien:int physical))
-          (foreign-call "ghostty_key_event_set_mods" sb-alien:void (sb-sys:system-area-pointer event)
-                        ((sb-alien:unsigned 16) (library-mods (tuatara.frontend:key-ctrl key)
-                                                              (tuatara.frontend:key-meta key)
-                                                              (or (tuatara.frontend:key-shift key)
-                                                                  (and (characterp base) (upper-case-p base))))))
-          (foreign-call "ghostty_key_event_set_unshifted_codepoint" sb-alien:void (sb-sys:system-area-pointer event)
-                        ((sb-alien:unsigned 32) (if (characterp base) (char-code (char-downcase base)) 0)))
+          (%ghostty-key-event-set-action event (vt :key-press))
+          (%ghostty-key-event-set-key event physical)
+          (%ghostty-key-event-set-mods event (library-mods (tuatara.frontend:key-ctrl key)
+                                                           (tuatara.frontend:key-meta key)
+                                                           (or (tuatara.frontend:key-shift key)
+                                                               (and (characterp base) (upper-case-p base)))))
+          (%ghostty-key-event-set-unshifted-codepoint event (if (characterp base) (char-code (char-downcase base)) 0))
           (sb-sys:with-pinned-objects (utf8)
-            (foreign-call "tuatara_terminal_key_text" sb-alien:void (sb-sys:system-area-pointer event)
-                          (sb-sys:system-area-pointer (if utf8 (sb-sys:vector-sap utf8) (tuatara.io:null-pointer)))
-                          ((sb-alien:unsigned 64) (if utf8 (1- (length utf8)) 0)))
+            (%tuatara-terminal-key-text event (if utf8 (sb-sys:vector-sap utf8) (tuatara.io:null-pointer))
+                                        (if utf8 (1- (length utf8)) 0))
             (send-encoded emulator 128
                           (lambda (out length)
-                            (foreign-call "ghostty_key_encoder_encode" sb-alien:int
-                                          (sb-sys:system-area-pointer (emulator-encoder emulator))
-                                          (sb-sys:system-area-pointer event)
-                                          (sb-sys:system-area-pointer out) ((sb-alien:unsigned 64) 128)
-                                          (sb-sys:system-area-pointer length))))))))))
+                            (%ghostty-key-encoder-encode (emulator-encoder emulator) event out 128 length)))))))))
+
+(defun paste-safe-text (text)
+  "TEXT with its control characters taken out but for tabs and line ends: the
+C0 controls (Escape among them), DEL and the C1 controls, so that pasted text
+cannot work the terminal nor end a marked paste early."
+  (remove-if (lambda (c)
+               (let ((code (char-code c)))
+                 (and (or (< code 32) (<= 127 code 159))
+                      (not (member c '(#\Tab #\Newline #\Return))))))
+             text))
 
 (defun emulator-paste (emulator text)
   "Paste TEXT into EMULATOR's program as terminals paste: marked as pasted when
 the program asks for that (EMULATOR-BRACKETED-PASTE-P, so that a shell runs
-none of its lines until you press RET), its control characters (Escape among
-them) made spaces so that pasted text cannot work the terminal, its line ends
-carriage returns when not marked. The editor never waits for the program to
-read it, nor for the library. Returns true when it was marked."
-  (let* ((data (tuatara.text:string-octets text))
+none of its lines until you press RET), its control characters taken out
+\(PASTE-SAFE-TEXT), its line ends carriage returns when not marked. The
+editor never waits for the program to read it, nor for the library. Returns
+true when it was marked."
+  (let* ((data (tuatara.text:string-octets (paste-safe-text text)))
          (room (+ (length data) 64))
          (out (make-array room :element-type '(unsigned-byte 8)))
          (bracketed (emulator-bracketed-paste-p emulator)))
     (sb-alien:with-alien ((written (sb-alien:unsigned 64) 0))
       (sb-sys:with-pinned-objects (data out)
         (unless (eql (vt :success)
-                     (foreign-call "ghostty_paste_encode" sb-alien:int
-                                   (sb-sys:system-area-pointer (sb-sys:vector-sap data))
-                                   ((sb-alien:unsigned 64) (length data))
-                                   ((sb-alien:boolean 8) bracketed)
-                                   (sb-sys:system-area-pointer (sb-sys:vector-sap out)) ((sb-alien:unsigned 64) room)
-                                   (sb-sys:system-area-pointer (alien-address written))))
+                     (%ghostty-paste-encode (sb-sys:vector-sap data) (length data) bracketed (sb-sys:vector-sap out)
+                                            room (alien-address written)))
           (refuse "The terminal library could not make the paste")))
       (emulator-input emulator (subseq out 0 written)))
     bracketed))
@@ -660,24 +741,22 @@ does not track the mouse."
                   (lambda (out length)
                     ;; the library's arithmetic on positions, done as C does it
                     (sb-int:with-float-traps-masked (:overflow :invalid :divide-by-zero :inexact :underflow)
-                      (foreign-call "tuatara_terminal_mouse" sb-alien:int
-                                    (sb-sys:system-area-pointer (emulator-mouse-encoder emulator))
-                                    (sb-sys:system-area-pointer (emulator-mouse-event emulator))
-                                    (sb-alien:int (vt (ecase action
-                                                        (:press :mouse-press)
-                                                        (:release :mouse-release)
-                                                        (:motion :mouse-motion))))
-                                    (sb-alien:int (if button (vt (ecase button
-                                                                   (:left :mouse-left)
-                                                                   (:middle :mouse-middle)
-                                                                   (:wheel-up :mouse-wheel-up)
-                                                                   (:wheel-down :mouse-wheel-down))) 0))
-                                    (sb-alien:int (library-mods ctrl meta shift))
-                                    (sb-alien:int column) (sb-alien:int row)
-                                    (sb-alien:int (emulator-columns emulator)) (sb-alien:int (emulator-rows emulator))
-                                    (sb-alien:int (if pressed 1 0))
-                                    (sb-sys:system-area-pointer out) ((sb-alien:unsigned 64) 64)
-                                    (sb-sys:system-area-pointer length)))))))
+                      (%tuatara-terminal-mouse (emulator-mouse-encoder emulator) (emulator-mouse-event emulator)
+                                               (vt (ecase action
+                                                     (:press :mouse-press)
+                                                     (:release :mouse-release)
+                                                     (:motion :mouse-motion)))
+                                               (if button
+                                                   (vt (ecase button
+                                                         (:left :mouse-left)
+                                                         (:middle :mouse-middle)
+                                                         (:wheel-up :mouse-wheel-up)
+                                                         (:wheel-down :mouse-wheel-down)))
+                                                   0)
+                                               (library-mods ctrl meta shift)
+                                               column row (emulator-columns emulator) (emulator-rows emulator)
+                                               (if pressed 1 0)
+                                               out 64 length))))))
 
 (defun emulator-link (emulator column row &key history)
   "The address of the link (OSC 8, as ls --hyperlink and many programs write
@@ -687,12 +766,8 @@ HISTORY at ROW of its whole history, scrollback first; NIL when it has none."
     (when (emulator-terminal emulator)
       (sb-alien:with-alien ((length (sb-alien:unsigned 64) 0))
         (flet ((link (out size)
-                 (foreign-call "tuatara_terminal_link"
-                               sb-alien:int
-                               (sb-sys:system-area-pointer (emulator-terminal emulator))
-                               (sb-alien:int (if history 1 0)) (sb-alien:int column) (sb-alien:int row)
-                               (sb-sys:system-area-pointer out) ((sb-alien:unsigned 64) size)
-                               (sb-sys:system-area-pointer (alien-address length)))))
+                 (%tuatara-terminal-link (emulator-terminal emulator) (if history 1 0) column row out size
+                                         (alien-address length))))
           (let ((result (link (tuatara.io:null-pointer) 0)))
             (when (and (member result (list (vt :success) (vt :out-of-space))) (plusp length))
               (let ((octets (make-array length :element-type '(unsigned-byte 8))))
@@ -795,8 +870,7 @@ of red, green and blue, or 0 for none."
   "Have the terminal library put in PLACE what WHAT (a :cell- value of its
 layout) is of the cell CELLS, its iterator over a row's cells, stands at;
 true when it did."
-  (eql (vt :success) (foreign-call "ghostty_render_state_row_cells_get" sb-alien:int (sb-sys:system-area-pointer cells)
-                                   (sb-alien:int what) (sb-sys:system-area-pointer place))))
+  (eql (vt :success) (%ghostty-render-state-row-cells-get cells what place)))
 
 (defun cell-look (cells style colour)
   "The look of the cell CELLS stands at, as a number (MAKE-LOOK, LOOK-LIST):
@@ -837,11 +911,9 @@ on it. The library keeps fewer than this for a cell.")
 are asked of theirs; SCRATCH is room for the library's answers."
   (setf (sb-sys:sap-ref-64 scratch 0) 0 (sb-sys:sap-ref-8 scratch 8) 0)
   (and (eql (vt :success)
-            (foreign-call "ghostty_render_state_row_get" sb-alien:int (sb-sys:system-area-pointer iterator)
-                          (sb-alien:int (vt :row-raw)) (sb-sys:system-area-pointer scratch)))
+            (%ghostty-render-state-row-get iterator (vt :row-raw) scratch))
        (eql (vt :success)
-            (foreign-call "ghostty_row_get" sb-alien:int ((sb-alien:unsigned 64) (sb-sys:sap-ref-64 scratch 0))
-                          (sb-alien:int (vt :raw-row-link)) (sb-sys:system-area-pointer (sb-sys:sap+ scratch 8))))
+            (%ghostty-row-get (sb-sys:sap-ref-64 scratch 0) (vt :raw-row-link) (sb-sys:sap+ scratch 8)))
        (/= 0 (sb-sys:sap-ref-8 scratch 8))))
 
 (defun raw-cell-get (cells scratch what)
@@ -849,8 +921,7 @@ are asked of theirs; SCRATCH is room for the library's answers."
 from the library's raw cell, a number; SCRATCH is room for the answers."
   (setf (sb-sys:sap-ref-64 scratch 0) 0 (sb-sys:sap-ref-32 scratch 8) 0)
   (cells-get cells (vt :cell-raw) scratch)
-  (foreign-call "ghostty_cell_get" sb-alien:int ((sb-alien:unsigned 64) (sb-sys:sap-ref-64 scratch 0))
-                (sb-alien:int what) (sb-sys:system-area-pointer (sb-sys:sap+ scratch 8)))
+  (%ghostty-cell-get (sb-sys:sap-ref-64 scratch 0) what (sb-sys:sap+ scratch 8))
   (sb-sys:sap-ref-32 scratch 8))
 
 (defun cell-spacer-p (cells scratch)
@@ -901,10 +972,8 @@ PLACEHOLDERS. SCRATCH, CODES and TEXT are room for the reading."
          (links (row-has-links-p iterator scratch))
          (looks '()) (column 0) (look 0) (from 0) (placeholders '()) (cell -1))
     (setf (sb-sys:sap-ref-sap scratch 0) cells)
-    (foreign-call "ghostty_render_state_row_get" sb-alien:int (sb-sys:system-area-pointer iterator)
-                  (sb-alien:int (vt :row-cells)) (sb-sys:system-area-pointer scratch))
-    (loop while (foreign-call "ghostty_render_state_row_cells_next" (sb-alien:boolean 8)
-                              (sb-sys:system-area-pointer cells))
+    (%ghostty-render-state-row-get iterator (vt :row-cells) scratch)
+    (loop while (%ghostty-render-state-row-cells-next cells)
           do (incf cell)
           (setf (sb-sys:sap-ref-32 scratch 0) 0)
           (cells-get cells (vt :cell-graphemes-len) scratch)
@@ -949,24 +1018,19 @@ and the value is :BUSY."
       ;; room for the library's answers: a pointer and a flag, a cell's style, then its colour
       (tuatara.io:with-foreign-memory (scratch (+ 64 (vt :style-size) 64))
         (tuatara.io:with-foreign-memory (codes (+ (* 4 +cell-codes-room+) 24))
-          (foreign-call "ghostty_render_state_update" sb-alien:int (sb-sys:system-area-pointer rs)
-                        (sb-sys:system-area-pointer (emulator-terminal emulator)))
+          (%ghostty-render-state-update rs (emulator-terminal emulator))
           (setf (sb-sys:sap-ref-sap scratch 0) iterator)
-          (foreign-call "ghostty_render_state_get" sb-alien:int (sb-sys:system-area-pointer rs)
-                        (sb-alien:int (vt :rs-row-iterator)) (sb-sys:system-area-pointer scratch))
+          (%ghostty-render-state-get rs (vt :rs-row-iterator) scratch)
           (sb-alien:with-alien ((y (sb-alien:unsigned 16) 0))
             (loop with text = (make-string-output-stream)
                   for row from 0
                   while (if all
-                            (foreign-call "ghostty_render_state_row_iterator_next" (sb-alien:boolean 8)
-                                          (sb-sys:system-area-pointer iterator))
-                            (foreign-call "ghostty_render_state_row_iterator_next_dirty" (sb-alien:boolean 8)
-                                          (sb-sys:system-area-pointer iterator)
-                                          (sb-sys:system-area-pointer (alien-address y))))
+                            (%ghostty-render-state-row-iterator-next iterator)
+                            (%ghostty-render-state-row-iterator-next-dirty iterator (alien-address y)))
                   do (let ((at (if all row y)))
                        (multiple-value-bind (string looks) (read-frame-row emulator at scratch codes text)
                          (funcall function at string looks)))))
-          (foreign-call "ghostty_render_state_clean" sb-alien:int (sb-sys:system-area-pointer rs))
+          (%ghostty-render-state-clean rs)
           (multiple-value-bind (x y visible shape) (render-cursor emulator)
             (values x y visible shape (and (emulator-placements emulator) (frame-pictures emulator)))))))))
 
@@ -977,8 +1041,7 @@ whether it is shown, and its shape (:bar :block :underline or :hollow), as
 four values. To be called holding the library."
   (tuatara.io:with-foreign-memory (cursor (vt :cursor-size) :zero t)
     (setf (sb-sys:sap-ref-64 cursor 0) (vt :cursor-size))
-    (foreign-call "ghostty_render_state_get" sb-alien:int (sb-sys:system-area-pointer (emulator-render-state emulator))
-                  (sb-alien:int (vt :rs-cursor)) (sb-sys:system-area-pointer cursor))
+    (%ghostty-render-state-get (emulator-render-state emulator) (vt :rs-cursor) cursor)
     (let ((on (/= 0 (sb-sys:sap-ref-8 cursor (vt :cursor-has-value)))))
       (values (and on (sb-sys:sap-ref-16 cursor (vt :cursor-x)))
               (and on (sb-sys:sap-ref-16 cursor (vt :cursor-y)))
@@ -999,19 +1062,13 @@ so to be called away from the editor's thread for a long scrollback."
       (sb-alien:with-alien ((out sb-sys:system-area-pointer (tuatara.io:null-pointer))
                             (length (sb-alien:unsigned 64) 0))
         (unless (eql (vt :success)
-                     (foreign-call "tuatara_terminal_text" sb-alien:int (sb-sys:system-area-pointer terminal)
-                                   (sb-alien:int (if styled 1 0))
-                                   (sb-sys:system-area-pointer (alien-address out))
-                                   (sb-sys:system-area-pointer (alien-address length))))
+                     (%tuatara-terminal-text terminal (if styled 1 0) (alien-address out) (alien-address length)))
           (refuse "The terminal's text could not be made"))
         (let ((octets (if (zerop length)
                           (make-array 0 :element-type '(unsigned-byte 8))
                           (prog1 (tuatara.io:sap-octets out length)
-                            (foreign-call "tuatara_terminal_text_free" sb-alien:void (sb-sys:system-area-pointer out)
-                                          ((sb-alien:unsigned 64) length))))))
-          (foreign-call "ghostty_render_state_update" sb-alien:int
-                        (sb-sys:system-area-pointer (emulator-render-state emulator))
-                        (sb-sys:system-area-pointer terminal))
+                            (%tuatara-terminal-text-free out length)))))
+          (%ghostty-render-state-update (emulator-render-state emulator) terminal)
           (values (tuatara.text:octets-string octets)
                   (or (library-size terminal (vt :data-scrollback-rows)) 0)
                   (nth-value 1 (render-cursor emulator))))))))
@@ -1024,10 +1081,7 @@ could not be had at once."
     (when (emulator-terminal emulator)
       (tuatara.io:with-foreign-memory (sap (vt :string-size) :zero t)
         (when (eql (vt :success)
-                   (foreign-call "ghostty_terminal_get"
-                                 sb-alien:int
-                                 (sb-sys:system-area-pointer (emulator-terminal emulator))
-                                 (sb-alien:int (vt :data-title)) (sb-sys:system-area-pointer sap)))
+                   (%ghostty-terminal-get (emulator-terminal emulator) (vt :data-title) sap))
           (let ((n (sb-sys:sap-ref-64 sap (vt :string-length))))
             (when (plusp n)
               (tuatara.text:octets-string
@@ -1108,12 +1162,14 @@ a second. True when it was drawn."
                                       :png *terminal-picture-largest* *terminal-picture-largest*))))
       (when image
         (let* ((width (tuatara.frontend:image-width image)) (height (tuatara.frontend:image-height image))
-               (channels (tuatara.frontend:image-channels image)) (pixels (tuatara.frontend:image-pixels image))
+               (channels (tuatara.frontend:image-channels image))
+               (pixels (coerce (tuatara.frontend:image-pixels image) 'tuatara.text:octets))
                (length (* width height 4))
-               (buffer (foreign-call "ghostty_alloc" sb-sys:system-area-pointer (sb-sys:system-area-pointer allocator)
-                                     ((sb-alien:unsigned 64) length))))
+               (buffer (%ghostty-alloc allocator length)))
+          (declare (type fixnum width height channels) (type tuatara.text:octets pixels))
           (unless (tuatara.io:null-pointer-p buffer)
             (dotimes (i (* width height))
+              (declare (type fixnum i))
               (dotimes (c 3) (setf (sb-sys:sap-ref-8 buffer (+ (* 4 i) c)) (aref pixels (+ (* channels i) c))))
               (setf (sb-sys:sap-ref-8 buffer (+ (* 4 i) 3)) (if (= channels 4) (aref pixels (+ (* channels i) 3)) 255)))
             (setf (sb-sys:sap-ref-32 out (vt :sys-image-width)) width
@@ -1129,23 +1185,17 @@ shared memory the program names, so that text shown (a file read with cat)
 cannot make the terminal read other files."
   (let ((terminal (emulator-terminal emulator)))
     (unless *png-decoder-set*
-      (foreign-call "ghostty_sys_set" sb-alien:int (sb-alien:int (vt :sys-decode-png))
-                    (sb-sys:system-area-pointer
-                     (sb-alien:alien-sap (sb-alien:alien-callable-function 'tuatara-terminal-decode-png))))
+      (%ghostty-sys-set (vt :sys-decode-png)
+                        (sb-alien:alien-sap (sb-alien:alien-callable-function 'tuatara-terminal-decode-png)))
       (setf *png-decoder-set* t))
     (setf (emulator-picture-memory emulator) tuatara-user:*terminal-picture-memory*)
     (set-size-option terminal (vt :opt-kitty-storage-limit) (emulator-picture-memory emulator))
     (sb-alien:with-alien ((off (sb-alien:unsigned 8) 0))
       (dolist (option (list (vt :opt-kitty-medium-file) (vt :opt-kitty-medium-shared-mem)))
-        (foreign-call "ghostty_terminal_set" sb-alien:int (sb-sys:system-area-pointer terminal) (sb-alien:int option)
-                      (sb-sys:system-area-pointer (alien-address off)))))
-    (foreign-call "ghostty_terminal_set"
-                  sb-alien:int
-                  (sb-sys:system-area-pointer terminal)
-                  (sb-alien:int (vt :opt-kitty-medium-temp-file))
-                  (sb-sys:system-area-pointer (tuatara.io:null-pointer)))
+        (%ghostty-terminal-set terminal option (alien-address off))))
+    (%ghostty-terminal-set terminal (vt :opt-kitty-medium-temp-file) (tuatara.io:null-pointer))
     (when (plusp (emulator-picture-memory emulator))
-      (setf (emulator-placements emulator) (vt-new "ghostty_kitty_graphics_placement_iterator_new")))))
+      (setf (emulator-placements emulator) (vt-new #'%ghostty-kitty-graphics-placement-iterator-new)))))
 
 (defparameter *terminal-placement-limit* 1024
   "The most places a terminal's program may show its pictures at; past it
@@ -1165,21 +1215,16 @@ pictures on."
     (let ((terminal (emulator-terminal emulator)))
       (flet ((graphics-get (what place)
                (eql (vt :success)
-                    (foreign-call "ghostty_kitty_graphics_get" sb-alien:int (sb-sys:system-area-pointer graphics)
-                                  (sb-alien:int what) (sb-sys:system-area-pointer place)))))
+                    (%ghostty-kitty-graphics-get graphics what place))))
         (when (and (eql (vt :success)
-                        (foreign-call "ghostty_terminal_get" sb-alien:int (sb-sys:system-area-pointer terminal)
-                                      (sb-alien:int (vt :data-kitty-graphics))
-                                      (sb-sys:system-area-pointer (alien-address graphics))))
+                        (%ghostty-terminal-get terminal (vt :data-kitty-graphics) (alien-address graphics)))
                    (not (tuatara.io:null-pointer-p graphics))
                    (graphics-get (vt :graphics-generation) (alien-address generation))
                    (/= generation (emulator-graphics-generation emulator)))
           (setf (emulator-graphics-generation emulator) generation)
           (when (and (graphics-get (vt :graphics-placement-iterator) (alien-address iterator))
                      (loop for placements from 0
-                           while (foreign-call "ghostty_kitty_graphics_placement_next"
-                                               (sb-alien:boolean 8)
-                                               (sb-sys:system-area-pointer iterator))
+                           while (%ghostty-kitty-graphics-placement-next iterator)
                            thereis (>= placements *terminal-placement-limit*)))
             (set-size-option terminal (vt :opt-kitty-storage-limit) 0)
             (set-size-option terminal (vt :opt-kitty-storage-limit) (emulator-picture-memory emulator))
@@ -1196,8 +1241,7 @@ gives none. To be called holding the library."
   (sb-alien:with-alien ((place (array (sb-alien:unsigned 64) 2)))
     (setf (sb-alien:deref place 0) 0 (sb-alien:deref place 1) 0)
     (and (eql (vt :success)
-              (foreign-call "ghostty_kitty_graphics_image_get" sb-alien:int (sb-sys:system-area-pointer image-handle)
-                            (sb-alien:int what) (sb-sys:system-area-pointer (sb-alien:alien-sap place))))
+              (%ghostty-kitty-graphics-image-get image-handle what (sb-alien:alien-sap place)))
          (let ((value (sb-alien:deref place 0)))
            (if (= bits 32) (ldb (byte 32 0) value) value)))))
 
@@ -1264,9 +1308,10 @@ IMAGE itself when that is all of it."
            (= height (tuatara.frontend:image-height image)))
       image
       (let* ((channels (tuatara.frontend:image-channels image))
-             (from (tuatara.frontend:image-pixels image))
+             (from (coerce (tuatara.frontend:image-pixels image) 'tuatara.text:octets))
              (stride (* channels (tuatara.frontend:image-width image)))
              (pixels (make-array (* width height channels) :element-type '(unsigned-byte 8))))
+        (declare (type tuatara.text:octets from pixels) (type fixnum channels stride))
         (dotimes (row height)
           (replace pixels from :start1 (* row width channels)
                    :start2 (+ (* (+ y row) stride) (* x channels))
@@ -1277,8 +1322,7 @@ IMAGE itself when that is all of it."
   "What WHAT (a :placement- value of the layout) is of the picture's placement
 ITERATOR stands at, a number, PLACE room for the library's answer."
   (setf (sb-sys:sap-ref-64 place 0) 0)
-  (foreign-call "ghostty_kitty_graphics_placement_get" sb-alien:int (sb-sys:system-area-pointer iterator)
-                (sb-alien:int what) (sb-sys:system-area-pointer place))
+  (%ghostty-kitty-graphics-placement-get iterator what place)
   (sb-sys:sap-ref-32 place 0))
 
 (defun placement-render-info (emulator iterator handle info)
@@ -1290,10 +1334,7 @@ pixels; NIL when it is not shown."
   (dotimes (i (vt :render-info-size)) (setf (sb-sys:sap-ref-8 info i) 0))
   (setf (sb-sys:sap-ref-64 info 0) (vt :render-info-size))
   (when (and (eql (vt :success)
-                  (foreign-call "ghostty_kitty_graphics_placement_render_info" sb-alien:int
-                                (sb-sys:system-area-pointer iterator) (sb-sys:system-area-pointer handle)
-                                (sb-sys:system-area-pointer (emulator-terminal emulator))
-                                (sb-sys:system-area-pointer info)))
+                  (%ghostty-kitty-graphics-placement-render-info iterator handle (emulator-terminal emulator) info))
              (/= 0 (sb-sys:sap-ref-8 info (vt :render-info-visible))))
     (list (sb-sys:sap-ref-32 info (vt :render-info-rows)) (sb-sys:sap-ref-32 info (vt :render-info-columns))
           (sb-sys:signed-sap-ref-32 info (vt :render-info-row)) (sb-sys:signed-sap-ref-32 info (vt :render-info-column))
@@ -1374,25 +1415,16 @@ alone. Pictures are made once for each picture the program sends and kept
                           (id (sb-alien:unsigned 32) 0))
       (tuatara.io:with-foreign-memory (info (vt :render-info-size))
         (when (and (eql (vt :success)
-                        (foreign-call "ghostty_terminal_get" sb-alien:int
-                                      (sb-sys:system-area-pointer (emulator-terminal emulator))
-                                      (sb-alien:int (vt :data-kitty-graphics))
-                                      (sb-sys:system-area-pointer (alien-address graphics))))
+                        (%ghostty-terminal-get (emulator-terminal emulator) (vt :data-kitty-graphics)
+                                               (alien-address graphics)))
                    (not (tuatara.io:null-pointer-p graphics))
                    (progn (setf (sb-sys:sap-ref-sap info 0) iterator)
                           (eql (vt :success)
-                               (foreign-call "ghostty_kitty_graphics_get" sb-alien:int
-                                             (sb-sys:system-area-pointer graphics)
-                                             (sb-alien:int (vt :graphics-placement-iterator))
-                                             (sb-sys:system-area-pointer info)))))
-          (loop while (foreign-call "ghostty_kitty_graphics_placement_next" (sb-alien:boolean 8)
-                                    (sb-sys:system-area-pointer iterator))
+                               (%ghostty-kitty-graphics-get graphics (vt :graphics-placement-iterator) info))))
+          (loop while (%ghostty-kitty-graphics-placement-next iterator)
                 do (setf id 0)
-                (foreign-call "ghostty_kitty_graphics_placement_get" sb-alien:int
-                              (sb-sys:system-area-pointer iterator)
-                              (sb-alien:int (vt :placement-image-id)) (sb-sys:system-area-pointer (alien-address id)))
-                (let ((handle (foreign-call "ghostty_kitty_graphics_image" sb-sys:system-area-pointer
-                                            (sb-sys:system-area-pointer graphics) ((sb-alien:unsigned 32) id))))
+                (%ghostty-kitty-graphics-placement-get iterator (vt :placement-image-id) (alien-address id))
+                (let ((handle (%ghostty-kitty-graphics-image graphics id)))
                   (unless (tuatara.io:null-pointer-p handle)
                     ;; a placement for pictures in text (kitty's Unicode placeholders): its cells, for them
                     (when (/= 0 (logand #xff (placement-value iterator info (vt :placement-virtual))))
@@ -1491,7 +1523,8 @@ cells it leaves empty clear."
   (destructuring-bind (id row column area-columns area-rows part-row part-column) area
     (declare (ignore id row column))
     (let* ((iw (tuatara.frontend:image-width whole)) (ih (tuatara.frontend:image-height whole))
-           (channels (tuatara.frontend:image-channels whole)) (from (tuatara.frontend:image-pixels whole))
+           (channels (tuatara.frontend:image-channels whole))
+           (from (coerce (tuatara.frontend:image-pixels whole) 'tuatara.text:octets))
            (box-width (* columns cell-width)) (box-height (* rows cell-height))
            (scale (float (min (/ box-width iw) (/ box-height ih)) 1d0))
            (left (/ (- box-width (* iw scale)) 2)) (top (/ (- box-height (* ih scale)) 2))
@@ -1503,13 +1536,17 @@ cells it leaves empty clear."
            (ys (let ((v (make-array height)))
                  (dotimes (y height v) (setf (aref v y) (floor (- (+ y0 y 0.5d0) top) scale)))))
            (pixels (make-array (* width height 4) :element-type '(unsigned-byte 8) :initial-element 0)))
+      (declare (type tuatara.text:octets from pixels) (type fixnum iw ih channels width height))
       (dotimes (y height)
         (let ((iy (aref ys y)))
+          (declare (type fixnum iy))
           (when (< -1 iy ih)
             (dotimes (x width)
               (let ((ix (aref xs x)))
+                (declare (type fixnum ix))
                 (when (< -1 ix iw)
                   (let ((at (* channels (+ ix (* iy iw)))) (to (* 4 (+ x (* y width)))))
+                    (declare (type fixnum at to))
                     (setf (aref pixels to) (aref from at) (aref pixels (+ to 1)) (aref from (+ at 1))
                           (aref pixels (+ to 2)) (aref from (+ at 2))
                           (aref pixels (+ to 3)) (if (= channels 4) (aref from (+ at 3)) 255)))))))))
@@ -1563,11 +1600,8 @@ program printed meanwhile or the terminal ended, to be tried again later."
                       (when (emulator-terminal emulator)
                         (setf result 0)
                         (and (eql (vt :success)
-                                  (foreign-call "ghostty_terminal_compress"
-                                                sb-alien:int
-                                                (sb-sys:system-area-pointer (emulator-terminal emulator))
-                                                (sb-alien:int (vt :compress-incremental))
-                                                (sb-sys:system-area-pointer (alien-address result))))
+                                  (%ghostty-terminal-compress (emulator-terminal emulator) (vt :compress-incremental)
+                                                              (alien-address result)))
                              result)))))
           (unless (eql step (vt :compress-pending))
             (return (and step t)))
@@ -1649,19 +1683,21 @@ is done at once, the waiting and the rest on a thread of its own."
                (when (sb-ext:process-alive-p process)
                  (ignoring-errors-reported ("ending the terminal's program")
                    (sb-ext:process-kill process sb-posix:sigkill))))
+             ;; the reader and the writer end before the pseudo-terminal is closed under them
+             (sb-thread:with-mutex ((emulator-lock emulator))
+               (setf (emulator-closed emulator) t))
              (sb-concurrency:send-message (emulator-outbox emulator) :stop)
-             (when process (ignoring-errors-reported ("closing the terminal") (close (sb-ext:process-pty process))))
              (dolist (thread (list (emulator-reader emulator) (emulator-writer emulator)))
                (when thread
                  (ignoring-errors-reported ("waiting for ~a to end" (sb-thread:thread-name thread))
                    (sb-thread:join-thread thread :timeout 2 :default nil))))
+             (when process (ignoring-errors-reported ("closing the terminal") (close (sb-ext:process-pty process))))
              (when process (ignoring-errors-reported ("closing the terminal's program") (sb-ext:process-close process)))
              ;; the encoders too, which typing uses holding only their own lock
              (sb-thread:with-mutex ((emulator-lock emulator))
                (sb-thread:with-mutex ((emulator-input-lock emulator))
                  (free-library-objects emulator)))
-             (remhash (emulator-id emulator) *emulators*)
-             (setf (emulator-closed emulator) t)))
+             (remhash (emulator-id emulator) *emulators*)))
       (if background
           (tuatara.runtime:make-guarded-thread #'finish :name "tuatara terminal end")
           (finish))

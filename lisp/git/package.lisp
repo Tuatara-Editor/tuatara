@@ -14,11 +14,14 @@
                 #:call-answering-ssh #:call-with-details-shown #:check-not-saving #:column-text
                 #:*command-refusal-functions*
                 #:commands-for-mode #:conflict-look-through #:delete-private-directory #:diff-files #:diff-mode
-                #:directory-holds-evidence-p #:drop-selection #:entry-lines #:entry-member #:*file-changing-commands*
+                #:directory-holds-evidence-p #:drop-selection #:entry-lines #:entry-list-keys #:entry-member
+                #:*file-changing-commands*
                 #:directories-followed-changed #:follow-directories-for #:forget-abandoned-directories
                 #:fresh-made-buffer #:git-commit-mode
                 #:git-rebase-mode #:*global-keymap* #:goto-shown #:kill-text #:killed-job-buffer-p #:list-entry-at
-                #:list-folded #:list-section-at #:list-step-entry #:list-toggle-all-folds #:list-toggle-fold
+                #:list-entry-noun #:list-visit
+                #:list-back-keys #:list-folded #:list-section-at #:list-step-entry #:list-toggle-all-folds
+                #:list-toggle-fold
                 #:list-toggle-section #:*made-text-keymap* #:make-owned-directory #:make-rimu-listing
                 #:marked-directory #:new-private-directory #:open-externally #:paths-changed #:private-cache-directory
                 #:private-directory #:project-look-only-reason #:project-trusted-p #:quit-window #:read-native-path
@@ -36,7 +39,7 @@
                 #:show-list-text #:shown-file #:special-mode #:ssh-askpass-window-p #:ssh-refusal-words
                 #:table-list-rows #:text-columns #:trash-changed
                 #:*trust-changed-functions* #:trusted-project-key #:trusted-project-key-current-p #:view-made-text
-                #:visit-path)
+                #:visit-entry #:visit-path)
   (:documentation "Git from the editor. Every git command is run, never
 through a shell nor on the editor's thread, with what keeps a repository not
 trusted from running anything of its own. It has the status, log, commits,

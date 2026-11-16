@@ -27,6 +27,12 @@ DEFGENERIC or DEFINE-COMMAND, the package read from each file's IN-PACKAGE."
           (push (list package (string-downcase name) (file-namestring file)) found))))
     found))
 
+(defun tree-holds-error-p (tree)
+  "True when TREE's text has syntax errors, as the helper holding it answers."
+  (tuatara.syntax::with-call (call (tuatara.syntax::tree-helper tree) tuatara.syntax::+op-has-error+)
+    (tuatara.syntax::call-u32 call (tuatara.syntax::tree-number tree))
+    (and (eql 0 (tuatara.syntax::call-send call)) (= 1 (tuatara.syntax::reply-u32 call 0)))))
+
 (define-test (definitions defined-once)
   (let ((seen (make-hash-table :test 'equal)) (twice '()) (definitions (source-definitions)))
     ;; the sources were found and read
@@ -155,7 +161,7 @@ the package's name and the reader's name in lower case."
                   (search "lisp/org/formulas.lisp" (namestring file)))
         (multiple-value-bind (tree rope parser) (parse-string "commonlisp" (uiop:read-file-string file))
           (declare (ignore rope))
-          (when (tuatara.syntax:tree-has-error-p tree)
+          (when (tree-holds-error-p tree)
             (push (enough-namestring file (asdf:system-source-directory "tuatara")) broken))
           (release-parse tree parser))))
     (is equal '() broken)))

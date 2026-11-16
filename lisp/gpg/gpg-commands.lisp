@@ -2,33 +2,36 @@
 ;;;; listed.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; The commands Emacs's EasyPG has, under plain names, a file encrypted
-;;;; (FILE.gpg), decrypted (asked where, the text then on disk as it is),
-;;;; signed (a detached signature FILE.sig, clear-signed text FILE.asc, or a
-;;;; signed file FILE.gpg) or its signature verified, saying who signed it,
-;;;; when, and how far that key is trusted; the same on the region, the
-;;;; armoured blocks in it decrypted or verified in place; and the keys
-;;;; listed (M-x gpg-list-keys), their details shown, imported from a file or the
-;;;; region, exported, inserted, deleted. gpg reads and writes through pipes
-;;;; as for encrypted files (encrypted.lisp): a file is read by Tuatara
-;;;; without changing its access time, and what gpg gives back is written by
-;;;; Tuatara, a decrypted file for you alone. Work on a file runs in the
-;;;; background, or at once with the terminal lent to gpg-agent's pinentry
-;;;; when it asks there.
+;;;; GnuPG's work on files, regions and keys, under plain names. A file is
+;;;; encrypted (FILE.gpg), decrypted (asked where, the text then on disk as it
+;;;; is), signed (a detached signature FILE.sig, clear-signed text FILE.asc, or
+;;;; a signed file FILE.gpg) or its signature verified, saying who signed it,
+;;;; when, and how far that key is trusted; the same on the region, the armoured
+;;;; blocks in it decrypted or verified in place; and the keys listed (M-x
+;;;; gpg-list-keys), their details shown, imported from a file or the region,
+;;;; exported, inserted, deleted. gpg reads and writes through pipes as for
+;;;; encrypted files (encrypted.lisp): a file is read by Tuatara without
+;;;; changing its access time, and what gpg gives back is written by Tuatara, a
+;;;; decrypted file for you alone. Work on a file runs in the background, or at
+;;;; once with the terminal lent to gpg-agent's pinentry when it asks there.
 
 (in-package #:tuatara.defaults)
 
 ;;; Running gpg on work that takes time
 
-(define-record (gpg-job (:include tuatara.runtime:job) (:constructor make-gpg-job (buffer words then quiet))
+(define-record (gpg-job (:include tuatara.runtime:job) (:constructor make-gpg-job (buffer words then quiet after))
                         (:copier nil))
   "gpg at work on WORDS (decrypting report.pdf.gpg), a job; THEN, called on the
 editor's thread with the RESULTS of its work, a list of values (what gpg gave:
 its output, status lines, whether it ended well and what it said; or the keys
 listed). QUIET, true for work that only shows something (the keys listed),
-stopped without asking when its buffer is killed."
+stopped without asking when its buffer is killed. AFTER, when given, is
+called once the job is taken in, however it ended."
   (words nil :documentation "The words describing the work of GPG-JOB, as in \"decrypting report.pdf.gpg\".")
   (then nil :documentation "The function called on the editor's thread with the results of GPG-JOB.")
+  (after nil
+         :documentation "NIL, or a function called on the editor's thread once GPG-JOB is taken in, with true
+when its work was done, NIL when it was stopped or failed.")
   (quiet nil
          :documentation "True when GPG-JOB only shows something, so it is stopped without asking when its buffer is
 killed.")
@@ -47,42 +50,91 @@ and what it said, or the keys listed."))
   (if (gpg-job-quiet job) :quiet :stop))
 
 (defmethod tuatara.runtime:job-take-in ((job gpg-job))
-  "Hand the results of the job's work to its THEN."
-  (if (eq (tuatara.runtime:job-status job) :done)
-      (apply (gpg-job-then job) (gpg-job-results job))
-      (message "gpg: ~a: ~a" (gpg-job-words job) (tuatara.runtime:job-ending-words job))))
+  "Hand the results of the job's work to its THEN; when it was stopped or
+failed, wipe the octets it gave and say why. Then call its AFTER."
+  (let ((done (eq (tuatara.runtime:job-status job) :done)))
+    (unwind-protect
+         (if done
+             (apply (gpg-job-then job) (gpg-job-results job))
+             (progn
+               (dolist (result (gpg-job-results job))
+                 (when (typep result '(vector (unsigned-byte 8))) (fill result 0)))
+               (message "gpg: ~a: ~a" (gpg-job-words job) (tuatara.runtime:job-ending-words job))))
+      (when (gpg-job-after job) (funcall (gpg-job-after job) done)))))
 
-(defun gpg-in-background (words work then &key (asker (gpg-asker)) (buffer (current-buffer)) quiet)
+(defun gpg-in-background (words work then &key (asker (gpg-asker)) (buffer (current-buffer)) quiet after)
   "Call WORK, a function of a cancel cell running gpg, on WORDS's behalf (words
 for the job, as decrypting FILE), and THEN on the editor's thread with the values
-it returns, in the background, a job of BUFFER's (QUIET as GPG-JOB has it), or
-at once with the terminal lent to gpg-agent's pinentry when ASKER is
-:TERMINAL (GPG-ASKER)."
+it returns, in the background, a job of BUFFER's (QUIET and AFTER as GPG-JOB
+has them), or at once with the terminal lent to gpg-agent's pinentry when
+ASKER is :TERMINAL (GPG-ASKER)."
   (if (eq asker :terminal)
-      (multiple-value-call then (with-gpg-terminal words (lambda () (funcall work nil))))
+      (progn (multiple-value-call then (with-gpg-terminal words (lambda () (funcall work nil))))
+             (when after (funcall after t)))
       (tuatara.runtime:start-job-thread
-       (make-gpg-job buffer words then quiet)
+       (make-gpg-job buffer words then quiet after)
        (lambda (job)
          (setf (gpg-job-results job) (multiple-value-list (funcall work (tuatara.runtime:job-cancel job)))))
        :name "tuatara gpg")))
 
-(defun run-gpg-work (words arguments then &key input-path input passphrase second-path (asker (gpg-asker)) (buffer (current-buffer)) quiet)
+(defun run-gpg-work (words arguments then &key input-path input passphrase second-path (asker (gpg-asker))
+                                               (buffer (current-buffer)) quiet after)
   "Run gpg with ARGUMENTS on WORDS's behalf (words for the job, decrypting
 FILE), its input the file at INPUT-PATH or the octets INPUT, a detached
 signature at SECOND-PATH given as its second input; THEN called with what it
 gave (its output, status lines, whether it ended well and what it said). In
 the background, or at once with the terminal lent to gpg-agent's pinentry
-when ASKER (GPG-ASKER) says it asks there (GPG-IN-BACKGROUND, BUFFER and QUIET
-as it takes them). PASSPHRASE, for the minibuffer's loopback, is wiped once
-gpg has it."
-  (gpg-in-background words
-                     (lambda (cancel)
-                       ;; the files read by gpg's pipes a block at a time, never whole in memory
-                       (unwind-protect (gpg-run arguments :input input :input-path (and (null input) input-path)
-                                                          :passphrase passphrase :cancel cancel
-                                                          :second-path second-path :asker asker)
-                         (wipe-string passphrase)))
-                     then :asker asker :buffer buffer :quiet quiet))
+when ASKER (GPG-ASKER) says it asks there (GPG-IN-BACKGROUND, BUFFER, QUIET
+and AFTER as it takes them). INPUT, a copy made for gpg, and PASSPHRASE, for
+the minibuffer's loopback, are wiped once gpg has them, and in any case once
+the job is taken in, as when no thread could be had for it."
+  (flet ((wipe ()
+           (when input (fill input 0))
+           (wipe-string passphrase)))
+    (gpg-in-background words
+                       (lambda (cancel)
+                         ;; the files read by gpg's pipes a block at a time, never whole in memory
+                         (unwind-protect (gpg-run arguments :input input :input-path (and (null input) input-path)
+                                                            :passphrase passphrase :cancel cancel
+                                                            :second-path second-path :asker asker)
+                           (wipe)))
+                       then :asker asker :buffer buffer :quiet quiet
+                            :after (lambda (done)
+                                     (wipe)
+                                     (when after (funcall after done))))))
+
+(defun gpg-files-in-turn (paths start &optional finally)
+  "Have gpg work on each of PATHS in turn, one at a time: START, a function of
+a path and of AFTER, starts the work on one (RUN-GPG-WORK and the commands
+on files take AFTER), and the next is started once that is taken in, each a
+job of the buffer current when this was called, whichever is current then.
+Stopping one stops the rest; leaving START without starting the work, as
+\\[keyboard-quit] at a question it asks does, stops them too, the files left
+said. FINALLY, when given, a function of no arguments, is called once, when
+none is left or the rest was stopped."
+  (let ((buffer (current-buffer)) (ended nil))
+    (labels ((end ()
+               (unless ended
+                 (setf ended t)
+                 (when finally (funcall finally))))
+             (from (rest)
+               (if (null rest)
+                   (end)
+                   (let ((started nil))
+                     (unwind-protect
+                          (let ((*current-buffer* (if (live-buffer-p buffer) buffer (current-buffer))))
+                            (funcall start (first rest)
+                                     (lambda (done) (if done (from (rest rest)) (end))))
+                            (setf started t))
+                       (unless (or started ended)
+                         (message "Not done: ~{~a~^, ~}" (mapcar #'tuatara.io:native-file-name rest))
+                         (end)))))))
+      (from paths))))
+
+(defun gpg-free-targets (paths target)
+  "Those of PATHS whose file made by gpg, TARGET, a function of a path, gives
+its name, is free (GPG-TARGET-FREE-P): each one there asked about in turn."
+  (remove-if-not (lambda (path) (gpg-target-free-p (funcall target path))) paths))
 
 (defun gpg-own-passphrase (what)
   "With the minibuffer asking for passphrases (GPG-MINIBUFFER-P), the passphrase
@@ -116,45 +168,43 @@ for you alone with PRIVATE; and show it in the lists of its directory."
 
 ;;; Files
 
-(defun gpg-file-to (path target verb arguments said &key status private passphrase then)
+(defun gpg-file-to (path target verb arguments said &key status private passphrase then after)
   "Run gpg with ARGUMENTS to VERB (encrypt, decrypt, sign) the file at PATH,
-PASSPHRASE, for the minibuffer's loopback, wiped once gpg has it (RUN-GPG-WORK).
-When gpg ends well, and has said STATUS when given (else given back anything),
-write what it gave as the file TARGET, for you alone and then wiped from
-memory when PRIVATE; say SAID (words, or a function of no arguments making
-them) and call THEN, a function of no arguments, when given. Else say that the
-file was not VERBed, and why."
+PASSPHRASE, for the minibuffer's loopback, wiped once gpg has it (RUN-GPG-WORK,
+AFTER as it takes it). When gpg ends well, and has said STATUS when given
+\(else given back anything), write what it gave as the file TARGET, for you
+alone and then wiped from memory when PRIVATE; say SAID (words) and call
+THEN, a function of no arguments, when given. Else say that the file was not
+VERBed, and why, what gpg gave wiped."
   (let ((name (tuatara.io:native-file-name path)))
     (run-gpg-work (format nil "~aing ~a" verb name) arguments
                   (lambda (output statuses ok words)
                     (if (and ok (if status (gpg-status-p statuses status) (plusp (length output))))
-                        (progn (write-gpg-output target output :private private)
-                               (when private (fill output 0))
-                               (message "~a" (if (functionp said) (funcall said) said))
-                               (when then (funcall then)))
-                        (message "~a was not ~aed: ~a" name verb (gpg-failure-words statuses words))))
-                  :input-path path :passphrase passphrase)))
+                        (progn
+                          ;; what was decrypted wiped whether or not it could be written; it is the
+                          ;; octets the file is written from, never copied (TUATARA.TEXT:OCTETS->ROPE)
+                          (unwind-protect (progn (write-gpg-output target output :private private)
+                                                 (message "~a" said))
+                            (when private (fill output 0)))
+                          (when then (funcall then)))
+                        (progn (fill output 0)
+                               (message "~a was not ~aed: ~a" name verb (gpg-failure-words statuses words)))))
+                  :input-path path :passphrase passphrase :after after)))
 
-(defun encrypt-file-to (path encryption &key then (passphrase nil passphrase-p))
-  "Encrypt the file at PATH as ENCRYPTION says (:KEYS, :SYMMETRIC) into PATH.gpg,
-asked first when that exists; THEN, a function of no arguments, called once it
-is written. PASSPHRASE, for the minibuffer's loopback, is asked for when not
-given, and wiped once gpg has it."
+(defun encrypt-file-to (path encryption &key then after (passphrase nil passphrase-p))
+  "Encrypt the file at PATH as ENCRYPTION says (:KEYS, :SYMMETRIC, and the keys'
+:KEY-WORDS to name them by, as READ-ENCRYPTION chooses) into PATH.gpg, written
+over when it exists; THEN, a function of no arguments, called once it is
+written, AFTER as RUN-GPG-WORK takes it. PASSPHRASE, for the minibuffer's
+loopback, is asked for when not given, and wiped once gpg has it."
   (let ((target (concatenate 'string path ".gpg")))
-    (when (gpg-target-free-p target)
-      (gpg-file-to path target "encrypt" (gpg-encrypt-arguments encryption)
-                   ;; the keys' names looked up once it is done
-                   (lambda ()
-                     (format nil "Encrypted as ~a~@[ to ~{~a~^, ~}~]~:[~; with a passphrase~]" (abbreviated-path target)
-                             (encryption-key-words (getf encryption :keys)) (getf encryption :symmetric)))
-                   :then then
-                   :passphrase (if passphrase-p
-                                   passphrase
-                                   (and (getf encryption :symmetric) (gpg-minibuffer-p)
-                                        (gpg-read-passphrase (format nil
-                                                                     "Passphrase to encrypt ~a with: "
-                                                                     (tuatara.io:native-file-name path))
-                                                             :confirm t)))))))
+    (gpg-file-to path target "encrypt" (gpg-encrypt-arguments encryption)
+                 (format nil "Encrypted as ~a~@[ to ~{~a~^, ~}~]~:[~; with a passphrase~]" (abbreviated-path target)
+                         (or (getf encryption :key-words) (getf encryption :keys)) (getf encryption :symmetric))
+                 :then then :after after
+                 :passphrase (if passphrase-p
+                                 passphrase
+                                 (gpg-passphrase-for (tuatara.io:native-file-name path) :encrypting encryption)))))
 
 (define-command gpg-encrypt-file ()
   "Encrypt the file shown (in a list of a directory, the one on the line; with
@@ -162,26 +212,27 @@ given, and wiped once gpg has it."
 or with a passphrase chosen in the minibuffer, commas between several. Once
 it is done, wiping the file itself is offered (\\[wipe-file]); with a
 passphrase, only after the passphrase, asked again, opens what was made."
-  (let ((path (shown-file-argument "Encrypt file: ")))
+  (let* ((path (shown-file-argument "Encrypt file: "))
+         (target (concatenate 'string path ".gpg")))
     (choose-encryption (tuatara.io:native-file-name path) '()
                        (lambda (encryption)
-                         (encrypt-file-to path encryption
-                                          :then (lambda () (offer-wipe-original path (concatenate 'string path ".gpg") encryption)))))))
+                         (when (gpg-target-free-p target)
+                           (encrypt-file-to path encryption
+                                            :then (lambda () (offer-wipe-original path target encryption))))))))
 
-(defun decrypt-file-to (path target &key then)
+(defun decrypt-file-to (path target &key then after)
   "Decrypt the file at PATH into the file TARGET, for you alone; THEN, a
-function of no arguments, called once it is written."
+function of no arguments, called once it is written, AFTER as RUN-GPG-WORK
+takes it."
   (gpg-file-to path target "decrypt" (list "--decrypt" "--output" "-")
                (format nil "Decrypted as ~a, for you alone" (abbreviated-path target))
-               :status "DECRYPTION_OKAY" :private t :then then
-               :passphrase (and (gpg-minibuffer-p) (openpgp-symmetric-p path)
-                                (gpg-read-passphrase (format nil
-                                                             "Passphrase for ~a: "
-                                                             (tuatara.io:native-file-name path))))))
+               :status "DECRYPTION_OKAY" :private t :then then :after after
+               :passphrase (gpg-passphrase-for (tuatara.io:native-file-name path) :path path)))
 
 (defun gpgconf-path ()
-  "gpgconf, GnuPG's program that runs its parts: the one beside gpg (*GPG-PROGRAM*), else the one in the system's
-own directories of programs; NIL when there is none."
+  "gpgconf, GnuPG's program that runs its parts: the one beside gpg
+\(*GPG-PROGRAM*), else the one in the system's own directories of programs;
+NIL when there is none."
   (let ((gpg (gpg-path)))
     (or (and gpg (tuatara.io:find-program (tuatara.io:path-join (tuatara.io:parent-path gpg) "gpgconf")))
         (tuatara.io:sandbox-find-program "gpgconf"))))
@@ -191,7 +242,8 @@ own directories of programs; NIL when there is none."
 as it comes, its default-cache-ttl), of encrypted files and of your keys: the
 next to open one asks again. Text already open stays open: kill those
 buffers too to lock it away."
-  (let ((gpgconf (or (gpgconf-path) (tuatara.io:program-missing "gpgconf" :why (outside-program-install-words :gpg)))))
+  (let ((gpgconf (or (gpgconf-path)
+                     (tuatara.io:program-missing "gpgconf" :why (outside-program-install-words :gpg)))))
     ;; reloading gpg-agent flushes its cache; one not running keeps nothing
     (if (nth-value 1 (tuatara.io:program-output (list gpgconf "--reload" "gpg-agent") :capture nil :seconds 5
                                                  :environment (gpg-environment :agent)))
@@ -226,24 +278,28 @@ the encrypted file instead: its text stays in memory."
                           :default (first (first *signature-kinds*)))
          *signature-kinds* :test #'string=))
 
-(defun sign-file-as (path kind passphrase)
+(defun signature-name (path kind)
+  "The name of the signature of the file at PATH that KIND, an entry of
+*SIGNATURE-KINDS*, makes: PATH and the kind's ending."
+  (concatenate 'string path (second kind)))
+
+(defun sign-file-as (path kind passphrase &key after)
   "Sign the file at PATH as KIND (an entry of *SIGNATURE-KINDS*) says, into
-PATH and the kind's ending, asked first when that exists; PASSPHRASE, for the
-minibuffer's loopback, wiped once gpg has it."
-  (let ((target (concatenate 'string path (second kind))))
-    (if (not (gpg-target-free-p target))
-        (wipe-string passphrase)
-        (gpg-file-to path target "sign" (list (third kind) "--output" "-") (format nil "Signed: ~a" (abbreviated-path target))
-                     :status "SIG_CREATED" :passphrase passphrase))))
+its SIGNATURE-NAME, written over when it exists; PASSPHRASE, for the
+minibuffer's loopback, wiped once gpg has it; AFTER as RUN-GPG-WORK takes it."
+  (let ((target (signature-name path kind)))
+    (gpg-file-to path target "sign" (list (third kind) "--output" "-")
+                 (format nil "Signed: ~a" (abbreviated-path target))
+                 :status "SIG_CREATED" :passphrase passphrase :after after)))
 
 (define-command gpg-sign-file ()
   "Sign the file shown (in a list of a directory, the one on the line) with your
 key: a detached signature (FILE.sig, the file left as it is), clear-signed text
 (FILE.asc) or a signed file (FILE.gpg), asked which."
-  (let ((path (shown-file-argument "Sign file: ")))
-    (sign-file-as path
-                  (read-signature-kind)
-                  (gpg-own-passphrase (format nil "signing ~a" (tuatara.io:native-file-name path))))))
+  (let* ((path (shown-file-argument "Sign file: "))
+         (kind (read-signature-kind)))
+    (when (gpg-target-free-p (signature-name path kind))
+      (sign-file-as path kind (gpg-own-passphrase (format nil "signing ~a" (tuatara.io:native-file-name path)))))))
 
 (defun signature-words (statuses said)
   "What gpg's STATUSES of a verification say, in words: who signed, when, how
@@ -287,8 +343,9 @@ the signature within the file; say who signed it, when, and how far that key
 is trusted. Neither file's access time changes."
   (verify-file-at (shown-file-argument "Verify file: ")))
 
-(defun verify-file-at (path)
-  "Check the signature of the file at PATH, as \\[gpg-verify-file] does."
+(defun verify-file-at (path &key after)
+  "Check the signature of the file at PATH, as \\[gpg-verify-file] does;
+AFTER as RUN-GPG-WORK takes it."
   (let* ((data (gpg-stripped-name path '(".sig" ".asc")))
          (detached (and data (tuatara.io:path-stamp data)
                         (not (search "-----BEGIN PGP SIGNED MESSAGE-----"
@@ -298,7 +355,7 @@ is trusted. Neither file's access time changes."
                   (lambda (output statuses ok said)
                     (declare (ignore output ok))
                     (message "~a: ~a" (tuatara.io:native-file-name path) (signature-words statuses said)))
-                  :input-path (if detached data path) :second-path (and detached path))))
+                  :input-path (if detached data path) :second-path (and detached path) :after after)))
 
 ;;; The region
 
@@ -325,18 +382,16 @@ MESSAGE-----), to the keys or with a passphrase chosen in the minibuffer."
       (let ((version (tuatara.buffer:buffer-version buffer)))
         (choose-encryption "the selection" '()
                            (lambda (encryption)
-                             (let* ((passphrase (and (getf encryption :symmetric) (gpg-minibuffer-p)
-                                                     (gpg-read-passphrase "Passphrase to encrypt the selection with: "
-                                                                          :confirm t)))
+                             (let* ((passphrase (gpg-passphrase-for "the selection" :encrypting encryption))
                                     (plain (tuatara.text:rope-octets (tuatara.text:version-rope version)
                                                                      :start start
                                                                      :end end)))
                                (run-gpg-work "encrypting the selection"
                                              (cons "--armor" (gpg-encrypt-arguments encryption))
                                              (lambda (output statuses ok said)
-                                               (fill plain 0)
                                                (if ok
-                                                   (when (replace-region-when-unchanged buffer start end version output "Encrypting")
+                                                   (when (replace-region-when-unchanged buffer start end version
+                                                                                        output "Encrypting")
                                                      (message "The selection is encrypted in place"))
                                                    (message "Not encrypted: ~a" (gpg-failure-words statuses said))))
                                              :input plain :passphrase passphrase))))))))
@@ -351,7 +406,8 @@ was stopped (OCTETS-STOPPER)."
                                                   (if (string= kind "SIGNED MESSAGE") "SIGNATURE" kind))
                                      :start begin :end limit :case-fold nil :stop (octets-stopper))
     (when (and stop (integerp after))
-      (cons begin (if (and (< after (tuatara.text:rope-octet-length rope)) (= 10 (tuatara.text:rope-octet rope after)))
+      (cons begin (if (and (< after (tuatara.text:rope-octet-length rope))
+                           (= 10 (tuatara.text:rope-octet rope after)))
                       (1+ after)
                       after)))))
 
@@ -400,9 +456,12 @@ decrypted text to the file unencrypted."
                           (lambda (output statuses ok said)
                             (if (and ok (gpg-status-p statuses "DECRYPTION_OKAY"))
                                 (progn (keep-from-disk buffer)
-                                       (when (replace-region-when-unchanged buffer start end version output "Decrypting")
-                                         (message "Decrypted in place: not auto-saved, and a save asks before writing it unencrypted")))
-                                (message "Not decrypted: ~a" (gpg-failure-words statuses said))))
+                                       (when (replace-region-when-unchanged buffer start end version
+                                                                            output "Decrypting")
+                                         (message "Decrypted in place: not auto-saved, and a save asks before ~
+                                                   writing it unencrypted")))
+                                (message "Not decrypted: ~a" (gpg-failure-words statuses said)))
+                            (fill output 0))
                           :input cipher
                           :passphrase (block-passphrase cipher)))))))
 
@@ -414,7 +473,7 @@ else your key's (GPG-OWN-PASSPHRASE). NIL when gpg-agent's pinentry asks."
   (when (gpg-minibuffer-p)
     (let ((packets (openpgp-armour-octets cipher)))
       (if (and packets (plusp (length packets)) (eql 3 (tuatara.io:openpgp-packet-header packets 0)))
-          (gpg-read-passphrase "Passphrase for the block: ")
+          (gpg-passphrase-for "the block")
           (gpg-own-passphrase "the block")))))
 
 (define-command gpg-sign-region ()
@@ -502,9 +561,11 @@ background, point on line POINT or kept."
   (getf key :id))
 
 (define-command gpg-list-keys ()
-  "List your GnuPG keys and those you have of others: there \\<gpg-keys-mode>\\[list-mark-entry] marks one,
-\\[gpg-keys-details] shows its details, \\[gpg-import-keys] imports keys from a file, \\[gpg-keys-export]
-exports, \\[gpg-keys-insert] inserts and \\[list-delete-marked] deletes those marked."
+  "List your GnuPG keys and those you have of others: there
+\\<gpg-keys-mode>\\[list-mark-entry] marks one, \\[gpg-keys-details] shows its
+details, \\[gpg-import-keys] imports keys from a file, \\[gpg-keys-export]
+exports, \\[gpg-keys-insert] inserts and \\[list-delete-marked] deletes those
+marked."
   (let ((from (current-buffer))
         (buffer (buffer-in-mode "*GnuPG keys*" 'gpg-keys-mode)))
     (unless (eq from buffer) (setf (tuatara.buffer:buffer-local buffer 'gpg-keys-from) from))
@@ -520,7 +581,8 @@ exports, \\[gpg-keys-insert] inserts and \\[list-delete-marked] deletes those ma
   "gpg's details of a key, OCTETS, as text to show, the control characters in
 each line written as the editor shows them (ESCAPE-CONTROLS)."
   (format nil "~{~a~%~}" (mapcar #'escape-controls
-                                 (uiop:split-string (string-right-trim '(#\Newline) (tuatara.text:lenient-string octets))
+                                 (uiop:split-string (string-right-trim '(#\Newline)
+                                                                       (tuatara.text:lenient-string octets))
                                                     :separator '(#\Newline)))))
 
 (define-command gpg-keys-details ()
@@ -532,10 +594,10 @@ subkeys and what they can do, when they expire."
         (run-gpg-work (format nil "showing the details of ~a" (getf key :id))
                       (list "--list-keys" "--with-subkey-fingerprints" "--fingerprint" (getf key :fingerprint))
                       (lambda (output statuses ok said)
-                        (declare (ignore statuses ok))
+                        (declare (ignore ok))
                         (if (plusp (length output))
                             (show-help (format nil "Key ~a~%~%~a" (getf key :id) (key-details-text output)))
-                            (message "No details of ~a: ~a" (getf key :id) (if (plusp (length said)) said "gpg failed"))))
+                            (message "No details of ~a: ~a" (getf key :id) (gpg-failure-words statuses said))))
                       :asker :agent :quiet t))))
 
 (define-command gpg-import-keys ()
@@ -543,22 +605,22 @@ subkeys and what they can do, when they expire."
   (let ((path (read-native-path "Import keys from: " :kind :file)))
     (when path
       (run-gpg-work (format nil "importing keys from ~a" (tuatara.io:native-file-name path)) (list "--import")
-                    (lambda (output statuses ok said)
-                      (declare (ignore output ok))
-                      (message "~a" (import-words statuses said))
-                      (refill-open-list "*GnuPG keys*" 'gpg-keys-mode))
-                    :input-path path))))
+                    #'after-key-import :input-path path))))
 
 (define-command gpg-import-keys-region ()
   "Import the keys in the text selected (an armoured -----BEGIN PGP PUBLIC KEY BLOCK-----) into your keyring."
   (let ((buffer (current-buffer)))
     (multiple-value-bind (start end) (region-or-error buffer)
       (run-gpg-work "importing keys from the selection" (list "--import")
-                    (lambda (output statuses ok said)
-                      (declare (ignore output ok))
-                      (message "~a" (import-words statuses said))
-                      (refill-open-list "*GnuPG keys*" 'gpg-keys-mode))
+                    #'after-key-import
                     :input (tuatara.text:rope-octets (tuatara.buffer:buffer-text buffer) :start start :end end)))))
+
+(defun after-key-import (output statuses ok said)
+  "Say what an import of keys did (IMPORT-WORDS), from what gpg gave, OUTPUT,
+STATUSES, OK and SAID, and list the keys again where they are shown."
+  (declare (ignore output ok))
+  (message "~a" (import-words statuses said))
+  (refill-open-list "*GnuPG keys*" 'gpg-keys-mode))
 
 (defun import-words (statuses said)
   "What an import did, as words, from gpg's STATUSES."
@@ -576,10 +638,9 @@ subkeys and what they can do, when they expire."
   (run-gpg-work (format nil "exporting ~d key~:p" (length keys))
                 (append (list "--armor" "--export") (mapcar (lambda (k) (getf k :fingerprint)) keys))
                 (lambda (output statuses ok said)
-                  (declare (ignore statuses))
                   (if (and ok (plusp (length output)))
                       (funcall then output)
-                      (message "No keys exported: ~a" (if (plusp (length said)) said "gpg failed"))))
+                      (message "No keys exported: ~a" (gpg-failure-words statuses said))))
                 :asker :agent))
 
 (define-command gpg-keys-export ()

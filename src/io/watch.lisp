@@ -120,11 +120,14 @@ native name of its directory and its own name in octets."
 
 (defun unique-strings (strings)
   "STRINGS, each once, in their order, the first of those alike kept: in time
-growing with their number alone, for lists of tens of thousands."
-  (let ((seen (make-hash-table :test 'equal :size (max 16 (length strings)))))
-    (loop for string in strings
-          unless (gethash string seen)
-            collect (setf (gethash string seen) string))))
+growing with their number alone, for lists of tens of thousands. A list of
+none or one is given back as it is, at no cost."
+  (if (null (cdr strings))
+      strings
+      (let ((seen (make-hash-table :test 'equal :size (max 16 (length strings)))))
+        (loop for string in strings
+              unless (gethash string seen)
+                collect (setf (gethash string seen) string)))))
 
 (defun sync-inotify-watches (inotify directories wds wanted)
   "Make and end the inotify watches of INOTIFY (DIRECTORIES from their native
@@ -213,14 +216,33 @@ not missed."
         (setf (watch-item-due item) (+ now (seconds-units *poll-interval*)))))
     new))
 
-(defun note-watch-event (items event wds directories now &optional inotify)
-  "Set when to look at the ITEMS inotify's EVENT (WD MASK NAME) concerns. A
-file written to is looked at once its writes settle (*SETTLE-TIME*). After any
-other change it is looked at once the burst it is part of is over
-\(*BURST-TIME*). Either way it is at most *SETTLE-LIMIT* after the first event.
-Everything is looked at once after events were lost. A directory's files are
-looked at when it went away, polled from then on (its watch ended in INOTIFY,
-which goes on watching a directory moved)."
+(defun items-by-place (items)
+  "ITEMS, the files watched, found by where their keys (WATCH-KEY) say they
+are: a table from a directory's native name to a table from a name in it, as
+a string (TUATARA.TEXT:OCTETS-STRING of its octets), to the items of that
+name. An event is then a look in two tables, however many files are watched."
+  (let ((places (make-hash-table :test 'equal)))
+    (dolist (item items places)
+      (dolist (key (watch-item-keys item))
+        (let ((names (or (gethash (car key) places)
+                         (setf (gethash (car key) places) (make-hash-table :test 'equal)))))
+          (pushnew item (gethash (tuatara.text:octets-string (cdr key)) names)))))))
+
+(defun watches-by-directory (watches)
+  "WATCHES, the directories watched whole, by their native names."
+  (let ((table (make-hash-table :test 'equal :size (max 16 (length watches)))))
+    (dolist (watch watches table)
+      (setf (gethash (directory-watch-directory watch) table) watch))))
+
+(defun note-watch-event (items places event wds directories now &optional inotify)
+  "Set when to look at the ITEMS inotify's EVENT (WD MASK NAME) concerns,
+found in PLACES (ITEMS-BY-PLACE). A file written to is looked at once its
+writes settle (*SETTLE-TIME*). After any other change it is looked at once the
+burst it is part of is over (*BURST-TIME*). Either way it is at most
+*SETTLE-LIMIT* after the first event. Everything is looked at once after
+events were lost. A directory's files are looked at when it went away, polled
+from then on (its watch ended in INOTIFY, which goes on watching a directory
+moved)."
   (destructuring-bind (wd mask name) event
     (flet ((due-now (item) (setf (watch-item-due item) now)))
       (cond ((= wd -1)
@@ -231,29 +253,34 @@ which goes on watching a directory moved)."
                  (if (logtest mask +in-directory-gone+)
                      (progn (remhash wd wds)
                             (when inotify (inotify-unwatch inotify wd))
-                            (dolist (directory names) (remhash directory directories))
-                            (dolist (item items)
-                              (when (find-if (lambda (key) (member (car key) names :test #'string=))
-                                             (watch-item-keys item))
-                                (setf (watch-item-polled item) t)
-                                (due-now item))))
+                            (dolist (directory names)
+                              (remhash directory directories)
+                              (let ((in (gethash directory places)))
+                                (when in
+                                  (maphash (lambda (file its)
+                                             (declare (ignore file))
+                                             (dolist (item its)
+                                               (setf (watch-item-polled item) t)
+                                               (due-now item)))
+                                           in)))))
                      (when name
-                       (dolist (item items)
-                         (when (find-if (lambda (key)
-                                          (and (member (car key) names :test #'string=) (equalp (cdr key) name)))
-                                        (watch-item-keys item))
-                           (let ((first (or (watch-item-first item) now))
-                                 (quiet (if (= mask +in-modify+) *settle-time* *burst-time*)))
-                             (setf (watch-item-first item) first
-                                   (watch-item-due item) (min (+ now (seconds-units quiet))
-                                                              (+ first (seconds-units *settle-limit*))))))))))))))))
+                       (let ((file (tuatara.text:octets-string name))
+                             (quiet (if (= mask +in-modify+) *settle-time* *burst-time*)))
+                         (dolist (directory names)
+                           (let ((in (gethash directory places)))
+                             (dolist (item (and in (gethash file in)))
+                               (let ((first (or (watch-item-first item) now)))
+                                 (setf (watch-item-first item) first
+                                       (watch-item-due item)
+                                       (min (+ now (seconds-units quiet)) (+ first (seconds-units *settle-limit*))))))))))))))))))
 
-(defun note-directory-event (watches event wds now)
+(defun note-directory-event (watches by-name event wds now)
   "Set when to look at the directories of WATCHES inotify's EVENT (WD MASK
-NAME) concerns. It is once the burst of changes it is part of is over, at most
-*SETTLE-LIMIT* after the first. A file still being written (IN_MODIFY alone)
-is no change to the list. Everything is looked at after events were lost. A
-directory gone is looked at every *POLL-INTERVAL* seconds from then on."
+NAME) concerns, found in BY-NAME (WATCHES-BY-DIRECTORY). It is once the burst
+of changes it is part of is over, at most *SETTLE-LIMIT* after the first. A
+file still being written (IN_MODIFY alone) is no change to the list.
+Everything is looked at after events were lost. A directory gone is looked at
+every *POLL-INTERVAL* seconds from then on."
   (destructuring-bind (wd mask name) event
     (declare (ignore name))
     (flet ((due (watch)
@@ -263,9 +290,9 @@ directory gone is looked at every *POLL-INTERVAL* seconds from then on."
                                                       (+ first (seconds-units *settle-limit*)))))))
       (cond ((= wd -1) (when (logtest mask +in-queue-overflow+) (mapc #'due watches)))
             ((= mask +in-modify+))
-            (t (let ((names (gethash wd wds)))
-                 (dolist (watch watches)
-                   (when (member (directory-watch-directory watch) names :test #'string=)
+            (t (dolist (directory (gethash wd wds))
+                 (let ((watch (gethash directory by-name)))
+                   (when watch
                      (when (logtest mask +in-directory-gone+) (setf (directory-watch-polled watch) t))
                      (due watch)))))))))
 
@@ -284,9 +311,8 @@ told of by inotify, and a polled one when its stamp is not as last seen."
                             (let ((old (directory-watch-stamp watch)))
                               ;; not there, or not readable, as before: no news
                               (and (or stamp old)
-                                   (not (and stamp old
-                                             (= (stamp-mtime stamp) (stamp-mtime old))
-                                             (= (stamp-ino stamp) (stamp-ino old)))))))
+                                   (not (and (same-stamped-file-p stamp old)
+                                             (= (stamp-mtime stamp) (stamp-mtime old)))))))
                     (setf (directory-watch-stamp watch) stamp)
                     (list (directory-watch-directory watch))))))
 
@@ -333,20 +359,24 @@ these, which may be a long time; no looking without cause but for polled files."
         (directories (make-hash-table :test 'equal))
         (wds (make-hash-table))
         (items '())
-        (watches '()))
+        (places (make-hash-table :test 'equal))
+        (watches '())
+        (by-name (make-hash-table :test 'equal)))
     (loop
       (drain-wake-pipe *watcher-wake*)
       (dolist (request (sb-concurrency:receive-pending-messages *watcher-requests*))
         (ecase (first request)
           (:watch (setf items (rewatch items (second request) inotify directories wds
-                                       (mapcar #'directory-watch-directory watches))))
-          (:directories (setf watches (rewatch-directories watches (second request) inotify directories wds items)))))
+                                       (mapcar #'directory-watch-directory watches))
+                        places (items-by-place items)))
+          (:directories (setf watches (rewatch-directories watches (second request) inotify directories wds items)
+                              by-name (watches-by-directory watches)))))
       (let ((now (get-internal-real-time)))
         (when inotify
           (dolist (event (inotify-events inotify buffer))
             ;; the lists' first: the files' forgets a directory gone
-            (note-directory-event watches event wds now)
-            (note-watch-event items event wds directories now inotify)))
+            (note-directory-event watches by-name event wds now)
+            (note-watch-event items places event wds directories now inotify)))
         (let ((found (look-at-due items now)))
           (when found
             (sb-concurrency:send-message *look-results* (cons :news found))
@@ -358,7 +388,8 @@ these, which may be a long time; no looking without cause but for polled files."
         (let ((soonest (let ((times (remove nil (cons (soonest-due items) (mapcar #'directory-watch-due watches)))))
                          (and times (reduce #'min times)))))
           (wait-for-fds (if inotify (list inotify (car *watcher-wake*)) (list (car *watcher-wake*)))
-                        (and soonest (/ (max 0 (- soonest now)) internal-time-units-per-second))))))))
+                        (and soonest
+                             (/ (max 0 (- soonest (get-internal-real-time))) internal-time-units-per-second))))))))
 
 (defun send-watcher (request)
   "Send REQUEST to the watcher, starting it first when needed, and wake it."
@@ -408,8 +439,7 @@ directories are compared in time growing with their number alone."
 (defun take-directory-news ()
   "The directories (WATCH-DIRECTORIES) the watcher found changed since this
 was last asked, native names ending in /."
-  (remove-duplicates (loop for message in (sb-concurrency:receive-pending-messages *directory-news*) append message)
-                     :test #'string=))
+  (unique-strings (loop for message in (sb-concurrency:receive-pending-messages *directory-news*) append message)))
 
 (defun take-file-looks ()
   "Note what the watcher found in each buffer's FILE-DISK-STATE, as CHECK-FILE

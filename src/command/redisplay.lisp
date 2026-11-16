@@ -22,7 +22,7 @@ rest).
 - a number from 0 to 255: that colour of the 256-colour palette.
 - \"#rrggbb\": that colour, as red, green and blue in two hexadecimal digits
   each."
-  :values (or (member nil) (integer 0 255) string "a colour name such as :red"))
+  :values (or (member nil) (integer 0 255) string keyword))
 
 (defvar *cursor-colour-functions* '()
   "Functions of the editor that may colour the cursor for the moment, the
@@ -88,7 +88,9 @@ the next row's line number on across, rather than looking it up afresh: a
 fold hiding more is looked past.")
 
 (defun gutter-cells (editor window rows)
-  "For each row of ROWS, a list of (STRING . FACE) gutter pieces, in provider order."
+  "For each row of ROWS, a list of (STRING PAD . FACE) gutter pieces, in provider
+order: STRING cut to the provider's width, PAD the spaces to put before it to
+fill that width."
   (when *gutter-providers*
     (let* ((buffer (tuatara.display:window-buffer window))
            (widths (mapcar (lambda (p) (gutter-width editor window p)) *gutter-providers*))
@@ -115,13 +117,9 @@ fold hiding more is looked past.")
                                                         cell editor window row row-line)))
                                                ;; a cell that failed gives its error in the face's place
                                                (when (typep face 'error) (setf face nil))
-                                               (cons (let ((s (or text "")))
-                                                       (if (< (length s) width)
-                                                           (concatenate 'string (make-string (- width (length s))
-                                                                                             :initial-element
-                                                                                             #\Space) s)
-                                                           (subseq s 0 width)))
-                                                     face)))
+                                               (let ((s (or text "")))
+                                                 (cons (if (> (length s) width) (subseq s 0 width) s)
+                                                       (cons (max 0 (- width (length s))) face)))))
                         ;; the next line begins where the next row does not go on from this one:
                         ;; its own number where it is known, as lines hidden by a fold are skipped,
                         ;; counted on from this row when it is near
@@ -151,7 +149,7 @@ else, so that search matches, selections and the region show over them.")
 (defvar *line-highlight-functions* '()
   "Functions of (EDITOR WINDOW ROWS) returning lists of (START END FACE) byte
 ranges for the text in ROWS painted under all others, the syntax colours
-included: the line point is on (hl-line-mode).")
+included: the line point is on.")
 
 (defvar *text-highlight-functions* '()
   "Functions of (EDITOR WINDOW ROWS SYNTAX) returning lists of (START END
@@ -302,7 +300,6 @@ functions keep for the next frame, so they are read, never changed."
         (let ((p (tuatara.display:hex-point buffer)))
           (when (< p (tuatara.buffer:buffer-size buffer))
             (add (list (list p (1+ p) :hex-mirror))))))
-      (note-window-view editor window rows)
       (dolist (f *job-highlight-functions*)
         (add (tuatara.runtime:call-hook-function f editor window rows)))
       (dolist (f *highlight-functions*)
@@ -345,23 +342,22 @@ safely).")
 
 (defvar *shown-default-directory* nil
   "The directory *DEFAULT-DIRECTORY* named when the mode line last looked, as
-\(SETTING HOME TIME NAME): the setting and the HOME variable then, the
-internal real time, and the name as the mode line shows it.")
+\(SETTING TIME NAME): the setting then, the internal real time, and the name as
+the mode line shows it.")
 
 (defun shown-default-directory ()
   "The directory *DEFAULT-DIRECTORY* names, as the mode line shows it
-\(ABBREVIATED-PATH): looked up again when the setting or the home directory
-changes, else at most once a second, so that drawing makes no call to the
-file system."
+\(ABBREVIATED-PATH): looked up again when the setting changes, else at most
+once a second (so a change of the home directory shows within a second), so
+that drawing makes no call to the file system."
   (let ((kept *shown-default-directory*)
-        (home (tuatara.io:own-variable "HOME"))
         (now (get-internal-real-time)))
-    (if (and kept (eq (first kept) tuatara-user:*default-directory*) (equal (second kept) home)
-             (< (- now (third kept)) internal-time-units-per-second))
-        (fourth kept)
-        (fourth (setf *shown-default-directory*
-                      (list tuatara-user:*default-directory* home now
-                            (abbreviated-path (tuatara.io:native (tuatara.io:default-directory)))))))))
+    (if (and kept (eq (first kept) tuatara-user:*default-directory*)
+             (< (- now (second kept)) internal-time-units-per-second))
+        (third kept)
+        (third (setf *shown-default-directory*
+                     (list tuatara-user:*default-directory* now
+                           (abbreviated-path (tuatara.io:native (tuatara.io:default-directory)))))))))
 
 (defun buffer-directory-name (buffer)
   "The directory BUFFER stands in (BUFFER-DIRECTORY) as the mode line shows
@@ -509,20 +505,15 @@ pieces."
 (defun fit-to-columns (string columns)
   "STRING cut or padded with spaces to fill COLUMNS columns of the screen, a
 wide character counting two. Two values: that string, and how many characters
-of STRING it keeps. Each character is looked at once; one of printable ASCII
-alone takes a column each."
+of STRING it keeps."
   (declare (type fixnum columns))
-  (let ((n (length string)))
-    (multiple-value-bind (kept used)
-        (if (every (lambda (c) (char<= #\Space c #\~)) string)
-            (let ((k (min n columns))) (values k k))
-            (tuatara.display:chars-in-columns string columns))
-      (declare (type fixnum kept used))
-      (let ((cut (if (= kept n) string (subseq string 0 kept))))
-        (values (if (< used columns)
-                    (concatenate 'string cut (tuatara.text:spaces (- columns used)))
-                    cut)
-                kept)))))
+  (multiple-value-bind (kept used) (tuatara.display:chars-in-columns string columns)
+    (declare (type fixnum kept used))
+    (let ((cut (if (= kept (length string)) string (subseq string 0 kept))))
+      (values (if (< used columns)
+                  (concatenate 'string cut (tuatara.text:spaces (- columns used)))
+                  cut)
+              kept))))
 
 (defun row-parts (pieces)
   "The columns where a part of a screen row made of PIECES begins after the
@@ -772,17 +763,24 @@ shows (scrolling, moving to a row of it) while nothing is drawn."
 (defun text-row-piece (row pieces margin left width cursor rulers shift)
   "The piece of a screen row (see PUT-SCREEN-ROW) showing ROW of a window LEFT
 columns from the screen's edge and WIDTH wide: its gutter of MARGIN columns
-from PIECES, each (STRING . FACE), its text in its faces, CURSOR (the face of
+from PIECES, each (STRING PAD . FACE), its text in its faces, CURSOR (the face of
 another cursor after the end of its line, or NIL), the columns RULERS marks,
 each (AT FACE), and SHIFT, how far rows drawn large above move it down."
   (let* ((gutter (if (plusp margin)
-                     (concatenate 'string (apply #'concatenate 'string (mapcar #'car pieces)) " ")
+                     (let ((gutter (make-string (1+ (loop for (text pad) in pieces sum (+ pad (length text))))
+                                                :initial-element #\Space))
+                           (at 0))
+                       (loop for (text pad) in pieces
+                             do (replace gutter text :start1 (+ at pad))
+                                (incf at (+ pad (length text))))
+                       gutter)
                      ""))
          ;; the gutter's colours only where it is shown (not in the hex view, whose offsets stand there)
          (spans (append (and (plusp margin)
                              (let ((pos 0))
-                               (loop for (text . face) in pieces
-                                     collect (prog1 (list pos (+ pos (length text)) face) (incf pos (length text))))))
+                               (loop for (text pad . face) in pieces
+                                     collect (prog1 (list pos (+ pos pad (length text)) face)
+                                               (incf pos (+ pad (length text)))))))
                         (mapcar (lambda (span)
                                   (list (+ (first span) (length gutter))
                                         (+ (second span) (length gutter))
@@ -1057,6 +1055,7 @@ drawn large take as many screen rows where the frontend draws all rows alike
                             ;; other cursors last, over everything else
                             (apply #'tuatara.display:apply-highlights rows
                                    (nconc (window-highlights-for editor window rows) (list ranges)))
+                            (note-window-view editor window rows)
                             ends))
              (margin (tuatara.display:window-margin window))
              ;; a gutter's cells only where it is shown
@@ -1115,30 +1114,6 @@ shows.
 (defvar *title-functions* '()
   "Functions of the editor returning text to show before the window's title
 (the clock running on an Org task), or NIL.")
-
-(defun sandbox-outcome-words (outcome said &key (label "the program")
-                                                   (seconds-setting 'tuatara-user:*sandbox-seconds*))
-  "Why a program run shut in (SANDBOX-RUN) gave nothing, as a sentence
-beginning with LABEL, from how it went, OUTCOME, and what it SAID, as
-SANDBOX-RUN gives them. The reason is one of these. There is no sandbox here,
-and why. It was stopped after the seconds SECONDS-SETTING (a setting's symbol)
-holds, or by you. It printed more than it may. Or it failed, with the first
-line of what it said. The result is NIL when OUTCOME is :DONE."
-  (case outcome
-    (:done nil)
-    (:unavailable (format nil "~a runs only shut in the sandbox, and there is none here: ~a" label said))
-    (:timeout (format nil "~a was stopped after ~d seconds (~(~a~))"
-                      label (symbol-value seconds-setting) seconds-setting))
-    (:cancelled (format nil "~a was stopped" label))
-    (:too-much (format nil "~a printed more than it may" label))
-    (t (let ((line (string-trim " " (or (first (uiop:split-string (or said "") :separator '(#\Newline))) ""))))
-         (format nil "~a failed~@[: ~a~]" label
-                 (and (plusp (length line))
-                      (escape-controls (subseq line 0 (min 300 (length line))))))))))
-
-(defmethod tuatara.runtime:host-say-hook-failure ((host editor-host) text)
-  "Say TEXT in the echo area and *Messages*, its controls written out."
-  (message "~a" text))
 
 (defun show-title (editor buffer)
   "Give EDITOR's frontend the title *GUI-TITLE* makes of BUFFER's name, with

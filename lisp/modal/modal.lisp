@@ -14,8 +14,8 @@
 
 (define-command tuatara-insert ()
   "Insert at point, and enter INSERT state. Any selection is dropped, a
-rectangle too; banked lines stay, \\<normal>\\[tuatara-change] being the key that acts on
-them."
+rectangle too; banked lines stay, \\<normal>\\[tuatara-change] being the key
+that acts on them."
   (drop-selection)
   (set-modal-state :insert))
 
@@ -44,9 +44,10 @@ not in the minibuffer, in a terminal, nor at cursors or places; recorded keys
 play it back as they were typed, a pair counting as quick however long the
 recording took.
 - text: two characters, \"jk\" say, that do what
-  \\<insert>\\[tuatara-normal] does in INSERT state.
+  \\<insert>\\[tuatara-normal] does in INSERT state; text of any other
+  length is refused.
 - nil: off (the standard)."
-  :values (or (member nil) string))
+  :values (or (member nil) (string 2)))
 
 (defparameter *insert-escape-window* 200
   "Milliseconds in which the second of *INSERT-ESCAPE-KEYS* must follow the first.")
@@ -63,8 +64,8 @@ right after the first in INSERT state (a hook of self-insert-command, run
 before a character goes in). Otherwise note CHAR as a possible first."
   (let ((keys *insert-escape-keys*)
         (first *insert-escape-first*))
-    (when (and keys (eq (modal-state buffer) :insert) (eq (buffer-modal-class buffer) :editing)
-               (not (split-here-p buffer)))
+    (when (and (stringp keys) (= (length keys) 2) (eq (modal-state buffer) :insert)
+               (eq (buffer-modal-class buffer) :editing) (not (split-here-p buffer)))
       (cond ((and (eq (svref first 0) buffer)
                   (char= char (char keys 1))
                   (eq (editor-last-command *editor*) 'self-insert-command)
@@ -137,10 +138,10 @@ blank above it."
 
 (define-command tuatara-change ()
   "Delete the selection (into the kill ring) or the character at point (not
-saved) and enter INSERT state. A line selection keeps its final newline.
-A rectangle goes to the rectangle store, where \\<normal>\\[yank-rectangle] pastes it from: one row high,
-its block is emptied for INSERT state; taller, what to write on every row in
-its place is read from the minibuffer."
+saved) and enter INSERT state. A line selection keeps its final newline. A
+rectangle goes to the rectangle store, where \\<normal>\\[yank-rectangle] pastes
+it from: one row high, its block is emptied for INSERT state; taller, what to
+write on every row in its place is read from the minibuffer."
   (if (rectangle-live-p (current-buffer))
       (change-selected-rectangle)
       (progn (kill-selection-or-chars)
@@ -151,9 +152,9 @@ its place is read from the minibuffer."
 the first that did something returns true (Org follows a link).")
 
 (define-command tuatara-normal-return ()
-  "\\<normal>\\[tuatara-normal-return] in NORMAL state: what the buffer's mode does with it
-(*enter-dwim-functions*), as following the Org link point is on; else, and
-always in the hex view, nothing, so that it changes no text."
+  "\\<normal>\\[tuatara-normal-return] in NORMAL state: what the buffer's mode
+does with it (*enter-dwim-functions*), as following the Org link point is on;
+else, and always in the hex view, nothing, so that it changes no text."
   (let ((buffer (current-buffer)))
     (unless (hex-view-here-p)
       (run-hook-until-done *enter-dwim-functions* buffer))))
@@ -168,18 +169,19 @@ what \\`TAB' does in the mode, the modes derived from them too. In the others
 it does nothing, as the keys that would type do nothing there.
 - a list of major modes' names: those modes; (org-mode) as standard.
 - nil: \\[tuatara-normal-tab] does nothing in NORMAL state anywhere."
-  :values (list-of "a major mode's name"))
+  :values (list-of symbol))
 
 (define-command tuatara-normal-tab ()
-  "\\<normal>\\[tuatara-normal-tab] in NORMAL state: in a buffer whose major mode is one of
-*tuatara-normal-tab-modes* (Org), or derives from one, what \\`TAB' does in that
-mode, as in INSERT state; in the hex view, from its hex digits to its text
-or back (hex-switch-column); elsewhere nothing, so that it changes no text."
+  "\\<normal>\\[tuatara-normal-tab] in NORMAL state: in a buffer whose major
+mode is one of *tuatara-normal-tab-modes* (Org), or derives from one, what
+\\`TAB' does in that mode, as in INSERT state; in the hex view, from its hex
+digits to its text or back (hex-switch-column); elsewhere nothing, so that it
+changes no text."
   (when (hex-view-here-p)
     ;; the hex view: from the hex digits to the text, or back
     (return-from tuatara-normal-tab (hex-switch-column)))
   (let ((b (current-buffer)))
-    (when (mode-setting (buffer-major-mode b) (setting-list '*tuatara-normal-tab-modes* *tuatara-normal-tab-modes*))
+    (when (mode-setting (buffer-major-mode b) (setting-in-force '*tuatara-normal-tab-modes*))
       ;; the binding under NORMAL state's: the mode's own, else the global one
       (let ((command (loop for map in (list (tuatara.buffer:buffer-local b :keymap) (editor-global-keymap *editor*))
                            for binding = (and map (lookup-key map '((:tab))))
@@ -195,10 +197,10 @@ or back (hex-switch-column); elsewhere nothing, so that it changes no text."
 from: (LIGHTER LINE SPANS TEXT TEXT-SPANS).")
 
 (defun modal-mode-line (editor &optional (window (editor-window editor)))
-  "The modal lighter of WINDOW's buffer, then the default mode line:
-N or I in editing buffers, S in support buffers, E where modal editing is off,
-after TUATARA while *MODE-LINE-TUATARA*. The same text and spans as last time,
-nothing made, while neither changed."
+  "The modal lighter of WINDOW's buffer, then the default mode line: N or I in
+editing buffers, S in support buffers, E where modal editing is off, after
+TUATARA while *MODE-LINE-TUATARA*. The same text and spans as last time, nothing
+made, while neither changed."
   (let* ((buffer (tuatara.display:window-buffer window))
          (lighter (cond ((not *modal-editing*) "")
                         (*mode-line-tuatara*
@@ -235,7 +237,7 @@ state alone, [N]; *mode-line-tuatara* says which as Tuatara starts."
 - a colour: as faces take colours, a name such as :red, a number 0-255 or
   \"#rrggbb\".
 - nil: *CURSOR-COLOUR* (the standard)."
-  :values "a colour name such as :red, a number 0-255 or \"#rrggbb\", or nil")
+  :values (or (member nil) (integer 0 255) string keyword))
 
 (define-setting *tuatara-insert-cursor-shape* nil
   "The cursor's shape in INSERT state, while typing.
@@ -248,7 +250,7 @@ state alone, [N]; *mode-line-tuatara* says which as Tuatara starts."
 - a colour: as faces take colours, a name such as :red, a number 0-255 or
   \"#rrggbb\".
 - nil: *CURSOR-COLOUR* (the standard)."
-  :values "a colour name such as :red, a number 0-255 or \"#rrggbb\", or nil")
+  :values (or (member nil) (integer 0 255) string keyword))
 
 (define-setting *tuatara-support-cursor-shape* nil
   "The cursor's shape in support buffers (lists, help, *Messages*).
@@ -261,7 +263,7 @@ state alone, [N]; *mode-line-tuatara* says which as Tuatara starts."
 - a colour: as faces take colours, a name such as :red, a number 0-255 or
   \"#rrggbb\".
 - nil: *CURSOR-COLOUR* (the standard)."
-  :values "a colour name such as :red, a number 0-255 or \"#rrggbb\", or nil")
+  :values (or (member nil) (integer 0 255) string keyword))
 
 (defun modal-cursor-shape (editor)
   "The cursor's shape and colour in the current buffer's modal state, as set
@@ -353,13 +355,13 @@ enter INSERT state, or are keys that do nothing in the other states.")
     "y" "RET" "?"
     ;; the window alone on the screen
     "F")
-  "The keys of NORMAL state that support buffers (lists, help, *Messages*)
-have too, its reading half: moving, selecting, marking, jumping and copying,
-\\`RET' and \\`?' (every binding), and \\`F' (this window alone on the screen),
-none of which changes the text. Each does what it does in NORMAL state, as
-bound there when modal editing is installed, unless the buffer's major mode has its
-own use for the key: \\`RET' opens and \\`q' quits in a list; \\`g' begins
-motions, so a list is made again with \\`r' or \\`g r' (\\<buffers-mode>\\[revert-buffer]).")
+  "The keys of NORMAL state that support buffers (lists, help, *Messages*) have
+too, its reading half: moving, selecting, marking, jumping and copying, \\`RET'
+and \\`?' (every binding), and \\`F' (this window alone on the screen), none of
+which changes the text. Each does what it does in NORMAL state, as bound there
+when modal editing is installed, unless the buffer's major mode has its own use
+for the key: \\`RET' opens and \\`q' quits in a list; \\`g' begins motions, so a
+list is made again with \\`r' or \\`g r' (\\<buffers-mode>\\[revert-buffer]).")
 
 (defparameter *tuatara-list-keys*
   '("j" "k" "V" "J" "K" "y" "z z" "?" "F")
@@ -491,16 +493,17 @@ binds it to, when it binds one."
     (("J" select-next-line) ("K" select-previous-line))
     (("n" spellcheck-next) ("p" spellcheck-previous)))
   "The keys that, right after one of their commands run from \\`C-z', run it
-again by themselves, each group on its own: \\`t'
-and \\`T' add a cursor below or above, \\`J' and \\`K' select a line, \\`n' and
-\\`p' go to the next or previous misspelt word.")
+again by themselves, each group on its own: \\`t' and \\`T' add a cursor below
+or above, \\`J' and \\`K' select a line, \\`n' and \\`p' go to the next or
+previous misspelt word.")
 
 (defun install-non-modal-keys ()
-  "Bind under \\`C-z', in every state, the keys of NORMAL state (*TUATARA-NORMAL-BINDINGS*
-and *TUATARA-SYNTAX-BINDINGS*) whose commands have no key of their own outside
-it (*NON-MODAL-KEYS-LEFT-OUT*): \\`C-z m f' selects the function around point as
-\\`m f' does, \\`C-z f' splits the selection. Also bind the keys that go on with
-such a command by themselves (*NON-MODAL-REPEAT-KEYS*)."
+  "Bind under \\`C-z', in every state, the keys of NORMAL state
+\(*TUATARA-NORMAL-BINDINGS* and *TUATARA-SYNTAX-BINDINGS*) whose commands have
+no key of their own outside it (*NON-MODAL-KEYS-LEFT-OUT*): \\`C-z m f' selects
+the function around point as \\`m f' does, \\`C-z f' splits the selection. Also
+bind the keys that go on with such a command by themselves
+\(*NON-MODAL-REPEAT-KEYS*)."
   (loop for (keys command) in (append *tuatara-normal-bindings* *tuatara-syntax-bindings*)
         unless (member command *non-modal-keys-left-out*)
           do (define-key *global-keymap* (concatenate 'string "C-z " keys) command))
@@ -536,10 +539,11 @@ while modal editing is on (MODAL-SYNC)."
   (when *modal-editing* (modal-sync editor)))
 
 (defun install-tuatara-modal (editor)
-  "Install Tuatara's modal editing into EDITOR: keys, mode line, cursor shape, the state sync and
-position tracking after every command, the state sync after work from the background too, and
-a file read again while typing kept a step of its own to undo, and a file open already, visited
-from another buffer, shown in NORMAL state."
+  "Install Tuatara's modal editing into EDITOR: keys, mode line, cursor shape,
+the state sync and position tracking after every command, the state sync after
+work from the background too, and a file read again while typing kept a step of
+its own to undo, and a file open already, visited from another buffer, shown in
+NORMAL state."
   (install-tuatara-modal-keys)
   (setf (editor-mode-line-function editor) #'modal-mode-line
         (editor-cursor-shape-function editor) #'modal-cursor-shape)
@@ -585,8 +589,8 @@ input-method-LABEL, on its key; & . and - are taken.
   "The keys under the leader's i that are Tuatara's own.")
 
 (defun input-method-key-name (label)
-  "The name of the command LABEL gives for an input method key, input-method-LABEL,
-in TUATARA.DEFAULTS."
+  "The name of the command LABEL gives for an input method key,
+input-method-LABEL, in TUATARA.DEFAULTS."
   (intern (string-upcase (format nil "input-method-~a"
                                  (string-trim "-" (cl-ppcre:regex-replace-all "[^A-Za-z0-9]+" (string-downcase label)
                                                                               "-"))))
@@ -608,8 +612,8 @@ and nothing made, when the name is that of a function that is no such command."
 set it: each to a command turning its method on. An entry that is not three
 strings, names no input method, takes one of Tuatara's own keys, or has a label
 that would replace a function of the editor is left out, and said."
-  (dolist (entry (setting-list '*input-method-keys* *input-method-keys*))
-    (let ((command (and (listp entry) (= (length entry) 3) (every #'stringp entry)
+  (dolist (entry *input-method-keys*)
+    (let ((command (and (alexandria:proper-list-p entry) (= (length entry) 3) (every #'stringp entry)
                         (find-input-method (third entry))
                         (not (member (first entry) *input-method-own-keys* :test #'string=))
                         (input-method-key-command (second entry) (third entry)))))

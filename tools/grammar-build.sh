@@ -18,27 +18,70 @@ grammar_cflags=(-O2 -fPIC -shared -std=c11 -fno-strict-aliasing -DNDEBUG -includ
                 -include "$grammar_root/syntax/counted-memory.h")
 grammar_cxxflags=(-O2 -fPIC -fno-strict-aliasing -DNDEBUG -fvisibility=hidden)
 
-# compile_grammar SRC LIB [--assertions]: compile the grammar whose parser.c
-# (and scanner.c or scanner.cc) are in the directory SRC into the shared
-# library LIB; with --assertions, its assertions are kept, as fuzzing wants
+# grammar_sanitize_flags: what fuzzing compiles with in place of the
+# optimisation, and the assertions kept: the code is read by the address and
+# undefined-behaviour sanitizers. An empty copy from no memory (memcpy of 0
+# octets from NULL) and a number stored unaligned are left unreported: x86-64
+# does both safely, and many scanners do them, which would end the run before
+# anything else is found.
+grammar_sanitize_flags=(-g -O1 -fno-omit-frame-pointer -fsanitize=address,undefined
+                        -fno-sanitize=nonnull-attribute,alignment -fno-sanitize-recover=undefined)
+
+# compile_grammar SRC LIB [--assertions|--sanitize]: compile the grammar whose
+# parser.c (and scanner.c or scanner.cc) are in the directory SRC into the
+# shared library LIB; with --assertions, its assertions are kept, and with
+# --sanitize they are kept and the sanitizers watch the code, as fuzzing wants
 compile_grammar() {
-  local src="$1" lib="$2" cflags=() cxxflags=() flag
+  local src="$1" lib="$2" mode="${3:-}" cflags=() cxxflags=() link=() flag
   for flag in "${grammar_cflags[@]}"; do
-    [ "${3:-}" = --assertions ] && [ "$flag" = -DNDEBUG ] || cflags+=("$flag")
+    case "$mode:$flag" in
+      --assertions:-DNDEBUG|--sanitize:-DNDEBUG) ;;
+      --sanitize:-O2) cflags+=("${grammar_sanitize_flags[@]}") ;;
+      *) cflags+=("$flag") ;;
+    esac
   done
   for flag in "${grammar_cxxflags[@]}"; do
-    [ "${3:-}" = --assertions ] && [ "$flag" = -DNDEBUG ] || cxxflags+=("$flag")
+    case "$mode:$flag" in
+      --assertions:-DNDEBUG|--sanitize:-DNDEBUG) ;;
+      --sanitize:-O2) cxxflags+=("${grammar_sanitize_flags[@]}") ;;
+      *) cxxflags+=("$flag") ;;
+    esac
   done
+  [ "$mode" = --sanitize ] && link=(-fsanitize=address,undefined)
   if [ -f "$src/scanner.cc" ]; then
     cc "${cflags[@]}" -I"$src" -c "$src/parser.c" -o "$lib.parser.o"
     c++ "${cxxflags[@]}" -I"$src" -c "$src/scanner.cc" -o "$lib.scanner.o"
-    c++ -shared "$lib.parser.o" "$lib.scanner.o" -o "$lib"
+    c++ -shared ${link[@]+"${link[@]}"} "$lib.parser.o" "$lib.scanner.o" -o "$lib"
     rm -f "$lib.parser.o" "$lib.scanner.o"
   else
     local files=("$src/parser.c")
     [ -f "$src/scanner.c" ] && files+=("$src/scanner.c")
     cc "${cflags[@]}" -I"$src" "${files[@]}" -o "$lib"
   fi
+}
+
+# compile_helper ROOT TREE_SITTER OUT [FLAGS...]: compile the program that runs the grammars for the editor
+# (syntax/syntax.c and syntax/helper.c of the checkout ROOT, with the tree-sitter sources in the directory
+# TREE_SITTER) into the file OUT, with the compiler FLAGS given
+compile_helper() {
+  local root="$1" tree_sitter="$2" out="$3"
+  shift 3
+  cc "$@" -std=c11 -D_POSIX_C_SOURCE=200112L -D_DEFAULT_SOURCE \
+     -I"$tree_sitter/lib/include" -I"$tree_sitter/lib/src" \
+     "$tree_sitter/lib/src/lib.c" "$root/syntax/syntax.c" "$root/syntax/helper.c" \
+     -rdynamic -lpthread -ldl -o "$out"
+}
+
+# grammar_manifest: the rows of syntax/grammars.tsv (tab-separated NAME URL
+# COMMIT LICENCE [SUBPATH]), without comments and blank lines
+grammar_manifest() {
+  grep -v '^#' "$grammar_root/syntax/grammars.tsv" | grep -v '^[[:space:]]*$'
+}
+
+# grammar_subpath NAME: the directory of its repository the grammar NAME is in
+# (the manifest's fifth column), or nothing
+grammar_subpath() {
+  grammar_manifest | awk -F'\t' -v n="$1" '$1 == n { print $5 }'
 }
 
 # grammar_git ARGUMENTS...: git run on a grammar's checkout, which never
@@ -52,7 +95,7 @@ grammar_git() {
 # DIR again from its grammar.js with the tree-sitter program CLI, into
 # DIR/src/parser.c; when that fails, say why and end the script, so that a
 # grammar is never compiled from the parser it had before. grammar.js is a
-# program of the grammar's: it runs shut in (bwrap), with no network, no
+# program of the grammar's: it runs shut in (run_shut_in), with no network, no
 # environment, the system's programs to read, and a copy of DIR without any
 # .git to write, of which only the parser and what goes with it are taken
 # back; without bwrap, nothing is generated.
@@ -66,11 +109,8 @@ generate_parser() {
   rm -f "$dir/src/parser.c"
   (cd "$dir" && tar --exclude=.git --exclude='node_modules/*/.git' -cf - .) | tar -x -C "$copy"
   rm -f "$copy/src/parser.c"
-  if ! (cd "$copy" && bwrap --unshare-all --die-with-parent --new-session --clearenv \
-          --tmpfs /tmp --proc /proc --dev /dev --setenv HOME /tmp --setenv PATH /usr/bin \
-          --ro-bind /usr /usr --symlink usr/lib64 /lib64 --symlink usr/lib /lib --symlink usr/bin /bin \
-          --ro-bind "$cli" "$cli" --bind "$copy" "$copy" --chdir "$copy" \
-          -- "$cli" generate --js-runtime native) > "$dir.generate.log" 2>&1 || [ ! -f "$copy/src/parser.c" ]; then
+  if ! run_shut_in "$cli" "$copy" "$cli" generate --js-runtime native > "$dir.generate.log" 2>&1 ||
+     [ ! -f "$copy/src/parser.c" ]; then
     cat "$dir.generate.log" >&2
     rm -rf "$copy"
     echo "The parser of $dir could not be generated from its grammar.js: nothing is compiled." >&2

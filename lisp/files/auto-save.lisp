@@ -70,12 +70,12 @@ name ending in /. It is made, for you alone, when a copy is first written."
        (tuatara.io:native (tuatara.io:expand-path (string-right-trim "/" *auto-save-directory*)))
        (tuatara.io:path-join (tuatara.io:native (tuatara.io:state-directory)) "auto-save"))))
 
-(defun auto-save-path (file)
+(defun auto-save-path (file &optional (directory (auto-save-directory)))
   "The auto-saved copy of FILE, a native name: its whole name written as one
-name in the directory (AUTO-SAVE-DIRECTORY, TUATARA.IO:PATH-FILE-NAME), or, for a
-name too long for that, its start and a number made from all of it, its own
-name then kept beside it in NAME.path."
-  (concatenate 'string (auto-save-directory) (tuatara.io:path-file-name file)))
+name in DIRECTORY (AUTO-SAVE-DIRECTORY, TUATARA.IO:PATH-FILE-NAME), or, for
+a name too long for that, its start and a number made from all of it, its
+own name then kept beside it in NAME.path."
+  (concatenate 'string directory (tuatara.io:path-file-name file)))
 
 (defun auto-save-wanted-p (buffer)
   "True when BUFFER's changes not saved may be auto-saved: it visits a file,
@@ -102,7 +102,7 @@ COPY.path when there is one, and have an open list of the copies shown again."
   "Delete the auto-saved copy of the native FILE, and its name kept beside it,
 when there is one."
   (let ((copy (auto-save-path file)))
-    (when (and copy (tuatara.io:path-stamp copy))
+    (when (tuatara.io:path-stamp copy)
       (delete-auto-save-copy copy))))
 
 (defun delete-auto-save (buffer)
@@ -163,7 +163,7 @@ when COPY's name cannot hold it."
 background."
   (let* ((rope (tuatara.text:version-rope (tuatara.buffer:buffer-version buffer)))
          (file (tuatara.io:native (tuatara.buffer:buffer-file buffer)))
-         (copy (progn (tuatara.io:ensure-private-directory (auto-save-directory)) (auto-save-path file)))
+         (directory (auto-save-directory))
          (job (make-auto-save-job buffer (tuatara.buffer:buffer-content-number buffer))))
     (setf (tuatara.buffer:buffer-local buffer 'auto-save-job) job
           (tuatara.buffer:buffer-local buffer 'auto-save-seen) nil
@@ -172,7 +172,8 @@ background."
      job
      (lambda (job)
        (declare (ignore job))
-       (write-auto-save rope file copy))
+       (tuatara.io:ensure-private-directory directory)
+       (write-auto-save rope file (auto-save-path file directory)))
      :name "tuatara auto-save")))
 
 (defun auto-save-now (buffer)
@@ -243,9 +244,8 @@ otherwise."
   (unless (tuatara.io:safe-visit-p buffer)
     (multiple-value-bind (copy time) (auto-save-newer-p buffer)
       (when copy
-        (message "~a has changes auto-saved ~a, newer than the file: ~a takes them"
-                 (tuatara.buffer:buffer-name buffer) (short-time-words time)
-                 (substitute-command-keys "\\[recover-file]"))))))
+        (message "~a has changes auto-saved ~a, newer than the file: \\[recover-file] takes them"
+                 (tuatara.buffer:buffer-name buffer) (short-time-words time))))))
 
 (define-command recover-file ()
   "Take into the current buffer the changes auto-saved for its file (*AUTO-SAVE*)
@@ -255,8 +255,8 @@ For a buffer whose file has no auto-saved copy newer than it, says so."
     (cond ((null (tuatara.buffer:buffer-file buffer)) (message "~a visits no file" (tuatara.buffer:buffer-name buffer)))
           ((tuatara.io:safe-visit-p buffer) (message "~a is opened safely: nothing is recovered into it"
                                                      (tuatara.buffer:buffer-name buffer)))
-          ((buffer-read-only-p buffer) (message "~a is read-only: ~a first" (tuatara.buffer:buffer-name buffer)
-                                                                    (substitute-command-keys "\\[read-only-mode]")))
+          ((buffer-read-only-p buffer) (message "~a is read-only: \\[read-only-mode] first"
+                                                (tuatara.buffer:buffer-name buffer)))
           (t (multiple-value-bind (copy time) (auto-save-newer-p buffer)
                (cond ((null copy) (message "~a has no auto-saved changes newer than its file"
                                            (tuatara.buffer:buffer-name buffer)))
@@ -286,8 +286,8 @@ changed meanwhile, which is said."
                   (t (tuatara.buffer:widen-buffer buffer)
                      (tuatara.buffer:buffer-replace buffer 0 (tuatara.buffer:buffer-size buffer) octets)
                      (setf (tuatara.buffer:buffer-point buffer) 0)
-                     (message "~a recovered: ~a saves it, ~a takes it back" (tuatara.buffer:buffer-name buffer)
-                              (substitute-command-keys "\\[save-buffer]") (substitute-command-keys "\\[undo]"))))))))
+                     (message "~a recovered: \\[save-buffer] saves it, \\[undo] takes it back"
+                              (tuatara.buffer:buffer-name buffer))))))))
      :name "tuatara recovering")))
 
 (defun auto-save-reverted (buffer)
@@ -303,6 +303,12 @@ to say."
   (unless (tuatara.buffer:buffer-modified-p buffer)
     (delete-auto-save buffer)))
 
+(defun auto-save-name-file-p (name)
+  "True when NAME, an entry of the auto-save directory, is the file holding
+the full name of a file whose copy's name is shortened (AUTO-SAVE-PATH), not
+a copy: it ends in .path and holds the ~ only a shortened name has."
+  (and (uiop:string-suffix-p name ".path") (find #\~ name) t))
+
 (defun auto-save-copies ()
   "The auto-saved copies there are, newest first, each a plist: :COPY, its path;
 :FILE, the file it is of; :TIME, when it was written (a universal time);
@@ -312,7 +318,7 @@ is not there)."
     (loop for (name nil nil own stamp) in (and directory (ignoring-errors-reported ("listing ~a" directory)
                                                            (tuatara.io:directory-entries directory :stamps t)))
           for copy = (concatenate 'string directory name)
-          do (when (and stamp (eq own :regular) (not (uiop:string-suffix-p name ".path")))
+          do (when (and stamp (eq own :regular) (not (auto-save-name-file-p name)))
                (let* ((named (concatenate 'string copy ".path"))
                       (file (if (tuatara.io:path-stamp named :failure nil)
                                 (ignoring-errors-reported ("reading ~a" named)
@@ -356,29 +362,55 @@ newer than its file, and the file.")
 (defun auto-saves-show (buffer &optional (point 2))
   "Fill BUFFER, the list of auto-saved copies, point on line POINT, or with
 :keep on the line it was on, marks kept on the copies still there; a copy
-newer than its file in :warning, the file of a marked one in its mark's face."
-  (let ((copies (auto-save-copies)))
-    (render-table-list
-     buffer *auto-saves-columns* copies
-     (lambda (copy mark section)
-       (declare (ignore section))
-       (let ((face (and (eq (getf copy :state) :newer) :warning)))
-         (list (list-mark-sign mark)
-               (cons (short-time-words (getf copy :time)) face)
-               (cons (octets-words (getf copy :size)) face)
-               (cons (case (getf copy :state)
-                       (:newer "newer than the file")
-                       (:older "older than the file")
-                       (t "the file is gone"))
-                     face)
-               (cons (abbreviated-path (getf copy :file)) (or (list-mark-face mark) face)))))
-     :marked-by (lambda (copy section) (declare (ignore section)) (auto-save-copy-key copy))
-     :after (list (format nil
-                          "~%Auto-saved changes in ~a: ~d~%"
-                          (abbreviated-path (auto-save-directory))
-                          (length copies)))
-     :point point
-     :refill (lambda (buffer) (auto-saves-show buffer :keep)))))
+newer than its file in :warning, the file of a marked one in its mark's face.
+The copies are looked at on a thread of their own (AUTO-SAVE-COPIES), so that
+a drive not answering holds nothing up, and BUFFER is filled once they are;
+a list still empty says meanwhile that they are being listed. Of listings
+that overlap, only the one begun last fills BUFFER."
+  (when (zerop (tuatara.buffer:buffer-size buffer))
+    (render-pieces buffer (list (format nil "Listing the auto-saved copies...~%")) :point :start))
+  (let ((listing (setf (tuatara.buffer:buffer-local buffer 'auto-saves-listing)
+                       (1+ (or (tuatara.buffer:buffer-local buffer 'auto-saves-listing) 0)))))
+    (tuatara.runtime:make-guarded-thread
+     (tuatara.runtime:carry-settings
+      '(*auto-save-directory*)
+      (lambda ()
+        (let ((copies (ignoring-errors-reported ("listing the auto-saves") (auto-save-copies))))
+          (defer-action (lambda () (auto-saves-take buffer listing copies point))))))
+     :name "tuatara auto-saves listed")))
+
+(defun auto-saves-take (buffer listing copies point)
+  "Fill BUFFER, the list of auto-saved copies, with COPIES, point as
+AUTO-SAVES-SHOW says, when LISTING, the number of the listing that found
+them, is the one begun last for it; else they are let go, older than what a
+later listing finds."
+  (when (and (live-buffer-p buffer) (eql listing (tuatara.buffer:buffer-local buffer 'auto-saves-listing)))
+    (auto-saves-fill buffer copies point)))
+
+(defun auto-saves-fill (buffer copies point)
+  "Fill BUFFER, the list of auto-saved copies, with COPIES (AUTO-SAVE-COPIES),
+point as AUTO-SAVES-SHOW says."
+  (render-table-list
+   buffer *auto-saves-columns* copies
+   (lambda (copy mark section)
+     (declare (ignore section))
+     (let ((face (and (eq (getf copy :state) :newer) :warning)))
+       (list (list-mark-sign mark)
+             (cons (short-time-words (getf copy :time)) face)
+             (cons (octets-words (getf copy :size)) face)
+             (cons (case (getf copy :state)
+                     (:newer "newer than the file")
+                     (:older "older than the file")
+                     (t "the file is gone"))
+                   face)
+             (cons (abbreviated-path (getf copy :file)) (or (list-mark-face mark) face)))))
+   :marked-by (lambda (copy section) (declare (ignore section)) (auto-save-copy-key copy))
+   :after (list (format nil
+                        "~%Auto-saved changes in ~a: ~d~%"
+                        (abbreviated-path (auto-save-directory))
+                        (length copies)))
+   :point point
+   :refill (lambda (buffer) (auto-saves-show buffer :keep))))
 
 (defun auto-save-copy-key (copy)
   "What a mark on COPY, one of AUTO-SAVE-COPIES, in their list is kept by: the copy's path."
@@ -426,7 +458,7 @@ whose auto-saved changes are newer than them (AUTO-SAVES-STARTUP-NOTICE).")
 (defun auto-saves-startup-notice (editor)
   "Tick function: say once, as the editor starts, how many files have
 auto-saved changes newer than them, and how to see them
-\\(\\[list-auto-saves]); they are counted in the background, so that a file
+\(\\[list-auto-saves]); they are counted in the background, so that a file
 on a drive not answering cannot hold the start up. Looks again every
 twentieth of a second until they are."
   (declare (ignore editor))
@@ -448,8 +480,9 @@ twentieth of a second until they are."
                  *auto-saves-counting* nil)
            (let ((newer (or (first (take-gathered counting)) 0)))
              (when (plusp newer)
-               (message "~d file~:p ~:*~[~;has~:;have~] changes auto-saved and not saved: ~a lists them"
-                        newer (substitute-command-keys "\\[list-auto-saves]"))))
+               (message "~d file~:p ~:*~[~;has~:;have~] changes auto-saved and not saved: ~
+                         \\[list-auto-saves] lists them"
+                        newer)))
            nil))))
 
 (defun install-auto-save ()

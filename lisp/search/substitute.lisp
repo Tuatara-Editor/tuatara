@@ -30,6 +30,21 @@ reason the string cannot be used yet, or NIL."
 
 (setf (documentation 'make-search-line 'function) "Return a search line with the given parts.")
 
+(defun counting-flags-p (flags)
+  "True when FLAGS, a search line's (SEARCH-LINE-FLAGS), say to count the
+matches only, replacing none (n)."
+  (and (find #\n flags) t))
+
+(defun every-match-flags-p (flags)
+  "True when FLAGS, a search line's (SEARCH-LINE-FLAGS), say to replace every
+match of a line, not only its first (g)."
+  (and (find #\g flags) t))
+
+(defun asking-flags-p (flags)
+  "True when FLAGS, a search line's (SEARCH-LINE-FLAGS), say to ask before
+each replacement (c), when they do not say to count only (n)."
+  (and (find #\c flags) (not (counting-flags-p flags))))
+
 (defun pattern-run-end (pattern i)
   "Where the set ([...]) or the quoted text (\\Q...\\E) that starts at I of
 PATTERN, a regular expression, ends; NIL when neither starts there. Nothing in
@@ -58,16 +73,22 @@ set of the pattern such as [,/] or quoted text \\Q.../...\\E."
     (push (subseq string (min start n)) parts)
     (nreverse parts)))
 
-(defun unescape-literal (text)
-  "TEXT typed as literal text: \\/ stands for a slash and \\\\ for one
-backslash; any other backslash is itself."
+(defun unescape-with (text table)
+  "TEXT with each backslash before a character TABLE names, an alist of that
+character to what the pair stands for (a character or a string), written as
+what it stands for; any other backslash is itself."
   (with-output-to-string (out)
     (let ((i 0) (n (length text)))
       (loop while (< i n)
-            do (let ((c (char text i)))
-                 (if (and (char= c #\\) (< (1+ i) n) (find (char text (1+ i)) "/\\"))
-                     (progn (write-char (char text (1+ i)) out) (incf i 2))
-                     (progn (write-char c out) (incf i))))))))
+            do (let ((meant (and (char= (char text i) #\\) (< (1+ i) n) (assoc (char text (1+ i)) table))))
+                 (cond ((null meant) (write-char (char text i) out) (incf i))
+                       (t (if (characterp (cdr meant)) (write-char (cdr meant) out) (write-string (cdr meant) out))
+                          (incf i 2))))))))
+
+(defun unescape-literal (text)
+  "TEXT typed as literal text: \\/ stands for a slash and \\\\ for one
+backslash; any other backslash is itself (UNESCAPE-WITH)."
+  (unescape-with text '((#\/ . #\/) (#\\ . #\\))))
 
 (defun parse-search-line (string regex)
   "Read STRING, the text typed at the search prompt, as a search or a
@@ -154,16 +175,8 @@ character, such as \\& \\/ or \\\\, stands for itself."
 (defun literal-replacement (replacement &optional (newline (string #\Newline)))
   "REPLACEMENT taken as literal text: \\n and \\t stand for a line break,
 NEWLINE (the buffer's, BUFFER-NEWLINE), and a tab, \\/ and \\\\ for a slash
-and a backslash; everything else is itself."
-  (with-output-to-string (out)
-    (let ((i 0) (n (length replacement)))
-      (loop while (< i n)
-            do (let ((c (char replacement i)))
-                 (if (and (char= c #\\) (< (1+ i) n) (find (char replacement (1+ i)) "nt/\\"))
-                     (let ((d (char replacement (1+ i))))
-                       (case d (#\n (write-string newline out)) (#\t (write-char #\Tab out)) (t (write-char d out)))
-                       (incf i 2))
-                     (progn (write-char c out) (incf i))))))))
+and a backslash; everything else is itself (UNESCAPE-WITH)."
+  (unescape-with replacement (list (cons #\n newline) (cons #\t #\Tab) (cons #\/ #\/) (cons #\\ #\\))))
 
 (defun next-line-start-after (rope end &optional (start 0))
   "The start of the line after the one a match ending at END ends on: the first
@@ -497,48 +510,48 @@ fold kept folded; asked at with c, its fold is opened first
 nothing changes and a message says so. Returns the number of matches replaced
 or counted here."
   (let ((matcher (search-line-matcher line regex)))
-    (let* ((all (find #\g flags))
+    (let* ((all (every-match-flags-p flags))
            (replacement (search-line-replacement line))
            (replacement-for (replacement-function replacement regex matcher (tuatara.buffer:buffer-newline buffer))))
       (setf *last-search-pattern* (cons (search-line-pattern line) regex)
             (tuatara.buffer:buffer-mark-active-p buffer) nil)
       (cond
-        ((and pieces (find #\c flags) (not (find #\n flags)))
+        ((and pieces (asking-flags-p flags))
          (goto (car (first pieces)))
          (multiple-value-bind (next rest) (pieces-next-match buffer matcher regex pieces all)
            (query-replace-loop buffer next replacement-for (search-line-pattern line) replacement :rest rest)))
-        ((and (find #\c flags) (not (find #\n flags)))
-          ;; ask at each match; the scope's end moves as replacements change its length
-          (let ((tail (- (tuatara.buffer:buffer-size buffer) high)) (first t))
-            (flet ((from-for (pos rope high)
-                     (if (or all first)
-                         pos
-                         (min high (next-line-start-after rope pos)))))
-              (goto low)
-              (query-replace-loop buffer
-                                  (lambda (pos)
-                                    (let* ((rope (tuatara.buffer:buffer-text buffer))
-                                           (high (- (tuatara.buffer:buffer-size buffer) tail))
-                                           (from (from-for pos rope high)))
-                                      (setf first nil)
-                                      (next-line-match buffer matcher regex from high)))
-                                  replacement-for (search-line-pattern line) replacement
-                                  :rest (lambda (pos)
-                                          ;; ! : the rest at once from the match asked at, gathered within the budget
-                                          (let* ((rope (tuatara.buffer:buffer-text buffer))
-                                                 (high (- (tuatara.buffer:buffer-size buffer) tail)))
-                                            (multiple-value-bind (found status count)
-                                                (line-matches rope matcher regex pos high :stop stop)
-                                              (if (eq status :over)
-                                                  ;; too many to hold: those in sight at once, the rest in the
-                                                  ;; background
-                                                  (progn (rewrite-after-sight buffer line regex pos high words flags
-                                                                              matcher replacement-for all)
-                                                         (values nil :background count))
-                                                  (values (if all found (first-per-line rope found))
-                                                          status count)))))))))
+        ((asking-flags-p flags)
+         ;; ask at each match; the scope's end moves as replacements change its length
+         (let ((tail (- (tuatara.buffer:buffer-size buffer) high)) (first t))
+           (flet ((from-for (pos rope high)
+                    (if (or all first)
+                        pos
+                        (min high (next-line-start-after rope pos)))))
+             (goto low)
+             (query-replace-loop buffer
+                                 (lambda (pos)
+                                   (let* ((rope (tuatara.buffer:buffer-text buffer))
+                                          (high (- (tuatara.buffer:buffer-size buffer) tail))
+                                          (from (from-for pos rope high)))
+                                     (setf first nil)
+                                     (next-line-match buffer matcher regex from high)))
+                                 replacement-for (search-line-pattern line) replacement
+                                 :rest (lambda (pos)
+                                         ;; ! : the rest at once from the match asked at, gathered within the budget
+                                         (let* ((rope (tuatara.buffer:buffer-text buffer))
+                                                (high (- (tuatara.buffer:buffer-size buffer) tail)))
+                                           (multiple-value-bind (found status count)
+                                               (line-matches rope matcher regex pos high :stop stop)
+                                             (if (eq status :over)
+                                                 ;; too many to hold: those in sight at once, the rest in the
+                                                 ;; background
+                                                 (progn (rewrite-after-sight buffer line regex pos high words flags
+                                                                             matcher replacement-for all)
+                                                        (values nil :background count))
+                                                 (values (if all found (first-per-line rope found))
+                                                         status count)))))))))
         (t
-         (let ((rope (tuatara.buffer:buffer-text buffer)) (counting (find #\n flags)))
+         (let ((rope (tuatara.buffer:buffer-text buffer)) (counting (counting-flags-p flags)))
            (when (and (null pieces) (large-for-here-p low high))
              ;; a large scope: what is in sight at once, the rest in the background, so nothing waits on it
              (goto origin)

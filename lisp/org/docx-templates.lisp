@@ -142,6 +142,48 @@ such place."
                 :size (and (group 4) (list (if (string= (group 4) "height") :height :width) (group 5)))
                 :end end))))))
 
+(defun map-template-text (text on-text on-place has-value-p &key (unclosed :refuse))
+  "Read TEXT, a template's, from its start: ON-TEXT is called with each
+stretch of plain text, ON-PLACE with each place outside a condition (as
+TEMPLATE-PLACE gives it). {{{#NAME}}}...{{{/NAME}}} is read, its content
+too, when HAS-VALUE-P, called with NAME, is true; {{{^NAME}}}...{{{/NAME}}}
+when it is not; a condition's end with no beginning is dropped. A brace
+before a place, as in {{{{title}}}}, stays a brace. A condition with no end
+is refused, or with UNCLOSED :SKIP, only its mark is dropped."
+  (let ((n (length text)))
+    (labels ((place-at (i)
+               (when (and (<= (+ i 3) n) (string= "{{{" text :start2 i :end2 (+ i 3)))
+                 (let ((place (template-place (subseq text i (min n (+ i 120))))))
+                   (when (and place (< (getf place :end) 100))
+                     (values place (+ i (getf place :end)))))))
+             (walk (start end)
+               (let ((i start) (from start))
+                 (flet ((flush (to) (when (< from to) (funcall on-text (subseq text from to)))))
+                   (loop while (< i end)
+                         do (multiple-value-bind (place after) (and (char= (char text i) #\{) (place-at i))
+                              (cond ((null place) (incf i))
+                                    (t (flush i)
+                                       (let ((condition (getf place :condition)))
+                                         (cond
+                                           ((member condition '(#\# #\^))
+                                            (let* ((name (getf place :name))
+                                                   (closing (format nil "{{{/~a}}}" name))
+                                                   (stop (search closing text :start2 after :test #'char-equal)))
+                                              (cond (stop
+                                                     (when (eq (char= condition #\#)
+                                                               (and (funcall has-value-p name) t))
+                                                       (walk after stop))
+                                                     (setf i (+ stop (length closing))))
+                                                    ((eq unclosed :refuse)
+                                                     (refuse "The template has ~a with no {{{/~a}}}"
+                                                             (subseq text i after) name))
+                                                    (t (setf i after)))))
+                                           (condition (setf i after))
+                                           (t (funcall on-place place) (setf i after))))
+                                       (setf from i)))))
+                   (flush end)))))
+      (walk 0 n))))
+
 (defun docx-place (text)
   "The place TEXT is (TEMPLATE-PLACE), not a condition's mark, as NAME, WAY
 \(:TEXT, :RAW or :PATH), as a third value the picture's size, (:HEIGHT
@@ -192,37 +234,24 @@ template) when it has none of its own."
 
 (defun docx-fill-text (text properties)
   "TEXT of a template, its places and the conditions within it filled, as runs
-looking as PROPERTIES says."
+looking as PROPERTIES says. A condition whose end is in another cell or
+paragraph, kept or not by its row or run of paragraphs already
+\(DOCX-FILL-ROWS), has its mark alone dropped."
   (with-output-to-string (out)
-    (let ((p 0))
-      (loop
-       (let ((at (search "{{{" text :start2 p)))
-         (write-string (docx-with-properties (docx-run (subseq text p (or at (length text)))) properties) out)
-         (unless at (return))
-         (let ((close (search "}}}" text :start2 at)))
-           (unless close (write-string (docx-with-properties (docx-run (subseq text at)) properties) out) (return))
-           (let ((token (subseq text at (+ close 3))))
-             (let ((place (template-place token :whole t)))
-               (if (member (getf place :condition) '(#\# #\^))
-                   ;; a condition: what is up to its end, kept or not
-                   (let* ((name (getf place :name))
-                          (end-token (format nil "{{{/~a}}}" name))
-                          (end (search end-token text :start2 (+ close 3) :test #'char-equal)))
-                     ;; one whose end is in another cell or paragraph, kept or not by its row or run
-                     ;; of paragraphs already (DOCX-FILL-ROWS): the mark alone goes
-                     (if (null end)
-                         (setf p (+ close 3))
-                         (progn
-                           (when (eq (char= (getf place :condition) #\#) (docx-has-value-p name))
-                             (write-string (docx-fill-text (subseq text (+ close 3) end) properties) out))
-                           (setf p (+ end (length end-token))))))
-                   (progn
-                     (multiple-value-bind (name way size date) (docx-place token)
-                       (when name
-                         (let ((*docx-date-format* (or date *docx-date-format*)))
-                           (write-string (docx-with-properties (or (apply #'docx-field name way size) "") properties)
-                                         out))))
-                     (setf p (+ close 3))))))))))))
+    (map-template-text
+     text
+     (lambda (words) (write-string (docx-with-properties (docx-run words) properties) out))
+     (lambda (place)
+       (let ((*docx-date-format* (or (getf place :date) *docx-date-format*))
+             (size (getf place :size)))
+         (write-string (docx-with-properties
+                        (or (apply #'docx-field (getf place :name) (getf place :way)
+                                   (and size (list (first size) (docx-length (second size)))))
+                            "")
+                        properties)
+                       out)))
+     #'docx-has-value-p
+     :unclosed :skip)))
 
 (defun docx-date-parts (text)
   "The date TEXT gives, 2026-09-30 or <2026-09-30 Wed> or [2026-09-30 Wed 10:00],
@@ -605,7 +634,7 @@ the first section's, and what follows columns going on on their page."
 Tuatara's added where it has none of that name."
   (let ((ours (docx-styles (chosen-fonts)))
         (theirs (docx-part-text parts "word/styles.xml")))
-    (if (null theirs)
+    (if (or (null theirs) (string= theirs ours))
         ours
         (docx-merge-into theirs "</w:styles>"
                          (format nil "~{~a~}"
@@ -691,7 +720,7 @@ note adds pictures to it; the template's design for Tuatara left out."
   (loop for (name . octets) in parts
         ;; what the template says of its design for Tuatara, never in the document
         unless (string= name *docx-template-design-file*)
-        append (if (cl-ppcre:scan "^word/(header|footer)\\d*\\.xml$" name)
+        append (if (cl-ppcre:scan "(?i)^word/(header|footer)\\d*\\.xml$" name)
                    ;; a picture in a header is named in the header's own relations
                    (let ((saved (docx-relations *docx*)))
                      (setf (docx-relations *docx*) '())
@@ -731,8 +760,7 @@ note's, its relations and types with the pictures and links the note adds."
                                (docx-core (org-export-plain (org-export-title))
                                           (org-export-plain (or (org-export-keyword "AUTHOR") "")))))))
     ;; the content types first, as Word writes them; the template's other parts as they are; the note's pictures
-    (append (list (first replaced))
-            (rest replaced)
+    (append replaced
             ;; a header's relations, when the note added to them, in place of the template's own
             (remove-duplicates (remove-if (lambda (part) (assoc (car part) replaced :test #'string=)) other-parts)
                                :key #'car :test #'string=)

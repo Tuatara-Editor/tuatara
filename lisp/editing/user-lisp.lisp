@@ -200,9 +200,13 @@ letters and digits."
 line being 1: of the part shown while the buffer is narrowed, or with
 ABSOLUTE of the whole buffer."
   (let* ((b (current-buffer))
-         (byte (if position (byte-at b position) (tuatara.buffer:buffer-point b))))
-    (1+ (tuatara.text:rope-count-newlines (tuatara.buffer:buffer-text b)
-                                          (if absolute 0 (tuatara.buffer:buffer-start b)) byte))))
+         (byte (if position (byte-at b position) (tuatara.buffer:buffer-point b)))
+         (rope (tuatara.buffer:buffer-text b))
+         (low (if absolute 0 (tuatara.buffer:buffer-start b))))
+    ;; from the text's line index once it is made; while it is being made, by counting
+    (1+ (if (tuatara.text:rope-indexed-p rope)
+            (- (tuatara.text:byte->line rope byte) (tuatara.text:byte->line rope low))
+            (tuatara.text:rope-count-newlines rope low byte)))))
 
 (defun tuatara-user:count-lines (start end)
   "Return how many lines there are between positions START and END: the

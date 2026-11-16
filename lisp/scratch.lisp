@@ -40,23 +40,28 @@ file.
 - any other text: the buffer of that name, which the init file makes."
   :values string)
 
-(defun make-scratch-buffer (name mode text)
-  "Make the scratch buffer NAME in MODE holding TEXT, with point after it and
-nothing to undo; return it."
-  (let ((b (tuatara.buffer:make-buffer name :text (substitute-command-keys text))))
-    (set-major-mode b mode)
-    (setf (tuatara.buffer:buffer-point b) (tuatara.buffer:buffer-size b))
-    ;; the first text is not a change you made
-    (tuatara.buffer:forget-history b)
-    b))
+(defun make-scratch-buffer (name &optional (kind name))
+  "Make the scratch buffer NAME as KIND, the name of one of *SCRATCH-BUFFERS*,
+is made: in its mode holding its first text, with point after it and nothing
+to undo; a plain empty buffer when KIND is none of them. Return it."
+  (let ((entry (assoc kind *scratch-buffers* :test #'string=)))
+    (if (null entry)
+        (tuatara.buffer:make-buffer name)
+        (destructuring-bind (mode text) (rest entry)
+          (let ((b (tuatara.buffer:make-buffer name :text (substitute-command-keys text))))
+            (set-major-mode b mode)
+            (setf (tuatara.buffer:buffer-point b) (tuatara.buffer:buffer-size b))
+            ;; the first text is not a change you made
+            (tuatara.buffer:forget-history b)
+            b)))))
 
 (defun ensure-scratch-buffers ()
   "Make the scratch buffers *AUTO-SCRATCH-BUFFERS* names that do not exist
 yet, each in its mode, with point after its first text."
-  (loop for (name mode text) in *scratch-buffers*
+  (loop for (name) in *scratch-buffers*
         when (and (member name tuatara-user:*auto-scratch-buffers* :test #'string=)
                   (not (tuatara.buffer:find-buffer name)))
-          do (make-scratch-buffer name mode text)))
+          do (make-scratch-buffer name)))
 
 (defun auto-scratch-name ()
   "The scratch buffer made when there is nothing else to show: *STARTUP-BUFFER*
@@ -82,11 +87,7 @@ CLIENT's. The second value is true when it is new."
     (if own
         (values own nil)
         (let* ((kind (or kind (auto-scratch-name) "*scratch*"))
-               (entry (assoc kind *scratch-buffers* :test #'string=))
-               (name (tuatara.buffer:unique-buffer-name kind))
-               (buffer (if entry
-                           (make-scratch-buffer name (second entry) (third entry))
-                           (tuatara.buffer:make-buffer name))))
+               (buffer (make-scratch-buffer (tuatara.buffer:unique-buffer-name kind) kind)))
           (when (client-directory client)
             (setf (buffer-given-directory buffer) (client-directory client)))
           (setf (tuatara.buffer:buffer-local buffer :client-scratch) kind)
@@ -104,15 +105,14 @@ the background that has not ended, else NIL."
 as it is, or, when it was killed, a new one as at startup, which is said. In
 a client of an editor running in the background, the client's own of that
 kind (CLIENT-SCRATCH), the others' left where they are."
-  (destructuring-bind (mode text) (rest (assoc name *scratch-buffers* :test #'string=))
-    (multiple-value-bind (buffer made)
-        (let ((client (working-client)))
-          (if client
-              (client-scratch client name)
-              (let ((existing (tuatara.buffer:find-buffer name)))
-                (values (or existing (make-scratch-buffer name mode text)) (not existing)))))
-      (show-buffer buffer)
-      (when made (message "Made a new ~a" (tuatara.buffer:buffer-name buffer))))))
+  (multiple-value-bind (buffer made)
+      (let ((client (working-client)))
+        (if client
+            (client-scratch client name)
+            (let ((existing (tuatara.buffer:find-buffer name)))
+              (values (or existing (make-scratch-buffer name)) (not existing)))))
+    (show-buffer buffer)
+    (when made (message "Made a new ~a" (tuatara.buffer:buffer-name buffer)))))
 
 (define-command lisp-scratch ()
   "Show *lisp-scratch*, the Lisp buffer that is not saved, where
@@ -128,7 +128,7 @@ killed, a new one."
 
 (defmethod host-new-buffer ((host defaults-host) dying)
   "The buffer shown when no other is left: the scratch buffer AUTO-SCRATCH-NAME
-names, made as at startup, in its mode with its first text, or the one there
+names, made as at startup (MAKE-SCRATCH-BUFFER), or the one there
 is when it is not DYING, the buffer being killed (DYING, when it has that
 name, gives it up to the new one); NIL, for an empty *scratch*, when
 *AUTO-SCRATCH-BUFFERS* has none. In a client of an editor running in the
@@ -144,8 +144,7 @@ background, a scratch buffer of the client's own other than DYING
       (t
        (when existing
          (setf (tuatara.buffer:buffer-name existing) (format nil " ~a (killed)" name)))
-       (destructuring-bind (mode text) (rest (assoc name *scratch-buffers* :test #'string=))
-         (make-scratch-buffer name mode text))))))
+       (make-scratch-buffer name)))))
 
 (defun startup-buffer ()
   "The buffer to show when the editor starts without files: *STARTUP-BUFFER*,

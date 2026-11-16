@@ -786,7 +786,7 @@ with a failure and nothing after it, the other writes sent on unanswered.")
 (define-test (remote-files names-from-the-server-cleaned)
   ;; where a path leads is refused, and where a link leads shown escaped, when it would not show as it is; a
   ;; name holding NUL is no entry's
-  (false (tuatara.defaults::remote-entry-name-p (format nil "a~cb" (code-char 0))))
+  (false (tuatara.io:entry-name-p (format nil "a~cb" (code-char 0))))
   (let ((tuatara-user:*remote-seconds* 1))
     (with-stand-in-sftp (dir log :answers (server-octets '(:version 3)
                                                          (list :name 1 1 (format nil "/evil~cname" (code-char #x202E))
@@ -1990,4 +1990,4 @@ killed after."
     (flet ((failure (function)
              (handler-case (progn (funcall function) :none) (error (condition) (princ-to-string condition)))))
       (true (search "plain path" (failure (lambda () (tuatara.defaults::manifest-path)))))
-      (true (search "plain path" (failure (lambda () (tuatara.defaults::server-program-path "x"))))))))
+      (true (search "plain path" (failure (lambda () (tuatara.defaults::brought-path "x"))))))))

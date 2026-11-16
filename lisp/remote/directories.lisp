@@ -25,13 +25,6 @@ nothing after /ssh:HOST: for the home directory there."
   (multiple-value-bind (host path) (remote-name-parts name)
     (remote-name host (if (string= path "") "" (tuatara.io:slash-ended path)))))
 
-(defun remote-entry-name-p (name)
-  "True when NAME, given by a server as an entry of a directory, can be one: not
-empty, not . nor .., with no / nor NUL in it, so that a name joined to its
-directory never leads out of it, nor ends early."
-  (and (plusp (length name)) (not (member name '("." "..") :test #'string=)) (not (find #\/ name))
-       (not (find (code-char 0) name))))
-
 (defun remote-join (directory name)
   "The name of the entry NAME of DIRECTORY, here or on another machine, one /
 between them; NAME alone after a /ssh:HOST: naming the home directory there."
@@ -93,7 +86,7 @@ signalled."
   "DIRECTORY, a directory on another machine as REMOTE-DIRECTORY-NAME writes
 it, read into a RIMU-LISTING, its name from the root as the server says it:
 . and .. first, then its entries, those past *SFTP-MOST-LISTED* left out and
-that said; a name no entry can have (REMOTE-ENTRY-NAME-P) left out. Why
+that said; a name no entry can have (TUATARA.IO:ENTRY-NAME-P) left out. Why
 not, in the listing, when it cannot be read. SOURCE, the list's
 REMOTE-RIMU-SOURCE, is told when the directory is evidence."
   (multiple-value-bind (host path) (remote-name-parts directory)
@@ -105,7 +98,7 @@ REMOTE-RIMU-SOURCE, is told when the directory is evidence."
           (when (remote-evidence-words host path)
             (setf (remote-rimu-source-evidence source) t))
           (multiple-value-bind (entries cut) (remote-listing host path)
-            (let* ((entries (remove-if-not #'remote-entry-name-p entries :key #'car))
+            (let* ((entries (remove-if-not #'tuatara.io:entry-name-p entries :key #'car))
                    (links (remove-if-not (lambda (entry) (eq :link (remote-kind (cdr entry)))) entries))
                    (details (remote-link-details host path (mapcar #'car links)))
                    (here (list :permissions #o40755)))
@@ -245,14 +238,14 @@ another machine: :DIRECTORY, :FILE, :LINK or :OTHER; NIL for NIL."
   "The entries of DIRECTORY, here or on another machine, . and .. left out, as
 a list of (NAME KIND SIZE): KIND as REMOTE-OR-LOCAL-KIND says it, a link not
 followed. Refused when the server lists more than *SFTP-MOST-LISTED*, or a
-name no entry can have (REMOTE-ENTRY-NAME-P)."
+name no entry can have (TUATARA.IO:ENTRY-NAME-P)."
   (if (remote-name-p directory)
       (multiple-value-bind (host path) (remote-name-parts directory)
         (multiple-value-bind (entries cut)
             (remote-listing host (if (string= path "") "." (tuatara.io:slash-ended path)))
           (when cut (refuse "~a holds more than ~:d entries" directory *sftp-most-listed*))
           (dolist (entry entries)
-            (unless (remote-entry-name-p (car entry))
+            (unless (tuatara.io:entry-name-p (car entry))
               (refuse "~a lists a name no entry can have: ~a" directory (escape-controls (car entry)))))
           (loop for (name . attributes) in entries
                 collect (list name (or (remote-kind attributes) :other) (or (getf attributes :size) 0)))))
@@ -350,7 +343,7 @@ Looks within only while *EVIDENCE-DIRECTORIES* names some directory."
                    (when cut
                      (refuse "~a holds too many entries to be looked through for evidence" (remote-name host path)))
                    (loop for (entry-name . attributes) in entries
-                         when (and (eq :directory (remote-kind attributes)) (remote-entry-name-p entry-name))
+                         when (and (eq :directory (remote-kind attributes)) (tuatara.io:entry-name-p entry-name))
                          collect entry-name)))
                (walk (path real depth)
                  (tuatara.runtime:job-check-stop)

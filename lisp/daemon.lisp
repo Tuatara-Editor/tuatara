@@ -392,17 +392,17 @@ with user id (UID) UID; else NIL."
          (and stamp (eq (tuatara.io:stamp-kind stamp) :character-device) (eql (tuatara.io:stamp-uid stamp) uid)))
        device))
 
-(defun close-standard-input (request)
-  "Close the standard input REQUEST passed, unless it was taken to be read (TAKE-STANDARD-INPUT)."
-  (let ((fd (shiftf (tuatara.frontend:request-standard-input request) nil)))
-    (when (integerp fd)
-      (close-fd-quietly fd "a client's standard input"))))
-
 (defun take-standard-input (request)
   "The descriptor of the standard input REQUEST passed, or NIL, taken from
 it: whoever takes it closes it."
   (let ((fd (shiftf (tuatara.frontend:request-standard-input request) nil)))
     (and (integerp fd) fd)))
+
+(defun close-standard-input (request)
+  "Close the standard input REQUEST passed, unless it was taken to be read (TAKE-STANDARD-INPUT)."
+  (let ((fd (take-standard-input request)))
+    (when fd
+      (close-fd-quietly fd "a client's standard input"))))
 
 (defun attach-client (editor remote)
   "Give EDITOR a client on REMOTE, a remote frontend greeted, with a frame
@@ -730,16 +730,13 @@ it keeps (the files visited lately, the places) and ends.
     (unless *daemon*
       (refuse "This editor is not running in the background: ~a quits it"
               (substitute-command-keys "\\[save-buffers-kill-editor]")))
-    (let ((answers (loop for query in *quit-query-functions*
-                         for answer = (query-answer query "stop the daemon")
-                         unless answer return :stay
-                         collect answer)))
+    (let ((answers (ask-quit-queries "stop the daemon")))
       (unless (eq answers :stay)
         (ask-about-unsaved-by-group editor)
         ;; the saves just begun end before the daemon does, never cut short by its exit
         (unless (wait-for-saving (running-jobs))
           (refuse "Not stopped: saves are still running"))
-        (dolist (answer answers) (when (functionp answer) (call-hook-function answer)))
+        (settle-quit answers)
         (stop-daemon editor)))))
 
 (defparameter *no-one-to-ask-save-seconds* 30

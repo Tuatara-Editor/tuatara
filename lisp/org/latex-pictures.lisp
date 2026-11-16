@@ -96,7 +96,7 @@ header's bit depth), which not every PDF reader draws once in a PDF."
   "The picture at PATH as the LaTeX programs can take it: PATH itself for a
 PNG of 8 bits a colour, a JPEG or a PDF; else a PNG of 8 bits a colour made
 of it in the sandbox (kept in LATEX-PICTURES-DIRECTORY while PATH is
-unchanged); as a second value why there is none (NIL then)."
+unchanged, and marked as used each time it is taken); as a second value why there is none (NIL then)."
   (multiple-value-bind (words kind why) (file-kind path)
     (declare (ignore words))
     (cond (why (values nil (format nil "~a cannot be read: ~a" (tuatara.io:native-file-name path) why)))
@@ -110,7 +110,8 @@ unchanged); as a second value why there is none (NIL then)."
                                                      (sxhash (format nil "~a ~a ~a" path (tuatara.io:stamp-size stamp)
                                                                      (tuatara.io:stamp-mtime stamp)))))))
              (if (tuatara.io:path-stamp png)
-                 png
+                 (progn (ignoring-errors-reported ("marking ~a as used" png) (tuatara.io:touch-path png))
+                        png)
                  (multiple-value-bind (image notes)
                      (tuatara.io:call-with-file path (lambda (fd name size)
                                                        (declare (ignore name size))

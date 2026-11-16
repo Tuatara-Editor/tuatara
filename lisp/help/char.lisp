@@ -34,7 +34,8 @@ control character; \\xNN for a raw octet."
   "The code of CHAR in decimal, octal and hexadecimal, as (97, #o141, #x61); for
 a raw octet, that it is one, and its value."
   (if (tuatara.text:raw-byte-code-p (char-code char))
-      (format nil "(a raw octet, not UTF-8, #x~a)" (svref tuatara.text:*hex-pairs* (- (char-code char) #xDC00)))
+      (format nil "(a raw octet, not UTF-8, #x~a)"
+              (svref tuatara.text:*hex-pairs* (tuatara.text:raw-byte-octet (char-code char))))
       (let ((code (char-code char)))
         (format nil "(~d, #o~o, #x~(~x~))" code code code))))
 
@@ -134,10 +135,12 @@ marked."
              (format out "Point is at the end of the buffer.~%~%  position     ~a~%" place))
             ((tuatara.text:raw-byte-code-p (char-code char))
              (format out "~a at point is an octet that is not UTF-8, #x~a.~%~%  position     ~a~%"
-                     (char-shown-as char) (svref tuatara.text:*hex-pairs* (- (char-code char) #xDC00)) place))
+                     (char-shown-as char)
+                     (svref tuatara.text:*hex-pairs* (tuatara.text:raw-byte-octet (char-code char)))
+                     place))
             (t
              (let ((code (char-code char)))
-               (format out "~a at point: U+~4,'0x~@[, ~a~].~%~%" (char-shown-as char) code
+               (format out "~a at point: ~a~@[, ~a~].~%~%" (char-shown-as char) (code-point-label code)
                        (let ((name (unicode-name char))) (and (plusp (length name)) name)))
                (format out "  position     ~a~%" place)
                (format out "  code         ~d, #o~o, #x~(~x~)~%" code code code)

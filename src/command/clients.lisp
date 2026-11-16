@@ -80,23 +80,27 @@ client's. Nothing is made for a buffer that is CLIENT's already."
              (not (buffer-for-every-client-p buffer)))
     (setf (tuatara.buffer:buffer-local buffer :clients) (cons client (buffer-clients buffer)))))
 
+(defun client-sees-all-p (client)
+  "True when CLIENT is the one who started an editor of its own, who has every
+buffer, or when there is no client."
+  (or (null client) (not (client-remote client))))
+
 (defun client-own-buffer-p (client buffer)
   "True when BUFFER is CLIENT's own: CLIENT is one of those who have it
-\(BUFFER-CLIENTS), or the one who started an editor of its own, who has
-every buffer. A buffer every client is offered is no client's own."
-  (or (null client) (not (client-remote client)) (and (member client (buffer-clients buffer)) t)))
+\(BUFFER-CLIENTS), or the one who sees all (CLIENT-SEES-ALL-P). A buffer
+every client is offered is no client's own."
+  (or (client-sees-all-p client) (and (member client (buffer-clients buffer)) t)))
 
 (defun client-sees-buffer-p (client buffer)
   "True when BUFFER is offered to CLIENT where buffers are chosen from (the
 buffers to switch to, the one used before, the files to save): it is
-CLIENT's, or no one's, or CLIENT is the one who started an editor of its
-own, who is offered every buffer."
+CLIENT's, or no one's, or CLIENT sees all (CLIENT-SEES-ALL-P)."
   (let ((clients (buffer-clients buffer)))
-    (and (or (null client) (not (client-remote client)) (null clients) (member client clients)) t)))
+    (and (or (client-sees-all-p client) (null clients) (member client clients)) t)))
 
 (defun client-buffers (&optional (buffers tuatara.buffer:*buffers*) (client (current-client)))
   "Those of BUFFERS offered to CLIENT (CLIENT-SEES-BUFFER-P), in their order."
-  (if (or (null client) (not (client-remote client)))
+  (if (client-sees-all-p client)
       buffers
       (remove-if-not (lambda (buffer) (client-sees-buffer-p client buffer)) buffers)))
 

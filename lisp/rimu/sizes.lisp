@@ -11,9 +11,10 @@
 (in-package #:tuatara.defaults)
 
 (defun rimu-sizes-p (buffer)
-  "True when the rimu list BUFFER shows the sizes column (\\<rimu-mode>\\[rimu-toggle-sizes]):
-never in a list opened safely, as summing them reads every directory below, nor
-in one of a directory as a commit left it, whose directories are not on the disk."
+  "True when the rimu list BUFFER shows the sizes column
+\(\\<rimu-mode>\\[rimu-toggle-sizes]): never in a list opened safely, as summing
+them reads every directory below, nor in one of a directory as a commit left
+it, whose directories are not on the disk."
   (rimu-column-allowed-p buffer 'rimu-sizes))
 
 (defvar *rimu-size-walks* (make-hash-table :test 'equal :synchronized t)
@@ -40,7 +41,7 @@ change."
          (let ((seen (make-hash-table :test 'equal)))
            (map 'vector
                 (lambda (name)
-                  (unless (or (member name '("." "..") :test #'string=) (not (wanted)))
+                  (when (and (tuatara.io:entry-name-p name) (wanted))
                     (let* ((path (concatenate 'string directory name))
                            (stamp (tuatara.io:path-stamp path :follow nil :failure nil))
                            (size (case (and stamp (tuatara.io:stamp-kind stamp))

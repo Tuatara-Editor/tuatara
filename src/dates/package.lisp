@@ -10,7 +10,9 @@ year, month and day, weekdays, ISO weeks, month lengths and leap years. It
 holds local time of a day and back for any year, time zones by name, the names
 of the days and months, and a time written in a pattern of % specifiers. It
 also reads dates and times where a text writes them.")
-  (:export #:time-words #:utc-time-words #:day-number #:day-date #:weekday #:week-start #:iso-week #:iso-week-monday
+  (:export #:time-words #:duration-words #:utc-time-words #:utc-universal-time #:day-number #:day-date #:weekday
+           #:week-start #:iso-week
+           #:iso-week-monday
            #:year-day #:leap-year-p #:month-length #:valid-date-p #:add-months
            #:day-universal-time #:time-day #:local-offset #:+unix-epoch+ #:mtime-universal-time
            #:*weekday-names* #:*short-weekday-names* #:*month-names* #:*short-month-names* #:weekday-of-word

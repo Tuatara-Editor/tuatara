@@ -1145,3 +1145,113 @@ OPERANDS FROM END), and how many it counted, as two values."
                           texts)
                  "~s" texts)))
     (drain-debug-reports)))
+
+(define-test (metadata lzw-clear-code-forgets-the-table)
+  ;; after a clear code the table holds only the 258 standard codes: a code one past them is the one being made
+  ;; (the previous text and its first octet), never what it stood for before the clear
+  (let ((bits 0) (count 0) (out '()))
+    (dolist (code '(256 65 66 258 256 65 258 257))
+      (setf bits (logior (ash bits 9) code) count (+ count 9))
+      (loop while (>= count 8)
+            do (push (ldb (byte 8 (- count 8)) bits) out) (decf count 8)))
+    (when (plusp count) (push (ash (ldb (byte count 0) bits) (- 8 count)) out))
+    (is string= "ABABAAA"
+        (map 'string #'code-char (tuatara.defaults::pdf-lzw-decoded
+                                  (coerce (nreverse out) '(simple-array (unsigned-byte 8) (*))) 1000 1)))))
+
+(define-test (metadata pdf-long-array-passed-over)
+  ;; an array longer than the items kept is read to its closing bracket, so that the dictionary around it goes on
+  (let* ((text (format nil "[~{~d ~}] /Next" (loop for i below 1005 collect i)))
+         (octets (map '(simple-array (unsigned-byte 8) (*)) #'char-code text)))
+    (multiple-value-bind (items end) (tuatara.defaults::pdf-array-at octets 0 0)
+      (is = tuatara.defaults::*pdf-item-limit* (length items))
+      (is = (1+ (position #\] text)) end))))
+
+(define-test (metadata short-structures-leave-the-rest)
+  ;; a structure cut short by the file's end, or shorter than it should be, is left out, the rest still read
+  (finish (tuatara.defaults::flac-metadata (octets-of "fLaC" #x80 0 0 4 1 2 3 4)))
+  (let* ((frame (octets-of "COMM" 0 0 0 2 0 0 0 65))
+         (size (length frame))
+         (octets (octets-of "ID3" 3 0 0 0 0 (ldb (byte 7 7) size) (ldb (byte 7 0) size) frame)))
+    (finish (tuatara.defaults::id3-metadata octets)))
+  ;; a size line of three numbers is no picture, not an error
+  (false (tuatara.defaults::decoded-image (octets-of "P6" 10 "2 2 7" 10 "255" 10 (make-array 12 :initial-element 0)))))
+
+(define-test (metadata long-sound-texts-cut)
+  ;; a text of a sound file claiming much of the file is made into a string no longer than texts are kept
+  (let* ((text (make-string 20000 :initial-element #\a))
+         (frame (octets-of "TIT2" (be-octets (1+ (length text)) 4) 0 0 0 text))
+         (size (length frame))
+         (octets (octets-of "ID3" 3 0 0 (ldb (byte 7 21) size) (ldb (byte 7 14) size) (ldb (byte 7 7) size)
+                            (ldb (byte 7 0) size) frame))
+         (longest 0))
+    (sb-int:encapsulate 'tuatara.defaults::id3-text 'longest
+                        (lambda (function &rest arguments)
+                          (let ((made (apply function arguments)))
+                            (setf longest (max longest (length made)))
+                            made)))
+    (unwind-protect (true (search "aaaa" (format nil "~{~a~}" (tuatara.defaults::id3-metadata octets))))
+      (sb-int:unencapsulate 'tuatara.defaults::id3-text 'longest))
+    (true (< longest 5000))))
+
+(define-test (metadata pdf-info-fields-kept-to-their-lines)
+  ;; a line break in a PDF's title is written out in the title's line, never a line of its own that could pass
+  ;; for another field
+  (let ((lines (tuatara.defaults::info-fields
+                (format nil "Title:          Kea~%Producer:       forged~%Producer:       Real~%Pages:          2"))))
+    (is = 3 (length lines))
+    (true (search "Real" (second lines))))
+  (let ((lines (tuatara.defaults::info-fields (format nil "Title:          Kea~%a second line~%Pages:          2"))))
+    (is = 2 (length lines))
+    (true (search "a second line" (first lines)))
+    (finish (tuatara.defaults::heif-metadata (octets-of (be-octets 20 4) "meta" 0 0 0 0 (be-octets 8 4) "iinf")))))
+
+(define-test (metadata pdf-info-words-pass-for-no-found-field)
+  ;; lines in a PDF's title and author named as fields pdfinfo finds itself, later in its order than the
+  ;; title, or as the title: each stays part of the field it is in, what pdfinfo found read from its own lines
+  (let* ((title "Kea\\nPages: 999\\nJavaScript: yes\\nEncrypted: yes\\nPDF version: 9.9\\nPage size: 1 x 1 pts")
+         (octets (pdf-with-table
+                  (list '(1 . "<< /Type /Catalog /Pages 2 0 R >>") '(2 . "<< /Type /Pages /Kids [3 0 R] /Count 1 >>")
+                        '(3 . "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] >>")
+                        (cons 6 (format nil "<< /Title (~a) /Author (Ruru\\nTitle: forged) >>" title))))))
+    (flet ((check (info)
+             (let ((fields (tuatara.defaults::info-fields info)))
+               (is equal "1" (tuatara.defaults::info-field info "Pages"))
+               (is equal "no" (tuatara.defaults::info-field info "JavaScript"))
+               (is equal "no" (tuatara.defaults::info-field info "Encrypted"))
+               (is equal '(300 200) (tuatara.defaults::page-pixels info 300 200))
+               (is = 1 (count-if (lambda (field) (uiop:string-prefix-p "Pages:" field)) fields))
+               (is = 1 (count-if (lambda (field) (uiop:string-prefix-p "Title:" field)) fields))
+               (true (search "PDF version: 9.9" (first fields)))
+               (true (search "Title: forged" (second fields))))))
+      ;; as pdfinfo writes it, the PDF's own words first
+      (check (format nil "Title:           Kea~%Pages: 999~%JavaScript: yes~%Encrypted: yes~%PDF version: 9.9~%~
+                          Page size: 1 x 1 pts~%Author:          Ruru~%Title: forged~%Custom Metadata: no~%~
+                          Metadata Stream: no~%Tagged:          no~%UserProperties:  no~%Suspects:        no~%~
+                          Form:            none~%JavaScript:      no~%Pages:           1~%Encrypted:       no~%~
+                          Page size:       300 x 200 pts~%Page rot:        0~%File size:       0 bytes~%~
+                          Optimized:       no~%PDF version:     1.7~%"))
+      ;; and as the program itself prints it of a PDF made so, read in the sandbox
+      (if (tuatara.io:sandbox-find-program "pdfinfo")
+          (tuatara.io:call-with-memory-file
+           "test pdf" octets
+           (lambda (fd)
+             (multiple-value-bind (text notes picture info) (tuatara.defaults::decode-pdf fd :text nil)
+               (declare (ignore text picture))
+               (false (find-if (lambda (note) (search "JavaScript" (car note))) notes))
+               (false (find-if (lambda (note) (search "encrypted" (car note))) notes))
+               (check info))))
+          (skip "pdfinfo is not installed here" (true nil))))))
+
+(define-test (metadata pdf-info-fields-read-past-new-ones)
+  ;; a field a newer pdfinfo writes, at the end or among the others, is read past: what it found still read,
+  ;; and the PDF's words still pass for none of it
+  (let ((info (format nil "Title:           Kea~%Pages: 9~%JavaScript: no~%Custom Metadata: no~%Form:            none~%~
+                           JavaScript:      yes~%Pages:           3~%Linearized:      no~%Encrypted:       yes~%~
+                           Page size:       300 x 200 pts~%PDF version:     1.7~%Page labels:     none~%")))
+    (is equal "3" (tuatara.defaults::info-field info "Pages"))
+    (is equal "yes" (tuatara.defaults::info-field info "JavaScript"))
+    (is equal "yes" (tuatara.defaults::info-field info "Encrypted"))
+    (is equal "none" (tuatara.defaults::info-field info "Page labels"))
+    (is = 1 (count-if (lambda (field) (uiop:string-prefix-p "Pages:" field)) (tuatara.defaults::info-fields info)))
+    (true (search "Pages: 9" (first (tuatara.defaults::info-fields info))))))

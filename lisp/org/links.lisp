@@ -62,14 +62,15 @@ second value, the calls' own (START . END)."
 (defun org-hidden-ranges (buffer start end &key (cache t))
   "The parts of BUFFER from octet START below END hidden while links are
 shown as their labels (ORG-HIDDEN-CHARS), as LAYOUT's HIDDEN takes them,
-(START END \"\" NIL) octets, and as a second value the calls of macros
-there, (START . END) octets, read from the parses of the parts of BUFFER
-there (ORG-VIEWS). Where a large part's parse in the background is not yet
-of its text as it is now, those found last, carried through the edits since,
-and no calls. With CACHE, the answer is kept, and given again while nothing
-it depends on changed, and a part of it given for a part of what it covers;
-what is found for a row's start alone, as soft wrap finds where its rows
-begin (*LAYOUT-PROBE*), never put in place of the window's own."
+\(START END \"\" NIL) octets. As a second value, the calls of macros there,
+\(START . END) octets. Both are read from the parses of the parts of BUFFER
+there (ORG-VIEWS). Where a large part's parse in the background is not yet of
+its text as it is now, those found last are given, carried through the edits
+since, and no calls.
+With CACHE, the answer is kept, and given again while nothing it depends on
+changed, and a part of it is given for a part of what it covers. What is found
+for a row's start alone, as soft wrap finds where its rows begin
+\(*LAYOUT-PROBE*), is never put in place of the window's own."
   (let ((rope (tuatara.buffer:buffer-text buffer))
         (version (tuatara.buffer:buffer-version buffer)))
     (when (tuatara.text:rope-indexed-p rope)
@@ -290,9 +291,9 @@ it runs."
                  nil)
                 (t t)))))))
 
-(defun org-show-id (path id)
-  "Visit the Org file at PATH and go to its headline whose ID is ID."
-  (let ((other (visit-path path)))
+(defun org-show-id (path id &optional safe)
+  "Visit the Org file at PATH, with SAFE safely, and go to its headline whose ID is ID."
+  (let ((other (visit-path path :safe safe)))
     (show-buffer other)
     (let* ((parse (org-parse-now other))
            (headline (and parse (org-headline-with-property (org-parse-tree parse) "ID" id))))
@@ -302,8 +303,8 @@ it runs."
   "Go to the headline whose ID is ID: in PARSE's buffer at once, else in the Org files
 of your notes, looked through in the background (ORG-SEARCH-NOTES), each as
 its buffer has it when one is open, else read from disk as the agenda reads
-it, untouched (ORG-READ-FILE-TEXT); found, it is shown. True when found here
-or looked for."
+it, untouched (ORG-READ-FILE-TEXT); found, it is shown, safely when PARSE's
+buffer was opened safely."
   (let ((here (org-headline-with-property (org-parse-tree parse) "ID" id)))
     (if here
         (progn (org-goto-char parse (org-node-begin here)) t)
@@ -321,54 +322,20 @@ or looked for."
                                                         (and (not (encrypted-file-p path))
                                                              (org-agenda-source-text path :disk)))))
                                      (and contents (cl-ppcre:scan scanner contents)))))
-                            (lambda (path) (org-show-id path id)))
+                            (let ((safe (tuatara.io:safe-visit-p (org-parse-buffer parse))))
+                              (lambda (path) (org-show-id path id safe))))
           t))))
 
-(defun org-follow-denote (identifier)
+(defun org-follow-denote (identifier &optional safe)
   "Visit the note whose name begins with IDENTIFIER, among your notes, looked
-for in the background (ORG-SEARCH-NOTES). True: it is looked for."
+for in the background (ORG-SEARCH-NOTES), with SAFE safely."
   (org-search-notes (format nil "denote:~a" identifier)
                     (lambda (path) (uiop:string-prefix-p identifier (tuatara.io:native-file-name path)))
-                    (lambda (path) (show-buffer (visit-path path))))
+                    (lambda (path) (show-buffer (visit-path path :safe safe))))
   t)
-
-(defun insert-link-text (buffer region link)
-  "Put LINK in BUFFER in place of REGION, (START END) octets, or at point when
-REGION is NIL, point after it."
-  (if region
-      (progn (setf (tuatara.buffer:buffer-mark-active-p buffer) nil)
-             (tuatara.buffer:buffer-replace buffer (first region) (second region) link)
-             (setf (tuatara.buffer:buffer-point buffer) (+ (first region) (tuatara.text:string-octet-length link))))
-      (let ((at (point)))
-        (tuatara.buffer:buffer-insert buffer at link)
-        (setf (tuatara.buffer:buffer-point buffer) (+ at (tuatara.text:string-octet-length link))))))
 
 (defparameter *formatted-files-link-type* "formatted-match"
   "The type of the links match-formatted-files-link makes: [[formatted-match:REGEX][LABEL]].")
-
-(defun read-link-label (region buffer suggested)
-  "The label of a link being made: the text of REGION of BUFFER when text is
-selected, else asked for, SUGGESTED offered selected, to take or type over."
-  (if region
-      (tuatara.buffer:buffer-string buffer :start (first region) :end (second region))
-      (read-string "Link LABEL: " :initial suggested :select-initial t)))
-
-(defun link-label-problem (label)
-  "Why LABEL cannot be an Org link's label, or NIL: one holding ]] or ending in ] would end the link early."
-  (when (or (search "]]" label) (and (plusp (length label)) (char= (char label (1- (length label))) #\])))
-    "a label ending in ] or holding ]] would end the link early"))
-
-(defun insert-labelled-link (buffer region suggested link-of &key label (problem #'link-label-problem))
-  "Put the link LINK-OF, a function of its label, gives in BUFFER in place of
-REGION or at point (INSERT-LINK-TEXT), its label LABEL when given, else asked
-for (READ-LINK-LABEL, SUGGESTED offered); said instead, nothing inserted, when
-the label cannot be one: PROBLEM, a function of the label, says why, or NIL
-\(as standard LINK-LABEL-PROBLEM, for an Org link). True when it was inserted."
-  (let* ((label (or label (read-link-label region buffer suggested)))
-         (problem (funcall problem label)))
-    (if problem
-        (progn (message "No link inserted: ~a" problem) nil)
-        (progn (insert-link-text buffer region (funcall link-of label)) t))))
 
 (defparameter *org-address-link-types* '("http" "https" "ftp" "mailto" "news" "doi")
   "The types of link that lead to an address outside the note: web, mail,
@@ -382,7 +349,8 @@ or news address, a DOI's at https://doi.org/; NIL for a link of any other type."
 
 (defun org-follow-link (parse link)
   "Follow LINK, a link of PARSE (an ORG-PARSE): visit the file or the place in
-its buffer it leads to, or open the address outside it."
+its buffer it leads to, or open the address outside it. A file is visited
+safely when PARSE's buffer was opened safely."
   (let ((buffer (org-parse-buffer parse))
         (type (org-property link :type)) (path (org-property link :path)) (raw (org-property link :raw-link)))
     ;; a type Org itself does not know, read as text to search for; denote: leads to a file by its identifier
@@ -399,18 +367,18 @@ its buffer it leads to, or open the address outside it."
          (let* ((search (let ((at (search "::" raw))) (and at (subseq raw (+ at 2)))))
                 (directory (buffer-directory buffer))
                 (file (tuatara.io:native (tuatara.io:expand-path path :directory directory)))
-                (other (visit-path file)))
+                (other (visit-path file :safe (tuatara.io:safe-visit-p buffer))))
            (show-buffer other)
            (when (and search (plusp (length search)))
              (let ((other-parse (org-parse-now other)))
                (when other-parse (org-search-target other-parse search))))))
-        ((string= type "id") (unless (org-follow-id parse path) (not-found)))
+        ((string= type "id") (org-follow-id parse path))
         ((and (string= type "denote") (uiop:string-prefix-p "query-filenames:" path))
          (follow-denote-files-link (subseq path (length "query-filenames:"))))
-        ((string= type "formatted-match") (follow-formatted-files-link path))
+        ((string= type *formatted-files-link-type*) (follow-formatted-files-link path))
         ((and (string= type "denote") (uiop:string-prefix-p "query-contents:" path))
          (message "Links searching file contents are not followed yet: ~a" raw))
-        ((string= type "denote") (unless (org-follow-denote path) (not-found)))
+        ((string= type "denote") (org-follow-denote path (tuatara.io:safe-visit-p buffer)))
         ((org-link-address type path) (open-address (org-link-address type path)))
         (t (message "Links of type ~a are not followed yet: ~a" type raw))))))
 

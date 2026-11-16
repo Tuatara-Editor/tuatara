@@ -55,6 +55,11 @@ libraries (ffi.lisp), one after another."
       ;; a face's own colour is not changed by it
       (tuatara.display:set-face-attributes :gtk-test-paper :fg "#ff0000")
       (is equal '(1d0 0d0 0d0) (tuatara.frontend.gtk::face-colours :gtk-test-paper))))
+  ;; black on white is the plain theme's, not written in the frontend
+  (let ((plain (tuatara.display:find-theme 'plain)))
+    (is equal (list (tuatara.frontend.gtk:colour-rgb (tuatara.display:theme-role-colour plain 'text))
+                    (tuatara.frontend.gtk:colour-rgb (tuatara.display:theme-role-colour plain 'ground)))
+        '((0d0 0d0 0d0) (1d0 1d0 1d0))))
   ;; nothing known of the desktop: black on white even when asked for
   (let ((tuatara.frontend.gtk::*desktop-colours* nil) (tuatara-user:*window-colours-from-desktop* t))
     (is equal '((0d0 0d0 0d0) (1d0 1d0 1d0))
@@ -445,6 +450,8 @@ wrote nothing."
                                       (substitute (namestring out) :out arguments))
                                :wait t :output nil :error nil
                                :environment (append (list "GDK_BACKEND=broadway"
+                                                          ;; the desktop's settings kept in memory, never written
+                                                          "GSETTINGS_BACKEND=memory"
                                                           (format nil "BROADWAY_DISPLAY=:~d" display)
                                                           (format nil
                                                                   "XDG_CONFIG_HOME=~a"
@@ -462,6 +469,7 @@ wrote nothing."
                                                     (remove-if (lambda (pair)
                                                                  (some (lambda (key) (uiop:string-prefix-p key pair))
                                                                        '("GDK_BACKEND="
+                                                                         "GSETTINGS_BACKEND="
                                                                          "BROADWAY_DISPLAY="
                                                                          "WAYLAND_DISPLAY="
                                                                          "DISPLAY="
@@ -588,6 +596,22 @@ windows side by side, \"floated\" for an Org note's two pictures."
           (is = 1 (getf seen :frames-left))
           ;; every event a window handed on named its frame, a new window's from its first
           (is equal '() (getf seen :unnamed))))))
+
+(define-test (gtk desktop-font-followed)
+  ;; with no font named, the window follows the desktop's monospace font as it changes, nothing typed after
+  (if (null (tuatara.io:find-program "gtk4-broadwayd"))
+      (skip "gtk4-broadwayd is not installed here" (true nil))
+      (with-test-directory (dir)
+        (let* ((file (put-file (merge-pathnames "a.txt" dir) (format nil "alpha~%")))
+               (seen (run-on-broadway dir "desktop-font.lisp" (namestring file) :out)))
+          (true seen "the window wrote nothing")
+          (false (getf seen :error) "~a" (getf seen :error))
+          (true (getf seen :window))
+          (if (getf seen :desktop-has-it)
+              (progn
+                (isnt equal "Kiwi Mono 15" (getf seen :font-before))
+                (is equal "Kiwi Mono 15" (getf seen :font-after)))
+              (skip "the desktop's settings have no monospace font here" (true nil)))))))
 
 (define-test (gtk large-parts-painted)
   ;; a part drawn twice as large covers the row under it, its cursor as large, the text before it as it is
@@ -915,28 +939,27 @@ windows side by side, \"floated\" for an Org note's two pictures."
     (false (eq sb-thread:*current-thread* (fonts-listed-on f)))
     (false (tuatara.frontend.fake:fake-font f))))
 
+(tuatara.io:define-c-function ("g_slist_prepend" g-slist-prepend) :pointer (list :pointer) (data :pointer))
+(tuatara.io:define-c-function ("g_file_new_for_path" g-file-new-for-path) :pointer (path :string))
+(tuatara.io:define-c-function ("gdk_file_list_new_from_list" gdk-file-list-new-from-list) :pointer (files :pointer))
+(tuatara.io:define-c-function ("g_slist_free_full" g-slist-free-full) :void (list :pointer) (free :pointer))
+(tuatara.io:define-c-function ("g_value_init" g-value-init) :pointer (value :pointer) (type :ulong))
+(tuatara.io:define-c-function ("g_value_take_boxed" g-value-take-boxed) :void (value :pointer) (boxed :pointer))
+(tuatara.io:define-c-function ("g_value_unset" g-value-unset) :void (value :pointer))
+
 (define-test (gtk dropped-files)
   ;; files as a file manager drops them: a GdkFileList in a GValue
   (tuatara.gtk:load-gtk-libraries)
   (let* ((paths (list "/tmp/a file.txt" "/tmp/b [2].txt" (format nil "/tmp/caf~a.txt" (code-char #xe9))))
          (files (let ((list (tuatara.io:null-pointer)))
                   (dolist (path (reverse paths) list)
-                    (setf list (tuatara.runtime:foreign-call "g_slist_prepend" sb-sys:system-area-pointer
-                                                             (sb-sys:system-area-pointer list)
-                                                             (sb-sys:system-area-pointer
-                                                              (tuatara.runtime:foreign-call "g_file_new_for_path"
-                                                                                            sb-sys:system-area-pointer
-                                                                                            ((sb-alien:c-string :external-format :utf-8) path))))))))
-         (file-list (tuatara.runtime:foreign-call "gdk_file_list_new_from_list" sb-sys:system-area-pointer
-                                                  (sb-sys:system-area-pointer files))))
-    (tuatara.runtime:foreign-call "g_slist_free_full" sb-alien:void (sb-sys:system-area-pointer files)
-                                  (sb-sys:system-area-pointer (sb-sys:int-sap (sb-sys:find-dynamic-foreign-symbol-address "g_object_unref"))))
+                    (setf list (g-slist-prepend list (g-file-new-for-path path))))))
+         (file-list (gdk-file-list-new-from-list files)))
+    (g-slist-free-full files (sb-sys:int-sap (sb-sys:find-dynamic-foreign-symbol-address "g_object_unref")))
     ;; a GValue: 24 octets, all zero before it is set up
     (tuatara.io:with-foreign-memory (value 24 :zero t)
-      (tuatara.runtime:foreign-call "g_value_init" sb-sys:system-area-pointer (sb-sys:system-area-pointer value)
-                                    (sb-alien:unsigned-long (tuatara.gtk:gdk-file-list-get-type)))
-      (tuatara.runtime:foreign-call "g_value_take_boxed" sb-alien:void (sb-sys:system-area-pointer value)
-                                    (sb-sys:system-area-pointer file-list))
+      (g-value-init value (tuatara.gtk:gdk-file-list-get-type))
+      (g-value-take-boxed value file-list)
       (unwind-protect
            (progn
              (is equal paths (tuatara.frontend.gtk::dropped-paths value))
@@ -957,7 +980,7 @@ windows side by side, \"floated\" for an Org note's two pictures."
                  (is equal paths (tuatara.frontend:event-files event))
                  (is = 2 (tuatara.frontend:event-column event))
                  (is = 2 (tuatara.frontend:event-row event)))))
-        (tuatara.runtime:foreign-call "g_value_unset" sb-alien:void (sb-sys:system-area-pointer value))))))
+        (g-value-unset value)))))
 
 (define-test (gtk pointer-shapes)
   ;; the text beam over text, an arrow on mode lines and the echo row, a sideways arrow on a divider

@@ -258,11 +258,12 @@ last commit, another beside each changed line, and one where lines were
 deleted. The marks are worked out in the background when the file is first
 shown and after each save. ~M-x vc-gutter-mode~ turns them off everywhere, or
 on again. ~M-x vc-gutter-refresh~ works them out anew, which you may want
-after a commit made in a terminal.
+after a commit made in a terminal. =(setf *vc-gutter-enabled* nil)= in the
+init file starts with the marks off.
 
 #+table: commands git-stage-hunk git-unstage-hunk git-stage-file git-unstage-file vc-gutter-mode vc-gutter-refresh
 
-#+table: settings *git-diff-lines*
+#+table: settings *git-diff-lines* *vc-gutter-enabled*
 
 #+table: faces :vc-added :vc-changed :vc-deleted
 
@@ -385,6 +386,10 @@ branch, including the ones that seemed to throw commits away. A commit you
 lost by a mistaken reset is still listed there for some weeks, and you can
 check it out or make a branch at it.
 
+The log takes the keys of every list: ~RET~, ~l~ or ~C-f~ shows the commit on
+the line, ~o~ shows it beside the log, which stays selected, and ~n~ and ~p~
+go to the next commit and the one before. ~h~ closes the log.
+
 #+table: commands git-log-menu git-log git-log-other git-log-file git-log-branches git-log-all git-reflog git-log-show
 
 #+table: settings *git-log-length*
@@ -463,7 +468,8 @@ have not pushed, checks it out, and puts =main= back to where its upstream
 is.
 
 ~y~ in the status lists every branch, every branch of the remotes and every
-tag, each with the commit it is at. ~RET~ on a line shows its log.
+tag, each with the commit it is at. ~RET~ on a line shows its log, and ~o~
+shows it in another window with the list kept selected.
 
 #+table: commands git-branch-menu git-branch-and-checkout git-checkout git-branch-rename git-branch-delete git-branch-create git-branch-reset git-branch-set-upstream git-branch-spin-off git-show-refs git-refs-log
 
@@ -795,8 +801,9 @@ branches that the remote has deleted.
 Blame answers the question "where did this line come from?". ~M-x git-blame~
 lists the current file a line at a time, and before each line the commit that
 last changed it, its author and its date. ~RET~ or ~l~ on a line shows that
-commit in full, so you can read the message and see what else changed with it.
-~q~ closes. The name is git's and sounds harsher than the tool is. Most often
+commit in full, so you can read the message and see what else changed with it;
+~o~ shows it beside the blame, which stays selected, and ~n~ and ~p~ go line
+to line. ~q~ closes. The name is git's and sounds harsher than the tool is. Most often
 the answer is yourself, two years ago, with a good reason in the message.
 
 Blame reads the file as saved, so save first.

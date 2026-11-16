@@ -38,7 +38,9 @@ DRAWING, for each way the window can be drawn, (RENDERER . FIGURES) as
 TUATARA.FRONTEND:FRONTEND-MEASURE-DRAWING gives them, and RENDERER the
 way the settings ask for (*GUI-RENDERER*); EVIDENCE, what is said of the
 evidence directories (EVIDENCE-HEALTH-LINES); NEEDS, the programs Tuatara and
-each package loaded look for (HEALTH-NEEDS)."
+each package loaded look for (HEALTH-NEEDS); HELPER, the program that runs the
+grammars, or NIL, and GRAMMAR-PLACES, the directories grammars are looked for
+in, in words, both found on the check's thread."
   (languages '() :read-only t :documentation "The languages whose rules HEALTH-CHECK checks.")
   (grammars '()
             :documentation "The grammar of each language of HEALTH-CHECK, or NIL, found beforehand on the editor's
@@ -59,7 +61,11 @@ them.")
 TUATARA.FRONTEND:FRONTEND-MEASURE-DRAWING gives them.")
   (renderer nil :documentation "The renderer the settings ask for (*GUI-RENDERER*).")
   (evidence '() :documentation "What is said of the evidence directories (EVIDENCE-HEALTH-LINES).")
-  (needs '() :documentation "The programs Tuatara and each package loaded look for (HEALTH-NEEDS)."))
+  (needs '() :documentation "The programs Tuatara and each package loaded look for (HEALTH-NEEDS).")
+  (helper nil :documentation "The program that runs the grammars (TUATARA.SYNTAX:SYNTAX-HELPER-PROGRAM), or NIL.")
+  (grammar-places ""
+                  :documentation "The directories grammars are looked for in (TUATARA.SYNTAX:GRAMMAR-DIRECTORIES),
+in words."))
 
 (tuatara.runtime:define-job-words health-check
     :doing "Checking the languages' rules"
@@ -156,7 +162,11 @@ them to start, and in a window, how it draws each way it can
                (health-check-evidence check)
                (evidence-health-lines)
                (health-check-needs check)
-               (health-needs)))
+               (health-needs)
+               (health-check-helper check)
+               (tuatara.syntax:syntax-helper-program)
+               (health-check-grammar-places check)
+               (directory-words (tuatara.syntax:grammar-directories))))
        :name "tuatara health"))))
 
 ;;; The programs wanted
@@ -308,34 +318,39 @@ only looked at: none is refused or set back."
         (when fault (push (format nil "~a." fault) faults))))
     (sort faults #'string<)))
 
-(defun health-problems (languages grammars results &optional sandbox)
-  "What failed among LANGUAGES, GRAMMARS and RESULTS, and the SANDBOX tried
-(as HEALTH-CHECK keeps it), and the settings holding a value they do not
-take (SETTING-FAULTS), as a list of sentences."
-  (let ((problems (reverse (setting-faults))))
-    (destructuring-bind (&optional status detail &rest rest) sandbox
+(defun health-problems (check)
+  "What failed among the languages, grammars and results of CHECK, a
+HEALTH-CHECK, and the sandbox it tried, and the settings holding a value they
+do not take (SETTING-FAULTS), as a list of sentences: the languages with no
+grammar named in one, after the directories looked in."
+  (let ((problems (reverse (setting-faults)))
+        (places (health-check-grammar-places check))
+        (missing '()))
+    (destructuring-bind (&optional status detail &rest rest) (health-check-sandbox check)
       (declare (ignore rest))
       (case status
         (:missing (push (format nil "No sandbox: ~a. ~
-Install bubblewrap for images and PDFs to be decoded safely, and for text to be coloured and parsed." detail) problems))
+Install bubblewrap for images and PDFs to be decoded safely, and for text ~
+to be coloured and parsed." detail) problems))
         (:broken (push (format nil "No sandbox: ~a." detail) problems))))
-    (unless (tuatara.syntax:syntax-helper-program)
+    (unless (health-check-helper check)
       (push (format nil "The program that runs the grammars, tuatara-syntax-helper, is in none of ~a: ~
 no language has a grammar."
-                    (directory-words (tuatara.syntax:grammar-directories)))
+                    places)
             problems))
-    (loop for language in languages
-          for grammar in grammars
-          for statuses in results
-          do (when (and (null grammar) (tuatara.syntax:syntax-helper-program))
-               (push (format nil "~(~a~): no grammar ~a.so in ~a, so no colours or structure." (language-name language)
-                             (language-grammar language) (directory-words (tuatara.syntax:grammar-directories)))
-                     problems))
+    (loop for language in (health-check-languages check)
+          for grammar in (health-check-grammars check)
+          for statuses in (health-check-results check)
+          do (when (and (null grammar) (health-check-helper check))
+               (push (format nil "~(~a~) (~a.so)" (language-name language) (language-grammar language)) missing))
           (loop for (kind . status) in statuses
                 do (when (consp status)
                      (push (format nil "~(~a~): its ~(~a~) rules do not compile: ~a" (language-name language)
                                    (second (assoc kind *health-rules*)) (cdr status))
                            problems))))
+    (when missing
+      (push (format nil "No grammar in ~a for ~{~a~^, ~}, so no colours or structure." places (reverse missing))
+            problems))
     (nreverse problems)))
 
 (defun report-width ()
@@ -385,18 +400,19 @@ and the suggested ones apart, each found or missing with what to install."
                                         ((consp outcome) (format nil "stopped at an error: ~a" (cdr outcome)))
                                         (t "not read")))))
       (fact "Grammars" (format nil "~a: ~:[no program to run them~;the program that runs them and ~d of ~d grammars~]"
-                               (directory-words (tuatara.syntax:grammar-directories))
-                               (tuatara.syntax:syntax-helper-program) (count-if-not #'null grammars) (length grammars)))
+                               (health-check-grammar-places check)
+                               (health-check-helper check) (count-if-not #'null grammars) (length grammars)))
       (fact "" (substitute-command-keys
-                (format nil "~d of them on (*grammars-on*); ~
-a file in a language whose grammar is off asks to turn it on, \\[turn-on-grammar] and \\[turn-off-grammar] change it"
+                (format nil "~d of them on (*grammars-on*); a file in a language whose grammar is ~
+off asks to turn it on, \\[turn-on-grammar] and \\[turn-off-grammar] change it"
                         (loop for language in languages
                               for grammar in grammars
                               count (and grammar (grammar-on-p language))))))
       (fact "Parsing" (cond ((eq :ready (first (health-check-sandbox check)))
                              (format nil "grammars run shut in, in a program for the projects you trust and ~
-one for each other file or buffer, ~:[each held to its memory in its own address space only ~
-(no systemd-run scope here)~;each held to its memory with all it starts (a systemd-run scope)~]"
+one for each other file or buffer, ~:[each held to its memory in its own address ~
+space only (no systemd-run scope here)~;each held to its memory with all it ~
+starts (a systemd-run scope)~]"
                                      (tuatara.io:sandbox-memory-scope-p)))
                             (*syntax-helper-unconfined*
                              "no sandbox (see above): grammars run, not shut in, for the projects you trust only; ~
@@ -416,7 +432,8 @@ nothing else is parsed")
         (when status
           (fact "Sandbox" (if (eq status :ready)
                               (format nil "~a: programs decoding files run shut in, with no network ~
-and no file but the one they decode~:[~;, system calls they need not make refused (seccomp)~]"
+and no file but the one they decode~:[~;, system calls they need not make ~
+refused (seccomp)~]"
                                       detail (tuatara.io:sandbox-filtered-p))
                               (format nil "~a: no file is decoded; images, PDFs and the like are shown as octets ~
 and text"
@@ -462,8 +479,9 @@ and text"
     (health-put (substitute-command-keys (format nil "~%✓ there and working, ✘ failing (see below), – none, ~
 ? not checked without the grammar,
 off: the grammar is there but off (*grammars-on*, \\[turn-on-grammar]).
-Indent Lisp: by Lisp mode's own rules. Defuns brackets: \\[beginning-of-defun] and \\[end-of-defun] go by opening
-brackets at the start of a line. Formatter and Server: each language's usual programs, or *language-formatters* and
+Indent Lisp: by Lisp mode's own rules. Defuns brackets: \\[beginning-of-defun]
+and \\[end-of-defun] go by opening brackets at the start of a line. Formatter
+and Server: each language's usual programs, or *language-formatters* and
 *language-servers*; ✓ after one installed, the others not used until they are.~%")
                                          :marks t))
     ;; the modes
@@ -482,10 +500,10 @@ brackets at the start of a line. Formatter and Server: each language's usual pro
           (health-cell (string-downcase name) width)
           (health-cell (if language (string-downcase (language-name language)) "–")
                        (second (first *health-mode-columns*)) (unless language :list-dim))
-          (let ((comment (or (nth-value 1 (mode-comment-syntax mode))
-                             ;; a comment with an end, as <!-- -->
-                             (multiple-value-bind (opener closer) (mode-block-comment-syntax mode)
-                               (and opener (format nil "~a ~a" opener closer))))))
+          (let ((comment (multiple-value-bind (marker insert opener closer) (mode-comment-style mode)
+                           (declare (ignore marker))
+                           ;; a comment with an end, as <!-- -->
+                           (or insert (and opener (format nil "~a ~a" opener closer))))))
             (health-cell (or comment "–") (second (second *health-mode-columns*)) (unless comment :list-dim)))
           (health-cell (mode-tab-words name) (second (third *health-mode-columns*)))
           (let ((words (mode-files-words name)))
@@ -497,7 +515,7 @@ brackets at the start of a line. Formatter and Server: each language's usual pro
       (health-put (format nil "~%The editor's own buffers: ~{~(~a~)~^, ~}.~%" own)))
     ;; what failed
     (health-heading "Problems")
-    (let ((problems (health-problems languages grammars results (health-check-sandbox check))))
+    (let ((problems (health-problems check)))
       (if problems
           (dolist (problem problems)
             (health-put "✘ " :list-bad)
@@ -563,12 +581,13 @@ and which to use, IN-USE being the way the settings ask for."
              for instead = (drawn-instead renderer figures)
              collect (if figures
                          (format nil "~a: ~@[not to be had here, GTK drew with ~a instead: ~]~
-~,1f ms from a key to its frame (~,1f ms the slowest of twenty), ~d frames for ~d keys held"
+~,1f ms from a key to its frame (~,1f ms the slowest of twenty), ~
+~d frames for ~d keys held"
                                  (renderer-words renderer) instead (getf figures :median) (getf figures :slowest)
                                  (getf figures :frames) (getf figures :keys))
                          (format nil "~a: could not be measured" (renderer-words renderer))))
        (list (cond ((not usable)
-                    (format nil "None of these ways could be had here, so none is the faster"))
+                    "None of these ways could be had here, so none is the faster")
                    ((eq choice in-use)
                     (format nil "~a is the faster here, and the one in use" (renderer-words choice)))
                    (t (format nil "~a is the faster here: (setf *gui-renderer* ~(~s~)) in the init file"

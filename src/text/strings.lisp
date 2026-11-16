@@ -6,7 +6,12 @@
 (defun octets-latin-1 (octets &key (start 0) end)
   "OCTETS from START below END (or their end) as Latin-1 text: each octet the
 character of its code, as ASCII and ISO 8859-1 read it."
-  (map 'string #'code-char (subseq octets start end)))
+  (let* ((end (or end (length octets)))
+         (out (make-string (- end start))))
+    (loop for i from start below end
+          for k from 0
+          do (setf (schar out k) (code-char (aref octets i))))
+    out))
 
 (defun utf-16-text (octets &key (start 0) (end (length octets)) big-endian)
   "OCTETS from START below END as UTF-16 text, least significant octet first
@@ -64,10 +69,44 @@ not UTF-8 kept as its raw byte."
   "True for characters that make up words: letters and digits."
   (and char (or (alpha-char-p char) (digit-char-p char))))
 
+(defun letter-or-mark-p (char)
+  "True for a character words of a language are made of: a letter, or a mark
+joined to one (the accent of a decomposed é, the vowel signs of Devanagari);
+never a digit, as WORD-CHAR-P takes."
+  (or (alpha-char-p char) (and (member (sb-unicode:general-category char) '(:mn :mc :me)) t)))
+
 (defun name-char-p (char)
   "True for characters that make up a name, a word with _ in it as well:
 letters, digits and _."
   (or (word-char-p char) (eql char #\_)))
+
+(defparameter *blank-characters* '(#\Space #\Tab #\Newline #\Return #\Page)
+  "The characters that are blanks between words in text: space, tab, newline,
+return and form feed; a list STRING-TRIM takes.")
+
+(declaim (inline blank-char-p))
+(defun blank-char-p (char)
+  "True when CHAR is one of *BLANK-CHARACTERS*: a space, tab, newline, return
+or form feed."
+  (member char *blank-characters*))
+
+(defun lowercase-hex-p (text &optional length)
+  "True when TEXT is made of hexadecimal digits in lower case alone, and when
+LENGTH is given, of exactly that many (64 for a SHA-256 sum as sha256sum writes it)."
+  (and (stringp text) (plusp (length text))
+       (or (null length) (= (length text) length))
+       (every (lambda (c) (find c "0123456789abcdef")) text)))
+
+(declaim (inline space-or-tab-char-p))
+(defun space-or-tab-char-p (char)
+  "True for a space or a tab: the characters between a line's fields, and those
+a blank line holds."
+  (or (char= char #\Space) (char= char #\Tab)))
+
+(defun blank-text-p (string &optional (start 0) end)
+  "True when STRING from START below END (its end when NIL) holds nothing but
+spaces and tabs, or nothing at all."
+  (not (position-if-not #'space-or-tab-char-p string :start start :end end)))
 
 (defun split-words (string &optional (separators '(#\Space #\Tab)))
   "The parts of STRING between SEPARATORS (characters, or a string of them),
@@ -113,7 +152,7 @@ left open or an escape is refused."
                                  (incf i) (write-char escaped word)))
                               ((member (next) '(#\" #\\)) (incf i) (write-char (char text i) word))
                               (t (write-char c word))))
-                       ((member c '(#\Space #\Tab #\Newline #\Return #\Page #.(code-char 11))) (end-word))
+                       ((or (blank-char-p c) (char= c (code-char 11))) (end-word))
                        ((member c '(#\' #\")) (setf quote-char c in-word t))
                        ((and (char= c #\\) (eq backslash :shell) (next)) (incf i) (write-char (char text i) word)
                         (setf in-word t))
@@ -123,12 +162,20 @@ left open or an escape is refused."
           (values nil nil "a quote is left open")
           (progn (end-word) (values (nreverse words) t))))))
 
-(defun version-numbers (text &optional (after ""))
+(defun shell-quoted (string)
+  "STRING quoted for the shell, as one word whatever it holds."
+  (with-output-to-string (out)
+    (write-char #\' out)
+    (loop for c across string
+          do (if (char= c #\') (write-string "'\\''" out) (write-char c out)))
+    (write-char #\' out)))
+
+(defun software-version-numbers (text &optional (after ""))
   "The numbers of the first version written in TEXT after AFTER, a regular
 expression, as a list: (0 11 0) for \"bubblewrap 0.11.0\", (9 9) for
 \"OpenSSH_9.9p1, OpenSSL 3.2.2\" after \"OpenSSH_\"; NIL when there is none.
 A pre-release after a -, alpha, beta or rc and its number, adds -3, -2 or -1
-and that number, so that it comes before its release (VERSION-AT-LEAST-P):
+and that number, so that it comes before its release (SOFTWARE-VERSION-AT-LEAST-P):
 0.90.13-rc1 is (0 90 13 -1 1)."
   (multiple-value-bind (match parts)
       (cl-ppcre:scan-to-strings (concatenate 'string after "(\\d+(?:\\.\\d+)*)(?:-(alpha|beta|rc)\\.?(\\d*))?") text)
@@ -138,8 +185,8 @@ and that number, so that it comes before its release (VERSION-AT-LEAST-P):
                 (and label (list (cond ((string= label "alpha") -3) ((string= label "beta") -2) (t -1))
                                  (or (parse-integer (aref parts 2) :junk-allowed t) 0))))))))
 
-(defun version-at-least-p (version needed)
-  "True when VERSION, a list of numbers as VERSION-NUMBERS gives, is NEEDED,
+(defun software-version-at-least-p (version needed)
+  "True when VERSION, a list of numbers as SOFTWARE-VERSION-NUMBERS gives, is NEEDED,
 another, or later: each number compared in turn, one left out counted 0."
   (loop for i below (max (length version) (length needed))
         for have = (or (nth i version) 0) and need = (or (nth i needed) 0)
@@ -147,15 +194,43 @@ another, or later: each number compared in turn, one left out counted 0."
         when (< have need) return nil
         finally (return t)))
 
+(defun octets-words (n &key binary compact)
+  "N octets in words, to one decimal: 950 B, 12.3 MB, 11.5 GB; with BINARY in
+units of 1,024, as 950 B, 954.0 MiB, 1.2 TiB. With COMPACT, as narrow as a
+column of sizes wants it, in units of 1,024 with one letter for the unit:
+260, 4.1K, 24K, 1.0M; below 10 with one decimal, every figure rounded up."
+  (if compact
+      (if (< n 1024)
+          (princ-to-string n)
+          (loop for unit across "KMGTPEZY"
+                for scale = 1024 then (* scale 1024)
+                do (let ((value (/ n scale)))
+                     (if (< value 10)
+                         (let ((tenths (ceiling (* 10 value))))
+                           (return (if (< tenths 100)
+                                       (format nil "~d.~d~c" (floor tenths 10) (mod tenths 10) unit)
+                                       (format nil "10~c" unit))))
+                         (let ((whole (ceiling value)))
+                           (when (< whole 1024)
+                             (return (format nil "~d~c" whole unit))))))))
+      (let ((base (if binary 1024 1000)))
+        (loop for (unit . more) on (if binary '("B" "KiB" "MiB" "GiB" "TiB" "PiB") '("B" "kB" "MB" "GB" "TB"))
+              for scale = 1 then (* scale base)
+              when (or (< n (* scale base)) (null more))
+                return (if (= scale 1) (format nil "~d B" n) (format nil "~,1f ~a" (/ n scale) unit))))))
+
 (defun spaces (count)
   "A new string of COUNT spaces; an empty one when COUNT is not above zero."
   (make-string (max 0 count) :initial-element #\Space))
 
 (defun search-count (needle text &key (end (length text)))
-  "How many times NEEDLE stands in TEXT below END, none overlapping."
-  (loop with start = 0
-        for at = (search needle text :start2 start :end2 end)
-        while at count t do (setf start (+ at (length needle)))))
+  "How many times NEEDLE stands in TEXT below END, none overlapping; 0 for an
+empty NEEDLE."
+  (if (zerop (length needle))
+      0
+      (loop with start = 0
+            for at = (search needle text :start2 start :end2 end)
+            while at count t do (setf start (+ at (length needle))))))
 
 (defun nul-fields (octets &key (start 0) (end (length octets)))
   "The fields of OCTETS from START below END, a program's output with a null
@@ -179,16 +254,15 @@ stray character anywhere."
   (when (stringp text)
     (let ((end (or end (length text))))
       (when (and (integerp start) (integerp end) (<= 0 start end (length text)))
-        (flet ((blank-p (char) (member char '(#\Space #\Tab #\Newline #\Return #\Page))))
-          (let ((at start))
-            (loop while (and (< at end) (blank-p (char text at))) do (incf at))
-            (when (and (< at end) (member (char text at) '(#\+ #\-))) (incf at))
-            (let ((digits at))
-              (loop while (and (< at end) (digit-char-p (char text at) radix)) do (incf at))
-              (when (> at digits)
-                (loop while (and (< at end) (blank-p (char text at))) do (incf at))
-                (when (= at end)
-                  (parse-integer text :start start :end end :radix radix))))))))))
+        (let ((at start))
+          (loop while (and (< at end) (blank-char-p (char text at))) do (incf at))
+          (when (and (< at end) (member (char text at) '(#\+ #\-))) (incf at))
+          (let ((digits at))
+            (loop while (and (< at end) (digit-char-p (char text at) radix)) do (incf at))
+            (when (> at digits)
+              (loop while (and (< at end) (blank-char-p (char text at))) do (incf at))
+              (when (= at end)
+                (parse-integer text :start start :end end :radix radix)))))))))
 
 (defun parse-decimal (text &key (most-digits 12))
   "TEXT, digits with perhaps a point and more digits after (as 595.276), as
@@ -233,37 +307,10 @@ each two when given."
 
 ;;; Hashes of text
 
-(defconstant +fnv-offset+ #xcbf29ce484222325 "FNV-1a's starting value for 64-bit hashes.")
-
-(defconstant +fnv-prime+ 1099511628211 "FNV-1a's multiplier for 64-bit hashes.")
-
-(declaim (inline octets-hash))
-(defun octets-hash (octets &key (start 0) (end (length octets)) (hash +fnv-offset+))
-  "The 64-bit FNV-1a hash of OCTETS from START below END, carried on from HASH:
-the hash of a text read in pieces is that of each piece in turn, each begun
-from the hash of the pieces before it."
-  (declare (type octets octets) (type fixnum start end) (type (unsigned-byte 64) hash)
-           (optimize speed))
-  (loop for i of-type fixnum from start below end
-        do (setf hash (ldb (byte 64 0) (* (logxor hash (aref octets i)) +fnv-prime+))))
-  hash)
-
-(declaim (inline rope-hash))
-(defun rope-hash (rope start end &optional (hash +fnv-offset+))
-  "The 64-bit FNV-1a hash of ROPE's octets from START below END, carried on
-from HASH, as OCTETS-HASH gives it for the same octets: the same for the same
-text however the rope holds it. Nothing is copied to the heap."
-  (declare (type (unsigned-byte 64) hash))
-  (do-rope-windows (block low high) (rope start end)
-    (setf hash (octets-hash block :end (- high low) :hash hash)))
-  hash)
-
 (defun string-hash (text)
   "A hash of the string TEXT: FNV-1a over its octets in UTF-8, as a fixnum,
 the same in every version of Tuatara and of the Lisp it runs on."
   (ldb (byte 62 0) (octets-hash (string-octets text))))
-
-;;; Text on one line
 
 ;;; Lines of a string
 

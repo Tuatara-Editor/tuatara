@@ -349,7 +349,10 @@ Several programs use the same room. Code formatters (chapter 13) run inside it
 with the project directory visible read-only, and no network. LaTeX that makes a
 PDF sees the document's directory, the TeX installation and your own fonts, all
 read-only, and writes only in its own working directory; so do biber, bibtex and
-makeindex when they make the document's bibliography and index.
+makeindex when they make the document's bibliography and index. A directory is
+shown where it really is, a link followed first, and some are never shown: your
+home directory, one that holds it, and the places where programs outside the
+room keep the sockets they are reached through.
 Language grammars run in it too, where a sandbox exists. Without a sandbox, the
 setting =*syntax-helper-unconfined*= decides whether the grammars of projects
 you trust run on their own without one.
@@ -418,7 +421,12 @@ settings and index. The repository's own settings, hooks and filters never reach
 git, and nothing in the repository is written, not even its index. Git does set
 the access time of the directories it reads. The mode line of every git buffer
 says =Look only= in the colour of warnings, and the first line of the status
-says why. Commands that would change the repository are refused.
+says why. Commands that would change the repository are refused. A command
+typed with ~M-x git-run-command~ is run only when every option it is given only
+shapes what git shows. An option that writes a file, such as =--output=, is
+refused wherever it stands before a lone =--=, after =--end-of-options= too.
+=--format= and =--pretty= are taken only with their value after an equals sign,
+as in =--format=%h=; given alone, they are refused.
 
 ~M-x trust-project~ asks again, whatever you answered before. Use it to move a
 project from look-only to trusted once you have read what is in it, or the other

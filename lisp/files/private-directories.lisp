@@ -60,14 +60,27 @@ long done."
                                                                            "owner.lock"))))
           (ignoring-errors-reported ("deleting ~a" path) (tuatara.io:delete-tree path)))))))
 
+(defvar *old-copies-swept* (make-hash-table :test 'equal :synchronized t)
+  "When each directory of private directories was last swept of what it held
+from more than a day ago (SWEEP-OLD-COPIES), in universal time, by its name.")
+
+(defun sweep-old-copies (directory)
+  "Delete what DIRECTORY holds from more than a day ago (FORGET-OLD-COPIES) on
+a thread of its own, the first time it is asked in a session and then once a
+day at most, so that making a directory in it never waits on the sweep."
+  (let ((now (get-universal-time)))
+    (when (> now (+ (gethash directory *old-copies-swept* 0) 86400))
+      (setf (gethash directory *old-copies-swept*) now)
+      (tuatara.runtime:make-guarded-thread (lambda () (forget-old-copies directory)) :name "tuatara old copies"))))
+
 (defun new-private-directory (directory &key (hold t))
   "A new directory of its own in DIRECTORY, its name random, for you alone,
-made; what DIRECTORY holds from more than a day ago deleted first
-\(FORGET-OLD-COPIES). With HOLD (as standard), the directory is kept, however
-old, until DELETE-PRIVATE-DIRECTORY deletes it or the session ends; with HOLD
-NIL, it goes a day after it was made, as the copies opened in other programs
-do."
-  (forget-old-copies directory)
+made; what DIRECTORY holds from more than a day ago deleted meanwhile in the
+background (SWEEP-OLD-COPIES). With HOLD (as standard), the directory is
+kept, however old, until DELETE-PRIVATE-DIRECTORY deletes it or the session
+ends; with HOLD NIL, it goes a day after it was made, as the copies opened in
+other programs do."
+  (sweep-old-copies directory)
   (let ((place (tuatara.io:path-join directory (tuatara.io:slash-ended (tuatara.io:random-name)))))
     (tuatara.io:make-directory place #o700)
     (when hold

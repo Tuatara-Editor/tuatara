@@ -82,3 +82,20 @@ modal mode line makes nothing while it stays the same.")
       (tuatara.modes:register-major-mode 'modal-kept-mode 'tuatara.defaults::text-mode
                                          "A mode for the tests: a parent whose modal class the test changes."))
     (is eq :editing (tuatara.modes:mode-modal-class mode))))
+
+(define-test (drawn-once gutter-cells-padded-when-the-row-is-made)
+  ;; a gutter cell is its text and the spaces before it apart, so that a number is not copied into a
+  ;; padded string every frame
+  (let ((tuatara-user:*line-numbers-default* :absolute))
+    (multiple-value-bind (f editor)
+        (run-keys "" :text (format nil "~{l~a~%~}" (loop for i below 30 collect i)) :height 12)
+      (declare (ignore f))
+      (let* ((window (tuatara.command:editor-window editor))
+             (cells (tuatara.command::gutter-cells editor window (tuatara.display:window-rows window)))
+             (first-row (first cells)))
+        (destructuring-bind (text pad &rest face) (first first-row)
+          (declare (ignore face))
+          (true (stringp text))
+          (true (integerp pad)))
+        (is = (1- (tuatara.display:window-margin window))
+            (loop for (text pad) in first-row sum (+ pad (length text))))))))

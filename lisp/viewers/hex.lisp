@@ -127,7 +127,7 @@ octet so typed one step to undo. Refused in a buffer that may not be written
 (defun octets-needle (octets)
   "OCTETS as the string that stands for exactly them: ASCII as itself, other
 octets as raw bytes' characters, which encode back to the same octets."
-  (map 'string (lambda (b) (code-char (if (< b #x80) b (+ #xDC00 b)))) octets))
+  (map 'string (lambda (b) (if (< b #x80) (code-char b) (tuatara.text:raw-byte-char b))) octets))
 
 (defun parse-offset (text)
   "The offset TEXT gives: hexadecimal after 0x, else decimal with digits grouped

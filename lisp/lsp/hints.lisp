@@ -21,6 +21,13 @@ of bindings, the names of the parameters arguments go to.
 - nil: they are not."
   :values boolean)
 
+(define-setting *lsp-code-lenses* nil
+  "Whether what language servers say of lines (3 references, Run test) is shown
+faint at each line's end.
+- t: it is shown.
+- nil: it is not, as standard."
+  :values boolean)
+
 (defvar *lsp-most-hints* 5000
   "The most inlay hints kept for one buffer.")
 
@@ -93,11 +100,14 @@ and of the others from their last layout; NIL when none shows any."
 (defun note-hint-view (editor window rows)
   "As WINDOW of EDITOR is drawn with ROWS: when its buffer's documents have
 servers giving inlay hints and the lines its windows show are not all among
-those asked of, ask for those lines and *LSP-HINT-MARGIN* more either side. A
-function of *VIEW-CHANGE-FUNCTIONS*. Complexity: O(log lines) a window, unless
-it asks."
+those asked of, ask for those lines and *LSP-HINT-MARGIN* more either side;
+the same for what its code lenses say (RESOLVE-SHOWN-LENSES). A function of
+*VIEW-CHANGE-FUNCTIONS*. Complexity: O(log lines) a window, unless it asks."
   (let ((buffer (tuatara.display:window-buffer window))
         (shown nil))
+    (when (and *lsp-code-lenses* (plusp (length rows)) (tuatara.buffer:buffer-local buffer 'lsp-lenses))
+      (setf shown (shown-lines editor buffer window rows))
+      (resolve-shown-lenses buffer shown))
     (when (and *lsp-inlay-hints* (plusp (length rows)))
       (dolist (doc (buffer-docs buffer))
         (when (doc-server-offers doc "inlayHintProvider" "inlay-hints")
@@ -125,16 +135,8 @@ in order of place. Complexity: O(log hints + those there)."
 
 (defun show-hints-in (buffer)
   "Have BUFFER's display show its inlay hints, beside what its mode shows
-otherwise (TUATARA.DISPLAY:BUFFER-REPLACEMENTS-FUNCTION, kept)."
-  (unless (tuatara.buffer:buffer-local buffer 'lsp-hints-shown)
-    (let ((before (tuatara.display:buffer-replacements-function buffer)))
-      (setf (tuatara.buffer:buffer-local buffer 'lsp-hints-shown) t
-            (tuatara.buffer:buffer-local buffer 'lsp-replacements-before) before
-            (tuatara.display:buffer-replacements-function buffer)
-            (if before
-                (lambda (b start end)
-                  (merge 'list (copy-list (funcall before b start end)) (hint-replacements b start end) #'< :key #'car))
-                'hint-replacements)))))
+otherwise (TUATARA.DISPLAY:ADD-REPLACEMENTS)."
+  (tuatara.display:add-replacements buffer :hints 'hint-replacements))
 
 (defun hints-doc (key)
   "The document a key of a buffer's hints is for: the key, or for code lenses its first."
@@ -145,18 +147,15 @@ otherwise (TUATARA.DISPLAY:BUFFER-REPLACEMENTS-FUNCTION, kept)."
 its display as its mode has it once none are left."
   (setf (tuatara.buffer:buffer-local buffer 'lsp-hints)
         (and doc (remove doc (tuatara.buffer:buffer-local buffer 'lsp-hints) :key #'hints-doc)))
-  (when (and (tuatara.buffer:buffer-local buffer 'lsp-hints-shown)
-             (null (tuatara.buffer:buffer-local buffer 'lsp-hints)))
-    (setf (tuatara.display:buffer-replacements-function buffer)
-          (tuatara.buffer:buffer-local buffer 'lsp-replacements-before)
-          (tuatara.buffer:buffer-local buffer 'lsp-hints-shown) nil)))
+  (unless (tuatara.buffer:buffer-local buffer 'lsp-hints)
+    (tuatara.display:remove-replacements buffer :hints)))
 
 (defun toggle-server-showing (setting ask forget words)
   "Turn SETTING (a variable's symbol), what servers show in buffers, on or
 off: on, each buffer's documents asked for it by ASK, a function of a
 document; off, each buffer's let go by FORGET, a function of a buffer. Say
 it, WORDS naming what it is."
-  (let ((on (setf (symbol-value setting) (not (symbol-value setting)))))
+  (let ((on (tuatara.runtime:set-setting setting (not (symbol-value setting)))))
     (dolist (buffer tuatara.buffer:*buffers*)
       (if on
           (mapc ask (buffer-docs buffer))
@@ -169,13 +168,6 @@ the types of bindings, the names of the parameters arguments go to."
   (toggle-server-showing '*lsp-inlay-hints* #'lsp-ask-hints #'forget-hints "Inlay hints"))
 
 ;;; Code lenses
-
-(define-setting *lsp-code-lenses* nil
-  "Whether what language servers say of lines (3 references, Run test) is shown
-faint at each line's end.
-- t: it is shown.
-- nil: it is not, as standard."
-  :values boolean)
 
 (defun lens-title (lens)
   "What LENS, a code lens, says: its command's title."
@@ -208,10 +200,62 @@ BUFFER, those of a line joined, those with no title yet left out."
   (tuatara.text:json-true-p
    (tuatara.text:json-get (lsp-server-capabilities server) "codeLensProvider" "resolveProvider")))
 
+(defvar *lsp-lens-resolve-tries* 3
+  "How many times what a code lens says is asked for (codeLens/resolve) when
+the server fails to answer or gives no answer in time.")
+
+(defun resolve-lenses (buffer doc server lenses lines)
+  "Ask SERVER what those of LENSES, its code lenses of DOC, on LINES (FIRST
+. LAST, LAST the line after) say that it gave without a title
+\(codeLens/resolve), each while it is not being asked already; shown all
+together in BUFFER once the last answer comes while the text is still as
+asked of. One the server failed to answer is asked again when the lines are
+next shown, *LSP-LENS-RESOLVE-TRIES* times in all."
+  (let ((asked (or (tuatara.buffer:buffer-local buffer 'lsp-lenses-asked)
+                   (setf (tuatara.buffer:buffer-local buffer 'lsp-lenses-asked) (make-hash-table :test 'eq))))
+        (version (lsp-doc-version doc))
+        (resolved nil))
+    ;; each lens's tries so far, negative while one is under way
+    (let* ((wanted (remove-if-not (lambda (lens)
+                                    (let ((tries (gethash lens asked 0)))
+                                      (unless (or (lens-title lens) (minusp tries)
+                                                  (>= tries *lsp-lens-resolve-tries*))
+                                        (let ((line (lens-line doc server lens)))
+                                          (and line (<= (car lines) line) (< line (cdr lines)))))))
+                                  lenses))
+           (waiting (length wanted)))
+      (dolist (lens wanted)
+        (setf (gethash lens asked) (- (1+ (gethash lens asked 0))))
+        (lsp-request server "codeLens/resolve" lens
+                     (lambda (answer error)
+                       (setf (gethash lens asked) (abs (gethash lens asked)))
+                       (if (and (null error) (hash-table-p answer) (doc-unchanged-p doc version))
+                           (setf (gethash "command" lens) (tuatara.text:json-get answer "command")
+                                 resolved t)
+                           ;; asked again once the lines are shown anew
+                           (setf (tuatara.buffer:buffer-local buffer 'lsp-lens-lines) nil))
+                       (when (and (zerop (decf waiting)) resolved (doc-unchanged-p doc version))
+                         (show-lenses buffer doc server lenses))))))))
+
+(defun resolve-shown-lenses (buffer shown)
+  "Have what the code lenses of BUFFER on the lines SHOWN, (FIRST . LAST),
+and *LSP-HINT-MARGIN* lines either side say asked for (RESOLVE-LENSES), when
+their server gives it only when asked and those lines were not asked of
+already."
+  (let ((lenses (tuatara.buffer:buffer-local buffer 'lsp-lenses))
+        (asked (tuatara.buffer:buffer-local buffer 'lsp-lens-lines))
+        (doc (find-if-not #'lsp-doc-shadow (buffer-docs buffer))))
+    (when (and shown doc lenses (lenses-resolved-p (car lenses))
+               (not (and asked (<= (car asked) (car shown)) (<= (cdr shown) (cdr asked)))))
+      (let ((lines (cons (max 0 (- (car shown) *lsp-hint-margin*)) (+ (cdr shown) *lsp-hint-margin*))))
+        (setf (tuatara.buffer:buffer-local buffer 'lsp-lens-lines) lines)
+        (resolve-lenses buffer doc (car lenses) (cdr lenses) lines)))))
+
 (defun lsp-ask-lenses (doc)
   "Ask DOC's server that gives code lenses for those of its whole text, shown
-once they come while the text is still as asked of; those it gives without
-their title asked for it, shown as it comes."
+once they come while the text is still as asked of; for those it gives
+without their title on the lines the windows show, what they say asked for
+\(RESOLVE-SHOWN-LENSES)."
   (let ((server (and *lsp-code-lenses* (null (lsp-doc-shadow doc))
                      (doc-server-offers doc "codeLensProvider" "code-lens"))))
     (when server
@@ -222,25 +266,23 @@ their title asked for it, shown as it comes."
                       (lambda (result error)
                         (when (and (null error) (doc-unchanged-p doc version))
                           (let* ((all (remove-if-not #'hash-table-p (tuatara.text:json-items result)))
-                                 (lenses (coerce (subseq all 0 (min (length all) *lsp-most-hints*)) 'list)))
+                                 (lenses (coerce (subseq all 0 (min (length all) *lsp-most-hints*)) 'list))
+                                 (window (and *editor* (find buffer (editor-windows *editor*)
+                                                            :key #'tuatara.display:window-buffer))))
+                            (setf (tuatara.buffer:buffer-local buffer 'lsp-lens-lines) nil
+                                  (tuatara.buffer:buffer-local buffer 'lsp-lenses-asked) nil)
                             (show-lenses buffer doc server lenses)
-                            (when (lenses-resolved-p server)
-                              (dolist (lens lenses)
-                                (unless (lens-title lens)
-                                  (lsp-request server "codeLens/resolve" lens
-                                               (lambda (resolved error)
-                                                 (when (and (null error)
-                                                            (hash-table-p resolved)
-                                                            (doc-unchanged-p doc version))
-                                                   (setf (gethash "command" lens)
-                                                         (tuatara.text:json-get resolved "command"))
-                                                   (show-lenses buffer doc server lenses)))))))))))))))
+                            (when window
+                              (resolve-shown-lenses buffer (shown-lines *editor* buffer window
+                                                                        (tuatara.display:window-rows window))))))))))))
 
 (defun forget-lenses (buffer)
   "BUFFER's code lenses let go."
   (setf (tuatara.buffer:buffer-local buffer 'lsp-hints)
         (remove-if #'consp (tuatara.buffer:buffer-local buffer 'lsp-hints) :key #'car)
-        (tuatara.buffer:buffer-local buffer 'lsp-lenses) nil))
+        (tuatara.buffer:buffer-local buffer 'lsp-lenses) nil
+        (tuatara.buffer:buffer-local buffer 'lsp-lens-lines) nil
+        (tuatara.buffer:buffer-local buffer 'lsp-lenses-asked) nil))
 
 (define-command lsp-code-lenses-mode ()
   "Show what language servers say of lines (3 references, Run test) faint at

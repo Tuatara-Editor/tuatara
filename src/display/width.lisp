@@ -159,8 +159,9 @@ leaves those characters out instead."
                                    (progn (write-char c out) (incf at)))))
                     (setf (aref moved (length text)) at))
                   (loop for (start end face) in spans
-                        collect (list (aref moved
-                                            (min start (length text))) (aref moved (min end (length text))) face))))
+                        collect (list (aref moved (min start (length text)))
+                                      (aref moved (min end (length text)))
+                                      face))))
         (values text spans))))
 
 (defun shown-name (text)
@@ -253,31 +254,46 @@ line's start, with nothing to combine with, takes one column, shown on
         ((and (zerop before) (zerop own) (mark-code-p code)) (values 1 code))
         (t (values own code))))
 
+(defmacro do-clusters ((index columns) (string start end width) &body body)
+  "Run BODY for each character of STRING from START below END, INDEX its place
+and COLUMNS the columns it takes, WIDTH giving each character's own and a
+grapheme cluster the columns of its first character (CLUSTER-COLUMNS). A
+character of printable ASCII takes one column without asking WIDTH, when WIDTH
+is CHAR-COLUMNS. BODY may leave the loop with RETURN."
+  (let ((before (gensym "BEFORE")) (next (gensym "NEXT")) (char (gensym "CHAR")) (code (gensym "CODE"))
+        (measure (gensym "WIDTH")))
+    `(let ((,before 0) (,measure ,width))
+       (declare (type fixnum ,before))
+       (loop for ,index of-type fixnum from ,start below ,end
+             do (let* ((,char (char ,string ,index))
+                       (,code (char-code ,char)))
+                  (multiple-value-bind (,columns ,next)
+                      (if (and (<= #x20 ,code #x7E) (eq ,measure #'char-columns))
+                          (values 1 ,code)
+                          (cluster-columns ,code ,before (funcall ,measure ,char)))
+                    (declare (type fixnum ,columns ,next))
+                    ,@body
+                    (setf ,before ,next)))))))
+
 (defun string-columns (string &key (start 0) (end (length string)) (width #'char-columns))
   "The columns the characters of STRING from START below END take, WIDTH
 giving each character's own (CHAR-COLUMNS unless given) and a grapheme
 cluster the columns of its first character (CLUSTER-COLUMNS)."
-  (let ((before 0) (sum 0))
-    (declare (type fixnum before sum))
-    (loop for i from start below end
-          do (let ((char (char string i)))
-               (multiple-value-bind (columns next) (cluster-columns (char-code char) before (funcall width char))
-                 (incf sum columns)
-                 (setf before next))))
+  (let ((sum 0))
+    (declare (type fixnum sum))
+    (do-clusters (i columns) (string start end width)
+      (incf sum columns))
     sum))
 
 (defun string-column-starts (string &key (width #'char-columns))
   "A vector of the screen column each character of STRING starts at, and one
 more, the columns of all of them, as STRING-COLUMNS counts: a character
 joined to the one before it in a grapheme cluster takes no columns of its own."
-  (let ((starts (make-array (1+ (length string)) :element-type 'fixnum)) (column 0) (before 0))
-    (declare (type fixnum column before))
-    (dotimes (i (length string))
+  (let ((starts (make-array (1+ (length string)) :element-type 'fixnum)) (column 0))
+    (declare (type fixnum column))
+    (do-clusters (i columns) (string 0 (length string) width)
       (setf (aref starts i) column)
-      (let ((char (char string i)))
-        (multiple-value-bind (columns next) (cluster-columns (char-code char) before (funcall width char))
-          (incf column columns)
-          (setf before next))))
+      (incf column columns))
     (setf (aref starts (length string)) column)
     starts))
 
@@ -287,16 +303,17 @@ WIDTH giving each character's own (CHAR-COLUMNS unless given) and a grapheme
 cluster the columns of its first character (STRING-COLUMNS): where text is
 cut to fit a width, never inside a cluster. The columns those characters
 take are the second value."
-  (let ((used 0) (before 0))
-    (declare (type fixnum used before))
-    (loop for i from 0 below (length string)
-          do (let ((char (char string i)))
-               (multiple-value-bind (more next) (cluster-columns (char-code char) before (funcall width char))
-                 (incf used more)
-                 (setf before next)))
-             (when (> used columns)
-               (let ((kept (tuatara.text:string-cluster-start string (1+ i))))
-                 (return-from chars-in-columns (values kept (string-columns string :end kept :width width))))))
+  (when (and (eq width #'char-columns) (simple-string-p string)
+             (every (lambda (char) (char<= #\Space char #\~)) (the simple-string string)))
+    (let ((kept (min (length string) columns)))
+      (return-from chars-in-columns (values kept kept))))
+  (let ((used 0))
+    (declare (type fixnum used))
+    (do-clusters (i more) (string 0 (length string) width)
+      (incf used more)
+      (when (> used columns)
+        (let ((kept (tuatara.text:string-cluster-start string (1+ i))))
+          (return-from chars-in-columns (values kept (string-columns string :end kept :width width))))))
     (values (length string) used)))
 
 (defun pad-columns (string columns &key (width #'char-columns) left)
@@ -456,7 +473,7 @@ STRING itself when nothing needs it."
              (or (<= #xD800 code #xDFFF)
                  (and controls (or (tuatara.text:control-code-p code)
                                    (= code tuatara.frontend:+kitty-placeholder+)
-                                   (in-ranges-p code *direction-controls*)))))))
+                                   (and (<= #x61C code #x2069) (in-ranges-p code *direction-controls*))))))))
     (if (find-if #'unsafe string)
         (map 'string (lambda (c)
                        (let ((code (char-code c)))

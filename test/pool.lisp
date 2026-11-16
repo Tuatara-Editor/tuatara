@@ -69,7 +69,7 @@
 (define-test (pool leaves-room)
   ;; the workers are nine in ten of the processors, at least one: work in the
   ;; background leaves the editor's thread room
-  (is = (max 1 (floor (* 9 (tuatara.runtime:cpu-count)) 10)) (tuatara.runtime:pool-size (tuatara.runtime:ensure-pool))))
+  (is = (max 1 (floor (* 9 (tuatara.runtime:cpu-count)) 10)) (tuatara.runtime::pool-size (tuatara.runtime::ensure-pool))))
 
 (define-test (pool stoppable-work)
   ;; a call that never looks whether to stop is cut short once its work is stopped, on the
@@ -238,5 +238,5 @@
                                                (function sb-alien:int sb-alien:int sb-alien:unsigned-long
                                                          (* (array (sb-alien:unsigned 8) 128))))
                         0 128 (sb-alien:addr mask)))
-            (setf counted (tuatara.runtime:cpu-count)))))))
+            (setf counted (tuatara.runtime::count-processors)))))))
     (is eql 1 counted)))

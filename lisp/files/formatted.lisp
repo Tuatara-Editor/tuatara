@@ -59,7 +59,7 @@ Nothing typed there takes it.
   "The kind of a new file when *FORMATTED-FILE-PROMPTS* does not ask, and the one
 offered first when it does.
 - a keyword: the name of a kind in *FORMATTED-FILE-TYPES*, :org as standard."
-  :values "a name in *FORMATTED-FILE-TYPES*")
+  :values keyword)
 
 (defparameter *formatted-file-org-header*
   "#+title: {title}
@@ -511,12 +511,14 @@ finding them in the background."
                                  (declare (ignore stamp-of now))
                                  (name-keyword-list (tuatara.io:native-file-name relative)))))
 
-(defun read-keywords (prompt &optional (listing (multiple-value-list (list-formatted-keywords))))
+(defun read-keywords (prompt &optional (listing nil listing-given))
   "Ask for keywords with PROMPT, separated by commas, completing each on the
 keywords offered: *FORMATTED-FILE-KEYWORDS*, then those in the names of your
 files with formatted names, each once, those found in the background while
 the question is open (LISTING, what LIST-FORMATTED-KEYWORDS gives as a list,
-when started before). \\<minibuffer>\\[minibuffer-finish] takes the
+when started before; what this question takes of it is kept in its first,
+for the next question, and the caller stops it; else it is started and
+stopped here). \\<minibuffer>\\[minibuffer-finish] takes the
 selected one, \\[minibuffer-complete] puts it in, \\[minibuffer-submit-input]
 takes what is typed. While no keyword is begun, an empty line comes first,
 selected: no keywords, or no more. Returns a list of strings."
@@ -528,17 +530,20 @@ selected: no keywords, or no more. Returns a list of strings."
                  (push keyword offered)))
              (hash-table-count seen)))
       (offer *formatted-file-keywords*)
-      (destructuring-bind (kept gathering) listing
-        (mapc #'offer kept)
-        (unwind-protect
-             (read-several prompt (lambda () (reverse offered))
-                           :none "no keywords" :more "no more keywords"
-                           :source (and gathering
-                                        (gathering-source gathering
-                                                          (lambda (new)
-                                                            (dolist (keywords new) (offer keywords))
-                                                            (hash-table-count seen)))))
-          (when gathering (stop-gathering gathering)))))))
+      (let ((listing (if listing-given listing (multiple-value-list (list-formatted-keywords)))))
+        (destructuring-bind (kept gathering) listing
+          (mapc #'offer kept)
+          (unwind-protect
+               (read-several prompt (lambda () (reverse offered))
+                             :none "no keywords" :more "no more keywords"
+                             :source (and gathering
+                                          (gathering-source gathering
+                                                            (lambda (new)
+                                                              (dolist (keywords new)
+                                                                (offer keywords)
+                                                                (push keywords (first listing)))
+                                                              (hash-table-count seen)))))
+            (when (and gathering (not listing-given)) (stop-gathering gathering))))))))
 
 (defun read-formatted-extension ()
   "Ask for the end of a new file's name, as free text: org, md, txt or any
@@ -546,9 +551,10 @@ other, with a default; nothing typed takes *FORMATTED-FILE-EXTENSION*, which
 the prompt names (default org) when there is one, and a lone dot none. Returns
 it with a dot before it (typed or not), or \"\" for none."
   (let* ((offered (string-trim " ." (or *formatted-file-extension* "")))
-         (typed (string-trim " " (read-string (if (plusp (length offered))
-                                                   (format nil "New file EXTENSION (default ~a): " offered)
-                                                   "New file EXTENSION: "))))
+         (typed (read-string (if (plusp (length offered))
+                                 (format nil "New file EXTENSION (default ~a): " offered)
+                                 "New file EXTENSION: ")
+                             :trim t))
          (text (if (zerop (length typed)) offered (string-trim "." typed))))
     (if (zerop (length text)) "" (concatenate 'string "." text))))
 
@@ -726,8 +732,8 @@ nothing in it acted on; an error says so when it is larger than
 
 (define-command insert-formatted-note-template ()
   "Read a note template, or any file, into the current buffer at point: one
-of your templates (blank, and each file in
-~/.config/tuatara/note-templates/), %date% and %author% filled in, or with
+of your templates (blank, and each file in your note templates' directory,
+NOTE-TEMPLATES-DIRECTORY), %date% and %author% filled in, or with
 \"Another file...\" any file, as it is. The template's file is only read,
 never opened, so saving the buffer never writes over it. When the buffer has
 text already, asked first."

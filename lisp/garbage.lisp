@@ -120,10 +120,11 @@ stood still for it and how much of the heap is in use."
     (setf *gc-time-seen* sb-ext:*gc-real-time*
           *consed-at-gc* (sb-ext:get-bytes-consed))
     (when tuatara.runtime:*debug-on*
-      (tuatara.runtime:queue-debug-report :gc (format nil "garbage collected in ~,1f ms; ~,1f MB of the heap in use; generations 0-5 hold ~{~,1f~^ ~} MB"
-                                      (/ (* 1000 spent) internal-time-units-per-second)
-                                      (/ (sb-kernel:dynamic-usage) 1048576.0)
-                                      (generation-megabytes))))))
+      (tuatara.runtime:queue-debug-report
+       :gc (format nil "garbage collected in ~,1f ms; ~,1f MB of the heap in use; generations 0-5 hold ~{~,1f~^ ~} MB"
+                   (/ (* 1000 spent) internal-time-units-per-second)
+                   (/ (sb-kernel:dynamic-usage) 1048576.0)
+                   (generation-megabytes))))))
 
 (defun generation-megabytes ()
   "How many megabytes each of Steel Bank Common Lisp (SBCL)'s generations 0 to
@@ -134,3 +135,9 @@ one, so that a long pause shows as an older generation that has shrunk."
         collect (/ (sb-ext:generation-bytes-allocated generation) 1048576.0)))
 
 (pushnew 'report-gc sb-ext:*after-gc-hooks*)
+
+(defun install-garbage ()
+  "Have the editor collect its garbage while it starts and while it waits for
+keys (START-UP-GARBAGE-TICK, IDLE-GARBAGE-TICK)."
+  (pushnew 'start-up-garbage-tick *tick-functions*)
+  (pushnew 'idle-garbage-tick *tick-functions*))

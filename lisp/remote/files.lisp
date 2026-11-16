@@ -54,14 +54,18 @@ home directory there; \"\" for that home directory. A / at the end is kept."
         (concatenate 'string clean "/")
         clean)))
 
+(defun remote-name-host (name)
+  "The machine NAME, /ssh:HOST:PATH, names, HOST as it is written there,
+not looked at further."
+  (subseq name 5 (1- (remote-prefix-length name))))
+
 (defun remote-name-parts (name)
   "The machine and the path NAME names, /ssh:HOST:PATH, two values: HOST as
 ssh takes it, PATH as REMOTE-PATH-NORMAL makes it. Refused, saying why, for
 a host ssh could take for something else (HOST-REFUSAL)."
-  (let* ((end (1- (remote-prefix-length name)))
-         (host (subseq name 5 end)))
+  (let ((host (remote-name-host name)))
     (when (host-refusal host) (refuse "~a" (host-refusal host)))
-    (values host (remote-path-normal (subseq name (1+ end))))))
+    (values host (remote-path-normal (subseq name (remote-prefix-length name))))))
 
 (defun remote-parent-directory-name (host path)
   "The name of the directory holding PATH on HOST, ending in /."
@@ -86,11 +90,11 @@ were read.")
 
 (defun remote-candidates (directory)
   "Completion candidates of the entries of DIRECTORY, a name /ssh:HOST:PATH
-ending in /, as FILE-CANDIDATES gives those of a directory here: directories first,
-each with what is known of it; read from the server on the thread asking,
-those read for it within *REMOTE-CANDIDATES-SECONDS* given again instead,
-older ones let go of as new ones are kept. A
-name that would not show as it is (REMOTE-CLEAN-NAME-P) is left out."
+ending in /, as DIRECTORY-CANDIDATES gives those of a directory here:
+directories first, each with what is known of it; read from the server on
+the thread asking, those read for it within *REMOTE-CANDIDATES-SECONDS* given
+again instead, older ones let go of as new ones are kept. A name that would
+not show as it is (REMOTE-CLEAN-NAME-P) is left out."
   (let ((kept (gethash directory **remote-candidates-kept**)) (now (get-internal-real-time)))
     (if (and kept (< (- now (car kept)) (* *remote-candidates-seconds* internal-time-units-per-second)))
         (cdr kept)
@@ -186,7 +190,8 @@ signalled."
     (remove-if-not (lambda (entry)
                      (let ((given (evidence-entry-given entry)))
                        (and (eq (evidence-entry-kind entry) :glob) (remote-name-p given)
-                            (let ((other (subseq given 5 (1- (remote-prefix-length given)))))
+                            ;; any name written there, refused or not, is compared
+                            (let ((other (remote-name-host given)))
                               (or (string-equal other host)
                                   (string= (ssh-machine other) (or machine (setf machine (ssh-machine host)))))))))
                    (evidence-rules-entries rules))))
@@ -578,8 +583,7 @@ and uncounted, what has not arrived shown as on its way, and start the job
 reading the rest."
   (let* ((remote (buffer-remote buffer))
          (arrival (remote-read-job-arrival job))
-         (rest (make-remote-read-job buffer remote (remote-read-job-safe job)))
-         (before (tuatara.display:buffer-replacements-function buffer)))
+         (rest (make-remote-read-job buffer remote (remote-read-job-safe job))))
     (setf (arrival-opening arrival) nil
           (remote-read-job-path rest) path
           (remote-read-job-arrival rest) arrival
@@ -589,14 +593,8 @@ reading the rest."
           (tuatara.text:mapping-holes (tuatara.buffer:buffer-mapping buffer)) (arrival-holes arrival)
           (tuatara.io:buffer-arriving-p buffer) t
           (tuatara.buffer:buffer-local buffer :read-only-while-arriving) (tuatara.buffer:buffer-read-only-p buffer)
-          (tuatara.buffer:buffer-read-only-p buffer) t
-          (tuatara.buffer:buffer-local buffer :replacements-while-arriving) before
-          (tuatara.display:buffer-replacements-function buffer)
-          (if before
-              (lambda (b start end)
-                (merge 'list (copy-list (funcall before b start end)) (remote-hole-replacements b start end)
-                       #'< :key #'car))
-              'remote-hole-replacements))
+          (tuatara.buffer:buffer-read-only-p buffer) t)
+    (tuatara.display:add-replacements buffer :arrival 'remote-hole-replacements)
     (setf (remote-read-job-fd job) nil)
     (tuatara.runtime:start-job-thread rest #'read-remote-rest :name "tuatara remote read")))
 
@@ -609,7 +607,7 @@ reading the rest."
 (defun remote-hole-replacements (buffer start end)
   "What BUFFER, part of its file not arrived, shows in place of the parts
 missing from START below END: each (START END TEXT FACE), as a window takes
-them (TUATARA.DISPLAY:BUFFER-REPLACEMENTS-FUNCTION), TEXT saying how much is
+them (TUATARA.DISPLAY:ADD-REPLACEMENTS), TEXT saying how much is
 on its way, or never came when the transfer ended early."
   (let* ((remote (buffer-remote buffer))
          (arrival (and remote (remote-file-arrival remote)))
@@ -628,11 +626,10 @@ was arriving, shows as its mode has it, and watch its copy from now on."
     (when (remote-file-arrival remote)
       (setf (remote-file-arrival remote) nil
             (tuatara.io:buffer-arriving-p buffer) nil
-            (tuatara.display:buffer-replacements-function buffer)
-            (tuatara.buffer:buffer-local buffer :replacements-while-arriving)
             (tuatara.buffer:buffer-read-only-p buffer)
             (tuatara.buffer:buffer-local buffer :read-only-while-arriving)
-            (tuatara.io:buffer-file-stamp buffer) (tuatara.io:path-stamp (tuatara.buffer:buffer-file buffer))))))
+            (tuatara.io:buffer-file-stamp buffer) (tuatara.io:path-stamp (tuatara.buffer:buffer-file buffer)))
+      (tuatara.display:remove-replacements buffer :arrival))))
 
 (defun remote-rest-in (buffer job name)
   "The job JOB reading the rest of NAME, the file BUFFER shows, has ended.
@@ -646,8 +643,9 @@ written there until read again."
            (remote-arrival-over buffer)
            (parse-afresh buffer)
            (message "All of ~a has arrived" name))
-          (t (message "~a stopped arriving: ~a; what came shows, and it is not saved until read again (~a)"
-                      name (tuatara.runtime:job-ending-words job) (substitute-command-keys "\\[revert-buffer]"))))
+          (t (message "~a stopped arriving: ~a; what came shows, and it is not saved until read again ~
+                       (\\[revert-buffer])"
+                      name (tuatara.runtime:job-ending-words job))))
     (incf tuatara.command:*display-generation*)))
 
 (defun remote-arrival-tick (editor)
@@ -832,9 +830,9 @@ it left the file there partly written."
            (when (and (live-buffer-p buffer)
                       (eql (tuatara.buffer:buffer-saved-number buffer) (remote-write-job-content job)))
              (tuatara.buffer:buffer-mark-saved buffer (or (remote-file-sent remote) -1)))
-           (message "~a is not written there: ~a~:[~;; the file there is now partly written~]; ~a tries again" name
-                    (tuatara.runtime:job-ending-words job) (remote-write-job-partly job)
-                    (substitute-command-keys "\\[save-buffer]"))))))
+           (message "~a is not written there: ~a~:[~;; the file there is now partly written~]; ~
+                     \\[save-buffer] tries again"
+                    name (tuatara.runtime:job-ending-words job) (remote-write-job-partly job))))))
 
 ;;; Reading again
 

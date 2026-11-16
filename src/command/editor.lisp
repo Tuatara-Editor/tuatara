@@ -147,13 +147,13 @@ EDITOR-LAST-COMMAND and the other names of a screen's state read and set that
 frame's. SELECTIONS counts the times a window was selected. KILL-RING holds
 killed text, newest first. STATE-KEYMAP is the modal state's map consulted
 before the others (the modal layer's). OTHERS-PAINTED is when the frames not
-worked in were last painted (PAINT-OTHER-FRAMES), and SETTINGS-LOOKED when the
-settings were last looked at for them (LOOK-AT-SETTINGS), in internal time.
-CLIENTS are those who work with it (CLIENT), the one who started it first, a
-list replaced and never changed in place. IDLE-FRONTEND is, in an editor
-running in the background, the frontend with no screen its frame shows on
-while no client shows it, else NIL. RUNNING is false once the editor should
-exit."
+worked in were last painted (PAINT-OTHER-FRAMES), in internal time, and
+SETTINGS-WATCH what the settings held when they were last looked at for its
+frontends (FOLLOW-SETTINGS). CLIENTS are those who work with it (CLIENT),
+the one who started it first, a list replaced and never changed in place.
+IDLE-FRONTEND is, in an editor running in the background, the frontend with
+no screen its frame shows on while no client shows it, else NIL. RUNNING is
+false once the editor should exit."
   (frames '() :type list :documentation "The frames of EDITOR, its screens.")
   (frame nil :type frame :documentation "The current frame of EDITOR, the screen being worked in.")
   (clients '() :type list :documentation "Those who work with EDITOR (CLIENT), the one who started it first.")
@@ -163,8 +163,9 @@ exit."
 selected: the clock of WINDOW-USE-TIME.")
   (others-painted 0 :documentation "When the frames of EDITOR not worked in were
 last painted, in internal time.")
-  (settings-looked 0 :documentation "When the settings were last looked at for
-the frames of EDITOR not worked in, in internal time.")
+  (settings-watch (tuatara.runtime:make-settings-watch)
+                  :documentation "What the settings held when they were last looked at for
+the frontends of EDITOR's frames (FOLLOW-SETTINGS).")
   (global-keymap (make-keymap :name "global") :documentation "EDITOR's global keymap, the last one consulted.")
   (state-keymap nil :type (or null keymap) :documentation "The modal state keymap consulted first, or NIL.")
   (fallback-keymap nil :type (or null keymap) :documentation "A keymap consulted after the buffer's own
@@ -319,7 +320,7 @@ frame being worked in; an error waking it is ignored."
 (defvar *display-generation* 0
   "A count moved on whenever what every frame may show changes beside the text
 of its buffers: work taken in from the background, a way of showing text
-switched, a setting changed (SETTINGS-MOVED-P), a job's work or a message
+switched, a setting changed (FOLLOW-SETTINGS), a job's work or a message
 taken in. A frame not worked in is painted again when it moved since it was
 \(PAINT-OTHER-FRAMES).")
 
@@ -679,10 +680,11 @@ where what was meant for FRAME goes once FRAME has gone."
   "Show and keep in *Messages*, on EDITOR's thread, the messages said on other
 threads since last time, in the order they were said, and have the functions
 given to DEFER-ACTION there run as EDITOR's next commands, in that order too.
-Each message shows in the frame it is for while that frame is open, else in
-the frame you are in, but only in *Messages* while a question of one key
-waits in that frame, the question staying in view; each function waits among the things to be done in
-that frame likewise (FRAME-DEFERRED), to run with it the one worked in. True
+Each message shows in the frame it is for while that frame is open, else in the
+frame you are in, but only in *Messages* while a question of one key waits in
+that frame, the question staying in view; each function waits among the things
+to be done in that frame likewise (FRAME-DEFERRED), to run with it the one
+worked in. True
 when there was anything to take in."
   (when (or *messages-from-threads* *actions-from-threads*)
     (let (texts actions)
@@ -751,6 +753,10 @@ nothing."
              (setf (editor-message *editor*) (with-command-notes-said text)))
            (tuatara.runtime:ignoring-errors-reported ("keeping a message in *Messages*") (log-message text))))
     text))
+
+(defmethod tuatara.runtime:host-say-problem ((host editor-host) text)
+  "Say TEXT in the echo area and *Messages*, its controls written out."
+  (message "~a" text))
 
 (defun echo (control &rest arguments)
   "Show a formatted text in the echo area, as MESSAGE does, without keeping it

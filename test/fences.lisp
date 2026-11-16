@@ -13,36 +13,17 @@
 
 (in-package #:tuatara.tests)
 
-;; Tests never read the developer's real init file; the config test binds its own.
+;; The config test binds the init file it reads, as the tests do not read the developer's.
 ;; Nor their own note templates: the formatted test binds its own.
 (setf tuatara.defaults::*note-templates-directory* "/nonexistent/tuatara-test-note-templates/")
 ;; Nor their own capture templates, which file into their real files, nor their
 ;; snippets: the capture and snippets tests bind their own.
 (setf tuatara-user:*capture-template-directories* (list "/nonexistent/tuatara-test-capture-templates/"))
 (setf tuatara-user:*snippet-directories* (list "/nonexistent/tuatara-test-snippets/"))
-(setf tuatara.defaults:*config-file* #p"/nonexistent/tuatara-test-init.lisp")
 ;; Nor write the developer's state (the list of recent files): a directory of
 ;; their own, removed when they are done.
 (defvar *test-state-directory*
   (merge-pathnames (format nil "tuatara-test-state-~d/" (sb-posix:getpid)) (uiop:temporary-directory)))
-(sb-posix:setenv "XDG_STATE_HOME" (namestring *test-state-directory*) 1)
-;; Nor leave files in the system's temporary directory: the run has one of its
-;; own inside that directory, so whatever a test forgets goes with it.
-(let ((tmp (ensure-directories-exist (merge-pathnames "tmp/" *test-state-directory*))))
-  (sb-posix:setenv "TMPDIR" (namestring tmp) 1)
-  (setf uiop:*temporary-directory* tmp))
-;; Nor read or write the developer's configuration directory (their Word and LaTeX
-;; templates): one of the run's own.
-(sb-posix:setenv "XDG_CONFIG_HOME" (namestring (merge-pathnames "config/" *test-state-directory*)) 1)
-;; Nor move the cache when a test makes a home of its own: it stays where it was
-;; for the whole run, and no .cache/ directory appears in that home.
-(sb-posix:setenv "XDG_CACHE_HOME" (namestring (uiop:xdg-cache-home)) 1)
-;; Nor reach the developer's running daemons, or start one where they look: the
-;; run's own directory of sockets, for the run alone as the system's is.
-(let ((runtime (merge-pathnames "runtime/" *test-state-directory*)))
-  (ensure-directories-exist runtime)
-  (sb-posix:chmod (namestring runtime) #o700)
-  (setf tuatara.defaults::*runtime-directory* (namestring runtime)))
 ;; Nor write in the developer's cache (their compiled packages, indexes, debug log):
 ;; the tests' own, beside it so on the same drive, kept from one run to the next for
 ;; what is slow to make again (the core packages are compiled apart in).
@@ -56,18 +37,25 @@
 (defvar *test-data-directory*
   (merge-pathnames (format nil "test-data-~d/" (sb-posix:getpid)) *test-cache-directory*))
 (ensure-directories-exist *test-data-directory*)
-(sb-posix:setenv "XDG_DATA_HOME" (namestring *test-data-directory*) 1)
+;; The developer's init file, configuration directory (their Word and LaTeX templates), state, trashes, GnuPG
+;; keys and agent (a keyring of the tests' own, made empty), temporary directory (so whatever a test forgets goes
+;; with the run) and directory of daemons' sockets (so no test reaches a running daemon) are the run's own, and the
+;; variables naming their agents, display and session bus unset, from tools/fence.lisp, which the tools use too.
+;; The cache home is in the tests' cache, kept from one run to the next for the packages compiled apart there, and
+;; the same for the whole run, so that no .cache/ directory appears in a home a test makes. The home stays where
+;; it was: Quicklisp is found in it.
+(load (asdf:system-relative-pathname :tuatara "tools/fence.lisp"))
+(funcall (find-symbol "FENCE-PERSON-DATA" "TUATARA.FENCE") *test-state-directory*
+         :places (list (cons "HOME" :keep)
+                       (cons "XDG_CACHE_HOME" (merge-pathnames "cache/" *test-cache-directory*))
+                       (cons "XDG_DATA_HOME" *test-data-directory*)))
+(setf tuatara.defaults::*runtime-directory* (sb-posix:getenv "XDG_RUNTIME_DIR"))
 (let ((no-drives (merge-pathnames "no-drives" *test-state-directory*)))
   (ensure-directories-exist no-drives)
   (with-open-file (out no-drives :direction :output :if-exists :supersede))
   (setf tuatara.defaults::*mounts-file* (namestring no-drives)))
 ;; Nor add to the developer's spelling word lists: enchant keeps the tests' own there.
 (sb-posix:setenv "ENCHANT_CONFIG_DIR" (namestring (merge-pathnames "enchant/" *test-state-directory*)) 1)
-;; Nor use the developer's own GnuPG keys or agent: a keyring of the tests' own, made empty.
-(let ((home (merge-pathnames "gnupg/" *test-state-directory*)))
-  (ensure-directories-exist home)
-  (sb-posix:chmod (namestring home) #o700)
-  (sb-posix:setenv "GNUPGHOME" (namestring home) 1))
 ;; Nor read the developer's git settings (their name, their signing, their
 ;; aliases): a global settings file of the tests' own, and none of the system's.
 (let ((settings (merge-pathnames "gitconfig" *test-state-directory*)))

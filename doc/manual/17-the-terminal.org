@@ -258,8 +258,9 @@ three at once, and a line that holds a hidden command could do harm.
 
 Tuatara pastes carefully. The text is marked as pasted, which a shell such as
 bash understands. It shows the lines at the prompt and runs none of them until
-you press =RET=. Control characters in the text become spaces, so that pasted
-text cannot send commands to the terminal itself. A program that does not mark
+you press =RET=. Control characters in the text, but for tabs and line ends,
+are taken out, so that pasted text cannot send commands to the terminal
+itself nor end the paste early. A program that does not mark
 pastes would run each line as it arrives, so Tuatara asks first when the text
 has more than one line.
 

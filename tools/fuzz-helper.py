@@ -15,6 +15,7 @@
 # thread of its own, lets go of, edits, copies and runs the trees and queries
 # the first is using, all the while: as it parses, matches or reads them, or
 # makes large rules and answers with them.
+"""Send the syntax helper requests made to be wrong; see the comment above."""
 import array, collections, itertools, random, socket, struct, subprocess, sys, threading
 
 helper, grammars, rounds, seed, log = sys.argv[1], sys.argv[2], int(sys.argv[3]), int(sys.argv[4]), sys.argv[5]
@@ -61,15 +62,24 @@ class Ended(Exception):
     """The helper closed a connection."""
 
 
+class Mismatch(Exception):
+    """A reply did not answer the request it followed."""
+
+
 first, theirs = socket.socketpair()
 proc = subprocess.Popen([helper, grammars], stdin=theirs, stderr=open(log, 'ab'))
 theirs.close()
 
 
+connecting = threading.Lock()
+
+
 def connect():
     """A new connection to the helper, handed over the first."""
     mine, other = socket.socketpair()
-    first.sendmsg([u(0, 0, OP_CONNECT)], [(socket.SOL_SOCKET, socket.SCM_RIGHTS, array.array('i', [other.fileno()]))])
+    with connecting:
+        first.sendmsg([u(0, 0, OP_CONNECT)],
+                      [(socket.SOL_SOCKET, socket.SCM_RIGHTS, array.array('i', [other.fileno()]))])
     other.close()
     mine.settimeout(120)
     return mine
@@ -80,11 +90,13 @@ other = connect() if two else None
 text = TEXTS[0]
 serial = {}
 held = threading.Lock()
+failures = []
 sent = collections.deque(maxlen=40)
-stats = {'answered': 0, 'refused': 0, 'closed': 0}
+stats = {'answered': 0, 'refused': 0, 'closed': 0, 'interfering': 0}
 
 
 def received(connection, n):
+    """Exactly N octets from CONNECTION; raises Ended when the helper closes it first."""
     data = b''
     while len(data) < n:
         chunk = connection.recv(n - len(data))
@@ -94,8 +106,9 @@ def received(connection, n):
     return data
 
 
-def request(op, body, connection=None):
-    """Send a request, giving the text a parse asks for, and return its status and reply."""
+def request(op, body, connection=None, rnd=rnd):
+    """Send a request on CONNECTION (the first by default), giving the text a parse asks for with
+    the random state RND, and return its status and reply."""
     connection = connection or conn
     number = next(serial.setdefault(connection, itertools.count(2)))
     sent.append((op, body))
@@ -109,8 +122,7 @@ def request(op, body, connection=None):
             connection.sendall(u(len(chunk), answering, OP_READ) + chunk)
             continue
         if answering != number:
-            print('reply %d to request %d (op %d)' % (answering, number, op))
-            sys.exit(1)
+            raise Mismatch('reply %d to request %d (op %d)' % (answering, number, op))
         stats['refused' if status else 'answered'] += 1
         return status, data
 
@@ -138,29 +150,41 @@ def interfere(rnd):
         (OP_MATCHES, u(query, tree, 0, n)),
         (OP_HAS_ERROR, u(tree)),
     ])
-    status, data = request(op, body, other)
+    status, data = request(op, body, other, rnd)
     take(op, status, data)
+    stats['interfering'] += 1
 
 
 stopping = threading.Event()
 
 
 def interfering():
-    """The second connection's thread, all the while."""
+    """The second connection's thread, all the while: a connection the helper closes is replaced at
+    once and counted; a reply that does not answer its request fails the run."""
+    global other
     rnd = random.Random(seed + 1)
     while not stopping.is_set():
         try:
             interfere(rnd)
+        except Mismatch as why:
+            failures.append(str(why))
+            stopping.set()
         except (Ended, ConnectionError, socket.timeout, OSError):
-            return
+            if proc.poll() is not None:
+                return
+            stats['closed'] += 1
+            other.close()
+            other = connect()
 
 
 def word():
+    """A number to put where the helper reads a count, a length or a handle: often a bad one."""
     return rnd.choice([0, 1, 2, rnd.randrange(64), rnd.randrange(len(text) + 10), 0xffffffff, 0x7fffffff,
                        rnd.randrange(1 << 32), rnd.choice(trees) if trees else 0])
 
 
 def a(seq, default=0):
+    """A random member of SEQ, or DEFAULT when it is empty."""
     return rnd.choice(seq) if seq else default
 
 
@@ -286,7 +310,8 @@ for _ in range(rounds):
         take(op, *request(op, body))
         if rnd.random() < 0.05 and parsers:
             # a parse stopped over the first connection, which has no reply
-            first.sendall(u(4, 0, OP_CANCEL) + u(rnd.choice(list(parsers.values()) + [0, 0xffffffff])))
+            with connecting:
+                first.sendall(u(4, 0, OP_CANCEL) + u(rnd.choice(list(parsers.values()) + [0, 0xffffffff])))
         while len(trees) > 40:
             with held:
                 gone = trees.pop(0)
@@ -297,18 +322,22 @@ for _ in range(rounds):
         stats['closed'] += 1
         conn.close()
         conn = connect()
-        if two:
-            other.close()
-            other = connect()
+    except Mismatch as why:
+        print(why)
+        sys.exit(1)
 
 stopping.set()
+if failures:
+    print(failures[0])
+    sys.exit(1)
 alive = proc.poll() is None
 if not alive:
     with open(log + '.last', 'w') as last:
         for op, body in sent:
             last.write('%d %s\n' % (op, body.hex()))
-print('rounds %d, seed %d: %d answered, %d refused, %d connections closed by the helper; helper %s'
-      % (rounds, seed, stats['answered'], stats['refused'], stats['closed'],
+print('rounds %d, seed %d: %d answered, %d refused, %d connections closed by the helper, %d requests of the '
+      'second connection; helper %s'
+      % (rounds, seed, stats['answered'], stats['refused'], stats['closed'], stats['interfering'],
          'alive' if alive else 'ENDED (exit %s)' % proc.returncode))
 first.close()
 conn.close()

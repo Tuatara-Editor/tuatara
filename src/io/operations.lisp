@@ -400,9 +400,10 @@ the new file TO, as COPY-OPEN-FILE does; FROM read without changing its
 access time where the system allows, TO never made through a link. True when
 all of it was copied; NIL when CANCEL, a cons, had a true car first (TO then
 holds part of it). What is not a regular file is refused unopened."
-  (let ((in (open-for-reading from t :accept '(:regular) :operation "copy")))
-    (unwind-protect (copy-open-file-to in from to :cancel cancel :progress progress)
-      (sb-posix:close in))))
+  (call-with-file from (lambda (in name size)
+                         (declare (ignore name size))
+                         (copy-open-file-to in from to :cancel cancel :progress progress))
+                  :operation "copy"))
 
 (defun copy-open-file-to (in from to &key cancel progress)
   "Copy the regular file open as IN, FROM's (for messages), to the new file
@@ -422,12 +423,13 @@ where that is taken NAME with (2), (3) and so on before its ending
 \(NUMBERED-NAME): never over anything there, the name taken in one step
 \(CREATE-FREE-FILE). Returns the copy's path; NIL when CANCEL, a cons, had a
 true car first (the copy then holds part of it)."
-  (let ((in (open-for-reading from t :accept '(:regular) :operation "copy")))
-    (unwind-protect
-         (let ((stamp (regular-fd-stamp in (native from))))
-           (call-with-free-file directory name
-                                (lambda (out path) (and (copy-open-contents in stamp out path :cancel cancel) path))))
-      (sb-posix:close in))))
+  (call-with-file from (lambda (in path size)
+                         (declare (ignore path size))
+                         (let ((stamp (regular-fd-stamp in (native from))))
+                           (call-with-free-file directory name
+                                                (lambda (out path)
+                                                  (and (copy-open-contents in stamp out path :cancel cancel) path)))))
+                  :operation "copy"))
 
 (defun call-with-free-file (directory name function)
   "Make a new file in DIRECTORY called NAME, or where that is taken NAME with
@@ -697,21 +699,6 @@ COPY-PATH-TREE has it."
 
 ;;; The trash (freedesktop.org's Trash specification)
 
-(defun data-home (&optional home)
-  "Where your data lives: $XDG_DATA_HOME, or .local/share/ in HOME, your home
-directory unless given."
-  (or (own-directory "XDG_DATA_HOME")
-      (merge-pathnames ".local/share/" (if home
-                                           (uiop:ensure-directory-pathname (uiop:parse-native-namestring (native home)))
-                                           (user-homedir-pathname)))))
-
-(defun user-font-directories (&optional (home (home-directory)))
-  "Your own font directories, native names without a / at the end: fonts in the
-data home ($XDG_DATA_HOME, or .local/share in HOME), then .fonts in HOME;
-HOME is your home directory unless given."
-  (list (path-join (native (data-home home)) "fonts")
-        (format nil "~a/.fonts" (string-right-trim "/" (native home)))))
-
 (defun home-trash ()
   "Your own trash directory: Trash/ in the data home."
   (native (merge-pathnames "Trash/" (data-home))))
@@ -816,6 +803,18 @@ of every directory that name it and the one above, no file of its own."
   (if (stringp name)
       (or (string= name ".") (string= name ".."))
       (or (equalp name #(46)) (equalp name #(46 46)))))
+
+(defun entry-name-p (name &key controls)
+  "True when NAME, a string, can be the name of one entry of a directory: not
+empty, not . nor .., with no / nor NUL in it, so that joined to its directory
+it never leads out of it nor ends early; with CONTROLS, with no control
+character in it either."
+  (and (plusp (length name))
+       (not (dot-entry-name-p name))
+       (notany (lambda (c)
+                 (or (char= c #\/) (char= c (code-char 0))
+                     (and controls (or (< (char-code c) 32) (= (char-code c) 127)))))
+               name)))
 
 (defun fit-name (name &key (most 255))
   "NAME, a file name, cut to take at most MOST octets in UTF-8 (255, the most
@@ -933,10 +932,7 @@ top (ending in /), with no slash before it."
 BASE.2, BASE.3 and so on, its BASE cut short where the name of its .trashinfo
 would be longer than a file's name may be (255 octets)."
   (let ((suffix (if (= n 1) "" (format nil ".~d" n))))
-    (loop for end downfrom (length base) above 0
-          for name = (concatenate 'string (subseq base 0 end) suffix)
-          when (<= (length (tuatara.text:string-octets name)) (- 255 (length ".trashinfo")))
-            return name)))
+    (concatenate 'string (fit-name base :most (- 255 (length ".trashinfo") (length suffix))) suffix)))
 
 (defun trash-path (path &key (time (get-universal-time)))
   "Move the file or directory PATH to the trash (TRASH-FOR), by a rename, with
@@ -1017,12 +1013,6 @@ system uses them again.")
 elsewhere (*COPY-ON-WRITE-FILE-SYSTEMS*), where overwriting it leaves its old contents on disk."
   (and (member (path-file-system path :follow nil) *copy-on-write-file-systems*) t))
 
-(defun rename-entry-at (dirfd from to path)
-  "Give the entry FROM (octets) of the directory open as DIRFD the name TO
-\(octets) in it, never over one there already (RENAME-WITHOUT-REPLACING); a
-FILE-SYSTEM-ERROR, PATH named, when it cannot be."
-  (rename-without-replacing dirfd from dirfd to path))
-
 (defun wipe-file (path &key cancel progress (passes 1))
   "Wipe the file at PATH: its contents overwritten PASSES times with random
 octets, each pass put on disk, then the file emptied, renamed to a random
@@ -1066,14 +1056,12 @@ octets overwritten so far, all passes counted. Returns T once it is gone."
                 (sb-posix:fsync fd)
                 ;; its name too: renamed to one that says nothing, then gone, the file still the one overwritten
                 (let ((hidden (tuatara.text:string-octets (concatenate 'string "." (random-name)))))
-                  (flet ((same-file-p (name)
-                           (let ((now (entry-stamp dirfd name native)))
-                             (and (= (stamp-dev now) (stamp-dev stamp)) (= (stamp-ino now) (stamp-ino stamp)))))
+                  (flet ((same-file-p (name) (same-stamped-file-p (entry-stamp dirfd name native) stamp))
                          (taken ()
                            (error 'file-system-error :operation "wipe" :path native
                                                      :reason "its name was given to another file meanwhile")))
                     (unless (same-file-p own) (taken))
-                    (rename-entry-at dirfd own hidden native)
+                    (rename-without-replacing dirfd own dirfd hidden native)
                     (if (same-file-p hidden)
                         (remove-entry-at dirfd hidden native nil)
                         (taken))))

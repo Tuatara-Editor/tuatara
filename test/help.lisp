@@ -577,3 +577,24 @@ second when that row does not go on from it."
                (/ (- (get-internal-real-time) start) internal-time-units-per-second 1.0)))))
     (let ((small (seconds 200)) (large (seconds 20000)))
       (true (< large (+ 0.005 (* 10 small))) "~,4f s for 20000 repeats, ~,4f s for 200" large small))))
+
+(define-test (help candidates-made-once)
+  ;; the candidates of describe-function and describe-variable are made once, and again only when a
+  ;; definition comes or goes
+  (let ((made 0))
+    (tuatara.defaults::function-candidates)
+    (tuatara.defaults::variable-candidates)
+    (sb-int:encapsulate 'tuatara.defaults::documentation-field 'counted
+                        (lambda (function &rest arguments) (incf made) (apply function arguments)))
+    (unwind-protect
+         (progn
+           (true (tuatara.defaults::function-candidates))
+           (true (tuatara.defaults::variable-candidates))
+           (is = 0 made)
+           (let ((symbol (intern "HELP-CANDIDATES-TEST-FUNCTION" :tuatara-user)))
+             (setf (fdefinition symbol) (lambda () nil))
+             (unwind-protect
+                  (true (find symbol (tuatara.defaults::function-candidates) :key #'tuatara.command:candidate-value))
+               (fmakunbound symbol)
+               (unintern symbol :tuatara-user))))
+      (sb-int:unencapsulate 'tuatara.defaults::documentation-field 'counted))))

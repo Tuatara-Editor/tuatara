@@ -54,9 +54,10 @@ before a dead connection is noticed; lower it to learn of one sooner.
 (defparameter *sftp-most-listed* 100000
   "The most entries of one directory on a server listed; past them the listing is cut, and says so.")
 
-(defparameter *sftp-most-listed-characters* (* 64 1024 1024)
-  "The most characters of names one listing of a directory on a server holds;
-past them the listing is cut, as past *SFTP-MOST-LISTED* entries.")
+(defparameter *sftp-most-listed-characters* (* 8 1024 1024)
+  "The most characters of names one listing of a directory on a server holds
+(8 M, room for 100,000 names of 80 characters); past them the listing is
+cut, as past *SFTP-MOST-LISTED* entries.")
 
 (defparameter *sftp-status-words*
   #("done" "at the end" "there is no such file" "permission denied" "the server failed"

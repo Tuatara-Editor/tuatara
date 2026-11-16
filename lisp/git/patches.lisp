@@ -2,7 +2,7 @@
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; In a status W opens the patch menu and w the menu of patches by mail
-;;;; (git am), as Magit's do: commits written out as patch files, a patch
+;;;; (git am): commits written out as patch files, a patch
 ;;;; file applied to the files or what is staged, the changes not committed
 ;;;; saved as one, a whole repository written to a single bundle file and a
 ;;;; bundle checked. git am stopped half way goes on, skips or stops.

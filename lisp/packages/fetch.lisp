@@ -77,6 +77,26 @@ one (GIT-HASH-P, 7 to 64 hexadecimal digits); an error otherwise."
       (refuse "~a gave no commit's name: ~s" where (subseq name 0 (min 80 (length name)))))
     name))
 
+(defparameter *tag-commits-format*
+  "--format=%(if)%(*objectname)%(then)%(*objectname)%(else)%(objectname)%(end) %(refname:strip=2)"
+  "How git for-each-ref writes each tag for PACKAGE-NEWEST-TAGS: the commit it
+names, a tag's own object followed, a space, and its name.")
+
+(defun package-newest-tags (directory count)
+  "The COUNT newest tags by date of the repository DIRECTORY holds, the newest
+first, each (COMMIT . TAG): the name of the commit it names, as git printed
+it, and its own."
+  (loop for line in (tuatara.text:split-words (package-git directory "for-each-ref" "--sort=-creatordate"
+                                                           (format nil "--count=~d" count) *tag-commits-format*
+                                                           "refs/tags")
+                                              '(#\Newline))
+        for space = (position #\Space line)
+        when space collect (cons (subseq line 0 space) (subseq line (1+ space)))))
+
+(defun package-version-words (commit tag)
+  "A version of a package as it is said: TAG, or the first seven characters of COMMIT."
+  (or tag (subseq commit 0 (min 7 (length commit)))))
+
 (defun package-commit (directory where version)
   "The commit, and its tag or NIL, VERSION of the repository at WHERE is,
 asking it from DIRECTORY, a repository of no commit made for it. \"latest\" is
@@ -94,12 +114,8 @@ checked to be one (PACKAGE-COMMIT-NAME)."
            (newest-tag ()
              ;; the tags' commits alone, to find the newest by date
              (package-git directory "fetch" "--quiet" "--depth=1" "--filter=tree:0" where "+refs/tags/*:refs/tags/*")
-             (let* ((line (string-trim '(#\Newline #\Space)
-                                       (package-git directory "for-each-ref" "--sort=-creatordate" "--count=1"
-                                                    "--format=%(if)%(*objectname)%(then)%(*objectname)%(else)%(objectname)%(end) %(refname:strip=2)"
-                                                    "refs/tags")))
-                    (space (position #\Space line)))
-               (values (package-commit-name (subseq line 0 space) where) (subseq line (1+ space))))))
+             (let ((newest (first (package-newest-tags directory 1))))
+               (values (package-commit-name (or (car newest) "") where) (cdr newest)))))
     (cond ((equal version "latest") (newest-commit))
           ((member version '(nil "release") :test #'equal)
            (cond ((plusp (length (string-trim '(#\Newline #\Space) (package-git directory "ls-remote" "--tags" where))))
@@ -212,13 +228,8 @@ commits; for a tag, branch or commit named, none."
   (flet ((lines (text) (tuatara.text:split-words text '(#\Newline))))
     (cond ((not (member version '(nil "release" "latest") :test #'equal)) '())
           (tag
-           (loop for line in (lines (package-git probe "for-each-ref" "--sort=-creatordate"
-                                                 (format nil "--count=~d" (1+ *package-versions-tried*))
-                                                 "--format=%(if)%(*objectname)%(then)%(*objectname)%(else)%(objectname)%(end) %(refname:strip=2)"
-                                                 "refs/tags"))
-                 for space = (position #\Space line)
-                 when (and space (git-hash-p (subseq line 0 space) :short t) (string/= (subseq line (1+ space)) tag))
-                 collect (cons (subseq line 0 space) (subseq line (1+ space)))))
+           (remove-if-not (lambda (pair) (and (git-hash-p (car pair) :short t) (string/= (cdr pair) tag)))
+                          (package-newest-tags probe (1+ *package-versions-tried*))))
           (t
            (package-git probe "fetch" "--quiet" (format nil "--depth=~d" *package-history-depth*) "--filter=blob:none"
                         where "HEAD")
@@ -363,9 +374,9 @@ tag is fetched apart, into a repository of its own), gives the fifth value."
                (cond
                  (directory (taken directory commit tag looked nil))
                  ((and walk-p (not (funcall walk-p looked commit tag)))
-                  (values nil nil nil (list (or tag (subseq commit 0 7)) needed t)))
+                  (values nil nil nil (list (package-version-words commit tag) needed t)))
                  (t
-                  (let ((passed (list (or tag (subseq commit 0 7)) needed nil)))
+                  (let ((passed (list (package-version-words commit tag) needed nil)))
                     (dolist (older (call-within-package-size
                                     scratch where
                                     (lambda ()
@@ -423,7 +434,7 @@ loaded, and fetches that version again when it next needs it."
         (unless (or (not (git-hash-p commit :short t))
                     (member commit keep :test #'string=)
                     (and loaded (tuatara.io:path-within-p loaded native)))
-          (let ((compiled (directory-namestring (package-fasl (concatenate 'string native "x")))))
+          (let ((compiled (compiled-directory-of native)))
             (when (probe-file compiled) (delete-package-directory compiled)))
           (delete-package-directory native))))))
 
@@ -435,10 +446,6 @@ starts meanwhile.")
 
 (defvar *package-job-deciding* nil
   "The fetch or check whose version is being decided on (PACKAGE-FETCHED), or NIL.")
-
-(defun package-version-words (commit tag)
-  "A version of a package as it is said: TAG, or the first seven characters of COMMIT."
-  (or tag (subseq commit 0 (min 7 (length commit)))))
 
 (defun package-awaits-restart-p (name)
   "True when the package NAME runs in this session from another version than
@@ -557,22 +564,33 @@ that ended it.")
             :documentation "True for a check of who signed a version kept, with nothing fetched
 \(START-PACKAGE-CHECK)."))
 
+(defparameter *package-fetch-words*
+  '((:load :doing "Compiling and loading a package" :verb "load the package" :description "Compiling and loading"
+     :left-words "the package not loaded")
+    (:check :doing "Checking who signed a package" :verb "check the package" :description "Checking who signed"
+     :left-words "the package not checked")
+    (:fetch :doing "Fetching a package" :verb "fetch the package" :description "Fetching"
+     :left-words "the package not fetched"))
+  "How a PACKAGE-FETCH job is told of, by its kind (PACKAGE-FETCH-KIND): what
+it is doing, the verb of a question about it, the start of its description,
+and what stopping it leaves.")
+
+(defun package-fetch-kind (job)
+  "What JOB, a PACKAGE-FETCH, does: :LOAD, :CHECK (who signed a version kept)
+or :FETCH."
+  (cond ((package-fetch-load job) :load)
+        ((package-fetch-checking job) :check)
+        (t :fetch)))
+
+(defun package-fetch-words (job key)
+  "The words KEY of *PACKAGE-FETCH-WORDS* for JOB, a PACKAGE-FETCH."
+  (getf (rest (assoc (package-fetch-kind job) *package-fetch-words*)) key))
+
 (tuatara.runtime:define-job-words package-fetch
-    :doing (cond ((package-fetch-load job) "Compiling and loading a package")
-                 ((package-fetch-checking job) "Checking who signed a package")
-                 (t "Fetching a package"))
-    :verb (cond ((package-fetch-load job) "load the package")
-                ((package-fetch-checking job) "check the package")
-                (t "fetch the package"))
-    :description (format nil
-                         "~a the package ~a"
-                         (cond ((package-fetch-load job) "Compiling and loading")
-                               ((package-fetch-checking job) "Checking who signed")
-                               (t "Fetching"))
-                         (package-fetch-name job))
-    :left-words (cond ((package-fetch-load job) "the package not loaded")
-                      ((package-fetch-checking job) "the package not checked")
-                      (t "the package not fetched"))
+    :doing (package-fetch-words job :doing)
+    :verb (package-fetch-words job :verb)
+    :description (format nil "~a the package ~a" (package-fetch-words job :description) (package-fetch-name job))
+    :left-words (package-fetch-words job :left-words)
     :at-exit :quiet)
 
 (defmethod tuatara.runtime:job-holds-queue-p ((job package-fetch))
@@ -587,8 +605,9 @@ load at the start, or by one of its commands or modes, which the version being
 decided on serves), else in *Messages* alone."
   (let ((name (package-fetch-name job)))
     (if (assoc name *packages-in-hand* :test #'string=)
-        (let ((words (format nil
-                             "~a: a fetch or check of it is already running, or waits for an answer, or it is being loaded" name)))
+        (let ((words (format nil "~a: a fetch or check of it is already running, or waits for an answer, ~
+                                  or it is being loaded"
+                             name)))
           (if quiet (log-message words) (message "~a" words))
           nil)
         (progn (push (cons name job) *packages-in-hand*)
@@ -729,8 +748,8 @@ waits for it (WAIT-FOR-SWEEP). True when the fetch began now."
                    (fetch-package name where version
                                   :file file :floor floor
                                   :walk-p (lambda (looked commit tag)
-                                            (not (eq :refuse (package-trust-verdict where (package-signature looked
-                                                                                                             commit tag where)))))
+                                            (not (eq :refuse (package-trust-verdict
+                                                              where (package-signature looked commit tag where)))))
                                   :signature-of (lambda (looked commit tag) (package-signature looked commit tag
                                                                                                where)))
                  (setf (package-fetch-directory job) directory (package-fetch-commit job) commit (package-fetch-tag job)
@@ -842,7 +861,8 @@ is loaded, and older versions are then deleted (PRUNE-PACKAGE-VERSIONS)."
                        (funcall trust)
                        (when (package-loaded-p name)
                          (message "The package ~a~@[ ~a~] is loaded~@[ (~a needs Tuatara ~a or later)~]"
-                                  name (or tag (and passed (subseq commit 0 7))) (first passed) (second passed))))
+                                  name (and (or tag passed) (package-version-words commit tag))
+                                  (first passed) (second passed))))
                       (:restart
                        (funcall trust)
                        (say-package-needs-restart name (package-version-words commit tag))))
@@ -897,7 +917,7 @@ before is kept to fall back on (LOAD-VERSION), older ones deleted
          (message "The package ~a ~a needs Tuatara ~a or later, and this is ~a: ~a, the newest version that fits, is ~
                    taken"
                   name (first passed) (second passed) (tuatara:version)
-                  (or (package-fetch-tag job) (subseq (package-fetch-commit job) 0 7))))
+                  (package-version-words (package-fetch-commit job) (package-fetch-tag job))))
        (multiple-value-bind (verdict words remember)
            (package-trust-verdict (package-fetch-where job) (package-fetch-signature job))
          (if (eq verdict :refuse)

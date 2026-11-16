@@ -137,10 +137,12 @@ values."
   "The settings BUFFER's file names for itself (FIRST-LINE-SETTINGS, then
 END-BLOCK-SETTINGS), each (NAME . VALUE)."
   (let* ((rope (tuatara.buffer:buffer-text buffer))
-         (head (tuatara.text:rope-string rope :start 0 :end (tuatara.text:rope-char-start rope (min (tuatara.text:rope-octet-length rope) 1024))))
+         (head (tuatara.text:rope-string rope :start 0
+                                              :end (tuatara.text:rope-char-start
+                                                    rope (min (tuatara.text:rope-octet-length rope) 1024))))
          (lines (uiop:split-string head :separator '(#\Newline)))
-         (first (if (uiop:string-prefix-p "#!" (first lines)) (second lines) (first lines))))
-    (append (and first (first-line-settings first))
+         (line (if (uiop:string-prefix-p "#!" (first lines)) (second lines) (first lines))))
+    (append (and line (first-line-settings line))
             (end-block-settings (file-tail buffer)))))
 
 (defun file-mode-p (mode)
@@ -204,8 +206,8 @@ mode first, and say which of them are left alone; then call
 *FILE-LOCAL-TAKEN-FUNCTIONS*. Never for a file opened safely."
   (when (and *file-local-variables* (tuatara.buffer:buffer-file buffer) (not (tuatara.io:safe-visit-p buffer)))
     (let* ((settings (file-local-settings buffer))
-           (ordered (append (remove "mode" settings :key #'car :test-not #'string=)
-                            (remove "mode" settings :key #'car :test #'string=)))
+           (ordered (stable-sort (copy-list settings) (lambda (a b) (and (string= a "mode") (string/= b "mode")))
+                                 :key #'car))
            (left (loop for (name . value) in ordered
                        if (or (apply-file-local-setting buffer name value)
                               (run-hook-until-success *file-local-setting-functions* buffer name value))
@@ -272,13 +274,10 @@ why. The lines are filled to *HELP-COLUMN*."
 as two values: its mode's comment marker and a space (\"# \" in Org), or a
 block comment's opener and closer (<!-- and -->), or nothing."
   (let ((mode (buffer-major-mode buffer)))
-    (multiple-value-bind (marker commenting) (mode-comment-syntax mode)
-      (if marker
-          (values (format nil "~a " (or commenting marker)) "")
-          (multiple-value-bind (opener closer) (mode-block-comment-syntax mode)
-            (if opener
-                (values (format nil "~a " opener) (format nil " ~a" closer))
-                (values "" "")))))))
+    (multiple-value-bind (marker commenting opener closer) (mode-comment-style mode)
+      (cond (marker (values (format nil "~a " (or commenting marker)) ""))
+            (opener (values (format nil "~a " opener) (format nil " ~a" closer)))
+            (t (values "" ""))))))
 
 (defun set-file-local-setting (buffer name value)
   "Write NAME: VALUE into the Local Variables block at the end of BUFFER's

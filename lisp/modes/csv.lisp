@@ -121,7 +121,7 @@ separator for one buffer.
   is typed there, in an empty file, or one made empty).
 - a character, such as #\\, #\; or #\\Tab: that one, always, whatever the
   file holds."
-  :values (or (member :detect) "a character"))
+  :values (or (member :detect) character))
 
 (define-setting *csv-header* t
   "Whether the first line of the files CSV mode shows is their header, naming
@@ -390,8 +390,8 @@ ROPE-RECORD-START takes them."
        (= (tuatara.text:rope-octet rope line-start) 35)))
 
 (defmethod mode-syntax-highlights ((mode csv-mode) buffer rows)
-  "Colour the fields ROWS of BUFFER show, each column its own colour, as *CSV-
-COLOURING* says."
+  "Colour the fields ROWS of BUFFER show, each column its own colour, as
+*CSV-COLOURING* says."
   (unless (eq (csv-colouring mode) :none)
     (let* ((rope (tuatara.buffer:buffer-text buffer))
            (delimiter (csv-delimiter buffer))

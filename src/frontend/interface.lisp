@@ -14,8 +14,9 @@
 :down, :left, :right, :home, :end, :page-up, :page-down, :backspace, :delete,
 :insert, :enter, :tab, :escape, :f1 ... :f12), a turn of the mouse wheel
 (:wheel-up, :wheel-down), or what the first mouse button did (:down-mouse-1
-pressed, :drag-mouse-1 moved while held, :double-mouse-1 and :triple-mouse-1
-pressed twice or three times at once). CTRL, META and SHIFT are the
+pressed, :drag-mouse-1 moved while held, :up-mouse-1 let go, :mouse-2 the
+second button pressed, :double-mouse-1 and :triple-mouse-1 pressed twice or
+three times at once). CTRL, META and SHIFT are the
 modifiers; COLUMN and ROW, the cell of the screen a mouse key happened at."
   (base #\Nul :type (or character keyword) :read-only t :documentation "The character or special-key keyword of KEY.")
   (ctrl nil :type boolean :read-only t :documentation "True when Control is held in KEY.")
@@ -422,10 +423,11 @@ number, or is less than 0, counts as 0."
 
 (defgeneric frontend-settings-changed (frontend)
   (:documentation "Take in again the settings FRONTEND reads from the init file
-and the session (the window's font and padding, the terminal's padding), which
-may have changed: the editor calls it once the init file has run and after
-every command, so it must be cheap when nothing changed. A frontend whose size
-in cells changes because of them reports a resize. The default does nothing.")
+and the session (the window's font and padding, the terminal's padding), of
+which one or more may have changed: the editor calls it as FRONTEND joins it,
+and after the init file has run or a command when a setting was given
+another value (TUATARA.COMMAND:FOLLOW-SETTINGS). A frontend whose size in
+cells changes because of them reports a resize. The default does nothing.")
   (:method (frontend) (declare (ignore frontend)) nil))
 
 (defgeneric frontend-desktop-style (frontend)
@@ -468,7 +470,8 @@ frontend that draws all rows alike is given neither. PARTS lists the columns
 where the row's parts begin after the first (a window's text after its gutter,
 the window beside it), in order. A frontend that keeps what it painted may keep
 each part apart, as the gutter's numbers stay on a row while the text scrolls
-past them."))
+past them. The editor never changes the string or the lists after the call: a
+frontend may keep them as they are, without copying."))
 
 (defgeneric frontend-set-cursor (frontend row column shape &optional colour)
   (:documentation "Place the cursor at ROW and COLUMN with SHAPE, :block, :bar or
@@ -477,6 +480,12 @@ or the text's when NIL; SHAPE :hidden shows no cursor (over a picture)."))
 
 (defgeneric frontend-end-frame (frontend)
   (:documentation "Finish the frame and show it."))
+
+(defgeneric frontend-focused-p (frontend)
+  (:documentation "True while FRONTEND's window has the keyboard, so that what is copied
+or read from the clipboard there is yours to give. The default answers T: a
+terminal does not say when it is left.")
+  (:method (frontend) (declare (ignore frontend)) t))
 
 ;;; Pictures
 
@@ -509,12 +518,6 @@ PIXELS holds fewer octets than that, so that no frontend reads past them."
                (vectorp pixels) (>= (length pixels) (* width height channels)))
     (tuatara.runtime:refuse "A picture of ~a by ~a pixels came with too few octets for them: not shown" width height))
   (%make-image width height channels pixels (sb-ext:atomic-incf (car **image-count**))))
-
-(defgeneric frontend-focused-p (frontend)
-  (:documentation "True while FRONTEND's window has the keyboard, so that what is copied
-or read from the clipboard there is yours to give. The default answers T: a
-terminal does not say when it is left.")
-  (:method (frontend) (declare (ignore frontend)) t))
 
 (defgeneric frontend-images-p (frontend)
   (:documentation "True when FRONTEND can show pictures (FRONTEND-PUT-IMAGE). The

@@ -121,11 +121,15 @@ sentence of its docstring at the right."
   (let ((keymaps (active-keymaps *editor*)))
     (loop for symbol being the hash-keys of *commands*
           unless (and (not everywhere) (or (key-only-command-p symbol) (command-refusal-reason symbol)))
-          collect (let ((name (string-downcase (symbol-name symbol)))
-                        (keys (where-is symbol keymaps)))
+          collect (let ((symbol symbol)
+                        (name (string-downcase (symbol-name symbol))))
                     (make-candidate name
-                                    :suffix (and keys (list (list (format nil "(~{~a~^, ~})" keys) :completion-key)))
-                                    :annotation (list (documentation-field (documentation symbol 'function) 1/2))
+                                    :suffix (lambda ()
+                                              (let ((keys (where-is symbol keymaps)))
+                                                (and keys (list (list (format nil "(~{~a~^, ~})" keys)
+                                                                      :completion-key)))))
+                                    :annotation (lambda ()
+                                                  (list (documentation-field (documentation symbol 'function) 1/2)))
                                     :value symbol)))))
 
 (defgeneric mode-completion-at-point (mode buffer position)

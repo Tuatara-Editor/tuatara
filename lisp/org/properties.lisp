@@ -104,26 +104,11 @@ away (a tab counting to the next eighth column)."
   (let* ((lines (uiop:split-string text :separator '(#\Newline)))
          (indent (loop for line in lines
                        unless (string= (string-trim *org-blanks* line) "")
-                         minimize (loop for c across line
-                                        with column = 0
-                                        do (case c
-                                             (#\Space (incf column))
-                                             (#\Tab (setf column (tuatara.display:next-tab-stop column 8)))
-                                             (t (return column)))
-                                        finally (return column)))))
+                         minimize (values (org-blank-columns line 0)))))
     (if (or (null indent) (zerop indent))
         text
         (format nil "~{~a~^~%~}"
-                (mapcar (lambda (line)
-                          (let ((column 0) (i 0))
-                            (loop while (and (< i (length line)) (< column indent))
-                                  do (case (char line i)
-                                       (#\Space (incf column))
-                                       (#\Tab (setf column (tuatara.display:next-tab-stop column 8)))
-                                       (t (return)))
-                                     (incf i))
-                            (subseq line i)))
-                        lines)))))
+                (mapcar (lambda (line) (subseq line (nth-value 1 (org-blank-columns line 0 indent)))) lines)))))
 
 (defun org-block-code (block)
   "The code of BLOCK, a source block, as it is tangled and exported: its lines
@@ -132,4 +117,4 @@ unescaped and their common indentation taken away (`org-remove-common-indentatio
 
 (defun org-trim-code (code)
   "CODE without the spaces, tabs and blank lines at its start and end, as a block's code is written to its file."
-  (string-trim '(#\Space #\Tab #\Newline #\Return) code))
+  (string-trim *blank-characters* code))

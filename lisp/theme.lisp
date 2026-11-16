@@ -74,6 +74,7 @@ at only: dimmed, and pressing it says why." :dim t)
 (define-face :header-line "Header lines of lists and tables, such as the column titles of *Health*."
   :bold t
   :underline t)
+
 ;;; Lists: one face for each kind of thing a list shows, the same in every
 ;;; list that shows it, so that a theme sets each once
 
@@ -127,10 +128,6 @@ that failed in the health report (\\[check-health])." :fg :red :bold t)
 others, among the details of an entry in a rimu list." :fg :bright-black)
 (define-face :rimu-set-id "The set-user, set-group and sticky letters (s, S, t,
 T) among the permissions of an entry in a rimu list." :fg :red :bold t)
-(define-face :mode-line-sign-idle "The mode line's signs before [-] (P, U and S) while their work is not going on:
-faint, barely seen. Unless set, its colour is worked out from the mode line's
-as the theme in force has it, its ground moved a sixth of the way towards its
-text; dim where the mode line's colours are not known." :dim t)
 
 ;;; Editing
 
@@ -341,6 +338,11 @@ goes on: P while a job of the buffer runs or waits its turn (*processing-indicat
 U while a directory of *indexed-directories* is being read (*indexing-indicator*),
 S while one is searched (*searching-indicator*), D while the editor runs as a
 daemon (*daemon-indicator*); in the theme's warning colour, to stand out." :inherit :warning)
+(define-face :mode-line-sign-idle "The mode line's signs before [-] (P, U, S and D) while
+their work is not going on: faint, barely seen. Unless set, its colour is
+worked out from the mode line's as the theme in force has it, its ground moved
+a sixth of the way towards its text; dim where the mode line's colours are not
+known." :dim t)
 (define-face :mode-line-recording "Rec in the mode line while keys are recorded (\\[start-recording-keys]),
 and how many plays are done while recorded keys play over and over (\\[play-recorded-keys]);
 as the signs of work, in the theme's warning colour." :inherit :mode-line-sign)
@@ -348,7 +350,6 @@ as the signs of work, in the theme's warning colour." :inherit :mode-line-sign)
 (define-face :terminal-italic "Text a program in a terminal set in italics." :italic t)
 (define-face :terminal-underline "Text a program in a terminal underlined." :underline t)
 (define-face :terminal-dim "Text a program in a terminal set faint." :dim t)
-
 (define-face :terminal-reverse "Text a program in a terminal shown in reverse, its colours swapped." :reverse t)
 (define-face :spellcheck "A word spelt wrong (\\[spellcheck-mode],
 \\[global-spellcheck-mode]): underlined, wavy in a window of its own as
@@ -526,8 +527,10 @@ colours, so the editor follows whatever colours the terminal uses.")
 (define-theme plain
   "No colours at all, for terminals that have none: bold, underline, reverse
 video and dim carry the distinctions. Chosen by itself when the terminal
-reports no colours."
+reports no colours. Its palette's text and ground, black on white, are what a
+window paints where nothing else gives a colour."
   :colourless
+  :palette ((text "#000000") (ground "#ffffff"))
   (:mode-line :reverse t) (:mode-line-inactive :reverse t :dim t) (:vertical-border :dim t)
   (:region :reverse t) (:banked-line :reverse t :dim t) (:completion-selected :reverse t)
   (:split-place :underline t) (:split-cursor :reverse t) (:split-cursor-insert :reverse t :underline t)
@@ -793,14 +796,14 @@ else was chosen, since colours would not show there.")
   "The dark theme toggle-light-dark-theme switches to, and the one used while
 the desktop is dark (*FOLLOW-DESKTOP-STYLE*). Set it in the init file, for
 example (setf *dark-theme* 'terminal).
-- a theme's name: ao-dark as standard."
-  :values "a theme's name")
+- a theme's name, a symbol or text: ao-dark as standard."
+  :values (or symbol string))
 
 (define-setting tuatara-user:*light-theme* 'ao-light
   "The light theme toggle-light-dark-theme switches to, and the one used while
 the desktop is light (*FOLLOW-DESKTOP-STYLE*). Set it in the init file.
-- a theme's name: ao-light as standard."
-  :values "a theme's name")
+- a theme's name, a symbol or text: ao-light as standard."
+  :values (or symbol string))
 
 (define-setting tuatara-user:*follow-desktop-style* t
   "Whether the window's theme follows the desktop's light or dark style, which
@@ -834,6 +837,21 @@ frontend knows it, is not the one followed last; not while
   (follow-desktop-style editor)
   nil)
 
+(defun choose-theme (name &key say)
+  "Make theme NAME the one in force, as chosen: the desktop's light or dark
+style is not followed after it. With SAY, say which theme is in force now."
+  (setf *theme-chosen* t)
+  (tuatara.display:apply-theme name)
+  (when say (message "Theme ~(~a~)" tuatara.display:*current-theme*)))
+
+(defun install-theme ()
+  "Put the theme the editor starts with (*STARTUP-THEME*) in force, as not yet
+chosen by name, and have the theme follow the desktop's light or dark style
+from then on (DESKTOP-STYLE-TICK)."
+  (tuatara.display:apply-theme *startup-theme*)
+  (setf *theme-chosen* nil *style-followed* nil)
+  (pushnew 'desktop-style-tick *tick-functions*))
+
 (defun same-theme-p (a b)
   "True when theme names A and B (symbols from any package) name the same theme."
   (let ((ta (and a (tuatara.display:find-theme a))) (tb (and b (tuatara.display:find-theme b))))
@@ -846,9 +864,7 @@ dark style is not followed after it."
   (let ((next (if (same-theme-p tuatara.display:*current-theme* tuatara-user:*dark-theme*)
                   tuatara-user:*light-theme*
                   tuatara-user:*dark-theme*)))
-    (setf *theme-chosen* t)
-    (tuatara.display:apply-theme next)
-    (message "Theme ~(~a~)" tuatara.display:*current-theme*)))
+    (choose-theme next :say t)))
 
 (defun theme-candidates ()
   "Completion candidates for every theme, each with the first sentence of its description beside it."
@@ -865,9 +881,7 @@ dark style is not followed after it."
 settings (set-face in the init file) stay on top of any theme."
   (let ((chosen (completing-read "Load theme: " (theme-candidates) :require-match t)))
     (when (symbolp chosen)
-      (setf *theme-chosen* t)
-      (tuatara.display:apply-theme chosen)
-      (message "Theme ~(~a~)" chosen))))
+      (choose-theme chosen :say t))))
 
 ;;; The sixteen colours of a terminal, as the theme in force gives them
 
@@ -879,10 +893,26 @@ program in a terminal (\\[terminal]) chooses by their numbers: black, red,
 green, yellow, blue, magenta, cyan and white, then the bright ones. A theme
 without one of these roles leaves that colour to the terminal's palette.")
 
+(sb-ext:defglobal **terminal-colours** (cons nil nil)
+  "The sixteen colours of a terminal as the theme in force gives them
+\(THEME-TERMINAL-COLOUR): the face generation (TUATARA.DISPLAY:*FACE-GENERATION*)
+they were worked out for, and a vector of them.")
+
 (defun theme-terminal-colour (index)
   "The colour, #rrggbb, the theme in force gives the basic colour INDEX (0-15)
-of a terminal (*TERMINAL-PALETTE-ROLES*); NIL when it gives none."
-  (let ((theme (and tuatara.display:*current-theme* (tuatara.display:find-theme tuatara.display:*current-theme*))))
-    (and theme (< -1 index 16)
-         (handler-case (tuatara.display:theme-role-colour theme (aref *terminal-palette-roles* index))
-           (simple-error () nil)))))
+of a terminal (*TERMINAL-PALETTE-ROLES*); NIL when it gives none. The sixteen
+are worked out again only once the faces have changed."
+  (when (< -1 index 16)
+    (let ((kept **terminal-colours**) (generation tuatara.display:*face-generation*))
+      (unless (eql (car kept) generation)
+        (let ((theme (and tuatara.display:*current-theme*
+                          (tuatara.display:find-theme tuatara.display:*current-theme*))))
+          (setf kept (cons generation
+                           (map 'simple-vector
+                                (lambda (role)
+                                  (and theme
+                                       (handler-case (tuatara.display:theme-role-colour theme role)
+                                         (simple-error () nil))))
+                                *terminal-palette-roles*))
+                **terminal-colours** kept)))
+      (svref (cdr kept) index))))

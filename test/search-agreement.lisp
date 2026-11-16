@@ -216,7 +216,7 @@ in parallel (LINE-MATCHES)."
               (let ((tuatara.syntax:*serial-window* (first sizes)) (tuatara.syntax:*parallel-piece* (second sizes)))
                 (is equalp
                     (coerce oracle 'simple-vector)
-                    (tuatara.syntax:search-all rope needle :case-fold fold :threads 4)
+                    (literal-match-starts rope needle :case-fold fold :threads 4)
                     "every ~s~:[~;, case folded~] at ~a" needle fold sizes)
                 (is = (length oracle)
                     (tuatara.defaults::count-line-matches rope (tuatara.defaults::make-pattern-matcher needle :fold fold) 0 size)

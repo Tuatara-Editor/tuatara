@@ -12,16 +12,19 @@
   (:import-from #:tuatara.io #:octets-integer #:octets-signed #:octets-words #:directory-name #:walk-directory)
   (:import-from #:tuatara.io #:fd-octets #:crc32 #:zip-octets #:zip-entries #:zip-entry-octets #:inflate #:zip-error
                 #:*zip-largest-entry* #:*zip-largest-ratio*)
-  (:import-from #:tuatara.buffer #:buffer-read-only-p #:buffer-char-before #:next-line-start)
+  (:import-from #:tuatara.buffer #:buffer-read-only-p #:buffer-char-before #:next-line-start #:buffer-line-head)
   (:import-from #:tuatara.buffer #:buffer-crlf-p #:lf-newlines #:crlf-newlines #:cr-newlines #:text-for-buffer)
-  (:import-from #:tuatara.runtime #:define-record #:foreign-library-p #:foreign-call #:jobs-of #:close-fd-quietly
+  (:import-from #:tuatara.runtime #:define-record #:foreign-library-p #:jobs-of #:close-fd-quietly
                 #:with-fd-closed-on-error
                 #:reporting-errors #:ignoring-errors-reported #:refusal #:refuse #:*secret-at-hand*
                 #:run-hook #:run-hook-until-success #:run-hook-until-done #:call-hook-function
-                #:hook-function-name #:define-setting #:setting-values-words #:setting-value-fault)
+                #:hook-function-name #:define-setting #:setting-values-words #:setting-value-fault
+                #:setting-in-force
+                #:set-setting #:settings-snapshot #:put-back-misfit-settings)
   (:import-from #:tuatara.display #:next-tab-stop)
-  (:import-from #:tuatara.text #:word-char-p #:name-char-p #:number-formatter #:blank-text-p #:space-or-tab-char-p
-                #:search-count #:spaces)
+  (:import-from #:tuatara.text #:word-char-p #:letter-or-mark-p #:name-char-p #:number-formatter #:blank-text-p
+                #:space-or-tab-char-p #:search-count #:spaces
+                #:blank-char-p #:*blank-characters*)
   (:import-from #:tuatara.text #:string-line-start #:string-line-end #:xml-entity #:xml-tag-end #:xml-text-value
                 #:utf-16-text #:parse-decimal #:whole-number #:+fnv-offset+
                 #:xml-name #:xml-attribute #:xml-children #:xml-child #:xml-root #:xml-local-name

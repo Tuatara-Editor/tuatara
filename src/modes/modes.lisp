@@ -64,7 +64,9 @@ expression compiled once.")
 
 (defun mode-lighter (name)
   "The mode-line name of major mode NAME."
-  (mode-info-lighter (find-mode name)))
+  (let ((info (find-mode name)))
+    (unless info (refuse "No major mode named ~(~a~)." name))
+    (mode-info-lighter info)))
 
 (defun mode-names ()
   "The names of all major modes, sorted."
@@ -204,14 +206,20 @@ on the next visit (*SAVE-PLACE-MODE*); false for a file written afresh each
 time, as git's commit messages are.")
   (:method (mode) (declare (ignore mode)) t))
 
+(defun mode-comment-field (mode accessor)
+  "The first of the comment specifications ACCESSOR reads from MODE's definition
+and the definitions of the modes it is made from, nearest first, as two
+values: its first and its second element; NIL when none gives one."
+  (let ((comment (loop for name in (mode-precedence mode) thereis (funcall accessor (find-mode name)))))
+    (and comment (values (first comment) (second comment)))))
+
 (defun mode-comment-syntax (mode)
   "How MODE's language writes comments at the start of a line, as two values:
 the marker a commented line starts with (\";\" in Lisp, \"//\" in Rust), and what
 commenting a line puts there (\";;\" in Lisp); NIL when the language has no such
 comments. The :COMMENT of MODE's definition, or of the nearest mode it is made
 from that gives one."
-  (let ((comment (loop for name in (mode-precedence mode) thereis (mode-info-comment (find-mode name)))))
-    (and comment (values (first comment) (second comment)))))
+  (mode-comment-field mode #'mode-info-comment))
 
 (defun mode-block-comment-syntax (mode)
   "How MODE's language writes a comment that has an end, for a language with
@@ -219,8 +227,19 @@ no comments at the start of a line (MODE-COMMENT-SYNTAX), as two values: what
 begins it and what ends it (\"<!--\" and \"-->\" in HTML); NIL when there is none.
 The :BLOCK-COMMENT of MODE's definition, or of the nearest mode it is made from
 that gives one."
-  (let ((comment (loop for name in (mode-precedence mode) thereis (mode-info-block-comment (find-mode name)))))
-    (and comment (values (first comment) (second comment)))))
+  (mode-comment-field mode #'mode-info-block-comment))
+
+(defun mode-comment-style (mode)
+  "How MODE's language writes a comment, as four values: the marker a
+commented line starts with and what commenting a line puts there
+\(MODE-COMMENT-SYNTAX), or for a language with none of those, NIL and NIL and
+then what begins and what ends a comment that has an end
+\(MODE-BLOCK-COMMENT-SYNTAX); all NIL when the language has no comments."
+  (multiple-value-bind (marker insert) (mode-comment-syntax mode)
+    (if marker
+        (values marker insert nil nil)
+        (multiple-value-bind (opener closer) (mode-block-comment-syntax mode)
+          (values nil nil opener closer)))))
 
 (defgeneric mode-indent-lines (mode buffer start end &optional blank-lines)
   (:documentation "How MODE indents the lines of BUFFER from the one holding octet START to the
@@ -324,7 +343,9 @@ defined again."
 
 (defun add-mode-hook (mode function)
   "Call FUNCTION with the buffer whenever a buffer enters MODE or a mode derived from it."
-  (pushnew function (mode-info-hooks (find-mode mode))))
+  (let ((info (find-mode mode)))
+    (unless info (refuse "No major mode named ~(~a~)." mode))
+    (pushnew function (mode-info-hooks info))))
 
 (defun set-major-mode (buffer name)
   "Switch BUFFER to major mode NAME: leave the old mode, install the new mode's
@@ -377,7 +398,8 @@ file name, then path pattern, then extension (as it is written, else in any
 case), then #! interpreter (with a trailing version number removed, so
 python3.12 finds python), else FUNDAMENTAL-MODE."
   (let* ((name (tuatara.io:native-file-name path))
-         (type (pathname-type path)))
+         (dot (position #\. name :from-end t))
+         (type (and dot (plusp dot) (< (1+ dot) (length name)) (subseq name (1+ dot)))))
     ;; an encrypted file has the mode of what it holds: notes.org.gpg, Org
     (when (and type (string-equal type "gpg") (> (length name) 4))
       (return-from mode-for-file
@@ -416,7 +438,7 @@ saying so."
   (let* ((path (tuatara.buffer:buffer-file buffer))
          (rope (tuatara.buffer:buffer-text buffer))
          (first-line (let ((end (min (tuatara.text:rope-octet-length rope) 512)))
-                       (and (plusp end)
+                       (and path (plusp end)
                             (let ((octets (tuatara.text:rope-octets rope :start 0 :end end)))
                               ;; a Windows file's first line ends with a carriage return too
                               (string-right-trim

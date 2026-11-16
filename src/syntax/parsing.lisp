@@ -425,7 +425,6 @@ SYNTAX unless it is being let go; why a parse was given up is noted in JOB."
       (when (and unusable (eq why :short))
         (parser-let-go (syntax-grammar syntax) (tuatara.buffer:buffer-name (syntax-buffer syntax))))
       (when unusable (setf-syntax-held (syntax-parser syntax) nil))
-
       (when (eq why :failed)
         (setf (parse-job-fault job) (make-condition 'grammar-failure :grammar (syntax-grammar syntax))))
       tree)))

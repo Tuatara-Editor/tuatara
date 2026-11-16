@@ -5,7 +5,7 @@
   :description "Tuatara: an Emacs-shaped editor in Common Lisp."
   :author "Michael A Jones <yardquit@pm.me>"
   :license "GPL-3.0-or-later"
-  :version "0.90.31"
+  :version "0.90.32"
   :depends-on ("tuatara/core")
   :in-order-to ((test-op (test-op "tuatara/tests"))))
 
@@ -20,13 +20,14 @@ and the frontend interface. Depends on nothing under lisp/ or frontends/."
                (:file "version")
                (:module "runtime"  :serial t :components
                         ((:file "package") (:file "records") (:file "host") (:file "resources") (:file "stopping")
-                         (:file "debug") (:file "pool") (:file "threads") (:file "locks") (:file "jobs") (:file "hooks")
-                         (:file "settings")))
+                         (:file "debug") (:file "refusals") (:file "pool") (:file "threads") (:file "locks")
+                         (:file "jobs") (:file "hooks") (:file "settings")))
                (:module "text"     :serial t :components
                         ((:file "package") (:file "utf8") (:file "mapping") (:file "rope") (:file "edits")
                          (:file "strings") (:file "octets") (:file "version") (:file "json") (:file "xml")
                          (:file "escapes")))
-               (:module "buffer"   :serial t :components ((:file "package") (:file "buffer")))
+               (:module "buffer"   :serial t :components ((:file "package") (:file "buffer") (:file "job-result")
+                                                               (:file "newlines")))
                (:module "io"       :serial t :components
                         ((:file "package") (:file "posix") (:file "kinds") (:file "in-place") (:file "isolation")
                          (:file "files") (:file "watch") (:file "save") (:file "programs") (:file "processes")
@@ -82,13 +83,14 @@ and the frontend interface. Depends on nothing under lisp/ or frontends/."
                (:module "editing" :serial t :components
                         ((:file "state") (:file "your-name") (:file "diff") (:file "tabs") (:file "choosing")
                          (:file "questions") (:file "commands") (:file "extended-command") (:file "sentences")
-                         (:file "simple") (:file "pairs") (:file "comments") (:file "paren") (:file "case")
-                         (:file "mouse") (:file "font") (:file "font-list") (:file "selection") (:file "lists")
-                         (:file "narrowing") (:file "sort") (:file "records") (:file "enchant") (:file "toggles")
-                         (:file "spellcheck") (:file "windows") (:file "frames") (:file "own-files")
+                         (:file "line-jobs") (:file "rewrites") (:file "simple") (:file "pairs") (:file "comments") (:file "paren")
+                         (:file "case") (:file "mouse") (:file "font") (:file "font-list") (:file "selection")
+                         (:file "lists") (:file "narrowing") (:file "sort") (:file "records") (:file "enchant")
+                         (:file "toggles") (:file "spellcheck") (:file "windows") (:file "frames") (:file "own-files")
                          (:file "snippets") (:file "fill") (:file "hl-line") (:file "cursor-column")
                          (:file "soft-wrap") (:file "centred-text") (:file "display-fill-column") (:file "user-lisp")
                          (:file "recorded-keys") (:file "shown-files") (:file "conflicts")))
+               (:module "pattern-questions" :pathname "search" :components ((:file "questions")))
                (:module "buffer-commands" :pathname "buffers" :components ((:file "commands")))
                (:module "files"   :serial t :components
                         ((:file "gathering") (:file "encrypted-names") (:file "visiting") (:file "standard-input")
@@ -113,9 +115,9 @@ and the frontend interface. Depends on nothing under lisp/ or frontends/."
                          (:file "repeat-menu") (:file "items") (:file "tables") (:file "formulas") (:file "tangle")
                          (:file "toc") (:file "links") (:file "linking") (:file "clock") (:file "checklist")
                          (:file "agenda") (:file "dblock") (:file "agenda-view") (:file "notify")
-                         (:file "formatted-blocks") (:file "latex-fonts") (:file "latex-pictures") (:file "latex")
-                         (:file "latex-languages") (:file "export-settings") (:file "keywords") (:file "pictures")
-                         (:file "foreign-text")
+                         (:file "formatted-blocks") (:file "latex-fonts") (:file "latex-pictures") (:file "export-core")
+                         (:file "latex") (:file "latex-languages") (:file "export-settings") (:file "keywords")
+                         (:file "pictures") (:file "foreign-text")
                          (:file "docx") (:file "docx-templates") (:file "docx-read") (:file "office-read")
                          (:file "odf-read") (:file "template-import") (:file "docx-import") (:file "latex-import")
                          (:file "refile") (:file "capture") (:file "prose")
@@ -145,7 +147,7 @@ and the frontend interface. Depends on nothing under lisp/ or frontends/."
                (:module "lsp"     :serial t :components
                         ((:file "tools") (:file "usual-tools") (:file "format") (:file "client") (:file "documents")
                          (:file "diagnostics") (:file "features") (:file "hints") (:file "semantic") (:file "symbols")
-                         (:file "watching") (:file "folding") (:file "org-blocks")))
+                         (:file "watching") (:file "folding") (:file "org-blocks") (:file "lsp")))
                (:module "git"     :serial t :components
                         ((:file "git") (:file "commits") (:file "stash") (:file "branches") (:file "log")
                          (:file "remote") (:file
@@ -287,6 +289,7 @@ the program's entry point."
                (:file "docx-view")
                (:file "template-import")
                (:file "office-view")
+               (:file "org-export-checks")
                (:file "metadata")
                (:file "auto-save")
                (:file "session")
@@ -300,8 +303,11 @@ the program's entry point."
                (:file "org-links")
                (:file "org-tables")
                (:file "org-agenda")
+               (:file "org-agenda-reading")
+               (:file "office-reading-limits")
                (:file "org-blocks")
                (:file "org-internals")
+               (:file "org-odd-input")
                (:file "org-parts")
                (:file "calendar")
                (:file "rimu-operations")
@@ -327,12 +333,14 @@ the program's entry point."
                (:file "reuse-index")
                (:file "state-and-files")
                (:file "kept-files")
+               (:file "shared-helpers")
                (:file "job-endings")
                (:file "job-runner")
                (:file "search-results")
                (:file "job-guards")
                (:file "journal")
                (:file "capture")
+               (:file "org-calendar-checks")
                (:file "emulator")
                (:file "terminal")
                (:file "objects")
@@ -347,6 +355,7 @@ the program's entry point."
                (:file "remote-files")
                (:file "language-servers-brought")
                (:file "tools")
+               (:file "tool-fences")
                (:file "config")
                (:file "modes")
                (:file "themes")
@@ -379,8 +388,11 @@ the program's entry point."
                (:file "recorded-keys")
                (:file "spellcheck")
                (:file "prose")
+               (:file "editing-regressions")
+               (:file "core-edges")
                (:file "ended-tests")
                (:file "feature-packages")
+               (:file "files-and-lists")
                (:file "package-runner")
                (:file "compile-warning-gate")
                (:file "bench-rope"))

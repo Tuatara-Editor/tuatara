@@ -165,6 +165,8 @@ each is listed with what it is and where, and the one chosen is gone to."
     (if (null server)
         (message "No language server here finds a project's names")
         (let ((query (read-string "Project symbol: " :initial (or (lsp-word-at buffer (point)) "") :select-initial t)))
+          ;; asked of the text as it is: what was typed last is sent first
+          (lsp-in-step buffer)
           (lsp-request server "workspace/symbol" (tuatara.text:json-object "query" query)
                        (lambda (result error)
                          (let ((symbols (remove-if-not (lambda (s) (tuatara.text:json-text s "name"))

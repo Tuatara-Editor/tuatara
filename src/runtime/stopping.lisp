@@ -102,9 +102,12 @@ nothing outside stoppable work."
        (if *stop-cells* (call-stoppable #',name) (,name)))))
 
 (defun ensure-stop-watch ()
-  "Start the thread watching stoppable work, unless it runs; **STOP-LOCK** held."
+  "Start the thread watching stoppable work, unless it runs; **STOP-LOCK** held.
+It stands level with the editor's thread, whose calls it cuts short, not with
+the work in the background, which may take every processor."
   (unless (and **stop-watch** (sb-thread:thread-alive-p **stop-watch**))
-    (setf **stop-watch** (make-guarded-thread #'watch-stoppable-work :name "tuatara stoppable work"))))
+    (setf **stop-watch** (make-guarded-thread #'watch-stoppable-work :name "tuatara stoppable work" :secret nil
+                                                                      :niceness 0))))
 
 (defun enter-stoppable-work (cancel slow)
   "Note that this thread begins the work of CANCEL, whose calls may take SLOW seconds (or NIL)."

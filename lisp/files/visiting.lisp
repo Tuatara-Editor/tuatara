@@ -80,6 +80,17 @@ shown), as NOTE-CHOSEN-PATH does, unless BUFFER shows it opened safely."
   (when buffer
     (note-chosen-path path :directory directory :safe (tuatara.io:safe-visit-p buffer))))
 
+(define-setting *safe-directories* '()
+  "Directories whose files always open safely, as \\[find-file-safely] opens a
+file.
+A file opens read-only, with no major mode, hooks or version control, and
+nothing is written beside it. This holds however it is opened:
+\\[find-file], the files visited lately, a drop on the window, the command
+line. \\[end-safe-visit] opens one as usual after all.
+- nil: no directory, as standard.
+- a list of directories' names, '(\"~/Evidence/\") for example."
+  :values (list-of directory))
+
 (defun named-safe-p (native)
   "True when NATIVE, a path remembered, is in one of *SAFE-DIRECTORIES* by the
 names as written (PATH-WITHIN-P), or a buffer shows it opened safely; true
@@ -88,7 +99,7 @@ for every path when *SAFE-DIRECTORIES* cannot be read. The disk is not asked."
       (handler-case (reporting-errors ("looking for ~a in the safe directories" native)
                       (some (lambda (directory)
                               (tuatara.io:path-within-p native (tuatara.io:native (tuatara.io:expand-path directory))))
-                            (safe-directories)))
+                            *safe-directories*))
         (error () t))))
 
 (defun writing-chosen-p (native)
@@ -146,20 +157,22 @@ INITIAL names a file."
                    (if (directory-input-p initial) "" (tuatara.io:native-file-name initial)))
       initial))
 
-(defun chosen-ranks (directory chosen)
+(defun chosen-ranks (directory chosen &key writing)
   "How lately each entry of DIRECTORY (a native name ending in /) was chosen,
 or something in it, by CHOSEN, the paths chosen lately (CHOSEN-PATHS). The
 result is a table from its name, a directory's with a slash after it, to its
 place among them, 0 the latest. Those in one of *SAFE-DIRECTORIES* are left out
-\(SAFE-DIRECTORY-OF, which may ask the disk; called where the directory is read)."
+\(SAFE-DIRECTORY-OF, which may ask the disk; called where the directory is read),
+and with WRITING, for a question whose answer is written to, those in an
+evidence directory (EVIDENCE-PATH-P): only the paths in DIRECTORY are asked."
   (let ((ranks (make-hash-table :test 'equal)) (length (length directory)))
     (loop for path in chosen
           for place from 0
           when (and (> (length path) length) (string= directory path :end2 length))
             do (let* ((slash (position #\/ path :start length))
                       (name (if slash (subseq path length (1+ slash)) (subseq path length))))
-                 ;; what is in one of *safe-directories* is offered first never
-                 (unless (safe-directory-of path)
+                 ;; what is in one of *safe-directories*, or evidence for a place to write, is offered first never
+                 (unless (or (safe-directory-of path) (and writing (evidence-path-p path)))
                    (unless (gethash name ranks) (setf (gethash name ranks) place))
                    ;; a directory chosen itself, its name ending in / or not
                    (unless (or slash (gethash (concatenate 'string name "/") ranks))
@@ -167,26 +180,14 @@ place among them, 0 the latest. Those in one of *SAFE-DIRECTORIES* are left out
     ranks))
 
 (defvar *file-candidates-kept* nil
-  "The candidates FILE-CANDIDATES made last, with what tells whether they are
-still good: (DIRECTORY TIME CHOSEN CANDIDATES), the directory's native name,
-its time of change, and the paths chosen lately as they were.")
+  "The candidates DIRECTORY-CANDIDATES made last, with what tells whether they
+are still good: (DIRECTORY TIME CHOSEN WRITING CANDIDATES), the directory's
+native name, its time of change, the paths chosen lately as they were, and
+whether they were made for a question whose answer is written to.")
 
 (defparameter *file-listing-wait* 1/10
   "Seconds a question for a file waits for a directory to be read before it
 shows that it is still being read, the editor free meanwhile (READ-PATH).")
-
-(defun file-candidates (input)
-  "Completion candidates for INPUT, a path being typed (a leading ~ is the home
-directory). They are the entries of its directory part (the current directory
-when there is none), directories first and marked by a trailing slash. Each
-has its permissions, its size (or what it is, for a named pipe or a device)
-and when it last changed beside it. Those chosen lately in a question for
-files, or with something in them chosen, are ranked the latest first
-\(CHOSEN-RANKS). Nothing but the directory is opened, so a named pipe in it
-cannot hold the editor up.
-The candidates of a directory are made once while it does not change, not
-again at each key typed in it."
-  (directory-candidates (input-directory-path input) (and *last-used-first* (chosen-paths))))
 
 (defun input-directory-path (input)
   "The directory INPUT, a path being typed, names the entries of: its part up
@@ -197,31 +198,39 @@ none; a directory on another machine as its name, /ssh:HOST:/directory/."
         dir
         (tuatara.io:expand-path (if (string= dir "") "./" dir)))))
 
-(defun directory-candidates (expanded chosen)
-  "The candidates FILE-CANDIDATES gives for the entries of the directory
-EXPANDED, CHOSEN being the paths chosen lately (CHOSEN-PATHS) or NIL: those
-made last while the directory has not changed since, else made afresh. The
-directory is read on the thread calling this, which in a question for a file
-is one of its own (READ-PATH)."
+(defun directory-candidates (expanded chosen &key writing)
+  "Completion candidates for the entries of the directory EXPANDED (an absolute
+pathname, or the name of a directory on another machine), directories first
+and marked by a trailing slash. Each has its permissions, its size (or what
+it is, for a named pipe or a device) and when it last changed beside it.
+Those chosen lately, by CHOSEN, the paths chosen lately (CHOSEN-PATHS) or
+NIL, or with something in them chosen, are ranked the latest first
+\(CHOSEN-RANKS, WRITING as it has it). Nothing but the directory is opened,
+so a named pipe in it cannot hold the editor up. The candidates of a
+directory are made once while it does not change, not again at each key
+typed in it. The directory is read on the thread calling this, which in a
+question for a file is one of its own (READ-PATH)."
   (when (remote-name-p expanded)
     (return-from directory-candidates (remote-candidates expanded)))
   (let* ((native (tuatara.io:native expanded))
          (time (let ((stamp (tuatara.io:path-stamp expanded :failure nil))) (and stamp (tuatara.io:stamp-mtime stamp))))
          (kept *file-candidates-kept*))
-    (if (and kept time (equal (first kept) native) (eql (second kept) time) (eq (third kept) chosen))
-        (fourth kept)
-        (let ((candidates (file-candidates-of expanded chosen)))
-          (when time (setf *file-candidates-kept* (list native time chosen candidates)))
+    (if (and kept time (equal (first kept) native) (eql (second kept) time) (eq (third kept) chosen)
+             (eq (fourth kept) writing))
+        (fifth kept)
+        (let ((candidates (file-candidates-of expanded chosen writing)))
+          (when time (setf *file-candidates-kept* (list native time chosen writing candidates)))
           candidates))))
 
-(defun file-candidates-of (expanded chosen)
+(defun file-candidates-of (expanded chosen writing)
   "The completion candidates of the entries of the directory EXPANDED, as
-FILE-CANDIDATES gives them, ranked by CHOSEN, the paths chosen lately: the one
-chosen there last first, then the directories and then the files, each in order
-of name (NATURAL-STRING-LESSP)."
+DIRECTORY-CANDIDATES gives them, ranked by CHOSEN, the paths chosen lately,
+with WRITING as CHOSEN-RANKS has it: the one chosen there last first, then
+the directories and then the files, each in order of name
+\(NATURAL-STRING-LESSP)."
   (let* ((entries (tuatara.io:directory-entries expanded :stamps t
                                                          :order #'tuatara.text:natural-string-lessp))
-         (ranks (chosen-ranks (tuatara.io:slash-ended (tuatara.io:native expanded)) chosen))
+         (ranks (chosen-ranks (tuatara.io:slash-ended (tuatara.io:native expanded)) chosen :writing writing))
          (now (get-universal-time)))
     (flet ((fields (kind stamp)
              (if stamp (stamp-fields stamp now) (list (tuatara.io:kind-words kind)))))
@@ -354,9 +363,7 @@ A directory whose listing has not ended yet is not listed again."
                       "tuatara file names"
                       (lambda (give cancel)
                         (declare (ignore cancel))
-                        (let ((all (directory-candidates expanded (if writing
-                                                                      (remove-if #'evidence-path-p chosen)
-                                                                      chosen))))
+                        (let ((all (directory-candidates expanded chosen :writing writing)))
                           (funcall give (if keep
                                             (remove-if-not (lambda (c) (funcall keep (candidate-string c))) all)
                                             all)))))))
@@ -388,7 +395,7 @@ reading, and how many entries there are, as a question's SOURCE gives them."
   (let ((listing (path-question-listing question)))
     (when listing (stop-gathering listing))))
 
-(defun read-path (prompt &key writing (initial (path-question-start :writing writing)) keep preview)
+(defun read-path (prompt &key writing initial keep preview)
   "Ask with PROMPT for a path, as READ-FILE-PATH and READ-DIRECTORY-PATH do.
 The question starts from INITIAL (as standard the directory of the path chosen
 last in such a question, else the directory the current buffer stands in, by
@@ -396,7 +403,7 @@ PATH-QUESTION-START). With WRITING, for a question whose answer is written
 to, it is never a place in an evidence directory, which is then neither where
 the question starts (WRITING-START) nor ranked first among the entries. The
 name is completed against the entries of the directory being typed
-\(FILE-CANDIDATES; with KEEP, a function of an entry's name, those it is true
+\(DIRECTORY-CANDIDATES; with KEEP, a function of an entry's name, those it is true
 for, a directory's name ending in /), matched by any part of the name. While
 nothing is typed after the directory, the entry chosen there last comes first,
 the others in order of name; as you type, the best matches
@@ -412,7 +419,9 @@ line typed, taken as it is (\\<minibuffer>\\[minibuffer-finish] on it, or
 \\[minibuffer-submit-input]), NIL when it is a file chosen."
   ;; the entries of a directory read afresh for each question
   (setf *file-candidates-kept* nil)
-  (let ((dir (if writing (writing-start initial) initial)) (input ""))
+  (let* ((initial (or initial (path-question-start :writing writing)))
+         (dir (if writing (writing-start initial) initial))
+         (input ""))
     (call-with-window-preview
      (lambda (candidate made)
        (let ((chosen (candidate-result candidate)))
@@ -470,7 +479,7 @@ has them."
           ((directory-input-p path) (values path (if new-file :new :directory)))
           (t (when note (note-chosen-path path)) path))))
 
-(defun read-directory-path (prompt &key writing (initial (path-question-start :writing writing)) (note t))
+(defun read-directory-path (prompt &key writing initial (note t))
   "Ask for a directory with PROMPT, from INITIAL (as standard the directory of the
 path chosen last in such a question, else the directory the current buffer
 stands in: PATH-QUESTION-START), as READ-FILE-PATH asks for a file. The
@@ -501,13 +510,9 @@ caller that opens it and remembers it once opened (NOTE-VISITED-PATH).
 WRITING, for a question whose answer is written to (a place to save or copy
 to), never starts in an evidence directory nor offers one first (READ-PATH)."
   (let ((typed (ecase kind
-                 (:directory (if initial
-                                 (read-directory-path prompt :initial initial :note note :writing writing)
-                                 (read-directory-path prompt :note note :writing writing)))
+                 (:directory (read-directory-path prompt :initial initial :note note :writing writing))
                  (:file (read-file-path prompt :note note :writing writing))
-                 (:any (if initial
-                           (read-path prompt :initial initial :writing writing)
-                           (read-path prompt :writing writing))))))
+                 (:any (read-path prompt :initial initial :writing writing)))))
     (and typed (plusp (length typed)) (tuatara.io:native (tuatara.io:expand-path typed)))))
 
 (defun read-new-native-path (prompt &rest keys)
@@ -932,9 +937,9 @@ as the latest chosen (NOTE-CHOSEN-PATH) unless it opened safely."
   (multiple-value-bind (path kind) (read-file-path prompt :preview *preview-files* :note nil)
     (cond ((null path))
           ;; a directory taken as typed: listed in rimu, shown as SHOW shows
-          ((and (eq kind :directory) (fboundp 'rimu-show-directory))
-           (note-visited-path path (funcall 'rimu-show-directory (tuatara.io:native (tuatara.io:expand-path path))
-                                            :safe safe :show show)
+          ((eq kind :directory)
+           (note-visited-path path (rimu-show-directory (tuatara.io:native (tuatara.io:expand-path path))
+                                                        :safe safe :show show)
                               :directory t))
           ;; noted once shown: what opened safely, asked or not, leaves no trace
           (t (note-visited-path path (visit-path path :safe safe :show show))))))
@@ -1071,9 +1076,9 @@ say so."
               (t (save-buffer-with-care b :path path)))))))
 
 (define-command rename-visited-file ()
-  "Give the file the current buffer visits a new name, asked for, its own
-offered to change: a name alone keeps it in its directory, a path (~/notes/a.org,
-../a.org) moves it there on the same drive. The file itself is renamed, not
+  "Give the file the current buffer visits a new name, asked for as any path
+is, its own offered to change: a name alone keeps it in its directory, a path
+\(~/notes/a.org, ../a.org) moves it there on the same drive. The file itself is renamed, not
 written again, and the buffer follows it, named after it, in the mode its
 new name calls for; changes not saved stay so. A name there already, or
 one another buffer visits, is refused. A buffer with no file is saved under
@@ -1089,7 +1094,10 @@ another machine, is left as it is."
           (t
            (let* ((from (tuatara.io:native file))
                   (old (tuatara.io:native-file-name from))
-                  (new (string-trim " " (read-string (format nil "Rename ~a to: " old) :initial old)))
+                  ;; directories completed, the name typed taken as it is
+                  (new (string-trim " " (read-path (format nil "Rename ~a to: " old)
+                                                   :initial (abbreviated-path from) :writing t
+                                                   :keep #'directory-input-p)))
                   (to (and (plusp (length new))
                            (tuatara.io:native (tuatara.io:expand-path new :directory (tuatara.io:parent-path from)))))
                   (taken (and to (buffer-visiting to))))
@@ -1112,9 +1120,8 @@ another machine, is left as it is."
                             (take-mode-of-name b)
                             (if written
                                 (message "Renamed to ~a" (abbreviated-path to))
-                                (message "~a now visits ~a, not written yet: ~a writes it"
-                                         (tuatara.buffer:buffer-name b) (abbreviated-path to)
-                                         (substitute-command-keys "\\[save-buffer]")))))
+                                (message "~a now visits ~a, not written yet: \\[save-buffer] writes it"
+                                         (tuatara.buffer:buffer-name b) (abbreviated-path to)))))
                       (error (e)
                         (message "~a is not renamed: ~a~@[; \\[write-file] writes it there, the old file left as it is~]"
                                  old e (not (equal (tuatara.io:parent-path from) (tuatara.io:parent-path to)))))))))))))

@@ -93,6 +93,8 @@ the last, and set its cell size from them."
       (forget-window f)
       (loop for (instance . number) in (shiftf (gtk-signals f) '())
             do (g-signal-handler-disconnect instance number))
+      (let ((desktop (shiftf (gtk-desktop-settings f) nil)))
+        (when desktop (g-object-unref desktop)))
       (when (gtk-window f)
         (gtk-window-destroy (shiftf (gtk-window f) nil))
         (setf (gtk-area f) nil))))
@@ -157,7 +159,7 @@ WAKE-GTK-LOOP."
   "TITLE as the window's title bar shows it: each octet of a name that is not
 UTF-8 written \\xNN, as the mode line writes it, so that two such names never
 look alike."
-  (tuatara.display:displayable (tuatara.command:escape-controls title nil :raw-bytes) :controls nil))
+  (tuatara.display:displayable (tuatara.display:escape-controls title nil :raw-bytes) :controls nil))
 
 (define-callback on-set-title :boolean ((data :pointer))
   (let* ((f (data-window data))
@@ -221,6 +223,25 @@ background, on GTK's thread, a paste meanwhile waiting for it."
 
 ;;; The window
 
+(defun watch-desktop (f)
+  "Have F's window follow the desktop, on GTK's thread: its light or dark
+style, and its monospace font while *GUI-FONT* names none, each as it
+changes."
+  (let ((data (window-data f)))
+    (setf (gtk-desktop-style f) (settings-desktop-style))
+    (let ((settings (gtk-settings-get-default)))
+      (dolist (signal '("notify::gtk-interface-color-scheme" "notify::gtk-theme-name"
+                        "notify::gtk-application-prefer-dark-theme"))
+        (push (cons settings (g-signal-connect settings signal (callback on-style-changed) data)) (gtk-signals f))))
+    (let ((desktop (g-settings-of "org.gnome.desktop.interface" "monospace-font-name")))
+      (when desktop
+        (setf (gtk-desktop-settings f) desktop)
+        (push (cons desktop (g-signal-connect desktop "changed::monospace-font-name"
+                                              (callback on-desktop-font-changed) data))
+              (gtk-signals f))
+        ;; GSettings tells of a change only of a setting read since the handler was connected
+        (g-settings-get-string desktop "monospace-font-name")))))
+
 (defun open-window (f)
   "Open F's window, on GTK's thread: a drawing area sized to the font's cells,
 taking keys through an input method, the wheel, the first mouse button, files
@@ -246,12 +267,7 @@ dropped on it and the focus."
     (multiple-value-bind (top right bottom left) (tuatara.frontend:padding-sides *gui-padding*)
       (gtk-window-set-default-size window (+ (* 100 (cell-width f)) left right)
                                    (+ (* 40 (cell-height f)) top bottom)))
-    ;; the desktop's light or dark style, and word when it changes
-    (setf (gtk-desktop-style f) (settings-desktop-style))
-    (let ((settings (gtk-settings-get-default)))
-      (dolist (signal '("notify::gtk-interface-color-scheme" "notify::gtk-theme-name"
-                        "notify::gtk-application-prefer-dark-theme"))
-        (push (cons settings (g-signal-connect settings signal (callback on-style-changed) data)) (gtk-signals f))))
+    (watch-desktop f)
     ;; over the drawing area, which takes the keys and the pointer: the rows' pictures, and the cursor over them
     (let ((overlay (gtk-overlay-new)) (grid (gtk-fixed-new)) (pictures (gtk-fixed-new)) (above (gtk-fixed-new))
           (cursor (gtk-drawing-area-new)) (ground (gtk-picture-new)))
@@ -306,7 +322,7 @@ dropped on it and the focus."
   "When standard error goes to no terminal, as when the desktop starts the
 window, send it to stderr.log in the cache directory (TUATARA.IO:SESSION-LOG),
 so that what goes wrong is kept for reading afterwards."
-  (unless (= 1 (sb-unix:unix-isatty 2))
+  (unless (tuatara.io:terminal-p 2)
     (let ((fd (tuatara.io:session-log "the window")))
       (when fd
         (sb-posix:dup2 fd 2)

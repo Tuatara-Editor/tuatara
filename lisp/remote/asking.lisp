@@ -80,7 +80,7 @@ the words of a question of ssh's."
   (and *ssh-may-ask*
        (someone-to-ask-p (running-editor))
        (let ((version (openssh-version program)))
-         (and version (tuatara.io:version-at-least-p version '(8 5))))))
+         (and version (tuatara.io:software-version-at-least-p version '(8 5))))))
 
 (defun ssh-jump (program host)
   "The machines ssh, PROGRAM, goes through to reach HOST (ProxyJump), cleaned to be shown, or NIL."
@@ -169,22 +169,46 @@ that wiped."
     (unless (eq :answered (awaited-answer-state awaited))
       (setf (awaited-answer-state awaited) :abandoned))))
 
+(defvar *questions-given-up* nil
+  "NIL, or a cons whose car turns true once the questions put to you from
+this thread are given up (ASK-ON-EDITOR): bound while ssh run by another
+program may ask, which ends before they are answered when that program
+does.")
+
 (defun ask-on-editor (ask)
   "What ASK, a function of no arguments that puts a question in the
 minibuffer, gives on the editor's thread: run at once on that thread, else as
 its next command, waited for as long as it takes, the job asking stopping the
-wait. NIL when the question was given up."
+wait, as does the car of *QUESTIONS-GIVEN-UP* turning true. NIL when the
+question was given up; an answer that comes as it is given up is wiped."
   (if (away-from-editor-p)
-      (let ((awaited (make-awaited-answer)))
+      (let ((awaited (make-awaited-answer))
+            (given-up *questions-given-up*)
+            (taken nil))
         (defer-action (lambda () (ask-for-awaited awaited ask)))
         (unwind-protect
              (progn (tuatara.runtime:wait-until (lambda ()
                                                   (tuatara.runtime:job-check-stop)
-                                                  (eq :answered (awaited-answer-state awaited)))
+                                                  (or (eq :answered (awaited-answer-state awaited))
+                                                      (and given-up (car given-up))))
                                                 nil)
-                    (awaited-answer-answer awaited))
-          (abandon-awaited awaited)))
+                    (sb-thread:with-mutex ((awaited-answer-lock awaited))
+                      (when (eq :answered (awaited-answer-state awaited))
+                        (setf taken t)
+                        (if (and given-up (car given-up))
+                            (progn (wipe-string (awaited-answer-answer awaited)) nil)
+                            (awaited-answer-answer awaited)))))
+          (unless taken (abandon-awaited awaited))))
       (funcall ask)))
+
+(defun quit-when-given-up (given-up)
+  "A minibuffer question's UPDATE (READ-STRING) that ends the question, as
+\\[keyboard-quit] would, once the car of GIVEN-UP, a cons or NIL, turns true:
+the program that asked it has ended."
+  (lambda ()
+    (when (and given-up (car given-up))
+      (keyboard-quit-signal "Given up: what asked has ended"))
+    1/4))
 
 (defun ssh-question-words (text)
   "TEXT, a question of ssh's, its lines cleaned of what a server could have put
@@ -208,12 +232,13 @@ question is for before it, so that a server cannot begin one in these forms."
         (t :server)))
 
 (defun ssh-question-prompt (host jump text said &key warnings)
-  "What is shown to ask TEXT, a question of ssh's about HOST, as four values:
-the short prompt it is answered at, its kind (SSH-QUESTION-KIND), for :KEY the
-fingerprint that may be typed for yes, and its details: who asks, WARNINGS of
-ssh's, SAID, what ssh passed on from the server since the last question, and
-the question whole. JUMP, the machines ssh goes through, says the question may
-be for one of them."
+  "What is shown to ask TEXT, a question of ssh's about HOST, as four values.
+The first is the short prompt it is answered at; the second its kind
+\(SSH-QUESTION-KIND); the third, for :KEY, the fingerprint that may be typed
+for yes; the fourth its details, who asks, WARNINGS of ssh's, SAID, what ssh
+passed on from the server since the last question, and the question whole.
+JUMP, the machines ssh goes through, says the question may be for one of
+them."
   (let* ((kind (ssh-question-kind text))
          (words (ssh-question-words text))
          (to (format nil "ssh to ~a~@[ (or the jump host ~a)~]" host jump))
@@ -256,15 +281,17 @@ caller wipes, or NIL for none and for a question given up."
   (multiple-value-bind (warnings said) (ssh-new-said asking)
     (multiple-value-bind (prompt kind fingerprint details)
         (ssh-question-prompt (ssh-asking-host asking) (ssh-asking-jump asking) text said :warnings warnings)
-      (ask-on-editor
-       (lambda ()
-         (dolist (warning warnings) (message "ssh to ~a: ~a" (ssh-asking-host asking) warning))
-         (call-with-details-shown
-          details
-          (lambda ()
-            (if (eq kind :key)
-                (ssh-key-answer (read-string prompt :fresh t) fingerprint)
-                (read-password prompt :fresh t)))))))))
+      (let ((given-up *questions-given-up*))
+        (ask-on-editor
+         (lambda ()
+           (dolist (warning warnings) (message "ssh to ~a: ~a" (ssh-asking-host asking) warning))
+           (call-with-details-shown
+            details
+            (lambda ()
+              (let ((update (quit-when-given-up given-up)))
+                (if (eq kind :key)
+                    (ssh-key-answer (read-string prompt :fresh t :update update) fingerprint)
+                    (read-password prompt :fresh t :update update)))))))))))
 
 (defun ssh-said-parts (text)
   "TEXT, what ssh wrote on its error output, in two parts as two values: its
@@ -320,9 +347,11 @@ was or too many have been asked, and the connection should end."
 (defun answer-ssh-questions (asking done job)
   "Put each question ASKING's ssh asks to you, and send back the answer
 \(ANSWER-SSH-QUESTION), until the car of DONE turns true or JOB, the job
-the ssh is run for, or NIL, stops. A refusal goes back to ssh, which ends or
-asks again; too many questions stop JOB, ending the program that ran ssh."
-  (let ((tuatara.runtime:*job* job))
+the ssh is run for, or NIL, stops; a question still open then is given up
+\(*QUESTIONS-GIVEN-UP*). A refusal goes back to ssh, which ends or asks
+again; too many questions stop JOB, ending the program that ran ssh."
+  (let ((tuatara.runtime:*job* job)
+        (*questions-given-up* done))
     (handler-case
         (loop until (car done)
               do (let ((ready (tuatara.io:wait-for-fds (list (ssh-asking-question asking)) 1/4)))

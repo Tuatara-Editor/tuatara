@@ -68,11 +68,12 @@ SECONDS for it; NIL when none showed in that time."
 (defvar *to-close* nil
   "The window whose close button is pressed next (ON-CLOSE-PRESSED).")
 
+(tuatara.io:define-c-function ("gtk_window_close" gtk-window-close) :void (window :pointer))
+
 (tuatara.frontend.gtk::define-callback on-close-pressed :boolean ((data :pointer))
   (declare (ignore data))
   ;; as the window's close button does: GTK asks the window to close
-  (tuatara.runtime:foreign-call "gtk_window_close" sb-alien:void
-                                (sb-sys:system-area-pointer (tuatara.frontend.gtk::gtk-window *to-close*)))
+  (gtk-window-close (tuatara.frontend.gtk::gtk-window *to-close*))
   nil)
 
 (defun run-steps (steps out &key (give-up 240) (exit t))

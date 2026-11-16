@@ -96,15 +96,14 @@ the kind of line it is and the place it names.")
      (list :note (scanner "^(?:note:|help:|; caught STYLE-WARNING:)"))
      ;; grep -n and the rest, file:line: or file:line:col:, of a file that is there
      (list :plain (scanner "^([^\\s:\"'(][^\\s:]*):(\\d{1,9}):(?:(\\d{1,9}):)?"))))
-  "The patterns lines of a compile's output are matched against, in order,
-each (WHAT SCANNER). The :KINDED one is for file:line:col: and error, warning
-or note. The :ARROW one is for rustc's --> file:line:col; :TRACEBACK for
-Python's File \"x\", line n; :PANIC for Rust's thread 'x' panicked at
-file:line:col (a test failing). The :PARENTHESISED one is for
-file(line,col): error or warning (tsc, C#, MSVC), the file's name holding a .
-or /; :ERROR, :WARNING and :NOTE for a line saying one, naming no place. The
-:PLAIN one is for file:line: (grep -n). Lines
-and columns have nine digits at most.")
+  "The patterns lines of a compile's output are matched against, in order, each
+\(WHAT SCANNER). The :KINDED one is for file:line:col: and error, warning or
+note. The :ARROW one is for rustc's --> file:line:col; :TRACEBACK for Python's
+File \"x\", line n; :PANIC for Rust's thread 'x' panicked at file:line:col (a
+test failing). The :PARENTHESISED one is for file(line,col): error or warning
+\(tsc, C#, MSVC), the file's name holding a . or /; :ERROR, :WARNING and :NOTE
+for a line saying one, naming no place. The :PLAIN one is for file:line:
+\(grep -n). Lines and columns have nine digits at most.")
 
 (defparameter *make-directory-scanner*
   (cl-ppcre:create-scanner "^g?make(?:\\[\\d+\\])?: (Entering|Leaving) directory [`'‘](.+)['’]$")
@@ -943,13 +942,6 @@ is about stays where it is until the question is answered
     (cond (*compiles-ending* 0.001)
           (took 0.03))))
 
-(defun elapsed-words (seconds)
-  "SECONDS as how long something took: 0.4 seconds, 3 minutes 12 seconds, 2 hours 5 minutes."
-  (multiple-value-bind (minutes rest) (floor seconds 60)
-    (cond ((< seconds 60) (format nil "~,1f seconds" seconds))
-          ((< minutes 60) (format nil "~d minute~:p ~d second~:p" minutes (floor rest)))
-          (t (format nil "~d hour~:p ~d minute~:p" (floor minutes 60) (mod minutes 60))))))
-
 (defun compile-ending-words (job)
   "How JOB's command ended, how long it took and when, as words: Compile
 finished, exit code 0, after 2.1 seconds at 10:30:05; what of its output was
@@ -968,7 +960,7 @@ a program it started held its output open and was left running~]"
                             ((eq status :exited) (format nil "Compile failed, exit code ~d" code))
                             ((eq status :signaled) (format nil "Compile ended by signal ~d" code))
                             (t "Compile stopped"))
-                      (elapsed-words seconds) (format-time "%T" (get-universal-time))
+                      (duration-words seconds) (format-time "%T" (get-universal-time))
                       (and (plusp (compile-job-left-out job))
                            (format nil "~a more output left out, past the ~a *compile-output-limit* keeps"
                                    (octets-words (compile-job-left-out job)) (octets-words (compile-job-most job))))
@@ -1010,7 +1002,7 @@ not end well; then the compile asked for meanwhile, if any, starts."
 lines naming a file and line and those saying an error, a warning or a note
 in faces of their own. \\<compile-output-mode>\\[list-visit] on a line naming a place opens the file
 there, in another window; \\[next-place] and \\[previous-place] go from place to place from
-anywhere; \\[revert-buffer] runs the command again, \\[compile-stop] stops it, \\[quit-window]
+anywhere; \\[revert-buffer] runs the command again, \\[stop-job] stops it, \\[quit-window]
 closes the window."
   :lighter "Compile" :interactive nil)
 
@@ -1050,6 +1042,8 @@ stopped first, when you say so, and this one starts once it has ended, so
 that two never run at once. True when it started or is to start."
   (let* ((buffer (buffer-in-mode "*compile*" 'compile-output-mode))
          (before (compile-under-way buffer)))
+    ;; stop-job (C-c C-k) there stops the compile before any other work of the buffer
+    (setf (tuatara.buffer:buffer-local buffer :stopped-first) 'compile-job)
     (cond ((null before) (start-compile-now buffer command directory) t)
           ((not (y-or-n-p* "A compile is running; stop it and run this one?"))
            (message "Not run: the compile running goes on")
@@ -1116,7 +1110,7 @@ lines naming a file and line (GCC, Clang, rustc and cargo, Python's
 tracebacks, grep -n) are places: \\<compile-output-mode>\\[list-visit] opens
 one, and \\[next-place] and \\[previous-place] go from place to place from
 anywhere; error, warning and note lines are in faces of their own;
-\\[revert-buffer] runs the command again and \\[compile-stop] stops it. At the
+\\[revert-buffer] runs the command again and \\[stop-job] stops it. At the
 end it says how the command ended (its exit code, or the signal that ended it)
 and how long it took."
   (let* ((here (buffer-directory (current-buffer)))
@@ -1129,20 +1123,11 @@ and how long it took."
         (progn (setf *compile-history* (cons command (remove command *compile-history* :test #'string=)))
                (compile-in command directory)))))
 
-(define-command compile-stop ()
-  "Stop the command running in this compile's output, and every program it
-started: what it printed so far stays."
-  (let ((job (tuatara.runtime:running-job (current-buffer) 'compile-job)))
-    (if job
-        (progn (tuatara.runtime:job-stop job)
-               (message "Stopping the compile"))
-        (message "No compile is running here"))))
-
 (defun install-compile ()
   "Give a compile's output its keys, \\`RET' opening the place on the line and
 \\`C-c C-k' stopping the command, take its output in as it comes, and kill
 what it runs when the editor is left."
-  (define-keys *compile-output-keymap* '(("RET" list-visit) ("C-c C-k" compile-stop)))
-  (commands-for-mode 'compile-output-mode "a compile's output (\\[compile])" 'list-visit 'compile-stop)
+  (define-keys *compile-output-keymap* '(("RET" list-visit) ("C-c C-k" stop-job)))
+  (commands-for-mode 'compile-output-mode "a compile's output (\\[compile])" 'list-visit)
   (pushnew 'compile-output-tick *tick-functions*)
   (pushnew 'kill-compiles-at-exit *exit-functions*))

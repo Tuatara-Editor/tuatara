@@ -65,9 +65,8 @@ it, safely where it opens safely."
   "Show a buffer in another frame and work in it, completing on the live
 buffers as \\[switch-to-buffer] does, the ones used lately first; a new name
 makes one."
-  (let ((name (read-buffer "Switch to buffer in other frame: ")))
-    (unless (zerop (length name))
-      (open-frame *editor* :buffer (find-or-make-buffer name)))))
+  (switch-to-buffer-reading "Switch to buffer in other frame: "
+                            (lambda (buffer) (open-frame *editor* :buffer buffer))))
 
 (defun open-start-frames (editor count)
   "Open frames of EDITOR as it starts, COUNT in all with the first: the Nth

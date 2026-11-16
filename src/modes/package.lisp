@@ -14,6 +14,7 @@ generic function specialised on the mode class.")
            #:mode-largest-file #:add-mode-hook
            #:mode-modal-class #:mode-enter #:mode-exit #:mode-syntax-highlights #:mode-marks-point-p #:mode-wraps-p
            #:mode-keeps-place-p #:mode-line-extra #:mode-comment-syntax #:mode-block-comment-syntax
+           #:mode-comment-style
            #:mode-indent-lines
            #:mode-info-p #:mode-info-name #:mode-info-parent #:mode-info-doc #:mode-info-lighter
            #:mode-info-keymap #:mode-info-modal-class #:mode-info-hooks #:mode-precedence #:shebang-interpreter

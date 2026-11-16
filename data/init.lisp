@@ -1359,6 +1359,12 @@
   ;; stopping it. Not set: 2.
   ;; (setf *lsp-wait* 5)
 
+  ;; Files of up to 32 MB are given to their language servers. Not set: 8 MB.
+  ;; (setf *lsp-largest-document* (* 32 1024 1024))
+
+  ;; Messages of up to 128 MB are read from a language server. Not set: 32 MB.
+  ;; (setf *lsp-largest-message* (* 128 1024 1024))
+
   ;; No call's parameters in the echo area. Not set: t.
   ;; (setf *lsp-signature-help* nil)
 
@@ -1393,6 +1399,10 @@
   ;; (push "build" *lsp-watch-skipped*)
 
   ;;; Git (C-x g)
+
+  ;; No marks of what changed since the last commit beside the lines of files
+  ;; under git. Not set: t, the marks shown; M-x vc-gutter-mode switches.
+  ;; (setf *vc-gutter-enabled* nil)
 
   ;; The status shows the 20 latest commits. Not set: 10.
   ;; (setf *git-recent-commits* 20)

@@ -11,7 +11,9 @@
   "Where the escape sequence of TEXT beginning at START ends, as four values:
 the index after its last character; for a control sequence (ESC [), its final
 character, else NIL; and the start and end of its parameters, the characters
-between the introducer and the final one. Operating system commands (ESC ])
+between the introducer and the final one. A control sequence left unfinished,
+a control character or the end of TEXT where its final character should be,
+ends before that character, its final NIL. Operating system commands (ESC ])
 end at a bell or a string terminator (ESC \\), and device control strings and
 the others like them (ESC P, X, ^ and _) at a string terminator, or at the end
 of TEXT when it has none; any other ESC with the character after it. With C1,
@@ -35,9 +37,11 @@ and end them (U+009C), and any other C1 control is a sequence of its own."
                    finally (return end))))
       (case kind
         (#\[ (let* ((from (+ start (if escaped 2 1)))
-                    (stop (or (position-if (lambda (ch) (<= #x40 (char-code ch) #x7e)) text :start (min from end))
-                              (1- end))))
-               (values (1+ stop) (char text stop) from stop)))
+                    (stop (or (position-if-not (lambda (ch) (<= #x20 (char-code ch) #x3f)) text :start (min from end))
+                              end)))
+               (if (and (< stop end) (<= #x40 (char-code (char text stop)) #x7e))
+                   (values (1+ stop) (char text stop) from stop)
+                   (values stop nil from stop))))
         (#\] (values (string-end t) nil start start))
         ((#\P #\X #\^ #\_) (values (string-end nil) nil start start))
         (t (values (min end (+ start (if escaped 2 1))) nil start start))))))

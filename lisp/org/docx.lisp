@@ -102,12 +102,6 @@ made the first time it is asked for."
 
 ;;; Runs: text in one look
 
-(defparameter *docx-font-sizes*
-  '(("tiny" . 6/11) ("scriptsize" . 8/11) ("footnote" . 9/11) ("footnotesize" . 9/11) ("small" . 10/11)
-    ("normal" . 1) ("large" . 12/11) ("larger" . 14/11) ("largest" . 17/11))
-  "The sizes of type the font setting takes, each as a part of the size the
-text has otherwise, as LaTeX's are of its 11 points.")
-
 (defvar *docx-base-size* 22
   "The size of the text being written before any font setting, in half points:
 11 points, or a template's own size.")
@@ -276,16 +270,16 @@ the PDF measures its box, holding none of what it hides."
 (defun docx-footnote (node out)
   "Write the footnote reference NODE to OUT, its text among the document's footnotes."
   (let* ((definition (with-org-export-expanding (:footnote (or (org-property node :label) node)) (nil)
-                                                (if (eq (org-property node :type) 'inline)
-                                                    (format nil
-                                                            "<w:p><w:pPr><w:pStyle w:val=\"FootnoteText\"/>~
+                        (if (eq (org-property node :type) 'inline)
+                            (format nil
+                                    "<w:p><w:pPr><w:pStyle w:val=\"FootnoteText\"/>~
 </w:pPr>~a</w:p>" (docx-objects node))
-                                                    (let ((found (gethash (org-property node :label)
-                                                                          (org-export-footnotes *org-export*))))
-                                                      (and found (with-output-to-string (s)
-                                                                   (let ((*docx-paragraph-style* "FootnoteText"))
-                                                                     (dolist (child (org-node-children found))
-                                                                       (docx-element child s)))))))))
+                            (let ((found (gethash (org-property node :label)
+                                                  (org-export-footnotes *org-export*))))
+                              (and found (with-output-to-string (s)
+                                           (let ((*docx-paragraph-style* "FootnoteText"))
+                                             (dolist (child (org-node-children found))
+                                               (docx-element child s)))))))))
          (id (+ 2 (length (docx-footnotes *docx*)))))
     (when (org-export-option "f" t)
       (push (cons id (if (and definition (search "<w:p" definition)) definition
@@ -796,7 +790,7 @@ With the template's table style, the style's unless the drawer gives lines."
                ;; the lines asked for, over the template's table style's
                (own-lines (or (null table-style) (org-export-setting node "lines")))
                (borders (and own-lines (docx-table-borders lines)))
-               (justify (map 'list (lambda (side) (ecase side (:left "left") (:right "right") (:centre "center")))
+               (justify (map 'vector (lambda (side) (ecase side (:left "left") (:right "right") (:centre "center")))
                              (export-column-alignments node columns special standard cookies)))
                (rule-after (loop for (row next) on rows
                                  for index from 0
@@ -810,6 +804,7 @@ With the template's table style, the style's unless the drawer gives lines."
             (write-string (or (docx-caption node :table :justify place) "") out)
             (docx-table-start out table-style twips place borders header)
             (loop with row-count = (length rows)
+                  with widths = (coerce twips 'vector)
                   for row in rows
                   for index from 0
                   unless (eq (org-property row :type) 'rule)
@@ -823,7 +818,7 @@ With the template's table style, the style's unless the drawer gives lines."
                              for cell = (pop cells)
                              do (format out "<w:tc><w:tcPr><w:tcW w:w=\"~d\" w:type=\"dxa\"/>~:[~;<w:tcBorders>~
 <w:bottom w:val=\"single\" w:sz=\"6\" w:space=\"0\" w:color=\"000000\"/></w:tcBorders>~]</w:tcPr>~a</w:tc>"
-                                        (nth i twips) ruled
+                                        (aref widths i) ruled
                                         (docx-paragraph (if cell
                                                             (let ((*docx-run* (append (and in-header (not table-style)
                                                                                            (list :bold t))
@@ -831,7 +826,7 @@ With the template's table style, the style's unless the drawer gives lines."
                                                                                       *docx-run*)))
                                                               (docx-objects cell))
                                                             "")
-                                                        :style "Compact" :justify (nth i justify))))
+                                                        :style "Compact" :justify (aref justify i))))
                        (format out "</w:tr>~%")))
             (format out "</w:tbl>~%")
             ;; air under the table, as the PDF leaves
@@ -864,7 +859,7 @@ size of its font, its lines as far apart as its spacing says, in its number
 of columns (a section of its own)."
   (let ((indent (docx-length (org-export-setting node "indent")))
         (spacing (export-line-spacing node))
-        (size (cdr (assoc (org-export-setting node "font") *docx-font-sizes* :test #'equalp)))
+        (size (org-font-share (org-export-setting node "font")))
         (columns (export-columns node)))
     (let ((*docx-indent* (+ *docx-indent* (or indent 0)))
           (*docx-line-spacing* (or spacing *docx-line-spacing*))
@@ -1275,38 +1270,38 @@ text. Returns the octets of the .docx; as a second value where
 #+EXPORT_FILE_NAME says to write it, a full name ending in .docx, or NIL; as
 a third what else to say of it, a list of sentences."
   (with-org-export-reading (expanded tree directory) (text file :enhanced t)
-                           (let ((*docx-base-size* *docx-base-size*)
-                                 (*docx-character-ratio* *docx-character-ratio*)
-                                 (*docx* (make-docx))
-                                 (*docx-contents* '())
-                                 (*docx-run* '())
-                                 (*docx-paragraph-style* nil)
-                                 (*docx-indent* 0))
-                             (let* ((named (org-template-name))
-                                    (dir (and named (docx-template-directory named directory)))
-                                    (own (and dir (docx-read-directory dir)))
-                                    ;; a template of your own, else Tuatara's own look,
-                                    ;; both filled by DOCX-TEMPLATE-PACKAGE
-                                    (parts (or own (built-in-docx-template))))
-                               (docx-template-start parts)
-                               (when own
-                                 ;; its LaTeX half setting tables against the left margin: the Word half's there too
-                                 (let ((latex (ignoring-errors-reported ("reading the template ~a" named)
-                                                                        (latex-template-for named directory))))
-                                   (when (and latex
-                                              (cl-ppcre:scan #.(concatenate 'string
-                                                                            "\\\\setlength\\s*\\{?\\s*\\\\LTleft\\s*"
-                                                                            "\\}?\\s*\\{\\s*0(pt|cm|mm|em)?\\s*\\}")
-                                                             latex))
-                                     (setf (getf (docx-section *docx*) :tables-left) t))))
-                               (when (and named (null own))
-                                 (export-note "The template ~a has no Word half (~a~a/): Tuatara's own look" named
-                                              (abbreviated-path (docx-templates-directory)) named))
-                               (docx-number-everything tree)
-                               (let ((body (with-output-to-string (s) (docx-element tree s))))
-                                 (when own
-                                   (dolist (note (docx-pair-notes named own directory)) (export-note "~a" note)))
-                                 (values (zip-octets (docx-template-package parts body))
-                                         (let ((tex (org-export-file-name text file)))
-                                           (and tex (replaced-type tex "docx")))
-                                         (reverse (org-export-notes *org-export*))))))))
+    (let ((*docx-base-size* *docx-base-size*)
+          (*docx-character-ratio* *docx-character-ratio*)
+          (*docx* (make-docx))
+          (*docx-contents* '())
+          (*docx-run* '())
+          (*docx-paragraph-style* nil)
+          (*docx-indent* 0))
+      (let* ((named (org-template-name))
+             (dir (and named (docx-template-directory named directory)))
+             (own (and dir (docx-read-directory dir)))
+             ;; a template of your own, else Tuatara's own look,
+             ;; both filled by DOCX-TEMPLATE-PACKAGE
+             (parts (or own (built-in-docx-template))))
+        (docx-template-start parts)
+        (when own
+          ;; its LaTeX half setting tables against the left margin: the Word half's there too
+          (let ((latex (ignoring-errors-reported ("reading the template ~a" named)
+                                                 (latex-template-for named directory))))
+            (when (and latex
+                       (cl-ppcre:scan #.(concatenate 'string
+                                                     "\\\\setlength\\s*\\{?\\s*\\\\LTleft\\s*"
+                                                     "\\}?\\s*\\{\\s*0(pt|cm|mm|em)?\\s*\\}")
+                                      latex))
+              (setf (getf (docx-section *docx*) :tables-left) t))))
+        (when (and named (null own))
+          (export-note "The template ~a has no Word half (~a~a/): Tuatara's own look" named
+                       (abbreviated-path (docx-templates-directory)) named))
+        (docx-number-everything tree)
+        (let ((body (with-output-to-string (s) (docx-element tree s))))
+          (when own
+            (dolist (note (docx-pair-notes named own directory)) (export-note "~a" note)))
+          (values (zip-octets (docx-template-package parts body))
+                  (let ((tex (org-export-file-name text file)))
+                    (and tex (replaced-type tex "docx")))
+                  (reverse (org-export-notes *org-export*))))))))

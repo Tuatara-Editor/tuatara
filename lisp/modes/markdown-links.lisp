@@ -8,7 +8,7 @@
 (in-package #:tuatara.defaults)
 
 (defparameter *markdown-link-re*
-  "(!)?\\[([^\\]^][^\\]]*|)\\]\\(([^)]*?)(?:\\s+(\"[^\"]*\"))?\\)"
+  (cl-ppcre:create-scanner "(!)?\\[([^\\]^][^\\]]*|)\\]\\(([^)]*?)(?:\\s+(\"[^\"]*\"))?\\)")
   "A Markdown link, [label](target \"title\"), or a picture's, ![label](target):
 the label the second group, the target the third.")
 
@@ -39,7 +39,8 @@ LABEL begins (#s, a space, then LABEL); NIL when none is."
   "Follow the Markdown link point is on in BUFFER: to the heading of this file
 #an-anchor (a table of contents's) leads to, else one titled as its label; to
 a web or mail address in the desktop's program, after asking; to a file,
-visited. True when point is on a link."
+visited, safely when BUFFER's own file was opened safely. True when point is
+on a link."
   (let* ((point (tuatara.buffer:buffer-point buffer))
          (start (tuatara.buffer:buffer-line-start buffer point))
          (line (buffer-line-head buffer point (* 4 *toc-longest-line*)))
@@ -58,13 +59,15 @@ visited. True when point is on a link."
               ((string= target "") (message "The link leads nowhere"))
               (t (visit-path (tuatara.io:native (tuatara.io:expand-path (subseq target 0 (or (position #\# target)
                                                                                              (length target)))
-                                                                        :directory (buffer-directory buffer))))))
+                                                                        :directory (buffer-directory buffer)))
+                             :safe (tuatara.io:safe-visit-p buffer))))
         t))))
 
 (define-command markdown-follow-link-at-point ()
   "Follow the Markdown link point is on (\\`C-c C-o', and \\`RET' in NORMAL state): to
 the heading a table of contents's link (#an-anchor) leads to, a web or mail
-address in the desktop's program after asking, or a file, visited."
+address in the desktop's program after asking, or a file, visited (safely
+from a file opened safely)."
   (unless (markdown-follow-link (current-buffer))
     (message "No link here")))
 

@@ -347,7 +347,8 @@ else."
 
 (defun session-open (entry)
   "Open again the buffer ENTRY of the session (KIND POINT TARGET), point where it
-was; NIL when it cannot be (a file no longer there)."
+was, on the start of the character there for a file changed since; NIL when
+it cannot be (a file no longer there)."
   (destructuring-bind (kind point target) entry
     (let ((buffer (ignoring-errors-reported ("opening ~a again" target)
                     (case kind
@@ -357,7 +358,9 @@ was; NIL when it cannot be (a file no longer there)."
                                        (nth-value 0 (visit-path target :show #'identity))))
                       (:scratch (tuatara.buffer:find-buffer target))))))
       (when (and buffer (not (eq kind :directory)))
-        (setf (tuatara.buffer:buffer-point buffer) (min point (tuatara.buffer:buffer-size buffer))))
+        (setf (tuatara.buffer:buffer-point buffer)
+              (tuatara.text:rope-char-start (tuatara.buffer:buffer-text buffer)
+                                            (min point (tuatara.buffer:buffer-size buffer)))))
       buffer)))
 
 (defvar *session-opened* nil
@@ -462,7 +465,9 @@ that was selected is selected again."
                  (let ((buffer (cdr (assoc node opened))))
                    (when buffer
                      (tuatara.display:set-window-buffer window buffer)
-                     (setf (tuatara.display:window-start window) (min start (tuatara.buffer:buffer-size buffer))
+                     (setf (tuatara.display:window-start window)
+                           (tuatara.text:rope-char-start (tuatara.buffer:buffer-text buffer)
+                                                         (min start (tuatara.buffer:buffer-size buffer)))
                            (tuatara.display:window-point window) (tuatara.buffer:buffer-point buffer)))
                    (when chosen (setf selected window)))))
              (build (window node)

@@ -445,10 +445,10 @@ was afterwards (unset when it was)."
                  text)))
         (unwind-protect
              (with-functions-replaced ((tuatara.defaults::directory-candidates
-                                        (lambda (expanded chosen)
+                                        (lambda (expanded chosen &rest keys)
                                           (if (equal (tuatara.io:native expanded) stuck)
                                               (progn (incf listed) (sb-thread:wait-on-semaphore gate) '())
-                                              (funcall real expanded chosen)))))
+                                              (apply real expanded chosen keys)))))
                (tuatara.defaults::note-chosen-path (concatenate 'string stuck "file.txt"))
                (is string= "~/stuck/" (started-with "C-x C-f"))
                ;; its listing goes on: the next question starts at the buffer's directory, the home

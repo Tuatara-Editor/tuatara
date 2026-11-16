@@ -196,6 +196,29 @@ A few settings are better said with a function than with =setf=, because
 they take a mode and a value. The starter file has these written out, for
 example =(set-tab-width 'c-mode 8)=. Keep to the form the starter file shows.
 
+*** A value a setting does not take
+
+Each setting says which values it takes, and Tuatara refuses any other where
+you set it: by =setf= in the init file, at ~M-:~ or in IELM, in a package's
+=:init= or =:config=, or with a command such as a display toggle turned on in
+every buffer. The setting keeps the value it had, and the refusal names the
+setting and says what it takes. In the init file it is said as an error on
+the line of the form that gave it; the other settings that form gives stand,
+and the forms after it are read as usual. A value set by Lisp a package runs
+on its own, or bound with =let= in Lisp of your own, is not looked at then.
+
+For example, =(setf *gui-padding* 'x)= at ~M-:~ is refused with
+=*gui-padding* is x, but it takes a whole number, 0 or more, or a list, each a
+whole number, 0 or more: it keeps 8=.
+
+An init file may set a package's setting before the package has loaded. The
+value is looked at when the package defines the setting: one it does not take
+is replaced by the standard value, and a message says so. A setting whose
+values are described only in words takes any value. A list changed where it
+stands, as by =(setf (first *gui-padding*) 4)=, is not looked at, since the
+setting still holds the same list: give the setting a new list instead.
+~M-x check-health~ lists any setting that holds a value it does not take.
+
 Chapter 21 lists every setting and what it is as standard.
 
 ** Keys of your own
@@ -508,7 +531,7 @@ title bar. Press either again to go back.
 
 *** Commands and faces for fonts and the window
 
-#+table: commands font-list font-list-use font-list-copy set-frame-font text-scale-adjust text-scale-increase text-scale-decrease mouse-wheel-text-scale toggle-frame-fullscreen toggle-frame-maximized
+#+table: commands font-list font-list-use font-list-copy set-frame-font text-scale-adjust mouse-wheel-text-scale toggle-frame-fullscreen toggle-frame-maximized
 
 #+table: faces :font-list-line :list-name
 

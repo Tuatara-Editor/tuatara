@@ -69,27 +69,24 @@ this thread alone, 19 at most), whichever thread started it; nothing where
 that cannot be done, as a thread may not stand higher than the one that
 started it without leave."
   (ignoring-errors-reported ("standing ~d below the editor" niceness)
-    (let* ((tid (sb-alien:alien-funcall (sb-alien:extern-alien "gettid" (function sb-alien:int))))
-           (getpriority (sb-alien:extern-alien "getpriority"
-                                               (function sb-alien:int sb-alien:int sb-alien:unsigned-int)))
-           (setpriority (sb-alien:extern-alien "setpriority"
-                                               (function sb-alien:int sb-alien:int sb-alien:unsigned-int sb-alien:int)))
+    (let* ((tid (%gettid))
            ;; PRIO_PROCESS by a thread id: that thread alone; the process's own id is its first thread's
-           (wanted (min 19 (+ (sb-alien:alien-funcall getpriority 0 (sb-posix:getpid)) niceness))))
-      (unless (= wanted (sb-alien:alien-funcall getpriority 0 tid))
-        (sb-alien:alien-funcall setpriority 0 tid wanted)))))
+           (wanted (min 19 (+ (%getpriority 0 (sb-posix:getpid)) niceness))))
+      (unless (= wanted (%getpriority 0 tid))
+        (%setpriority 0 tid wanted)))))
 
-(defun make-guarded-thread (function &rest keys &key name (niceness *background-niceness*) &allow-other-keys)
+(defun make-guarded-thread (function &rest keys &key name (niceness *background-niceness*)
+                                                   (secret *secret-at-hand*) &allow-other-keys)
   "A thread running FUNCTION as SB-THREAD:MAKE-THREAD runs it, with KEYS (its
 :NAME, its :ARGUMENTS), whatever goes wrong in it, a lack of memory too,
 ending its work alone (WITH-THREAD-GUARD), never the editor. It stands
 NICENESS below the editor's thread for the processor, whichever thread makes
 it (*BACKGROUND-NICENESS*, STAND-BELOW-EDITOR): 0 for a thread whose work is
-looked at as it comes, as a terminal's output is. A secret at hand where it
-is made (*SECRET-AT-HAND*) is at hand in it."
+looked at as it comes, as a terminal's output is. SECRET is *SECRET-AT-HAND*
+in it, as standard whether a secret is at hand where it is made: NIL for a
+thread kept for all work, whoever happens to make it first."
   (let ((keys (loop for (key value) on keys by #'cddr
-                    unless (eq key :niceness) append (list key value)))
-        (secret *secret-at-hand*))
+                    unless (member key '(:niceness :secret)) append (list key value))))
     (apply #'sb-thread:make-thread
            (lambda (&rest arguments)
              ;; a secret at hand where the thread is made is at hand in it
@@ -122,7 +119,11 @@ values, what its function returned and T when it ended in time (NIL and T
 when its work went wrong), else NIL and NIL, THREAD still running."
   (let* ((running '#:running)
          (result (sb-thread:join-thread thread :timeout seconds :default running)))
-    (if (eq result running) (values nil nil) (values result t))))
+    (cond ((not (eq result running)) (values result t))
+          ((sb-thread:thread-alive-p thread) (values nil nil))
+          ;; ended without returning (cut short from outside), or just after the wait
+          (t (let ((late (sb-thread:join-thread thread :timeout 0 :default running)))
+               (values (if (eq late running) nil late) t))))))
 
 (defun join-within (thread &optional (seconds *stop-wait*))
   "Wait at most SECONDS for THREAD to end; true when it has ended, or when

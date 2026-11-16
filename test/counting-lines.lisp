@@ -917,7 +917,7 @@ go; return what FUNCTION returned."
   (with-every-file-large ()
     (with-test-directory (dir)
       (with-large-file (path dir)
-        (is = 1200000 (length (read-in-the-background path (lambda (rope) (tuatara.syntax:search-all rope "line"))))))
+        (is = 1200000 (length (read-in-the-background path (lambda (rope) (literal-match-starts rope "line"))))))
       (with-large-file (path dir)
         (is = 11999 (length (read-in-the-background
                             path (lambda (rope) (tuatara.syntax:regex-search-all rope "^\\d+00 "))))))

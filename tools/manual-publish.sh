@@ -8,19 +8,18 @@
 # Usage: tools/manual-publish.sh REMOTE [--no-push]
 set -euo pipefail
 cd "$(dirname "$0")/.."
+. tools/inside.sh
 remote="${1:?Usage: tools/manual-publish.sh REMOTE [--no-push]}"
 push=yes
 [ "${2:-}" = --no-push ] && push=no
 tools/manual-html.sh
 site="$PWD/build/manual"
 [ -f "$site/index.html" ] || { echo "No $site/index.html: the build made no pages" >&2; exit 1; }
-for word in "$HOME" "$(id -un)"; do
-  if grep -rlF -- "$word" "$site" > /dev/null; then
-    echo "The pages name \"$word\" in:" >&2
-    grep -rlF -- "$word" "$site" >&2
-    exit 1
-  fi
-done
+names=0
+while IFS= read -r -d '' file; do
+  if names_this_machine "$file"; then names=1; fi
+done < <(find "$site" -type f -print0)
+[ "$names" = 0 ] || { echo "The pages name this machine: not published" >&2; exit 1; }
 version="$(git describe --tags --always)"
 pages="$(mktemp -d "$PWD/build/.manual-pages.XXXXXX")"
 # the branch a first publish starts from nothing, gone again when this ends

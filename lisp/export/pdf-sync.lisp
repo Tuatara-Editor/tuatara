@@ -9,7 +9,7 @@
 ;;;; line of that point. The SyncTeX file is read once in the background, with
 ;;;; the PDF's page boxes, and kept until either changes. A PDF exported from an
 ;;;; Org file in this session goes through the Org export's map of its lines
-;;;; too (ERROR-PLACE), so that both commands work from the Org file.
+;;;; too (ORG-SOURCE-LINE), so that both commands work from the Org file.
 
 (in-package #:tuatara.export)
 
@@ -30,7 +30,7 @@ where a crop box begins.")
 (defvar *pdf-sync-read* '()
   "The SyncTeX files read, the last used first, each (PATH STAMP PDF-STAMP
 SYNCTEX): its path and stamp, the stamp of the PDF beside the LaTeX file, and
-what was read (TUATARA.DEFAULTS::READ-SYNCTEX), or why it could not be, in
+what was read (READ-SYNCTEX), or why it could not be, in
 words, until either file changes.")
 
 (defvar *pdf-sync-reading* '()
@@ -39,24 +39,58 @@ the job reading it, and THEN, the function last asked for what it says
 \(PDF-SYNC-DATA). An entry whose job ended other than done (stopped, failed,
 its view killed) no longer counts.")
 
-(defvar *org-pdf-exports* (make-hash-table :test 'equal)
-  "The last export of each PDF made from an Org file in this session, by the
-PDF's path, as much of the PDF-EXPORT as leads from the Org file to the LaTeX
-and back: its source, LaTeX file, PDF, text, map and origins. Dropped when the
-PDF is made another way or the Org file's buffer is killed.")
+(define-record (org-pdf-source (:constructor make-org-pdf-source (source tex pdf text map origins enhanced))
+                               (:copier nil))
+  "What leads from an Org file to the LaTeX and the PDF an export made of it
+in this session, and back (NOTE-PDF-EXPORT)."
+  (source nil :documentation "The Org file an ORG-PDF-SOURCE's PDF was exported from.")
+  (tex nil :documentation "The LaTeX file the export of an ORG-PDF-SOURCE wrote.")
+  (pdf nil :documentation "The PDF made of an ORG-PDF-SOURCE.")
+  (text nil :documentation "The Org text the export of an ORG-PDF-SOURCE wrote as LaTeX.")
+  (map nil :documentation "Where the LaTeX of each element of an ORG-PDF-SOURCE's text begins (ORG-LATEX-PARTS).")
+  (origins nil
+           :documentation "For a part exported alone, the line of the Org file each line of an ORG-PDF-SOURCE's
+text comes from, a vector; NIL for the whole file.")
+  (enhanced nil :documentation "True when the PDF of an ORG-PDF-SOURCE was made by the enhanced export.")
+  (line-starts nil
+               :documentation "Where each line of an ORG-PDF-SOURCE's text begins (TEXT-LINE-STARTS), once
+asked."))
+
+(defvar *org-pdf-exports* '()
+  "The last exports of PDFs made from Org files in this session, the latest
+first, one for each PDF and at most *PDF-SYNC-KEPT*, each an ORG-PDF-SOURCE.
+Dropped when the PDF is made another way or the Org file's buffer is killed.")
+
+(defun org-pdf-export (pdf)
+  "The ORG-PDF-SOURCE kept for the PDF at PDF (*ORG-PDF-EXPORTS*), or NIL."
+  (find pdf *org-pdf-exports* :key #'org-pdf-source-pdf :test #'equal))
+
+(defun org-pdf-source-line (kept line)
+  "The line of the Org file of KEPT, an ORG-PDF-SOURCE, that LINE of its LaTeX
+came from (ORG-SOURCE-LINE)."
+  (org-source-line (org-pdf-source-map kept) (org-pdf-source-origins kept)
+                   (or (org-pdf-source-line-starts kept)
+                       (setf (org-pdf-source-line-starts kept) (text-line-starts (org-pdf-source-text kept))))
+                   line))
+
+(defun org-pdf-source-of (job)
+  "What leads from the Org file JOB, an export that made a PDF of it, to the
+LaTeX and the PDF, and back, as an ORG-PDF-SOURCE."
+  (make-org-pdf-source (pdf-export-source job) (pdf-export-tex job) (pdf-export-pdf job) (pdf-export-text job)
+                       (pdf-export-map job) (pdf-export-origins job) (pdf-export-enhanced job)))
 
 (defun note-pdf-export (job)
   "Keep what an Org file's export JOB that made a PDF needs for its lines to
-be shown in the PDF and back; forget it for a PDF made another way."
+be shown in the PDF and back, as an ORG-PDF-SOURCE; forget it for a PDF made
+another way."
   (let ((pdf (pdf-export-pdf job)))
     (when (and (eq (pdf-export-status job) :done) pdf)
-      (if (eq (pdf-export-kind job) :org)
-          (let ((kept (make-pdf-export nil (pdf-export-source job) :org nil nil nil nil)))
-            (setf (pdf-export-tex kept) (pdf-export-tex job) (pdf-export-pdf kept) pdf
-                  (pdf-export-text kept) (pdf-export-text job) (pdf-export-map kept) (pdf-export-map job)
-                  (pdf-export-origins kept) (pdf-export-origins job)
-                  (gethash pdf *org-pdf-exports*) kept))
-          (remhash pdf *org-pdf-exports*)))))
+      (let ((others (remove pdf *org-pdf-exports* :key #'org-pdf-source-pdf :test #'equal)))
+        (setf *org-pdf-exports*
+              (if (eq (pdf-export-kind job) :org)
+                  (cons (org-pdf-source-of job)
+                        (subseq others 0 (min (length others) (1- *pdf-sync-kept*))))
+                  others))))))
 
 (defmethod tuatara.runtime:job-take-in :after ((job pdf-export))
   "Keep an Org file's export that made a PDF, for its lines to be shown in the PDF and back (NOTE-PDF-EXPORT)."
@@ -67,15 +101,13 @@ be shown in the PDF and back; forget it for a PDF made another way."
   (let ((file (tuatara.buffer:buffer-file buffer)))
     (when file
       (let ((path (tuatara.io:native (tuatara.io:expand-path file))))
-        (loop for pdf being the hash-keys of *org-pdf-exports* using (hash-value kept)
-              when (equal (pdf-export-source kept) path) collect pdf into gone
-              finally (dolist (pdf gone) (remhash pdf *org-pdf-exports*)))))))
+        (setf *org-pdf-exports* (remove path *org-pdf-exports* :key #'org-pdf-source-source :test #'equal))))))
 
 (defun org-export-current-p (kept buffer)
   "True when BUFFER's text is still what KEPT, an Org file's export, was
 made of: the whole text, or for a part exported alone each of its lines
 where it came from."
-  (let ((text (pdf-export-text kept)) (origins (pdf-export-origins kept)))
+  (let ((text (org-pdf-source-text kept)) (origins (org-pdf-source-origins kept)))
     (if (null origins)
         (string= text (tuatara.text:rope-string (tuatara.buffer:buffer-text buffer)))
         (let ((lines (uiop:split-string text :separator '(#\Newline)))
@@ -146,7 +178,8 @@ asked. THEN runs on the editor's thread."
                                  (let ((octets (tuatara.io:fd-octets fd pdf (tuatara.io:stamp-size
                                                                              (tuatara.io:fd-stamp fd pdf))
                                                                      *pdf-sync-pdf-largest* (constantly nil))))
-                                   (or (read-synctex (tuatara.io:file-octets synctex :limit *synctex-largest*)
+                                   (or (read-synctex (tuatara.io:file-octets synctex :limit *synctex-largest*
+                                                                             :follow nil)
                                                      :boxes (or (and octets (pdf-page-boxes octets)) first-page))
                                        "it is no SyncTeX file"))
                                (tuatara.io:file-system-error (e) (tuatara.io:file-system-error-reason e))))
@@ -174,12 +207,12 @@ sandbox shows it."
              (and source (equal real (tuatara.io:real-path-or-parent source))))
          real)))
 
-(defun org-latex-line (job line)
-  "The line of the LaTeX JOB, an Org file's export, wrote for LINE (from 1)
-of the Org file: by its map of where each element's LaTeX begins, counted on
-within the element (the way back from what ERROR-PLACE does)."
-  (let* ((text (pdf-export-text job))
-         (origins (pdf-export-origins job))
+(defun org-latex-line (kept line)
+  "The line of the LaTeX an Org file's export, KEPT (ORG-PDF-SOURCE), wrote
+for LINE (from 1) of the Org file: by its map of where each element's LaTeX
+begins, counted on within the element (the way back from ORG-SOURCE-LINE)."
+  (let* ((text (org-pdf-source-text kept))
+         (origins (org-pdf-source-origins kept))
          (at (if origins
                  (let ((index (or (position line origins) (position-if (lambda (l) (> l line)) origins))))
                    (if index (1+ index) (length origins)))
@@ -189,7 +222,7 @@ within the element (the way back from what ERROR-PLACE does)."
                          do (setf p (or (position #\Newline text :start p) (length text)))
                          (when (< p (length text)) (incf p))
                          finally (return p)))
-         (map (pdf-export-map job))
+         (map (org-pdf-source-map kept))
          (entry (or (let ((inner nil))
                       (loop for e across map
                             when (and (<= (second e) position) (< position (third e))
@@ -209,16 +242,15 @@ within the element (the way back from what ERROR-PLACE does)."
   "Show LINE of TEX in the PDF beside it, PDF, for ASKED, the words naming the
 line asked for (notes.org line 6): the PDF's view shown beside when it is
 not, turned to the line's page and the line marked
-\(TUATARA.DEFAULTS::PDF-VIEW-SHOW-PLACE). REMAKE is the command
+\(PDF-VIEW-SHOW-PLACE). REMAKE is the command
 that makes the PDF again, named when there is no PDF or no SyncTeX file."
   (let ((synctex (and (tuatara.io:path-stamp pdf) (latex-synctex-file tex)))
         (pdf-name (tuatara.io:native-file-name pdf)))
     (cond ((not (tuatara.io:path-stamp pdf))
-           (message "There is no ~a yet: ~a makes it" pdf-name
-                    (substitute-command-keys (format nil "\\[~(~a~)]" remake))))
+           (message "There is no ~a yet: ~a makes it" pdf-name (command-key-words remake)))
           ((null synctex)
            (message "~a has no SyncTeX file to say where its lines are: ~a makes it with one" pdf-name
-                    (substitute-command-keys (format nil "\\[~(~a~)]" remake))))
+                    (command-key-words remake)))
           (t
            (let ((view (show-exported-pdf pdf)))
              (cond ((null view) (message "~a could not be shown" pdf-name))
@@ -267,19 +299,19 @@ are not shown, the PDF's text is turned to the page."
                (start-latex-export :view :after #'show)
                (show)))))
       (:org
-       (let ((job (loop for job being the hash-values of *org-pdf-exports*
-                        when (equal (pdf-export-source job) file) return job)))
-         (cond ((null job)
+       (let ((kept (find file *org-pdf-exports* :key #'org-pdf-source-source :test #'equal)))
+         (cond ((null kept)
                 (message "~a was not made into a PDF in this session: ~a makes it"
-                         (tuatara.io:native-file-name file)
-                         (substitute-command-keys "\\[org-export-latex-pdf-buffer]")))
-               (t (flet ((show (job)
-                           (show-line-in-pdf-at (format nil "~a line ~d" (tuatara.io:native-file-name file) line)
-                                                (pdf-export-tex job) (org-latex-line job line) (pdf-export-pdf job)
-                                                'org-export-latex-pdf-buffer)))
-                    (if (org-export-current-p job buffer)
-                        (show job)
-                        (start-latex-export :view :enhanced (pdf-export-enhanced job) :after #'show)))))))
+                         (tuatara.io:native-file-name file) (command-key-words 'org-export-latex-pdf-buffer)))
+               (t (flet ((show (&optional job)
+                           ;; the export just made, when it was made again
+                           (let ((kept (if job (org-pdf-source-of job) kept)))
+                             (show-line-in-pdf-at (format nil "~a line ~d" (tuatara.io:native-file-name file) line)
+                                                  (org-pdf-source-tex kept) (org-latex-line kept line)
+                                                  (org-pdf-source-pdf kept) 'org-export-latex-pdf-buffer))))
+                    (if (org-export-current-p kept buffer)
+                        (show)
+                        (start-latex-export :view :enhanced (org-pdf-source-enhanced kept) :after #'show)))))))
       (t (message "Not a LaTeX or Org file")))))
 
 (defun show-source-of (buffer page fx fy)
@@ -292,18 +324,18 @@ file beside the PDF, or the Org file it was exported from in this session."
          (pdf-name (tuatara.io:native-file-name pdf)))
     (if (null synctex)
         (message "~a has no SyncTeX file to say where its lines come from: ~a in its LaTeX file makes it with one"
-                 pdf-name (substitute-command-keys "\\[export-latex-compile-pdf-buffer]"))
+                 pdf-name (command-key-words 'export-latex-compile-pdf-buffer))
         (pdf-sync-data
          buffer synctex
          (lambda (read why)
            (multiple-value-bind (file line) (and read (synctex-line read page fx fy))
              (cond ((null read) (message "The SyncTeX file of ~a could not be read: ~a" pdf-name why))
                    ((null file) (message "~a does not say what made page ~d" pdf-name page))
-                   (t (let* ((job (gethash pdf *org-pdf-exports*))
-                             (shown (source-to-show file synctex tex (and job (pdf-export-source job)))))
+                   (t (let* ((kept (org-pdf-export pdf))
+                             (shown (source-to-show file synctex tex (and kept (org-pdf-source-source kept)))))
                         (multiple-value-bind (source at)
-                            (if (and job shown (equal (synctex-path (pdf-export-tex job)) shown))
-                                (error-place job (list :line line :file shown))
+                            (if (and kept shown (equal (synctex-path (org-pdf-source-tex kept)) shown))
+                                (values (org-pdf-source-source kept) (org-pdf-source-line kept line))
                                 (values shown line))
                           (if source
                               (progn (show-file-line source at :other t)

@@ -14,6 +14,11 @@
 
 (in-package #:tuatara.defaults)
 
+(defun static-header-line (text &optional spans)
+  "A header line that never changes, as TUATARA.DISPLAY:BUFFER-HEADER-LINE
+takes one: TEXT, with SPANS, each (START END FACE), over it."
+  (lambda (window) (declare (ignore window)) (values text spans)))
+
 (defparameter *decoding-carried-settings*
   (append tuatara.io:*sandbox-carried-settings*
           '(*pdf-decoders* *pdf-text-pages* *image-decoders* *magick-largest-side* *picture-memory*
@@ -234,16 +239,68 @@ part of it, without the program's name and where in its source it said it
     (and line (escape-controls
                (string-trim " " (cl-ppcre:regex-replace "(?: [`'(].*| @ .*)$" (cl-ppcre:regex-replace "^[a-z]+: " line "") ""))))))
 
+(defparameter *pdf-info-fields*
+  '(("Title" "Subject" "Keywords" "Author" "Creator" "Producer" "CreationDate" "ModDate")
+    ("Custom Metadata" "Metadata Stream" "Tagged" "UserProperties" "Suspects" "Form" "JavaScript" "Pages"
+     "Encrypted" "Page size" "Page rot" "File size" "Optimized" "PDF version"))
+  "The fields pdfinfo writes of a PDF, in the order it writes them, each at the
+start of a line, as two lists: those holding the PDF's own words, which may
+have line breaks in them, then those pdfinfo finds for itself, a line each.")
+
+(defun info-field-index (line names)
+  "Where among NAMES the name LINE begins with, before its colon, is; NIL when
+it begins with none of them."
+  (let ((colon (position #\: line)))
+    (and colon (position (subseq line 0 colon) names :test #'string=))))
+
+(defun info-fields (info)
+  "INFO, what an :INFO program printed of a PDF, as its fields in order, each
+the text of one: its name, a colon and its value, with the line breaks the
+PDF's own words hold. The fields pdfinfo finds for itself (*PDF-INFO-FIELDS*)
+are read from the end, a line each, each before the one after it in their
+order; a line Name: value naming no field of either list, one a newer pdfinfo
+writes, is read past as a field of its own. The lines above them hold the
+PDF's own words: a line beginning one of those fields after the one before it
+in their order begins that field, any other line is part of the field before.
+So the PDF's words never pass for a field pdfinfo found, such as how many
+pages it has or whether it has JavaScript; a line of them can pass only for
+another field of its own words, or one pdfinfo is not known to write. When no
+field pdfinfo finds is read, debug mode says so."
+  (destructuring-bind (own found) *pdf-info-fields*
+    (let* ((lines (coerce (uiop:split-string info :separator '(#\Newline)) 'vector))
+           (end (or (position "" lines :test-not #'string= :from-end t) -1))
+           (limit (length found))
+           (tail '())
+           (fields '())
+           (last -1))
+      (loop while (>= end 0)
+            do (let* ((line (aref lines end))
+                      (index (info-field-index line found)))
+                 (cond ((and index (< index limit)) (setf limit index))
+                       ((or index (info-field-index line own)
+                            (not (cl-ppcre:scan "^[A-Z][A-Za-z ]*: " line)))
+                        (loop-finish)))
+                 (push line tail)
+                 (decf end)))
+      (when (and (= limit (length found)) (>= end 0))
+        (tuatara.runtime:debug-report :file "pdfinfo: none of the fields it finds itself read from its ~d lines"
+                                      (1+ end)))
+      (loop for i from 0 to end
+            for line = (aref lines i)
+            for index = (info-field-index line own)
+            do (cond ((and index (> index last)) (setf last index) (push line fields))
+                     (fields (setf (first fields) (format nil "~a~%~a" (first fields) line)))
+                     ((string/= line "") (push line fields))))
+      (append (nreverse fields) tail))))
+
 (defun info-field (info name)
-  "The value of the line NAME: value in INFO, the text an :INFO program
-printed, or NIL. The last such line is taken: the program prints what the file
-says of itself (its title, its author) before what it found, so a title with
-a line of its own in it cannot stand in for what was found."
-  (let ((value nil))
-    (dolist (line (uiop:split-string info :separator '(#\Newline)) value)
-      (let ((colon (position #\: line)))
-        (when (and colon (string-equal name (string-trim " " (subseq line 0 colon))))
-          (setf value (string-trim " " (subseq line (1+ colon)))))))))
+  "The value of the field NAME in INFO, the text an :INFO program printed, or
+NIL: the fields as INFO-FIELDS reads them, so that no words of the PDF stand
+in for what the program found."
+  (dolist (field (info-fields info))
+    (let ((colon (position #\: field)))
+      (when (and colon (string-equal name (subseq field 0 colon)))
+        (return (string-trim " " (subseq field (1+ colon))))))))
 
 (defun pdf-pages-text (text)
   "TEXT, pages as the text program prints them, a form feed after each, with a
@@ -335,7 +392,7 @@ first page drawn."
               (:cancelled (stopped))
               ((:done :too-much)
                (let ((all (tuatara.text:lenient-string output)))
-                 (cond ((string= "" (string-trim '(#\Space #\Tab #\Newline #\Return #\Page) all))
+                 (cond ((string= "" (string-trim *blank-characters* all))
                         (note ", no text in it (pages of pictures?)" :comment))
                        (t
                         (when (or (eq outcome :too-much) (and pages (> pages *pdf-text-pages*)))
@@ -511,7 +568,7 @@ says of itself in its header (TUATARA.IO:J2K-HEADER,
 TUATARA.IO:JXL-FILE-HEADER). A file kept in boxes is read from FD where its
 codestream begins when that is past HEAD. NIL when its header does not say, or
 for another kind."
-  (let* ((size (handler-case (sb-posix:stat-size (sb-posix:fstat fd)) (sb-posix:syscall-error () nil)))
+  (let* ((size (tuatara.io:fd-size fd))
          (read (lambda (at count)
                  (let ((count (and size (min count (- size at)))))
                    (and count (plusp count) (tuatara.io:read-fd-exactly fd count at))))))
@@ -781,10 +838,11 @@ else, or fewer pixels than they say."
                        finally (unless line (return-from decoded-image nil)))
                  (and (eql maxval 255) (image width height depth))))
               ((equal magic "P6")
-               (let ((size (line)) (maxval (line)))
-                 (destructuring-bind (&optional width height)
-                     (and size (handler-case (mapcar #'parse-integer (uiop:split-string size)) (parse-error () nil)))
-                   (and (equal maxval "255") (image width height 3))))))))))
+               (let* ((size (line)) (maxval (line))
+                      (numbers (and size (handler-case (mapcar #'parse-integer (uiop:split-string size))
+                                           (parse-error () nil)))))
+                 ;; a size line of two numbers alone, else no picture
+                 (and (= (length numbers) 2) (equal maxval "255") (image (first numbers) (second numbers) 3)))))))))
 
 (defun picture-refusal (kind header pixels memory decoder policy-refusal)
   "Why a picture of KIND is not drawn before its program runs, in words, or
@@ -851,7 +909,7 @@ its car turns true; NIL, NIL then. DENSITY, dots an inch, draws a drawing
       (unless (assoc kind *image-formats*) (done nil))
       (let ((why (decoding-unavailable-words decoder "pictures" *image-decoders*)))
         (when why (done nil (format nil ", not shown: ~a" why))))
-      (let* ((octets (handler-case (sb-posix:stat-size (sb-posix:fstat fd)) (sb-posix:syscall-error () nil)))
+      (let* ((octets (tuatara.io:fd-size fd))
              (head (and octets (ignoring-errors-reported ("reading the head of a picture")
                                  (tuatara.io:read-fd-start fd "the picture" octets 65536))))
              (header (and head (member kind *pictures-sized-first*) (coded-picture-header fd head kind)))
@@ -913,9 +971,8 @@ For a package reading pictures it finds in other files: only plain pixels come
 back, checked, the picture itself never decoded in the editor. Waits for the
 program: call it from a thread working in the background; in a job, stopping
 the job (CANCEL, the job's own by default) stops it too."
-  (let ((fd (tuatara.io:memory-file "tuatara-picture" octets :kept nil)))
-    (unwind-protect (decode-image fd kind width height :cancel cancel)
-      (ignoring-errors-reported ("closing the copy of a picture") (sb-posix:close fd)))))
+  (tuatara.io:call-with-memory-file "tuatara-picture" octets
+                                    (lambda (fd) (decode-image fd kind width height :cancel cancel))))
 
 (defun sandboxed-mode-line (editor buffer)
   "What the mode line of a buffer adds when what it shows was made by a

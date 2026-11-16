@@ -1,7 +1,7 @@
 ;;;; tools/fuzz-sftp.lisp --- Fuzz the reader of what an SFTP server answers.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; Loaded by tools/fuzz-sftp.sh, which sets the limits. Writes what a server
+;;;; Loaded by tools/fuzz-lisp.sh sftp, after tools/fuzz-common.lisp. Writes what a server
 ;;;; answers over a session (its version and extensions, handles, attributes
 ;;;; with every field, names, data, statuses with words, an extended reply),
 ;;;; spoils copies ROUNDS times from SEED (octets changed, cut, put in, lengths
@@ -12,34 +12,10 @@
 ;;;; run ends with exit 1.
 
 (defpackage #:tuatara.fuzz-sftp
-  (:use #:cl)
-  (:documentation "The SFTP client's fuzzer, run by tools/fuzz-sftp.sh."))
+  (:use #:cl #:tuatara.fuzz)
+  (:documentation "The SFTP client's fuzzer, run by tools/fuzz-lisp.sh sftp."))
 
 (in-package #:tuatara.fuzz-sftp)
-
-(defvar *root* (pathname (concatenate 'string (string-right-trim "/" (sb-ext:posix-getenv "FUZZ_ROOT")) "/"))
-  "The Tuatara source tree fuzzed, as tools/fuzz-sftp.sh gives it.")
-
-(load (merge-pathnames "tools/quicklisp.lisp" *root*))
-(push *root* asdf:*central-registry*)
-(ql:quickload :tuatara/defaults :silent t)
-
-(defun environment-integer (name default)
-  "The whole number the environment variable NAME holds, or DEFAULT."
-  (let ((text (sb-ext:posix-getenv name)))
-    (or (and text (parse-integer text :junk-allowed t)) default)))
-
-(defparameter *rounds* (environment-integer "FUZZ_ROUNDS" 200000) "How many spoilt streams are read.")
-
-(defparameter *seed* (environment-integer "FUZZ_SEED" 1) "The seed of the run's random choices.")
-
-(defparameter *deadline* (environment-integer "FUZZ_DEADLINE" 10)
-  "The most seconds one stream may take to be read before it counts as a hang.")
-
-(defparameter *heap-cap* (* (environment-integer "FUZZ_HEAP_MB" 1024) 1024 1024)
-  "The most octets of heap in use after a stream is read, once collected.")
-
-(defparameter *random* (sb-ext:seed-random-state *seed*) "The run's random state.")
 
 (defun packets-octets (packets)
   "The octets a server sends as PACKETS, each (KIND . FIELDS) as the client's
@@ -115,21 +91,13 @@ malformed packet."
                             (tuatara.defaults::sftp-take-answer inbox kind))))
       (tuatara.frontend:malformed-message () nil))))
 
-(defun failed (round octets control &rest arguments)
-  "Say the run FAILED at ROUND, as CONTROL and ARGUMENTS say, keep OCTETS, and end with exit 1."
-  (let ((path (merge-pathnames (format nil "build/fuzz/sftp-failed-~d-~d.bin" *seed* round) *root*)))
-    (ensure-directories-exist path)
-    (alexandria:write-byte-vector-into-file octets path :if-exists :supersede)
-    (format t "~&FAILED at round ~:d: ~? (kept as ~a)~%" round control arguments path)
-    (finish-output)
-    (sb-ext:exit :code 1 :abort t)))
-
 (handler-case (read-stream *session*)
   (error (e) (failed 0 *session* "the session itself does not read: ~a" e)))
 
 (dotimes (round *rounds*)
   (let ((octets (spoilt *session*)) (began (get-internal-real-time)))
-    (handler-case (read-stream octets)
+    (handler-case (sb-ext:with-timeout *deadline* (read-stream octets))
+      (sb-ext:timeout () (failed round octets "read for more than ~d seconds" *deadline*))
       (error (e) (failed round octets "~a" e)))
     (when (> (- (get-internal-real-time) began) (* *deadline* internal-time-units-per-second))
       (failed round octets "read for more than ~d seconds" *deadline*))

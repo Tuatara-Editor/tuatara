@@ -37,15 +37,6 @@ a terminal the font is the terminal's."
       (#\0 (scale-font 0))
       (t (scale-font (+ (font-steps) (prefix)))))))
 
-(define-command text-scale-increase ()
-  "Make the window's font a step larger (1.2 times), or the prefix argument's
-worth of steps."
-  (scale-font (+ (font-steps) (prefix))))
-
-(define-command text-scale-decrease ()
-  "Make the window's font a step smaller, or the prefix argument's worth of steps."
-  (scale-font (- (font-steps) (prefix))))
-
 (define-command mouse-wheel-text-scale ()
   "Make the window's font a step larger as the mouse wheel turns up with Ctrl
 held (\\`C-<wheel-up>'), a step smaller as it turns down."
@@ -72,11 +63,6 @@ Two values, the answer and true; NIL and NIL when the waiting was given up."
         (tuatara.runtime:thread-result thread 0)
         (values nil nil))))
 
-(defun all-fonts-listed ()
-  "Every font family the window can draw, fixed-width or not, as
-FRONTEND-FONT-FACES lists them, listed as FONTS-LISTED lists."
-  (values (fonts-listed #'tuatara.frontend:frontend-font-faces)))
-
 (define-command set-frame-font ()
   "Choose the window's font among the fixed-width fonts installed: a family,
 with any style and size typed after it (DejaVu Sans Mono Bold 12); without a
@@ -92,8 +78,11 @@ init file sets it for good. In a terminal the font is the terminal's."
                     (family (and (plusp (length name)) (fixed-width-family-p name families)))
                     (full (and family (tuatara.frontend:frontend-set-font frontend name))))
                (cond (full (message "Font ~a" full))
-                     ((and (not family) (fixed-width-family-p name (mapcar #'first (all-fonts-listed))))
-                      (message "~a is no fixed-width font, and the window's text stands in columns: the font is as it was"
+                     ((and (not family)
+                           (fixed-width-family-p
+                            name (mapcar #'first (fonts-listed #'tuatara.frontend:frontend-font-faces))))
+                      (message "~a is no fixed-width font, and the window's text stands in columns: ~
+                                the font is as it was"
                                (shown-font-family name)))
                      (t (message "No font family ~a is installed" (shown-font-family name)))))))))
 

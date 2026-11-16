@@ -82,7 +82,6 @@ whole text no server sees (a note: its blocks are seen apart)."
       (let ((server (doc-server-offers doc capability feature)))
         (and server (values doc server))))))
 
-;; the doc and server a question is asked of, or the sentence saying there is none
 (defmacro with-lsp-server ((doc server) (buffer capability feature &key (position nil positioned) none else) &body body)
   "Run BODY with DOC and SERVER bound to the document of BUFFER and its server
 that offers CAPABILITY for FEATURE, BUFFER's changes sent first so that what
@@ -287,8 +286,8 @@ offers once it answers; else, or when it offers nothing, what the mode offers."
 ;;; Definitions and references
 
 (defvar *location-files* nil
-  "While a server's places are made DEFINITIONs, the lines of the files read
-for them, by path, each file read once; NIL otherwise.")
+  "While a server's places are made DEFINITIONs, the texts of the files read
+for them, ropes by path, each file read once; NIL otherwise.")
 
 (defvar *lsp-location-file-largest* (* 2 1024 1024)
   "The largest file, in octets, whose line a server names is read to show it
@@ -307,36 +306,38 @@ shown without their lines, so that hundreds of them never hold the editor up.")
 still be read for their lines (*LSP-LOCATION-FILES-TOTAL*); NIL when they are
 not counted.")
 
-(defun location-file-lines (server path)
-  "The lines of the file at PATH, for the places SERVER names in it, as a
-vector: read when it is in SERVER's project, not in *SAFE-DIRECTORIES*, no
+(defun location-file-rope (server path)
+  "The text of the file at PATH, for the places SERVER names in it, as a
+rope: read when it is in SERVER's project, not in *SAFE-DIRECTORIES*, no
 larger than *LSP-LOCATION-FILE-LARGEST* and than the octets left to read
-\(*LSP-LOCATION-FILES-TOTAL*); else none. Each file read once while
-*LOCATION-FILES* keeps them."
-  (or (and *location-files* (gethash path *location-files*))
-      (let ((lines (if (and (or (null *location-octets-left*) (plusp *location-octets-left*))
-                            (tuatara.io:really-within-p path (lsp-server-root server))
-                            (not (safe-directory-of path)))
-                       (let* ((limit (min *lsp-location-file-largest* (or *location-octets-left* most-positive-fixnum)))
-                              (text (handler-case (tuatara.io:file-text path :limit limit
-                                                                        :too-large (constantly "") :missing "")
-                                      ;; a file that cannot be read shows no line
-                                      (tuatara.io:file-system-error () ""))))
-                         (when *location-octets-left* (decf *location-octets-left* (length text)))
-                         (coerce (uiop:split-string text :separator '(#\Newline)) 'vector))
-                       #())))
-        (when *location-files* (setf (gethash path *location-files*) lines))
-        lines)))
+\(*LSP-LOCATION-FILES-TOTAL*); else NIL. Each file read once while
+*LOCATION-FILES* keeps them; its lines are found in the rope, never made
+into strings but for the line shown."
+  (multiple-value-bind (kept known) (if *location-files* (gethash path *location-files*) (values nil nil))
+    (if known
+        kept
+        (let ((rope (and (or (null *location-octets-left*) (plusp *location-octets-left*))
+                         (tuatara.io:really-within-p path (lsp-server-root server))
+                         (not (safe-directory-of path))
+                         (let ((octets (handler-case
+                                           (tuatara.io:file-octets
+                                            path :limit (min *lsp-location-file-largest*
+                                                             (or *location-octets-left* most-positive-fixnum)))
+                                         ;; a file that cannot be read, or is too large, shows no line
+                                         (tuatara.io:file-system-error () nil))))
+                           (when octets
+                             (when *location-octets-left* (decf *location-octets-left* (length octets)))
+                             (tuatara.text:octets->rope (coerce octets 'tuatara.text:octets)))))))
+          (when *location-files* (setf (gethash path *location-files*) rope))
+          rope))))
 
 (defun location-line (server path line)
   "The text of the 0-based LINE of the file at PATH, for a place SERVER names:
-from the buffer that has it open, else from the file (LOCATION-FILE-LINES);
+from the buffer that has it open, else from the file (LOCATION-FILE-ROPE);
 empty otherwise. At most *LSP-LOCATION-LINE-LENGTH* characters of it."
   (let* ((open (buffer-visiting path))
-         (text (if open
-                   (rope-line-text (tuatara.buffer:buffer-text open) line)
-                   (let ((lines (location-file-lines server path)))
-                     (if (< -1 line (length lines)) (aref lines line) "")))))
+         (rope (if open (tuatara.buffer:buffer-text open) (location-file-rope server path)))
+         (text (if rope (rope-line-text rope line (* 4 *lsp-location-line-length*)) "")))
     (string-trim '(#\Space #\Tab) (subseq text 0 (min (length text) *lsp-location-line-length*)))))
 
 (defun lsp-location-definition (server location)
@@ -413,6 +414,11 @@ no server offers it."
   (or (call-next-method)
       (and (lsp-doc-at buffer position "definitionProvider" "goto-definition") (lsp-word-at buffer position))))
 
+(defmethod mode-finds-definitions-p :around (mode buffer)
+  "True in a buffer open in a server that finds definitions; else as the mode says."
+  (or (and (lsp-doc-at buffer (tuatara.buffer:buffer-point buffer) "definitionProvider" "goto-definition") t)
+      (call-next-method)))
+
 (defmethod mode-find-definitions :around (mode buffer name)
   "In a buffer open in a server that finds definitions, where the server says
 the name at point is defined, once it answers, *LSP-WAIT* seconds at most;
@@ -423,7 +429,6 @@ else, or when it names none, as the mode finds them."
     (let* ((point (tuatara.buffer:buffer-point buffer))
            (server (nth-value 1 (lsp-doc-at buffer point "definitionProvider" "goto-definition"))))
       (cond ((null server) (call-next-method))
-            ((string= name "") '())
             ((equal name (lsp-word-at buffer point))
              (lsp-locations buffer "textDocument/definition" "definitionProvider" "goto-definition" #'own))
             (t (own))))))
@@ -819,9 +824,7 @@ point: those for what it found wrong there first; the one chosen is made."
   (let ((buffer (current-buffer)))
     (with-lsp-server (doc server) (buffer "codeActionProvider" "code-action" :position (point)
                                           :none "No language server here offers changes")
-      (multiple-value-bind (start end) (if (tuatara.buffer:buffer-mark-active-p buffer)
-                                           (tuatara.buffer:buffer-region buffer)
-                                           (values (point) (point)))
+      (multiple-value-bind (start end) (region-or-point buffer)
         (lsp-ask-doc server doc "textDocument/codeAction"
                      (code-action-params doc server start end (diagnostics-in buffer start end))
                      "offer changes"
@@ -963,11 +966,10 @@ or formats whole files only."
   "Lay out the code selected as the language server does; with no server that
 lays out a part, each line selected indented as the mode indents it."
   (let ((buffer (current-buffer)))
-    (if (not (tuatara.buffer:buffer-mark-active-p buffer))
-        (message "No selection: format-region was not run")
-        (multiple-value-bind (start end) (tuatara.buffer:buffer-region buffer)
-          (unless (lsp-format buffer :start start :end end)
-            (indent-region))))))
+    (multiple-value-bind (start end) (selected-region-or-say buffer 'format-region :change t)
+      (when start
+        (unless (lsp-format buffer :start start :end end)
+          (indent-region))))))
 
 (defparameter *code-context-keys*
   '(("C-c d" xref-find-definitions "definition") ("C-c D" xref-go-back "back")

@@ -340,7 +340,8 @@ has the frontend show pictures. Returns the frontend and the editor."
 (define-test (docx-view fonts-shown)
   ;; LibreOffice shown your font directories, read only, where its home finds them, after its scratch /tmp
   (let ((arguments (tuatara.io::sandbox-arguments "soffice" '() 10 nil :directories '(("/home/x/.fonts" . "/tmp/.fonts")))))
-    (true (search '("--tmpfs" "/tmp" "--ro-bind-try" "/home/x/.fonts" "/tmp/.fonts") arguments :test #'equal)))
+    (true (search (list "--tmpfs" "/tmp" "--ro-bind-try" (tuatara.io:real-path-so-far "/home/x/.fonts") "/tmp/.fonts")
+                  arguments :test #'equal)))
   (let ((directories (tuatara.defaults::sandbox-font-directories)))
     (is equal '("/tmp/.local/share/fonts" "/tmp/.fonts") (mapcar #'cdr directories))
     (true (every (lambda (d) (uiop:string-suffix-p (car d) "fonts")) directories))))
@@ -469,7 +470,7 @@ macros besides."
             ;; Tuatara's own file of the design never in the document
             (false (search "table style:" all))))
         ;; the PDF writes the date as the Word document does
-        (let ((latex (tuatara.defaults::org-latex-document note :file note-path :enhanced t)))
+        (let ((latex (org-latex-of note :file note-path :enhanced t)))
           (true (search "5 October 2026" latex) "the date in ~a" (subseq latex 0 (min 3000 (length latex)))))))))
 
 (define-test (docx-view latex-date-places)
@@ -592,15 +593,15 @@ macros besides."
                       (format nil "#+macro: a {{{b}}}~%#+macro: b {{{a}}}~%~%{{{a}}}~%")
                       (format nil "#+macro: g {{{g}}}{{{g}}}~%~%{{{g}}}~%")))
     (true (tuatara.defaults::org-docx-document text))
-    (true (tuatara.defaults::org-latex-document text))
-    (true (tuatara.defaults::org-latex-document text :enhanced t)))
+    (true (org-latex-of text))
+    (true (org-latex-of text :enhanced t)))
   ;; $0 in a macro is no argument: nothing, never a failed export
   (let ((text (format nil "#+macro: free costs $0 $1~%~%{{{free(x)}}}~%")))
-    (true (search "costs  x" (tuatara.defaults::org-latex-document text)))
+    (true (search "costs  x" (org-latex-of text)))
     (true (tuatara.defaults::org-docx-document text)))
   ;; a setting left empty in an :EXPORT: drawer is as auto
   (let ((text (format nil "* H~%:EXPORT:~%font:~%indent: ~%:END:~%- a~%")))
-    (let ((latex (tuatara.defaults::org-latex-document text :enhanced t)))
+    (let ((latex (org-latex-of text :enhanced t)))
       (true latex)
       (false (search "\\leftmargin}{}" latex))))
   ;; sizes as LaTeX reads them: 10.5, never 21/2
@@ -650,7 +651,7 @@ macros besides."
                                                    :note (namestring (merge-pathnames "marked.org" dir)))))
           (check (alexandria:read-file-into-string note))
           ;; exported, none of it is LaTeX of its own
-          (let ((latex (tuatara.defaults::org-latex-document (alexandria:read-file-into-string note) :file note)))
+          (let ((latex (org-latex-of (alexandria:read-file-into-string note) :file note)))
             (false (search "\\directlua" latex))
             (false (search "\\usepackage{evil}" latex))
             (false (search "\\input{/etc/passwd}" latex))
@@ -729,16 +730,16 @@ macros besides."
             ;; a name
             (let ((template "{{{#logo}}}\\includegraphics{{{{logo:path}}}}{{{/logo}}} {{{body}}}"))
               (alexandria:write-string-into-file template (merge-pathnames "plain.tex" dir))
-              (let ((from-logos (tuatara.defaults::org-latex-document (format nil "#+template: ./plain.tex~%#+logo: logo.png~%~%Text~%") :file note-path :enhanced t))
-                    (from-elsewhere (tuatara.defaults::org-latex-document (format nil "#+template: ./plain.tex~%#+logo: ~a~%~%Text~%" (namestring (merge-pathnames "logo.png" elsewhere))) :file note-path :enhanced t)))
+              (let ((from-logos (org-latex-of (format nil "#+template: ./plain.tex~%#+logo: logo.png~%~%Text~%") :file note-path :enhanced t))
+                    (from-elsewhere (org-latex-of (format nil "#+template: ./plain.tex~%#+logo: ~a~%~%Text~%" (namestring (merge-pathnames "logo.png" elsewhere))) :file note-path :enhanced t)))
                 (true (search (format nil "\\includegraphics{~alogo.png}" (namestring logos)) from-logos))
                 (false (search "includegraphics" from-elsewhere)))
               ;; one that is not there: left out, said so, the PDF still made
               (multiple-value-bind (latex a notes)
-                  (tuatara.defaults::org-latex-document (format nil
-                                                                "#+template: ./plain.tex~%#+logo: gone.png~%~%Text~%")
-                                                        :file note-path
-                                                        :enhanced t)
+                  (org-latex-of (format nil
+                                        "#+template: ./plain.tex~%#+logo: gone.png~%~%Text~%")
+                                :file note-path
+                                :enhanced t)
                 (declare (ignore a))
                 (false (search "includegraphics" latex))
                 (true (find-if (lambda (n) (search "gone.png: no such picture, so left out" n)) notes))))))))))
@@ -901,3 +902,10 @@ macros besides."
         (let ((types (and entry (sb-ext:octets-to-string (tuatara.defaults::zip-entry-octets octets entry)
                                                          :external-format :utf-8))))
           (true (and types (search "<Types" types) (search "word/numbering.xml" types)) "~a" types))))))
+
+(define-test (docx-view long-value-cut-before-it-is-kept-from-markup)
+  ;; a long value a file holds is cut to its first characters and then kept from markup: the count
+  ;; said is of the value's own characters, and the cut never splits what keeps one from markup
+  (let ((shown (tuatara.defaults::metadata-value (make-string 600 :initial-element #\\))))
+    (true (search "... (600 characters)" shown) "~a" (subseq shown (max 0 (- (length shown) 40))))
+    (is = 500 (count #\\ shown))))

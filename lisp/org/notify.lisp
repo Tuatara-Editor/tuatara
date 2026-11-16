@@ -124,10 +124,9 @@ at the universal time NOW, and each notification due (ORG-NOTIFY-DUE) told
 \(NOTIFY) and kept as told. Returns when the next is due, a universal time."
   (multiple-value-bind (due next)
       (let ((*org-agenda-snapshot* snapshot)
-            (*org-agenda-ts-memo* (make-hash-table :test 'equal))
-            (*org-agenda-time-memo* (make-hash-table :test 'equal))
             (*org-now* now))
-        (org-notify-due (org-agenda-day (org-today now) :files (mapcar #'first snapshot) :log nil) now))
+        (with-org-agenda-memos
+          (org-notify-due (org-agenda-day (org-today now) :files (mapcar #'first snapshot) :log nil) now)))
     ;; those of days gone are no longer needed
     (let ((today (org-today now)))
       (maphash (lambda (key value)
@@ -163,14 +162,18 @@ looks again; NIL with no tag set."
           (if (or (not (equal key open-key)) (>= now due) (>= now (+ last *org-notify-disk-check*)))
               (progn
                 (setf **org-notify-state** (list t (+ now 60) key due now))
-                (org-agenda-in-background "tuatara notifications" *org-notify-carried-settings*
+                (org-agenda-in-background "tuatara notifications"
                                           (lambda (snapshot)
                                             (let ((next nil))
                                               (unwind-protect
                                                    (setf next (org-notify-work snapshot
                                                                                (or *org-now* (get-universal-time))))
-                                                (setf (first **org-notify-state**) nil
-                                                      (fourth **org-notify-state**) (or next 0)))))))
+                                                ;; the next time first: the tick may start again once it is not busy
+                                                (let ((state **org-notify-state**))
+                                                  (setf (fourth state) (or next 0))
+                                                  (sb-thread:barrier (:write))
+                                                  (setf (first state) nil)))))
+                                          :settings *org-notify-carried-settings*))
               (setf (second **org-notify-state**) (+ now 60))))))
     (and *org-notify-tag* (max 1 (- (second **org-notify-state**) now)))))
 

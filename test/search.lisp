@@ -3,6 +3,18 @@
 
 (in-package #:tuatara.tests)
 
+(defun literal-match-starts (rope string &key (case-fold (tuatara.syntax:case-fold-p string)) (threads 4) limit)
+  "Where STRING stands in ROPE, none overlapping, as a vector of offsets: every
+literal match as the editor finds them (COLLECT-MATCHES over
+MAP-LITERAL-MATCHES) on THREADS threads, the first LIMIT of them when it is
+given."
+  (let ((starts (mapcar #'first (tuatara.syntax:collect-matches
+                                 (lambda (function from to halt)
+                                   (tuatara.syntax:map-literal-matches function rope string from to
+                                                                       :case-fold case-fold :halt halt))
+                                 0 (tuatara.text:rope-octet-length rope) :threads threads))))
+    (coerce (if limit (subseq starts 0 (min limit (length starts))) starts) 'simple-vector)))
+
 (define-test search
   :description "Literal search across chunk and leaf boundaries, case folding, backward search, parallel all-matches, regex search.")
 
@@ -29,9 +41,9 @@
     (is = 29 (tuatara.syntax:search-backward rope "needle"))
     (is = 23 (tuatara.syntax:search-backward rope "needle" :start 29))
     (is = 4 (tuatara.syntax:search-backward rope "needle" :start 15 :case-fold nil))
-    (is equalp #(4 15 23 29) (tuatara.syntax:search-all rope "needle" :threads 1))
-    (is equalp #(4 23 29) (tuatara.syntax:search-all rope "needle" :case-fold nil :threads 2))
-    (is equalp #(4 15) (tuatara.syntax:search-all rope "needle" :limit 2))))
+    (is equalp #(4 15 23 29) (literal-match-starts rope "needle" :threads 1))
+    (is equalp #(4 23 29) (literal-match-starts rope "needle" :case-fold nil :threads 2))
+    (is equalp #(4 15) (literal-match-starts rope "needle" :limit 2))))
 
 (define-test (search backward-range-narrower-than-needle)
   ;; a match starting before START and running past it is found whatever END is,
@@ -49,9 +61,9 @@
          (s (with-output-to-string (o) (loop repeat 40000 do (write-string piece o) (write-string (random-text 3) o))))
          (rope (tuatara.text:string->rope s))
          (expected (oracle-positions s "needle")))
-    (is = (length expected) (length (tuatara.syntax:search-all rope "needle" :threads 4)))
-    (is equalp (coerce expected 'simple-vector) (tuatara.syntax:search-all rope "needle" :threads 4))
-    (is equalp (coerce expected 'simple-vector) (tuatara.syntax:search-all rope "needle" :threads 1))
+    (is = (length expected) (length (literal-match-starts rope "needle" :threads 4)))
+    (is equalp (coerce expected 'simple-vector) (literal-match-starts rope "needle" :threads 4))
+    (is equalp (coerce expected 'simple-vector) (literal-match-starts rope "needle" :threads 1))
     ;; the parallel waves give the same answers: force them with a tiny serial window and piece
     (let ((tuatara.syntax:*serial-window* 5000) (tuatara.syntax:*parallel-piece* 7000))
       (loop repeat 20
@@ -71,7 +83,7 @@
                (is eql bwd (tuatara.syntax:search-backward rope "needle" :start start))))
     ;; multibyte needle
     (let* ((s2 "aé中😀 é中 zz é中😀") (r2 (tuatara.text:string->rope s2)))
-      (is equalp (coerce (oracle-positions s2 "é中") 'simple-vector) (tuatara.syntax:search-all r2 "é中" :threads 1))
+      (is equalp (coerce (oracle-positions s2 "é中") 'simple-vector) (literal-match-starts r2 "é中" :threads 1))
       (is = 11 (tuatara.syntax:search-backward r2 "é中" :start 14))
       (is = 20 (tuatara.syntax:search-backward r2 "é中")))))
 
@@ -151,7 +163,7 @@ newlines and some multibyte characters."
       (is eql 2 start)
       (is eql 7 end))
     (is eql 2 (tuatara.syntax:search-backward crlf (format nil "e~%tw")))
-    (is equalp #(2) (tuatara.syntax:search-all crlf (format nil "e~%tw")))))
+    (is equalp #(2) (literal-match-starts crlf (format nil "e~%tw")))))
 
 (define-test (search folded-letters-past-ascii-skip-by-shape)
   ;; a lowercase needle past ASCII is skipped to by the octets of both its cases,
@@ -165,7 +177,7 @@ newlines and some multibyte characters."
         (true (tuatara.syntax::regex-traits-shape (gethash scanner tuatara.syntax::**regex-traits**)) "~a" needle)
         (is equal (regex-oracle s scanner) (triples (tuatara.syntax:regex-search-all rope scanner)) "~a" needle)
         (is equalp (coerce (mapcar #'first (regex-oracle s scanner)) '(vector fixnum))
-            (tuatara.syntax:search-all rope needle :threads 3) "~a, all" needle)))))
+            (literal-match-starts rope needle :threads 3) "~a, all" needle)))))
 
 (define-test (search case-octet-sets-hold-every-case)
   ;; every character CHAR-EQUAL takes for a letter is written in the octets its shape allows
@@ -477,7 +489,7 @@ newlines and some multibyte characters."
                            (tuatara.text:map-line-slices (lambda (&rest line) (declare (ignore line))) rope 0 1 0 10))))
         (let ((consed (consed way)))
           (true (< consed 1024) "consed ~:d octets" consed)))
-      (let ((consed (consed (lambda () (tuatara.syntax:search-all rope "zzzq")))))
+      (let ((consed (consed (lambda () (literal-match-starts rope "zzzq")))))
         (true (< consed (* 16 1024)) "search-all consed ~:d octets" consed)))))
 
 (define-test (search collect)
@@ -632,3 +644,25 @@ newlines and some multibyte characters."
                       (sb-concurrency:list-queue-contents tuatara.runtime:*debug-reports*)
                       :key #'second :test #'equal)))
     (drain-debug-reports)))
+
+(define-test (search indexed-directories-named-once)
+  ;; before each frame the indexed directories are looked at again only when the setting has changed
+  (let ((tuatara.defaults::*indexes-made-for* (list :none))
+        (tuatara.defaults::*directory-indexes* '())
+        (tuatara-user:*indexed-directories* '())
+        (named 0) (thread sb-thread:*current-thread*))
+    (sb-int:encapsulate 'tuatara.defaults::directory-name 'counted
+                        (lambda (function &rest arguments)
+                          (when (eq sb-thread:*current-thread* thread) (incf named))
+                          (apply function arguments)))
+    (unwind-protect
+         (progn
+           (setf tuatara-user:*indexed-directories* (list "/nonexistent/one/" "/nonexistent/two/"))
+           (tuatara.defaults::indexes-tick nil)
+           (let ((first named))
+             (true (plusp first))
+             (tuatara.defaults::indexes-tick nil)
+             (tuatara.defaults::indexes-tick nil)
+             (is = first named)))
+      (sb-int:unencapsulate 'tuatara.defaults::directory-name 'counted)
+      (setf tuatara.defaults::*directory-indexes* '()))))

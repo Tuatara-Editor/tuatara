@@ -376,6 +376,43 @@ then type THEN; return the frontend and the editor."
                            before)
                 do (sleep 0.01)))))
 
+(defun abandoned-evaluation-sample ()
+  "Give *FILL-COLUMN* 66, then, six seconds later and not to be stopped meanwhile, a value it
+does not take: longer than the editor waits for an evaluation it stopped to end."
+  (sb-sys:without-interrupts
+    (setf tuatara-user:*fill-column* 66)
+    (loop repeat 600 do (sleep 0.01))
+    (setf tuatara-user:*fill-column* "wide")))
+
+(define-test (scratch abandoned-evaluation-settings-put-back)
+  ;; an evaluation given up on that gives a setting a value it does not take as its thread ends:
+  ;; the setting goes back to what it held when the evaluation was given up on, and that is said
+  (let ((width tuatara-user:*fill-column*))
+    (unwind-protect
+         (progn
+           (auto-save-session
+            (list (format nil "M-: ~a RET" (key-string "(tuatara.tests::abandoned-evaluation-sample)"))
+                  (list :until (lambda () (eql tuatara-user:*fill-column* 66)) 30)
+                  "C-g"
+                  (list :until (lambda () (search "*fill-column* is \"wide\"" (messages-text))) 30))
+            :width 200 :pending t)
+           (is eql 66 tuatara-user:*fill-column* "~a" (messages-text)))
+      (setf tuatara-user:*fill-column* width))))
+
+(define-test (scratch stop-after-the-forms-does-nothing)
+  ;; asked to stop once its forms are done, as it ends, an evaluation's thread is not thrown out of
+  ;; where there is nothing to catch it
+  (let* ((go (list nil))
+         (thread (sb-thread:make-thread (lambda ()
+                                          (handler-case (progn (tuatara.runtime:wait-until (lambda () (car go)) 10)
+                                                               :ended)
+                                            (control-error () :thrown)))
+                                        :name "tuatara stop test")))
+    (tuatara.defaults::stop-evaluation-thread thread (list :running nil nil))
+    (sleep 0.1)
+    (setf (car go) t)
+    (is eq :ended (sb-thread:join-thread thread :default :failed))))
+
 (defstruct (unprintable-sample (:print-function (lambda (object stream depth)
                                                   (declare (ignore object stream depth))
                                                   (error "no printing here")))))
@@ -394,10 +431,12 @@ then type THEN; return the frontend and the editor."
       (with-output-to-string (out)
         (tuatara.defaults::write-output-and-values out (format nil "printed  ") (list 1 (make-unprintable-sample)))))
   (is string= (format nil "~a~%*** Eval error ***  x~%" "1")
-      (tuatara.defaults::ielm-results (list :outcome (list :error (make-condition 'simple-error :format-control "x"))
-                                            :output "1" :package *package*)))
+      (tuatara.defaults::ielm-results
+       (tuatara.defaults::make-evaluation :kind :error :condition (make-condition 'simple-error :format-control "x")
+                                          :output "1" :package *package*)))
   (is string= (format nil "; No values~%")
-      (tuatara.defaults::ielm-results (list :outcome (list :values '() 1) :output "" :package *package*)))
+      (tuatara.defaults::ielm-results
+       (tuatara.defaults::make-evaluation :kind :values :count 1 :output "" :package *package*)))
   (is string= "#<a value that cannot be printed: no printing here>"
       (tuatara.defaults::value-preview (make-unprintable-sample)))
   (is string= "(1 2 3) ; \"a b\"" (tuatara.defaults::format-values (list '(1 2 3) (format nil "a~%b")))))

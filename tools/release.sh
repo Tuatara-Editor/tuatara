@@ -41,7 +41,8 @@ tools/terminal-library.sh
 # changed since it, with these scripts, the same grammars and terminal
 # library, and the same Lisp libraries
 stamp="$root/build/release/.built-from"
-wanted="$(git rev-parse HEAD) $(cat "$0" tools/lisp-archives.sh tools/lisp-archives.sha256 tools/build-image.lisp tools/build-image.sh tools/inside.sh tools/fetch.sh build/grammars/.built-from \
+wanted="$(git rev-parse HEAD) $(cat "$0" tools/lisp-archives.sh tools/lisp-archives.sha256 tools/build-image.lisp \
+            tools/build-image.sh tools/inside.sh tools/fetch.sh build/grammars/.built-from \
             build/terminal/.built-from "$(dirname "$(quicklisp_setup)")/dists/quicklisp/distinfo.txt" | sha256sum |
               cut -c1-16)"
 if [ -z "$(git status --porcelain --untracked-files=no)" ] &&
@@ -164,19 +165,20 @@ while IFS=$'\t' read -r name url commit licence subpath; do
   mkdir -p "$top/grammars/$name"
   if [ "$(grammar_git -C "build/grammar-sources/$name" rev-parse -q --verify "HEAD^{commit}")" != \
        "$(grammar_git -C "build/grammar-sources/$name" rev-parse -q --verify "$commit^{commit}")" ]; then
-    echo "tools/release.sh: build/grammar-sources/$name is not at the commit syntax/grammars.tsv pins: run tools/grammars.sh" >&2
+    echo "tools/release.sh: build/grammar-sources/$name is not at the commit syntax/grammars.tsv pins:" \
+         "run tools/grammars.sh" >&2
     exit 1
   fi
   grammar_git -C "build/grammar-sources/$name" archive HEAD | tar -x -C "$top/grammars/$name"
-done < <(grep -v '^#' syntax/grammars.tsv | grep -v '^[[:space:]]*$')
+done < <(grammar_manifest)
 cat > "$top/README" <<EOF
-The sources of Tuatara $(sed -n 's/^ *:version "\(.*\)"$/\1/p' tuatara.asd) ($(git rev-parse --short=7 HEAD)) and of what its
-release is built with: tuatara/ (GPL-3.0-or-later), lisp/ (the Lisp libraries
+The sources of Tuatara $(sed -n 's/^ *:version "\(.*\)"$/\1/p' tuatara.asd) ($(git rev-parse --short=7 HEAD)) and of
+what its release is built with: tuatara/ (GPL-3.0-or-later), lisp/ (the Lisp libraries
 compiled into the program, each under the licence in its directory), ghostty/
 (the terminal library, MIT, with simdutf in its pkg/; Highway, Wuffs and
 uucode, which it compiles in too, are fetched by its build.zig.zon and are
-not in it, their licences in the release's terminal/licenses/), and grammars/, tree-sitter and each grammar at the commit
-tuatara/syntax/grammars.tsv names, under the licence it names there, which the
+not in it, their licences in the release's terminal/licenses/), and grammars/, tree-sitter and each grammar at the
+commit tuatara/syntax/grammars.tsv names, under the licence it names there, which the
 build patches as tuatara/syntax/patches/ says. tuatara/HACKING.org says how to
 build it.
 EOF
@@ -189,7 +191,8 @@ while IFS= read -r -d '' file; do
   if names_this_machine "$file"; then named=1; fi
 done < <(find "$pack" -type f ! -path "$top/ghostty/*" ! -path "$top/grammars/*" -print0)
 if [ "$named" = 1 ]; then
-  echo "tools/release.sh: files of the sources name this machine's home directory or user, where shown above: not released" >&2
+  echo "tools/release.sh: files of the sources name this machine's home directory or user, where shown above:" \
+       "not released" >&2
   exit 1
 fi
 tar -C "$pack" -cf - tuatara-sources | zstd -19 -T0 -q -f -o "$root/build/release/tuatara-sources.tar.zst"

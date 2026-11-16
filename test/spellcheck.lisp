@@ -236,7 +236,7 @@ each of them and at the end, the editor woken to redraw."
 (define-test (spellcheck file-word-list-not-exported)
   ;; the list is a comment: neither export prints it
   (let ((note (format nil "#+title: N~%Ask Qwzxk.~%~%# LocalWords: Qwzxk~%")))
-    (false (search "LocalWords" (tuatara.defaults::org-latex-document note :enhanced t)))
+    (false (search "LocalWords" (org-latex-of note :enhanced t)))
     (with-test-directory (dir)
       (false (search "LocalWords" (docx-text (tuatara.defaults::org-docx-document note :file (namestring (merge-pathnames "n.org" dir)))))))))
 

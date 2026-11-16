@@ -1712,3 +1712,27 @@ JSON and the value looked up in what is read: the oracle of the JSON Lines filte
     (let ((words (handler-case (progn (tuatara.syntax:compile-regex pattern) nil)
                    (tuatara.syntax:pattern-refused (e) (tuatara.syntax:pattern-refused-words e)))))
       (true (and words (search "may not be named" words)) "~s: ~s" pattern words))))
+
+(define-test (search-filters narrowed-text-made-as-far-as-known)
+  ;; while the filters are still worked out, the list shown is made only as far as the entries from the top of
+  ;; the window go, not over the whole list at each key typed
+  (let* ((buffer (tuatara.buffer:make-buffer (tuatara.buffer:unique-buffer-name "filter far")))
+         (filtering (tuatara.defaults::list-filtering-made buffer))
+         (n 20000)
+         (text (format nil "~{entry ~d~%~}" (loop for i below n collect i)))
+         (entries (coerce (loop for i below n collect (format nil "entry ~d" i)) 'simple-vector))
+         (shown (make-array n :element-type 'bit :initial-element 0))
+         (counted 0))
+    (setf (sbit shown 0) 1 (sbit shown 1) 1
+          (tuatara.defaults::list-filtering-source filtering) (tuatara.defaults::make-list-source text '() '() entries 0)
+          (tuatara.defaults::list-filtering-shown filtering) shown
+          (tuatara.defaults::list-filtering-due filtering) (list nil nil))
+    (sb-int:encapsulate 'tuatara.text:string-octet-length 'counted
+                        (lambda (function &rest arguments) (incf counted) (apply function arguments)))
+    (unwind-protect
+         (let ((made (tuatara.defaults::filtered-list-text filtering)))
+           (true (search "entry 1" made))
+           (false (search "entry 2" made)))
+      (sb-int:unencapsulate 'tuatara.text:string-octet-length 'counted)
+      (tuatara.buffer:kill-buffer buffer))
+    (true (< counted 100))))

@@ -1283,8 +1283,10 @@ program writing as it goes makes them: each entry's sizes after its data."
     (false tuatara.tests::*evaluated*))
   (loop for size in '("0 x 0 pts" "-3 x 4 pts" "1e999 x 2 pts" "1d-320 x 1d-320 pts" "x" "" "3 x" "1.2.3 x 4 pts" ". x . pts")
         do (false (tuatara.defaults::page-pixels (format nil "Page size: ~a~%" size) 100 100)))
-  ;; a title with lines of its own in it cannot stand in for what the program found
-  (let ((info (format nil "Title: x~%JavaScript: no~%Encrypted: no~%Pages: 1~%Page size: 1 x 1 pts~%Pages: 7~%Encrypted: yes~%JavaScript: yes~%Page size: 300 x 400 pts~%")))
+  ;; a title with lines of its own in it cannot stand in for what the program found, written after it in the
+  ;; program's order
+  (let ((info (format nil "Title: x~%JavaScript: no~%Pages: 1~%Encrypted: no~%Page size: 1 x 1 pts~%~
+                           JavaScript: yes~%Pages: 7~%Encrypted: yes~%Page size: 300 x 400 pts~%")))
     (is equal "7" (tuatara.defaults::info-field info "Pages"))
     (is equal "yes" (tuatara.defaults::info-field info "JavaScript"))
     (is equal '(300 400) (tuatara.defaults::page-pixels info 300 400)))
@@ -2069,3 +2071,19 @@ and the editor."
         (tuatara.defaults::rimu-unmark-paths buffer marked :only-mark #\>)
         (is equal '(" 1 for deletion " :list-marked) (tuatara.defaults::list-marks-mode-line nil buffer))
         (is = 1 (hash-table-count (tuatara.defaults::rimu-marks buffer)))))))
+
+(define-test (rimu rename-steps-through-names-no-one-guesses)
+  ;; the names files pass through while they are renamed are scratch names no file there has, not
+  ;; ones another can tell beforehand and put in the way
+  (with-test-directory (dir)
+    (let ((directory (namestring dir)))
+      (put-file (merge-pathnames "a.txt" dir) "a")
+      (put-file (merge-pathnames (format nil ".tuatara-rename-~d-0" (sb-posix:getpid)) dir) "in the way")
+      (multiple-value-bind (done failed why)
+          (tuatara.defaults::rimu-rename-in-two-steps directory '(("a.txt" . "b.txt")))
+        (false why)
+        (false failed)
+        (is = 1 (length done)))
+      (is string= "a" (file-text (merge-pathnames "b.txt" dir)))
+      (is string= "in the way"
+          (file-text (merge-pathnames (format nil ".tuatara-rename-~d-0" (sb-posix:getpid)) dir))))))

@@ -198,13 +198,13 @@ a keyword, with where it stood: (NAME . POSITION)."
     (let ((kill "M-x k i l l - s e x p RET"))
       (is equal '(" c" 0 "(a b)" "") (kills "(a b) c" kill))
       (is equal '(" c" 0 "a b" "") (kills "a b c" (format nil "C-u 2 ~a" kill)))
-      (is equal '("(a b)" 4 nil "No next sexp") (kills "(a b)" kill 4))
+      (is equal '("(a b)" 4 nil "At the end of the expression around point") (kills "(a b)" kill 4))
       (is equal '("a " 2 "(b c)" "") (kills "a (b c)" (format nil "C-u - ~a" kill) 7)))
     (is equal '("a " 2 "(b c)" "") (kills "a (b c)" "C-M-DEL" 7))
     ;; kills in a row are one, the earlier text first
     (is equal '("x " 2 "(a) (b)" "") (kills "x (a) (b)" "C-M-DEL C-M-DEL" 9))
     (is equal '("x (a) (b)" 9 "(a) (b)" "Mark set") (kills "x (a) (b)" "C-M-DEL C-M-DEL C-y" 9))
-    (is equal '("(a b)" 1 nil "No previous sexp") (kills "(a b)" "C-M-DEL" 1))))
+    (is equal '("(a b)" 1 nil "At the start of the expression around point") (kills "(a b)" "C-M-DEL" 1))))
 
 (define-test (lists sexps-marked)
   (flet ((marks (text keys &key (point 0) mark)
@@ -220,8 +220,9 @@ a keyword, with where it stood: (NAME . POSITION)."
     (is equal '(7 0 t "") (marks "(a) (b) c" "C-M-SPC" :point 7 :mark 4))
     (is equal '(0 7 t "") (marks "(a) (b) c" "C-M-SPC" :mark 3))
     ;; none to mark
-    (is equal '(4 nil nil "No sexp to select") (marks "(a b)" "C-M-SPC" :point 4))
-    (is equal '(1 6 t "No more sexp to select") (marks "((a) b) c" "C-M-SPC C-M-SPC C-M-SPC" :point 1))))
+    (is equal '(4 nil nil "At the end of the expression around point") (marks "(a b)" "C-M-SPC" :point 4))
+    (is equal '(1 6 t "At the end of the expression around point")
+        (marks "((a) b) c" "C-M-SPC C-M-SPC C-M-SPC" :point 1))))
 
 (define-test (lists pair-deleted)
   (flet ((deletes (mode text keys &optional (point 0))

@@ -43,8 +43,9 @@ rational) and already rounded to the working digits."
         (* (signum r) (/ (org-round-half-away (* a scale)) scale)))))
 
 (defun org-calc-float (r)
-  "A decimal number of the rational R, rounded to *ORG-CALC-DIGITS*."
-  (%make-org-calc-float (org-round-digits (rational r) *org-calc-digits*)))
+  "A decimal number of R, a rational or a float, rounded to *ORG-CALC-DIGITS*;
+an error for the field (#ERROR) when R is a float past what one can hold."
+  (%make-org-calc-float (org-round-digits (rational (if (floatp r) (org-calc-double r) r)) *org-calc-digits*)))
 
 (defun org-calc-value (x)
   "The exact value of X, an integer or a decimal number."
@@ -56,8 +57,8 @@ number may have; past it the field shows #ERROR, at once, instead of a
 number too large to work out.")
 
 (defun org-calc-error ()
-  "Signal that the field being worked out shows #ERROR (ORG-FORMULA-ERROR)."
-  (error 'org-formula-error :text "#ERROR"))
+  "Signal that the field being worked out shows #ERROR (ORG-FORMULA-FIELD-ERROR)."
+  (error 'org-formula-field-error :text "#ERROR"))
 
 (defparameter *org-formula-lisp-refused* "Formulas in Emacs Lisp are not run: Tuatara runs nothing from a file"
   "What a table says of a formula written in Emacs Lisp, which is never run.")
@@ -136,6 +137,11 @@ display mode of the formula's flags: (:normal N), (:fixed N) or (:scientific N).
   (:report (lambda (c stream) (write-string (org-formula-error-text c) stream)))
   (:documentation "A formula that cannot be worked out: TEXT says why."))
 
+(define-condition org-formula-field-error (org-formula-error)
+  ()
+  (:documentation "A formula that cannot be worked out for the field it fills
+(a division by zero, a number too large), which then shows #ERROR."))
+
 (defun org-formula-fail (control &rest arguments)
   "Give up working out a formula, saying why (CONTROL and ARGUMENTS as FORMAT has them)."
   (error 'org-formula-error :text (apply #'format nil control arguments)))
@@ -144,6 +150,15 @@ display mode of the formula's flags: (:normal N), (:fixed N) or (:scientific N).
   "X when it is a number, else an error for the field (#ERROR)."
   (unless (org-calc-number-p x) (org-calc-error))
   x)
+
+(defun org-calc-double (x)
+  "X, a rational or a float, as a double float; an error for the field
+\(#ERROR) when it is too large for one, or is a float past what one holds."
+  (if (if (floatp x)
+          (or (sb-ext:float-infinity-p x) (sb-ext:float-nan-p x))
+          (> (abs x) most-positive-double-float))
+      (org-calc-error)
+      (float x 1d0)))
 
 (defun org-calc-arith (operator a b)
   "A OPERATOR B, as table formulas work it out: integers kept exact, decimal numbers rounded."
@@ -168,7 +183,7 @@ display mode of the formula's flags: (:normal N), (:fixed N) or (:scientific N).
                  ((integerp y) (when (and (zerop x) (minusp y)) (org-calc-error))
                   (result (expt x y)))
                  ((minusp x) (org-calc-error))
-                 (t (org-calc-float (expt (float x 1d0) (float y 1d0))))))))))
+                 (t (org-calc-float (expt (org-calc-double x) (org-calc-double y))))))))))
 
 (defun org-calc-compare (operator a b)
   "1 when A OPERATOR B holds, else 0, OPERATOR one of == != < > <= >=."
@@ -181,7 +196,7 @@ display mode of the formula's flags: (:normal N), (:fixed N) or (:scientific N).
 
 (defun org-calc-real (x)
   "X as a double float, for the functions worked out that way."
-  (float (org-calc-value (org-calc-check x)) 1d0))
+  (org-calc-double (org-calc-value (org-calc-check x))))
 
 (defun org-calc-flatten (arguments)
   "The numbers of ARGUMENTS, ranges (lists) opened up."
@@ -198,7 +213,7 @@ display mode of the formula's flags: (:normal N), (:fixed N) or (:scientific N).
                    (org-formula-fail "~a takes one number" name))
               (first arguments))
          (all () (org-calc-flatten arguments))
-         (real (r) (org-calc-float (rational r)))
+         (real (r) (org-calc-float r))
          (degrees (x) (* (org-calc-real x) (/ pi 180))))
     (let ((name (string-downcase name)))
       (cond
@@ -238,7 +253,7 @@ display mode of the formula's flags: (:normal N), (:fixed N) or (:scientific N).
         ((string= name "sqrt") (let* ((x (org-calc-check (one))) (v (org-calc-value x)))
                                  (cond ((minusp v) (org-calc-error))
                                        ((and (integerp x) (= v (expt (isqrt v) 2))) (isqrt v))
-                                       (t (real (sqrt (float v 1d0)))))))
+                                       (t (real (sqrt (org-calc-double v)))))))
         ((string= name "exp") (real (exp (org-calc-real (one)))))
         ((member name '("ln" "log10") :test #'string=)
          (let ((x (org-calc-real (one))))
@@ -392,8 +407,8 @@ after it, or AS :END the row before it."
              row))
       (cond
         ((null designator) current)
-        ((char= (char designator 0) #\<) (check (1- (length designator))))
-        ((char= (char designator 0) #\>) (check (- count (length designator))))
+        ((every (lambda (c) (char= c #\<)) designator) (check (1- (length designator))))
+        ((every (lambda (c) (char= c #\>)) designator) (check (- count (length designator))))
         ((cl-ppcre:scan "^[-+]?I+$" designator)
          (let* ((sign (find (char designator 0) "-+"))
                 (k (length (string-left-trim "-+" designator)))
@@ -407,6 +422,8 @@ after it, or AS :END the row before it."
            (unless rule (org-formula-fail "There is no rule ~a in the table" designator))
            (let ((next (tuatara.runtime:first-index-at-or-after data (1+ rule))))
              (check (if (eq as :end) (1- next) next)))))
+        ((not (cl-ppcre:scan "^[-+]?[0-9]+$" designator))
+         (org-formula-fail "Row descriptor ~a is no row formulas know here" designator))
         ((find (char designator 0) "-+") (check (+ current (parse-integer designator))))
         (t (let ((n (parse-integer designator)))
              (check (if (zerop n) current (1- n)))))))))
@@ -420,8 +437,10 @@ after it, or AS :END the row before it."
                (org-formula-fail "Column descriptor $~a leads outside the table" designator))
              column))
       (cond ((null designator) current)
-            ((char= (char designator 0) #\<) (check (1- (length designator))))
-            ((char= (char designator 0) #\>) (check (- columns (length designator))))
+            ((every (lambda (c) (char= c #\<)) designator) (check (1- (length designator))))
+            ((every (lambda (c) (char= c #\>)) designator) (check (- columns (length designator))))
+            ((not (cl-ppcre:scan "^[-+]?[0-9]+$" designator))
+             (org-formula-fail "Column descriptor $~a is no column formulas know here" designator))
             ((find (char designator 0) "-+") (check (+ current (parse-integer designator))))
             (t (let ((n (parse-integer designator))) (check (if (zerop n) current (1- n)))))))))
 
@@ -516,12 +535,12 @@ number: %.2f, %d, %5.1f%%, %e, %g, %s."
                       ((string= conversion "d") (princ-to-string (truncate number)))
                       ((string= conversion "f")
                        (let* ((p (or precision 6))
-                              (scaled (round (* (rational (float number 1d0)) (expt 10 p))))
+                              (scaled (round (* (rational (org-calc-double number)) (expt 10 p))))
                               (digits (format nil "~v,'0d" (1+ p) (abs scaled))))
                          (format nil "~:[~;-~]~a~:[.~a~;~*~]" (minusp scaled) (subseq digits 0 (- (length digits) p))
                                  (zerop p) (subseq digits (- (length digits) p)))))
                       ((member conversion '("e" "E") :test #'string=)
-                       (let ((text (format nil "~,v,2,,,,'eE" (or precision 6) (float number 1d0))))
+                       (let ((text (format nil "~,v,2,,,,'eE" (or precision 6) (org-calc-double number))))
                          (if (string= conversion "E") (string-upcase text) text)))
                       (t (org-format-calc-float (rational number) (max 1 (or precision 6)))))))
          (if (plusp (length width))
@@ -587,14 +606,21 @@ FROM and TO.")
       (make-org-formula
        :text text :lhs lhs :rhs rhs :flags flags
        :kind (cond ((cl-ppcre:scan "^\\$(?:[0-9]+|<+|>+)$" lhs) :column)
-                   ((search ".." lhs) :range)
                    ((cl-ppcre:scan "^@(?:[0-9]+|<+|>+|I+)\\$(?:[0-9]+|<+|>+)$" lhs) :field)
+                   ((let ((end "(?=[@$])(?:@(?:[-+]?[0-9]+|<+|>+|[-+]?I+))?(?:\\$(?:[-+]?[0-9]+|<+|>+))?"))
+                      (cl-ppcre:scan (format nil "^~a\\.\\.~a$" end end) lhs))
+                    :range)
                    (t (org-formula-fail "~a is no column, field or range formulas know here" lhs)))))))
 
 (defun org-table-formula-texts (formulas-line)
   "The formulas of a #+TBLFM: line's text (after the colon), :: between them."
   (remove "" (mapcar (lambda (s) (string-trim '(#\Space #\Tab) s)) (cl-ppcre:split "::" formulas-line))
           :test #'string=))
+
+(defun org-table-node-formula-texts (table)
+  "The formulas of the first #+TBLFM: line of TABLE, an Org table of a parse,
+as texts; none when it has no such line."
+  (org-table-formula-texts (or (first (org-property table :tblfm)) "")))
 
 (defun org-formula-sort-key (text)
   "The key Org sorts a table's formulas by: column formulas by column, then field formulas by row and column."
@@ -661,8 +687,7 @@ formulas show it, in its format; #ERROR when it cannot be worked out there."
           (if (getf flags :printf)
               (org-printf (getf flags :printf) value)
               (org-calc-text value (getf flags :mode))))
-      (org-formula-error (e)
-        (if (string= (org-formula-error-text e) "#ERROR") "#ERROR" (error e)))
+      (org-formula-field-error () "#ERROR")
       ;; a number too large or too small for the machine (exp(1000))
       (arithmetic-error () "#ERROR"))))
 
@@ -724,7 +749,7 @@ ORG-FORMULA-ERROR, the table as it was, when one cannot be worked out at all."
   "The formulas of the first #+TBLFM: line of the Org table of PARSE (an
 ORG-PARSE) point is in, as texts."
   (let ((table (org-table-at (org-parse-tree parse) (org-parse-text parse) (org-parse-point parse))))
-    (and table (org-table-formula-texts (or (first (org-property table :tblfm)) "")))))
+    (and table (org-table-node-formula-texts table))))
 
 (defun org-formula-lhs-p (text lhs)
   "True when TEXT, a table's formula, sets LHS ($3, @2$1): what stands before
@@ -757,10 +782,10 @@ which could not be worked out, and why."
 
 (define-command org-table-recalculate ()
   "Work out the formulas of the Org table point is in, its #+TBLFM: line
-\(\\`C-c *'): column formulas ($3=$1+$2) below the
-first rule (in every row when it has none), field formulas (@4$2=vsum(@2..@3))
-and range formulas (@2$2..@3$3=$1*10), worked out with the table
-arithmetic. Formulas in Emacs Lisp are left out: nothing in a file is run."
+\(\\`C-c *'): column formulas ($3=$1+$2) below the first rule (in every row when
+it has none), field formulas (@4$2=vsum(@2..@3)) and range formulas
+\(@2$2..@3$3=$1*10), worked out with the table arithmetic. Formulas in Emacs
+Lisp are left out: nothing in a file is run."
   (let ((done (with-org-table (parse model)
                 (let ((texts (org-table-formulas-of parse)))
                   (cond ((null texts) (message "This table has no formulas (#+TBLFM:)") :not-done)
@@ -785,7 +810,7 @@ it was."
          (table (org-tblfm-line-table (org-parse-tree parse) text position)))
     (when table
       (let* ((model (org-table-read text table (org-node-contents-begin table)))
-             (texts (org-table-formula-texts (or (first (org-property table :tblfm)) ""))))
+             (texts (org-table-node-formula-texts table)))
         (when (org-table-recalculate-model model texts)
           (multiple-value-bind (new) (org-table-render model)
             (let ((begin (org-table-begin model)) (end (org-table-end model)))

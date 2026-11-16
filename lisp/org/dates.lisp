@@ -735,23 +735,20 @@ the dates by rule, with examples of each. The lines are filled to
    (with-output-to-string (s)
      (write-help-section s "Timestamps"
                          :intro "\\<org-mode>\\[org-time-stamp] writes one at point, \\[org-time-stamp-inactive] an
-                          inactive
-                         one, \\[org-schedule] and \\[org-deadline] the planning lines. The day's name is any
-                         word, or none."
+                         inactive one, \\[org-schedule] and \\[org-deadline] the planning lines. The day's name is
+                         any word, or none."
                          :example "<2026-10-05 Mon 09:00-10:00 +1w -3d>")
      (write-help-section s "Active and inactive"
                          :rows '("<2026-10-05 Mon>" "active: the agenda lists the entry on that day"
                                  "[2026-10-05 Mon]" "inactive: a date in the text, not in the agenda"
-                                 "<2026-10-05>--<2026-10-09>" "a range of days, listed on each; both ends
-                                 active"
+                                 "<2026-10-05>--<2026-10-09>" "a range of days, listed on each; both ends active"
                                  "<2026-10-05 Mon 09:00>" "a time of day, one or two digits for the hour"
                                  "<2026-10-05 Mon 09:00-10:00>" "a range of times on the day")
                          :width 30)
      (write-help-section s "Repeaters"
                          :intro "After the time, a sign, a number and a unit letter:"
                          :rows (append
-                                '("+1w" "again a week on from the date it had, as often as it is done
-                                 (cumulate)"
+                                '("+1w" "again a week on from the date it had, as often as it is done (cumulate)"
                                   "++1w" "a week on from the date it had until that is still to come: a task done
                                   late goes on to its next date in the future (catch up)"
                                   ".+1w" "a week on from the day it is done (restart)"

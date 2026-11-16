@@ -259,18 +259,31 @@ when it says none this reads."
       (tuatara.io:file-system-error () nil))))
 
 (defvar *zones* (make-hash-table :test 'equal :synchronized t)
-  "The time zones read from the zoneinfo, by name; NIL for a name that is none.")
+  "The time zones read from the zoneinfo, by name, only those found: a name
+that is none, as a hostile file may give any number of, is not kept.")
+
+(defparameter *zone-misses-kept* 64
+  "The most names that are no zone remembered as none (*ZONE-MISSES*).")
+
+(defvar *zone-misses* (make-hash-table :test 'equal :synchronized t)
+  "Names lately asked for that are no zone, at most *ZONE-MISSES-KEPT* of
+them, forgotten all at once past that: a file repeating one is not looked up
+again and again, and one naming many fills no table.")
 
 (defun time-zone-named (name)
   "The time zone the system's zoneinfo names NAME (Europe/Stockholm, UTC), or
-NIL when there is none by that name. Read once, then kept."
-  (when (time-zone-name-p name)
-    (multiple-value-bind (zone known) (gethash name *zones*)
-      (if known
-          zone
-          (setf (gethash name *zones*)
-                (let ((octets (zoneinfo-file-octets (concatenate 'string (zoneinfo-directory) name))))
-                  (and octets (read-zoneinfo octets name))))))))
+NIL when there is none by that name. Read once, then kept; a name that is
+none is remembered as none among the few lately asked (*ZONE-MISSES*)."
+  (when (and (time-zone-name-p name) (not (gethash name *zone-misses*)))
+    (or (gethash name *zones*)
+        (let* ((octets (zoneinfo-file-octets (concatenate 'string (zoneinfo-directory) name)))
+               (zone (and octets (read-zoneinfo octets name))))
+          (if zone
+              (setf (gethash name *zones*) zone)
+              (progn (when (>= (hash-table-count *zone-misses*) *zone-misses-kept*)
+                       (clrhash *zone-misses*))
+                     (setf (gethash name *zone-misses*) t)))
+          zone))))
 
 (defun system-time-zone-name ()
   "The name of the time zone the system keeps its clock in: TZ when it names

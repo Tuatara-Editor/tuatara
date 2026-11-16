@@ -147,11 +147,12 @@ NIL before.")
 (defvar *lease-keeper* nil
   "The thread that watches the leases, while there are any.")
 
-(defvar *lease-check-interval* 5
+(defvar *lease-check-interval* 30
   "Seconds the keeper waits at most between looks at the leases. It looks at
 once when the system says a program is about to write a leased file, and after
 each garbage collection while text kept from a killed buffer holds a lease;
-this is for the rare signal that does not come.")
+this is for a signal that does not come, and so well within the time the
+system lets a writer wait before it breaks a lease (45 seconds as standard).")
 
 (defvar *lease-grace* 1/2
   "Seconds the keeper waits after moving a mapping before it lets the writer

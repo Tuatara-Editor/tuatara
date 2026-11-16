@@ -471,13 +471,13 @@ the text given when first referred to (ORG-HTML-FOOTNOTES)."
           (when label (setf (gethash label entries) entry))
           (setf (third entry)
                 (with-org-export-expanding (:footnote (or label node)) ("")
-                                           (if (eq (org-property node :type) 'inline)
-                                               (org-html-objects-text node)
-                                               (let ((found (and label
-                                                                 (gethash label (org-export-footnotes *org-export*)))))
-                                                 (if found
-                                                     (with-output-to-string (s) (org-html-elements found s))
-                                                     ""))))
+                  (if (eq (org-property node :type) 'inline)
+                      (org-html-objects-text node)
+                      (let ((found (and label
+                                        (gethash label (org-export-footnotes *org-export*)))))
+                        (if found
+                            (with-output-to-string (s) (org-html-elements found s))
+                            ""))))
                 known entry)))
       (format out "<sup><a href=\"#fn-~d\">~d</a></sup>" (first known) (first known)))))
 
@@ -566,7 +566,7 @@ else as its description or its target, as words."
                                    (org-html-line value))
                                  (org-html-as-written node))
                              out)))
-      ((inline-babel-call) nil)
+      (inline-babel-call nil)
       (t (write-string (org-html-as-written node) out)))))
 
 ;;; The document
@@ -599,27 +599,27 @@ With CHAPTER, the number of its first headline in a larger work, that headline
 is the top of the chapter and BODY has no title of its own. KEYS true makes
 ~text~ a key to press (<kbd>)."
   (with-org-export-reading (expanded tree directory) (text file :enhanced t)
-                           (let* ((output (org-export-file-name text file))
-                                  (elsewhere (and output (not (equal (tuatara.io:parent-path output) directory))))
-                                  (*org-html* (make-org-html :chapter chapter :keys keys :elsewhere elsewhere)))
-                             (org-html-gather-headings tree)
-                             (let* ((title (org-export-title))
-                                    (body (with-output-to-string (s)
-                                            (unless chapter
-                                              (org-html-title-block title s)
-                                              (let ((toc (org-export-option "toc" t)))
-                                                (when (and toc (org-html-headings *org-html*))
-                                                  (format s "<nav class=\"contents\">~a</nav>~%"
-                                                          (org-html-contents (org-html-headings *org-html*)
-                                                                             :depth (and (integerp toc) toc))))))
-                                            (org-html-element tree s)
-                                            (org-html-footnotes-section s))))
-                               (list :title (xml-escape (org-export-plain title))
-                                     :body body
-                                     :headings (org-html-headings *org-html*)
-                                     :language (or (org-export-keyword "LANGUAGE") "en")
-                                     :output (and output (replaced-type output "html"))
-                                     :notes (reverse (org-export-notes *org-export*)))))))
+    (let* ((output (org-export-file-name text file))
+           (elsewhere (and output (not (equal (tuatara.io:parent-path output) directory))))
+           (*org-html* (make-org-html :chapter chapter :keys keys :elsewhere elsewhere)))
+      (org-html-gather-headings tree)
+      (let* ((title (org-export-title))
+             (body (with-output-to-string (s)
+                     (unless chapter
+                       (org-html-title-block title s)
+                       (let ((toc (org-export-option "toc" t)))
+                         (when (and toc (org-html-headings *org-html*))
+                           (format s "<nav class=\"contents\">~a</nav>~%"
+                                   (org-html-contents (org-html-headings *org-html*)
+                                                      :depth (and (integerp toc) toc))))))
+                     (org-html-element tree s)
+                     (org-html-footnotes-section s))))
+        (list :title (xml-escape (org-export-plain title))
+              :body body
+              :headings (org-html-headings *org-html*)
+              :language (or (org-export-keyword "LANGUAGE") "en")
+              :output (and output (replaced-type output "html"))
+              :notes (reverse (org-export-notes *org-export*)))))))
 
 (defun org-html-stylesheet (&key chosen)
   "The stylesheet of a web page made from an Org document: the colours of the

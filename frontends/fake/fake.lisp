@@ -84,37 +84,7 @@ OFFSET), in the order put.")
 first; only for a fake window (FONT-STEPS set)."))
   (:documentation "A fake frontend for driving the editor from tests."))
 
-(setf (documentation 'fake-screen 'function) "The last frame painted by the fake frontend, a vector of strings."
-      (documentation 'fake-cursor 'function) "Cursor of the last frame as (ROW . COLUMN)."
-      (documentation 'fake-spans 'function) "Face spans per row of the last frame."
-      (documentation 'fake-row-faces 'function) "Whole-row faces of the last frame, one per row."
-      (documentation 'fake-row-scales 'function) "The parts of each row of the last frame drawn
-large or moved down, (START END SCALE SHIFT HEIGHT) in columns and rows."
-      (documentation 'fake-cursor-shape 'function) "Cursor shape of the last frame, :block, :bar or :underline."
-      (documentation 'fake-cursor-colour 'function) "Cursor colour of the last frame, as faces take
-colours, or NIL for the text's."
-      (documentation 'fake-frames 'function) "Number of frames the fake frontend has painted."
-      (documentation 'fake-history 'function) "All frames painted, newest first."
-      (documentation 'fake-face-history 'function) "The faces of all frames painted, newest first,
-as (SPANS . ROW-FACES)."
-      (documentation 'fake-pending 'function) "True when the fake frontend claims input is waiting."
-      (documentation 'fake-clipboard 'function) "The text on the fake frontend's system clipboard, or NIL."
-      (documentation 'fake-primary 'function) "The text of the fake frontend's primary selection, or NIL."
-      (documentation 'fake-titles 'function) "The titles the fake frontend's window was given, newest first."
-      (documentation 'fake-font-steps 'function) "The steps the fake frontend's font is scaled by,
-or NIL when it has no font of its own."
-      (documentation 'fake-fonts 'function) "The font families the fake frontend offers."
-      (documentation 'fake-font 'function) "The font the editor last chose for the fake frontend, or NIL."
-      (documentation 'fake-raised 'function) "How many times the fake frontend's window was brought before the others."
-      (documentation 'fake-toggles 'function) "The window states the fake frontend was turned to or from, newest first."
-      (documentation 'fake-font-faces 'function) "The font families and variants the fake frontend
-offers, as FRONTEND-FONT-FACES gives them."
-      (documentation 'fake-desktop-style 'function) "The desktop's style the fake frontend reports:
-:dark, :light or NIL."
-      (documentation 'fake-images 'function) "The pictures put in the fake frontend's last frame,
-each (IMAGE ROW COLUMN COLUMNS ROWS OFFSET)."
-      (documentation 'fake-image-history 'function) "The pictures of every frame the fake frontend
-painted, newest first.")
+(tuatara.runtime:document-accessors 'fake-frontend)
 
 (defun make-fake-frontend (&key (width 40) (height 8) (colours 256) font-steps fonts font-faces desktop-style
                                 cell-pixels joining)
@@ -253,7 +223,7 @@ typed in FRAME, one of the editor's frames, when given."
   "Queue FUNCTION, called when its turn comes among FRONTEND's events, which then
 wakes the editor as FRONTEND-WAKE does: for what changes outside the editor, such
 as the desktop's style."
-  (setf (fake-events frontend) (append (fake-events frontend) (list function))))
+  (fake-queue-event frontend function))
 
 (defmethod tuatara.frontend:frontend-desktop-style ((f fake-frontend))
   (fake-desktop-style f))

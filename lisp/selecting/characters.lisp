@@ -14,6 +14,11 @@ code with no character given it yet."
         (substitute #\Space #\_ (string-upcase name))
         "")))
 
+(defun code-point-label (char)
+  "CHAR, a character or its code, as Unicode names its code point: U+00E9, at
+least four hexadecimal digits."
+  (format nil "U+~4,'0X" (if (characterp char) (char-code char) char)))
+
 (defvar *character-names* nil
   "Every character that has a Unicode name, as completion candidates in order
 of code, once listed (CHARACTER-NAMES); NIL before.")
@@ -39,7 +44,7 @@ code (U+00E9), its value the code. Control characters are left out."
         collect (make-candidate spaced :value code
                                 :columns (list (list (character-shown char) nil 3)
                                                spaced
-                                               (list (format nil "U+~4,'0X" code) :completion-annotation)))))
+                                               (list (code-point-label code) :completion-annotation)))))
 
 (defun character-names ()
   "The characters' names as completion candidates (*CHARACTER-NAMES*), listed

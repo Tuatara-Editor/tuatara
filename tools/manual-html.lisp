@@ -256,6 +256,7 @@ VERSION: to print at once or search through with a browser's find."
 chapter, index.html, all.html with every chapter on one page, the stylesheet,
 and the script with the text of every section for the contents filter, nothing
 loaded from elsewhere."
+  (tuatara.fence:fence-person-data nil)
   (let* ((out (merge-pathnames "build/manual/" tree))
          (version (asdf:component-version (asdf:find-system :tuatara)))
          (chapters (chapter-texts tree))
@@ -377,6 +378,7 @@ tables are set in that font, and the export lays a table out by this count
 (defun run-pdf (tree)
   "Write the manual under TREE as one LaTeX document, build/manual/tuatara-manual.tex,
 through the enhanced Org export, xelatex's to make into a PDF."
+  (tuatara.fence:fence-person-data nil)
   (let* ((chapters (chapter-texts tree))
          (links (chapter-file-links chapters))
          (out (merge-pathnames "build/manual/tuatara-manual.tex" tree))
@@ -385,11 +387,11 @@ through the enhanced Org export, xelatex's to make into a PDF."
                         (mapcar (lambda (chapter) (whole-chapter chapter links)) chapters))))
     (ensure-directories-exist out)
     (write-file note whole)
-    (multiple-value-bind (latex named map missing notes)
-        (let ((tuatara.defaults::*org-latex-text-characters* *characters-across*))
-          (tuatara.defaults::org-latex-document whole :file (namestring note) :enhanced t))
-      (declare (ignore named map))
-      (write-file out latex)
+    (let* ((parts (let ((tuatara.defaults::*org-latex-text-characters* *characters-across*))
+                    (tuatara.defaults::org-latex-parts whole :file (namestring note) :enhanced t)))
+           (missing (getf parts :missing))
+           (notes (getf parts :notes)))
+      (write-file out (getf parts :latex))
       (dolist (found missing)
         (format t "~&No font here has ~a (U+~4,'0X), first on line ~d~%"
                 (car found) (char-code (car found)) (cdr found)))

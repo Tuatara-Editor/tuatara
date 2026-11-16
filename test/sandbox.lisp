@@ -142,12 +142,12 @@ as text, how it went, and what it said on its error output."
 (define-test (sandbox setting-changed-while-tried)
   ;; the setting changed while the sandbox is tried, as an init file read meanwhile does: what was tried is kept
   (let ((tuatara.io::*sandbox* t))
-    (sb-int:encapsulate 'tuatara.io::version-text 'changed-meanwhile
+    (sb-int:encapsulate 'tuatara.io::bwrap-version-text 'changed-meanwhile
                         (lambda (function &rest arguments)
                           (setf tuatara.io::*sandbox* nil)
                           (apply function arguments)))
     (unwind-protect (tuatara.io:sandbox-status :again t)
-      (sb-int:unencapsulate 'tuatara.io::version-text 'changed-meanwhile))
+      (sb-int:unencapsulate 'tuatara.io::bwrap-version-text 'changed-meanwhile))
     (is eq nil tuatara.io::*sandbox*)
     (is eq :off (tuatara.io:sandbox-status))
     (is eq :off (tuatara.io:sandbox-status-now))
@@ -347,7 +347,7 @@ process with MARK is killed after, whatever FUNCTION did."
     (unwind-protect
          (progn
            ;; F_SETPIPE_SZ: one page, filled, so that bwrap's first write waits
-           (let ((size (tuatara.io::fcntl-int out 1031 4096)))
+           (let ((size (tuatara.io::%fcntl out 1031 4096)))
              (tuatara.io::write-octets out (make-array size :element-type '(unsigned-byte 8)) :path "a pipe"))
            (let ((process (sb-ext:run-program
                            (nth-value 2 (tuatara.io:sandbox-status))
@@ -672,7 +672,8 @@ cat ~a/l.txt; echo; echo new > ~a/n.txt && cat ~a/n.txt; cat ~a/h.txt 2>/dev/nul
       ;; the system's own directory in WORK, left unreadable, made removable
       (when (probe-file (format nil "~a/work/" work)) (sb-posix:chmod (format nil "~a/work" work) #o700))))
   ;; a directory reached through a link at the root (/home to /var/home) is found either way
-  (let ((arguments (tuatara.io::mount-arguments (list (namestring (user-homedir-pathname))) '() '())))
+  (let ((arguments (tuatara.io::mount-arguments (list (format nil "~aprojects" (namestring (user-homedir-pathname))))
+                                                '() '())))
     (when (ignore-errors (sb-posix:readlink "/home"))
       (true (search (list "--symlink" (sb-posix:readlink "/home") "/home") arguments :test #'equal))))
   ;; a directory reached through a link into /tmp (~/scratch to /tmp/scratch): found by the path through the link
@@ -853,30 +854,40 @@ cat ~a/l.txt; echo; echo new > ~a/n.txt && cat ~a/n.txt; cat ~a/h.txt 2>/dev/nul
     (is equal '("PATH=/kept") (remove-if-not (lambda (setting) (uiop:string-prefix-p "PATH=" setting)) environment))
     (true (member "TZ=Pacific/Auckland" environment :test #'string=))))
 
+(define-test (sandbox lowercase-hex-told)
+  ;; one test for the lower-case hex of a SHA-256 sum
+  (let ((sum (make-string 64 :initial-element #\a)))
+    (true (tuatara.text:lowercase-hex-p sum 64))
+    (true (tuatara.text:lowercase-hex-p "0123456789abcdef"))
+    (false (tuatara.text:lowercase-hex-p sum 40))
+    (false (tuatara.text:lowercase-hex-p (concatenate 'string "A" (subseq sum 1)) 64))
+    (false (tuatara.text:lowercase-hex-p (concatenate 'string "g" (subseq sum 1)) 64))
+    (false (tuatara.text:lowercase-hex-p ""))))
+
 (define-test (sandbox versions-compared)
   ;; one reading of a version for bwrap and OpenSSH, and one comparison
-  (is equal '(0 11 0) (tuatara.io:version-numbers (format nil "bubblewrap 0.11.0~%")))
-  (is equal '(9 9) (tuatara.io:version-numbers "OpenSSH_9.9p1, OpenSSL 3.2.2 4 Jun 2024" "OpenSSH_"))
-  (is equal '(10 2) (tuatara.io:version-numbers "OpenSSH_10.2p1 Debian" "OpenSSH_"))
-  (false (tuatara.io:version-numbers "no version here"))
-  (false (tuatara.io:version-numbers "OpenSSL 3.2.2" "OpenSSH_"))
-  (true (tuatara.io:version-at-least-p '(8 9) '(8 9)))
-  (true (tuatara.io:version-at-least-p '(10 0) '(8 9)))
-  (true (tuatara.io:version-at-least-p '(0 11 0) '(0 11)))
-  (false (tuatara.io:version-at-least-p '(8 8) '(8 9)))
-  (false (tuatara.io:version-at-least-p '(0 9) '(0 10)))
-  (true (tuatara.io:version-at-least-p '(1) '(0 99)))
-  (false (tuatara.io:version-at-least-p '(0) '(0 1)))
+  (is equal '(0 11 0) (tuatara.io:software-version-numbers (format nil "bubblewrap 0.11.0~%")))
+  (is equal '(9 9) (tuatara.io:software-version-numbers "OpenSSH_9.9p1, OpenSSL 3.2.2 4 Jun 2024" "OpenSSH_"))
+  (is equal '(10 2) (tuatara.io:software-version-numbers "OpenSSH_10.2p1 Debian" "OpenSSH_"))
+  (false (tuatara.io:software-version-numbers "no version here"))
+  (false (tuatara.io:software-version-numbers "OpenSSL 3.2.2" "OpenSSH_"))
+  (true (tuatara.io:software-version-at-least-p '(8 9) '(8 9)))
+  (true (tuatara.io:software-version-at-least-p '(10 0) '(8 9)))
+  (true (tuatara.io:software-version-at-least-p '(0 11 0) '(0 11)))
+  (false (tuatara.io:software-version-at-least-p '(8 8) '(8 9)))
+  (false (tuatara.io:software-version-at-least-p '(0 9) '(0 10)))
+  (true (tuatara.io:software-version-at-least-p '(1) '(0 99)))
+  (false (tuatara.io:software-version-at-least-p '(0) '(0 1)))
   ;; a pre-release comes before its release, alpha before beta before rc
-  (is equal '(0 90 13 -1 1) (tuatara.io:version-numbers "0.90.13-rc1"))
-  (false (tuatara.io:version-at-least-p (tuatara.io:version-numbers "0.90.13-rc1") '(0 90 13)))
-  (true (tuatara.io:version-at-least-p (tuatara.io:version-numbers "0.90.13-rc1") '(0 90 12)))
-  (true (tuatara.io:version-at-least-p (tuatara.io:version-numbers "0.90.13")
-                                       (tuatara.io:version-numbers "0.90.13-rc2")))
-  (false (tuatara.io:version-at-least-p (tuatara.io:version-numbers "0.90.13-beta.3")
-                                        (tuatara.io:version-numbers "0.90.13-rc1")))
-  (true (tuatara.io:version-at-least-p (tuatara.io:version-numbers "0.90.13-rc2")
-                                       (tuatara.io:version-numbers "0.90.13-rc1"))))
+  (is equal '(0 90 13 -1 1) (tuatara.io:software-version-numbers "0.90.13-rc1"))
+  (false (tuatara.io:software-version-at-least-p (tuatara.io:software-version-numbers "0.90.13-rc1") '(0 90 13)))
+  (true (tuatara.io:software-version-at-least-p (tuatara.io:software-version-numbers "0.90.13-rc1") '(0 90 12)))
+  (true (tuatara.io:software-version-at-least-p (tuatara.io:software-version-numbers "0.90.13")
+                                       (tuatara.io:software-version-numbers "0.90.13-rc2")))
+  (false (tuatara.io:software-version-at-least-p (tuatara.io:software-version-numbers "0.90.13-beta.3")
+                                        (tuatara.io:software-version-numbers "0.90.13-rc1")))
+  (true (tuatara.io:software-version-at-least-p (tuatara.io:software-version-numbers "0.90.13-rc2")
+                                       (tuatara.io:software-version-numbers "0.90.13-rc1"))))
 
 (define-test (sandbox limits-set-by-every-shell)
   ;; the limits are set by the system's /bin/sh, which on Debian and Ubuntu is dash: its ulimit names
@@ -984,3 +995,25 @@ cat ~a/l.txt; echo; echo new > ~a/n.txt && cat ~a/n.txt; cat ~a/h.txt 2>/dev/nul
       (setf tuatara.io::**starter-work** (list* (list :work) (lambda () :left) (lambda () (setf let-go t)))))
     (is eq :next (tuatara.io:in-starter (lambda () :next)))
     (true let-go)))
+
+(defun fd-open-p (fd)
+  "True when file descriptor (FD) is open in this process."
+  (handler-case (progn (sb-posix:fcntl fd sb-posix:f-getfd) t)
+    (sb-posix:syscall-error () nil)))
+
+(define-test (sandbox call-with-memory-file-closes-the-file)
+  ;; the function reads the octets from the start; the descriptor is closed after it returns and after it fails
+  (let ((seen nil))
+    (is equal "alpha" (tuatara.io:call-with-memory-file
+                       "test file" (sb-ext:string-to-octets "alpha")
+                       (lambda (fd)
+                         (setf seen fd)
+                         (let ((octets (make-array 5 :element-type '(unsigned-byte 8))))
+                           (sb-unix:unix-read fd (sb-sys:vector-sap octets) 5)
+                           (sandbox-text octets)))))
+    (false (fd-open-p seen)))
+  (let ((seen nil))
+    (fail (tuatara.io:call-with-memory-file "test file" (sb-ext:string-to-octets "alpha")
+                                            (lambda (fd) (setf seen fd) (error "stop")))
+          'error)
+    (false (fd-open-p seen))))

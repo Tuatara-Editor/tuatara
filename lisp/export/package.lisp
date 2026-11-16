@@ -7,10 +7,11 @@
 (uiop:define-package #:tuatara.export
     (:use #:cl #:tuatara.command #:tuatara.modes #:tuatara.dates #:tuatara-user)
   (:import-from #:tuatara.runtime #:define-record #:jobs-of #:ignoring-errors-reported #:refusal #:refuse
-                #:*secret-at-hand* #:define-setting)
+                #:*secret-at-hand* #:define-setting #:bisect)
   (:import-from #:tuatara.text #:name-char-p)
   (:import-from #:tuatara.defaults
-                #:buffer-in-mode #:*built-in-latex-templates* #:call-with-details-shown #:commands-for-mode
+                #:buffer-in-mode #:*built-in-latex-templates* #:call-with-details-shown #:code-point-label
+                #:command-key-words #:commands-for-mode
                 #:copy-chosen-own-file #:decode-pdf-page #:*decoding-carried-settings* #:decoding-job #:docx-import
                 #:docx-templates-directory #:drop-selection #:end-safe-visit-words #:entry-lines #:entry-list-keys
                 #:entry-place #:entry-places #:evidence-refusal #:export-directory-p #:export-language

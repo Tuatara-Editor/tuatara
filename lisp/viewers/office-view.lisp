@@ -22,6 +22,10 @@
 
 (in-package #:tuatara.defaults)
 
+(defparameter *docx-largest-file* (* 256 1024 1024)
+  "The most octets a Word document, an Excel workbook or a PowerPoint
+presentation read as text may have.")
+
 (define-setting *office-view-pages* t
   "Whether a Word document, an Excel workbook or a PowerPoint presentation (and
 the older and OpenDocument kinds of them) opens as its pages.
@@ -173,7 +177,7 @@ when it is installed and *OFFICE-VIEW-PAGES* is true, or NIL. CANCEL, a cons,
 stops it when its car turns true. Waits for the programs: call it from a
 thread working in the background."
   (let ((text (let ((read (getf office :read)))
-                (and read (funcall read path :octets (fd-octets fd path size (symbol-value '*docx-largest-file*)) :cancel cancel))))
+                (and read (funcall read path :octets (fd-octets fd path size *docx-largest-file*) :cancel cancel))))
         (notes '()) (image nil))
     (when (and pixels *office-view-pages* (not (car cancel))
                (tuatara.io:sandbox-find-program *office-page-program*) (find-pdf-decoder))

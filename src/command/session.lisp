@@ -14,11 +14,11 @@ installed, its one who started it its first client, on its own screen."
     editor))
 
 (defun show-buffer (buffer)
-  "Show BUFFER in the selected window of the editor, where that window last showed it if it
-did. A window kept for other buffers (PLACE-BUFFERS with :keep) is left as it
-is: BUFFER is shown in another window, which is selected. A buffer that has
-been killed is not shown: that is an error. BUFFER becomes the buffer of the
-client who works in the frame too (JOIN-CLIENT)."
+  "Show BUFFER in the selected window of the editor, where that window last
+showed it if it did. A window kept for other buffers (PLACE-BUFFERS with
+:keep) is left as it is: BUFFER is shown in another window, which is selected.
+A buffer that has been killed is not shown: that is an error. BUFFER becomes
+the buffer of the client who works in the frame too (JOIN-CLIENT)."
   (unless (live-buffer-p buffer)
     (refuse "~a has been killed" (tuatara.buffer:buffer-name buffer)))
   (join-client buffer (current-client))
@@ -112,10 +112,10 @@ not gone yet is not called (TICK-WANTED)."
 
 (defun paint-trouble (editor condition)
   "Paint a frame saying the window could not be shown because of CONDITION: the
-text of a mapped file that another program rewrote in place, for one. The
-editor stays usable: the way out is said, and the minibuffer is shown as it
-reads (\\[execute-extended-command], the questions \\[save-buffers-kill-editor] asks), its prompt
-and what is typed on the last row, else the message there."
+text of a mapped file that another program rewrote in place, for one. The editor
+stays usable: the way out is said, and the minibuffer is shown as it reads
+(\\[execute-extended-command], the questions \\[save-buffers-kill-editor] asks),
+its prompt and what is typed on the last row, else the message there."
   (let ((frontend (editor-frontend editor)))
     (tuatara.runtime:ignoring-errors-reported ("painting a frame saying why the window cannot be shown")
      (tuatara.frontend:frontend-begin-frame frontend)
@@ -146,10 +146,10 @@ and what is typed on the last row, else the message there."
 (defun redisplay-or-say (editor)
   "Redisplay EDITOR's frame; when that fails, paint one saying why and the way
 out, the minibuffer shown as it reads (PAINT-TROUBLE), and report it, with the
-calls under way in debug mode: so that \\[execute-extended-command] and the questions of
-\\[save-buffers-kill-editor] still work whatever a window's drawing does. While a window shows a
-secret buffer (FRAME-SECRET-P, looked at once by REDISPLAY), only the kind of
-failure is said. A frame closed is not drawn."
+calls under way in debug mode: so that \\[execute-extended-command] and the
+questions of \\[save-buffers-kill-editor] still work whatever a window's drawing
+does. While a window shows a secret buffer (FRAME-SECRET-P, looked at once by
+REDISPLAY), only the kind of failure is said. A frame closed is not drawn."
   (let ((trace nil) (secret-then nil))
     (when (frame-deleted (editor-frame editor))
       (return-from redisplay-or-say nil))
@@ -515,6 +515,12 @@ HOST-VISIT-STANDARD-INPUT)."
 client, CLIENT-EXIT-CODE), 0, or 1 for a program that runs it as its editor to
 give up (git's commit not made).")
 
+(defun startup-entry-name (entry)
+  "How a startup file ENTRY is named in a message: its file name, or
+\"standard input\" for the standard input."
+  (let ((name (if (consp entry) (first entry) entry)))
+    (if (eq name :standard-input) "standard input" name)))
+
 (defun visit-startup-files (entries)
   "Visit each of ENTRIES, the files the editor was started with, as
 VISIT-STARTUP-FILE does, and return their buffers in order. A file that
@@ -522,7 +528,7 @@ cannot be opened is said in the echo area and left out; the others open."
   (loop for entry in entries
         for buffer = (call-with-guard (lambda () (visit-startup-file entry)) 'visit-startup-file 'visit-startup-files
                                       :said (lambda (words)
-                                              (format nil "~a: ~a" (if (consp entry) (first entry) entry) words)))
+                                              (format nil "~a: ~a" (startup-entry-name entry) words)))
         when buffer collect buffer))
 
 (defun run-editor (frontend &key files (setup nil) buffer start)
@@ -548,7 +554,7 @@ Returns the editor."
            (setf (editor-width editor) (max 1 width) (editor-height editor) (max 3 height))
            (when setup (funcall setup editor))
            ;; the init file has run: the settings the frontend reads may be new
-           (tuatara.frontend:frontend-settings-changed frontend)
+           (follow-settings editor)
            (setf *exit-code* 0
                  (client-startup-buffers (current-client editor)) (visit-startup-files files))
            (let ((first (or (first (client-startup-buffers (current-client editor)))
@@ -556,8 +562,7 @@ Returns the editor."
                             (host-startup-buffer tuatara.runtime:*host*)
                             (tuatara.buffer:find-buffer "*scratch*")
                             (tuatara.buffer:make-buffer "*scratch*"))))
-             (select-window (tuatara.display:make-window first :width (max 1
-                                                                           width) :height (max 1 (- height 2))) editor)
+             (select-window (tuatara.display:make-window first :width (max 1 width) :height (max 1 (- height 2))) editor)
              (fit-windows editor)
              (note-selected-buffer first)
              ;; let per-command bookkeeping (modal state, gutters) see the buffer now shown

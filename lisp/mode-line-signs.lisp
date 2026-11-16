@@ -35,8 +35,9 @@ open or not. One thread at most waits for that moment, for every sign lit."
        (lambda ()
          (flet ((left ()
                   (let ((latest 0))
-                    (maphash (lambda (sign until) (declare (ignore sign)) (setf latest (max latest until)))
-                             *signs-lit-until*)
+                    (sb-ext:with-locked-hash-table (*signs-lit-until*)
+                      (maphash (lambda (sign until) (declare (ignore sign)) (setf latest (max latest until)))
+                               *signs-lit-until*))
                     (tuatara.runtime:seconds-left latest))))
            ;; until the last sign lit is due to fade, however often they were lit again
            (loop
@@ -102,10 +103,28 @@ next is to be drawn faint again, for the editor to look again then; NIL when
 none is lit."
   (declare (ignore editor))
   (let ((now (get-internal-real-time)) (soonest nil))
-    (maphash (lambda (sign until)
-               (declare (ignore sign))
-               (when (> until now)
-                 (let ((seconds (/ (- until now) internal-time-units-per-second)))
-                   (setf soonest (if soonest (min soonest seconds) seconds)))))
-             *signs-lit-until*)
+    (sb-ext:with-locked-hash-table (*signs-lit-until*)
+      (maphash (lambda (sign until)
+                 (declare (ignore sign))
+                 (when (> until now)
+                   (let ((seconds (/ (- until now) internal-time-units-per-second)))
+                     (setf soonest (if soonest (min soonest seconds) seconds)))))
+               *signs-lit-until*))
     soonest))
+
+(defun mode-line-signs (editor buffer)
+  "Mode line function, before [-]: the sign of work for BUFFER
+\(PROCESSING-MODE-LINE), then while directories are kept read the signs of
+their reading (INDEXING-MODE-LINE) and of their searching
+\(SEARCHING-MODE-LINE), and the sign of a daemon (DAEMON-MODE-LINE), side by
+side, PUSD; each NIL leaves its sign out."
+  (remove nil (list (processing-mode-line editor buffer)
+                    (indexing-mode-line editor buffer)
+                    (searching-mode-line editor buffer)
+                    (daemon-mode-line editor buffer))))
+
+(defun install-mode-line-signs ()
+  "Show the signs of work before [-] in every mode line (MODE-LINE-SIGNS),
+each faded once its work is over (SIGNS-TICK)."
+  (pushnew 'signs-tick *tick-functions*)
+  (pushnew 'mode-line-signs *mode-line-lead-functions*))

@@ -34,7 +34,8 @@ toolbox run --container "$name" bash -c '
   done'
 echo "== weekly check for newer dependencies"
 answer=n
-[ -t 0 ] && read -r -p "Check once a week for newer versions of the dependencies (a systemd user timer, on the network)? [y/N] " answer
+[ -t 0 ] && read -r -p "Check once a week for newer versions of the dependencies \
+(a systemd user timer, on the network)? [y/N] " answer
 case "$answer" in
   [yY]*) "$(dirname "$0")/check-updates.sh" --install ||
     echo "check-updates.sh --install failed: run it again by hand" ;;

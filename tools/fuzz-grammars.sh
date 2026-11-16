@@ -35,6 +35,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 . tools/inside.sh
+. tools/grammar-build.sh
 iterations=200 hostile="" seed="${FUZZ_SEED:-$(date +%s)}"
 if [ "${1:-}" = "--hostile" ]; then hostile=1; iterations=300; shift; fi
 if [ "${1:-}" = "-n" ]; then iterations=$2; shift 2; fi
@@ -43,11 +44,12 @@ tools/grammars.sh
 mkdir -p build/fuzz/cases build/tools/fuzz-lib
 names=("$@")
 if [ ${#names[@]} -eq 0 ]; then
-  mapfile -t names < <(awk -F'\t' '!/^#/ && NF >= 4 && $1 != "tree-sitter" && $1 != "tree-sitter-cli" && $1 !~ /\// { print $1 }' syntax/grammars.tsv)
+  mapfile -t names < <(grammar_manifest |
+    awk -F'\t' 'NF >= 4 && $1 != "tree-sitter" && $1 != "tree-sitter-cli" && $1 !~ /\// { print $1 }')
   # hostile texts are for the scanners, the code of a grammar's own
   if [ -n "$hostile" ]; then
     mapfile -t names < <(for name in "${names[@]}"; do
-      subpath=$(awk -F'\t' -v n="$name" '$1 == n { print $5 }' syntax/grammars.tsv)
+      subpath=$(grammar_subpath "$name")
       ls "build/grammar-sources/$name${subpath:+/$subpath}"/src/scanner.c* >/dev/null 2>&1 && echo "$name"
     done)
   fi
@@ -100,7 +102,7 @@ if [ -n "$hostile" ]; then
        "$ts/lib/src/lib.c" tools/grammar-hostile.c -ldl -o "$out/grammar-hostile"
   ' hostile "$PWD/build/grammar-sources/tree-sitter" "$work" "${sanitize[@]}"
   for name in "${names[@]}"; do
-    subpath=$(awk -F'\t' -v n="$name" '$1 == n { print $5 }' syntax/grammars.tsv)
+    subpath=$(grammar_subpath "$name")
     src="$PWD/build/grammar-sources/$name${subpath:+/$subpath}/src"
     log="build/fuzz/$name.hostile.log"
     start=$(date +%s)
@@ -114,21 +116,7 @@ if [ -n "$hostile" ]; then
          . "$root/tools/grammar-build.sh"
          # from its pinned commit as recorded, patched as the build patches it
          prepare_grammar "$root" "$gname" "$subpath" "$root/build/tools/tree-sitter" || exit 3
-         # an empty copy from no memory (memcpy of 0 octets from NULL) and a
-         # number stored unaligned are left unreported: x86-64 does both
-         # safely, and many scanners do them, which would end the run before
-         # anything else is found
-         flags=(-g -O1 -fno-omit-frame-pointer -fsanitize=address,undefined -fno-sanitize=nonnull-attribute,alignment
-                -fno-sanitize-recover=undefined -fPIC -fno-strict-aliasing)
-         if [ -f "$src/scanner.cc" ]; then
-           cc "${flags[@]}" -std=c11 -I"$src" -c "$src/parser.c" -o "$lib.parser.o"
-           c++ "${flags[@]}" -fvisibility=hidden -I"$src" -c "$src/scanner.cc" -o "$lib.scanner.o"
-           c++ -shared -fsanitize=address,undefined "$lib.parser.o" "$lib.scanner.o" -o "$lib"
-         else
-           files=("$src/parser.c"); [ -f "$src/scanner.c" ] && files+=("$src/scanner.c")
-           cc "${flags[@]}" -shared -std=c11 -include "$root/syntax/safe-ctype.h" -include "$root/syntax/counted-memory.h" \
-              -I"$src" "${files[@]}" -o "$lib"
-         fi
+         compile_grammar "$src" "$lib" --sanitize
          ulimit -t 1800
          export ASAN_OPTIONS=hard_rss_limit_mb=4096:allocator_may_return_null=1:detect_leaks=0:handle_abort=1
          export UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1
@@ -148,7 +136,7 @@ if [ -n "$hostile" ]; then
 fi
 for name in "${names[@]}"; do
   # a grammar in a directory of its repository (the manifest's fifth column)
-  subpath=$(awk -F'\t' -v n="$name" '$1 == n { print $5 }' syntax/grammars.tsv)
+  subpath=$(grammar_subpath "$name")
   dir="build/grammar-sources/$name${subpath:+/$subpath}"
   # its corpus in test/corpus, tests/corpus or corpus, in its directory or at
   # the top of its repository; and the samples

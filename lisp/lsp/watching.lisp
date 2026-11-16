@@ -105,9 +105,9 @@ table by directory, as WATCHED-TREE's STAMPS): hidden ones and those
                           (not (watch-skipped-p (first entry)))
                           (push directory found)))
                     :list (lambda (directory)
-                            (let ((entries (ignoring-errors-reported ("reading ~a" directory)
-                                             (tuatara.io:directory-entries directory :stamps t))))
-                              (setf (gethash directory stamps) (entries-contents entries))
+                            (multiple-value-bind (entries read) (listed-entries directory)
+                              (when read
+                                (setf (gethash directory stamps) (entries-contents entries)))
                               entries))
                     :breadth-first t :follow-links t :limit *lsp-watched-most*)
     (values (nreverse found) stamps)))
@@ -124,23 +124,33 @@ tells; kept for each file watched in place of its STAMP, a tenth of the
 room."
   (logand (logxor (tuatara.io:stamp-mtime stamp) (* (tuatara.io:stamp-size stamp) 1000003)) most-positive-fixnum))
 
+(defun listed-entries (directory)
+  "The entries of DIRECTORY with their stamps (TUATARA.IO:DIRECTORY-ENTRIES),
+and as a second value true when it could be read: an empty directory gives
+none and true."
+  (let ((read nil))
+    (values (ignoring-errors-reported ("reading ~a" directory)
+              (prog1 (tuatara.io:directory-entries directory :stamps t)
+                (setf read t)))
+            read)))
+
 (defun directory-contents (directory)
   "What DIRECTORY holds, a table by name of each file's mark (FILE-MARK), or
-:DIRECTORY for a directory; NIL when it cannot be read."
-  (entries-contents (ignoring-errors-reported ("reading ~a" directory)
-                      (tuatara.io:directory-entries directory :stamps t))))
+:DIRECTORY for a directory, empty for an empty directory; NIL when it cannot
+be read."
+  (multiple-value-bind (entries read) (listed-entries directory)
+    (and read (entries-contents entries))))
 
 (defun entries-contents (entries)
   "ENTRIES of a directory, as TUATARA.IO:DIRECTORY-ENTRIES gives them with stamps,
 as DIRECTORY-CONTENTS gives them: a table by name of each file's mark, or
-:DIRECTORY for a directory; NIL for none."
-  (when entries
-    (let ((table (make-hash-table :test 'equal :size (length entries))))
-      (loop for (name kind nil nil stamp) in entries
-            do (setf (gethash name table) (cond ((eq kind :directory) :directory)
-                                                (stamp (file-mark stamp))
-                                                (t 0))))
-      table)))
+:DIRECTORY for a directory; an empty table for none."
+  (let ((table (make-hash-table :test 'equal :size (max 1 (length entries)))))
+    (loop for (name kind nil nil stamp) in entries
+          do (setf (gethash name table) (cond ((eq kind :directory) :directory)
+                                              (stamp (file-mark stamp))
+                                              (t 0))))
+    table))
 
 (defun watch-project (root)
   "Have the project at ROOT watched for its servers: its directories found in the
@@ -214,17 +224,31 @@ directory made watched (its files made), one gone let go (its files deleted)."
     changes))
 
 (defun directory-made (tree directory)
-  "DIRECTORY, new in TREE: watched, its files made, as DIRECTORY-CHANGES gives them."
-  (let ((inside (directory-contents directory))
+  "DIRECTORY, new in TREE: watched, its files made, as DIRECTORY-CHANGES gives
+them, and so for each directory in it not left out (WATCH-SKIPPED-P), while
+TREE watches fewer than *LSP-WATCHED-MOST*: a tree made at once (a checkout,
+a build) is watched whole. A symbolic link to a directory is not followed,
+so a link back up never has one directory watched again and again."
+  (let ((made '())
+        (count (length (watched-tree-directories tree)))
         (changes '()))
-    (setf (watched-tree-directories tree) (append (watched-tree-directories tree) (list directory))
-          (gethash directory (watched-tree-stamps tree)) inside)
-    (directories-followed-changed)
-    (when inside
-      (maphash (lambda (name what)
-                 (unless (eq what :directory)
-                   (push (list (format nil "~a~a" directory name) 1) changes)))
-               inside))
+    (labels ((walk (directory)
+               (unless (eq (tuatara.io:path-kind (string-right-trim "/" directory) :follow nil) :symlink)
+                 (let ((inside (directory-contents directory)))
+                   (push directory made)
+                   (incf count)
+                   (setf (gethash directory (watched-tree-stamps tree)) inside)
+                   (when inside
+                     (maphash (lambda (name what)
+                                (cond ((not (eq what :directory))
+                                       (push (list (format nil "~a~a" directory name) 1) changes))
+                                      ((and (not (watch-skipped-p name)) (< count *lsp-watched-most*))
+                                       (walk (format nil "~a~a/" directory name)))))
+                              inside))))))
+      (walk directory))
+    (when made
+      (setf (watched-tree-directories tree) (append (watched-tree-directories tree) (nreverse made)))
+      (directories-followed-changed))
     changes))
 
 (defun directory-gone (tree directory)

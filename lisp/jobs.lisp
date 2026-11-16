@@ -30,7 +30,7 @@ the text shown, and gives the (START END) stretches it will change, painted
 while it waits. COUNTED is true when it needs BUFFER's lines counted first
 (LINES-UNCOUNTED-P). PLACE is where in BUFFER's undo history it was given
 \(TUATARA.BUFFER:MAKE-UNDO-PLACE), for its change to stand there
-\(JOB-BEGINS-WHERE-GIVEN). QUEUED is the time it was queued at."
+\(JOB-BEGINS-WHERE-GIVEN)."
   (buffer nil :documentation "The buffer QUEUED-JOB waits in.")
   (words nil :documentation "What QUEUED-JOB will do, in words.")
   (starter nil
@@ -43,8 +43,7 @@ meanwhile.")
          :documentation "The function that gives the (START END) stretches QUEUED-JOB will change, painted while it
 waits.")
   (counted nil :documentation "True when QUEUED-JOB needs its buffer's lines counted before it starts.")
-  (place nil :documentation "Where in its buffer's undo history QUEUED-JOB was given, for its change to stand there.")
-  (queued (get-universal-time) :documentation "The time QUEUED-JOB was queued at, in universal time."))
+  (place nil :documentation "Where in its buffer's undo history QUEUED-JOB was given, for its change to stand there."))
 
 (defvar *job-queue* '()
   "The jobs waiting their turn, in every buffer, the oldest first.")
@@ -115,9 +114,9 @@ preposition when it has one: Writing at the other lines."
 
 (defun job-done-words (seconds kept &optional detail)
   "How long a job in the background took, as every job's report says it: in
-SECONDS s, followed by DETAIL when given, then how many of its changes were KEPT
-as you edited them meanwhile, when any were."
-  (format nil "in ~,1f s~@[: ~a~]~[~:;; ~:*~:d kept as you edited them~]" seconds detail kept))
+SECONDS (DURATION-WORDS), followed by DETAIL when given, then how many of its
+changes were KEPT as you edited them meanwhile, when any were."
+  (format nil "in ~a~@[: ~a~]~[~:;; ~:*~:d kept as you edited them~]" (duration-words seconds) detail kept))
 
 (defun job-report (kind counted whole &key (refused (list 0)) (hidden (list 0)))
   "A job's REPORT (REWRITE) for doing KIND (JOB-WORDS) at many places in the
@@ -285,6 +284,7 @@ with where they stand when its turn comes, returning true. So STARTER alone
 works out what the job needs from its positions."
   (or (queue-if-busy buffer words positions starter :shade shade :counted counted)
       (apply starter (mapcar #'car positions))))
+
 (defun job-begins-where-given (buffer low high &key untouched)
   "Where a job changing BUFFER from LOW below HIGH begins: on the text now, or,
 for a job queued whose turn has come, on the text as it stood where it was
@@ -484,10 +484,15 @@ stopping half-way would spoil it). The jobs waiting their turn behind it then
 start, one after another; \\[list-jobs] lists them, and drops those not
 wanted. Changing the text a sort, a filter or dynamic blocks being made work
 on asks first whether to stop them, since the change would spoil their work. A
-job already asked to stop, and ending, is not asked about again."
+job already asked to stop, and ending, is not asked about again. A buffer
+that is the output of its own work (*compile*) has that work stopped first
+\(its buffer-local :STOPPED-FIRST, a job type)."
   (let* ((running (remove-if (lambda (job) (car (tuatara.runtime:job-cancel job)))
                              (jobs-of (current-buffer) :running t)))
-         (job (or (find-if #'tuatara.runtime:job-holds-queue-p running) (first running))))
+         (first-type (tuatara.buffer:buffer-local (current-buffer) :stopped-first))
+         (job (or (and first-type (find-if (lambda (job) (typep job first-type)) running))
+                  (find-if #'tuatara.runtime:job-holds-queue-p running)
+                  (first running))))
     (cond ((null job) (message "Nothing is running in this buffer"))
           ((y-or-n-p* (tuatara.runtime:job-stop-question job))
            (tuatara.runtime:job-stop job)
@@ -656,4 +661,4 @@ asked about first (GUARD-JOB-EDITS). The mode line's sign of the work
   (pushnew 'settle-jobs tuatara.buffer:*kill-buffer-functions*)
   (pushnew 'jobs-quit-query *quit-query-functions*)
   (pushnew 'guard-job-edits tuatara.buffer:*before-edit-functions*)
-  (define-keys (mode-keymap 'jobs-mode) '(("h" quit-window) ("C-b" quit-window))))
+  (list-back-keys (mode-keymap 'jobs-mode)))

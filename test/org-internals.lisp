@@ -357,7 +357,7 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
                                        (tuatara.defaults::org-macro-definitions))
                                 :test #'string-equal)))
   (true (search "Say two."
-                (tuatara.defaults::org-latex-document (format nil "#+MACRO: m one~%#+MACRO: m two~%Say {{{m}}}.~%"))))
+                (org-latex-of (format nil "#+MACRO: m one~%#+MACRO: m two~%Say {{{m}}}.~%"))))
   (let ((b (tuatara.buffer:make-buffer "*macros*" :text (format nil "#+macro: who first~%#+macro: who second~%"))))
     (unwind-protect
          (let ((who (find "who"

@@ -135,11 +135,8 @@ and fourth values."
         (tuatara.io:with-foreign-memory (sap (vt :memory-size) :zero t)
           (setf (sb-sys:sap-ref-64 sap 0) (vt :memory-size))
           (when (eql (vt :success)
-                     (tuatara.runtime:foreign-call "ghostty_terminal_get" sb-alien:int
-                                                   (sb-sys:system-area-pointer
-                                                    (tuatara.terminal-emulator::emulator-terminal emulator))
-                                                   (sb-alien:int (vt :data-memory-usage))
-                                                   (sb-sys:system-area-pointer sap)))
+                     (tuatara.terminal-emulator::%ghostty-terminal-get
+                      (tuatara.terminal-emulator::emulator-terminal emulator) (vt :data-memory-usage) sap))
             (list :resident (+ (sb-sys:sap-ref-64 sap (vt :memory-primary-resident))
                                (sb-sys:sap-ref-64 sap (vt :memory-alternate-resident)))
                   :pages (sb-sys:sap-ref-64 sap (vt :memory-primary-pages))
@@ -497,3 +494,21 @@ they run in Tuatara's own program, which runs no scripts as SBCL does."
         (tuatara.terminal-emulator::physical-key up))
       ;; other threads may make a little meanwhile: far less than a name made of each key
       (true (< (- (sb-ext:get-bytes-consed) before) 2000000)))))
+
+(define-test (emulator reader-ends-before-the-terminal-closes)
+  ;; a program left holding the terminal (one of a session of its own) writing once the terminal is
+  ;; being ended: the reader gives the library nothing more, ending before the terminal is closed
+  (let ((e (tuatara.terminal-emulator::start-emulator
+            "sh" (list "-c" "setsid sh -c 'sleep 1.3; echo late' & sleep 10") :columns 40 :rows 6))
+        (written 0)
+        (start 0))
+    (sleep 0.3)
+    (setf start (get-internal-real-time))
+    ;; what the program left behind writes a second on, once the terminal is being ended
+    (sb-int:encapsulate 'tuatara.terminal-emulator::write-to-library 'stopping
+                        (lambda (f &rest arguments)
+                          (when (> (tuatara.runtime:seconds-since start) 1/2) (incf written))
+                          (apply f arguments)))
+    (unwind-protect (tuatara.terminal-emulator::stop-emulator e)
+      (sb-int:unencapsulate 'tuatara.terminal-emulator::write-to-library 'stopping))
+    (is = 0 written)))

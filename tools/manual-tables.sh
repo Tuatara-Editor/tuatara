@@ -11,10 +11,6 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 . tools/inside.sh
-tree="$PWD/"
-inside sbcl --non-interactive \
-  --load tools/quicklisp.lisp \
-  --eval "(push #p\"$tree\" asdf:*central-registry*)" \
-  --eval '(ql:quickload (list :tuatara/defaults :tuatara/frontend-fake :tuatara/terminal) :silent t)' \
-  --load tools/manual-tables.lisp \
-  --eval "(manual-tables:run #p\"$tree\")"
+in_tree '(list :tuatara/defaults :tuatara/frontend-fake :tuatara/terminal)' \
+  '(load "tools/manual-tables.lisp")' \
+  "(manual-tables:run #p\"$PWD/\")"

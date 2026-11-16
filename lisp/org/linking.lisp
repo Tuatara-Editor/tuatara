@@ -1,13 +1,13 @@
 ;;;; lisp/org/linking.lisp --- Links and pictures written in Org, Markdown and LaTeX, and links stored where you are.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; org-store-link keeps a link to where point is: a headline of an Org
-;;;; file (by its CUSTOM_ID, else its title), one of your notes (denote:ID),
-;;;; a line of another file. insert-link (C-c C-l) asks for a link, the
-;;;; stored ones and the kinds of link offered (file and denote ones chosen
-;;;; from your files), and a label, and writes it as the mode writes links:
-;;;; [[link][label]] in Org, [label](link) in Markdown, \href{link}{label} in
-;;;; LaTeX. On an Org link, it edits it. A stored link to the Org file it is
+;;;; org-store-link keeps a link to where point is. In an Org file that is a
+;;;; headline (by its CUSTOM_ID, else its title); in one of your notes,
+;;;; denote:ID; in another file, a line. insert-link (C-c C-l) asks for a
+;;;; link, from the stored ones or the kinds of link offered (file and denote
+;;;; ones chosen from your files), and for a label. It writes the link as the
+;;;; mode writes links: [[link][label]] in Org, [label](link) in Markdown,
+;;;; \href{link}{label} in LaTeX. On an Org link, it edits it. A stored link to the Org file it is
 ;;;; put in becomes a link within it, as Org makes it. inline-add-picture
 ;;;; (C-c C-x p) asks for a picture and writes a link to it where it is, on
 ;;;; lines of its own with the properties a picture takes (caption, name,
@@ -19,9 +19,44 @@
   "The links org-store-link kept, the latest first, each (LINK LABEL), LABEL NIL for none.")
 
 (defparameter *org-link-kinds*
-  '("file:" "denote:" "https:" "http:" "mailto:" "id:" "doi:" "formatted-match:")
+  (list "file:" "denote:" "https:" "http:" "mailto:" "id:" "doi:" (format nil "~a:" *formatted-files-link-type*))
   "The kinds of link insert-link offers besides the stored links. The file and
 denote ones go on to ask for the file or the note.")
+
+(defun insert-link-text (buffer region link)
+  "Put LINK in BUFFER in place of REGION, (START END) octets, or at point when
+REGION is NIL, point after it."
+  (if region
+      (progn (setf (tuatara.buffer:buffer-mark-active-p buffer) nil)
+             (tuatara.buffer:buffer-replace buffer (first region) (second region) link)
+             (setf (tuatara.buffer:buffer-point buffer) (+ (first region) (tuatara.text:string-octet-length link))))
+      (let ((at (tuatara.buffer:buffer-point buffer)))
+        (tuatara.buffer:buffer-insert buffer at link)
+        (setf (tuatara.buffer:buffer-point buffer) (+ at (tuatara.text:string-octet-length link))))))
+
+(defun read-link-label (region buffer suggested)
+  "The label of a link being made: the text of REGION of BUFFER when text is
+selected, else asked for, SUGGESTED offered selected, to take or type over."
+  (if region
+      (tuatara.buffer:buffer-string buffer :start (first region) :end (second region))
+      (read-string "Link LABEL: " :initial suggested :select-initial t)))
+
+(defun link-label-problem (label)
+  "Why LABEL cannot be an Org link's label, or NIL: one holding ]] or ending in ] would end the link early."
+  (when (or (search "]]" label) (and (plusp (length label)) (char= (char label (1- (length label))) #\])))
+    "a label ending in ] or holding ]] would end the link early"))
+
+(defun insert-labelled-link (buffer region suggested link-of &key label (problem #'link-label-problem))
+  "Put the link LINK-OF, a function of its label, gives in BUFFER in place of
+REGION or at point (INSERT-LINK-TEXT), its label LABEL when given, else asked
+for (READ-LINK-LABEL, SUGGESTED offered); said instead, nothing inserted, when
+the label cannot be one: PROBLEM, a function of the label, says why, or NIL
+\(as standard LINK-LABEL-PROBLEM, for an Org link). True when it was inserted."
+  (let* ((label (or label (read-link-label region buffer suggested)))
+         (problem (funcall problem label)))
+    (if problem
+        (progn (message "No link inserted: ~a" problem) nil)
+        (progn (insert-link-text buffer region (funcall link-of label)) t))))
 
 (defun written-path (path directory &key (home t))
   "PATH (native) as a link writes it from a file in DIRECTORY (native, ending
@@ -40,10 +75,10 @@ spaces."
         (and title (substitute #\Space #\- title)))))
 
 (defun org-link-to-here (buffer)
-  "A link to where point is in BUFFER and its label, as two values: in one of
-your notes, denote:ID and its title; under
-an Org headline, file:PATH::#CUSTOM_ID or file:PATH::*Title and the title; in
-a file not Org, file:PATH::the line point is on; NIL where there is no file."
+  "A link to where point is in BUFFER and its label, as two values. In one of
+your notes, denote:ID and its title. Under an Org headline,
+file:PATH::#CUSTOM_ID or file:PATH::*Title and the title. In a file not Org,
+file:PATH::the line point is on. NIL where there is no file."
   (let ((file (tuatara.buffer:buffer-file buffer)))
     (when file
       (let* ((path (tuatara.io:native file))
@@ -69,10 +104,10 @@ a file not Org, file:PATH::the line point is on; NIL where there is no file."
                        nil))))))))
 
 (define-command org-store-link ()
-  "Keep a link to where point is, for insert-link (\\[insert-link]) to
-offer: under an Org headline, to it (by its
-CUSTOM_ID, else its title); in one of your notes, to the note (denote:ID); in
-another file, to the line point is on."
+  "Keep a link to where point is, for insert-link (\\[insert-link]) to offer.
+Under an Org headline it leads to the headline (by its CUSTOM_ID, else its
+title); in one of your notes, to the note (denote:ID); in another file, to the
+line point is on."
   (multiple-value-bind (link label) (org-link-to-here (current-buffer))
     (if (null link)
         (message "No link to store here: this buffer has no file")
@@ -308,7 +343,7 @@ the picture as wide as the export makes it, an empty \\caption{} and a
 name LaTeX cannot take (LATEX-FILE-NAME-P)."
   (let ((written (written-path path (buffer-directory buffer) :home nil)))
     (unless (latex-file-name-p written)
-      (refuse "LaTeX cannot take a file named with % # { } \\ ~~ or ^: ~a" written))
+      (refuse "~a" (latex-file-name-refusal written)))
     (values (list "\\begin{figure}[tbp]"
                   "\\centering"
                   (format nil "\\includegraphics[width=~a]{~a}" *picture-latex-width* written)

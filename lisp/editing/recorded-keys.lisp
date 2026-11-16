@@ -266,7 +266,7 @@ and it is only inserted: putting it in the init file is left to you."
               (message "These keys cannot all be written as text: ~a" text)
               (let ((name (read-recorded-keys-name "Name of the command" *last-recorded-keys-name*)))
                 (when name
-                  (let ((key (string-trim " " (read-string "Key to bind it to (nothing for none): "))))
+                  (let ((key (read-string "Key to bind it to (nothing for none): " :trim t)))
                     (if (and (plusp (length key))
                              (not (and (valid-key-text-p key) (not (string= "M-x " key :end2 (min 4 (length key)))))))
                         (message "~a is not a key" key)

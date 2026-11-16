@@ -27,10 +27,6 @@ order of the text, each (START LEVEL): the octet it begins at and its depth,
   "Where a heading begins in a mode with no headings of its own: a line
 beginning with stars or a page break, the more of them the deeper.")
 
-(defparameter *org-outline-regex* "^\\*+ "
-  "Where an Org heading begins: a star or more at the start of a line, and a
-space; the more stars, the deeper.")
-
 (defparameter *lisp-outline-regex* "^(?:;;;+ \\S|\\()"
   "Where a heading begins in Lisp: a comment of three semicolons or more and a
 space before its text, the more semicolons the deeper; and a top-level form,
@@ -122,7 +118,8 @@ from its syntax tree, else its lines that look like headings (*OUTLINE-REGEX*)."
 (defmethod mode-outline ((mode org-mode) buffer)
   "The headings of an Org note, at the level their stars give."
   (declare (ignore buffer))
-  (regex-outline *org-outline-regex* (lambda (text) (1- (length text)))))
+  ;; an Org headline at the start of a line; the more stars, the deeper
+  (regex-outline (concatenate 'string "^" *org-headline-re*) (lambda (text) (1- (length text)))))
 
 (defun lisp-outline ()
   "A finder of the headings of Lisp (see MODE-OUTLINE): its comments of three
@@ -133,14 +130,11 @@ semicolons or more, and its top-level forms."
                        +form-level+
                        (- (or (position #\; text :test-not #'char=) (length text)) 2)))))
 
-(macrolet ((lisp-outlines (&rest modes)
-             `(progn ,@(loop for mode in modes
-                             collect `(defmethod mode-outline ((mode ,mode) buffer)
-                                        "The headings of Lisp: comments of three
-semicolons or more, and top-level forms (LISP-OUTLINE)."
-                                        (declare (ignore buffer))
-                                        (lisp-outline))))))
-  (lisp-outlines lisp-mode emacs-lisp-mode clojure-mode scheme-mode racket-mode fennel-mode janet-mode hy-mode))
+(defmethod mode-outline ((mode prog-mode) buffer)
+  "The headings of Lisp and its kin (LISP-FAMILY-MODE-P): comments of three
+semicolons or more, and top-level forms (LISP-OUTLINE); of other code, as of
+any text."
+  (if (lisp-family-mode-p mode) (lisp-outline) (call-next-method)))
 
 ;;; The lines of the headings
 
@@ -384,11 +378,12 @@ was; or, when the choosing is given up, go back as things were."
 headings, Lisp's comments of three semicolons and top-level forms, and in a
 language parsed with tree-sitter its definitions and headings (a function, a
 type, a Markdown heading), each shown as its line after its number, in the
-order of the text. Typing narrows the
-list, and a digit and a space typed first (2 SPC) keep only the headings that
-many levels deep or less, as a prefix argument does. Moving in the list shows
-each heading in the window; \\<minibuffer>\\[minibuffer-finish] goes there, leaving the mark where
-point was, and \\[minibuffer-cancel] goes back. The list opens on the heading point is under.
+order of the text. Typing narrows the list, and a digit and a space typed
+first (2 SPC) keep only the headings that many levels deep or less, as a
+prefix argument does. Moving in the list shows each heading in the window;
+\\<minibuffer>\\[minibuffer-finish] goes there, leaving the mark where point
+was, and \\[minibuffer-cancel] goes back. The list opens on the heading point
+is under.
 In a narrowed buffer, the headings of the part shown."
   (let* ((buffer (current-buffer))
          (mode (buffer-major-mode buffer))

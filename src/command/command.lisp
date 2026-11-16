@@ -15,15 +15,18 @@ is not offered by \\[execute-extended-command] and is outside the stable surface
   (gethash name *key-only-commands*))
 
 (defmacro define-command (name (&key (interactive t)) doc &body body)
-  "Define NAME as an interactive command with docstring DOC (required) whose BODY
-runs with the editor context bound: (current-buffer), (current-window),
-*editor*. Commands take no arguments; they read what they need from the
-context and the prefix argument. Registered for key bindings, \\[execute-extended-command] and help.
-With :INTERACTIVE NIL the command is for keys alone: \\[execute-extended-command] does not offer it."
+  "Define NAME as an interactive command with docstring DOC (required) whose
+BODY runs with the editor context bound: (current-buffer), (current-window),
+*editor*. Commands take no arguments; they read what they need from the context
+and the prefix argument. Registered for key bindings,
+\\[execute-extended-command] and help. With :INTERACTIVE NIL the command is for
+keys alone: \\[execute-extended-command] does not offer it. NAME is no
+longer marked as made while the editor runs (INSTALL-COMMAND)."
   (check-type doc string "a docstring; every command documents itself")
   `(progn
      (defun ,name () ,doc ,@body)
      (setf (gethash ',name *commands*) #',name)
+     (remprop ',name 'made-while-running)
      ,(if interactive
           `(remhash ',name *key-only-commands*)
           `(setf (gethash ',name *key-only-commands*) t))
@@ -33,9 +36,11 @@ With :INTERACTIVE NIL the command is for keys alone: \\[execute-extended-command
   "Make NAME a command that runs FUNCTION, as DEFINE-COMMAND makes one, for a
 command made while the editor runs (a name given to recorded keys, a key of an
 input method, a package's command before the package loads); DOCUMENTATION,
-when given, is its docstring. Returns NAME."
+when given, is its docstring. NAME's property MADE-WHILE-RUNNING is true
+after, telling it from a command a source file defines. Returns NAME."
   (setf (symbol-function name) function
-        (gethash name *commands*) function)
+        (gethash name *commands*) function
+        (get name 'made-while-running) t)
   (when documentation
     (setf (documentation name 'function) documentation))
   name)
@@ -73,6 +78,8 @@ commands of one name are one command by name)."
 
 (defun forget-command (name)
   "Make the symbol NAME no longer a command: keys bound to it, \\[execute-extended-command]
-and help no longer find it. Its function stays."
+and help no longer find it, nor is it marked as made while the editor runs
+\(INSTALL-COMMAND). Its function stays."
+  (remprop name 'made-while-running)
   (when (remhash name *commands*)
     (setf *command-names* (cons -1 nil))))

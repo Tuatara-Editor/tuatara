@@ -9,10 +9,12 @@
 
 (in-package #:tuatara.defaults)
 
-(defun denote-files-scanner (query)
+(defun denote-files-scanner (query &key untrusted)
   "A scanner for QUERY as denote:query-filenames: links match names, ignoring case;
-QUERY that is no regular expression is matched as text."
-  (tuatara.syntax:compile-pattern query :case-fold t :or-text t))
+QUERY that is no regular expression is matched as text. UNTRUSTED, for a
+QUERY from a note, matches as text one that could take for ever too
+\(TUATARA.SYNTAX:COMPILE-PATTERN)."
+  (tuatara.syntax:compile-pattern query :case-fold t :or-text t :untrusted untrusted))
 
 (defun files-matching (scanner files)
   "Those of FILES, your files with formatted names, each a list whose first is
@@ -25,10 +27,14 @@ with no SCANNER."
 path QUERY matches as denote:query-filenames: links match (DENOTE-FILES-SCANNER)."
   (files-matching (denote-files-scanner query) files))
 
-(defun formatted-files-scanner (regex)
+(defun formatted-files-scanner (regex &key untrusted)
   "A scanner for REGEX, a regular expression, ignoring case unless it has a
-capital letter (smart case); NIL when it is no regular expression."
-  (ignoring-errors-reported ("reading the pattern ~a" regex) (tuatara.syntax:compile-pattern regex)))
+capital letter (smart case); NIL when it is no regular expression, or with
+UNTRUSTED, for REGEX from a note, when it could take for ever, the reason as
+a second value."
+  (handler-case (tuatara.syntax:compile-pattern regex :untrusted untrusted)
+    ((or tuatara.syntax:pattern-refused cl-ppcre:ppcre-syntax-error) (condition)
+      (values nil condition))))
 
 (defun formatted-files-matching (regex files)
   "Those of FILES, your files with formatted names (FILES-MATCHING), whose
@@ -38,7 +44,7 @@ capital letter; NIL when REGEX is no regular expression."
 
 (defun read-formatted-files-query (words matching)
   "Ask for a regular expression the names of your files with formatted names are
-to match, for what WORDS says is done with it, The prompt names its kind first
+to match, for what WORDS says is done with it. The prompt names its kind first
 as a search's does (Regex match file names: ). The files MATCHING (a function of
 a regular expression and the files) gives are listed as it is typed, the files
 found in the background meanwhile \(CALL-WITH-FORMATTED-FILES);
@@ -86,15 +92,15 @@ PATTERN, to choose one to visit."
 (defun follow-formatted-files-link (regex)
   "List your files with formatted names whose names REGEX matches, to choose
 one to visit, as a link match-formatted-files-link makes is followed."
-  (let ((scanner (formatted-files-scanner regex)))
-    (if (null scanner)
-        (message "~a is no regular expression" regex)
-        (show-files-matching scanner regex))))
+  (multiple-value-bind (scanner why) (formatted-files-scanner regex :untrusted t)
+    (cond (scanner (show-files-matching scanner regex))
+          ((typep why 'tuatara.syntax:pattern-refused) (message "~a: ~a" regex why))
+          (t (message "~a is no regular expression" regex)))))
 
 (defun follow-denote-files-link (query)
   "List your files with formatted names whose names QUERY matches, to choose
 one to visit, where a denote:query-filenames: link leads."
-  (show-files-matching (denote-files-scanner query) query))
+  (show-files-matching (denote-files-scanner query :untrusted t) query))
 
 (define-command match-formatted-files-link ()
   "Insert a link to your files with formatted names whose names match a

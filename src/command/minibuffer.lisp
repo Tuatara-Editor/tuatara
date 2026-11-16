@@ -12,24 +12,26 @@ typed goes to the machine the editor runs on."
         (format nil "~a (sent to ~a): " (string-right-trim ": " prompt) (machine-instance))
         prompt)))
 
-(defun read-password (prompt &key confirm fresh)
+(defun read-password (prompt &key confirm fresh update)
   "Read a secret, a passphrase, with PROMPT in the minibuffer
 \(PASSWORD-PROMPT), what is typed shown as stars and kept nowhere else (no
 history, no debug log); with CONFIRM asked twice, an error when the two
 differ. With FRESH, for a question that comes unasked, only keys pressed once
 it is shown count (CALL-ASKED-UNASKED): keys typed before never become part
-of it. Returns the string, which the caller should wipe (WIPE-STRING) once it
-has handed it on. Every copy not returned is wiped, the question given up
+of it. UPDATE is called as READ-STRING calls it while the question is open,
+so that one asked for a program can close when the program has gone on
+without it. Returns the string, which the caller should wipe (WIPE-STRING)
+once it has handed it on. Every copy not returned is wiped, the question given up
 \(\\[keyboard-quit]) too."
   (let* ((*minibuffer-hidden* t)
          (tuatara.runtime:*secret-at-hand* t)
          (prompt (password-prompt prompt))
-         (first (read-string prompt :fresh fresh))
+         (first (read-string prompt :fresh fresh :update update))
          (returned nil))
     (if (not confirm)
         first
         (unwind-protect
-             (let ((second (read-string "Again: ")))
+             (let ((second (read-string "Again: " :update update)))
                (unwind-protect
                     (if (string= first second)
                         (setf returned first)
@@ -128,7 +130,10 @@ that end the question."
     (cond ((keymap-p binding) (setf (editor-pending editor) specs))
           (binding
            (setf (editor-pending editor) '())
-           (funcall (find-command binding))
+           (let ((command (find-command binding)))
+             (if command
+                 (funcall command)
+                 (message "No command ~a" binding)))
            (unless (member binding '(minibuffer-finish minibuffer-submit-input minibuffer-cancel))
              (setf *minibuffer-initial-selected* nil)))
           ((and (null (editor-pending editor))
@@ -154,7 +159,8 @@ the text grew with the cursor at its end, CHANGED when it differs."
     (funcall changed (editor-minibuffer-text editor))))
 
 (defun read-string (prompt &rest arguments
-                    &key (initial "") complete select-initial changed rewrite update keymap history completion fresh)
+                    &key (initial "") complete select-initial changed rewrite update keymap history completion fresh
+                      trim)
   "Read a line of text with PROMPT in the echo area, its control and direction
 characters written out (ESCAPE-CONTROLS). Returns the string. Signals QUIT
 when it is given up with \\<minibuffer>\\[minibuffer-cancel]. Runs a nested
@@ -194,7 +200,11 @@ HISTORY, a list of earlier answers, newest first, is gone back through with
 \\[minibuffer-previous-history] and forward with \\[minibuffer-next-history].
 COMPLETION, a COMPLETION, makes it a completing read (COMPLETING-READ).
 With FRESH, for a question that comes unasked, only keys pressed once it is
-shown count (CALL-ASKED-UNASKED): keys typed before never become part of it."
+shown count (CALL-ASKED-UNASKED): keys typed before never become part of it.
+With TRIM, the spaces and tabs at either end of the answer are left out."
+  (when trim
+    (return-from read-string
+      (string-trim '(#\Space #\Tab) (apply #'read-string prompt :trim nil arguments))))
   (when fresh
     (return-from read-string
       (call-asked-unasked prompt (lambda () (apply #'read-string prompt :fresh nil arguments)))))
@@ -603,8 +613,8 @@ line typed (-1) one step above the first candidate, where it can be taken."
 place of the name being typed after the last slash (a directory candidate
 descends into it); for a list of words, in place of the word after the last
 comma. Where the minibuffer reads no choice from a list but can complete the
-word at its cursor (\\[eval-expression] completes Lisp's names), list the completions of that
-word beside it."
+word at its cursor (\\[eval-expression] completes Lisp's names), list the
+completions of that word beside it."
   (let ((c (editor-completion *editor*)))
     (when (and (null c) (editor-minibuffer-completer *editor*))
       (funcall (editor-minibuffer-completer *editor*)))
@@ -789,6 +799,6 @@ undone is answered by one key instead (Y-OR-N-P*)."
   (let ((question (format nil "~a (y or n, then ~a) " prompt
                           (substitute-command-keys "\\<minibuffer>\\[minibuffer-finish]"))))
     (loop for asking = question then (format nil "Answer ~a. ~a" (answer-keys-words '(#\y #\n)) question)
-          do (let ((answer (string-trim '(#\Space #\Tab) (read-string asking))))
+          do (let ((answer (read-string asking :trim t)))
                (cond ((member answer '("y" "yes") :test #'string-equal) (return t))
                      ((member answer '("n" "no") :test #'string-equal) (return nil)))))))

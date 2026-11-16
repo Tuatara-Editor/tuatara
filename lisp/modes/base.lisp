@@ -44,7 +44,7 @@ filters (\\[search-filter-regex]) narrow them, and the modes made from them,
 by hiding the lines they leave out, as they narrow a CSV.
 - a list of mode names: log-mode, jsonl-mode, todotxt-mode and the others
   of the standard list."
-  :values (list-of "a mode's name"))
+  :values (list-of symbol))
 
 (defgeneric filters-hide-lines-p (mode buffer)
   (:documentation "True when search filters (\\[search-filter-regex]) narrow BUFFER, in

@@ -327,11 +327,32 @@ EXISTING_MODES = {'git-commit-mode'}
 # file types taken from or given to a language, where Helix and Emacs differ:
 # .S is preprocessed GNU assembly (Emacs's asm-mode), .inc no one language's,
 # .properties Java's properties (Emacs's conf-javaprop-mode)
-# and bitbake's conf/*.conf, which would take any conf directory's files
+# and bitbake's conf/*.conf, which would take any conf directory's files;
+# 'comment' replaces Helix's comment token where it is wrong: DBML's line
+# comments begin // (Helix says ;); 'definitions' is the query that finds a
+# file's definitions where the text objects' would find none of the headings
+# and environments a reader goes by (LaTeX's)
 OVERRIDES = {'pascal': {'drop': ['inc']}, 'php': {'drop': ['inc']}, 'sourcepawn': {'drop': ['inc']}, 'ini': {'drop': ['properties']}, 'nasm': {'drop': ['S']}, 'gas': {'add': ['S']},
-             'bitbake': {'drop': [{'glob': 'conf/*.conf'}, {'glob': 'conf/*/*.{inc,conf}'}]}}
+             'bitbake': {'drop': [{'glob': 'conf/*.conf'}, {'glob': 'conf/*/*.{inc,conf}'}]},
+             'dbml': {'comment': '//'},
+             'latex': {'definitions': '[(part) (chapter) (section) (subsection) (subsubsection) (paragraph)'
+                                      ' (subparagraph)\n (generic_environment) (math_environment)'
+                                      ' (verbatim_environment) (listing_environment) (minted_environment)\n'
+                                      ' (pycode_environment) (comment_environment)] @definition'}}
 
 TABLE_NAMES = {row[0] for row in TABLE}
+
+def comment_lines(text, width=120):
+    """TEXT as ;;;; comment lines, each as full as WIDTH columns allow, a newline after each."""
+    lines, line = [], ''
+    for word in text.split(' '):
+        if line and 5 + len(line) + 1 + len(word) > width:
+            lines.append(line)
+            line = word
+        else:
+            line = line + ' ' + word if line else word
+    lines.append(line)
+    return ''.join(f';;;; {line}\n' for line in lines)
 
 # the files the modes and languages are written to, in the order tuatara.asd
 # loads them, each with what it holds and the languages in it; a language no
@@ -602,8 +623,9 @@ def main():
                 patterns.append(glob_regex('*.' + t))
                 continue
             if isinstance(t, str):
+                # an extension, and for Kconfig, Caddyfile a file of that name too, as Emacs
+                # has it: Helix matches such a word both ways (x.Kconfig, Kconfig)
                 if t not in claimed_exts: exts.append(t); claimed_exts.add(t)
-                # Kconfig, Caddyfile: a file of that name too, as Emacs has it
                 if len(t) > 3 and t[0].isupper() and any(c.islower() for c in t) and t not in claimed_names:
                     names.append(t); claimed_names.add(t)
             else:
@@ -615,6 +637,7 @@ def main():
                     if e not in claimed_exts: exts.append(e); claimed_exts.add(e)
                 else:
                     patterns.append(glob_regex(g))
+        comment = override.get('comment', l['comment'])
         injection = injection_names(l['injection_regex'])
         unit = l['indent_unit']
         indent = (l['tab_width'] or 4) if unit == '\t' else (len(unit) if unit else 4)
@@ -623,11 +646,11 @@ def main():
             opts = [f':lighter {lisp_string(lighter)}']
             block = l['block_comment'][0] if isinstance(l['block_comment'], list) else l['block_comment']
             # a comment token that is a block comment's two ends, OCaml's (**), comments no line
-            if l['comment'] and not (isinstance(block, dict) and l['comment'] == block['start'] + block['end']):
+            if comment and not (isinstance(block, dict) and comment == block['start'] + block['end']):
                 # a line is commented as Emacs comments one: ;; in the Lisps
-                put = ';;' if l['comment'] == ';' else l['comment']
-                opts.append(f':comment {lisp_string(put)}' if put == l['comment']
-                            else f':comment ({lisp_string(l["comment"])} {lisp_string(put)})')
+                put = ';;' if comment == ';' else comment
+                opts.append(f':comment {lisp_string(put)}' if put == comment
+                            else f':comment ({lisp_string(comment)} {lisp_string(put)})')
             elif block:
                 # only comments with an end: each line commented between them
                 opts.append(f':block-comment ({lisp_string(block["start"])} {lisp_string(block["end"])})')
@@ -642,13 +665,14 @@ def main():
         lang_opts = [f':grammar {lisp_string(grammar)}', f':modes ({mode or ""})'.replace('()', 'nil'), f':indent {indent}',
                      f':queries {lisp_string(name)}']
         if injection: lang_opts.append(f':injection-names {lisp_string(injection)}')
-        if 'textobjects' in kinds: lang_opts.append(':definitions :textobjects')
-        pretty = lighter or name
+        if 'definitions' in override: lang_opts.append(f':definitions {lisp_string(override["definitions"])}')
+        elif 'textobjects' in kinds: lang_opts.append(':definitions :textobjects')
         forms[family(name)].append(f'(define-language {lang_symbol}\n  {lisp_string(re.split(r"[.](?:\s|$)", doc)[0] + ", parsed with tree-sitter-" + grammar.replace("_", "-") + ".")}\n  '
                      + language_options(lang_opts) + ')')
     for file, holds, _ in FAMILIES:
-        header = (f';;;; lisp/modes/more-languages-{file}.lisp --- The {holds} Helix knows, in major modes named as Emacs\'s.\n'
-                  ';;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.\n;;;;\n'
+        header = (comment_lines(f'lisp/modes/more-languages-{file}.lisp --- The {holds} Helix knows, in major modes '
+                                'named as Emacs\'s.')
+                  + ';;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.\n;;;;\n'
                   ';;;; Each language is parsed with the grammar and coloured, indented and\n'
                   ';;;; selected by the rules Helix uses for it (syntax/), in a major mode named as\n'
                   ';;;; the one Emacs or its best-known package edits it with. A file type another\n'

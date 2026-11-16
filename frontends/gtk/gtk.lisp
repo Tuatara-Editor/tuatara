@@ -133,6 +133,8 @@ named in the events it hands on.")
 window by (WINDOW-DATA), or NIL.")
    (signals :initform '() :accessor gtk-signals :documentation "The handlers the window connected to
 what outlives it, the clipboard and GTK's settings, each (INSTANCE . NUMBER).")
+   (desktop-settings :initform nil :accessor gtk-desktop-settings :documentation "The desktop's
+settings the window follows the monospace font of, or NIL when the desktop has none.")
    (frame :initform nil :accessor gtk-frame :documentation "The frame the editor is painting.")
    (shown :initform nil :accessor gtk-shown :documentation "The frame the window shows.")
    (draw-pending :initform nil :accessor gtk-draw-pending :documentation "True while a redraw is
@@ -259,7 +261,9 @@ NIL once its window has gone."
 
 (defun open-windows ()
   "The frontends whose windows are open, the oldest first."
-  (sort (loop for f being the hash-values of *windows* when (gtk-window f) collect f) #'< :key #'gtk-handle))
+  (sort (sb-ext:with-locked-hash-table (*windows*)
+          (loop for f being the hash-values of *windows* when (gtk-window f) collect f))
+        #'< :key #'gtk-handle))
 
 (defun push-event (f kind &rest arguments)
   "Hand the editor an event of KIND, with ARGUMENTS as MAKE-EVENT takes them,
@@ -545,6 +549,11 @@ those the desktop's theme names for windows, else GTK's own. On GTK's thread."
           (redraw f))
         (queue-push (gtk-queue f) (tuatara.frontend:make-event :tick))))))
 
+(define-callback on-desktop-font-changed :void ((settings :pointer) (key :pointer) (data :pointer))
+  (declare (ignore settings key))
+  (let ((f (data-window data)))
+    (when f (follow-font-setting f))))
+
 (defmethod tuatara.frontend:frontend-settings-changed ((f gtk-frontend))
   (follow-renderer-setting f)
   (follow-font-setting f))
@@ -575,28 +584,43 @@ use; nothing is done while they are."
 (defmethod tuatara.frontend:frontend-primary-selection ((f gtk-frontend))
   (read-clipboard-now f t))
 
+(defun wait-for-clipboard (f ready-p)
+  "Wait for READY-P, a function of no arguments called with F's lock held, to
+be true, a second at most, while the editor keeps reading keys (\\`C-g' gives
+up). True when it was ready, or the second ran out; NIL when C-g stopped the
+waiting."
+  (let ((deadline (tuatara.runtime:deadline-in 1)))
+    (tuatara.command:wait-until-interruptibly
+     (lambda ()
+       (or (sb-thread:with-mutex ((gtk-lock f)) (funcall ready-p))
+           (not (plusp (tuatara.runtime:seconds-left deadline)))))
+     :message "Waiting for the clipboard..." :grace 1/5)))
+
 (defun read-clipboard-now (f primary)
   "The text of F's clipboard, or with PRIMARY its primary selection: as kept
 when it is watched (the clipboard), once a change being read is in, or, a
 second gone, as it was before it; else read on GTK's thread, a second at
-most, and the clipboard watched from then on; NIL when there is none."
+most, and the clipboard watched from then on; NIL when there is none or
+\\`C-g' gave up on waiting for it."
+  ;; watched: the text kept, once a change being read is in (a second at most)
+  (when (and (not primary) (sb-thread:with-mutex ((gtk-lock f)) (gtk-clipboard-reads f)))
+    (unless (wait-for-clipboard f (lambda () (zerop (gtk-clipboard-reads f))))
+      (return-from read-clipboard-now nil))
+    ;; or, the change still not in, the text kept before it
+    (return-from read-clipboard-now (sb-thread:with-mutex ((gtk-lock f)) (gtk-clipboard-kept f))))
   (sb-thread:with-mutex ((gtk-lock f))
-    ;; watched: the text kept, once a change being read is in (a second at most)
-    (when (and (not primary) (gtk-clipboard-reads f))
-      (tuatara.runtime:wait-on-until (gtk-changed f) (gtk-lock f) (lambda () (zerop (gtk-clipboard-reads f))) 1)
-      ;; or, the change still not in, the text kept before it
-      (return-from read-clipboard-now (gtk-clipboard-kept f)))
     (setf (gtk-clipboard-in f) :waiting)
-    (g-idle-add (if primary (callback on-read-primary) (callback on-read-clipboard)) (window-data f))
-    ;; a clipboard that does not answer within a second counts as none
-    (tuatara.runtime:wait-on-until (gtk-changed f) (gtk-lock f) (lambda () (not (eq (gtk-clipboard-in f) :waiting))) 1)
-    (let ((text (gtk-clipboard-in f)))
-      (setf (gtk-clipboard-in f) nil)
-      ;; the first paste starts the watch, as the terminal does: what is copied is kept only for an editor that pastes
-      (unless (or primary (gtk-clipboard-reads f))
-        (setf (gtk-clipboard-reads f) 0)
-        (g-idle-add (callback on-watch-clipboard) (window-data f)))
-      (and (stringp text) text))))
+    (g-idle-add (if primary (callback on-read-primary) (callback on-read-clipboard)) (window-data f)))
+  ;; a clipboard that does not answer within a second counts as none
+  (let ((answered (wait-for-clipboard f (lambda () (not (eq (gtk-clipboard-in f) :waiting))))))
+    (sb-thread:with-mutex ((gtk-lock f))
+      (let ((text (gtk-clipboard-in f)))
+        (setf (gtk-clipboard-in f) nil)
+        ;; the first paste starts the watch, as the terminal does: what is copied is kept only for an editor that pastes
+        (when (and answered (not primary) (not (gtk-clipboard-reads f)))
+          (setf (gtk-clipboard-reads f) 0)
+          (g-idle-add (callback on-watch-clipboard) (window-data f)))
+        (and answered (stringp text) text)))))
 
 (defmethod tuatara.frontend:frontend-begin-frame ((f gtk-frontend))
   (setf (gtk-frame f)
@@ -606,7 +630,7 @@ most, and the clipboard watched from then on; NIL when there is none."
   (let ((rows (frame-rows (gtk-frame f))))
     (when (< -1 row (length rows))
       (setf (aref rows row)
-            (list (copy-seq string) face (copy-list spans) (copy-list scales) (copy-tree over) (copy-list parts))))))
+            (list string face spans scales over parts)))))
 
 (defmethod tuatara.frontend:frontend-focused-p ((f gtk-frontend))
   "True while the window has the keyboard."

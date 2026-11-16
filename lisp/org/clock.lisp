@@ -137,19 +137,69 @@ is forgotten with only its start. The clock running, or NIL."
   "The agenda files as they were (ORG-AGENDA-SOURCES-KEY) when they were last
 found to have no clock left running, or NIL.")
 
+(sb-ext:defglobal **org-clocks-looking** nil
+  "The thread looking in the agenda files for clocks left running
+\(ORG-CLOCKS-LOOK-IN-BACKGROUND) while it runs; once it has found them, the
+editor whose session they were handed to, to be taken up on its thread; else
+NIL.")
+
+(defun org-clocks-look-in-background ()
+  "Look in the agenda files for clocks left running (ORG-CLOCKS-LEFT-OPEN) on a
+thread of their own, the files open taken here, and take them up on the
+editor's thread (ORG-CLOCK-TAKE-UP), or note that there are none
+\(*ORG-CLOCKS-NONE-OPEN*). Not started again while it looks, nor while what it
+found waits to be taken up in the session it was handed to: once that session
+has ended, it is looked for again."
+  (let ((looking **org-clocks-looking**))
+    (unless (if (typep looking 'sb-thread:thread)
+                (sb-thread:thread-alive-p looking)
+                (and looking (eq looking (running-editor))))
+      (setf **org-clocks-looking**
+            (org-agenda-in-background "tuatara clocks left open"
+                                      (lambda (snapshot)
+                                        (let ((found (org-clocks-left-open))
+                                              (key (mapcar #'third snapshot)))
+                                          (setf **org-clocks-looking** (running-editor))
+                                          (defer-action (lambda ()
+                                                          (unwind-protect
+                                                               (if found
+                                                                   (org-clock-take-up found)
+                                                                   (setf *org-clocks-none-open* key))
+                                                            (setf **org-clocks-looking** nil)))))))))))
+
 (defun org-clocks-left-open-noted (&optional (now (org-now)))
   "ORG-CLOCKS-LEFT-OPEN at NOW, looked for again only when an agenda file
-changed since none was found (*ORG-CLOCKS-NONE-OPEN*)."
+changed since none was found (*ORG-CLOCKS-NONE-OPEN*). When the agenda files
+to read again are large (ORG-AGENDA-FILES-READ-SOON-P), they are looked
+through in the background instead (ORG-CLOCKS-LOOK-IN-BACKGROUND), and that is
+said in a refusal."
   (let ((key (org-agenda-sources-key)))
-    (unless (and *org-clocks-none-open* (equal key *org-clocks-none-open*))
-      (or (org-clocks-left-open now)
-          (progn (setf *org-clocks-none-open* key) nil)))))
+    (cond ((and *org-clocks-none-open* (equal key *org-clocks-none-open*)) nil)
+          ((org-agenda-files-read-soon-p (org-agenda-file-paths))
+           (or (org-clocks-left-open now)
+               (progn (setf *org-clocks-none-open* key) nil)))
+          (t (org-clocks-look-in-background)
+             (refuse "Looking for a clock left running in the agenda files: ask again in a moment")))))
 
 (defun org-clock-running ()
   "The clock running: *ORG-CLOCK*, else the one left running in the agenda
 files that was started last (ORG-CLOCK-TAKE-UP), as after a restart,
 running again from when it started; NIL when there is none."
   (or *org-clock* (org-clock-take-up (org-clocks-left-open-noted))))
+
+(sb-ext:defglobal **org-clock-looked-for** nil
+  "True once Tuatara, as it started, began looking in the agenda files for
+clocks left running (ORG-CLOCK-START-TICK): it looks once a session.")
+
+(defun org-clock-start-tick (editor)
+  "Tick function: once, as Tuatara starts, look in the agenda files for
+clocks left running in the background (ORG-CLOCKS-LOOK-IN-BACKGROUND), so
+that the mode line shows the clock from the start. NIL: not again."
+  (declare (ignore editor))
+  (unless **org-clock-looked-for**
+    (setf **org-clock-looked-for** t)
+    (org-clocks-look-in-background))
+  nil)
 
 (defun org-clock-open-line (clock)
   "CLOCK's line in its buffer as two values, its start and end (octets), when
@@ -269,7 +319,6 @@ saved when that is its buffer's only change, as \\[org-clock-out] does."
              (progn (setf *org-clock* nil)
                     (message "The clock's line is gone: clock cancelled"))
              (let* ((buffer (org-clock-buffer clock))
-                    (size (tuatara.buffer:buffer-size buffer))
                     (after (next-line-start buffer end))
                     (before (tuatara.buffer:buffer-line-start buffer (max 0 (1- start))))
                     (above (and (plusp start) (tuatara.buffer:buffer-string buffer :start before :end start)))

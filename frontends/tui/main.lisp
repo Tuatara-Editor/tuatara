@@ -9,6 +9,7 @@
   (:use #:cl)
   (:import-from #:tuatara.runtime #:define-record)
   (:import-from #:tuatara.defaults #:forwardable-path-p)
+  (:import-from #:tuatara.io #:terminal-p)
   (:documentation "Tuatara in the terminal: the entry point shared by tools/tui.lisp and the saved executable.")
   (:export #:main #:image-toplevel #:*built-heap* #:*options* #:*option-help* #:*environment-help* #:*usage-forms*
            #:write-man-pages #:write-bash-completion))
@@ -498,22 +499,23 @@ out, as the runtime leaves them out."
                 do (pop parts)
               else collect part))))
 
-(defun terminal-p (fd)
-  "True when the file descriptor FD is a terminal."
-  (eql 1 (sb-unix:unix-isatty fd)))
-
 (defun window-wanted-p (&key (input (terminal-p 0)) (output (terminal-p 1)) (desktop (tuatara.io:desktop-p)))
   "True when Tuatara was started with no terminal to run in, on a desktop: from
 a launcher rather than a shell. INPUT and OUTPUT say whether its input and
 its output are a terminal, DESKTOP whether there is a desktop to show a window on."
   (and (not input) (not output) desktop t))
 
+(defun open-terminal-device (&optional (tty "/dev/tty"))
+  "A file descriptor open on the terminal Tuatara was started in (TTY, the file
+that is it), or NIL when there is none to open."
+  (handler-case (sb-posix:open tty sb-posix:o-rdwr) (sb-posix:syscall-error () nil)))
+
 (defun keyboard-available-p (&key (input-terminal (terminal-p 0)) (tty "/dev/tty"))
   "True when Tuatara can read keys in a terminal: its input is one
 \(INPUT-TERMINAL), or the terminal it was started in can be opened (TTY, the
 file that is it)."
   (or input-terminal
-      (let ((fd (handler-case (sb-posix:open tty sb-posix:o-rdwr) (sb-posix:syscall-error () nil))))
+      (let ((fd (open-terminal-device tty)))
         (when fd (tuatara.runtime:close-fd-quietly fd "the terminal") t))))
 
 (defun read-keys-from-terminal ()
@@ -522,7 +524,7 @@ file that is it)."
 was started in (/dev/tty) instead; what came in on the input is not read as
 keys. KEYBOARD-AVAILABLE-P says first whether there is such a terminal."
   (unless (terminal-p 0)
-    (let ((fd (handler-case (sb-posix:open "/dev/tty" sb-posix:o-rdwr) (sb-posix:syscall-error () nil))))
+    (let ((fd (open-terminal-device)))
       (when fd
         (sb-posix:dup2 fd 0)
         (tuatara.runtime:close-fd-quietly fd "the terminal")))))
@@ -823,7 +825,7 @@ the error output. The exit code: 0 when written, 1 when not."
 (defun shown (text)
   "TEXT, a name or a sentence with names in it, with its control characters
 written out, to be put on the terminal."
-  (values (tuatara.command:escape-controls text)))
+  (values (tuatara.display:escape-controls text)))
 
 (defun named-here (name)
   "The file NAME as the system names it, from where Tuatara was started."
@@ -965,16 +967,16 @@ init file -c names, or NIL: in this terminal, or in a window of its own with
 --gui or when started with no terminal on a desktop. Returns the exit code:
 what the session left (*EXIT-CODE*), or 2 when there is no terminal to read
 keys from and no window wanted."
-  (if (and (not (or (getf options :gui) (window-wanted-p))) (not (keyboard-available-p)))
-      (progn (format *error-output* "tuatara: its input is not a terminal and there is none to read keys from ~
-                                     (/dev/tty): run it in a terminal, or with --gui~%")
-             2)
-      (progn
-        (tuatara.defaults:set-collection-policy)
-        (when config-path
-          (setf tuatara.defaults:*config-file* (pathname config-path)))
-        (multiple-value-bind (files start) (startup-from options)
-          (let ((gui (or (getf options :gui) (window-wanted-p))))
+  (let ((gui (or (getf options :gui) (window-wanted-p))))
+    (if (and (not gui) (not (keyboard-available-p)))
+        (progn (format *error-output* "tuatara: its input is not a terminal and there is none to read keys from ~
+                                       (/dev/tty): run it in a terminal, or with --gui~%")
+               2)
+        (progn
+          (tuatara.defaults:set-collection-policy)
+          (when config-path
+            (setf tuatara.defaults:*config-file* (pathname config-path)))
+          (multiple-value-bind (files start) (startup-from options)
             ;; a copy started to measure how the window draws (check-health): no init
             ;; file, the window's font as the one measuring has it
             (let ((measure (tuatara.io:own-variable "TUATARA_MEASURE_DRAWING")))

@@ -180,12 +180,7 @@ NIL for one that names none, or a place past the largest sheet."
 
 (define-record (sheet-cells (:constructor make-sheet-cells (left)) (:copier nil))
   "The cells of a sheet being read, gathered to be written (SHEET-CELLS-WRITE),
-whatever kind of file holds them: LEFT, how many it may hold at most;
-HIDDEN-COLUMNS, a bit for each column, 1 for one hidden; ROWS, each (NUMBER
-HIDDEN CELLS), CELLS each (COLUMN . VALUE), the latest row and cell first;
-FORMULAS and COMMENTS, each (PLACE . TEXT), the latest first; COUNT, how many
-cells it holds; CUT, the place of the first cell left out once it is full, or
-NIL."
+whatever kind of file holds them, up to a limit set when it is made."
   (left nil :documentation "How many more cells SHEET-CELLS may hold.")
   (hidden-columns (make-array (1+ *sheet-most-columns*) :element-type 'bit :initial-element 0)
                   :documentation "A bit for each column of SHEET-CELLS, 1 for a hidden one.")
@@ -251,7 +246,7 @@ DATE1904, formulas as written, at most LEFT cells, each no longer than
         (masters (make-hash-table :test 'equal))
         (row-at 0))
     (dolist (column (xml-find-all tree "col" :local t))
-      (when (member (xml-attribute column "hidden") '("1" "true") :test #'equal)
+      (when (xml-flag-p column "hidden")
         (let ((from (whole-number (xml-attribute column "min")))
               (to (whole-number (xml-attribute column "max"))))
           (when (and from to (<= 1 from to))
@@ -259,7 +254,7 @@ DATE1904, formulas as written, at most LEFT cells, each no longer than
     (block rows
       (dolist (row (xml-find-all tree "row" :local t))
         (let ((number (or (whole-number (xml-attribute row "r")) (1+ row-at)))
-              (hidden (member (xml-attribute row "hidden") '("1" "true") :test #'equal))
+              (hidden (xml-flag-p row "hidden"))
               (column-at 0))
           (setf row-at number)
           (dolist (cell (xml-local-children row "c"))
@@ -333,6 +328,14 @@ stopped (*SHEET-MOST-CELLS*), is said, or NIL."
 (*sheet-most-cells*).~%~%"
               *sheet-most-cells* cut))))
 
+(defun xlsx-sheet-kind-words (type)
+  "The sentence a sheet of the relation TYPE is announced by when it is a sheet
+of macros or a dialogue sheet, else the empty string."
+  (cond ((search "acrosheet" type)
+         (format nil "A sheet of macros (Excel 4.0): its formulas are a program, never run.~%~%"))
+        ((uiop:string-suffix-p type "/dialogsheet") (format nil "A dialogue sheet.~%~%"))
+        (t "")))
+
 (defun xlsx-read-note (path &key octets cancel)
   "The Excel workbook at PATH as an Org note, from its OCTETS when they are
 given: what the file says of itself, then each sheet in its order, a section
@@ -352,10 +355,11 @@ its car turns true. Signals ZIP-ERROR or an error when it cannot be read."
          (strings (sheet-shared-strings relations))
          (styles (sheet-date-styles relations))
          (date1904 (let ((settings (first (xml-find-all workbook "workbookPr" :local t))))
-                     (and settings (member (xml-attribute settings "date1904") '("1" "true") :test #'equal) t)))
+                     (and settings (xml-flag-p settings "date1904"))))
          (sheets (xml-find-all workbook "sheet" :local t))
          (left *sheet-most-cells*)
          (listed '())
+         (written (make-hash-table :test 'equal))
          (hidden 0) (very-hidden 0))
     (flet ((read-sheet (part out)
              (let ((tree (and part (docx-reading-part part))))
@@ -382,13 +386,12 @@ its car turns true. Signals ZIP-ERROR or an error when it cannot be read."
                                         (cond ((equal state "hidden") "(hidden)")
                                               ((equal state "veryHidden")
                                                "(very hidden: only a program can show it again)")))
-                                (cond ((uiop:string-suffix-p type "/chartsheet") (format s "A chart, no cells.~%~%"))
-                                      (t (when (search "acrosheet" type)
-                                           (format s
-                                                   "A sheet of macros (Excel 4.0): its formulas are a program, never ~
-run.~%~%"))
-                                         (when (uiop:string-suffix-p type "/dialogsheet")
-                                           (format s "A dialogue sheet.~%~%"))
+                                (cond ((and part (gethash part written))
+                                       (format s "Sheet ~d again (~a)~%~%" (gethash part written)
+                                               (org-safe-line part)))
+                                      ((uiop:string-suffix-p type "/chartsheet") (format s "A chart, no cells.~%~%"))
+                                      (t (when part (setf (gethash part written) n))
+                                         (write-string (xlsx-sheet-kind-words type) s)
                                          (read-sheet part s)))))
                      (dolist (part (append (docx-unlisted-parts "xl/worksheets/" listed)
                                            (docx-unlisted-parts "xl/macrosheets/" listed)))

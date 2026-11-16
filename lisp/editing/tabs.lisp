@@ -107,15 +107,17 @@ its text moves to and the octets of blanks it begins with now."
                                                    :end position)
                    (if move (car move) 0))))
 
-(defun indentation-text (buffer column)
-  "What indents a line of BUFFER to COLUMN: spaces, or where BUFFER wants tabs
-(BUFFER-INDENT-TABS-P) as many tab characters as fit, and spaces after them."
-  (if (buffer-indent-tabs-p buffer)
+(defun indentation-text (buffer column &key (from 0))
+  "The blanks that take a line of BUFFER from column FROM (its start unless
+given) to COLUMN: spaces, or where BUFFER wants tabs (BUFFER-INDENT-TABS-P) a
+tab to each tab stop up to COLUMN and spaces after them; nothing when FROM is
+not before COLUMN."
+  (let ((col from) (tabs 0))
+    (when (buffer-indent-tabs-p buffer)
       (let ((width (buffer-tab-width buffer)))
-        (concatenate 'string
-                     (make-string (floor column width) :initial-element #\Tab)
-                     (spaces (mod column width))))
-      (spaces column)))
+        (loop while (<= (next-tab-stop col width) column)
+              do (setf col (next-tab-stop col width)) (incf tabs))))
+    (concatenate 'string (make-string tabs :initial-element #\Tab) (spaces (max 0 (- column col))))))
 
 ;;; Setting them for a major mode
 
@@ -167,15 +169,14 @@ character in whatever the settings say."
                (width (buffer-tab-width b))
                (column (tuatara.display:buffer-screen-column b p))
                (goal (+ (next-tab-stop column width) (* width (1- count)))))
-          (goto (tuatara.buffer:buffer-insert b p (if (buffer-indent-tabs-p b)
-                                                      (make-string count :initial-element #\Tab)
-                                                      (spaces (- goal column)))))))))
+          (goto (tuatara.buffer:buffer-insert b p (indentation-text b goal :from column)))))))
 
-(defun key-character (key)
+(defun key-character (key &key (enter (code-char 13)))
   "The character KEY stands for when typed after \\[quoted-insert]: a key's own
 character, a control character for \\`C-a' to \\`C-z' and \\`C-@' to \\`C-_'
-(\\`C-?' delete), a tab for \\`TAB', a carriage return for \\`RET', an escape
-for \\`ESC'; NIL for any other key, a Meta one among them."
+(\\`C-?' delete), a tab for \\`TAB', ENTER (a carriage return unless given)
+for \\`RET', an escape for \\`ESC'; NIL for any other key, a Meta one among
+them."
   (let ((base (tuatara.frontend:key-base key)))
     (cond ((tuatara.frontend:key-meta key) nil)
           ((characterp base)
@@ -188,7 +189,7 @@ for \\`ESC'; NIL for any other key, a Meta one among them."
                base))
           (t (case base
                (:tab #\Tab)
-               (:enter (code-char 13))
+               (:enter enter)
                (:escape (code-char 27))
                (:backspace (code-char 127))
                (t nil))))))
@@ -210,15 +211,14 @@ CSV), it goes on to the next tab stop.
 lines inside a comment or a string begun on a line before keep their blanks,
 which are text. Without a selection it says so and does nothing."
   (let ((b (current-buffer)))
-    (if (tuatara.buffer:buffer-mark-active-p b)
-        (multiple-value-bind (start end) (tuatara.buffer:buffer-region b)
-          (let ((changed (indent-lines b start end)))
-            (setf (tuatara.buffer:buffer-mark-active-p b) nil)
-            (case changed
-              (:none (message "No indentation rules for ~a" (or (buffer-mode-name b) "this buffer")))
-              (:too-large)
-              (t (message "Indented ~d line~:p" (or changed 0))))))
-        (message "No selection: indent-region was not run"))))
+    (multiple-value-bind (start end) (selected-region-or-say b 'indent-region)
+      (when start
+        (let ((changed (indent-lines b start end)))
+          (setf (tuatara.buffer:buffer-mark-active-p b) nil)
+          (case changed
+            (:none (message "No indentation rules for ~a" (or (buffer-mode-name b) "this buffer")))
+            (:too-large)
+            (t (message "Indented ~d line~:p" (or changed 0)))))))))
 
 (define-command indent-for-tab-command ()
   "Indent the current line as its major mode indents it: point in the blanks

@@ -68,18 +68,19 @@ colon, as title: and tags:) or a line of dashes under them."
                      (if end (1+ end) 0))
                    0))))
 
+(defparameter *crlf* (coerce '(#\Return #\Newline) 'string)
+  "A carriage return and a line feed (CR LF), the end of a line as some systems write it.")
+
 (defun text-with-header (text type title keywords identifier time)
   "TEXT, a file of TYPE (an entry of *FORMATTED-FILE-TYPES*), with its header
 saying TITLE and KEYWORDS: the lines holding them written anew when it has a
 header, else the header a new file of TYPE has put before it. Lines ending in
 carriage return and line feed (CR LF) keep those ends; NIL for TEXT with lines
 of both ends, left as it is."
-  (let ((crlf (search (coerce '(#\Return #\Newline) 'string) text)))
-    (cond ((null crlf) (%text-with-header text type title keywords identifier time))
-          ;; every line ending in CR LF, or none: else which a new line takes is not known
-          ((/= (count #\Newline text) (search-count (coerce '(#\Return #\Newline) 'string) text)) nil)
-          (t (let ((plain (%text-with-header (lf-newlines text) type title keywords identifier time)))
-               (crlf-newlines plain))))))
+  (cond ((null (search *crlf* text)) (%text-with-header text type title keywords identifier time))
+        ;; every line ending in CR LF, or none: else which a new line takes is not known
+        ((/= (count #\Newline text) (search-count *crlf* text)) nil)
+        (t (crlf-newlines (%text-with-header (lf-newlines text) type title keywords identifier time)))))
 
 (defun markdown-keyword-item-p (line style)
   "True when LINE, of a header of STYLE, is an item of a list of keywords a
@@ -87,6 +88,44 @@ line each under tags: (Markdown's), which the keywords written replace."
   (and (eq style :markdown)
        (uiop:string-prefix-p "-" (string-left-trim '(#\Space #\Tab) line))
        (not (string= "---" (string-trim " " line)))))
+
+(defun header-field (prefix line value)
+  "LINE, a header line beginning with PREFIX, saying VALUE instead: the prefix
+as the line has it (#+TITLE: kept in capitals) and the spaces after it kept,
+one space when there were none."
+  (let* ((after (subseq line (length prefix)))
+         (gap (subseq after 0 (or (position #\Space after :test-not #'char=) (length after)))))
+    (concatenate 'string (subseq line 0 (length prefix)) (if (string= gap "") " " gap) value)))
+
+(defun rewritten-header (lines style title keywords)
+  "LINES, the lines of a header of STYLE, with the title's line saying TITLE
+and the keywords' line KEYWORDS, a Markdown list of keywords under it left
+out; true as a second value when there was a keywords' line to write."
+  (multiple-value-bind (title-prefix keywords-prefix) (header-line-prefixes style)
+    (let ((in-keywords nil) (written nil))
+      (values (loop for line in lines
+                    for kept = (cond ((and in-keywords (markdown-keyword-item-p line style)) nil)
+                                     ((header-prefix-p title-prefix line)
+                                      (setf in-keywords nil)
+                                      (header-field title-prefix line
+                                                    (if (eq style :markdown) (format nil "~s" title) title)))
+                                     ((header-prefix-p keywords-prefix line)
+                                      (setf written t in-keywords t)
+                                      (header-field keywords-prefix line keywords))
+                                     (t (setf in-keywords nil) line))
+                    when kept collect kept)
+              written))))
+
+(defun header-with-keywords-line (header style keywords)
+  "HEADER, the lines of a header of STYLE that has no keywords' line, with
+one saying KEYWORDS after the title's line; as it is with no title's line."
+  (multiple-value-bind (title-prefix keywords-prefix) (header-line-prefixes style)
+    (let ((at (position-if (lambda (line) (header-prefix-p title-prefix line)) header)))
+      (if at
+          (append (subseq header 0 (1+ at))
+                  (list (concatenate 'string keywords-prefix " " keywords))
+                  (subseq header (1+ at)))
+          header))))
 
 (defun %text-with-header (text type title keywords identifier time)
   "TEXT-WITH-HEADER for TEXT whose lines end in line feeds alone."
@@ -96,38 +135,11 @@ line each under tags: (Markdown's), which the keywords written replace."
            (end (header-lines-end lines style)))
       (if (zerop end)
           (concatenate 'string (formatted-file-header-text type title keywords identifier time) text)
-          (multiple-value-bind (title-prefix keywords-prefix) (header-line-prefixes style)
-            (let ((quoted (eq style :markdown))
-                  (written-keywords nil))
-              (flet ((field (prefix old value)
-                       ;; the value where the old one began, the spaces after the prefix kept
-                       (let* ((after (subseq old (length prefix)))
-                              (gap (subseq after 0 (or (position #\Space after :test-not #'char=) (length after)))))
-                         ;; the prefix as the line has it, #+TITLE: kept in capitals
-                         (concatenate 'string (subseq old 0 (length prefix)) (if (string= gap "") " " gap) value))))
-                (let* ((in-keywords nil)
-                       (header (loop for line in (subseq lines 0 end)
-                                     for kept = (cond ((and in-keywords (markdown-keyword-item-p line style)) nil)
-                                                      ((header-prefix-p title-prefix line)
-                                                       (setf in-keywords nil)
-                                                       (field title-prefix line (if quoted (format nil "~s" title) title)))
-                                                      ((header-prefix-p keywords-prefix line)
-                                                       (setf written-keywords t in-keywords t)
-                                                       (field keywords-prefix line
-                                                              (header-keywords style (name-keywords keywords))))
-                                                      (t (setf in-keywords nil) line))
-                                     when kept collect kept)))
-                  ;; a header with no line for the keywords gets one after the title's
-                  (unless written-keywords
-                    (let ((at (position-if (lambda (line) (header-prefix-p title-prefix line)) header)))
-                      (when at
-                        (setf header (append (subseq header 0 (1+ at))
-                                             (list (concatenate 'string
-                                                                keywords-prefix
-                                                                " "
-                                                                (header-keywords style (name-keywords keywords))))
-                                             (subseq header (1+ at)))))))
-                  (format nil "~{~a~^~%~}" (append header (subseq lines end)))))))))))
+          (let ((keywords (header-keywords style (name-keywords keywords))))
+            (multiple-value-bind (header written) (rewritten-header (subseq lines 0 end) style title keywords)
+              (format nil "~{~a~^~%~}"
+                      (append (if written header (header-with-keywords-line header style keywords))
+                              (subseq lines end)))))))))
 
 (defparameter *formatted-header-limit* (* 8 1024 1024)
   "The most octets of a file, or of the buffer visiting it, whose header
@@ -200,7 +212,7 @@ files stay as they are."
   (let ((buffer (current-buffer)))
     (when (tuatara.io:safe-visit-p buffer)
       (refuse "~a is opened safely: its files are not renamed" (tuatara.buffer:buffer-name buffer)))
-    (or (and (fboundp 'rimu-chosen-paths) (funcall 'rimu-chosen-paths buffer :files-only t :here-only t))
+    (or (rimu-chosen-paths buffer :files-only t :here-only t)
         (let ((file (tuatara.buffer:buffer-file buffer)))
           (and file (list (tuatara.io:native file)))))))
 
@@ -247,14 +259,20 @@ buffers visiting a file follow it."
   (let ((paths (rename-formatted-targets)))
     (if (null paths)
         (message "No file to rename here")
-        (rename-paths-formatted
-         paths
-         (lambda (path)
-           (let* ((name (tuatara.io:native-file-name path))
-                  (title (read-string (format nil "Title of ~a: " name) :initial (title-for-renaming path)))
-                  (kept (name-keyword-list name))
-                  (keywords (read-keywords (format nil "Keywords of ~a~@[ (nothing typed keeps ~{~a~^, ~})~]: " name kept))))
-             (values title (or keywords kept))))))))
+        ;; the names' keywords are looked for once, for all the questions
+        (let ((listing (multiple-value-list (list-formatted-keywords))))
+          (unwind-protect
+               (rename-paths-formatted
+                paths
+                (lambda (path)
+                  (let* ((name (tuatara.io:native-file-name path))
+                         (title (read-string (format nil "Title of ~a: " name) :initial (title-for-renaming path)))
+                         (kept (name-keyword-list name))
+                         (keywords (read-keywords (format nil "Keywords of ~a~@[ (nothing typed keeps ~{~a~^, ~})~]: "
+                                                          name kept)
+                                                  listing)))
+                    (values title (or keywords kept)))))
+            (when (second listing) (stop-gathering (second listing))))))))
 
 (define-command rename-formatted-keywords ()
   "Give files formatted names with other keywords, their titles kept, asked

@@ -140,17 +140,19 @@ no frame of EDITOR is named with."
   "Give EDITOR another frame, painted through FRONTEND, and return it: as large
 as FRONTEND says, with one window showing BUFFER, by default the buffer of the
 window worked in, at its point, named by FREE-FRAME-NAME. A FRONTEND new to
-EDITOR is started, and delivers its events through the source EDITOR's frames
-share, each naming the frame returned (TUATARA.FRONTEND:FRONTEND-FRAME); one
-that paints a frame of EDITOR already is shared: the frames take turns on it
-\(FRAME-TAKING-TURNS-P). The frame is the client's who works in the frame
-worked in. The frame worked in stays so."
+EDITOR is started, told to take in the settings it reads, and delivers its
+events through the source EDITOR's frames share, each naming the frame
+returned (TUATARA.FRONTEND:FRONTEND-FRAME); one that paints a frame of EDITOR
+already is shared: the frames take turns on it (FRAME-TAKING-TURNS-P). The
+frame is the client's who works in the frame worked in. The frame worked in
+stays so."
   (let ((frame (make-frame frontend)))
     (setf (frame-name frame) (free-frame-name editor)
           (frame-client frame) (frame-client (editor-frame editor)))
     (unless (find frontend (editor-frames editor) :key #'frame-frontend)
       (setf (tuatara.frontend:frontend-frame frontend) frame)
-      (tuatara.frontend:frontend-start frontend))
+      (tuatara.frontend:frontend-start frontend)
+      (tuatara.frontend:frontend-settings-changed frontend))
     (multiple-value-bind (width height) (tuatara.frontend:frontend-size frontend)
       (setf (frame-width frame) (max 1 width) (frame-height frame) (max 3 height)
             (frame-window frame) (tuatara.display:make-window buffer :width (max 1 width)
@@ -307,68 +309,44 @@ Nothing is made to find out."
               thereis (or (not (eq (tuatara.display:window-buffer window) buffer))
                           (not (eq (tuatara.buffer:buffer-version buffer) version)))))))
 
-(defvar *settings-seen* (make-hash-table :test 'eq)
-  "The value each setting had when SETTINGS-MOVED-P last looked, by its name.")
-
-(defun settings-moved-p ()
-  "True when a setting (a variable TUATARA-USER exports, a package's too) has
-another value than when this was last asked, however it was set: the init
-file, \\[eval-expression], a command. Nothing is made while none moved. A
-value changed in place, as a list edited where it is, is not seen: only a
-setting given another value."
-  (let ((seen *settings-seen*) (moved nil))
-    (do-external-symbols (symbol :tuatara-user)
-      (when (and (boundp symbol) (not (constantp symbol)))
-        (let ((value (symbol-value symbol)))
-          (multiple-value-bind (was there) (gethash symbol seen)
-            (unless (and there (eql was value))
-              (setf (gethash symbol seen) value
-                    moved t))))))
-    moved))
-
-(defun look-at-settings (editor)
-  "Move the display generation on when a setting moved (SETTINGS-MOVED-P),
-looking only when something was done in EDITOR since the last look, and at most
-every *FRAME-AT-LEAST-EVERY* milliseconds: NIL, or the seconds after which the
-look that is due may be taken."
-  (when (>= *last-input-time* (editor-settings-looked editor))
-    (let ((since (tuatara.runtime:milliseconds-since (editor-settings-looked editor))))
-      (if (< since *frame-at-least-every*)
-          (/ (- *frame-at-least-every* since) 1000)
-          (progn
-            (setf (editor-settings-looked editor) (get-internal-real-time))
-            (when (settings-moved-p)
-              (incf *display-generation*))
-            nil)))))
+(defun follow-settings (editor)
+  "Tell the frontend of each of EDITOR's frames to take in the settings it
+reads (TUATARA.FRONTEND:FRONTEND-SETTINGS-CHANGED), and have the frames not
+worked in painted again (*DISPLAY-GENERATION*), when a setting has another
+value than when this last looked (TUATARA.RUNTIME:SETTINGS-MOVED-P), or it
+never looked. Called on EDITOR's thread, after every command and once the
+init file has run, it reads the settings as that thread has them. Nothing is
+made while none moved."
+  (when (tuatara.runtime:settings-moved-p (editor-settings-watch editor))
+    (incf *display-generation*)
+    (dolist (frame (editor-frames editor))
+      (tuatara.frontend:frontend-settings-changed (frame-frontend frame)))))
 
 (defun paint-other-frames (editor &key now)
   "Paint each frame of EDITOR shown on a display of its own beside the one
 worked in whose text may have changed since it was painted
-\(FRAME-SHOWN-CHANGED-P), or a setting changed moving the display generation on
-\(LOOK-AT-SETTINGS). It paints at most every *FRAME-AT-LEAST-EVERY*
+\(FRAME-SHOWN-CHANGED-P). It paints at most every *FRAME-AT-LEAST-EVERY*
 milliseconds, or with NOW at once, and never while keys wait. Returns NIL, or
-the seconds after which it wants to be asked again, a frame or a look having
-waited for its turn. With one frame, or only frames waiting their turn on the
+the seconds after which it wants to be asked again, a frame having waited for
+its turn. With one frame, or only frames waiting their turn on the
 display of the one worked in (FRAME-TAKING-TURNS-P), nothing is done."
   (let ((frames (editor-frames editor)))
     (when (rest frames)
       (let* ((current (editor-frame editor))
              (frontend (frame-frontend current)))
         (flet ((elsewhere-p (frame) (not (eq (frame-frontend frame) frontend))))
-          (when (and (some #'elsewhere-p frames) (not (tuatara.frontend:frontend-input-pending-p frontend)))
-            (let ((look (look-at-settings editor)))
-              (if (some (lambda (frame) (and (elsewhere-p frame) (frame-shown-changed-p frame))) frames)
-                  (let ((since (tuatara.runtime:milliseconds-since (editor-others-painted editor))))
-                    (if (and (not now) (< since *frame-at-least-every*))
-                        (/ (- *frame-at-least-every* since) 1000)
-                        (progn
-                          (dolist (frame frames)
-                            (unless (or (not (elsewhere-p frame)) (frame-deleted frame)
-                                        (not (frame-shown-changed-p frame)))
-                              (paint-other-frame editor frame)))
-                          (setf (editor-others-painted editor) (get-internal-real-time))
-                          look)))
-                  look))))))))
+          (when (and (some #'elsewhere-p frames) (not (tuatara.frontend:frontend-input-pending-p frontend))
+                     (some (lambda (frame) (and (elsewhere-p frame) (frame-shown-changed-p frame))) frames))
+            (let ((since (tuatara.runtime:milliseconds-since (editor-others-painted editor))))
+              (if (and (not now) (< since *frame-at-least-every*))
+                  (/ (- *frame-at-least-every* since) 1000)
+                  (progn
+                    (dolist (frame frames)
+                      (unless (or (not (elsewhere-p frame)) (frame-deleted frame)
+                                  (not (frame-shown-changed-p frame)))
+                        (paint-other-frame editor frame)))
+                    (setf (editor-others-painted editor) (get-internal-real-time))
+                    nil)))))))))
 
 (defvar *buffers-asked-about* '()
   "While a question asks about buffers beside the one its command works in

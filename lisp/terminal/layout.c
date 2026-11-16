@@ -15,6 +15,7 @@
 int main(void) {
   printf("(\n");
   V("success", GHOSTTY_SUCCESS);
+  V("build-info-version", GHOSTTY_BUILD_INFO_VERSION_STRING);
   V("opt-userdata", GHOSTTY_TERMINAL_OPT_USERDATA);
   V("opt-write-pty", GHOSTTY_TERMINAL_OPT_WRITE_PTY);
   V("opt-scrollback-max-bytes", GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_BYTES);

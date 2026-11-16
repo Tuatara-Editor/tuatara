@@ -125,15 +125,17 @@ what lies from FROM below TO, as INJECTION-TEXTS; NIL when there are none."
                               for from = (aref captures (+ 1 (* 4 i)))
                               for to = (aref captures (+ 2 (* 4 i)))
                               when (string= capture "injection.language")
-                                return (capture-text rope from to)
+                                return (tuatara.text:rope-string rope :start from :end to)
                               ;; the language a #! line names, or a file name's
                               when (string= capture "injection.shebang")
-                                return (let ((line (string-left-trim '(#\Space #\Tab)
-                                                                     (capture-text rope from (min to (+ from 256))))))
+                                return (let* ((head (tuatara.text:rope-string rope :start from
+                                                                                   :end (min to (+ from 256))))
+                                              (line (string-left-trim '(#\Space #\Tab) head)))
                                          (and (> (length line) 2) (string= "#!" line :end2 2)
                                               (list :shebang (subseq line 0 (position #\Newline line)))))
                               when (string= capture "injection.filename")
-                                return (list :filename (capture-text rope from (min to (+ from 256)))))))
+                                return (list :filename (tuatara.text:rope-string rope :start from
+                                                                                      :end (min to (+ from 256)))))))
               (children (cond ((directive-p set :injection.include-children) 0)
                               ((directive-p set :injection.include-unnamed-children) 1)
                               (t 2)))
@@ -743,7 +745,6 @@ holds them. Names are told apart by their octets: no text is made of them."
                      ;; sealed scope open is inside the scope it was made in
                      (let* ((s (aref references (* 2 index))) (e (aref references (+ 1 (* 2 index))))
                             (binding (loop for b = (gethash (name-hash rope s e) latest -1)
-
                                              then (aref bindings (+ b 3))
                                            while (>= b 0)
                                            when (let ((d (* 3 (aref bindings (+ b 1)))))
@@ -939,28 +940,28 @@ ready, as SYNTAX-HIGHLIGHTS gives those of a part."
     (kept-colours
      syntax key
      (lambda ()
-        (let* ((rope (syntax-rope syntax))
-               (*helper* (or (syntax-helper syntax) :none))
-               (*parsing-buffer* (syntax-buffer syntax))
-               (*injected-trees* (and injections (keep-injected-trees syntax)))
-               (*injected-colours* (and injections (or (syntax-injected-colours syntax)
-                                                       (setf (syntax-injected-colours syntax)
-                                                             (make-hash-table)))))
-               ;; definitions may begin as early as the top-level form holding START
-               (local-from (and locals
-                                (let* ((chain (node-ancestry syntax start start))
-                                       (from (if (rest chain) (tree-node-start (car (last chain 2))) start)))
-                                  (max (min from start) (- start *locals-reach*))))))
-          ;; the matches of all three rules asked for at once
-          (call-with-prefetched-matches
-           (tree-helper tree) (remove nil (list (and locals (list (first locals) tree local-from end))
-                                      (list query tree start end)
-                                      (and injections (list (first injections) tree start end))))
-           (lambda ()
-             (multiple-value-bind (local-ranges local-references)
-                 (and locals (local-highlights (first locals) tree rope local-from start end (second locals)))
-               ;; the local names known first, for the rules' #is-not? local
-               (nconc (let ((*local-references* local-references))
-                        (rich-highlights query tree rope start end faces))
-                      local-ranges
-                      (and injections (injected-highlights injections tree rope start end)))))))))))
+       (let* ((rope (syntax-rope syntax))
+              (*helper* (or (syntax-helper syntax) :none))
+              (*parsing-buffer* (syntax-buffer syntax))
+              (*injected-trees* (and injections (keep-injected-trees syntax)))
+              (*injected-colours* (and injections (or (syntax-injected-colours syntax)
+                                                      (setf (syntax-injected-colours syntax)
+                                                            (make-hash-table)))))
+              ;; definitions may begin as early as the top-level form holding START
+              (local-from (and locals
+                               (let* ((chain (node-ancestry syntax start start))
+                                      (from (if (rest chain) (tree-node-start (car (last chain 2))) start)))
+                                 (max (min from start) (- start *locals-reach*))))))
+         ;; the matches of all three rules asked for at once
+         (call-with-prefetched-matches
+          (tree-helper tree) (remove nil (list (and locals (list (first locals) tree local-from end))
+                                     (list query tree start end)
+                                     (and injections (list (first injections) tree start end))))
+          (lambda ()
+            (multiple-value-bind (local-ranges local-references)
+                (and locals (local-highlights (first locals) tree rope local-from start end (second locals)))
+              ;; the local names known first, for the rules' #is-not? local
+              (nconc (let ((*local-references* local-references))
+                       (rich-highlights query tree rope start end faces))
+                     local-ranges
+                     (and injections (injected-highlights injections tree rope start end)))))))))))

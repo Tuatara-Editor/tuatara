@@ -118,7 +118,7 @@ empty file; an error for anything else, a named pipe or a device, which is
 never waited on. The mapping keeps the file open and is released when it is
 garbage collected or closed explicitly."
   (let ((fd (sb-posix:open (if (pathnamep path) (sb-ext:native-namestring path) path)
-                           (logior sb-posix:o-rdonly sb-posix:o-nonblock)))
+                           (logior sb-posix:o-rdonly sb-posix:o-nonblock +o-cloexec+)))
         (mapped nil))
     (unwind-protect
          (let ((stat (sb-posix:fstat fd)))
@@ -227,16 +227,18 @@ for what they read (NOTE-READ), and for what a window shows next
   (when (>= (mapping-length mapping) *large-mapping-octets*)
     (advise-memory (sb-sys:sap+ (mapping-sap mapping) start) (- end start) 1)))
 
+(declaim (inline %madvise %posix-fadvise %mincore))
+(define-c-function ("madvise" %madvise) :int (sap :pointer) (length :size) (advice :int))
+(define-c-function ("posix_fadvise" %posix-fadvise) :int (fd :int) (offset :long) (length :long) (advice :int))
+(define-c-function ("mincore" %mincore) :int (sap :pointer) (length :size) (pages :pointer))
+
 (defun advise-memory (sap length advice)
   "Give the system ADVICE, one of madvise(2)'s on Linux (0 to read ahead of
 each page read as it sees fit, 1 to read no more than each page, 3 to read
 the pages in soon, 4 to let go of them), about LENGTH octets of this
 program's memory from SAP, a page boundary. Changes nothing a reader sees;
 advice not taken is fine."
-  (sb-alien:alien-funcall
-   (sb-alien:extern-alien "madvise" (function sb-alien:int sb-sys:system-area-pointer
-                                              sb-alien:unsigned-long sb-alien:int))
-   sap length advice)
+  (%madvise sap length advice)
   nil)
 
 (defun file-advise (fd offset length advice)
@@ -246,10 +248,7 @@ holds), about LENGTH octets from OFFSET of the file open as file descriptor
 \(FD), a LENGTH of 0 for all from OFFSET on, through every descriptor that
 shares its reading with FD. Changes nothing a reader sees; advice not taken is
 fine."
-  (sb-alien:alien-funcall
-   (sb-alien:extern-alien "posix_fadvise" (function sb-alien:int sb-alien:int (sb-alien:signed 64)
-                                                    (sb-alien:signed 64) sb-alien:int))
-   fd offset length advice)
+  (%posix-fadvise fd offset length advice)
   nil)
 
 (defun drop-cached (fd offset length)
@@ -272,12 +271,8 @@ Complexity: O(LENGTH / page size), shared out between the processors."
     (flet ((ask (from)
              (let ((to (min length (+ from piece))))
                (sb-sys:with-pinned-objects (pages)
-                 (unless (zerop (sb-alien:alien-funcall
-                                 (sb-alien:extern-alien "mincore" (function sb-alien:int sb-sys:system-area-pointer
-                                                                            sb-alien:unsigned-long
-                                                                            sb-sys:system-area-pointer))
-                                 (sb-sys:sap+ sap from) (- to from)
-                                 (sb-sys:sap+ (sb-sys:vector-sap pages) (floor from page))))
+                 (unless (zerop (%mincore (sb-sys:sap+ sap from) (- to from)
+                                          (sb-sys:sap+ (sb-sys:vector-sap pages) (floor from page))))
                    (fill pages 1 :start (floor from page) :end (ceiling to page))))
                ;; the other bits of each are the system's own
                (loop for i from (floor from page) below (ceiling to page)
@@ -455,10 +450,7 @@ to 128 KB; a longer one is asked for whole."
             (let ((pages (make-array 32 :element-type '(unsigned-byte 8) :initial-element 1)))
               (declare (dynamic-extent pages))
               (sb-sys:with-pinned-objects (pages)
-                (sb-alien:alien-funcall
-                 (sb-alien:extern-alien "mincore" (function sb-alien:int sb-sys:system-area-pointer
-                                                            sb-alien:unsigned-long sb-sys:system-area-pointer))
-                 sap length (sb-sys:vector-sap pages)))
+                (%mincore sap length (sb-sys:vector-sap pages)))
               (if (loop for i below (ceiling length page) thereis (evenp (aref pages i)))
                   (progn (advise-memory (sb-sys:sap+ (mapping-sap mapping) around-from) (- around-to around-from) 3)
                          (setf from around-from length (- around-to around-from)))
@@ -818,7 +810,7 @@ one or not large (*LARGE-MAPPING-OCTETS*). PATH names the file in messages."
   (declare (type fixnum end))
   (when (and (>= end *large-mapping-octets*)
              (= (logand (sb-posix:stat-mode (sb-posix:fstat fd)) sb-posix:s-ifmt) sb-posix:s-ifreg))
-    (let ((own (sb-posix:dup fd)))
+    (let ((own (duplicate-fd fd)))
       (let ((mapping (handler-case (map-fd own end path)
                        (sb-posix:syscall-error () (tuatara.runtime:close-fd-quietly own) nil))))
         (when mapping

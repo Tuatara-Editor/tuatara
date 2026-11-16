@@ -163,14 +163,12 @@ after its :shebang; the file made executable by a shebang or given its
       (when (string= (argument "mkdirp") "yes")
         (setf (code-file-make-directories file) t)))))
 
-(defun org-code-files (tree org-file)
+(defun org-code-files (tree org-file &optional (default (tuatara.io:native (tuatara.io:default-directory))))
   "The files TREE's source blocks write, as CODE-FILE objects in the order of
 their first block, ORG-FILE (a native path, or NIL) the Org file the blocks
-are in, relative :tangle files taken from its directory."
+are in, relative :tangle files taken from its directory, else from DEFAULT."
   (let ((files '()) (names (org-named-blocks tree))
-        (directory (if org-file
-                       (tuatara.io:parent-path org-file)
-                       (tuatara.io:native (tuatara.io:default-directory))))
+        (directory (if org-file (tuatara.io:parent-path org-file) default))
         (base (and org-file (tuatara.io:native-file-stem org-file)))
         (*org-file-properties-kept* (cons tree (make-hash-table :test 'equal))))
     (org-walk-tree tree
@@ -216,10 +214,12 @@ file its links lead to, or its own path."
            (setf (code-file-state file) :cannot
                  (code-file-reason file) (format nil "it is ~a" (tuatara.io:kind-words (tuatara.io:stamp-kind stamp)))))
           (stamp
-           (let ((old (ignoring-errors-reported ("reading ~a to compare" (code-file-place file))
-                        (tuatara.io:file-octets (code-file-place file)))))
-             (setf (code-file-state file)
-                   (if (equalp old (tuatara.text:string-octets (code-file-text file))) :same :changed))))
+           ;; a file of another size is changed, and not read to say so
+           (let* ((new (tuatara.text:string-octets (code-file-text file)))
+                  (old (and (= (tuatara.io:stamp-size stamp) (length new))
+                            (ignoring-errors-reported ("reading ~a to compare" (code-file-place file))
+                              (tuatara.io:file-octets (code-file-place file) :limit (length new))))))
+             (setf (code-file-state file) (if (equalp old new) :same :changed))))
           ((or (tuatara.io:path-stamp directory :failure nil) (code-file-make-directories file))
            (setf (code-file-state file) :new))
           (t (setf (code-file-state file) :cannot
@@ -284,12 +284,7 @@ over."
       (reporting-errors ("writing ~a" (code-file-path file))
         (let ((path (code-file-path file)))
           (when (code-file-make-directories file)
-            (let ((directories '()))
-              (loop for directory = (string-right-trim "/" (tuatara.io:parent-path path))
-                      then (string-right-trim "/" (tuatara.io:parent-path directory))
-                    while (and (plusp (length directory)) (not (tuatara.io:path-stamp directory :failure nil)))
-                    do (push directory directories))
-              (dolist (directory directories) (tuatara.io:make-directory directory))))
+            (tuatara.io:ensure-directories path))
           (let ((mode (code-file-mode file)))
             (tuatara.io:write-text-file (tuatara.text:make-rope (code-file-text file)) (code-file-place file)
                                         :expected (code-file-stamp file) :follow-links nil
@@ -299,6 +294,82 @@ over."
                                                               mode)))))
           nil))
     (error (e) (format nil "~a" e))))
+
+(defparameter *code-files-wait* 1/10
+  "How many seconds tangle-code-files waits for the code files to be looked at
+before it goes on in the background, the list shown once they are.")
+
+(define-record (code-files-look (:include tuatara.runtime:job)
+                                (:constructor make-code-files-look (buffer org-file tree))
+                                (:copier nil))
+  "The code files of the source blocks of an Org buffer, its parse TREE and its
+file ORG-FILE, worked out and compared with those on disk in the background
+for tangle-code-files, a job; FILES once it is done."
+  (org-file nil :documentation "The native path of the Org file CODE-FILES-LOOK is for, or NIL.")
+  (tree nil :documentation "The parse of the Org buffer CODE-FILES-LOOK is for.")
+  (files nil :documentation "The CODE-FILE objects CODE-FILES-LOOK found, as CHECK-CODE-FILE found them."))
+
+(tuatara.runtime:define-job-words code-files-look
+  :doing "looking at the code files"
+  :description "Looking at the code files of the source blocks"
+  :verb "look at the code files"
+  :left-words "nothing written")
+
+(defmethod tuatara.runtime:job-take-in ((job code-files-look))
+  "Offer to write the code files the job found (OFFER-CODE-FILES), asked as
+the editor's next command; say why when it did not end well."
+  (let ((buffer (tuatara.runtime:job-buffer job)))
+    (cond ((not (eq (tuatara.runtime:job-status job) :done))
+           (message "Code files: ~a" (tuatara.runtime:job-ending-words job)))
+          ((live-buffer-p buffer)
+           (let ((files (code-files-look-files job)) (org-file (code-files-look-org-file job)))
+             (defer-action (lambda () (offer-code-files buffer files org-file))))))))
+
+(defun offer-code-files (buffer files org-file)
+  "List FILES (CODE-FILE objects, as CHECK-CODE-FILE found them), those of the
+source blocks of the Org BUFFER whose file is ORG-FILE (native, or NIL), and
+write the new and changed ones when you say so (tangle-code-files)."
+  (let ((to-write (remove-if-not (lambda (f) (member (code-file-state f) '(:new :changed))) files)))
+    (cond
+      ((null files) (message "No source block here has :tangle: nothing to write"))
+      ((and (tuatara.io:buffer-plaintext-p buffer)
+            (not (yes-or-no-p* (format nil "~a is encrypted, but the code files it writes are not; go on?"
+                                       (tuatara.buffer:buffer-name buffer)))))
+       (message "No code files written"))
+      (t
+        (let ((listing (tuatara.buffer:make-buffer (tuatara.buffer:unique-buffer-name "*Code files*"))))
+          (set-major-mode listing 'code-files-mode)
+          (set-made-text listing (code-files-listing files org-file))
+          (setf (tuatara.buffer:buffer-point listing) 0)
+          (show-buffer listing)
+          (unwind-protect
+               (if (null to-write)
+                   (message "Nothing to write: ~:[every file is as it would be written~;~
+                             the files listed cannot be written~]"
+                            (find :cannot files :key #'code-file-state))
+                   (if (yes-or-no-p* (format nil "Write ~d file~:p~@[ (~d outside the Org file's directory)~]?"
+                                             (length to-write)
+                                             (let* ((home (and org-file (tuatara.io:parent-path org-file)))
+                                                    (outside (and home
+                                                                  (remove-if (lambda (f)
+                                                                               (code-file-inside-p f home))
+                                                                             to-write))))
+                                               (and outside (length outside)))))
+                       (let ((written '()) (failed '()))
+                         (dolist (file to-write)
+                           (let ((why (tangle-write-code-file file)))
+                             (if why
+                                 (push (format nil "~a: ~a" (abbreviated-path (code-file-path file)) why) failed)
+                                 (push file written))))
+                         (if failed
+                             (message "Wrote ~d of ~d (~{~a~^, ~}); not written: ~{~a~^; ~}"
+                                      (length written)
+                                      (length to-write)
+                                      (mapcar #'code-file-words (reverse written)) (reverse failed))
+                             (message "Wrote ~d file~:p: ~{~a~^, ~}" (length to-write)
+                                      (mapcar #'code-file-words to-write))))
+                       (message "Nothing written")))
+            (tuatara.buffer:kill-buffer listing)))))))
 
 (define-command tangle-code-files ()
   "Write the code files of this Org file's source blocks (\\`C-c C-v t'), each
@@ -316,50 +387,18 @@ new and changed ones only when you say so. Nothing in a block is ever run."
   (let ((buffer (current-buffer)))
     (if (not (typep (buffer-major-mode buffer) 'org-mode))
         (message "tangle-code-files writes the code of an Org file's source blocks: this is no Org buffer")
-        (let ((tree (org-parse-tree (org-parse-now buffer))))
-          (let* ((org-file (let ((file (tuatara.buffer:buffer-file buffer))) (and file (tuatara.io:native file))))
-                 (files (mapcar #'check-code-file (org-code-files tree org-file)))
-                 (to-write (remove-if-not (lambda (f) (member (code-file-state f) '(:new :changed))) files)))
-            (cond
-              ((null files) (message "No source block here has :tangle: nothing to write"))
-              ((and (tuatara.io:buffer-plaintext-p buffer)
-                    (not (yes-or-no-p* (format nil "~a is encrypted, but the code files it writes are not; go on?"
-                                               (tuatara.buffer:buffer-name buffer)))))
-               (message "No code files written"))
-              (t
-               (let ((listing (tuatara.buffer:make-buffer (tuatara.buffer:unique-buffer-name "*Code files*"))))
-                 (set-major-mode listing 'code-files-mode)
-                 (set-made-text listing (code-files-listing files org-file))
-                 (setf (tuatara.buffer:buffer-point listing) 0)
-                 (show-buffer listing)
-                 (unwind-protect
-                      (if (null to-write)
-                          (message "Nothing to write: ~:[every file is as it would be written~;~
-                                    the files listed cannot be written~]"
-                                   (find :cannot files :key #'code-file-state))
-                          (if (yes-or-no-p* (format nil "Write ~d file~:p~@[ (~d outside the Org file's directory)~]?"
-                                                    (length to-write)
-                                                    (let* ((home (and org-file (tuatara.io:parent-path org-file)))
-                                                           (outside (and home
-                                                                         (remove-if (lambda (f)
-                                                                                      (code-file-inside-p f home))
-                                                                                    to-write))))
-                                                      (and outside (length outside)))))
-                              (let ((written '()) (failed '()))
-                                (dolist (file to-write)
-                                  (let ((why (tangle-write-code-file file)))
-                                    (if why
-                                        (push (format nil "~a: ~a" (abbreviated-path (code-file-path file)) why) failed)
-                                        (push file written))))
-                                (if failed
-                                    (message "Wrote ~d of ~d (~{~a~^, ~}); not written: ~{~a~^; ~}"
-                                             (length written)
-                                             (length to-write)
-                                             (mapcar #'code-file-words (reverse written)) (reverse failed))
-                                    (message "Wrote ~d file~:p: ~{~a~^, ~}" (length to-write)
-                                             (mapcar #'code-file-words to-write))))
-                              (message "Nothing written")))
-                   (tuatara.buffer:kill-buffer listing))))))))))
+        (let ((job (make-code-files-look buffer
+                                         (let ((file (tuatara.buffer:buffer-file buffer)))
+                                           (and file (tuatara.io:native file)))
+                                         (org-parse-tree (org-parse-now buffer))))
+              (default (tuatara.io:native (tuatara.io:default-directory))))
+          (tuatara.runtime:start-job-thread
+           job (lambda (job)
+                 (setf (code-files-look-files job)
+                       (mapcar #'check-code-file (org-code-files (code-files-look-tree job)
+                                                                 (code-files-look-org-file job) default))))
+           :name "tuatara code files")
+          (take-in-soon job *code-files-wait* "Looking at the code files in the background")))))
 
 (defun install-code-files ()
   "Bind \\`C-c C-v t' in Org buffers to tangle-code-files, under \\`C-c C-v'

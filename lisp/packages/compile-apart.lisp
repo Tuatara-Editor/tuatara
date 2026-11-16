@@ -100,11 +100,11 @@ its path, or NIL when it could not be made, why in *Messages*."
                        "--no-sysinit"
                        "--no-userinit"
                        "--load" (uiop:native-namestring (asdf:system-relative-pathname :tuatara "tools/quicklisp.lisp"))
-                       "--eval" (format nil
-                                        "(progn (push ~s asdf:*central-registry*) (funcall (find-symbol \"QUICKLOAD\" \"QL\") :tuatara/defaults :silent t))"
+                       "--eval" (format nil "(progn (push ~s asdf:*central-registry*) ~
+                                             (funcall (find-symbol \"QUICKLOAD\" \"QL\") :tuatara/defaults :silent t))"
                                         (uiop:native-namestring (asdf:system-source-directory :tuatara)))
-                       "--eval" (format nil
-                                        "(sb-ext:save-lisp-and-die ~s :toplevel (find-symbol \"COMPILER-CORE-TOPLEVEL\" \"TUATARA.PACKAGES\"))"
+                       "--eval" (format nil "(sb-ext:save-lisp-and-die ~s ~
+                                             :toplevel (find-symbol \"COMPILER-CORE-TOPLEVEL\" \"TUATARA.PACKAGES\"))"
                                         temporary))
                  :seconds 600 :environment (package-child-environment nil nil))
               (cond ((and ok (probe-file temporary))
@@ -182,7 +182,8 @@ is refused for names this Tuatara lacks only as it loads in the editor
            (tuatara.runtime:job-check-stop)
            (cond ((eql code 0) (values t (read-structures-file (structures-file request))))
                  (t (let ((words (format nil
-                                         "The package ~a could not be compiled apart from the editor, and is compiled as it loads~@[: ~{~a~^ ~}~]"
+                                         "The package ~a could not be compiled apart from the editor, ~
+                                          and is compiled as it loads~@[: ~{~a~^ ~}~]"
                                          name
                                          (reverse (mapcar (lambda (l) (string-trim " ;" l))
                                                           (remove "" said :test #'string=))))))

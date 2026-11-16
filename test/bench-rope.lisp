@@ -100,10 +100,10 @@
   (tuatara.syntax:search-forward (big-fixture) "zzz-not-there"))
 
 (define-benchmark search-all-common-27mb-all-cores (:budget-ms 20 :reps 7)
-  (tuatara.syntax:search-all (big-fixture) "fox"))
+  (literal-match-starts (big-fixture) "fox"))
 
 (define-benchmark search-all-common-27mb-one-thread (:reps 3)
-  (tuatara.syntax:search-all (big-fixture) "fox" :threads 1))
+  (literal-match-starts (big-fixture) "fox" :threads 1))
 
 (define-benchmark regex-search-forward-rare-27mb (:budget-ms 13 :reps 3)
   ;; the prefilter skips to "zzz" at literal speed: as fast as a literal search

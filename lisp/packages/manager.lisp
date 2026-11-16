@@ -15,7 +15,7 @@ fetched and loaded when it is another commit than the one there, asked about
 first (*PACKAGE-ASK-BEFORE-LOADING*); the others are said to be up to date. A
 version that needs a newer Tuatara is passed over for the newest that fits,
 or the one loaded now kept; one signed by another than the source's first
-version, or unsigned when that was signed, is refused (\[package-trust-again]
+version, or unsigned when that was signed, is refused (\\[package-trust-again]
 takes it); one that fails to load gives way to the version before it. A new
 version of a package running now that lays out its structures otherwise
 cannot replace it in this session: it is kept as the version taken and loads
@@ -26,9 +26,8 @@ at the next start, said."
   "Fetch again the packages called NAMES that come from a repository, as
 \\[package-update] does; say so when none of them does, and, when more than
 one is fetched, once all of them are done (SAY-PACKAGE-UPDATE-DONE)."
-  (let ((fetched (remove-if-not (lambda (p) (and (member (first p) names :test #'string=)
-                                                 (second p)
-                                                 (not (local-source-p (package-where (second p))))))
+  (let ((fetched (remove-if-not (lambda (p)
+                                  (and (member (first p) names :test #'string=) (fetched-source-p (second p))))
                                 *declared-packages*)))
     (if (null fetched)
         (message "No package here is fetched from a repository")
@@ -180,19 +179,9 @@ not loaded though the init file names it; refused, using names this Tuatara
 lacks; failed; unloaded; declined, not let load; kept, not loaded; not
 fetched). It also has who signs its source's versions (unsigned, and
 unencrypted for an address of http:// or git://) and where it comes from. The
-names of those not loaded are set apart. Why one was refused or failed is
-shown beside the list in place of its README. \\<packages-mode>\\[list-visit]
-or \\`RET' lists a package's directory in rimu, to read its source,
-\\[list-visit-other] in another window. \\[list-mark-entry] marks it,
-\\[list-mark-for-deletion] marks it for deletion, \\[list-unmark-entry] and
-\\[list-unmark-all] unmark, \\[list-toggle-marks] swaps marked and unmarked, a
-count marking as many. \\[package-update-marked] fetches the marked ones again,
-\\[package-load] loads them, \\[package-unload] unloads them,
-\\[package-remove] removes them from the packages loaded,
-\\[list-delete-marked] unloads, removes and deletes them after asking
-\(\\[package-delete]), \\[list-execute] those marked for deletion. The README
-of the package on the line is shown beside the list,
-\\[list-toggle-preview] turning that off and on. \\[package-update]
+names of those not loaded are set apart. The README of the package on the
+line is shown beside the list, or why one was refused or failed.
+\\<packages-mode>\\[describe-bindings] there lists its keys; \\[package-update]
 fetches them all again."
   (let ((list (buffer-in-mode "*Packages*" 'packages-mode)))
     (when (eq (tuatara.buffer:buffer-local list :list-preview :unset) :unset)
@@ -289,8 +278,8 @@ became is in *Messages* (\\[view-echo-area-messages])."
       (refuse "No init file at ~a" (abbreviated-path file)))
     (multiple-value-bind (results stopped) (scan-init-file-packages file)
       (loop for (name line inside outcome) in results
-            do (log-message (format nil
-                                    "package-scan: ~a, line ~d~:[~;, inside another form (a parenthesis left open before it?)~]: ~a"
+            do (log-message (format nil "package-scan: ~a, line ~d~
+                                         ~:[~;, inside another form (a parenthesis left open before it?)~]: ~a"
                                     name line inside outcome)))
       (when stopped
         (log-message (format nil
@@ -334,8 +323,7 @@ again (\\[package-update]); the version found is asked about with who signed it
 one remembered. For a version refused because another key signed it, or
 because it is unsigned when the versions before were signed. Signers named
 in the init file (:signers) still decide for their source."
-  (let ((names (loop for (name source) in *declared-packages*
-                     when (and source (not (local-source-p (package-where source)))) collect name)))
+  (let ((names (loop for (name source) in *declared-packages* when (fetched-source-p source) collect name)))
     (if (null names)
         (message "No package here is fetched from a repository")
         (let ((name (completing-read "Trust anew the source of the package: " names :require-match t)))
@@ -381,8 +369,8 @@ safely, else a note that it has none or is not fetched yet."
          (multiple-value-bind (buffer existing) (tuatara.io:visit-file (tuatara.io:native readme) :safe t)
            (values buffer (not existing))))
         (t
-         (values (side-preview-note name (format nil
-                                                 "~a ~:[is not fetched yet: there is nothing of it to show.~;~:*has no README in ~a.~]"
+         (values (side-preview-note name (format nil "~a ~:[is not fetched yet: there is nothing of it to show.~
+                                                      ~;~:*has no README in ~a.~]"
                                                  name (and directory (abbreviated-path (tuatara.io:native directory)))))
                  t))))))
 

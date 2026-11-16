@@ -27,6 +27,9 @@
 ;;;; of the window first, for as long as *SEARCH-FILTER-SCREEN-SECONDS*, and
 ;;;; shows what it found at once; the rest is worked out in the background on
 ;;;; all but two cores, and the next key typed starts again.
+;;;;
+;;;; flush-lines, keep-lines and the commands for records delete the lines a
+;;;; pattern matches or misses, by a job over lines (START-LINE-JOB).
 
 (in-package #:tuatara.defaults)
 
@@ -1318,10 +1321,17 @@ buttons, entries and the line of the first, a line saying how it is
 narrowed above the rest; the lines of the sections FOLDED hidden under
 their headings (LIST-SHOWN-LINES). It ends in a line break when the whole
 list does, so that its last line is an entry's as the whole list's is.
-O(size of the text)."
+O(size of the text); while the filters are still worked out, only what is
+known, the entries from the top of the window, is gone through, up to the
+last of them shown (O(size of that part)): the whole text is made once they
+are worked out."
   (let* ((source (list-filtering-source filtering))
          (text (list-source-text source))
          (shows (list-shown-lines filtering source folded))
+         (last (let ((shown (list-filtering-shown filtering)))
+                 (and (or (list-filtering-job filtering) (list-filtering-due filtering))
+                      (typep shown 'bit-vector)
+                      (+ (list-source-first-line source) (or (position 1 shown :from-end t) -1)))))
          (summary (filter-summary filtering))
          (summary-octets (tuatara.text:string-octet-length summary))
          (entries (list-source-entries source))
@@ -1330,7 +1340,7 @@ O(size of the text)."
          (segments '()) (kept '()) (octet 0) (at summary-octets) (start 0) (line 0) (line-break nil))
     (write-string summary out)
     ;; each line's break written before the next line shown, so that none ends the text the whole list does not end in
-    (loop while (< start (length text))
+    (loop while (and (< start (length text)) (or (null last) (<= line last)))
           do (let* ((end (let ((e (position #\Newline text :start start))) (if e (1+ e) (length text))))
                     (body (if (char= (char text (1- end)) #\Newline) (1- end) end))
                     (octets (tuatara.text:string-octet-length text :start start :end end)))
@@ -1669,19 +1679,18 @@ in any question that takes one (*PATTERN-HISTORY*). The list shows above its
 entries how many are left and by what; \\[search-filter-list] lists the
 filters, to take one away, and \\[search-filter-remove-all] takes them all away.
 A list made again is narrowed again.
-In a file of records, a line each, the records are narrowed the same way:
-in a CSV or TSV file, a log, a JSON Lines file and the others
-*LINE-RECORD-MODES* names. A line, or an entry's line in a list, is matched
-when any part of a match lies on it. That runs from the line holding the
-match's first character through the line holding its last, its line end
-counted with it. So 1\\ny keeps the line ending in 1 and the line starting
-with y, and a block wrapped over several lines keeps all of them. The lines left out are
-hidden, never deleted, a CSV's header line always shown, and the mode line
-says how many are left. Saving
-writes the whole file; editing the lines shown is allowed, and a line edited
-so that it no longer matches stays in sight until the filters are worked out
-again (a filter added or taken away, the file read again or sorted), but
-nothing changes the lines hidden.
+In a file of records, a line each, the records are narrowed the same way: in a
+comma-separated values (CSV) or tab-separated values (TSV) file, a log, a JSON
+Lines file and the others *LINE-RECORD-MODES* names. A line, or an entry's line
+in a list, is matched when any part of a match lies on it. That runs from the
+line holding the match's first character through the line holding its last, its
+line end counted with it. So 1\\ny keeps the line ending in 1 and the line
+starting with y, and a block wrapped over several lines keeps all of them. The
+lines left out are hidden, never deleted, a CSV's header line always shown, and
+the mode line says how many are left. Saving writes the whole file; editing the
+lines shown is allowed, and a line edited so that it no longer matches stays in
+sight until the filters are worked out again (a filter added or taken away, the
+file read again or sorted), but nothing changes the lines hidden.
 Where a list or file is large, what is typed is matched from the top of the
 window first and shown at once (*SEARCH-FILTER-SCREEN-SECONDS*), and the
 rest in the background on all but two cores, the mode line saying how far it
@@ -1868,8 +1877,9 @@ others, as \\[search-filter-regex] does, deleting nothing. In a file of records
 a column is asked for first, and the pattern is tried on its value alone.
 Nothing, \"whole record\" or $* gives the whole line. Each column is offered
 with the first record's value beside it, by its name or by its number from 0
-\($0, $1). A CSV or TSV is split by its separator, quotes taken off, and named by
-its header. A log is split into words, apart by spaces, named by its header when
+\($0, $1). A comma-separated values (CSV) or tab-separated values (TSV) file is
+split by its separator, quotes taken off, and named by its header. A log is
+split into words, apart by spaces, named by its header when
 \\[list-toggle-header] makes its first line one. The hosts file offers address
 and name. The password file offers user, password, uid, gid, info, home and
 shell. An environment file (.env) offers name and value. A Python requirements
@@ -1887,6 +1897,125 @@ them all away. \\[list-keep-records] deletes the others instead."
 others, deleting nothing: asked for as \\[search-filter-show-records] asks, kept with
 the other filters. \\[list-delete-records] deletes them instead."
   (filter-records-by 'search-filter-hide-records t))
+
+(defun delete-filtered-lines (buffer start end words filter keep report &key ends)
+  "Delete each line of BUFFER from START below END, octets at line starts,
+that FILTER leaves, or with KEEP each it does not (FILTERED-LINE), as
+CHANGE-LINES does it, in the background when large, one step to undo.
+REPORT, a function of how many lines went, gives what is said once done.
+WORDS names the work (\"Filtering\"). Returns the job, :QUEUED
+\(QUEUE-IF-BUSY), or NIL. With ENDS (RECORD-ENDS), records that may hold
+line breaks are kept or deleted whole."
+  (let ((gone (list 0)))
+    (multiple-value-bind (per-line prepare) (filtered-line filter keep gone :ends ends :crlf (buffer-crlf-p buffer))
+      (change-lines buffer start end words per-line
+                    (lambda (done) (format nil "~a~@[ ~a~]" (funcall report (car gone)) done))
+                    :prepare prepare))))
+
+(defun read-line-filter (buffer words start end)
+  "Ask how to filter the lines of BUFFER from START below END, WORDS (keep
+lines) heading the question. It asks what of a line the pattern is tried on
+\(FILTER-LINE-MATCHER, a column asked first in a file of records cut into
+fields). Then it asks the pattern, as a search asks it, with how many lines it
+matches counted before the prompt when it is tried on the whole line. Five
+values: the pattern, true when it is a regular expression, the matcher, words
+naming what of a line it tries or NIL, and the first line that may change, the
+one after a file of records' header (LIST-HEADER-P), or NIL."
+  (multiple-value-bind (matcher what) (filter-line-matcher buffer)
+    (let ((first (and (records-file-p buffer)
+                      (list-header-p buffer)
+                      (records-start (tuatara.buffer:buffer-text buffer) 1 (record-ends buffer)))))
+      (multiple-value-bind (pattern regex)
+          (let ((counter (make-pattern-count))
+                (lines (list (cons (max start (or first 0)) end))))
+            (unwind-protect
+                 (read-pattern (format nil "~a~@[ whose ~a holds~]" words what)
+                               ;; how many lines the pattern matches, when it is tried on the whole line
+                               :count (and (null what)
+                                           (lambda (text regex)
+                                             (stretch-pattern-count
+                                              counter buffer lines text regex
+                                              :ends (and (records-file-p buffer) (record-ends buffer))))))
+              (tuatara.runtime:stop-background-work (pattern-count-job counter))))
+        (values pattern regex matcher what first)))))
+
+(defun filter-lines (command keep &key whole (noun "line") (words (if keep "keep lines" "flush lines")))
+  "Ask for a pattern and delete the lines the selection touches that it matches,
+or with KEEP those it does not, in the background when large; what of a line the
+pattern is tried on is asked first in a file of records cut into fields
+\(READ-LINE-FILTER, WORDS heading the question). With WHOLE, every line when
+nothing is selected (of the part shown, in a narrowed buffer). COMMAND names the
+command in messages, NOUN what a line is called in them. Refused at once in a
+read-only buffer."
+  (let ((b (current-buffer)))
+    (check-writable b)
+    (multiple-value-bind (start end) (selected-lines b)
+      (when (and (null start) whole)
+        (multiple-value-setq (start end) (tuatara.buffer:buffer-bounds b)))
+      (if (null start)
+          (say-not-run command)
+          (multiple-value-bind (pattern regex matcher what first) (read-line-filter b words start end)
+            (multiple-value-bind (filter why)
+                (and (plusp (length pattern))
+                     (make-search-filter pattern :regex regex :test (and what matcher)))
+              (let ((start (max start (or first 0))))
+                (cond ((zerop (length pattern)) (say-not-run command "No pattern"))
+                      ((null filter) (say-not-run command (string-capitalize why :end 1)))
+                      ((>= start end) (say-not-run command "No lines to filter but the header"))
+                      (t (delete-filtered-lines b start end "Filtering" filter keep
+                                                (lambda (gone)
+                                                  (format nil "Deleted ~:d ~:[matching~;non-matching~] ~a~p"
+                                                          gone keep noun gone))
+                                                :ends (and (records-file-p b) (record-ends b))))))))))))
+
+(define-command flush-lines ()
+  "Delete the lines the selection touches in which a regular expression, asked
+for in the minibuffer, finds a match. That is every line any part of a match
+lies on, as one search of the text finds the matches, a match running over
+several lines deleting them all. ^ and $ are a line's start and end, so that ^$
+deletes the empty lines. Smart case, as in search: a pattern with a capital
+letter, or naming a case ([[:upper:]], \\p{Lu}), heeds case. Says how many were
+deleted. In a file of records cut into columns, a CSV, a log, JSON Lines and the
+others \\[search-filter-show-records] names, a column is asked for first
+\(nothing for the whole line), the pattern tried on its value alone, and a
+header line always stays. Without a selection, does nothing and says so; a large
+selection is handled in the background."
+  (filter-lines 'flush-lines nil))
+
+(define-command keep-lines ()
+  "Delete the lines the selection touches in which a regular expression, asked
+for in the minibuffer, finds no match, keeping those it matches. The pattern is
+found as for flush-lines, in a file of records on the column asked for. Says how
+many were deleted. Without a selection, does nothing and says so; a large
+selection is handled in the background."
+  (filter-lines 'keep-lines t))
+
+(defun records-file-p (buffer)
+  "True when BUFFER is a file of records, a line each: a CSV or TSV, a log,
+a JSON Lines file and the others *LINE-RECORD-MODES* names
+\(FILTERS-HIDE-LINES-P)."
+  (filters-hide-lines-p (buffer-major-mode buffer) buffer))
+
+(define-command list-keep-records ()
+  "Keep the records whose line a regular expression matches and delete the rest,
+in a file of records, a line each: a CSV or TSV, a log, a JSON Lines file,
+todo.txt and the others *LINE-RECORD-MODES* names, the column asked for first as
+\\[search-filter-show-records] asks. The lines the selection touches, or every
+record; a header line always stays (\\[list-toggle-header]). Smart case, as in
+search. One step to undo; a large file is filtered in the background.
+\\[search-filter-show-records] hides the others instead, deleting nothing."
+  (if (records-file-p (current-buffer))
+      (filter-lines 'list-keep-records t :whole t :noun "record" :words "keep records")
+      (message "Not a file of records (a CSV, a log): list-keep-records was not run; keep-lines filters any lines")))
+
+(define-command list-delete-records ()
+  "Delete the records whose line a regular expression matches, keeping the
+rest: asked for as \\[list-keep-records] asks, in the same files. A header
+line always stays. \\[search-filter-hide-records] hides them instead,
+deleting nothing."
+  (if (records-file-p (current-buffer))
+      (filter-lines 'list-delete-records nil :whole t :noun "record" :words "delete records")
+      (message "Not a file of records (a CSV, a log): list-delete-records was not run; flush-lines filters any lines")))
 
 (defun list-header-line (window)
   "Header line function: the first line of WINDOW's buffer, its header, as the

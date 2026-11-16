@@ -6,10 +6,11 @@
   (:import-from #:tuatara.io #:null-pointer #:null-pointer-p #:sap-octets #:with-foreign-memory #:poll-fd #:socket-pair
                 #:send-with-descriptors)
   (:import-from #:tuatara.runtime #:define-record #:define-setting)
+  (:import-from #:tuatara.text #:*fold-table* #:needle-at-p #:scan-chunk #:scan-chunk-backward #:+near-octets+)
   (:import-from #:tuatara-user #:*syntax-helper-unconfined*)
   (:documentation "The search and regex interface, the tree-sitter binding, parsing in the
 background, colouring and moving by syntax.")
-  (:export #:url-pattern #:search-forward #:search-backward #:search-all #:case-fold-p #:*serial-window* #:*parallel-piece*
+  (:export #:url-pattern #:search-forward #:search-backward #:case-fold-p #:*serial-window* #:*parallel-piece*
            #:named-pattern-p #:own-named-pattern-p #:forget-own-named-pattern
            #:compile-regex #:compile-pattern #:*regex-thorough* #:regex-search-forward #:regex-search-backward
            #:regex-search-all
@@ -25,10 +26,10 @@ background, colouring and moving by syntax.")
            #:*syntax-helper-wait* #:host-trusted-text-p #:host-say-helper-ended #:host-say-helper-refused
            #:host-buffer-shown-p #:host-must-not-wait-p #:helper-parsing #:helper-kind #:helper #:helper-p
            #:helper-alive #:helper-shared #:helper-ended #:stop-helpers #:tree #:tree-p #:parser #:parser-p
-           #:*grammar-directories* #:grammar-directories #:forget-grammars #:user-grammar-directory #:user-grammar-store
+           #:*grammar-directories* #:grammar-directories #:user-grammar-directory #:user-grammar-store
            #:store-refused-why #:user-grammar-file #:user-grammar-p #:grammar-name-p
            #:host-user-grammar-allowed-p
-           #:make-parser #:delete-parser #:parse-rope #:delete-tree #:edit-tree #:tree-has-error-p
+           #:make-parser #:delete-parser #:parse-rope #:delete-tree #:edit-tree
            #:compile-query #:query #:query-p #:query-grammar #:query-captures #:query-properties
            #:query-not-answered #:query-error #:query-error-kind #:query-error-line #:query-error-text
            #:query-error-grammar

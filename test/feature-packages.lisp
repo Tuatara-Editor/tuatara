@@ -36,23 +36,26 @@ COMMAND): a name of its insides, one of its settings and one of its commands.")
                  (is eq setting (find-symbol (symbol-name setting) package) "~a in ~a" setting name))))))
 
 (define-test (feature-packages init-file-sets-setting)
-  ;; read as an init file is read: in TUATARA-USER, form by form
+  ;; read as an init file is read: in TUATARA-USER, form by form, each setting given a value
+  ;; of the kind it takes
   (loop for (name nil setting) in *feature-packages*
         for package = (find-package name)
         do (true package "~a is a package" name)
            (when package
              (let* ((symbol (find-symbol setting package))
-                    (was (symbol-value symbol)))
+                    (was (symbol-value symbol))
+                    (value (find-if-not (lambda (value) (tuatara.runtime:setting-value-fault symbol value))
+                                        (list 7 "seven" '("seven") (not was)))))
                (with-test-directory (dir)
                  (let ((file (merge-pathnames "init.lisp" dir)))
                    (with-open-file (out file :direction :output)
-                     (format out ";; an init file~%(setf ~(~a~) 7)~%" setting))
+                     (format out ";; an init file~%(setf ~(~a~) '~s)~%" setting value))
                    (unwind-protect
                         (let ((*package* (find-package :tuatara-user))
                               (tuatara.defaults::*init-file-outcome* :read))
                           (tuatara.defaults::read-init-file (namestring file))
                           (is eq :read tuatara.defaults::*init-file-outcome*)
-                          (is eql 7 (symbol-value symbol)))
+                          (is equal value (symbol-value symbol)))
                      (setf (symbol-value symbol) was))))))))
 
 (define-test (feature-packages commands-found-by-name)

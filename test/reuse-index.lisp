@@ -52,10 +52,11 @@
         #'string< :key #'package-name))
 
 (defun reuse-index-rows ()
-  "The rows (PACKAGE NAME KIND SENTENCE FILE) of the reuse index, in order, leaving out what test files define."
+  "The rows (PACKAGE NAME KIND SENTENCE FILE) of the reuse index, in order, leaving out what test files define and
+the commands made while the editor runs (TUATARA.COMMAND:INSTALL-COMMAND), such as an input method's key."
   (let ((rows '()))
     (flet ((add (package symbol suffix)
-             (dolist (role (symbol-roles symbol))
+             (dolist (role (and (not (get symbol 'tuatara.command::made-while-running)) (symbol-roles symbol)))
                (destructuring-bind (kind type doc) role
                  (let ((file (definition-file symbol type)))
                    (when (and (or (string= suffix "") doc) (not (uiop:string-prefix-p "test/" file)))
@@ -109,6 +110,17 @@
   (false (find-if (lambda (line) (search "  test/" line)) (reuse-index-lines))
          "The reuse index lists a definition from a test file."))
 
+(define-test (definitions reuse-index-leaves-out-commands-made-running)
+  ;; a command made while the editor runs, as an input method's key is, whatever test made it and left it
+  (let ((name (tuatara.defaults::input-method-key-command "reuseprobe" "swedish-postfix")))
+    (unwind-protect
+         (progn
+           (true (fboundp name))
+           (false (find-if (lambda (line) (search "input-method-reuseprobe" line)) (reuse-index-lines))))
+      (tuatara.command:forget-command name)
+      (fmakunbound name)
+      (unintern name :tuatara.defaults))))
+
 (defun reuse-index-report (&optional (stream *standard-output*))
   "Print to STREAM whether test/api/reuse-index.txt is what the loaded code defines, and if not the lines added and
 removed, after a line that counts them."
@@ -119,3 +131,23 @@ removed, after a line that counts them."
             (+ (length added) (length removed)) (length added) (length removed))
     (dolist (line (sort added #'string<)) (format stream "  add     ~a~%" line))
     (dolist (line (sort removed #'string<)) (format stream "  remove  ~a~%" line))))
+
+(define-test (definitions reuse-index-takes-commands-defined-again)
+  ;; a name made a command while the editor ran, then defined as source files define commands, is indexed
+  ;; again; one forgotten as a command is no longer marked either
+  (let ((name (intern "REUSE-PROBE-DEFINED-AGAIN" :tuatara.defaults)))
+    (unwind-protect
+         (progn
+           ;; compiled here, so that no test file holds its definition
+           (tuatara.command:install-command name (compile nil '(lambda ())) "Do nothing, made while running.")
+           (false (find-if (lambda (line) (search "reuse-probe-defined-again" line)) (reuse-index-lines)))
+           ;; with no source info, as in the editor, so that a full run's loading of a test file is not its source
+           (let ((sb-c::*source-info* nil))
+             (eval `(tuatara.command:define-command ,name () "Do nothing, defined again." nil)))
+           (true (find-if (lambda (line) (search "reuse-probe-defined-again" line)) (reuse-index-lines)))
+           (tuatara.command:install-command name (lambda ()) "Do nothing, made while running.")
+           (tuatara.command:forget-command name)
+           (false (get name 'tuatara.command::made-while-running)))
+      (tuatara.command:forget-command name)
+      (fmakunbound name)
+      (unintern name :tuatara.defaults))))

@@ -14,10 +14,12 @@
 
 (in-package #:tuatara.lsp)
 
-(defvar *lsp-largest-document* (* 8 1024 1024)
+(define-setting *lsp-largest-document* (* 8 1024 1024)
   "The largest document, in octets, given to a language server: a file's
 whole text, or the code of a note's source blocks of one language, however
-large the note.")
+large the note. A larger one is shown without its servers.
+- a whole number: that many octets, 8 MB (8388608) as standard."
+  :values (integer 1 *))
 
 (defun lsp-refusal (buffer)
   "Why BUFFER is never given to a language server, in words, or NIL: no file,
@@ -244,11 +246,18 @@ text, on a line of its code for a note's source blocks."
 
 ;;; Positions
 
-(defun rope-line-text (rope line)
-  "The text of the 0-based LINE of ROPE, without its line end; empty past its last line."
+(defun rope-line-text (rope line &optional most)
+  "The text of the 0-based LINE of ROPE, without its line end; empty past its
+last line. With MOST, no more than its first MOST octets, cut before a
+character the limit falls in, so that a line of megabytes is never made
+whole."
   (if (<= 0 line (tuatara.text:rope-lines rope))
-      (let ((start (tuatara.text:line->byte rope line)))
-        (tuatara.text:rope-string rope :start start :end (tuatara.text:rope-line-end rope start)))
+      (let* ((start (tuatara.text:line->byte rope line))
+             (end (tuatara.text:rope-line-end rope start)))
+        (tuatara.text:rope-string rope :start start
+                                       :end (if (and most (> (- end start) most))
+                                                (tuatara.text:rope-char-start rope (+ start most))
+                                                end)))
       ""))
 
 (defun line-end-byte (rope line)
@@ -296,11 +305,6 @@ line, at the start of a character."
           (if (>= unit (tuatara.text:byte->utf16 rope end))
               end
               (tuatara.text:utf16->byte rope unit))))))
-
-(defun lsp-line-byte (server rope line character)
-  "The byte offset of ROPE at the 0-based LINE and CHARACTER as SERVER counts
-them (ROPE-LINE-BYTE)."
-  (rope-line-byte (lsp-server-encoding server) rope line character))
 
 (defun sent-line-byte (encoding rope shadow skipped line character)
   "The byte of ROPE, a buffer's text as sent to a server counting characters
@@ -905,13 +909,13 @@ installed, say once that \\[lsp] starts them."
           (dolist (entry (lsp-installed-servers buffer))
             (destructuring-bind (root language &rest installed) entry
               (declare (ignore language))
-              (cond ((project-trusted-p root) (lsp-connect buffer :start t))
+              (cond ((project-trusted-p root) (lsp-connect buffer :start :trusted))
                     ((not (member root *lsp-offered* :test #'string=))
                      (push root *lsp-offered*)
-                     (message "~{~a~^, ~} can serve ~a: ~a starts ~:[it~;them~] ~
+                     (message "~{~a~^, ~} can serve ~a: \\[lsp] starts ~:[it~;them~] ~
                                (~:*~:[it runs~;they run~] the project's code)"
                               (mapcar (lambda (s) (getf s :name)) installed) (abbreviated-path root)
-                              (substitute-command-keys "\\[lsp]") (rest installed))))))
+                              (rest installed))))))
           ;; servers already running for its project see it too
           (lsp-connect buffer)))))
 
@@ -958,7 +962,12 @@ never given to a server, nor one that is not all UTF-8."
 
 (define-command lsp-forget-project ()
   "Trust the current buffer's project no more: its language servers end, and
-no longer start by themselves."
+all the trust it was given goes, so that it is asked about again before any
+of it runs. Its language servers no longer start by themselves, git no longer
+runs the programs it names (hooks, filters) and its build commands (M-x
+compile) are asked about again (FORGET-PROJECT-TRUST). The project is the
+directory its language servers work in; a git repository trusted above it
+stays trusted, and so does a directory of *TRUSTED-PROJECTS*."
   (let* ((buffer (current-buffer))
          (roots (and (tuatara.buffer:buffer-file buffer)
                      (remove-duplicates (mapcar (lambda (spec) (lsp-project-of buffer (first spec)))
@@ -967,7 +976,7 @@ no longer start by themselves."
     (if (null roots)
         (message "~a is no file of a project" (tuatara.buffer:buffer-name buffer))
         (dolist (root roots)
-          (state-list-drop *trusted* (list (or (real-directory root) root)))
+          (forget-project-trust root)
           (dolist (server (copy-list *lsp-servers*))
             (when (string= (lsp-server-root server) root) (lsp-stop server)))
           (message "~a is trusted no more~:[~;; it is in *trusted-projects*, which still trusts it~]"

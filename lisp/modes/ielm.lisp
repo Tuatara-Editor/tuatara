@@ -28,8 +28,9 @@ the working buffer, the one the Lisp typed sees as current. \\[ielm-tab] and
   "Keys of *ielm* (ielm-mode's keymap).")
 
 (defparameter *ielm-banner*
-  "*** Welcome to IELM ***  \\<ielm-mode>\\[ielm-return] evaluates, \\[ielm-previous-input] and \\[ielm-next-input] bring back earlier input, \\[ielm-change-working-buffer] chooses the working buffer.
-"
+  (concatenate 'string "*** Welcome to IELM ***  \\<ielm-mode>\\[ielm-return] evaluates, "
+               "\\[ielm-previous-input] and \\[ielm-next-input] bring back earlier input, "
+               "\\[ielm-change-working-buffer] chooses the working buffer." (string #\Newline))
   "What *ielm* begins with, the keys it names written in when it is put there
 (SUBSTITUTE-COMMAND-KEYS).")
 
@@ -107,15 +108,14 @@ open: what \\<ielm-mode>\\[ielm-return] evaluates. Nothing is evaluated reading 
 (defun ielm-results (result)
   "What *ielm* puts after an input from RESULT, an evaluation's (RUN-EVALUATION):
 what was printed, then each value readably on a line of its own, or the error."
-  (let* ((outcome (getf result :outcome))
-         (values (and (consp outcome) (eq (first outcome) :values) (second outcome)))
-         (*package* (getf result :package *package*)))
+  (let ((values (evaluation-values result))
+        (*package* (or (evaluation-package result) *package*)))
     (with-output-to-string (out)
-      (write-output-and-values out (getf result :output "") values)
-      (cond ((eq outcome :stopped) (format out "*** Evaluation stopped~%"))
-            ((eq (first outcome) :error)
-             (format out "*** Eval error ***  ~a~%" (tuatara.runtime:failure-words (second outcome) :said t)))
-            ((null values) (format out "; No values~%"))))))
+      (write-output-and-values out (evaluation-output result) values)
+      (case (evaluation-kind result)
+        (:stopped (format out "*** Evaluation stopped~%"))
+        (:error (format out "*** Eval error ***  ~a~%" (evaluation-error-words result)))
+        (t (unless values (format out "; No values~%")))))))
 
 (defun ielm-evaluate (buffer)
   "Evaluate the input after BUFFER's last prompt: what it printed and its
@@ -128,25 +128,24 @@ values go after it, then a new prompt; the input is remembered for
         (ielm-insert-prompt buffer)
         (let* ((working (tuatara.buffer:buffer-local buffer 'ielm-working-buffer))
                (result (run-evaluation text buffer
-                                       :current (and (live-buffer-p working) working)))
-               (outcome (getf result :outcome)))
+                                       :current (and (live-buffer-p working) working))))
           (let ((history (tuatara.buffer:buffer-local buffer 'ielm-history '())))
             (unless (equal text (first history))
               (setf (tuatara.buffer:buffer-local buffer 'ielm-history) (pushed-and-kept text history))))
           (setf (tuatara.buffer:buffer-local buffer 'ielm-history-index) nil
-                (tuatara.buffer:buffer-local buffer :lisp-package) (package-name (getf result :package)))
+                (tuatara.buffer:buffer-local buffer :lisp-package) (package-name (evaluation-package result)))
           ;; the first value of each of the last three inputs in *, ** and ***,
           ;; all their values in /, // and ///
-          (when (and (consp outcome) (eq (first outcome) :values))
-            (let ((values (second outcome)))
+          (when (eq (evaluation-kind result) :values)
+            (let ((values (evaluation-values result)))
               (setf *** ** ** * * (first values)
                     /// // // / / values)))
           (unwind-protect
                (tuatara.buffer:buffer-insert buffer (tuatara.buffer:buffer-size buffer) (ielm-results result))
-            ;; a new prompt whatever became of the results
+            ;; the settings put back said, and a new prompt, whatever became of the results
+            (say-settings-put-back result)
             (ielm-insert-prompt buffer))
-          (when (getf result :backtrace)
-            (show-backtrace (second outcome) (getf result :backtrace)))))
+          (show-evaluation-backtrace result)))
     ;; point in *ielm* itself: the Lisp typed, or *Backtrace*, may have selected another window
     (setf (tuatara.buffer:buffer-point buffer) (tuatara.buffer:buffer-size buffer))))
 

@@ -40,11 +40,10 @@
     ("columns"
      (:heading :paragraph :list :block :table)
      "a number: the text set in that many columns")
-    ("page" (:heading :paragraph :list :block :table :picture) #.(concatenate 'string "landscape: on pages turned "
-                                                                  "sideways, from a page of "
-                                                                  "their own (side by side, they "
-                                                                  "share the pages); "
-                                                                  "portrait, as standard"))
+    ("page"
+     (:heading :paragraph :list :block :table :picture)
+     #.(concatenate 'string "landscape: on pages turned sideways, from a page of their own (side by side, they "
+                    "share the pages); portrait, as standard"))
     ("font"
      (:heading :paragraph :list :block :table)
      "tiny, scriptsize, footnote, small, normal, large or larger: the size of the type")
@@ -88,14 +87,15 @@ Any of them may be auto, which leaves it as the export would have it.")
   "True when NAME, in any case, is a setting an :EXPORT: drawer may hold (*ORG-EXPORT-SETTINGS*)."
   (and (assoc name *org-export-settings* :test #'string-equal) t))
 
-(defparameter *org-latex-font-sizes*
-  '(("tiny" . "\\tiny")
-    ("scriptsize" . "\\scriptsize")
-    ("footnote" . "\\footnotesize")
-    ("footnotesize" . "\\footnotesize")
-    ("small" . "\\small") ("normal" . "\\normalsize") ("large" . "\\large") ("larger" . "\\Large")
-    ("largest" . "\\LARGE"))
-  "The sizes of type the font setting takes, and the LaTeX for each.")
+(defparameter *org-font-sizes*
+  '(("tiny" "\\tiny" 6/11)
+    ("scriptsize" "\\scriptsize" 8/11)
+    ("footnote" "\\footnotesize" 9/11)
+    ("footnotesize" "\\footnotesize" 9/11)
+    ("small" "\\small" 10/11) ("normal" "\\normalsize" 1) ("large" "\\large" 12/11) ("larger" "\\Large" 14/11)
+    ("largest" "\\LARGE" 17/11))
+  "The sizes of type the font setting takes, each (NAME LATEX SHARE): the LaTeX
+for it, and the part of the text's size it makes, as LaTeX's are of 11 points.")
 
 (defparameter *export-setting-words*
   '(("numbered" "yes" "no") ("annex" "yes" "no") ("contents" "yes" "no") ("new page" "before" "after" "both" "no")
@@ -118,8 +118,8 @@ lines are looked at where they are read."
            (unless (spacing-number value)
              (format nil "spacing: ~a is none of single, double or a number (1.15); left out" value)))
           ((string= name "font")
-           (unless (or (assoc value *org-latex-font-sizes* :test #'string-equal) (char= (char value 0) #\\))
-             (format nil "font: ~a is none of ~{~a~^, ~}; left out" value (mapcar #'car *org-latex-font-sizes*))))
+           (unless (or (assoc value *org-font-sizes* :test #'string-equal) (char= (char value 0) #\\))
+             (format nil "font: ~a is none of ~{~a~^, ~}; left out" value (mapcar #'car *org-font-sizes*))))
           ((string= name "columns")
            (unless (let ((n (whole-number value))) (and n (plusp n)))
              (format nil "columns: ~a is no number of columns; left out" value))))))
@@ -355,23 +355,23 @@ wrap, wider than 20 characters with a space in a cell. And the longest part of a
 cell that cannot go on to the next line \(ORG-EXPORT-LONGEST-PIECE). SPECIAL true
 when the first column, only marking rows, is left out. The one measure of a
 table's columns for both exports."
-  (flet ((cell (row i) (nth i (nthcdr (if special 1 0) (org-node-children row)))))
-    (let* ((lengths (loop for i below columns
-                          collect (loop for row in standard
-                                        for cell = (cell row i)
-                                        collect (if cell (org-export-visible-length (org-export-cell-text cell)) 0))))
+  (let ((lengths (make-array columns :initial-element '()))
+        (spaced (make-array columns :initial-element nil))
+        (longest (make-array columns :initial-element 0)))
+    (dolist (row standard)
+      (let ((cells (nthcdr (if special 1 0) (org-node-children row))))
+        (dotimes (i columns)
+          (let* ((cell (pop cells))
+                 (text (and cell (org-export-cell-text cell))))
+            (push (if text (org-export-visible-length text) 0) (aref lengths i))
+            (when text
+              (when (find #\Space text) (setf (aref spaced i) t))
+              (setf (aref longest i) (max (aref longest i) (org-export-longest-piece text))))))))
+    (let* ((lengths (map 'list #'nreverse lengths))
            (widest (mapcar (lambda (l) (reduce #'max l :initial-value 1)) lengths)))
       (values lengths widest
-              (loop for i below columns
-                    collect (and (> (nth i widest) 20)
-                                 (some (lambda (row) (let ((cell (cell row i)))
-                                                       (and cell (find #\Space (org-export-cell-text cell)))))
-                                       standard)))
-              (loop for i below columns
-                    collect (or (loop for row in standard
-                                      for cell = (cell row i)
-                                      maximize (if cell (org-export-longest-piece (org-export-cell-text cell)) 0))
-                                0))))))
+              (loop for width in widest for space across spaced collect (and (> width 20) space))
+              (coerce longest 'list)))))
 
 (defun export-table-widths (node columns)
   "The widths setting of the table NODE, one entry for each of its COLUMNS:
@@ -387,11 +387,16 @@ setting is not given. The one reading of it for both exports."
                              (t word))))))
 
 (defun org-latex-font-command (value)
-  "The LaTeX for the size of type VALUE names (*ORG-LATEX-FONT-SIZES*), a
+  "The LaTeX for the size of type VALUE names (*ORG-FONT-SIZES*), a
 LaTeX size command as written (\\small) taken as it is; NIL for none."
   (cond ((or (null value) (string= value "")) nil)
         ((char= (char value 0) #\\) value)
-        (t (cdr (assoc value *org-latex-font-sizes* :test #'string-equal)))))
+        (t (second (assoc value *org-font-sizes* :test #'string-equal)))))
+
+(defun org-font-share (value)
+  "The part of the text's size the size of type VALUE names makes
+\(*ORG-FONT-SIZES*), or NIL for none."
+  (third (assoc value *org-font-sizes* :test #'string-equal)))
 
 (defun setting-length (value)
   "VALUE, a length as a setting gives it, read: two values, the number and its

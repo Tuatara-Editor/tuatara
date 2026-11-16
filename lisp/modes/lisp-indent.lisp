@@ -461,8 +461,7 @@ indented and ENTRIES how its own arguments are."
                             ((eq tem '&rest)
                              (setf tail (> n 0) n 0 method (cdr method)))
                             ((> n 0)
-                             (setf n (1- n) method (cdr method))
-                             (when (< n 0) (return-from lisp-indent-by-method normal-indent)))
+                             (setf n (1- n) method (cdr method)))
                             ((null tem)
                              (return-from lisp-indent-by-method
                                (if (consp normal-indent) normal-indent (list normal-indent containing))))
@@ -789,6 +788,6 @@ just begun is."
     (nreverse changes)))
 
 (defmethod mode-indent-lines ((mode lisp-mode) buffer start end &optional blank-lines)
-  "How the lines of BUFFER from START to END are indented as Lisp (LISP-INDENT-
-LINES)."
+  "How the lines of BUFFER from START to END are indented as Lisp
+\(LISP-INDENT-LINES)."
   (lisp-indent-lines (tuatara.buffer:buffer-text buffer) start end (ready-syntax buffer) blank-lines))

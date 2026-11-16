@@ -4,7 +4,7 @@
 ;;;; M-x git-blame lists a file a line each with the commit that last changed
 ;;;; it, its author and date, as git blame says; RET shows that commit.
 ;;;; M-x git-file-menu acts on the file you are in (the entry on the line in
-;;;; rimu, the one on point's line of a status), as Magit's file menu does:
+;;;; rimu, the one on point's line of a status):
 ;;;; stage it, unstage it, its hunk at point, its changes, its log, its lines'
 ;;;; commits, its history, put it back, rename or delete it.
 
@@ -14,8 +14,9 @@
 
 (define-major-mode git-blame-mode special-mode
   "A file a line each (\\[git-blame]): the commit that last changed the line,
-its author and date, then the line. \\<git-blame-mode>\\[git-blame-show] shows
-the commit on the line; \\[quit-window] closes."
+its author and date, then the line. \\<git-blame-mode>\\[list-visit] shows
+the commit on the line, \\[list-visit-other] with the blame kept selected;
+\\[quit-window] closes."
   :lighter "Git blame" :interactive nil)
 
 (defmethod mode-wraps-p ((mode git-blame-mode))
@@ -68,10 +69,19 @@ on a line shows its commit."
 
 (define-command git-blame-show ()
   "Show the commit that last changed the line of the blame point is on."
-  (let ((row (list-entry-at)))
-    (cond ((null row) (message "No line here"))
-          ((null (first row)) (message "Not committed yet"))
-          (t (git-show-commit (git-here) (first row))))))
+  (list-visit))
+
+(defmethod visit-entry ((mode git-blame-mode) list row other)
+  "Show the commit that last changed the line ROW of the blame, with OTHER
+the blame kept selected."
+  (declare (ignore list))
+  (if (first row)
+      (git-show-commit (git-here) (first row) :select (not other))
+      (message "Not committed yet")))
+
+(defmethod list-entry-noun ((mode git-blame-mode))
+  "A blame's lines are of commits."
+  "commit")
 
 (commands-for-mode 'git-blame-mode "a file's blame (\\[git-blame])" 'git-blame-show)
 
@@ -98,8 +108,8 @@ repository with no commit yet too."
   (with-git-file (top path :switches switches)
     (git-show-diff top
                    (format nil "*git diff ~a*" (tuatara.io:native-file-name path))
-                   (list switches (list path))
-                   :against-head t)))
+                   (append switches (list "--" path))
+                   :head t)))
 
 (define-command git-delete-file ()
   "Delete the file you are in, or the one on point's line of a status, from
@@ -163,9 +173,9 @@ revision, rename or delete it.
    ("D" "Delete" git-delete-file)))
 
 (defun install-git-files ()
-  "Bind RET, l and h in a blame, and refuse the commands that change the file
-at hand, or what git keeps of it, in a buffer opened safely."
+  "Give a blame the keys of a list whose entries are opened (ENTRY-LIST-KEYS),
+and refuse the commands that change the file at hand, or what git keeps of
+it, in a buffer opened safely."
   (dolist (command '(git-stage-file git-unstage-file git-delete-file git-rename-file git-reset-file))
     (pushnew command *file-changing-commands*))
-  (define-keys (mode-keymap 'git-blame-mode) '(("RET" git-blame-show) ("l" git-blame-show) ("C-f" git-blame-show)
-                                               ("h" quit-window) ("C-b" quit-window))))
+  (entry-list-keys 'git-blame-mode "a file's blame (\\[git-blame])"))

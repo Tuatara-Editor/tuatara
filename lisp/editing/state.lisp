@@ -1,5 +1,4 @@
-;;;; lisp/editing/state.lisp --- The lists kept between sessions: recent files, places in files, PDF places, paths
-;;;; chosen.
+;;;; lisp/editing/state.lisp --- The lists kept between sessions: recent files, places, paths chosen.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; Each list is a file of lines in the state directory, shared by the
@@ -9,7 +8,6 @@
 ;;;; put first, and written back whole, so that no session loses another's
 ;;;; entries and a slow disk never holds the editor up. The list in memory is
 ;;;; read again from the file once another session has changed it.
-;;;;
 ;;;;
 ;;;; A file begins with a line naming the list and the version of its
 ;;;; format (# tuatara bookmarks 1; a file without one is version 1). A later
@@ -40,19 +38,10 @@ so that a list may part its fields by tabs."
                (t (write-char c out))))))
 
 (defun unescape-path (text)
-  "The path a line of a list kept between sessions writes as TEXT (ESCAPE-PATH)."
-  (with-output-to-string (out)
-    (let ((i 0))
-      (loop while (< i (length text))
-            do (let ((c (char text i)))
-                 (if (and (char= c #\\) (< (1+ i) (length text)))
-                     (progn (write-char (case (char text (1+ i))
-                                          (#\n #\Newline)
-                                          (#\r #\Return)
-                                          (#\t #\Tab)
-                                          (t (char text (1+ i)))) out)
-                            (incf i 2))
-                     (progn (write-char c out) (incf i))))))))
+  "The path a line of a list kept between sessions writes as TEXT
+\(ESCAPE-PATH): \\\\, \\n, \\r and \\t back to a backslash, a newline, a carriage
+return and a tab, any other backslash kept as it is (UNESCAPE-WITH)."
+  (unescape-with text '((#\\ . #\\) (#\n . #\Newline) (#\r . #\Return) (#\t . #\Tab))))
 
 (defun state-line-fields (line)
   "The fields of LINE, a line of a list kept between sessions, a tab ending
@@ -102,33 +91,32 @@ other line."
                                                            (class :remembered) (fields 1) trust line-key formerly))
                           (:copier nil))
   "A list kept between sessions in a file of the state directory. NAME is the
-file's name there. PARSE is a function making an entry of a line (NIL for a
-line to pass over). PRINT is one making the line of an entry. LIMIT-VARIABLE
-is the variable saying how many entries are kept. HEADER is lines written
-first, or NIL. PATH-OF is a function giving the path an entry is about. KEY is
-one giving what makes two entries one (PATH-OF when NIL). VERSION is the
-version of the format its lines are written in, said in the file's first line.
-CLASS is :KEPT for a list you make yourself, whose loss would lose work, or
-:REMEMBERED for one of what you did, kept for convenience. FIELDS is how many
-fields parted by tabs a line of today's format has at most. TRUST is true for
-a list of what you trusted, whose lines of a later version with more fields
-are not read. LINE-KEY is a function giving the name or path a line is about,
-read or not, to match PATH-OF, or NIL for a line not of the shape of its
-entries \(FIELD-LINE-KEY, SPACED-LINE-KEY; the first field, STATE-LINE-PATH,
-when NIL). FORMERLY is the name its file had in the state directory before,
-or NIL; a file of that name is moved over to NAME when there is none of NAME
-\(MOVE-FORMER-STATE-FILE). What is known of it: FILE is the native name of the
-file read last,
-its STAMP then and the entries it had then, DISK. PENDING is the changes made
-and not yet taken to be written, and WRITING is those being written, the
-latest first, each (FILE . CHANGE). SHOWN is the entries as STATE-LIST-ENTRIES
-gave them last. NOTED and TRIED are how many changes were made, and how many
-there were when the writer last took them. LOCK is held while these change.
-UNREADABLE is the file last said could not be read, until it is written.
-KNOWN-PATH is the native name of its file as last worked out, and PLACE is the
-setting of the state directory it was worked out for. CHANGES is how many
-times the entries may have changed, and LOOKED is when the file was last
-looked at for another session's change (STATE-LIST-GENERATION)."
+file's name there. PARSE is a function making an entry of a line (NIL for a line
+to pass over). PRINT is one making the line of an entry. LIMIT-VARIABLE is the
+variable saying how many entries are kept. HEADER is lines written first, or
+NIL. PATH-OF is a function giving the path an entry is about. KEY is one giving
+what makes two entries one (PATH-OF when NIL). VERSION is the version of the
+format its lines are written in, said in the file's first line. CLASS is :KEPT
+for a list you make yourself, whose loss would lose work, or :REMEMBERED for one
+of what you did, kept for convenience. FIELDS is how many fields parted by tabs
+a line of today's format has at most. TRUST is true for a list of what you
+trusted, whose lines of a later version with more fields are not read. LINE-KEY
+is a function giving the name or path a line is about, read or not, to match
+PATH-OF, or NIL for a line not of the shape of its entries (FIELD-LINE-KEY,
+SPACED-LINE-KEY; the first field, STATE-LINE-PATH, when NIL). FORMERLY is the
+name its file had in the state directory before, or NIL; a file of that name is
+moved over to NAME when there is none of NAME (MOVE-FORMER-STATE-FILE). What is
+known of it: FILE is the native name of the file read last, its STAMP then and
+the entries it had then, DISK. PENDING is the changes made and not yet taken to
+be written, and WRITING is those being written, the latest first, each (FILE .
+CHANGE). SHOWN is the entries as STATE-LIST-ENTRIES gave them last. NOTED and
+TRIED are how many changes were made, and how many there were when the writer
+last took them. LOCK is held while these change. UNREADABLE is the file last
+said could not be read, until it is written. KNOWN-PATH is the native name of
+its file as last worked out, and PLACE is the setting of the state directory it
+was worked out for. CHANGES is how many times the entries may have changed, and
+LOOKED is when the file was last looked at for another session's change
+\(STATE-LIST-GENERATION)."
   (name nil :documentation "The name of a STATE-LIST's file in the state directory.")
   (parse nil :documentation "The function making an entry of a line of LIST, NIL for a line to pass over.")
   (print nil :documentation "The function making the line of an entry of LIST.")
@@ -178,11 +166,12 @@ again.")
   "Every list kept between sessions (DEFINE-STATE-LIST), for the writer to look through.")
 
 (defmacro define-state-list (variable name &rest arguments)
-  "Define VARIABLE as a list kept between sessions in the file NAME of the
-state directory, made by MAKE-STATE-LIST with ARGUMENTS (PARSE PRINT LIMIT
-and the keys: :HEADER, :PATH-OF, :KEY, :VERSION, :CLASS, :FIELDS, :TRUST,
-:LINE-KEY and :FORMERLY), and known to the writer (*STATE-LISTS*). Its file begins with the line # tuatara NAME VERSION;
-lines beginning with # are comments, never given to PARSE."
+  "Define VARIABLE as a list kept between sessions in the file NAME of the state
+directory, made by MAKE-STATE-LIST with ARGUMENTS (PARSE PRINT LIMIT and the
+keys: :HEADER, :PATH-OF, :KEY, :VERSION, :CLASS, :FIELDS, :TRUST, :LINE-KEY and
+:FORMERLY), and known to the writer (*STATE-LISTS*). Its file begins with the
+line # tuatara NAME VERSION; lines beginning with # are comments, never given to
+PARSE."
   `(progn
      (defvar ,variable (make-state-list ,name ,@arguments)
        ,(format nil "The list kept between sessions in ~a, in the state directory (STATE-LIST): ~
@@ -368,9 +357,10 @@ beginning with @ are of a kind a later release adds, never read as entries."
                              (and (> version (state-list-version list)) (nreverse comments)))))))
 
 (defun read-state-file (list file)
-  "The entries of LIST as FILE has them, the latest first, each once (the
-first of those with one key), at most as many as LIST keeps (STATE-LIST-MOST); empty when it
-cannot be read. Lines that make no entry are passed over (READ-STATE-CONTENTS)."
+  "The entries of LIST as FILE has them, the latest first, each once (the first
+of those with one key), at most as many as LIST keeps (STATE-LIST-MOST); empty
+when it cannot be read. Lines that make no entry are passed over
+\(READ-STATE-CONTENTS)."
   (let ((contents (read-state-contents list file)))
     (if contents (state-contents-entries contents) '())))
 
@@ -437,10 +427,10 @@ FILE, the oldest first."
         when (string= to file) collect change))
 
 (defun state-list-entries (list)
-  "The entries of LIST, the latest first: as its file has them, read again
-once another session has changed it, with the changes made here and not yet
-written made to them; at most as many as it keeps (STATE-LIST-MOST). The same list is given
-again while nothing changed; empty when there is no state directory."
+  "The entries of LIST, the latest first: as its file has them, read again once
+another session has changed it, with the changes made here and not yet written
+made to them; at most as many as it keeps (STATE-LIST-MOST). The same list is
+given again while nothing changed; empty when there is no state directory."
   (let* ((file (or (ignoring-errors-reported ("finding the file of ~a" (state-list-name list))
                      (state-list-path list :known t))
                    (return-from state-list-entries '())))
@@ -482,8 +472,8 @@ again while nothing changed; empty when there is no state directory."
 
 (defun state-list-put (list entries)
   "Put ENTRIES first in LIST, in their order, those with the same keys taken
-out, at most as many kept as LIST keeps (STATE-LIST-MOST); written in the background, with
-what other sessions wrote meanwhile."
+out, at most as many kept as LIST keeps (STATE-LIST-MOST); written in the
+background, with what other sessions wrote meanwhile."
   (when entries
     (note-state-change list (list :put entries (state-list-most list)))))
 
@@ -662,8 +652,9 @@ while more are made, then end."
 
 (defun start-state-writer ()
   "Start the thread writing the lists kept between sessions, unless it runs
-already; one at a time, so that changes made together are written together.
-None starts for the editor started bare (*BARE-STATE-DIRECTORY*), which keeps nothing."
+already; one at a time, so that changes made together are written together. None
+starts for the editor started bare (*BARE-STATE-DIRECTORY*), which keeps
+nothing."
   (sb-thread:with-mutex (**state-writer-lock**)
     (unless (or **state-writer** *bare-state-directory*)
       (setf **state-writer**

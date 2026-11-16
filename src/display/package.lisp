@@ -6,9 +6,10 @@
   (:import-from #:tuatara-user #:*window-min-height* #:*window-min-width* #:*scroll-margin* #:*scroll-recenter*)
   (:import-from #:tuatara.runtime #:define-record #:define-setting)
   (:import-from #:tuatara.buffer #:hex-view-p)
-  (:export #:buffer-header-line #:buffer-replacements-function)
   (:documentation "The layout engine producing glyph rows from snapshots and window state; faces,
 fonts, rich cells, windows and frames.")
+  (:export #:buffer-header-line #:add-replacements #:remove-replacements #:buffer-replacements-p
+           #:buffer-replacements)
   (:export #:escape-controls #:shown-name)
   (:export #:*direction-controls* #:*escaped-invisibles* #:in-ranges-p #:fit-columns #:pad-columns #:shorten-string
            #:fill-words #:*screen-column-reach*)

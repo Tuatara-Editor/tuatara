@@ -2,7 +2,7 @@
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; In a status m opens the merge menu, R the rebase menu, A the cherry-pick
-;;;; menu, _ the revert menu and X the reset menu, as Magit's do. Each that
+;;;; menu, _ the revert menu and X the reset menu. Each that
 ;;;; can stop half way (files changed both sides) goes on (c), skips (s) or
 ;;;; stops (a) from its menu, and the status says what git is in the middle
 ;;;; of. Git keeps the messages it would ask to be edited as they are; what
@@ -170,14 +170,6 @@ there lists every action."
 
 ;;; Rebasing as a list says
 
-(defun shell-quoted (string)
-  "STRING quoted for the shell, as one word whatever it holds."
-  (with-output-to-string (out)
-    (write-char #\' out)
-    (loop for c across string
-          do (if (char= c #\') (write-string "'\\''" out) (write-char c out)))
-    (write-char #\' out)))
-
 (defun git-sequence-editor (body)
   "The program git is told to edit its list of commits with: a shell function
 of the list's path doing BODY, a shell command where $1 is that path."
@@ -220,7 +212,8 @@ menu's switches go with it (--autosquash orders fixups first)."
                                                   ;; git writes its list, which is copied out, then the rebase
                                                   ;; is given up: the editor fails, and git starts nothing
                                                   (editor (git-sequence-editor
-                                                           (format nil "cp \"$1\" ~a; exit 1" (shell-quoted copy))))
+                                                           (format nil "cp \"$1\" ~a; exit 1"
+                                                                    (tuatara.text:shell-quoted copy))))
                                                   (said (nth-value 3 (run-git top (append (list "rebase" "-i") switches
                                                                                           (list base))
                                                                               :environment
@@ -299,8 +292,9 @@ list's directory, the new messages in it, is deleted once git is done."
                                             ;; beginning with # kept, an empty commit amended as it is
                                             (format out "pick ~a~%exec git commit --amend --only --allow-empty ~
                                                          --cleanup=whitespace -F ~a~%"
-                                                    hash (shell-quoted file))))))))
-                               (let ((editor (git-sequence-editor (format nil "cp ~a \"$1\"" (shell-quoted todo)))))
+                                                    hash (tuatara.text:shell-quoted file))))))))
+                               (let ((editor (git-sequence-editor
+                                               (format nil "cp ~a \"$1\"" (tuatara.text:shell-quoted todo)))))
                                  (git-job-output job top (append (list "rebase" "-i") switches (list base))
                                                  :environment (list* (format nil "GIT_SEQUENCE_EDITOR=~a" editor)
                                                                      (append *git-english* *git-keep-messages*))))))

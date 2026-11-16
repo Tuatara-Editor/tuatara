@@ -11,7 +11,7 @@
 (in-package #:tuatara.export)
 
 (define-setting *latex-redaction-commands* '("R" "D" "redact")
-  "The LaTeX commands that hide their argument in your LaTeX files, \\\\R{John
+  "The LaTeX commands that hide their argument in your LaTeX files, \\R{John
 Otago} for one. \\[export-check-redactions] and \\[export-latex-compile-pdf]
 look for them in a LaTeX file, as hidden text to be found nowhere else.
 - a list of texts: the commands' names without the backslash, \"R\", \"D\" and
@@ -110,11 +110,8 @@ at once."
          (words (word-starts text))
          (found (make-hash-table)))
     (labels ((hidden-at-p (position)
-               ;; the last span beginning at or before POSITION, by halves; spans do not overlap
-               (let ((low 0) (high (length starts)))
-                 (loop while (< low high)
-                       do (let ((mid (floor (+ low high) 2)))
-                            (if (<= (aref starts mid) position) (setf low (1+ mid)) (setf high mid))))
+               ;; the last span beginning at or before POSITION; spans do not overlap
+               (let ((low (bisect (mid 0 (length starts)) (<= (aref starts mid) position))))
                  (and (plusp low) (< position (aref ends (1- low))))))
              (places (needle)
                ;; where NEEDLE may stand: where its first word does, else anywhere it is
@@ -241,13 +238,14 @@ say what was found, and with QUIET nothing when there is nothing to say."
 
 (define-command export-check-redactions ()
   "Look for the texts this Org or LaTeX file hides shown plainly elsewhere in
-it, and list each place in *Redactions*, where \\<redactions-mode>\\[list-visit] shows it. Hidden are in an
-Org note what {{{redact(...)}}} marks, and {{{protect(...)}}} when its
-#+options say protect:t; in a LaTeX file the arguments of
-*LATEX-REDACTION-COMMANDS* (\\\\R{...}, \\\\D{...}). Each hidden text is looked
-for whole, and each of its words alone, as whole words in any case: John Otago
-hidden is given away by John Otago or by Otago written elsewhere. The enhanced
-export and \\[export-latex-compile-pdf] look first, and ask before making the PDF."
+it, and list each place in *Redactions*, where
+\\<redactions-mode>\\[list-visit] shows it. Hidden are in an Org note what
+{{{redact(...)}}} marks, and {{{protect(...)}}} when its #+options say
+protect:t; in a LaTeX file the arguments of *LATEX-REDACTION-COMMANDS*
+\(\\R{...}, \\D{...}). Each hidden text is looked for whole, and each of its
+words alone, as whole words in any case: John Otago hidden is given away by
+John Otago or by Otago written elsewhere. The enhanced export and
+\\[export-latex-compile-pdf] look first, and ask before making the PDF."
   (check-buffer-redactions (current-buffer)))
 
 (defparameter *export-kept-directories*
@@ -296,17 +294,6 @@ what the export writes is not encrypted. Never into an evidence directory
                         your own: your templates, logos or trusted directories."
                    existing target)
            (lambda () (yes-or-no-p* (format nil "Export to ~a?" target))))))))
-
-(defun redactions-allow-export-p (buffer &optional (text (tuatara.buffer:buffer-string buffer)))
-  "True when a PDF may be made of BUFFER, whose text is TEXT, as far as its
-hidden texts go: none shows elsewhere, or you say to go on when *Redactions*
-lists where they do."
-  (let ((count (check-buffer-redactions buffer :quiet t :text text)))
-    (or (zerop count)
-        (call-with-details-shown
-         (format nil "~d place~:p show~:[~;s~] text hidden elsewhere in the note: *Redactions* lists where."
-                 count (= 1 count))
-         (lambda () (yes-or-no-p* "Make the PDF anyway?"))))))
 
 ;;; Wrapping text in a macro: R and P to hide it, or any the note declares
 
@@ -418,9 +405,9 @@ was: {{{R(John Otago)}}} becomes John Otago. \\[org-macro-wrap] wraps text again
 
 (defun install-redactions ()
   "Give *Redactions* the keys of a list whose entries are opened, offer
-\\[export-check-redactions] in Org and LaTeX buffers, and bind \\`C-c m' and \\`C-c M' in
-Org notes to wrap text in a macro (\\[org-macro-wrap]) and take a call away
-\\(\\[org-macro-unwrap])."
+\\[export-check-redactions] in Org and LaTeX buffers, and bind \\`C-c m' and
+\\`C-c M' in Org notes to wrap text in a macro (\\[org-macro-wrap]) and take a
+call away (\\[org-macro-unwrap])."
   (entry-list-keys 'redactions-mode "*Redactions*")
   (commands-for-mode 'org-mode "Org and LaTeX files" 'export-check-redactions)
   (commands-for-mode 'org-mode "Org notes" 'org-macro-wrap 'org-macro-unwrap)

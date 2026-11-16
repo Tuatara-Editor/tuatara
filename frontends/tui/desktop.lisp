@@ -136,9 +136,10 @@ AppImage's when it runs from one."
 or tuatara-daemon-NAME.desktop for a daemon of another name than the
 default, in the desktop's autostart directory, ~/.config/autostart/ (autostart/
 in XDG_CONFIG_HOME when it is set)."
-  (namestring (uiop:xdg-config-home (if (string= name tuatara.defaults:*daemon-default-name*)
-                                        "autostart/tuatara-daemon.desktop"
-                                        (format nil "autostart/tuatara-daemon-~a.desktop" name)))))
+  (namestring (merge-pathnames (if (string= name tuatara.defaults:*daemon-default-name*)
+                                   "autostart/tuatara-daemon.desktop"
+                                   (format nil "autostart/tuatara-daemon-~a.desktop" name))
+                               (tuatara.io:config-home))))
 
 (defun generate-autostart (name)
   "Write the autostart entry of the daemon NAME (AUTOSTART-PATH), so that the

@@ -1,8 +1,7 @@
-;;;; lisp/git/git.lisp --- Git from the editor: a repository's state, staging, commits, the log, as Magit has them.
+;;;; lisp/git/git.lisp --- Git from the editor: a repository's state, staging, commits, the log.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; C-x g shows the state of the repository the current file is in, as
-;;;; Magit's status does: the branch and how it stands with its upstream, the
+;;;; C-x g shows the state of the repository the current file is in: the branch and how it stands with its upstream, the
 ;;;; files not tracked, those changed and those staged, and the latest commits.
 ;;;; On a file, s stages it, u unstages it, x reverses its changes (asked);
 ;;;; on a section's heading, the same for all its files; on a hunk, the same
@@ -147,12 +146,12 @@ work that only reads."
    :name "tuatara git"))
 
 (defun git-failure-words (command text)
-  "What is said when git COMMAND (push) failed, having printed TEXT, git push,
-and the line saying what went wrong, the first beginning fatal: or error:,
-else the last line it printed, else that it failed; when ssh would not
-reach the server, why in plain words (SSH-REFUSAL-WORDS): a key it does not
-know yet, the host named, or a changed key, which may be an attack; when the
-server refused every ssh key, that, and how to give ssh yours."
+  "Why git COMMAND failed, in one line: git and COMMAND, then the first line
+of TEXT, what it printed, that begins with git's fatal or error, else its
+last line, else \"it failed\". When ssh would not reach the server, the
+line says why in plain words (SSH-REFUSAL-WORDS): a key it does not know
+yet, the host named, or a changed key, which may be an attack. When the
+server refused every ssh key, it says so and how to give ssh yours."
   (let ((lines (remove-if (lambda (line) (zerop (length (string-trim '(#\Space #\Tab #\Return) line))))
                           (uiop:split-string text :separator '(#\Newline)))))
     (format nil "git ~a: ~a" command
@@ -832,7 +831,8 @@ everywhere."
 (define-major-mode git-log-mode special-mode
   "A repository's commits (\\[git-log-menu]), a line each: its hash (with the
 graph when asked for), date, author, the branches and tags at it, and its
-subject. \\<git-log-mode>\\[git-log-show] shows the commit on the line; \\[quit-window] closes."
+subject. \\<git-log-mode>\\[list-visit] shows the commit on the line, \\[list-visit-other]
+with the log kept selected; \\[quit-window] closes."
   :lighter "Git log" :interactive nil)
 
 (defmethod mode-wraps-p ((mode git-log-mode))
@@ -1384,9 +1384,8 @@ file git could not join is refused: it is staged whole once put right."
   (let ((conflicted (git-conflicted-file chosen section))
         (patch (git-hunks-patch chosen section (not (eq how :stage)))))
     (cond (conflicted
-           (message (substitute-command-keys "~a is in conflict: put it right, then ~
-                                              \\<git-status-mode>\\[git-stage] on its line stages it whole"
-                                            :for-format t)
+           (message "~a is in conflict: put it right, then ~
+                     \\<git-status-mode>\\[git-stage] on its line stages it whole"
                     (escape-controls conflicted)))
           ((null patch) (message "No change among the lines selected"))
           (t (when (git-lines-selected-p (current-buffer)) (drop-selection))
@@ -1778,13 +1777,14 @@ that edits), q closing it (VIEW-MADE-TEXT)."
     (git-set-top buffer top)
     (view-made-text buffer)))
 
-(defun git-show-output (doing top arguments name &key empty (mode 'diff-mode) environment after)
+(defun git-show-output (doing top arguments name &key empty (mode 'diff-mode) environment after (select t))
   "Run git with ARGUMENTS (a list, or a function of the job giving one on its
 thread) for the repository at TOP as a job doing DOING, and show what it
-printed in the buffer NAME in MODE (GIT-TEXT-BUFFER), its text made on the
-job's thread, no more than *GIT-SHOWN-LIMIT* of it; EMPTY is said when it
-printed nothing. ENVIRONMENT is added to git's; AFTER, when given, is called
-however it ended, else the work only reads."
+printed in the buffer NAME in MODE (GIT-TEXT-BUFFER) in another window,
+selected unless SELECT is NIL, its text made on the job's thread, no more
+than *GIT-SHOWN-LIMIT* of it; EMPTY is said when it printed nothing.
+ENVIRONMENT is added to git's; AFTER, when given, is called however it ended,
+else the work only reads."
   (start-git-job doing
                  (lambda (job)
                    (let ((arguments (if (functionp arguments) (funcall arguments job) arguments)))
@@ -1797,14 +1797,19 @@ however it ended, else the work only reads."
                  (lambda (rope)
                    (if (and empty (zerop (tuatara.text:rope-octet-length rope)))
                        (message "~a" empty)
-                       (pop-to-buffer (git-text-buffer name top rope :mode mode) :other t)))
+                       (let ((buffer (git-text-buffer name top rope :mode mode)))
+                         (if select
+                             (pop-to-buffer buffer :other t)
+                             (display-buffer buffer :other t)))))
                  :after after :quiet (null after)))
 
-(defun git-show-commit (top hash)
-  "Show the commit HASH of the repository at TOP: what it says and its changes."
+(defun git-show-commit (top hash &key (select t))
+  "Show the commit HASH of the repository at TOP: what it says and its
+changes, in another window, selected unless SELECT is NIL."
   (git-show-output "Reading the commit" top
                    (list "show" "--no-color" "--no-ext-diff" "--stat" "--patch" "--end-of-options" hash)
-                   (format nil "*git commit ~a*" (escape-controls hash))))
+                   (format nil "*git commit ~a*" (escape-controls hash))
+                   :select select))
 
 ;;; Looked at only
 
@@ -1916,6 +1921,19 @@ each status shown reads its repository again."
 
 (commands-for-mode 'git-log-mode "a repository's log (\\[git-log-menu] in a status)" 'git-log-show)
 
+(defmethod visit-entry ((mode git-log-mode) list entry other)
+  "Show the commit on the line, with OTHER the log kept selected."
+  (declare (ignore list))
+  (let ((hash (cond ((git-commit-p entry) (git-commit-short entry))
+                    ((stringp (first entry)) (first entry)))))
+    (if hash
+        (git-show-commit (git-here) hash :select (not other))
+        (message "No commit on this line"))))
+
+(defmethod list-entry-noun ((mode git-log-mode))
+  "A log's entries are commits."
+  "commit")
+
 (defun install-git ()
   "Bind \\`C-x g' to \\[git] and the keys of its status (j and k left to move
 by lines, h to close and l to visit, as in every list); and let a save, and
@@ -1923,20 +1941,21 @@ git run from anywhere, look at its repository again (GIT-WATCH-TICK), the
 directories of git's own files watched on disk for it. A repository looked at
 only says so in its buffers' mode lines, refuses what would change it, and
 is looked at again when \\[trust-project] answers anew; the shadows of
-repositories not trusted that sessions no longer running left are deleted.
+repositories not trusted that sessions no longer running left are deleted
+on a thread of its own.
 Then the keys of the rest: commits, stashes, branches, the log, remotes,
 history, references, files, rewinding, the repository's parts, patches and
 rimu's git column."
   (define-key *global-keymap* "C-x g" 'git)
   (define-keys *git-status-keymap* '(("s" git-stage) ("u" git-unstage) ("x" git-reverse) ("TAB" git-toggle-diff)
                                      ("RET" git-visit) ("l" git-visit) ("C-f" git-visit)
-                                     ("h" quit-window) ("C-b" quit-window)
                                      ("n" git-next-section) ("p" git-previous-section) ("S-TAB" list-toggle-all-folds)))
+  (list-back-keys *git-status-keymap*)
   (pushnew 'git-after-save *after-save-functions*)
   (pushnew 'git-look-only-mode-line *mode-line-name-functions*)
   (pushnew 'git-look-only-refusal *command-refusal-functions*)
   (pushnew 'git-trust-changed *trust-changed-functions*)
-  (forget-old-git-shadows)
+  (tuatara.runtime:make-guarded-thread #'forget-old-git-shadows :name "tuatara old git shadows")
   (pushnew 'git-watch-tick *tick-functions*)
   (follow-directories-for 'git-watched-directories 'git-directories-changed :tells t)
   (install-git-commits)

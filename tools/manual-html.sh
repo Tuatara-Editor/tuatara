@@ -9,14 +9,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 . tools/inside.sh
 tools/manual-tables.sh > /dev/null
-tree="$PWD/"
-# none of your own templates or settings in what is made
-mkdir -p build
-config="$(mktemp -d "$PWD/build/.manual-config.XXXXXX")"
-trap 'rm -rf "$config"' EXIT
-inside env XDG_CONFIG_HOME="$config" sbcl --dynamic-space-size 4GB --non-interactive \
-  --load tools/quicklisp.lisp \
-  --eval "(push #p\"$tree\" asdf:*central-registry*)" \
-  --eval '(ql:quickload (list :tuatara/defaults :tuatara/frontend-fake :tuatara/terminal) :silent t)' \
-  --load tools/manual-html.lisp \
-  --eval "(manual-html:run-html #p\"$tree\")"
+# none of your own templates or settings in what is made: tools/manual-html.lisp fences them off
+in_tree '(list :tuatara/defaults :tuatara/frontend-fake :tuatara/terminal)' \
+  '(load "tools/manual-html.lisp")' \
+  "(manual-html:run-html #p\"$PWD/\")"

@@ -20,12 +20,7 @@ are one above another, else of its width. The parts of a split add up to 1.")
   (:documentation "A rectangle of the screen in the layout of windows: a window, or a split
 holding windows one above another or side by side."))
 
-(setf (documentation 'area-parent 'function) "The split holding AREA, or NIL when AREA is the whole layout."
-      (documentation 'area-share 'function) "AREA's part of its split's height or width, a fraction."
-      (documentation 'area-left 'function) "The screen column of AREA's left edge."
-      (documentation 'area-top 'function) "The screen row of AREA's top edge."
-      (documentation 'area-width 'function) "Columns AREA covers, a window's divider included."
-      (documentation 'area-height 'function) "Rows AREA covers, a window's mode line included.")
+(tuatara.runtime:document-accessors 'area)
 
 (defclass window (area)
   ((buffer :initarg :buffer :reader window-buffer
@@ -85,32 +80,7 @@ START POINT) with anchors where it was."))
 the redisplay keeps adjusted so that point is visible. The selected window's
 point is its buffer's point; every other window keeps a point of its own."))
 
-(setf (documentation 'window-buffer 'function) "The buffer WINDOW shows."
-      (documentation 'window-start-anchor 'function) "The anchor holding the first byte WINDOW shows."
-      (documentation 'window-point-anchor 'function) "The anchor of WINDOW's own point, or NIL while
-its point is its buffer's (the selected window)."
-      (documentation 'window-width 'function) "Columns of WINDOW available for text."
-      (documentation 'window-height 'function) "Rows of WINDOW available for text."
-      (documentation 'window-full-height 'function) "Rows of text WINDOW has under a panel of one
-row, or NIL for its height."
-      (documentation 'window-wrap 'function) "True when WINDOW wraps long lines."
-      (documentation 'window-hscroll 'function) "Columns WINDOW is scrolled horizontally."
-      (documentation 'window-goal-column 'function) "Column vertical motion in WINDOW tries to keep, or NIL."
-      (documentation 'window-rows 'function) "Rows of WINDOW's last layout."
-      (documentation 'window-spare-rows 'function) "Rows WINDOW showed before and shows no more, for
-its next layout to fill again."
-      (documentation 'window-row-start-seen 'function) "What WINDOW's start was last found a row's
-start for (ROW-START-STATE), or NIL."
-      (documentation 'window-laid-out 'function) "WINDOW's last layout, kept to be used again (KEPT-LAYOUT), or NIL."
-      (documentation 'window-float-kept 'function) "What WINDOW's text went round at its start when last
-asked (WINDOW-FLOAT-IN-FORCE), with what that was worked out for, or NIL."
-      (documentation 'window-margin 'function) "Columns of WINDOW reserved at the left for gutters."
-      (documentation 'window-divider 'function) "True when WINDOW's last column divides it from the window beside it."
-      (documentation 'window-use-time 'function) "The count of selections when WINDOW was last selected."
-      (documentation 'window-kept 'function) "The rule WINDOW is kept for, or NIL."
-      (documentation 'window-quit-restore 'function) "What quitting WINDOW does: :DELETE, a buffer to show, or NIL."
-      (documentation 'window-history 'function) "The buffers WINDOW showed before, latest first, as
-(BUFFER START POINT).")
+(tuatara.runtime:document-accessors 'window)
 
 (defun make-window (buffer &key (width 80) (height 24))
   "Return a window showing BUFFER with WIDTH columns and HEIGHT rows of text."
@@ -130,23 +100,49 @@ faces. NIL for a buffer with no header line."
 none."
   (setf (tuatara.buffer:buffer-local buffer :header-line) function))
 
-(defun buffer-replacements-function (buffer)
-  "The function giving what BUFFER's windows show in place of parts of its
-text, or NIL: called with BUFFER, a START and an END octet, it returns a list
-of (START END TEXT FACE), sorted by START, each shown as TEXT in FACE instead
-of the octets from START to END (links shown by their descriptions)."
-  (tuatara.buffer:buffer-local buffer :display-replacements-function))
+(defun add-replacements (buffer key function)
+  "Have BUFFER's windows show what FUNCTION gives in place of parts of its
+text, beside what other sources show, until REMOVE-REPLACEMENTS
+with KEY, compared by EQL (a keyword naming the source: :mode for its major
+mode's own, :hints for a language server's; a fresh cons for a source each
+question has of its own, as a replacement's preview): FUNCTION, called with BUFFER, a START and an END
+octet, returns a list of (START END TEXT FACE), sorted by START, each shown as
+TEXT in FACE instead of the octets from START to END (links shown by their
+descriptions; START and END alike for text shown between two characters). A
+source added again under its KEY takes the place of the one before."
+  (let ((sources (remove key (tuatara.buffer:buffer-local buffer :display-replacements) :key #'car)))
+    (setf (tuatara.buffer:buffer-local buffer :display-replacements)
+          (append sources (list (cons key function))))))
 
-(defun (setf buffer-replacements-function) (function buffer)
-  "Have BUFFER's windows show what FUNCTION gives in place of parts of its text
-\(BUFFER-REPLACEMENTS-FUNCTION); NIL for its text as it is."
-  (setf (tuatara.buffer:buffer-local buffer :display-replacements-function) function))
+(defun remove-replacements (buffer key)
+  "Have BUFFER's windows no longer show what the source added as KEY gives
+\(ADD-REPLACEMENTS); the other sources stay."
+  (setf (tuatara.buffer:buffer-local buffer :display-replacements)
+        (remove key (tuatara.buffer:buffer-local buffer :display-replacements) :key #'car)))
+
+(defun buffer-replacements-p (buffer &optional key)
+  "True when BUFFER's windows show something in place of parts of its text
+\(ADD-REPLACEMENTS), from the source KEY when given."
+  (let ((sources (tuatara.buffer:buffer-local buffer :display-replacements)))
+    (and (if key (assoc key sources) sources) t)))
+
+(defun buffer-replacements (buffer start end)
+  "What BUFFER's windows show in place of its text from START below END, from
+every source ADD-REPLACEMENTS added, as one list of (START END TEXT FACE)
+sorted by START; not to be changed, a source's own list given as it is when
+there is one source alone."
+  (let ((sources (tuatara.buffer:buffer-local buffer :display-replacements)))
+    (if (null (rest sources))
+        (and sources (funcall (cdr (first sources)) buffer start end))
+        (let ((all '()))
+          (dolist (source sources all)
+            (setf all (merge 'list all (copy-list (funcall (cdr source) buffer start end)) #'< :key #'car)))))))
 
 (defun window-header-rows (window)
   "The rows at the top of WINDOW its buffer's header line takes: one while the
-buffer has a header line (BUFFER-HEADER-LINE), is not shown as a hex dump unless the line is for
-the dump too (its :header-line-over-hex local), and the window has room for
-it, a row of text and its mode line; else none."
+buffer has a header line (BUFFER-HEADER-LINE), is not shown as a hex dump unless
+the line is for the dump too (its :header-line-over-hex local), and the window
+has room for it, a row of text and its mode line; else none."
   (let ((buffer (window-buffer window)))
     (if (and (buffer-header-line buffer)
              (or (not (hex-view-p buffer)) (tuatara.buffer:buffer-local buffer :header-line-over-hex))
@@ -323,6 +319,10 @@ does and its history."
           (window-quit-restore window) quit
           (window-history window) history)))
 
+(defvar *layout-settings* nil
+  "What the host says of a buffer's layout, asked once while a window is laid
+out (WITH-LAYOUT-SETTINGS), as (BUFFER TAB-WIDTH SOFT-WRAP INVISIBLE DIRECTION).")
+
 (defgeneric host-tab-width (host buffer)
   (:documentation "The columns a tab takes in BUFFER, from one tab stop to the next; NIL for 8,
 as on the core's own host in every buffer.")
@@ -338,7 +338,9 @@ as on the core's own host in every buffer.")
 (defun tab-width-of (buffer)
   "The columns a tab takes in BUFFER, as HOST-TAB-WIDTH says: a whole number
 from 1 to 64, 8 when it says nothing sensible."
-  (sensible-tab-width (host-tab-width tuatara.runtime:*host* buffer) 8))
+  (if (eq (first *layout-settings*) buffer)
+      (second *layout-settings*)
+      (sensible-tab-width (host-tab-width tuatara.runtime:*host* buffer) 8)))
 
 (defgeneric host-soft-wrap (host buffer)
   (:documentation "How BUFFER's lines longer than the window wrap: NIL for not at all (cut off
@@ -349,10 +351,16 @@ buffer.")
     (declare (ignore buffer))
     nil))
 
+(defun soft-wrap-of (buffer)
+  "How BUFFER's long lines wrap, as HOST-SOFT-WRAP says: NIL, T or a column."
+  (if (eq (first *layout-settings*) buffer)
+      (third *layout-settings*)
+      (host-soft-wrap tuatara.runtime:*host* buffer)))
+
 (defun window-wraps-p (window)
   "True when WINDOW wraps long lines: set for the window (WINDOW-WRAP), or at a
 word's edge as its buffer wants (HOST-SOFT-WRAP)."
-  (or (window-wrap window) (and (host-soft-wrap tuatara.runtime:*host* (window-buffer window)) t)))
+  (or (window-wrap window) (and (soft-wrap-of (window-buffer window)) t)))
 
 (defgeneric host-invisible-characters-p (host buffer)
   (:documentation "True when the characters that draw nothing are shown in BUFFER's text as their
@@ -365,7 +373,9 @@ buffer.")
 (defun invisible-characters-of (buffer)
   "True when BUFFER shows the characters that draw nothing as their codes, as
 HOST-INVISIBLE-CHARACTERS-P says."
-  (and (host-invisible-characters-p tuatara.runtime:*host* buffer) t))
+  (if (eq (first *layout-settings*) buffer)
+      (fourth *layout-settings*)
+      (and (host-invisible-characters-p tuatara.runtime:*host* buffer) t)))
 
 (defgeneric host-text-direction (host buffer)
   (:documentation "How the lines of BUFFER holding right-to-left text (Hebrew, Arabic and the
@@ -381,7 +391,25 @@ it is :AUTO in every buffer.")
 (defun text-direction-of (buffer)
   "How BUFFER's lines holding right-to-left text are shown, as
 HOST-TEXT-DIRECTION says: NIL, :LEFT-TO-RIGHT, :RIGHT-TO-LEFT or :AUTO."
-  (host-text-direction tuatara.runtime:*host* buffer))
+  (if (eq (first *layout-settings*) buffer)
+      (fifth *layout-settings*)
+      (host-text-direction tuatara.runtime:*host* buffer)))
+
+(defun call-with-layout-settings (buffer function)
+  "Call FUNCTION with BUFFER's tab width, soft wrap, invisible characters and
+text direction asked of the host once, for the tab-width-of and the like it
+makes, unless that was done already for BUFFER."
+  (if (eq (first *layout-settings*) buffer)
+      (funcall function)
+      (let ((*layout-settings* (list buffer (tab-width-of buffer) (soft-wrap-of buffer)
+                                     (invisible-characters-of buffer) (text-direction-of buffer))))
+        (funcall function))))
+
+(defmacro with-layout-settings ((buffer) &body body)
+  "Run BODY with the host's settings for laying out BUFFER asked for once."
+  `(flet ((body () ,@body))
+     (declare (dynamic-extent #'body))
+     (call-with-layout-settings ,buffer #'body)))
 
 (defvar *layout-probe* nil
   "True while a window's buffer is laid out only to find where a row starts,
@@ -402,7 +430,7 @@ further. With SPARES, the rows are filled from WINDOW's rows no longer shown
 \(WINDOW-SPARE-ROWS) while it has any. Of a narrowed buffer, only the part
 shown is laid out."
   (let* ((buffer (window-buffer window))
-         (visual (host-soft-wrap tuatara.runtime:*host* buffer))
+         (visual (soft-wrap-of buffer))
          (wrap (or (window-wrap window) (and visual t))))
     (layout (tuatara.buffer:buffer-text buffer) start
             (window-text-width window) height
@@ -534,15 +562,15 @@ it is given. O(log n + WIDTH × HEIGHT) in the folds."
   "What a window showing BUFFER from START, WIDTH by HEIGHT, does not show as
 it is, for LAYOUT's HIDDEN. It is BUFFER's folds and the lines search filters
 hide, as far as the window could reach (FOLDS-IN-REACH, HIDDEN-IN-REACH), and
-what it shows in place of its text (BUFFER-REPLACEMENTS-FUNCTION, each (START
+what it shows in place of its text (BUFFER-REPLACEMENTS, each (START
 END TEXT FACE)) from START on, as far as the window could reach or to END. The
 replacements are asked for each stretch shown between the folds alone, never
 the text they hide. One inside a fold is left out."
   (let* ((bounds (hidden-bounds buffer))
          (folds (and (tuatara.buffer:buffer-local buffer :folds) (folds-in-reach buffer start width height end)))
          (folds (if bounds (merge 'list folds (hidden-in-reach bounds start height) #'< :key #'car) folds))
-         (function (buffer-replacements-function buffer)))
-    (if (null function)
+         (replacing (buffer-replacements-p buffer)))
+    (if (not replacing)
         folds
         (let* ((budget (* 8 (max 1 width) (max 1 height)))
                (limit (or end (tuatara.buffer:buffer-size buffer)))
@@ -563,7 +591,7 @@ the text they hide. One inside a fold is left out."
                         (nreverse out)))
                (replacements (loop for (from . to) in shown
                                    when (< from to)
-                                     nconc (copy-list (funcall function buffer from to))))
+                                     nconc (copy-list (buffer-replacements buffer from to))))
                ;; those inside a fold left out, both lists being in order
                (kept (let ((rest folds) (out '()))
                        (dolist (r replacements (nreverse out))
@@ -609,7 +637,7 @@ for laying it out, the window's width, height, wrapping and sideways
 scroll, and how it shows right-to-left text."
   (let ((buffer (window-buffer window)))
     (list (tuatara.buffer:buffer-version buffer) (window-text-width window) (window-height window)
-          (window-hscroll window) (window-wrap window) (host-soft-wrap tuatara.runtime:*host* buffer)
+          (window-hscroll window) (window-wrap window) (soft-wrap-of buffer)
           (tab-width-of buffer)
           (tuatara.buffer:buffer-line-ending buffer) (invisible-characters-of buffer) (text-direction-of buffer)
           (tuatara.buffer:buffer-local buffer :folds)
@@ -672,6 +700,11 @@ it is drawn; the first or last row of the text shown at most."
 (defun window-layout (window)
   "Lay out WINDOW's buffer from its start, store and return the rows: as text,
 or as a hex dump (HEX-LAYOUT) when the buffer is in the hex view."
+  (with-layout-settings ((window-buffer window))
+    (window-layout-now window)))
+
+(defun window-layout-now (window)
+  "WINDOW-LAYOUT, the host's settings for the buffer not yet asked for."
   (let ((buffer (window-buffer window)))
     ;; never from outside the part a narrowed buffer shows
     (when (tuatara.buffer:buffer-narrowing buffer)
@@ -704,7 +737,7 @@ has nothing its display replacements show otherwise (as a mode's links, which
 depend on where point is), no prefix before its lines and no lines drawn
 large, all of which can change while LAYOUT-STATE does not."
   (let ((buffer (window-buffer window)))
-    (not (or (buffer-replacements-function buffer)
+    (not (or (buffer-replacements-p buffer)
              (tuatara.buffer:buffer-local buffer :line-prefix-function)
              (window-scaling-p window)))))
 
@@ -941,12 +974,11 @@ MARGIN rows of the top or the bottom of the window with text beyond that edge
 
 (defun replaced-start (buffer position)
   "POSITION, or where the stretch BUFFER's display shows something else in
-place of begins when POSITION is inside one (BUFFER-REPLACEMENTS-FUNCTION),
+place of begins when POSITION is inside one (BUFFER-REPLACEMENTS),
 which is where a window has it drawn."
-  (let* ((function (buffer-replacements-function buffer))
-         (entry (and function
-                     (find-if (lambda (entry) (<= (first entry) position (1- (second entry))))
-                              (funcall function buffer position (1+ position))))))
+  (let ((entry (and (buffer-replacements-p buffer)
+                    (find-if (lambda (entry) (<= (first entry) position (1- (second entry))))
+                             (buffer-replacements buffer position (1+ position))))))
     (if entry (first entry) position)))
 
 (defun keep-point-column-visible (window)
@@ -1007,12 +1039,18 @@ Where lines are cut off at the edge, it scrolls sideways until the character
 at point shows whole. Returns the rows. Complexity: that of a layout, and
 O(*SCREEN-COLUMN-REACH* + log n) for the columns of point's line, however
 long it is."
+  (with-layout-settings ((window-buffer window))
+    (window-ensure-point-visible-now window)))
+
+(defun window-ensure-point-visible-now (window)
+  "WINDOW-ENSURE-POINT-VISIBLE, the host's settings for the buffer not yet
+asked for."
   (let* ((buffer (window-buffer window))
          (rope (tuatara.buffer:buffer-text buffer))
          (point (window-point window))
          (margin (window-scroll-margin window)))
     (when (hex-view-p buffer)
-      (return-from window-ensure-point-visible (hex-ensure-point-visible window)))
+      (return-from window-ensure-point-visible-now (hex-ensure-point-visible window)))
     ;; keep start valid after edits
     (setf (window-start window) (min (window-start window) (tuatara.text:rope-octet-length rope)))
     ;; a line's start, or where lines wrap, a row's, unless nothing has changed since it was one

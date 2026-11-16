@@ -44,19 +44,24 @@ own: a Latin letter, or any of class :L, :R or :AL."
       (or (<= 65 code 90) (<= 97 code 122))
       (and (member (code-bidi-class code) '(:l :r :al)) t)))
 
+(declaim (inline canonical-bracket-code))
+(defun canonical-bracket-code (code)
+  "CODE, the angle brackets U+2329 and U+232A given as U+3008 and U+3009, the
+same brackets, so that a pair of them can be matched."
+  (case code (#x2329 #x3008) (#x232A #x3009) (t code)))
+
 (defun bracket-pair (code)
   "Two values for the character of CODE when it is a paired bracket: the code
 of the bracket it pairs with, and :OPEN or :CLOSE; NIL when it is none. The
 angle brackets U+2329 and U+232A are given as U+3008 and U+3009, the same
 brackets."
-  (let ((char (code-char code)))
-    (flet ((same (code) (case code (#x2329 #x3008) (#x232A #x3009) (t code))))
-      (case (sb-unicode:general-category char)
-        ((:ps :pe)
-         (let ((other (sb-unicode:bidi-mirroring-glyph char)))
-           (when (and other (member (sb-unicode:general-category other) '(:ps :pe))
-                      (not (eq (sb-unicode:general-category other) (sb-unicode:general-category char))))
-             (values (same (char-code other)) (if (eq (sb-unicode:general-category char) :ps) :open :close)))))))))
+  (let* ((char (code-char code))
+         (category (sb-unicode:general-category char)))
+    (when (member category '(:ps :pe))
+      (let* ((other (sb-unicode:bidi-mirroring-glyph char))
+             (other-category (and other (sb-unicode:general-category other))))
+        (when (and (member other-category '(:ps :pe)) (not (eq other-category category)))
+          (values (canonical-bracket-code (char-code other)) (if (eq category :ps) :open :close)))))))
 
 (defun mirrored-char (char)
   "The character CHAR is shown as in text written from right to left: the
@@ -409,8 +414,7 @@ N0), SOS being the direction before the sequence."
                      (return))
                    (setf (aref open-code depth) other (aref open-at depth) k)
                    (incf depth))
-            (:close (let ((code (case (aref codes (aref sequence k)) (#x2329 #x3008) (#x232A #x3009)
-                                  (t (aref codes (aref sequence k))))))
+            (:close (let ((code (canonical-bracket-code (aref codes (aref sequence k)))))
                       (loop for d downfrom (1- depth) to 0
                             when (= (aref open-code d) code)
                               do (setf (aref partner (aref open-at d)) k depth d)

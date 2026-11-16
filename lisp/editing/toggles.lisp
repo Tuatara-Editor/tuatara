@@ -70,7 +70,7 @@ wrap off in every buffer. Every frame shows the change."
     (when (and never value (not everywhere) (funcall (first never) (current-buffer)))
       (refuse "~a does not work ~a." (display-toggle-label toggle) (second never)))
     (if everywhere
-        (setf (symbol-value (display-toggle-global toggle)) value)
+        (set-setting (display-toggle-global toggle) value)
         (choose-display (current-buffer) name value))
     ;; the frames not worked in show it too
     (incf *display-generation*)
@@ -118,16 +118,11 @@ centred."
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defun filled-docstring (control &rest arguments)
     "CONTROL formatted with ARGUMENTS, as FORMAT does, its words filled into
-lines of at most 78 columns, as a docstring is written."
-    (let ((words (tuatara.text:split-words (apply #'format nil control arguments) '(#\Space #\Newline)))
-          (column 0))
-      (with-output-to-string (out)
-        (dolist (word words)
-          (cond ((zerop column))
-                ((> (+ column 1 (length word)) 78) (terpri out) (setf column 0))
-                (t (write-char #\Space out) (incf column)))
-          (write-string word out)
-          (incf column (length word))))))
+lines of at most 78 columns (TUATARA.DISPLAY:FILL-WORDS), as a docstring is
+written."
+    (format nil "~{~a~^~%~}"
+            (tuatara.display:fill-words
+             (tuatara.text:split-words (apply #'format nil control arguments) '(#\Space #\Newline)) 78)))
 
   (defun modes-docstring (what example global command default-modes values-doc)
     "The docstring of the modes list of a display toggle that WHAT describes:
@@ -197,7 +192,7 @@ GLOBAL begin with the package's name."
          :values ,(if valued `(member nil ,@(mapcar #'first values)) 'boolean))
        (,setting ,modes '()
          ,(modes-docstring what example global command default-modes values-doc)
-         :values (list-of "(MODE . VALUE)"))
+         :values (list-of (cons symbol ,(if valued `(member nil ,@(mapcar #'first values)) 'boolean))))
        (defun ,lookup (&optional (buffer (current-buffer)))
          ,(filled-docstring "True when BUFFER (the current buffer unless given) is set to ~a, as it chose for ~
                              itself with \\[~(~a~)], ~@[else ~a, ~]else as ~a says of its major mode, else as ~a says~
@@ -207,8 +202,8 @@ GLOBAL begin with the package's name."
               ,(if where
                    `(if (and (eq (tuatara.buffer:buffer-local buffer ,key '%unset) '%unset) (,(first where) buffer))
                         ',(if (cddr where) (third where) (first (first values)))
-                        (buffer-setting buffer ,key (setting-list ',modes ,modes :pairs t) ,global ,default-modes))
-                   `(buffer-setting buffer ,key (setting-list ',modes ,modes :pairs t) ,global ,default-modes))))
+                        (buffer-setting buffer ,key (setting-in-force ',modes) ,global ,default-modes))
+                   `(buffer-setting buffer ,key (setting-in-force ',modes) ,global ,default-modes))))
        (define-command ,command ()
          ,(filled-docstring "~a The buffer keeps its choice whatever ~a and ~a say; ~a" doc modes global count-doc)
          (switch-display ',name))
@@ -317,7 +312,8 @@ and \\[global-text-direction-mode] switches it while the editor runs."
   whatever its first letter.
 - nil: the characters in the order they are stored."
   :where (text-direction-as-stored-p
-          "in the order stored in a file opened safely (*text-direction-when-safe*) or in a terminal that turns text round itself"
+          "in the order stored in a file opened safely (*text-direction-when-safe*) or in a
+           terminal that turns text round itself"
           nil))
 
 (defmethod tuatara.display:host-text-direction ((host defaults-host) buffer)

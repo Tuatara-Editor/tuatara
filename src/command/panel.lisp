@@ -542,24 +542,35 @@ whole, its start never scrolled off the left."
     (prompt-broken (editor-minibuffer-prompt editor) width
                    (- width (length (completion-count-prefix editor)) (floor width 3)))))
 
+(defvar *prompt-broken-kept* nil
+  "What PROMPT-BROKEN last worked out for a prompt too long for its room, as
+\(PROMPT WIDTH ROOM . VALUES): it is asked for the same question several times
+a frame.")
+
 (defun prompt-broken (prompt width room)
   "PROMPT, a question, as three values: the rows of WIDTH columns holding its
 start, broken between words, when it takes more than ROOM columns; what of
 it is left for the last row, no more than ROOM (all of it when it fits);
 and where in PROMPT each of those rows begins."
-  (if (<= (panel-columns prompt) room)
-      (values '() prompt '())
-      (let ((rows '()) (starts '()) (start 0))
-        (loop while (> (panel-columns prompt :start start) room)
-              do (let* ((limit (+ start (max 1 (columns-end (subseq prompt start) width))))
-                        (break (or (position #\Space prompt :start (1+ start) :end limit :from-end t) limit)))
-                   (push (subseq prompt start break) rows)
-                   (push start starts)
-                   (setf start
-                         (min (length prompt)
-                              (if (and (< break (length prompt))
-                                       (char= (char prompt break) #\Space)) (1+ break) break)))))
-        (values (nreverse rows) (subseq prompt start) (nreverse starts)))))
+  (let ((kept *prompt-broken-kept*))
+    (cond ((<= (panel-columns prompt) room)
+           (values '() prompt '()))
+          ((and kept (eq (first kept) prompt) (eql (second kept) width) (eql (third kept) room))
+           (values-list (cdddr kept)))
+          (t
+           (let ((rows '()) (starts '()) (start 0))
+             (loop while (> (panel-columns prompt :start start) room)
+                   do (let* ((limit (+ start (max 1 (columns-end (subseq prompt start) width))))
+                             (break (or (position #\Space prompt :start (1+ start) :end limit :from-end t) limit)))
+                        (push (subseq prompt start break) rows)
+                        (push start starts)
+                        (setf start
+                              (min (length prompt)
+                                   (if (and (< break (length prompt))
+                                            (char= (char prompt break) #\Space)) (1+ break) break)))))
+             (let ((values (list (nreverse rows) (subseq prompt start) (nreverse starts))))
+               (setf *prompt-broken-kept* (list* prompt width room values))
+               (values-list values)))))))
 
 (defun spans-within (spans start end)
   "Those of SPANS, each (START END FACE), that reach into START to END, cut
@@ -581,6 +592,22 @@ read whole, as the minibuffer's are."
           (prompt-broken text width width))
         (values '() text '()))))
 
+(defvar *key-hint-entries-kept* nil
+  "What KEY-HINT-ENTRIES last made, as (KEY . ENTRIES): the pending keys and key
+maps it was made for, with the entries, so that the panel's height and its rows,
+asked for in one frame, walk the key maps once.")
+
+(defun key-hint-entries (editor)
+  "The entries, (KEY . NAME), of the keys that can follow the keys EDITOR has
+pending, in the active key maps; made again only when those or the key maps
+changed."
+  (let ((key (list (editor-pending editor) *keymaps-generation* (active-keymaps editor)))
+        (kept *key-hint-entries-kept*))
+    (if (and kept (equal (car kept) key))
+        (cdr kept)
+        (cdr (setf *key-hint-entries-kept*
+                   (cons key (prefix-entries (active-keymaps editor) (editor-pending editor))))))))
+
 (defun key-hint-parts (editor)
   "The key hints for the keys EDITOR has pending, as the panel shows them: a
 list of (TITLE ENTRIES MAX-ROWS COLUMN-WIDTH), each entry (KEY . NAME). What
@@ -588,7 +615,7 @@ acts on what the cursor is on comes first under its title, then the rest
 \(KEY-HINT-FOCUS); else all of them, with no title. MAX-ROWS of the first is
 what its rows may take, of the rest what the first leaves; COLUMN-WIDTH is
 shared by both, or NIL."
-  (let ((entries (prefix-entries (active-keymaps editor) (editor-pending editor)))
+  (let ((entries (key-hint-entries editor))
         (room (key-hint-room editor)))
     (multiple-value-bind (title chosen rest) (key-hint-focus editor entries)
       (if chosen

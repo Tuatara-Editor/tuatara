@@ -236,14 +236,16 @@ DRAW-FORMULAS draws them, a picture for each, NIL for a page larger than
              (boxes (and octets (pdf-page-boxes octets)))
              (scale (/ height *formula-row-points*)))
         (when (and boxes (= (length boxes) (length texts)))
-          (loop for (nil (left bottom right top)) across boxes
-                for page from 1
-                for across = (max 1 (ceiling (* (- right left) scale)))
-                collect (and (<= (* across (max 1 (ceiling (* (- top bottom) scale)))) *formula-largest*)
-                             (let ((fd (tuatara.io:memory-file "tuatara-formulas" octets :kept nil)))
-                               (unwind-protect
-                                    (decode-pdf-page fd page across -1 :cancel (tuatara.runtime:job-cancel job))
-                                 (sb-posix:close fd))))))))))
+          ;; the PDF copied into memory once, read from its start for each page
+          (tuatara.io:call-with-memory-file
+           "tuatara-formulas" octets
+           (lambda (fd)
+             (loop for (nil (left bottom right top)) across boxes
+                   for page from 1
+                   for across = (max 1 (ceiling (* (- right left) scale)))
+                   collect (and (<= (* across (max 1 (ceiling (* (- top bottom) scale)))) *formula-largest*)
+                                (progn (sb-posix:lseek fd 0 sb-posix:seek-set)
+                                       (decode-pdf-page fd page across -1 :cancel (tuatara.runtime:job-cancel job))))))))))))
 
 (defun formula-ink (image colour inline height)
   "IMAGE, a formula drawn black on white, as its ink in COLOUR (#RRGGBB) on

@@ -75,6 +75,12 @@ lower it on a small machine.
   "The seconds a program no longer wanted has to end once asked to (SIGTERM),
 before it is killed (END-UNWANTED-PROGRAM).")
 
+(defun signal-group (group signal)
+  "Send SIGNAL (0 only to look) to every process of the process GROUP; true
+while one of them is there to take it."
+  (handler-case (progn (sb-posix:kill (- group) signal) t)
+    (sb-posix:syscall-error (condition) (/= (sb-posix:syscall-errno condition) sb-posix:esrch))))
+
 (defun end-unwanted-program (process &key (close t))
   "End PROCESS, a program started and no longer wanted, with every program in
 its process group and in the sessions its children lead (as the program
@@ -98,22 +104,31 @@ first."
         (sb-ext:process-kill process sb-unix:sigterm :pid)))
     (tuatara.runtime:make-guarded-thread
      (lambda ()
-       (let ((buffer (make-array 1024 :element-type '(unsigned-byte 8))))
-         (flet ((signal-all (signal)
-                  (tuatara.runtime:ignoring-errors-reported ("ending ~a" process)
-                    (when (sb-ext:process-alive-p process)
-                      (sb-ext:process-kill process signal :pid)))
-                  (dolist (pid (processes-in groups sessions buffer))
-                    (signal-process-if pid (lambda ()
-                                             (multiple-value-bind (group session) (process-group-and-session pid buffer)
-                                               (and group (or (member group groups) (member session sessions)))))
-                                       signal))))
+       (let ((buffer (make-array 1024 :element-type '(unsigned-byte 8))) (group-gone nil))
+         (labels ((group-signalled-p (signal)
+                    ;; its group alone, told by the system: true while a process of it is there; once it
+                    ;; is found empty it is never signalled again, its number then free for another group
+                    (unless group-gone
+                      (or (signal-group (first groups) signal)
+                          (progn (setf group-gone t) nil))))
+                  (left-p ()
+                    (if sessions (processes-in groups sessions buffer) (group-signalled-p 0)))
+                  (signal-all (signal)
+                    (tuatara.runtime:ignoring-errors-reported ("ending ~a" process)
+                      (when (sb-ext:process-alive-p process)
+                        (sb-ext:process-kill process signal :pid)))
+                    (if sessions
+                        (dolist (pid (processes-in groups sessions buffer))
+                          (signal-process-if pid (lambda ()
+                                                   (multiple-value-bind (group session)
+                                                       (process-group-and-session pid buffer)
+                                                     (and group (or (member group groups) (member session sessions)))))
+                                             signal))
+                        (group-signalled-p signal))))
            (unwind-protect
                 (progn
                   (when sessions (signal-all sb-unix:sigterm))
-                  (tuatara.runtime:wait-until (lambda ()
-                                                (and (not (sb-ext:process-alive-p process))
-                                                     (null (processes-in groups sessions buffer))))
+                  (tuatara.runtime:wait-until (lambda () (and (not (sb-ext:process-alive-p process)) (not (left-p))))
                                               *program-end-grace* :interval 1/20))
              (signal-all sb-unix:sigkill)
              (tuatara.runtime:ignoring-errors-reported ("waiting for ~a to end" process) (sb-ext:process-wait process))
@@ -164,6 +179,10 @@ own directories and settings with OWN-VARIABLE."
   (let ((prefix (concatenate 'string name "=")))
     (loop for setting in (program-environment)
           when (uiop:string-prefix-p prefix setting) return (subseq setting (length prefix)))))
+
+(defun terminal-p (fd)
+  "True when the file descriptor (FD) FD is a terminal."
+  (eql 1 (sb-unix:unix-isatty fd)))
 
 (defun desktop-p ()
   "True when a program started now has a desktop to show a window on: its
@@ -262,13 +281,15 @@ pipes."
                                      :why (format nil "~a would outlive the editor"
                                                   (native-file-name (first command)))))
         (multiple-value-bind (process failure)
-            (in-starter (lambda ()
-                          (apply #'start-program tied
-                                 :input input :output output :error error :if-error-exists if-error-exists
-                                 :directory directory :preserve-fds preserve-fds :pty pty :session session
-                                 :close-fds close-fds :external-format external-format
-                                 (and environment-p (list :environment environment))))
-                        :untaken #'close-handed)
+            ;; whom the program is for is known on this thread, not on the starter
+            (let ((environment (if environment-p environment (program-environment))))
+              (in-starter (lambda ()
+                            (start-program tied
+                                           :input input :output output :error error :if-error-exists if-error-exists
+                                           :directory directory :preserve-fds preserve-fds :pty pty :session session
+                                           :close-fds close-fds :external-format external-format
+                                           :environment environment))
+                          :untaken #'close-handed))
           (when failure (error failure))
           (return-from start-program process))))
     (unwind-protect
@@ -522,10 +543,9 @@ one started."
         (funcall wait worker seconds)
         (sb-thread:join-thread worker :timeout seconds :default nil))
     (if (sb-thread:thread-alive-p worker)
-        (progn (let ((process (car started)))
-                 (when process (tuatara.runtime:ignoring-errors-reported ("ending ~a" process)
-                                 (sb-ext:process-kill process sb-unix:sigterm))))
-               (values nil nil))
+        (let ((process (car started)))
+          (when process (end-unwanted-program process :close nil))
+          (values nil nil))
         (values-list (sb-thread:join-thread worker :default nil)))))
 
 (defparameter *program-said-limit* (* 64 1024)

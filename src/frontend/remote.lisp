@@ -276,12 +276,7 @@ it, what the client sends is not read until the editor has taken some.")
   (:documentation "A frontend painting on the screen of a client at the other end of a local socket, and
 reading the client's events from it (MAKE-REMOTE-FRONTEND)."))
 
-(setf (documentation 'remote-exit-code 'function) "The code the client of the remote frontend F
-exits with when F stops."
-      (documentation 'remote-exit-words 'function) "What the client of the remote frontend F says as it exits, or NIL."
-      (documentation 'remote-request 'function) "What the client of the remote frontend F asked for
-as it attached (REQUEST)."
-      (documentation 'remote-pid 'function) "The process the client of the remote frontend F connected from, or NIL.")
+(tuatara.runtime:document-accessors 'remote-frontend)
 
 (defmethod initialize-instance :after ((f remote-frontend) &key)
   "Give the remote frontend F the test its threads stop by: once it is closing or
@@ -521,8 +516,9 @@ once, so that one that answers nothing holds the editor up once."
           (put-number box request 4)
           (put-number box (position question *questions*) 1)
           (case question
-            ((:font :lend) (put-text box argument 1024))
-            (:font-steps (put-number box (max -64 (min 64 argument)) 2)))
+            (:font (put-text box argument +most-font-name+))
+            (:lend (put-text box argument +most-description+))
+            (:font-steps (put-number box (max (- +most-font-steps+) (min +most-font-steps+ argument)) 2)))
           (end-message box at))
         (sb-thread:condition-broadcast (remote-moved remote))
         (loop with deadline = (tuatara.runtime:deadline-in seconds)
@@ -674,7 +670,9 @@ took."
 
 (defmethod frontend-set-font ((f remote-frontend) name)
   "Ask the client's window to draw in the font NAME; true when it did."
-  (and (facts-window (remote-facts f)) (stringp name) (<= (tuatara.text:string-octet-length name) 1024)
+  (when (and (stringp name) (not (font-name-p name)))
+    (tuatara.runtime:refuse "A font name has at most 256 octets and no control character"))
+  (and (facts-window (remote-facts f)) (stringp name)
        (ask-client f :font name)))
 
 (defmethod frontend-clipboard ((f remote-frontend))
@@ -1074,7 +1072,7 @@ shows, as the client paints in order. NIL when there is no such room.
 REMOTE-LOCK is held."
   (let ((number (remote-frame-number remote)))
     (loop
-      (let* ((kept (remove :ready (remote-far-pictures remote) :key #'far-picture-state :test-not #'eq))
+      (let* ((kept (remove-if-not (lambda (picture) (eq (far-picture-state picture) :ready)) (remote-far-pictures remote)))
              (octets (reduce #'+ kept :key #'far-picture-octets :initial-value (far-picture-octets far))))
         (when (and (< (length kept) +most-pictures+) (<= octets +most-far-pictures-kept+))
           (return t))
@@ -1267,7 +1265,10 @@ window asked for and let go before is not.")
   (far nil :documentation "True when CLIENT's editor is on another machine, reached over ssh.")
   (allow '()
          :documentation "What CLIENT's editor on another machine is given all
-the same: a plist of :CLIPBOARD and :DROP."))
+the same: a plist of :CLIPBOARD and :DROP.")
+  (held '()
+        :documentation "The :TOGGLE and :RAISE items an editor on another machine sent
+while CLIENT's window lacked the keyboard, applied once it has it."))
 
 (setf (documentation '%make-remote-client 'function) "A REMOTE-CLIENT of the editor at FD painting on FRONTEND.")
 
@@ -1282,6 +1283,8 @@ NIL when they could not be sent."
 (defun put-facts-message (box frontend kind &optional (request (make-request)))
   "Put a message of KIND (:ATTACH, whole, with REQUEST, or :FACTS) in BOX
 saying what FRONTEND is."
+  (when (eq kind :attach)
+    (refuse-unsendable-request request))
   (let ((at (begin-message box kind)))
     (put-facts box frontend :whole (eq kind :attach))
     (when (eq kind :attach)
@@ -1455,8 +1458,14 @@ done with it on the frontend's thread, as a list whose first is what it is
       (:ask (let* ((request (take-number inbox 4))
                    (question (svref *questions* (take-bounded inbox 1 0 (1- (length *questions*)) "a question")))
                    (argument (case question
-                               ((:font :lend) (take-text inbox 1024))
-                               (:font-steps (take-signed inbox 2)))))
+                               (:font (let ((name (take-text inbox +most-font-name+)))
+                                        (unless (font-name-p name) (malformed "a font named with a control character"))
+                                        name))
+                               (:lend (take-text inbox +most-description+))
+                               (:font-steps (let ((steps (take-signed inbox 2)))
+                                              (unless (<= (- +most-font-steps+) steps +most-font-steps+)
+                                                (malformed "font steps ~d" steps))
+                                              steps)))))
               (message-read inbox)
               (list :ask request question argument)))
       (:take-back (message-read inbox) (list :take-back))
@@ -1523,6 +1532,20 @@ for a place among those unpacking is told."
   "The most things read from an editor on another machine that wait to be
 painted before reading more waits for them.")
 
+(defvar *frame-pictures* (make-hash-table :test 'eq :weakness :key :synchronized t)
+  "The pictures each :FRAME item names, found once (FRAME-PICTURES), for as
+long as the item is kept.")
+
+(defun frame-pictures (item)
+  "The pictures the :FRAME ITEM, as READ-FROM-EDITOR makes it, puts on the
+screen, found the first time they are asked for and kept with the item."
+  (multiple-value-bind (pictures there) (gethash item *frame-pictures*)
+    (if there
+        pictures
+        (setf (gethash item *frame-pictures*)
+              (loop for call in (rest item)
+                    when (and (eq (first call) :picture) (second call)) collect (second call))))))
+
 (defun too-much-unpainted-p (client)
   "True when more waits to be painted on CLIENT than may: +MOST-UNPAINTED+
 things, or the pictures CLIENT keeps and those only frames not yet painted
@@ -1535,11 +1558,10 @@ still name, past +MOST-FAR-PICTURES-KEPT+ octets of pixels. CLIENT's lock is hel
           (flet ((count-named (items)
                    (dolist (item items)
                      (when (eq (first item) :frame)
-                       (dolist (call (rest item))
-                         (let ((image (and (eq (first call) :picture) (second call))))
-                           (when (and image (not (member image kept :test #'eq)) (not (member image others :test #'eq)))
-                             (push image others)
-                             (incf octets (length (image-pixels image))))))))))
+                       (dolist (image (frame-pictures item))
+                         (when (and (not (member image kept :test #'eq)) (not (member image others :test #'eq)))
+                           (push image others)
+                           (incf octets (length (image-pixels image)))))))))
             (count-named (remote-client-arrived client))
             (count-named (remote-client-painting client)))
           (> octets +most-far-pictures-kept+)))))
@@ -1579,7 +1601,7 @@ past those."
   (flet ((colour (value)
            (and (or (and (keywordp value) (find value tuatara.display:*basic-colour-names*))
                     (and (integerp value) (<= 0 value 255))
-                    (and (stringp value) (<= (length value) 64)))
+                    (tuatara.display:parse-hex-colour value))
                 value)))
     (let ((font (tuatara.display:face-font face)) (height (tuatara.display:face-height face))
           (underline (tuatara.display:face-underline face)))
@@ -1659,6 +1681,21 @@ has the keyboard (CLIPBOARD-CLOSED-P)."
                                 do (put-answer box request piece :more more))
                           (put-answer box request (and (integerp answer) answer)))))))
 
+(defun frame-overtaken-p (later)
+  "True when LATER, the items that arrived after a frame, hold another frame
+before anything that needs the first one painted (a picture taken, a question
+asked): frames are complete, so only the last of a run is drawn."
+  (dolist (item later nil)
+    (case (first item)
+      (:frame (return t))
+      ((:picture-taken :ask) (return nil)))))
+
+(defun apply-window-item (frontend item)
+  "Do what the :TOGGLE or :RAISE ITEM an editor sent asks of FRONTEND's window."
+  (ecase (first item)
+    (:toggle (frontend-toggle-state frontend (second item)))
+    (:raise (frontend-raise frontend))))
+
 (defun paint-arrived (client)
   "Paint on CLIENT's frontend what its editor has sent since this was last
 done, and answer its questions, in the order they came. An editor on
@@ -1670,33 +1707,43 @@ terminal; the files sent it are named to it once there."
         (far (remote-client-far client))
         (items (sb-thread:with-mutex ((remote-client-lock client))
                  (setf (remote-client-painting client) (reverse (shiftf (remote-client-arrived client) '()))))))
+    ;; what a window was asked before it had the keyboard, now that it has
+    (when (and (remote-client-held client) (frontend-focused-p frontend))
+      (dolist (item (reverse (shiftf (remote-client-held client) '())))
+        (apply-window-item frontend item)))
     (loop for (item . later) on items
           do (ecase (first item)
                (:faces (take-faces (rest item)))
-               (:frame (setf (remote-client-painted client) t)
-                (frontend-begin-frame frontend)
-                (dolist (call (rest item))
-                  (ecase (first call)
-                    (:row (destructuring-bind (row string face spans scales over parts) (rest call)
-                            (frontend-put-row frontend row string :face face :spans spans :scales scales
-                                              :over over :parts parts)))
-                    (:cursor (apply #'frontend-set-cursor frontend (rest call)))
-                    (:picture (when (frontend-images-p frontend)
-                                (apply #'frontend-put-image frontend (rest call))))))
-                (frontend-end-frame frontend))
+               (:frame (unless (frame-overtaken-p later)
+                         (setf (remote-client-painted client) t)
+                         (frontend-begin-frame frontend)
+                         (dolist (call (rest item))
+                           (ecase (first call)
+                             (:row (destructuring-bind (row string face spans scales over parts) (rest call)
+                                     (frontend-put-row frontend row string :face face :spans spans :scales scales
+                                                       :over over :parts parts)))
+                             (:cursor (apply #'frontend-set-cursor frontend (rest call)))
+                             (:picture (when (frontend-images-p frontend)
+                                         (apply #'frontend-put-image frontend (rest call))))))
+                         (frontend-end-frame frontend)))
                (:picture-taken (send-to-editor client (lambda (box)
                                                         (let ((at (begin-message box :picture-taken)))
                                                           (put-number box (second item) 4)
                                                           (put-number box (third item) 4)
                                                           (end-message box at)))))
                (:title (frontend-set-title frontend (second item)))
-               (:selection (let ((text (if far (far-text (third item)) (third item))))
-                             (cond ((clipboard-closed-p client))
-                                   ((zerop (second item)) (frontend-set-clipboard frontend text))
-                                   (t (frontend-set-primary-selection frontend text)))))
+               (:selection (unless (clipboard-closed-p client)
+                             (let ((text (if far (far-text (third item)) (third item))))
+                               (if (zerop (second item))
+                                   (frontend-set-clipboard frontend text)
+                                   (frontend-set-primary-selection frontend text)))))
                (:sent (send-to-editor client (lambda (box) (put-event box (second item)))))
-               (:toggle (frontend-toggle-state frontend (second item)))
-               (:raise (frontend-raise frontend))
+               ;; a window of the client's own is raised or filled by an editor on another machine only
+               ;; while it has the keyboard: what it asks before is kept until then
+               ((:toggle :raise)
+                (if (and far (not (frontend-focused-p frontend)))
+                    (push item (remote-client-held client))
+                    (apply-window-item frontend item)))
                (:settings (when (use-settings (second item) :before (remote-client-settings client))
                             (frontend-settings-changed frontend))
                 (setf (remote-client-settings client) (second item)))

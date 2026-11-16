@@ -85,8 +85,7 @@ buffer."
 (defun about-pieces ()
   "The text of *About Tuatara*, as pieces for RENDER-PIECES."
   (collecting-pieces (put)
-                     (flet ((line (format-string &rest arguments) (put (apply #'format nil format-string arguments)))
-                            (keys (command) (substitute-command-keys (format nil "\\[~(~a~)]" command))))
+                     (flet ((line (format-string &rest arguments) (put (apply #'format nil format-string arguments))))
                        (put (format nil "~%~{  ~a~%~}~%" *about-name-rows*) :about-name)
                        (line "  ~a~%~%"
                              (tuatara:version-line (tuatara.frontend:frontend-description (editor-frontend *editor*))))
@@ -96,13 +95,13 @@ buffer."
                        (line "  Tuatara is free software under the ")
                        (put "GNU General Public License" :button #'describe-copying)
                        (line ", version 3 or any later~%  version, which you may share and change on its terms (~a).~%"
-                             (keys 'describe-copying))
+                             (command-key-words 'describe-copying))
                        (line "  It comes with ")
                        (put "absolutely no warranty" :button #'describe-no-warranty)
-                       (line " (~a).~%" (keys 'describe-no-warranty))
+                       (line " (~a).~%" (command-key-words 'describe-no-warranty))
                        (line "  Where its ideas come from: the ")
                        (put "credits" :button #'credits)
-                       (line " (~a).~%" (keys 'credits))
+                       (line " (~a).~%" (command-key-words 'credits))
                        (line "  Its sources: ")
                        (put *project-address* :button (lambda () (open-address *project-address*)))
                        (line "; ")
@@ -123,15 +122,17 @@ buffer."
                                       (let ((command command)) (lambda () (funcall command)))
                                       (lambda () (visit-path (tuatara.io:native (config-file))))))
                              (line "~a ~a ~a~%" (column-text "" (max 1 (- 22 (text-columns label))))
-                                   (column-text (if command (keys command) (abbreviated-path (config-file)))
+                                   (column-text (if command
+                                                    (command-key-words command)
+                                                    (abbreviated-path (config-file)))
                                                 22 :elide nil)
                                    words)))))
 
 (define-command about-tuatara ()
   "Show *About Tuatara*, the page that introduces Tuatara.
 It gives the version, the copyright and license, where its ideas come from,
-where its sources are and faults are reported, and the ways in for a newcomer (the tutor, the help commands, your init
-file), each a button."
+where its sources are and faults are reported, and the ways in for a newcomer
+\(the tutor, the help commands, your init file), each a button."
   (let ((buffer (buffer-in-mode "*About Tuatara*" 'about-mode)))
     (render-pieces buffer #'about-pieces :point :button)
     (show-buffer buffer)))

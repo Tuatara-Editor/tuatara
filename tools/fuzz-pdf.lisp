@@ -1,7 +1,7 @@
 ;;;; tools/fuzz-pdf.lisp --- Fuzz the PDF reader: PDFs made here, spoilt, and read by every reader.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; Loaded by tools/fuzz-pdf.sh, which sets the limits. Makes a handful of
+;;;; Loaded by tools/fuzz-lisp.sh pdf, after tools/fuzz-common.lisp. Makes a handful of
 ;;;; PDFs of its own (pages, saves, object streams, every filter and
 ;;;; predictor), spoils copies of them ROUNDS times from SEED, and reads each
 ;;;; with every reader of lisp/viewers/pdf-reader.lisp and M-x show-file-metadata's
@@ -13,39 +13,14 @@
 ;;;; ends with exit 1.
 
 (defpackage #:tuatara.fuzz-pdf
-  (:use #:cl)
-  (:documentation "The PDF reader's fuzzer, run by tools/fuzz-pdf.sh."))
+  (:use #:cl #:tuatara.fuzz)
+  (:documentation "The PDF reader's fuzzer, run by tools/fuzz-lisp.sh pdf."))
 
 (in-package #:tuatara.fuzz-pdf)
 
-(defvar *root* (pathname (concatenate 'string (string-right-trim "/" (sb-ext:posix-getenv "FUZZ_ROOT")) "/"))
-  "The Tuatara source tree fuzzed, as tools/fuzz-pdf.sh gives it.")
-
-(load (merge-pathnames "tools/quicklisp.lisp" *root*))
-(push *root* asdf:*central-registry*)
-(ql:quickload :tuatara/defaults :silent t)
-
-(defun environment-integer (name default)
-  "The whole number the environment variable NAME holds, or DEFAULT."
-  (let ((text (sb-ext:posix-getenv name)))
-    (or (and text (parse-integer text :junk-allowed t)) default)))
-
-(defparameter *rounds* (environment-integer "FUZZ_ROUNDS" 20000)
-  "How many spoilt PDFs are read.")
-
-(defparameter *seed* (environment-integer "FUZZ_SEED" 1)
-  "The seed of the run's random choices: the same seed makes the same files.")
-
-(defparameter *deadline* (environment-integer "FUZZ_DEADLINE" 10)
-  "The most seconds one reader may take on one file before it counts as a hang.")
-
-(defparameter *heap-cap* (* (environment-integer "FUZZ_HEAP_MB" 1024) 1024 1024)
-  "The most octets of heap in use after a reader returns, once collected.")
+(setf *kept-type* "pdf")
 
 (setf tuatara.defaults::*pdf-most-entries* 2000)
-
-(defparameter *random* (sb-ext:seed-random-state *seed*)
-  "The run's random state.")
 
 ;;; Seed PDFs, made here
 
@@ -339,13 +314,7 @@ exit 1, else say how it went and exit 0."
       (let ((file (spoilt (nth (pick (length seeds)) seeds) seeds))
             (began (get-internal-real-time)))
         (handler-case (read-every-way file)
-          (fuzz-failure (failure)
-            (let ((path (merge-pathnames (format nil "build/fuzz/pdf-failed-~d-~d.pdf" *seed* round) *root*)))
-              (ensure-directories-exist path)
-              (alexandria:write-byte-vector-into-file file path :if-exists :supersede)
-              (format t "~&FAILED with seed ~d, round ~d: ~a; the file is ~a~%" *seed* round failure (namestring path))
-              (finish-output)
-              (sb-ext:exit :code 1 :abort t))))
+          (fuzz-failure (failure) (failed round file "~a" failure)))
         (setf slowest (max slowest (/ (- (get-internal-real-time) began) internal-time-units-per-second)))))
     (format t "~&~:d spoilt PDFs read with seed ~d in ~,1f s, the slowest in ~,2f s~%"
             *rounds* *seed* (/ (- (get-internal-real-time) start) internal-time-units-per-second) slowest)

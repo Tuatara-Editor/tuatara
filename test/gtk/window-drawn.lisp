@@ -20,9 +20,10 @@
 (defmacro c (name result &rest arguments)
   "Call the C function NAME, which returns RESULT, with ARGUMENTS, alternately
 a type and a value, of the types TUATARA.IO:C-TYPE knows."
-  `(tuatara.runtime:foreign-call ,name ,(tuatara.io:c-type result)
-                                 ,@(loop for (type value) on arguments by #'cddr
-                                         collect (list (tuatara.io:c-type type) value))))
+  `(sb-alien:alien-funcall (sb-alien:extern-alien ,name (function ,(tuatara.io:c-type result)
+                                                                ,@(loop for type in arguments by #'cddr
+                                                                        collect (tuatara.io:c-type type))))
+                           ,@(loop for value in (rest arguments) by #'cddr collect value)))
 
 (defun window-picture (window)
   "The pixels of WINDOW as GTK renders it now, as a vector of octets, 32 bits a

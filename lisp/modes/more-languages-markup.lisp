@@ -366,11 +366,7 @@
 
 (define-language mail
   "Email messages saved as files (.eml): their headers and body, parsed with tree-sitter-mail."
-  :grammar "mail"
-  :modes (eml-mode)
-  :indent 4
-  :queries "mail"
-  :injection-names "mail|eml|email"
+  :grammar "mail" :modes (eml-mode) :indent 4 :queries "mail" :injection-names "mail|eml|email"
   :definitions :textobjects)
 
 (define-major-mode markdoc-mode text-mode

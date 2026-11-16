@@ -1,9 +1,9 @@
 ;;;; lisp/git/branches.lisp --- Branches and worktrees: made, checked out, renamed, reset, deleted.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; In a status b opens the branch menu and Z the worktree menu, as Magit's
-;;;; do; each action is a command of its own, run from M-x too, in the
-;;;; repository of the status or of the current file. Names offered are read
+;;;; In a status b opens the branch menu and Z the worktree menu; each action
+;;;; is a command of its own, run from M-x too, in the repository of the status
+;;;; or of the current file. Names offered are read
 ;;;; from git in the background before the question is asked; a name git
 ;;;; would read as an option (beginning with -) is never given to it.
 

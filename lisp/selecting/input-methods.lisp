@@ -213,9 +213,9 @@ on; \\[describe-input-method] lists its rules."
     (when name (turn-on-input-method name))))
 
 (define-command toggle-input-method ()
-  "Turn this buffer's input method off, or on again (\\[toggle-input-method]).
-On again means the one it had last, else the
-default (*default-input-method*), else one asked for (\\[set-input-method])."
+  "Turn this buffer's input method off, or on again. On again means the one it
+had last, else the default (*default-input-method*), else one asked for
+\(\\[set-input-method])."
   (let* ((buffer (current-buffer))
          (method (buffer-input-method buffer)))
     (if method
@@ -238,8 +238,8 @@ default (*default-input-method*), else one asked for (\\[set-input-method])."
         (message "No input method is on"))))
 
 (define-command describe-input-method ()
-  "Show an input method's rules, the keys typed in turn and what they give
-\(\\[describe-input-method]): this buffer's, else one asked for."
+  "Show an input method's rules, the keys typed in turn and what they give:
+this buffer's, else one asked for."
   (let* ((name (or (tuatara.buffer:buffer-local (current-buffer) :input-method)
                    (read-input-method "Describe input method: ")))
          (method (find-input-method name)))

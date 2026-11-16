@@ -45,7 +45,7 @@ character KEYVAL types, as GDK says."
 
 (defun push-key (f key)
   "Hand KEY, typed in F's window, to the editor."
-  (queue-push (gtk-queue f) (tuatara.frontend:make-event :key :key key :frame (gtk-owner f))))
+  (push-event f :key :key key))
 
 (define-callback on-key-pressed :boolean ((controller :pointer) (keyval :uint) (keycode :uint) (state :uint)
                                           (data :pointer))

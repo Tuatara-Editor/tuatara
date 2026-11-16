@@ -187,11 +187,13 @@ for major modes, and the settings made for modes before it put back afterwards."
   (let ((b (tuatara.buffer:make-buffer "*tab widths*" :text "")))
     (unwind-protect
          (progn
-           (dolist (case '((3 3) (64 64) (1 1) (0 4) (65 4) (2.5 4) (nil 4) ("8" 4)))
-             (destructuring-bind (width wanted) case
-               (let ((tuatara-user:*tab-width* width) (tuatara.defaults::*tab-columns* nil))
-                 (is = wanted (tuatara.defaults::buffer-tab-width b) "buffer ~s" width)
-                 (is = wanted (tuatara.defaults::tab-columns) "columns ~s" width))))
+           (dolist (width '(3 64 1))
+             (let ((tuatara-user:*tab-width* width) (tuatara.defaults::*tab-columns* nil))
+               (is = width (tuatara.defaults::buffer-tab-width b) "buffer ~s" width)
+               (is = width (tuatara.defaults::tab-columns) "columns ~s" width)))
+           ;; a width out of reason is refused
+           (dolist (width '(0 65 2.5 nil "8"))
+             (fail (tuatara.runtime:set-setting 'tuatara-user:*tab-width* width) 'tuatara.runtime:refusal))
            ;; the screen's 8 when nothing sensible is said
            (let ((tuatara.runtime:*host* (make-answering-host 'tuatara.display:host-tab-width (constantly 0))))
              (is = 8 (tuatara.display:tab-width-of b)))

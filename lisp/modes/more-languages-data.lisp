@@ -1,5 +1,5 @@
-;;;; lisp/modes/more-languages-data.lisp --- The data, configuration and system files Helix knows, in major modes
-;;;; named as Emacs's.
+;;;; lisp/modes/more-languages-data.lisp --- The data, configuration and system files Helix knows, in major modes named
+;;;; as Emacs's.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; Each language is parsed with the grammar and coloured, indented and
@@ -101,11 +101,7 @@
 
 (define-language gitlab-ci
   "GitLab CI's pipelines (.gitlab-ci.yml), parsed with tree-sitter-yaml."
-  :grammar "yaml"
-  :modes (gitlab-ci-mode)
-  :indent 2
-  :queries "gitlab-ci"
-  :injection-names "gitlab-ci"
+  :grammar "yaml" :modes (gitlab-ci-mode) :indent 2 :queries "gitlab-ci" :injection-names "gitlab-ci"
   :definitions :textobjects)
 
 (define-major-mode woodpecker-ci-mode yaml-mode
@@ -117,11 +113,7 @@
 
 (define-language woodpecker-ci
   "Woodpecker CI's pipelines, parsed with tree-sitter-yaml."
-  :grammar "yaml"
-  :modes (woodpecker-ci-mode)
-  :indent 2
-  :queries "woodpecker-ci"
-  :injection-names "woodpecker-ci"
+  :grammar "yaml" :modes (woodpecker-ci-mode) :indent 2 :queries "woodpecker-ci" :injection-names "woodpecker-ci"
   :definitions :textobjects)
 
 (define-major-mode nestedtext-mode prog-mode
@@ -132,11 +124,7 @@
 
 (define-language nestedtext
   "NestedText data, parsed with tree-sitter-yaml."
-  :grammar "yaml"
-  :modes (nestedtext-mode)
-  :indent 4
-  :queries "nestedtext"
-  :injection-names "nestedtext"
+  :grammar "yaml" :modes (nestedtext-mode) :indent 4 :queries "nestedtext" :injection-names "nestedtext"
   :definitions :textobjects)
 
 (define-major-mode ini-mode prog-mode
@@ -162,11 +150,7 @@
 
 (define-language git-config
   "Git's configuration files, parsed with tree-sitter-git-config."
-  :grammar "git-config"
-  :modes (gitconfig-mode)
-  :indent 4
-  :queries "git-config"
-  :injection-names "git-config"
+  :grammar "git-config" :modes (gitconfig-mode) :indent 4 :queries "git-config" :injection-names "git-config"
   :definitions :textobjects)
 
 (define-major-mode gitignore-mode prog-mode
@@ -189,10 +173,7 @@
 
 (define-language git-attributes
   "Git's attributes of files, parsed with tree-sitter-gitattributes."
-  :grammar "gitattributes"
-  :modes (gitattributes-mode)
-  :indent 4
-  :queries "git-attributes"
+  :grammar "gitattributes" :modes (gitattributes-mode) :indent 4 :queries "git-attributes"
   :injection-names "git-attributes")
 
 (define-major-mode protobuf-mode prog-mode
@@ -203,11 +184,7 @@
 
 (define-language protobuf
   "Protocol Buffers definitions, parsed with tree-sitter-proto."
-  :grammar "proto"
-  :modes (protobuf-mode)
-  :indent 2
-  :queries "protobuf"
-  :injection-names "proto"
+  :grammar "proto" :modes (protobuf-mode) :indent 2 :queries "protobuf" :injection-names "proto"
   :definitions :textobjects)
 
 (define-major-mode graphql-mode prog-mode
@@ -218,11 +195,7 @@
 
 (define-language graphql
   "GraphQL schemas and queries, parsed with tree-sitter-graphql."
-  :grammar "graphql"
-  :modes (graphql-mode)
-  :indent 2
-  :queries "graphql"
-  :injection-names "graphql"
+  :grammar "graphql" :modes (graphql-mode) :indent 2 :queries "graphql" :injection-names "graphql"
   :definitions :textobjects)
 
 (define-major-mode hcl-mode prog-mode
@@ -420,11 +393,7 @@
 
 (define-language properties
   "Java properties files, parsed with tree-sitter-properties."
-  :grammar "properties"
-  :modes (conf-javaprop-mode)
-  :indent 4
-  :queries "properties"
-  :injection-names "properties"
+  :grammar "properties" :modes (conf-javaprop-mode) :indent 4 :queries "properties" :injection-names "properties"
   :definitions :textobjects)
 
 (define-major-mode hosts-generic-mode prog-mode
@@ -525,11 +494,7 @@
 
 (define-language robots-txt
   "The robots.txt files of web sites, parsed with tree-sitter-robots-txt."
-  :grammar "robots-txt"
-  :modes (robots-txt-mode)
-  :indent 4
-  :queries "robots.txt"
-  :injection-names "robots[\\.-]txt"
+  :grammar "robots-txt" :modes (robots-txt-mode) :indent 4 :queries "robots.txt" :injection-names "robots[\\.-]txt"
   :definitions :textobjects)
 
 (define-major-mode pip-requirements-mode prog-mode
@@ -539,10 +504,7 @@
 
 (define-language pip-requirements
   "Python's requirements files, for pip, parsed with tree-sitter-requirements."
-  :grammar "requirements"
-  :modes (pip-requirements-mode)
-  :indent 4
-  :queries "pip-requirements"
+  :grammar "requirements" :modes (pip-requirements-mode) :indent 4 :queries "pip-requirements"
   :injection-names "(pip-)?requirements(\\.txt)?")
 
 (define-major-mode hyprlang-mode prog-mode
@@ -565,11 +527,7 @@
 
 (define-language caddyfile
   "Caddyfiles: the configuration of the Caddy web server, parsed with tree-sitter-caddyfile."
-  :grammar "caddyfile"
-  :modes (caddyfile-mode)
-  :indent 4
-  :queries "caddyfile"
-  :injection-names "caddyfile"
+  :grammar "caddyfile" :modes (caddyfile-mode) :indent 4 :queries "caddyfile" :injection-names "caddyfile"
   :definitions :textobjects)
 
 (define-major-mode adl-mode prog-mode
@@ -590,11 +548,7 @@
 
 (define-language concerto
   "Concerto data models, parsed with tree-sitter-concerto."
-  :grammar "concerto"
-  :modes (concerto-mode)
-  :indent 2
-  :queries "concerto"
-  :injection-names "concerto"
+  :grammar "concerto" :modes (concerto-mode) :indent 2 :queries "concerto" :injection-names "concerto"
   :definitions :textobjects)
 
 (define-major-mode cpon-mode prog-mode
@@ -606,7 +560,7 @@
 (define-major-mode dbml-mode prog-mode
   "DBML: database schemas written as markup."
   :lighter "DBML"
-  :comment (";" ";;")
+  :comment "//"
   :extensions ("dbml"))
 
 (define-language dbml
@@ -621,11 +575,7 @@
 
 (define-language doxyfile
   "Doxyfiles: Doxygen's configuration, parsed with tree-sitter-doxyfile."
-  :grammar "doxyfile"
-  :modes (doxyfile-mode)
-  :indent 4
-  :queries "doxyfile"
-  :injection-names "[Dd]oxyfile"
+  :grammar "doxyfile" :modes (doxyfile-mode) :indent 4 :queries "doxyfile" :injection-names "[Dd]oxyfile"
   :definitions :textobjects)
 
 (define-major-mode dunstrc-mode prog-mode
@@ -698,11 +648,7 @@
 
 (define-language godot-resource
   "Godot's scenes and resources, parsed with tree-sitter-godot-resource."
-  :grammar "godot-resource"
-  :modes (godot-resource-mode)
-  :indent 4
-  :queries "godot-resource"
-  :injection-names "godot"
+  :grammar "godot-resource" :modes (godot-resource-mode) :indent 4 :queries "godot-resource" :injection-names "godot"
   :definitions :textobjects)
 
 (define-major-mode kcl-mode prog-mode
@@ -752,12 +698,8 @@
 
 (define-language shellcheckrc
   "ShellCheck's configuration, parsed with tree-sitter-shellcheckrc."
-  :grammar "shellcheckrc"
-  :modes (shellcheckrc-mode)
-  :indent 4
-  :queries "shellcheckrc"
-  :injection-names "shellcheck(rc)?"
-  :definitions :textobjects)
+  :grammar "shellcheckrc" :modes (shellcheckrc-mode) :indent 4 :queries "shellcheckrc"
+  :injection-names "shellcheck(rc)?" :definitions :textobjects)
 
 (define-major-mode smithy-mode prog-mode
   "Smithy interface definitions."
@@ -817,11 +759,7 @@
 
 (define-language typespec
   "TypeSpec descriptions of APIs, parsed with tree-sitter-typespec."
-  :grammar "typespec"
-  :modes (typespec-mode)
-  :indent 2
-  :queries "typespec"
-  :injection-names "tsp|typespec"
+  :grammar "typespec" :modes (typespec-mode) :indent 2 :queries "typespec" :injection-names "tsp|typespec"
   :definitions :textobjects)
 
 (define-major-mode xit-mode text-mode

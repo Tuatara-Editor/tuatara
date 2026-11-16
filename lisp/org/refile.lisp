@@ -39,7 +39,7 @@ never above the first)."
          (line (subseq text 0 end)))
     (multiple-value-bind (start tags-end tag-starts tag-ends) (cl-ppcre:scan *org-tags-end-scanner* line)
       (declare (ignore tags-end))
-      (if (not (and start (let ((stars-end (nth-value 1 (cl-ppcre:scan "^\\*+ " line))))
+      (if (not (and start (let ((stars-end (nth-value 1 (cl-ppcre:scan *org-headline-line-scanner* line))))
                             (and stars-end (>= start stars-end)))))
           text
           (concatenate 'string
@@ -117,37 +117,43 @@ else the first."
                  (t (add (tuatara.io:native (tuatara.io:expand-path where)) levels)))))
     (nreverse files)))
 
-(defun org-file-headings (path)
-  "The headings of the Org file at PATH, each (LEVEL TITLES POSITION): its
-level, its titles from the top heading down (its path), the character it
-begins at. An agenda file's are those the agenda keeps, all of them
-\(ORG-AGENDA-FILE-READ), read again only when it changed and never opened for
-it; another's from its buffer's parse."
-  (if (member path (ignoring-errors-reported ("listing the agenda files") (org-agenda-file-paths)) :test #'string=)
-      (fourth (org-agenda-file-read path))
-      (let ((target (ignoring-errors-reported ("reading ~a to refile into" path) (tuatara.io:visit-file path))))
-        (when target
-          (let ((parse (org-parse-now target)))
-            (loop for headline in (and parse (org-headlines (org-parse-tree parse)))
-                  collect (list (org-property headline :level) (org-headline-path headline)
-                                (org-node-begin headline))))))))
+(defun org-files-headings (paths)
+  "The headings of each of the Org files at PATHS, a list for each in their
+order, each heading (LEVEL TITLES POSITION): its level, its titles from the
+top heading down (its path), the character it begins at. An agenda file's are
+those the agenda keeps, all of them (ORG-AGENDA-FILES-KEPT), read again only
+when it changed and never opened for it; another's from its buffer's parse."
+  (let* ((agenda (ignoring-errors-reported ("listing the agenda files") (org-agenda-file-paths)))
+         (kept (org-agenda-files-kept (remove-if-not (lambda (path) (member path agenda :test #'string=)) paths))))
+    (loop for path in paths
+          collect (if (member path agenda :test #'string=)
+                      (fourth (pop kept))
+                      (let ((target (ignoring-errors-reported ("reading ~a to refile into" path)
+                                      (tuatara.io:visit-file path))))
+                        (when target
+                          (let ((parse (org-parse-now target)))
+                            (loop for headline in (and parse (org-headlines (org-parse-tree parse)))
+                                  collect (list (org-property headline :level) (org-headline-path headline)
+                                                (org-node-begin headline))))))))))
 
 (defun org-refile-candidates (buffer &key exclude)
   "Completion candidates for the headings *ORG-REFILE-TARGETS* offers from
-BUFFER (ORG-FILE-HEADINGS), each shown as its file's name and path
+BUFFER (ORG-FILES-HEADINGS), each shown as its file's name and path
 (agenda.org/Commitments and Jobs), its value ((:olp FILE TITLE ...) POSITION);
 those of EXCLUDE (PARSE START END, PARSE the ORG-PARSE of the buffer refiled from, START and
 END octets of it) left out."
-  (loop for (path . levels) in (org-refile-files buffer)
-        for excluded = (and exclude (let ((file (tuatara.buffer:buffer-file (org-parse-buffer (first exclude)))))
-                                      (and file (string= path (tuatara.io:native file)))))
-        append (loop for (level olp position) in (org-file-headings path)
-                     when (and (<= level levels)
-                               (not (and excluded
-                                         (<= (second exclude) (org-parse-octet (first exclude) position))
-                                         (< (org-parse-octet (first exclude) position) (third exclude)))))
-                       collect (make-candidate (format nil "~a/~{~a~^/~}" (tuatara.io:native-file-name path) olp)
-                                               :value (list (list* :olp path olp) position)))))
+  (let ((files (org-refile-files buffer)))
+    (loop for (path . levels) in files
+          for headings in (org-files-headings (mapcar #'car files))
+          for excluded = (and exclude (let ((file (tuatara.buffer:buffer-file (org-parse-buffer (first exclude)))))
+                                        (and file (string= path (tuatara.io:native file)))))
+          append (loop for (level olp position) in headings
+                       when (and (<= level levels)
+                                 (not (and excluded
+                                           (<= (second exclude) (org-parse-octet (first exclude) position))
+                                           (< (org-parse-octet (first exclude) position) (third exclude)))))
+                         collect (let ((target (list* :olp path olp)))
+                                   (make-candidate (org-olp-text target) :value (list target position)))))))
 
 (defun org-read-refile-target (prompt buffer &key exclude)
   "Ask with PROMPT for a heading *ORG-REFILE-TARGETS* offers from BUFFER; its
@@ -164,6 +170,13 @@ at, which tells it from another of the same titles."
   (format nil "~a/~{~a~^/~}" (tuatara.io:native-file-name (second target)) (cddr target)))
 
 ;;; Refiling
+
+(defun org-refile-target-headline (parse target at)
+  "The headline of PARSE that TARGET (:olp FILE TITLE ...) names, the one
+beginning at the character AT of several with those titles; refuses when it is
+not there."
+  (or (org-headline-at-path (org-parse-tree parse) (cddr target) at)
+      (refuse "~a is no longer there" (if *secret-at-hand* "The heading" (org-olp-text target)))))
 
 (defun org-refile-subtree (buffer headline target &optional target-at)
   "Move HEADLINE of BUFFER (a headline of its parse now), with all under it,
@@ -185,9 +198,7 @@ be filed. Both files saved as filing saves them."
          (into-was-modified (tuatara.io:changes-unsaved-p into)))
     (check-writable into)
     (let* ((into-parse (org-parse-now into))
-           (under (or (org-headline-at-path (org-parse-tree into-parse) (cddr target) target-at)
-                      (refuse "~a is no longer there"
-                              (if *secret-at-hand* "The heading" (org-olp-text target)))))
+           (under (org-refile-target-headline into-parse target target-at))
            ;; where the target is, held while the entry is taken out above it
            (anchor (tuatara.text:make-anchor (tuatara.buffer:buffer-version into)
                                              (org-parse-octet into-parse (org-node-begin under)) :bias :after))
@@ -197,9 +208,7 @@ be filed. Both files saved as filing saves them."
            (let* ((into-parse (org-parse-now into))
                   (under-at (org-parse-char into-parse
                                             (tuatara.text:anchor-position anchor (tuatara.buffer:buffer-version into))))
-                  (under (or (org-headline-at-path (org-parse-tree into-parse) (cddr target) under-at)
-                             (refuse "~a is no longer there"
-                                     (if *secret-at-hand* "The heading" (org-olp-text target))))))
+                  (under (org-refile-target-headline into-parse target under-at)))
              (multiple-value-bind (at to) (org-insert-entry into-parse text :headline under)
                (declare (ignore to))
                (setf filed t)
@@ -226,22 +235,19 @@ agenda saves its files. With \\[universal-argument], go to the heading chosen in
         (let* ((parse (org-parse-now buffer))
                (headline (and parse (org-current-headline (org-parse-tree parse) (org-parse-point parse)))))
           (unless headline (refuse "Not under a headline: nothing to refile"))
-          (multiple-value-bind (answer parse places)
-              (org-ask-keeping-places
-               parse (list (org-line-span (org-parse-text parse) (org-node-begin headline)))
+          (multiple-value-bind (answer parse headline)
+              (org-ask-about-headline
+               parse headline
                (lambda ()
                  (multiple-value-list
                   (org-read-refile-target
                    (format nil "Refile “~a” to: " (org-property headline :raw-value)) buffer
                    :exclude (list parse (org-parse-octet parse (org-node-begin headline))
-                                  (org-parse-octet parse (org-node-end headline)))))))
+                                  (org-parse-octet parse (org-node-end headline))))))
+               "The headline is no longer there: nothing refiled")
             (destructuring-bind (target at) answer
-              (let ((headline (and (first places)
-                                   (org-headline-on-line (org-parse-tree parse) (org-parse-text parse)
-                                                         (first places)))))
-                (unless headline (refuse "The headline is no longer there: nothing refiled"))
-                (org-refile-subtree buffer headline target at)
-                (message "Refiled to ~a" (org-olp-text target)))))))))
+              (org-refile-subtree buffer headline target at)
+              (message "Refiled to ~a" (org-olp-text target))))))))
 
 (define-command org-agenda-refile ()
   "Move the entry on the agenda's line under another heading, as

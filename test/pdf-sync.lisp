@@ -495,10 +495,8 @@ opened again after."
       (unwind-protect
            (progn
              (tuatara.export::note-pdf-export job)
-             (let ((kept (gethash pdf tuatara.export::*org-pdf-exports*)))
-               (true kept)
-               (false (eq kept job))
-               (false (tuatara.export::pdf-export-rope kept))
+             (let ((kept (tuatara.export::org-pdf-export pdf)))
+               (true (tuatara.export::org-pdf-source-p kept))
                ;; a part exported alone: current while its lines are as they were where they came from
                (true (tuatara.export::org-export-current-p kept buffer))
                (tuatara.buffer:buffer-insert buffer (tuatara.buffer:buffer-goto-line buffer 2) "changed ")
@@ -507,12 +505,12 @@ opened again after."
              (let ((latex (tuatara.export::make-pdf-export nil "notes.tex" :latex nil nil nil nil)))
                (setf (tuatara.export::pdf-export-status latex) :done (tuatara.export::pdf-export-pdf latex) pdf)
                (tuatara.export::note-pdf-export latex)
-               (false (gethash pdf tuatara.export::*org-pdf-exports*)))
+               (false (tuatara.export::org-pdf-export pdf)))
              ;; the Org file's buffer killed: forgotten
              (tuatara.export::note-pdf-export job)
              (tuatara.buffer:kill-buffer buffer)
-             (false (gethash pdf tuatara.export::*org-pdf-exports*)))
-        (remhash pdf tuatara.export::*org-pdf-exports*)
+             (false (tuatara.export::org-pdf-export pdf)))
+        (setf tuatara.export::*org-pdf-exports* '())
         (when (tuatara.buffer:live-buffer-p buffer) (tuatara.buffer:kill-buffer buffer))))))
 
 (define-test (pdf-sync one-read-at-a-time)
@@ -695,8 +693,20 @@ opened again after."
 
 (define-test (pdf-sync part-of-other-length-changed)
   ;; a part exported alone whose lines are more than its places in the file: not current
-  (let* ((kept (tuatara.export::make-pdf-export nil "/tmp/notes.org" :org nil nil nil nil))
+  (let* ((kept (tuatara.export::make-org-pdf-source "/tmp/notes.org" "notes.tex" "notes.pdf" (format nil "b~%c~%d")
+                                                     #() #(2 3) nil))
          (buffer (tuatara.buffer:make-buffer "part-lengths.org" :text (format nil "a~%b~%c~%"))))
-    (setf (tuatara.export::pdf-export-text kept) (format nil "b~%c~%d") (tuatara.export::pdf-export-origins kept) #(2 3))
     (unwind-protect (false (tuatara.export::org-export-current-p kept buffer))
       (tuatara.buffer:kill-buffer buffer))))
+
+(define-test (pdf-sync org-exports-kept-few)
+  ;; what leads from an Org file to its PDF is kept for the last few PDFs alone, the enhanced export's said so
+  (let ((tuatara.export::*org-pdf-exports* '()))
+    (dotimes (i 6)
+      (let ((job (tuatara.export::make-pdf-export nil (format nil "/notes/n~d.org" i) :org nil nil nil (oddp i))))
+        (setf (tuatara.export::pdf-export-status job) :done
+              (tuatara.export::pdf-export-pdf job) (format nil "/notes/n~d.pdf" i))
+        (tuatara.export::note-pdf-export job)))
+    (is = tuatara.export::*pdf-sync-kept* (length tuatara.export::*org-pdf-exports*))
+    (true (tuatara.export::org-pdf-source-enhanced (tuatara.export::org-pdf-export "/notes/n5.pdf")))
+    (false (tuatara.export::org-pdf-export "/notes/n0.pdf"))))

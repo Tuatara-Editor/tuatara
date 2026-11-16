@@ -224,3 +224,32 @@
     (let ((text (get-output-stream-string said)))
       (true (search "decrypting a^[]0;owned^G.gpg" text) "~s" text)
       (false (find #\Esc text)))))
+
+(define-test (tui terminal-resize-wakes-the-wait)
+  ;; a resize (SIGWINCH) wakes the wait for events, so that it needs no timeout to notice one
+  (let ((f (tuatara.frontend.tui:make-tui-frontend))
+        (wake (tuatara.io:make-wake-pipe)))
+    (setf (tuatara.frontend.tui::tui-wake f) wake)
+    (setf (car tuatara.frontend.tui::**terminal-resized**) nil)
+    (unwind-protect
+         (progn
+           (tuatara.frontend.tui::watch-terminal-size f)
+           (sb-posix:kill (sb-posix:getpid) sb-unix:sigwinch)
+           (true (consp (tuatara.io:wait-for-fds (list (car wake)) 5)) "the wake pipe was written")
+           (true (car tuatara.frontend.tui::**terminal-resized**)))
+      (sb-sys:enable-interrupt sb-unix:sigwinch :default)
+      (setf (car tuatara.frontend.tui::**terminal-resized**) nil
+            (tuatara.frontend.tui::tui-wake f) nil)
+      (tuatara.io:close-wake-pipe wake))))
+
+(define-test (tui wake-and-resize-drained-together-still-tick)
+  ;; a wake written beside a resize is not lost: the tick it asks for is given
+  (setf (car tuatara.frontend.tui::**frontend-woken**) nil
+        (car tuatara.frontend.tui::**terminal-resized**) t)
+  (unwind-protect
+       (progn
+         (false (tuatara.frontend.tui::wake-gives-tick-p) "a resize alone gives no tick")
+         (setf (car tuatara.frontend.tui::**frontend-woken**) t)
+         (true (tuatara.frontend.tui::wake-gives-tick-p) "a wake with a resize gives one")
+         (false (car tuatara.frontend.tui::**frontend-woken**)))
+    (setf (car tuatara.frontend.tui::**terminal-resized**) nil)))

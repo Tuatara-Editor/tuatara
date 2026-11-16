@@ -214,7 +214,7 @@
                                                      :height 12)))))
       (is string= "Text <<Kea>> here." (after "C-u 5 l RET"))
       (is string= "* Kea" (after "C-u 1 5 l RET")))
-    (let* ((latex (tuatara.defaults::org-latex-document text :enhanced t))
+    (let* ((latex (org-latex-of text :enhanced t))
            (to-target (cl-ppcre:scan-to-strings "(?<=\\\\hyperref\\[)[^]]+(?=\\]\\{Kea\\})" latex))
            (to-headline (cl-ppcre:scan-to-strings "(?<=\\\\autoref\\{)[^}]+" latex)))
       ;; [[Kea]] to the target's label, [[*Kea]] to the headline's

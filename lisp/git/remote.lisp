@@ -2,7 +2,7 @@
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; In a status f opens the fetch menu, F the pull menu and P the push menu,
-;;;; as Magit's do: from or to the branch's upstream, from or to a remote asked
+;;;; each from or to the branch's upstream, from or to a remote asked
 ;;;; for, every remote, tags. Git never asks for a password on the terminal
 ;;;; (the editor's) and never runs a program an address names; the keys and
 ;;;; credentials it needs come from your agent and helpers. What ssh asks, a

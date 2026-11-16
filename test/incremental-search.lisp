@@ -770,7 +770,7 @@ at most 20 seconds."
         for state = tuatara.defaults::*search*
         until (or (null state)
                   (let ((background (tuatara.defaults::search-state-background state)))
-                    (or (null background) (car (first background))))
+                    (or (null background) (tuatara.runtime:background-work-value background)))
                   (<= (tuatara.runtime:seconds-left deadline) 0))
         do (sleep 0.02)))
 

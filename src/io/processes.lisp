@@ -170,9 +170,10 @@ of the session's processes was still there."
   (when (process-unreaped-p process)
     (tuatara.runtime:ignoring-errors-reported ("signalling ~a" process)
       (sb-ext:process-kill process signal :process-group)))
-  (let ((there (and session (session-processes session))))
+  (let* ((buffer (make-array 1024 :element-type '(unsigned-byte 8)))
+         (there (and session (processes-in '() (list session) buffer))))
     (dolist (pid there)
-      (handler-case (sb-posix:kill pid signal) (sb-posix:syscall-error () nil)))
+      (signal-process-if pid (lambda () (eql session (nth-value 1 (process-group-and-session pid buffer)))) signal))
     (and there t)))
 
 (defun process-start-time (pid)

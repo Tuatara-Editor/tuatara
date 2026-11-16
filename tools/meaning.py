@@ -14,7 +14,7 @@ editor or a release. It reads JSON on standard input and writes JSON:
      are compared with no task sentence, after the mean vector is taken off
 
 Each corpus line becomes a vector, once: the vectors are kept in the cache
-directory by the hash of the line, so a later run embeds only the lines that
+directory, in a file for each model file, by the hash of the line, so a later run embeds only the lines that
 changed. A query is embedded in the form the model was trained on, with a
 task sentence before it, and the corpus lines are ranked by cosine likeness
 to it. The result is a list to read, never a verdict.
@@ -26,8 +26,8 @@ Run it where llama-server and numpy are. Set-up, once:
   mkdir -p ~/.cache/tuatara-ai/models
   curl -L -o ~/.cache/tuatara-ai/models/Qwen3-Embedding-0.6B-Q8_0.gguf \
     https://huggingface.co/Qwen/Qwen3-Embedding-0.6B-GGUF/resolve/main/Qwen3-Embedding-0.6B-Q8_0.gguf
-  sha256sum ~/.cache/tuatara-ai/models/Qwen3-Embedding-0.6B-Q8_0.gguf
-  # must be 06507c7b42688469c4e7298b0a1e16deff06caf291cf0a5b278c308249c3e439
+  echo '06507c7b42688469c4e7298b0a1e16deff06caf291cf0a5b278c308249c3e439  Qwen3-Embedding-0.6B-Q8_0.gguf' |
+    (cd ~/.cache/tuatara-ai/models && sha256sum -c)
 
 Settings, taken from the environment when set:
 
@@ -151,6 +151,7 @@ class Embedder:
     """A llama-server running the embedding model on 127.0.0.1, ended when the object is closed."""
 
     def __init__(self, np):
+        """Start the server and wait until it answers; NP is the numpy module."""
         self.np = np
         with socket.socket() as s:
             s.bind(("127.0.0.1", 0))
@@ -194,11 +195,17 @@ class Embedder:
             self.process.kill()
 
 
+def cache_path():
+    """The file that keeps the vectors of the model file MODEL: one for each model file (by name and size), so that
+    vectors of another model, another size, are never mixed in."""
+    return os.path.join(CACHE, f"definition-vectors-{os.path.basename(MODEL)}-{os.path.getsize(MODEL)}.npz")
+
+
 def corpus_vectors(embedder, np, lines):
     """A matrix with one unit vector per line of LINES, read from the cache where the line is known and embedded
     (and then cached) where it is not. Progress goes to standard error."""
     os.makedirs(CACHE, exist_ok=True)
-    path = os.path.join(CACHE, "definition-vectors.npz")
+    path = cache_path()
     known = {}
     if os.path.exists(path):
         saved = np.load(path)
@@ -228,6 +235,7 @@ def save(np, path, known):
 
 
 def main():
+    """Read the request on standard input (the header says what it holds) and write the answer to standard output."""
     request = json.load(sys.stdin)
     if "pairs" in request:
         json.dump({"pairs": pairs(request["corpus"], request["pairs"], request.get("limit", 20000))}, sys.stdout)

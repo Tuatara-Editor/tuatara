@@ -279,10 +279,7 @@ and which, leaving out the commands that switch to a major mode, only counted."
   "Generate the tables of the manual in TREE, with the links between its chapters,
 and report what no chapter covers."
   ;; the editor started below must not touch this account's own directories, nor sweep its cache
-  (let ((fence (uiop:ensure-directory-pathname
-                (format nil "~a/tuatara-manual-tables-~d" (uiop:getenv "XDG_RUNTIME_DIR") (sb-posix:getpid)))))
-    (dolist (variable '("XDG_CONFIG_HOME" "XDG_STATE_HOME" "XDG_CACHE_HOME" "XDG_DATA_HOME"))
-      (sb-posix:setenv variable (namestring (merge-pathnames (format nil "~a/" variable) fence)) 1)))
+  (tuatara.fence:fence-person-data nil)
   (let* ((dir (merge-pathnames "doc/manual/" tree))
          (out (merge-pathnames "generated/" dir))
          ;; the settings as they stand before an editor starts; the keymaps are filled in as one does

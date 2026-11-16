@@ -109,7 +109,7 @@ Numbered items keep their numbers; the file keeps its bullets.
 - a list of (BULLET . SIGN): each bullet shown as its sign, as in
   '((\"-\" . \"•\") (\"+\" . \"◦\") (\"*\" . \"▸\")).
 - nil, as standard: the bullets shown as written."
-  :values (list-of "(BULLET . SIGN)"))
+  :values (list-of (cons string string)))
 
 (define-setting *org-checkbox-signs* nil
   "The signs list items' checkboxes show.
@@ -118,7 +118,7 @@ Numbered items keep their numbers; the file keeps its bullets.
   space, so that a sign drawn wider than one column shows whole, as in
   '((\"[ ]\" . \"☐\") (\"[-]\" . \"◐\") (\"[X]\" . \"☑\")).
 - nil, as standard: the checkboxes shown as written."
-  :values (list-of "(CHECKBOX . SIGN)"))
+  :values (list-of (cons string string)))
 
 (define-setting *org-hide-leading-stars* t
   "Whether a headline's stars but the last are hidden.
@@ -188,7 +188,7 @@ This is for names Org gives that are not the language's own
 (#+begin_src emacs-lisp); LANGUAGE nil for none. Any other name is the
 language of that name, else the one a file ending in .NAME is in. Add your
 own: (push '(\"kitty\" . \"ini\") *org-src-languages*)."
-  :values (list-of "(NAME . LANGUAGE)"))
+  :values (list-of (cons string (or (member nil) string))))
 
 (defparameter *org-face-kinds*
   '((:org-level-1 . "markup.heading") (:org-level-2 . "markup.heading") (:org-level-3 . "markup.heading")
@@ -340,26 +340,31 @@ faces, any other in :org-meta-line."
                (org-colour (1+ colon) end (if (string= key "TITLE") :org-document-title :org-document-info)))
         (org-colour start end :org-meta-line))))
 
+(defun org-block-body-range (node)
+  "Where the lines between the first and the last line of NODE, a block or a
+drawer, lie in *ORG-TEXT*: two values, the start of its second line and the
+start of its last line. The second is NODE's start when it has one line."
+  (let ((start (org-node-post-affiliated node)))
+    (values (min (length *org-text*) (1+ (string-line-end *org-text* start)))
+            (org-line-start (max start (1- (org-content-end node)))))))
+
 (defun org-fontify-block (node body-face)
   "A block: its first and last lines in :org-block-begin-line and
 :org-block-end-line, what is between in BODY-FACE (none when NIL)."
-  (let* ((start (org-node-post-affiliated node))
-         (first-end (min (length *org-text*) (1+ (string-line-end *org-text* start))))
-         (content-end (org-content-end node))
-         (last-start (org-line-start (max start (1- content-end)))))
-    (org-colour start first-end :org-block-begin-line)
-    (when (> last-start start)
-      (when (and body-face (< first-end last-start))
-        (org-colour first-end last-start body-face))
-      (org-colour last-start content-end :org-block-end-line))))
+  (let ((start (org-node-post-affiliated node))
+        (content-end (org-content-end node)))
+    (multiple-value-bind (first-end last-start) (org-block-body-range node)
+      (org-colour start first-end :org-block-begin-line)
+      (when (> last-start start)
+        (when (and body-face (< first-end last-start))
+          (org-colour first-end last-start body-face))
+        (org-colour last-start content-end :org-block-end-line)))))
 
 (defun org-note-src-block (node)
   "Note NODE, a source block with a language, for its code to be coloured as that language."
   (let ((language (org-property node :language)))
     (when language
-      (let* ((start (org-node-post-affiliated node))
-             (from (min (length *org-text*) (1+ (string-line-end *org-text* start))))
-             (to (org-line-start (max start (1- (org-content-end node))))))
+      (multiple-value-bind (from to) (org-block-body-range node)
         (when (< from to)
           (push (list language
                       (org-view-byte *org-buffer* *org-view* from)
@@ -368,7 +373,7 @@ faces, any other in :org-meta-line."
 
 (defun org-src-language (name)
   "The language of a source block given NAME, as *ORG-SRC-LANGUAGES* says, or NIL."
-  (let ((alias (assoc name (setting-list '*org-src-languages* *org-src-languages* :pairs t) :test #'string-equal)))
+  (let ((alias (assoc name (setting-in-force '*org-src-languages*) :test #'string-equal)))
     (if alias
         (and (cdr alias) (language-for-injection (cdr alias)))
         (or (language-for-injection name)
@@ -410,21 +415,21 @@ background, and the editor redrawn once it is."
   "A drawer: its first and last lines in :org-drawer; in an :EXPORT: drawer each
 setting as a property is, its name in :org-special-keyword (in :error when it
 names no setting, ORG-EXPORT-SETTING-NAME-P) and its value in :org-property-value."
-  (let* ((start (org-node-post-affiliated node))
-         (content-end (org-content-end node))
-         (last-start (org-line-start (max start (1- content-end)))))
-    (org-colour start (string-line-end *org-text* start) :org-drawer)
-    (when (> last-start start)
-      (org-colour last-start content-end :org-drawer)
-      (when (string-equal (org-property node :drawer-name) "EXPORT")
-        (loop for line = (1+ (string-line-end *org-text* start)) then (1+ end)
-              for end = (string-line-end *org-text* line)
-              while (< line last-start)
-              do (let ((colon (position #\: *org-text* :start line :end end)))
-                   (when colon
-                     (let ((name (string-trim *org-blanks* (subseq *org-text* line colon))))
-                       (org-colour line (1+ colon) (if (org-export-setting-name-p name) :org-special-keyword :error))
-                       (org-colour (1+ colon) end :org-property-value)))))))))
+  (let ((start (org-node-post-affiliated node))
+        (content-end (org-content-end node)))
+    (multiple-value-bind (first-end last-start) (org-block-body-range node)
+      (org-colour start (string-line-end *org-text* start) :org-drawer)
+      (when (> last-start start)
+        (org-colour last-start content-end :org-drawer)
+        (when (string-equal (org-property node :drawer-name) "EXPORT")
+          (loop for line = first-end then (1+ end)
+                for end = (string-line-end *org-text* line)
+                while (< line last-start)
+                do (let ((colon (position #\: *org-text* :start line :end end)))
+                     (when colon
+                       (let ((name (string-trim *org-blanks* (subseq *org-text* line colon))))
+                         (org-colour line (1+ colon) (if (org-export-setting-name-p name) :org-special-keyword :error))
+                         (org-colour (1+ colon) end :org-property-value))))))))))
 
 (defun org-fontify-node-property (node)
   "A property: its :KEY: in :org-special-keyword, its value in :org-property-value."

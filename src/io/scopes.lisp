@@ -9,12 +9,27 @@
 
 (in-package #:tuatara.io)
 
+(defun user-manager-runtime-directory ()
+  "The runtime directory through which your own service manager is reached:
+$XDG_RUNTIME_DIR when its bus or the manager's own socket is there, else the
+system's /run/user/UID when that is; NIL when neither is."
+  (flet ((reached-p (directory)
+           (and directory
+                (or (probe-file (concatenate 'string (string-right-trim "/" directory) "/bus"))
+                    (probe-file (concatenate 'string (string-right-trim "/" directory) "/systemd/private"))))))
+    (let ((own (own-variable "XDG_RUNTIME_DIR"))
+          (system (format nil "/run/user/~d" (sb-posix:getuid))))
+      (cond ((reached-p own) own)
+            ((reached-p system) system)))))
+
 (defun scope-environment ()
   "What systemd-run needs of the environment to reach your own service
-manager, and nothing else."
-  (loop for name in '("XDG_RUNTIME_DIR" "DBUS_SESSION_BUS_ADDRESS")
-        for value = (own-variable name)
-        when value collect (format nil "~a=~a" name value)))
+manager, and nothing else: the runtime directory it is reached through
+\(USER-MANAGER-RUNTIME-DIRECTORY), and the bus's address when one is set."
+  (let ((runtime (user-manager-runtime-directory))
+        (bus (own-variable "DBUS_SESSION_BUS_ADDRESS")))
+    (append (and runtime (list (format nil "XDG_RUNTIME_DIR=~a" runtime)))
+            (and bus (list (format nil "DBUS_SESSION_BUS_ADDRESS=~a" bus))))))
 
 (defun scope-arguments (total unit)
   "systemd-run's arguments putting what follows them in a scope of its own

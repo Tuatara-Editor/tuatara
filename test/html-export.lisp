@@ -598,7 +598,7 @@ Text.
   "Where the web page, Word and LaTeX exports of the Org document TEXT, of FILE, say to write it."
   (list (nth-value 1 (tuatara.defaults::org-html-document text :file file))
         (nth-value 1 (tuatara.defaults::org-docx-document text :file file))
-        (nth-value 1 (tuatara.defaults::org-latex-document text :file file))))
+        (nth-value 1 (org-latex-of text :file file))))
 
 (define-test (html-export output-name-from-a-macro-is-not-taken)
   (with-test-directory (dir)

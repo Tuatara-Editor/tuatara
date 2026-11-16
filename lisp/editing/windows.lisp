@@ -139,16 +139,22 @@ buffer, so it moves down."
 \\[other-window] would select it); you go with your buffer."
   (call-with-other-window (lambda (window) (swap-windows (current-window) window))))
 
+(defun rotate-windows-in (windows)
+  "Move the buffer of each of WINDOWS, a list in order, to the next of them,
+and the last one's to the first, or say there is no other window."
+  (if (one-window-p)
+      (message "There is no other window")
+      (rotate-window-states windows)))
+
 (define-command rotate-windows ()
   "Move each window's buffer to the next window, from the top left, and the
 last window's to the first; you go with your buffer."
-  (call-with-other-window (lambda (window) (declare (ignore window)) (rotate-window-states (editor-windows)))))
+  (rotate-windows-in (editor-windows)))
 
 (define-command rotate-windows-back ()
   "Move each window's buffer to the window before it, from the top left, and
 the first window's to the last; you go with your buffer."
-  (call-with-other-window
-   (lambda (window) (declare (ignore window)) (rotate-window-states (reverse (editor-windows))))))
+  (rotate-windows-in (reverse (editor-windows))))
 
 (defun turn-windows (how)
   "Rearrange the layout of windows as TURN-LAYOUT does for HOW."
@@ -246,9 +252,8 @@ share is said in per cent."
   "Show a buffer in another window and select it, completing on the live
 buffers as \\[switch-to-buffer] does, the ones used lately first; a new name
 makes one. With *preview-buffers*, the buffer selected is shown meanwhile."
-  (let ((name (read-buffer "Switch to buffer in other window: ")))
-    (unless (zerop (length name))
-      (pop-to-buffer (find-or-make-buffer name) :other t))))
+  (switch-to-buffer-reading "Switch to buffer in other window: "
+                            (lambda (buffer) (pop-to-buffer buffer :other t))))
 
 (define-command find-file-other-window ()
   "Visit a file in another window and select it, completing its name as

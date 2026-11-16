@@ -240,33 +240,9 @@
       (when (and (boundp symbol) (eq :special (sb-int:info :variable :kind symbol)))
         (true (search (string-downcase (symbol-name symbol)) starter) "~(~a~) in the starter init file" symbol)))))
 
-(define-test (config list-settings-read-as-meant)
-  (flet ((read-as (value &optional pairs)
-           (tuatara.defaults::setting-list (gensym "SETTING") value :pairs pairs)))
-    ;; a list as it is, a dotted tail one more element, a value alone a list of it
-    (let ((list '(a b)))
-      (is eq list (read-as list)))
-    (is equal '() (read-as nil))
-    (is equal '(a b c) (read-as '(a b . c)))
-    (is equal '("~/Evidence/") (read-as "~/Evidence/"))
-    (is equal '(org-mode) (read-as 'org-mode))
-    ;; settings of pairs: one pair alone, a dotted tail that is no pair left out
-    (is equal '((#\( . #\))) (read-as '(#\( . #\)) t))
-    (is equal '((org-mode)) (read-as '(org-mode) t))
-    (is equal '((#\( . #\)) (#\[ . #\])) (read-as '((#\( . #\)) (#\[ . #\]) . #\x) t))
-    (is equal '((a . t)) (read-as '((a . t) b) t)))
-  ;; said once, the same reading kept
-  (let* ((value '(a . b))
-         (first-read (tuatara.defaults::setting-list 'some-setting value)))
-    (is eq first-read (tuatara.defaults::setting-list 'some-setting value)))
-  (remhash 'tuatara-user:*pair-delimiters* tuatara.defaults::*settings-read-as*)
-  (true (tuatara.frontend.fake:fake-frame-showing
-         (let ((tuatara-user:*electric-pair-mode* t) (tuatara-user:*pair-delimiters* '(#\{ . #\})))
-           (run-keys "i { C-g" :text "" :width 140))
-         "*pair-delimiters* is (#\\{ . #\\}), not a list of pairs: read as ((#\\{ . #\\}))")))
-
 (define-modal-test (config starting-past-a-slip)
-  ;; an init file setting the pairs as one dotted pair: the editor starts, and pairs
+  ;; an init file setting the pairs as one dotted pair: the editor starts, says the value is
+  ;; refused, and pairs as standard
   (let* ((file (merge-pathnames (format nil "init-~36r.lisp" (random (expt 36 8))) (tuatara.io:cache-directory)))
          (pairs tuatara-user:*pair-delimiters*)
          (mode tuatara-user:*electric-pair-mode*))
@@ -279,7 +255,8 @@
            (let ((tuatara.defaults:*config-file* file))
              (multiple-value-bind (f editor) (run-keys "i ( a C-g" :text "" :width 140)
                (declare (ignore f))
-               (is eq :read tuatara.defaults::*init-file-outcome*)
+               (true (search "*pair-delimiters* is " (cdr tuatara.defaults::*init-file-outcome*))
+                     "~s" tuatara.defaults::*init-file-outcome*)
                (is string= "(a)" (session-text editor)))))
       (setf tuatara-user:*pair-delimiters* pairs
             tuatara-user:*electric-pair-mode* mode)
@@ -588,3 +565,116 @@ commented inside another one commented (;;   ;; (setf ...) in a load-package's
           (true (search "*lsp-trusted-projects*, now called *trusted-projects*" (said)) "~a" (said))
           (false (search "*evidence-folders*" (said)) "~a" (said))
           (false (boundp (find-symbol "*LSP-TRUSTED-PROJECTS*" :tuatara-user))))))))
+
+(define-test (config renamed-setting-not-taken)
+  ;; a value given by a setting's old name that the setting does not take is put back, and said
+  (with-test-directory (dir)
+    (let ((file (merge-pathnames "init.lisp" dir))
+          (tuatara-user:*evidence-directories* (list "/cases/")))
+      (alexandria:write-string-into-file (format nil "(setf *evidence-folders* 7)~%") file)
+      (let ((tuatara.defaults:*config-file* file))
+        (with-messages-said (said)
+          (run-keys "" :text "")
+          (is equal '("/cases/") tuatara-user:*evidence-directories*)
+          (true (search "Your init file: *evidence-directories* is 7, but it takes a list" (said)) "~a" (said)))))))
+
+(define-test (config settings-refused-where-given)
+  ;; a setting given a value it does not take is refused, with what it takes, and keeps its
+  ;; value: by the editor's own setting, M-:, a form of the init file (whose other settings
+  ;; stand), a package's :config
+  (let ((padding tuatara-user:*gui-padding*) (width tuatara-user:*fill-column*) (said '())
+        (message (find-symbol "MESSAGE" :tuatara.packages))
+        (file (merge-pathnames (format nil "init-~36r.lisp" (random (expt 36 8))) (uiop:temporary-directory))))
+    (flet ((refused (function)
+             (handler-case (progn (funcall function) nil)
+               (tuatara.runtime:refusal (e) (princ-to-string e)))))
+      (unwind-protect
+           (progn
+             (setf tuatara-user:*gui-padding* 8)
+             (dolist (value '(x 4.5 -30))
+               (let ((words (refused (lambda () (tuatara.runtime:set-setting 'tuatara-user:*gui-padding* value)))))
+                 (true (search "*gui-padding* is " words) "~s" words)
+                 (true (search "but it takes a whole number, 0 or more, or a list" words) "~s" words)
+                 (true (search "it keeps 8" words) "~s" words))
+               (is eql 8 tuatara-user:*gui-padding*))
+             (is equal '(4 12) (tuatara.runtime:set-setting 'tuatara-user:*gui-padding* '(4 12)))
+             (setf tuatara-user:*gui-padding* padding)
+             (multiple-value-bind (f editor)
+                 (run-keys (format nil "M-: ~a RET" (key-string "(setf *fill-column* 66 *gui-padding* 'x)")) :width 160)
+               (declare (ignore editor))
+               (true (tuatara.frontend.fake:fake-frame-showing
+                      f "*gui-padding* is x, but it takes a whole number, 0 or more, or a list")))
+             (is equal padding tuatara-user:*gui-padding*)
+             (is = 66 tuatara-user:*fill-column*)
+             (alexandria:write-string-into-file
+              (format nil "(setf *gui-padding* \"wide\" *fill-column* 64)~%") file :if-exists :supersede)
+             (let ((tuatara.defaults:*config-file* file))
+               (multiple-value-bind (f editor) (run-keys "" :text "abc" :width 160)
+                 (declare (ignore editor))
+                 (true (tuatara.frontend.fake:fake-frame-showing-across-rows f "line 1: *gui-padding* is \"wide\""))))
+             (is equal padding tuatara-user:*gui-padding*)
+             (is = 64 tuatara-user:*fill-column*)
+             (sb-int:encapsulate message 'said (lambda (f control &rest arguments)
+                                                 (push (apply #'format nil control arguments) said)
+                                                 (apply f control arguments)))
+             (tuatara.packages::run-package-forms "kiwi" :config '((setf tuatara-user:*fill-column* "narrow")))
+             (is = 64 tuatara-user:*fill-column*)
+             (true (find-if (lambda (line) (and (search "kiwi's :config: " line)
+                                                (search "*fill-column* is \"narrow\"" line)))
+                            said)
+                   "~s" said))
+        (sb-int:unencapsulate message 'said)
+        (ignore-errors (delete-file file))
+        (setf tuatara-user:*gui-padding* padding tuatara-user:*fill-column* width)))))
+
+(define-test (config setting-defined-after-a-value-it-does-not-take)
+  ;; an init file may set a package's setting before the package defines it: a value the setting
+  ;; does not take is then replaced by the standard value, and said
+  (let ((name (intern (format nil "*KIWI-LATE-~36r*" (random (expt 36 8))) :tuatara-user)) (said '())
+        (message (find-symbol "MESSAGE" :tuatara.packages)))
+    (setf (symbol-value name) :x)
+    (sb-int:encapsulate message 'said (lambda (f control &rest arguments)
+                                        (push (apply #'format nil control arguments) said)
+                                        (apply f control arguments)))
+    (unwind-protect
+         (progn
+           (eval `(tuatara.runtime:define-setting ,name 3 "How many kiwi." :values (integer 0 *)))
+           (is = 3 (symbol-value name))
+           (true (find-if (lambda (line)
+                            (search "is :x, but it takes a whole number, 0 or more: it is given its standard value, 3"
+                                    line))
+                          said)
+                 "~s" said)
+           (fail (tuatara.runtime:set-setting name -1))
+           (is = 3 (symbol-value name)))
+      (sb-int:unencapsulate message 'said)
+      ;; the setting made for the test is let go
+      (let ((settings tuatara.runtime::*settings*))
+        (when (and (plusp (length settings)) (eq name (aref settings (1- (length settings)))))
+          (vector-pop settings))
+        (makunbound name)
+        (unintern name :tuatara-user)))))
+
+(define-test (config setting-checks-make-nothing)
+  ;; a value is checked, and the settings looked at after a form, without garbage, so that the
+  ;; checks after each form of the init file and each evaluation cost no more than looking
+  (let* ((snapshot (tuatara.runtime:settings-snapshot))
+         (check (lambda (n)
+                  (dotimes (i n)
+                    (tuatara.runtime:setting-value-fault 'tuatara-user:*gui-padding* '(4 12 4 12))
+                    (tuatara.runtime:setting-value-fault 'tuatara-user:*fill-column* 72)
+                    (tuatara.runtime:put-back-misfit-settings snapshot)))))
+    (flet ((consed (n)
+             (loop repeat 3 minimize (nth-value 2 (tuatara.bench::measuring (funcall check n))))))
+      (let ((made (- (consed 1100) (consed 100))))
+        (true (< made 1000) "~d octets for 1000 checks" made)))))
+
+(define-test (config settings-of-a-name-take-text-too)
+  ;; a theme named as text is found as one named by a symbol is, and so taken; a setting with no
+  ;; value is refused in words, not with an error of Lisp's
+  (dolist (setting '(tuatara-user:*dark-theme* tuatara-user:*light-theme*))
+    (false (tuatara.runtime:setting-value-fault setting "terminal")))
+  (let ((name (gensym "UNBOUND")))
+    (setf (get name 'tuatara.runtime::setting-values) 'boolean)
+    (true (search "it has no value" (handler-case (progn (tuatara.runtime:set-setting name :maybe) "")
+                                      (tuatara.runtime:refusal (e) (princ-to-string e)))))))

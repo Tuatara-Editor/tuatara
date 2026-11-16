@@ -39,16 +39,24 @@ it has."
 first and last lines, its left and right columns, and how many rows it has.
 While the lines are still being counted, a rectangle of no more than
 *REWRITE-THRESHOLD* counts its own rows; a larger one waits for the count."
+  (multiple-value-bind (rows top bottom) (rectangle-row-count buffer)
+    (multiple-value-bind (left right) (rectangle-columns buffer)
+      (values top bottom left right rows))))
+
+(defun rectangle-row-count (buffer)
+  "How many rows BUFFER's rectangle has, and as two more values the starts of
+its first and last lines, its columns left alone: the rows are counted, not
+read. While the lines are still being counted, a rectangle of no more than
+*REWRITE-THRESHOLD* counts its own rows; a larger one waits for the count."
   (let* ((p (tuatara.buffer:buffer-point buffer))
          (m (tuatara.buffer:buffer-mark buffer))
          (top (tuatara.buffer:buffer-line-start buffer (min p m)))
          (bottom (tuatara.buffer:buffer-line-start buffer (max p m))))
-    (multiple-value-bind (left right) (rectangle-columns buffer)
-      (values top bottom left right
-              (if (and (not (tuatara.buffer:buffer-indexed-p buffer)) (<= (- bottom top) *rewrite-threshold*))
-                  (1+ (tuatara.text:rope-count-newlines (tuatara.buffer:buffer-text buffer) top bottom))
-                  (1+ (- (tuatara.buffer:buffer-line-number buffer bottom)
-                         (tuatara.buffer:buffer-line-number buffer top))))))))
+    (values (if (and (not (tuatara.buffer:buffer-indexed-p buffer)) (<= (- bottom top) *rewrite-threshold*))
+                (1+ (tuatara.text:rope-count-newlines (tuatara.buffer:buffer-text buffer) top bottom))
+                (1+ (- (tuatara.buffer:buffer-line-number buffer bottom)
+                       (tuatara.buffer:buffer-line-number buffer top))))
+            top bottom)))
 
 (defparameter *rectangle-rows-in-memory* 65536
   "The most rows a rectangle is changed on at once, row by row: one of more is
@@ -63,7 +71,7 @@ changed in the background. The rows are counted, not read."
          (m (tuatara.buffer:buffer-mark buffer))
          (top (tuatara.buffer:buffer-line-start buffer (min p m))))
     (or (> (- (tuatara.buffer:buffer-line-end buffer (max p m)) top) *rewrite-threshold*)
-        (> (nth-value 4 (rectangle-lines buffer)) *rectangle-rows-in-memory*))))
+        (> (rectangle-row-count buffer) *rectangle-rows-in-memory*))))
 
 (defun line-screen-column-position (buffer line column)
   "Where COLUMN on the screen is on BUFFER's line number LINE (from 0), or the
@@ -465,7 +473,7 @@ where that would be is left as it is."
            (message "No rectangle to paste"))
           ((rectangle-live-p b)
            ;; counted before a row is read
-           (let ((count (nth-value 4 (rectangle-lines b))))
+           (let ((count (rectangle-row-count b)))
              (if (/= count (length *killed-rectangle*))
                  (message "Rectangle row mismatch: selection has ~:d row~:p, copied rectangle has ~:d; paste refused"
                           count (length *killed-rectangle*))
@@ -612,7 +620,7 @@ block's left column on its line. A rectangle over more text than
 \\[universal-argument]."
   (require-mark (current-buffer))
   (let* ((b (current-buffer))
-         (rows (nth-value 4 (rectangle-lines b)))
+         (rows (rectangle-row-count b))
          (ask (prefix-argument))
          (first (if ask
                     (let ((text (read-string "Number to count from: " :initial "1" :select-initial t)))
@@ -693,7 +701,7 @@ around, when it stands around every row in sight."
                            :unwrap
                            :wrap))
                  (goal (multiple-value-bind (top bottom left) (rectangle-lines b)
-                         (rows-job-goal b kind top bottom left nil 1 nil (string open)))))
+                         (rows-job-goal b kind top bottom left :open (string open)))))
             (let ((changed (rows-change-now b kind :open (string open) :close (string close))))
               (setf (tuatara.buffer:buffer-mark-active-p b) nil)
               (when changed (goto (funcall goal b)))))))))
@@ -984,8 +992,15 @@ it is ended. A part of ROPE's text is copied, a row of the source read by READ
 else is that vector itself."
   (let ((start nil) (end 0) (parts 0) (whole nil)
         (gathered (make-array 64 :element-type '(unsigned-byte 8) :adjustable t :fill-pointer 0)))
-    (labels ((add (octets from to)
-               (loop for i from from below to do (vector-push-extend (aref octets i) gathered)))
+    (labels ((make-room (n)
+               ;; N more octets at the end of GATHERED, its fill pointer past them; where they begin
+               (let* ((at (fill-pointer gathered)) (need (+ at n)))
+                 (when (> need (array-dimension gathered 0))
+                   (setf gathered (adjust-array gathered (max need (* 2 (array-dimension gathered 0))))))
+                 (setf (fill-pointer gathered) need)
+                 at))
+             (add (octets from to)
+               (replace gathered octets :start1 (make-room (- to from)) :start2 from :end2 to))
              (unshare ()
                (when whole
                  (add whole 0 (length whole))
@@ -997,7 +1012,7 @@ else is that vector itself."
                (incf parts))
              (spaces (n)
                (unshare)
-               (loop repeat n do (vector-push-extend 32 gathered))
+               (fill gathered 32 :start (make-room n))
                (incf parts))
              (finish ()
                (when start
@@ -1152,8 +1167,11 @@ meanwhile."
     (declare (ignore top bottom))
     (start-on-rectangle-rows buffer (job-words kind :doing (rectangle-rows-words rows)) (block-shade buffer left right)
                              (lambda (top bottom left right)
-                               (start-rows-job buffer kind top bottom left right (rows-between buffer top bottom)
-                                               :text text :open open :close close :numbering numbering)))))
+                               (start-rows-job buffer
+                                               (rows-job-spec buffer kind top bottom left right
+                                                              :text text :open open :close close
+                                                              :numbering numbering)
+                                               (rows-between buffer top bottom))))))
 
 (defun start-on-rectangle-rows (buffer words shade starter)
   "Start the job STARTER starts on the rows of BUFFER's rectangle, a function
@@ -1198,14 +1216,14 @@ line where text goes at its end, until the result is taken in."
          (min to (second (car (last pieces)))) left right (rows-job-slice-keys spec))))
     (nreverse ranges)))
 
-(defun rows-job-goal (buffer kind top bottom left source repeat text open)
+(defun rows-job-goal (buffer kind top bottom left &key source (repeat 1) text open)
   "Where point goes when a rows job of KIND over BUFFER's lines from TOP to
 BOTTOM is taken in, as the same command done at once leaves it, a function of
 the buffer with the job's text in it. It is after the text written on the last
 row (TEXT for a change, SOURCE's last row REPEAT times across for a paste). It
 is at the column LEFT of the last row cleared. It is after OPEN on the first
 row wrapped. It is where OPEN stood on the first row unwrapped. It is NIL for
-the others."
+the others. TEXT and OPEN are strings or their octets."
   (let* ((top-line (tuatara.buffer:buffer-line-number buffer top))
          (rows (if (and (eq kind :paste) source)
                    (rectangle-source-rows source)
@@ -1214,14 +1232,15 @@ the others."
                         (multiple-value-bind (octets starts) (source-rows-block source (1- rows) rows (max 1 repeat))
                           (declare (ignore octets))
                           (- (aref starts 1) (aref starts 0))))))
-    (flet ((after (row octets)
+    (flet ((octets-length (text) (if (stringp text) (tuatara.text:string-octet-length text) (length text)))
+           (after (row octets)
              (lambda (b)
                (+ (line-screen-column-position b (+ top-line row) left)
                   octets))))
       (case kind
-        (:change (after (1- rows) (tuatara.text:string-octet-length text)))
+        (:change (after (1- rows) (octets-length text)))
         (:clear (after (1- rows) 0))
-        (:wrap (after 0 (tuatara.text:string-octet-length open)))
+        (:wrap (after 0 (octets-length open)))
         (:unwrap (lambda (b) (line-screen-column-position b top-line (max 0 (1- left)))))
         (:paste (and last-row (after (1- rows) last-row)))))))
 
@@ -1231,7 +1250,15 @@ the others."
                         (tab-width (tuatara.display:tab-width-of buffer)))
   "The ROWS-JOB for the change KIND to BUFFER's lines from the one starting at
 TOP to the one starting at BOTTOM, between the columns LEFT and RIGHT, as it
-stands now; the other arguments are as START-ROWS-JOB takes them."
+stands now. The columns are on the screen (a tab TAB-WIDTH columns at most;
+with TAB-WIDTH NIL, characters). TEXT is put in for :CHANGE, OPEN and CLOSE
+around the rows for :WRAP and :UNWRAP, SOURCE's rows REPEAT times across for
+a paste. A short row is padded out to the block unless PAD is false.
+NUMBERING is used for :NUMBER. For :TYPE, AT-END, BACK and FORWARD are as
+ROWS-JOB has them, the rows REFUSED counted in its car. The rows starting at
+the offsets SKIP holds (a hash table) are left alone, and so are those where
+the change would take part of the text a fold hides, but not all of it,
+counted in the car of HIDDEN."
   (let* ((rope (tuatara.buffer:buffer-text buffer))
          (total (tuatara.text:rope-octet-length rope)))
     (make-rows-job :rope rope :top top :bottom bottom :top-line (tuatara.text:byte->line rope top)
@@ -1246,29 +1273,18 @@ stands now; the other arguments are as START-ROWS-JOB takes them."
                    :source source :repeat repeat :numbering numbering
                    :newline (tuatara.text:string-octets (tuatara.buffer:buffer-newline buffer)))))
 
-(defun start-rows-job (buffer kind top bottom left right rows
-                       &key text open close source (repeat 1) (pad t) report announce what verb leaves
-                         skip at-end (back 0) (forward 0) (refused (list 0)) (hidden (list 0)) joins numbering
-                         (tab-width (tuatara.display:tab-width-of buffer)))
-  "Start the background job that rewrites ROWS lines of BUFFER from the one
-starting at TOP to the one starting at BOTTOM between the columns LEFT and
-RIGHT, as KIND says (ROWS-JOB). The columns are on the screen (a tab TAB-WIDTH
-columns at most; with TAB-WIDTH NIL, characters). SOURCE's rows are put REPEAT
-times across for a paste. A short row is padded out to the block unless PAD is
-false. NUMBERING is used for :NUMBER. For :TYPE, AT-END, BACK and FORWARD are
-as ROWS-JOB has them, the rows REFUSED counted in its car. The rows starting
-at the offsets SKIP holds (a hash table) are left alone, and so are those
-where the change would take part of the text a fold hides, but not all of it,
-counted in the car of HIDDEN. REPORT (see REWRITE), ANNOUNCE (the work in
-words, said to go on in the background as it starts, or :NONE for nothing),
-WHAT (what it does, for the list of jobs, said as it starts unless ANNOUNCE
-says otherwise), VERB and LEAVES (REWRITE) are the rectangle's unless given
-\(JOB-WORDS, JOB-REPORT). JOINS is the undo stack of a change the job's joins
-\(REWRITE). Returns the job."
+(defun start-rows-job (buffer spec rows &key report announce what verb leaves joins)
+  "Start the background job that makes the change SPEC, a ROWS-JOB made by
+ROWS-JOB-SPEC, to ROWS lines of BUFFER. REPORT (see REWRITE), ANNOUNCE (the
+work in words, said to go on in the background as it starts, or :NONE for
+nothing), WHAT (what it does, for the list of jobs, said as it starts unless
+ANNOUNCE says otherwise), VERB and LEAVES (REWRITE) are the rectangle's
+unless given (JOB-WORDS, JOB-REPORT). JOINS is the undo stack of a change the
+job's joins (REWRITE). Returns the job."
   (tuatara.buffer:ensure-indexed buffer)
-  (let* ((spec (rows-job-spec buffer kind top bottom left right :text text :open open :close close :source source
-                              :repeat repeat :pad pad :skip skip :at-end at-end :back back :forward forward
-                              :refused refused :hidden hidden :numbering numbering :tab-width tab-width))
+  (let* ((kind (rows-job-kind spec))
+         (top (rows-job-top spec))
+         (source (rows-job-source spec))
          (rope (rows-job-rope spec))
          (high (rows-job-high spec))
          (rows (if source (max rows (rectangle-source-rows source)) rows))
@@ -1278,13 +1294,16 @@ says otherwise), VERB and LEAVES (REWRITE) are the rectangle's unless given
                :low top :high high :words "on the rectangle's rows" :what what :joins joins
                :verb (or verb (job-words kind :verb "the rectangle"))
                :leaves (or leaves "the rectangle is as it was")
-               :goal (rows-job-goal buffer kind top bottom left source repeat text open)
+               :goal (rows-job-goal buffer kind top (rows-job-bottom spec) (rows-job-left spec)
+                                    :source source :repeat (rows-job-repeat spec)
+                                    :text (rows-job-text spec) :open (rows-job-open spec))
                :point (tuatara.buffer:buffer-point buffer)
                :mapper (rectangle-mapper spec)
                :all t :doing (job-words kind :doing)
                :report (or report
                            (job-report kind (lambda (n) (declare (ignore n)) (rectangle-rows-words rows))
-                                       "the rectangle" :refused refused :hidden hidden))
+                                       "the rectangle" :refused (rows-job-refused spec)
+                                                       :hidden (rows-job-hidden spec)))
                ;; a paste at the very end of the text still has a piece, of no length
                :pieces (if (< top high)
                            (rewrite-pieces-for rope top high)
@@ -1310,9 +1329,10 @@ background."
             (when (start-on-rectangle-rows buffer (job-words :paste :doing (rectangle-rows-words rows))
                                            (block-shade buffer left right)
                                            (lambda (top bottom left right)
-                                             (start-rows-job buffer :paste top bottom left right
-                                                             (rows-between buffer top bottom)
-                                                             :source source :repeat (max 1 times))))
+                                             (start-rows-job buffer
+                                                             (rows-job-spec buffer :paste top bottom left right
+                                                                            :source source :repeat (max 1 times))
+                                                             (rows-between buffer top bottom))))
               (setf (tuatara.buffer:buffer-mark-active-p buffer) nil))))
       (progn
         (multiple-value-bind (start end) (selection-range)
@@ -1333,7 +1353,9 @@ background."
                             ;; in at point's column as it is when its turn comes
                             (lambda (top bottom at)
                               (let ((column (tuatara.display:buffer-screen-column buffer at)))
-                                (start-rows-job buffer :paste top bottom column column (rows-between buffer top bottom)
-                                                :source source :repeat times)))
+                                (start-rows-job buffer
+                                                (rows-job-spec buffer :paste top bottom column column
+                                                               :source source :repeat times)
+                                                (rows-between buffer top bottom))))
                             ;; a strip a column wide where it goes in
                             :shade (block-shade buffer column (1+ column)))))))))

@@ -133,7 +133,7 @@ named .NAME.tuatara-journal."
 (defun reads-file-p (fd existing)
   "True when the file open as file descriptor (FD) is the one EXISTING describes."
   (let ((stamp (tuatara.runtime:ignoring-errors-reported ("examining a mapped file") (fd-stamp fd "a mapped file"))))
-    (and stamp (= (stamp-dev stamp) (stamp-dev existing)) (= (stamp-ino stamp) (stamp-ino existing)))))
+    (same-stamped-file-p stamp existing)))
 
 (defun in-place-test (mappings existing)
   "A function telling of a stretch of text from a mapped file, as
@@ -395,7 +395,7 @@ exactly. HEADER says what JOURNAL keeps (READ-JOURNAL-HEADER). Flushes FILE."
     (set-fd-modification-time file (getf header :mtime))
     (flush-fd file target)))
 
-(defun same-file-p (fd stamp path)
+(defun fd-content-same-p (fd stamp path)
   "True when the file open as file descriptor (FD), at PATH, is the one STAMP
 describes, with the same content as far as the system tells."
   (same-content-p stamp (fd-stamp fd path)))
@@ -484,7 +484,7 @@ was before it is signalled."
                                                 (native target))))))))
       (unwind-protect
            (handler-bind ((error (lambda (e) (declare (ignore e)) (give-back))))
-             (unless (same-file-p file existing target)
+             (unless (fd-content-same-p file existing target)
                (error 'file-changed-on-disk :path target))
              (setf journal (open-unnamed-file directory #o600))
              ;; held throughout, so that no other save or putting back uses the journal meanwhile
@@ -509,7 +509,7 @@ was before it is signalled."
                                                       (logior sb-posix:o-wronly +o-nofollow+ +o-cloexec+))
                            (sb-posix:syscall-error (e) (fail "open for writing" target (sb-posix:syscall-errno e)))))
                ;; another program about to write it, or the file replaced since it was read: a new file instead
-               (when (or broken (not (same-file-p out existing target)))
+               (when (or broken (not (fd-content-same-p out existing target)))
                  (give-back)
                  (return-from write-changes-in-place nil)))
              (check-writing target "save" :fd out)
@@ -593,7 +593,7 @@ when the file was put back, or changed by the one waited for."
                                     (sb-posix:syscall-error (e)
                                       (fail "open for writing" target (sb-posix:syscall-errno e))))))
                          (unwind-protect
-                              (progn (unless (same-file-p out stamp target)
+                              (progn (unless (fd-content-same-p out stamp target)
                                        (left-alone "the file was replaced while it was being put back"))
                                      (check-writing target "put back" :fd out)
                                      (put-back out journal header target))

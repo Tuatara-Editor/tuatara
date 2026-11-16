@@ -253,10 +253,10 @@ drag a mode line up or down, or the line between two windows left or right.
 
 Tuatara runs in two ways. Typed as =tuatara=, it runs in the terminal you
 started it from. Typed as =tuatara --gui=, it opens a window of its own on the
-desktop, drawn with GTK, the toolkit most Linux desktops use. Both have the
-same keys, the same commands and the same parts. The window of its own has
-things a terminal does not, such as pictures in every case, a font you can
-change and ligatures where the font has them.
+desktop, drawn with GTK, the toolkit most Linux desktops use (version 4.14 or
+newer). Both have the same keys, the same commands and the same parts. The
+window of its own has things a terminal does not, such as pictures in every
+case, a font you can change and ligatures where the font has them.
 
 A frame is one such screen. You can have several frames. In a window of its
 own each frame is a separate desktop window. A terminal has only one screen,
@@ -296,8 +296,6 @@ editor you are in runs as a daemon.
 | none  | ~C-x C-+~, ~C-x C-=~             | =text-scale-adjust=            | Makes the font a step larger. After it, ~+~, ~=~, ~-~ and ~0~ alone go on.     |
 | none  | ~C-x C--~                        | =text-scale-adjust=            | Makes the font a step smaller.                                                 |
 | none  | ~C-x C-0~                        | =text-scale-adjust=            | Goes back to the size the window started with.                                 |
-| none  | ~M-x text-scale-increase~        | =text-scale-increase=          | Makes the font a step larger.                                                  |
-| none  | ~M-x text-scale-decrease~        | =text-scale-decrease=          | Makes the font a step smaller.                                                 |
 | none  | ~C-<wheel-up>~, ~C-<wheel-down>~ | =mouse-wheel-text-scale=       | Larger or smaller as the wheel turns with Control held.                        |
 | none  | ~M-x set-frame-font~             | =set-frame-font=               | Asks for a font family. It lasts until you quit.                               |
 | none  | ~<f11>~                          | =toggle-frame-fullscreen=      | Fills the screen, or goes back.                                                |

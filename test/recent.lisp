@@ -57,10 +57,12 @@ directory removed afterwards."
                  (true (tuatara.frontend.fake:fake-frame-showing f "No recent files")))
                ;; visited in turn: C-x C-r RET goes back to the one before, the current one left out
                (multiple-value-bind (f editor)
-                   (run-keys (format nil
-                                     "C-x C-f C-a C-k ~a RET C-x C-f C-a C-k ~a RET C-x C-r"
-                                     (key-string a)
-                                     (key-string b))
+                   ;; the files are examined in the background, then shown
+                   (run-keys (list (format nil
+                                           "C-x C-f C-a C-k ~a RET C-x C-f C-a C-k ~a RET C-x C-r"
+                                           (key-string a)
+                                           (key-string b))
+                                   (lambda () (sleep 0.3)) :tick)
                              :width 100 :height 12)
                  (declare (ignore editor))
                  (multiple-value-bind (screen) (tuatara.frontend.fake:fake-frame-with f "Open recent file:")
@@ -95,7 +97,8 @@ directory removed afterwards."
                (is string= c (car (first (tuatara.defaults::read-recent-files))))
                (kill-buffers-visiting dir)
                (delete-file b)
-               (multiple-value-bind (f editor) (run-keys "C-x C-r" :width 100 :height 12)
+               (multiple-value-bind (f editor) (run-keys (list "C-x C-r" (lambda () (sleep 0.3)) :tick)
+                                                         :width 100 :height 12)
                  (declare (ignore editor))
                  (true (tuatara.frontend.fake:fake-frame-showing f "b.txt" "not found"))))
           (kill-buffers-visiting dir))))))
@@ -199,7 +202,8 @@ directory removed afterwards."
             (kill-buffers-visiting dir)))))))
 
 (define-test (recent-files safe-directories-as-written)
-  ;; a directory alone, or a list with a dotted tail, still opens its files safely
+  ;; the directories listed open their files safely; a directory alone, or a list with a dotted
+  ;; tail, is refused
   (with-fresh-recent-files
     (with-test-directory (dir)
       (let* ((evidence (ensure-directories-exist (merge-pathnames "evidence/" dir)))
@@ -207,14 +211,16 @@ directory removed afterwards."
              (plain (namestring (put-file (merge-pathnames "plain.txt" dir) "hello"))))
         (unwind-protect
              (progn
-               (dolist (setting (list (namestring evidence)
-                                      (cons "/nowhere/at/all/" (namestring evidence))
-                                      (list* "/nowhere/at/all/" "/nor/here/" (namestring evidence))))
+               (dolist (setting (list (list (namestring evidence))
+                                      (list "/nowhere/at/all/" "/nor/here/" (namestring evidence))))
                  (let ((tuatara-user:*safe-directories* setting))
                    (true (tuatara.defaults::visit-safely-reason kept) "~s" setting)
                    (false (tuatara.defaults::visit-safely-reason plain) "~s" setting)))
+               (dolist (setting (list (namestring evidence) (cons "/nowhere/at/all/" (namestring evidence))))
+                 (fail (tuatara.runtime:set-setting 'tuatara-user:*safe-directories* setting)
+                     'tuatara.runtime:refusal))
                ;; opened by C-x C-f too
-               (let ((tuatara-user:*safe-directories* (namestring evidence)))
+               (let ((tuatara-user:*safe-directories* (list (namestring evidence))))
                  (multiple-value-bind (f editor)
                      (run-keys (format nil "C-x C-f C-a C-k ~a RET" (key-string kept)) :width 150 :height 12)
                    (true (tuatara.io:safe-visit-p (tuatara.display:window-buffer (tuatara.command:editor-window editor))))

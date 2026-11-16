@@ -128,7 +128,7 @@ file, a link followed, never a named pipe or a device, at most
                               (tuatara.io:directory-entries (tuatara.io:path-join trash "info/"))))
                (let ((info (first entry)))
                  (when (and (> (length info) 10) (string= ".trashinfo" info :start2 (- (length info) 10))
-                            (not (member (subseq info 0 (- (length info) 10)) '("." "..") :test #'string=)))
+                            (tuatara.io:entry-name-p (subseq info 0 (- (length info) 10))))
                    (let* ((text (ignoring-errors-reported ("reading ~a in the trash ~a" info trash)
                                   (tuatara.io:file-text (tuatara.io:path-join trash (format nil "info/~a" info))
                                                         :limit *trash-info-limit* :too-large (constantly nil))))
@@ -276,11 +276,13 @@ could not be read."
                     (lambda (list window) (declare (ignore window)) (rimu-trash-read list)))
 
 (define-command rimu-trash ()
-  "List what is in the trash, as the buffer list (\\[buffers]) lists buffers: a section
-for your own trash and one for each drive's, the last to go there first, each
-thing's name, when it went and where it was. There \\<rimu-trash-mode>\\[list-visit] opens one safely,
-\\[list-mark-entry] and \\[list-mark-for-deletion] mark, \\[rimu-trash-restore] puts the marked ones back,
-\\[list-delete-marked] deletes them for good, \\[rimu-trash-empty] empties the trash."
+  "List what is in the trash, as the buffer list (\\[buffers]) lists buffers: a
+section for your own trash and one for each drive's, the last to go there
+first, each thing's name, when it went and where it was. There
+\\<rimu-trash-mode>\\[list-visit] opens one safely, \\[list-mark-entry] and
+\\[list-mark-for-deletion] mark, \\[rimu-trash-restore] puts the marked ones
+back, \\[list-delete-marked] deletes them for good, \\[rimu-trash-empty]
+empties the trash."
   (let ((buffer (buffer-in-mode "*Trash*" 'rimu-trash-mode)))
     (show-buffer buffer)
     (unless (tuatara.buffer:buffer-local buffer 'trash-read-at)
@@ -404,7 +406,8 @@ background (TRASH-DELETE-THINGS); they cannot be put back."
           ((yes-or-no-p* (format nil "~a for good? It cannot be put back."
                                  (list-question "Delete" "thing" things
                                                 :name-of (lambda (thing)
-                                                           (tuatara.io:native-file-name (trashed-path thing))))))
+                                                           (escape-controls
+                                                            (tuatara.io:native-file-name (trashed-path thing)))))))
            (trash-delete-things things list)))))
 
 (define-command rimu-trash-restore ()
@@ -449,8 +452,8 @@ after asking twice, in the background."
 (defun install-rimu-trash ()
   "Bind the keys of the list of the trash."
   (define-keys *rimu-trash-keymap* '(("RET" list-visit) ("l" list-visit) ("C-f" list-visit) ("o" list-visit-other)
-                                     ("h" quit-window) ("C-b" quit-window)
-                                     ("R" rimu-trash-restore) ("X" rimu-trash-empty))))
+                                     ("R" rimu-trash-restore) ("X" rimu-trash-empty)))
+  (list-back-keys *rimu-trash-keymap*))
 
 (commands-for-mode 'rimu-trash-mode "the list of the trash (\\[rimu-trash])"
                    'list-visit 'list-visit-other 'rimu-trash-restore 'rimu-trash-empty)

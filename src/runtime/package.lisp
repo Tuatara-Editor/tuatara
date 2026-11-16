@@ -3,14 +3,18 @@
 
 (defpackage #:tuatara.runtime
   (:use #:cl #:alexandria)
-  (:documentation "Threads: the pool of workers that runs pieces of work in parallel, the number of
-processors, waiting on a condition with a time limit, jobs in the background and
-their one runner, the running of hooks, and the reports of debug mode.")
-  (:export #:define-record #:one-line #:control-code-p #:host #:*host* #:host-wake #:jobs-of #:make-spares #:take-spare
-           #:give-back-spare #:with-spare
-           #:resource-directories #:own-variable #:local-time-stamp #:foreign-library-p #:foreign-call #:*source-tree*
+  (:documentation "What every part of the editor runs on: records, the host the core asks, where its
+own files are, C functions, threads and the pool of workers that runs pieces of work in
+parallel, the number of processors, work stopped at once, waiting with a time limit, locks,
+jobs in the background and their one runner, the running of hooks, settings, refusals and
+the reports of debug mode.")
+  (:export #:define-record #:document-accessors #:one-line #:control-code-p #:host #:*host* #:host-wake #:jobs-of
+           #:make-spares #:take-spare #:give-back-spare #:with-spare
+           #:resource-directories #:own-variable #:local-time-stamp #:foreign-library-p #:*source-tree*
            #:cpu-count #:run-tasks
-           #:*task-wrappers* #:*around-long-work* #:ensure-pool #:*pool* #:pool #:pool-size #:wait-on #:wait-on-until
+           ;; calling C
+           #:define-c-function #:c-type #:null-pointer #:null-pointer-p #:with-c-string #:sap-string #:%sysconf
+           #:*task-wrappers* #:*around-long-work* #:wait-on #:wait-on-until
            #:*debug-on* #:*debug-start* #:*debug-reports* #:debug-report #:with-thread-guard #:make-guarded-thread
            #:bisect #:first-index-at-or-after #:with-depth-limit #:carry-settings #:queue-debug-report #:*stop-wait*
            #:join-within
@@ -18,16 +22,21 @@ their one runner, the running of hooks, and the reports of debug mode.")
            #:set-debug #:milliseconds-since #:seconds-since #:deadline-in #:deadline-passed-p #:seconds-left
            #:wait-until #:*debug-log-path* #:log-in-use-p #:debug-report-line #:backtrace-lines
            #:reporting-errors #:ignoring-errors-reported #:close-fd-quietly #:with-fd-closed-on-error
+           #:+o-cloexec+ #:duplicate-fd
            ;; hooks
            #:quit #:quit-words #:run-hook #:run-hook-until-success #:run-hook-until-done #:call-hook-function
            #:hook-function-name
-           #:host-say-hook-failure #:*hook-failures-said*
+           #:host-say-problem #:*hook-failures-said*
            #:*secret-at-hand* #:refusal #:refuse
            ;; settings and the values they take
-           #:define-setting #:setting-values #:setting-values-words #:setting-value-fault
+           #:define-setting #:setting-values #:setting-values-words #:setting-value-fault #:set-setting
+           #:setting-standard-value #:setting-in-force #:settings-snapshot #:put-back-misfit-settings
+           #:settings-watch #:make-settings-watch #:settings-moved-p
            #:host-secret-buffer-p #:secret-buffer-p #:failure-words #:note-editor-busy
            #:start-hang-watch #:*hang-report-seconds* #:lock-fd #:unlock-fd #:open-rotated-log
            ;; work stopped at once
+           #:background-work #:start-background-work #:background-work-key #:background-work-value
+           #:stop-background-work
            #:stoppable #:stoppable-work #:stop-work #:check-stopped #:*slow-call-seconds*
            ;; jobs in the background
            #:job #:job-p #:job-buffer #:job-status #:job-error #:job-cancel #:job-thread #:job-started #:job-wake

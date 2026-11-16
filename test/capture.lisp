@@ -356,7 +356,7 @@ templates those in DIRECTORY's capture-templates/ (none unless a test makes them
   (with-capture (dir agenda)
     (alexandria:write-string-into-file (format nil "* Tasks~%* Archive :ARCHIVE:~%* COMMENT Drafts~%") agenda
                                        :if-exists :supersede)
-    (let ((titles (mapcar #'second (tuatara.defaults::org-file-headings (namestring agenda)))))
+    (let ((titles (mapcar #'second (first (tuatara.defaults::org-files-headings (list (namestring agenda)))))))
       (is equal '(("Tasks") ("Archive") ("Drafts")) titles))))
 
 (define-modal-test (capture empty-question-and-windows-lines)

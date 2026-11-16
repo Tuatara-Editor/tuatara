@@ -220,20 +220,15 @@ end of its #+END: line, where they stand now."
 
 (defun dblock-snapshot-sources ()
   "The text of each file open in a buffer now, by its native path, for
-*DBLOCK-SOURCES*: the buffer's rope, which never changes; for a file mapped
-from disk, a copy when it was changed and no larger than a dynamic block
-reads (*ORG-FILE-READ-LIMIT*), else nothing (it is read from disk)."
+*DBLOCK-SOURCES*, as ORG-OPEN-TEXT gives it; one to be read from disk is left
+out."
   (let ((sources (make-hash-table :test 'equal)))
     (dolist (buffer tuatara.buffer:*buffers* sources)
-      (let ((file (tuatara.buffer:buffer-file buffer)))
-        (when file
-          (let ((path (tuatara.io:native file)))
-            (when path
-              (cond ((null (tuatara.buffer:buffer-mapping buffer))
-                     (setf (gethash path sources) (tuatara.buffer:buffer-text buffer)))
-                    ((and (tuatara.buffer:buffer-modified-p buffer)
-                          (<= (tuatara.buffer:buffer-size buffer) *org-file-read-limit*))
-                     (setf (gethash path sources) (tuatara.buffer:buffer-string buffer)))))))))))
+      (let* ((file (tuatara.buffer:buffer-file buffer))
+             (path (and file (tuatara.io:native file)))
+             (text (and path (org-open-text buffer))))
+        (when text
+          (setf (gethash path sources) text))))))
 
 (defun dblock-source (path)
   "Where a dynamic block reads the file at PATH, a native path, from: on the
@@ -448,8 +443,8 @@ dynamic block of the buffer."
 
 (define-command org-update-all-dblocks ()
   "Make every dynamic block of the current Org buffer again: each written from
-the text as it is now, in the
-background, the editor free meanwhile, and put in together, in one step to undo."
+the text as it is now, in the background, the editor free meanwhile, and put in
+together, in one step to undo."
   (with-org-structure (parse buffer tree text position)
     (check-writable buffer)
     (let ((blocks (dblock-blocks tree text)))
@@ -507,9 +502,9 @@ that kind asks."
 
 (define-command org-clock-report ()
   "Make the clock table point is in again, or put a new one in: its scope the
-subtree point is in, or the file before the
-first headline, its depth two levels. With \\[universal-argument], the first clock table of
-the buffer, point moved to it."
+subtree point is in, or the file before the first headline, its depth two
+levels. With \\[universal-argument], the first clock table of the buffer, point
+moved to it."
   (with-org-structure (parse buffer tree text position)
     (let* ((first (and (prefix-argument)
                        (find "clocktable" (dblock-blocks tree text) :key #'fourth :test #'string-equal)))
@@ -536,12 +531,11 @@ for the table and all its steps (MEMO-VALUES); NIL otherwise.")
 once (CLOCKTABLE-CLOCKS), by its node; NIL otherwise.")
 
 (defun clocktable-clocks (headline text)
-  "The clocks of HEADLINE's own text (TEXT its parse), in order: its clock
-lines (ORG-READ-CLOCK-LINE) wherever they stand in it, in a drawer or a list
-item too, not in a block; each (START . END) in universal time, or the
-minutes of a line giving a time alone (CLOCK: => 1:30), one still running left
-out; read once for a table
-while *CLOCKTABLE-CLOCKS* holds them."
+  "The clocks of HEADLINE's own text (TEXT its parse), in order: its clock lines
+(ORG-READ-CLOCK-LINE) wherever they stand in it, in a drawer or a list item too,
+not in a block; each (START . END) in universal time, or the minutes of a line
+giving a time alone (CLOCK: => 1:30), one still running left out; read once for
+a table while *CLOCKTABLE-CLOCKS* holds them."
   (flet ((read-them ()
            (let ((found '()))
              (labels ((walk (node)
@@ -631,8 +625,8 @@ block it does not know."
                 (t (values nil nil nil))))))))
 
 (defun clocktable-time (minutes)
-  "MINUTES as a clock table writes a time
-by default: 1:05, and a day or more with its days, 1d 4:30."
+  "MINUTES as a clock table writes a time by default: 1:05, and a day or more
+with its days, 1d 4:30."
   (multiple-value-bind (days rest) (floor minutes 1440)
     (multiple-value-bind (h m) (floor rest 60)
       (if (plusp days) (format nil "~dd ~d:~2,'0d" days h m) (format nil "~d:~2,'0d" h m)))))
@@ -672,9 +666,9 @@ on CLOCK: lines and in property drawers left out (it reads none from a drawer's 
 
 (defun clocktable-headline-timestamp (entry)
   "The timestamp a clock table's :timestamp column shows for the headline of
-ENTRY (an ORG-AGENDA-ENTRY): its SCHEDULED,
-else its DEADLINE, else the first active timestamp on its line or in its own
-text after its planning line, else the first inactive one; NIL for none."
+ENTRY (an ORG-AGENDA-ENTRY): its SCHEDULED, else its DEADLINE, else the first
+active timestamp on its line or in its own text after its planning line, else
+the first inactive one; NIL for none."
   (let* ((text (agenda-entry-text entry))
          (begin (agenda-entry-position entry))
          (own-end (agenda-entry-end entry))
@@ -749,8 +743,7 @@ minutes of them all."
 
 (defun org-link-search-words (title)
   "TITLE as a link to its headline searches for it: statistics cookies ([2/3],
-[66%]) out, each
-run of blanks one space, none at either end."
+[66%]) out, each run of blanks one space, none at either end."
   (string-trim " " (cl-ppcre:regex-replace-all
                     "[ \\t]+"
                     (cl-ppcre:regex-replace-all (load-time-value (cl-ppcre:create-scanner *org-statistics-cookie-re*))
@@ -819,9 +812,8 @@ headline has, its tags with the inherited, and its timestamp when asked."
     ("pt-BR" "Arquivo" "N" "Data e hora" "Título" "Hora" "TODOS" "Hora total" "Hora do arquivo" "Resumo das horas em")
     ("sk" "Súbor" "L" "Časová značka" "Záhlavie" "Čas" "VŠETKO" "Celkový čas" "Čas súboru" "Časový súhrn pre"))
   "A clock table's words in each language Org has them in (:lang): the file,
-level, timestamp, headline
-and time columns, the row of all files, the total, a file's time and the
-caption's first words.")
+level, timestamp, headline and time columns, the row of all files, the total, a
+file's time and the caption's first words.")
 
 (defun clocktable-word (params word)
   "WORD, one of a clock table's English words, in the language the :lang of
@@ -867,11 +859,11 @@ value, rounded to the nearest, halves to even."
 
 (defun clocktable-lines (tables params)
   "The lines of a clock table of TABLES (CLOCKTABLE-FILE-TABLE's, one for each
-file) before aligning them,
-PARAMS its parameters: a column for the file when :MULTIFILE, a level column
-\(:level), a timestamp column (:timestamp), a tags column (:tags), the
-property columns, :emphasize, :compact, :narrow (40! by default, headlines
-cut to 40), :tcolumns, :filetitle, a hundredths column (:formula %)."
+file) before aligning them, PARAMS its parameters: a column for the file when
+:MULTIFILE, a level column \(:level), a timestamp column (:timestamp), a tags
+column (:tags), the property columns, :emphasize, :compact, :narrow (40! by
+default, headlines cut to 40), :tcolumns, :filetitle, a hundredths column
+(:formula %)."
   (let* ((multifile (getf params :multifile))
          (maxlevel (clocktable-maxlevel params))
          (emph (clocktable-flag params :emphasize))
@@ -1236,11 +1228,10 @@ timestamp as written; NIL for none."
                 (reduce #'+ tables :key #'second))))))
 
 (defun clocktable-step-next (start step wstart mstart)
-  "When the clock table step after the one beginning at the universal time
-START begins: STEP day, the next day;
-week, the next day WSTART of the week (Monday 1); semimonth, the 16th or the
-next month's first; month, the next month's day MSTART; quarter, three months
-on; year, the next year's first day."
+  "When the clock table step after the one beginning at the universal time START
+begins: STEP day, the next day; week, the next day WSTART of the week (Monday
+1); semimonth, the 16th or the next month's first; month, the next month's day
+MSTART; quarter, three months on; year, the next year's first day."
   (let ((day (time-day start)))
     (multiple-value-bind (y m d) (day-date day)
       (flet ((at (day month year) (day-universal-time (day-number year month day))))

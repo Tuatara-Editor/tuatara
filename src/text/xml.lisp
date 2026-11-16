@@ -5,14 +5,19 @@
 
 (defun xml-entity (name)
   "The character the entity NAME (lt, #233, #xE9) stands for, as a string; NIL
-for any other, which is left as written."
+for any other, which is left as written. A character's number is ASCII digits
+alone, as XML writes it: a sign, a blank or the number 0 make it none."
   (cond ((string= name "lt") "<") ((string= name "gt") ">") ((string= name "amp") "&")
         ((string= name "quot") "\"") ((string= name "apos") "'")
         ((and (> (length name) 1) (char= (char name 0) #\#))
-         (let ((code (if (char-equal (char name 1) #\x)
-                         (whole-number name :start 2 :radix 16)
-                         (whole-number name :start 1))))
-           (and code (<= 0 code) (< code char-code-limit) (not (<= #xD800 code #xDFFF)) (string (code-char code)))))))
+         (let* ((hex (char-equal (char name 1) #\x))
+                (start (if hex 2 1))
+                (radix (if hex 16 10))
+                (code (and (< start (length name))
+                           (loop for i from start below (length name)
+                                 always (let ((c (char name i))) (and (< (char-code c) 128) (digit-char-p c radix))))
+                           (parse-integer name :start start :radix radix))))
+           (and code (< 0 code char-code-limit) (not (<= #xD800 code #xDFFF)) (string (code-char code)))))))
 
 (defun xml-tag-end (text start)
   "Where the tag of XML TEXT beginning at START (its <) ends: the position of
@@ -47,11 +52,17 @@ NIL for is left as written."
 ;;; (NAME ATTRIBUTES . CHILDREN), ATTRIBUTES an alist of (NAME . VALUE), its
 ;;; children elements and strings of text.
 
-(defun xml-name (node) "The name of the element NODE, NIL for text." (and (consp node) (first node)))
+(defun xml-name (node)
+  "The name of the element NODE, NIL for text."
+  (and (consp node) (first node)))
+
 (defun xml-attribute (node name)
   "The value of NODE's attribute NAME, or NIL."
   (cdr (assoc name (second node) :test #'string=)))
-(defun xml-children (node) "The children of the element NODE." (cddr node))
+
+(defun xml-children (node)
+  "The children of the element NODE."
+  (cddr node))
 
 (defun xml-child (node name)
   "NODE's first child element called NAME, or NIL."
@@ -108,22 +119,22 @@ around it, or NIL when TREE is NIL or holds none."
 
 ;;; XML read as a tree, nothing fetched or expanded
 
-(defun xml-blank-p (c)
-  "True when the character C is a blank between the parts of an XML tag:
-space, tab, newline, return or form feed."
-  (member c '(#\Space #\Tab #\Newline #\Return #\Page)))
+(defun xml-name-end-p (c)
+  "True when the character C ends the name of an element in its tag: a blank
+\(BLANK-CHAR-P), > or /."
+  (or (blank-char-p c) (char= c #\>) (char= c #\/)))
 
 (defun xml-map-attributes (function text start &optional (end (length text)))
   "Call FUNCTION with the name and value, as written, of each attribute in TEXT
 from START below END: name=\"value\" or name='value', blanks allowed around
 the =. What is not an attribute is passed over."
   (let ((i start) (n end))
-    (flet ((skip-blanks () (loop while (and (< i n) (xml-blank-p (char text i))) do (incf i))))
+    (flet ((skip-blanks () (loop while (and (< i n) (blank-char-p (char text i))) do (incf i))))
       (loop
         (skip-blanks)
         (when (>= i n) (return))
         (let ((name-start i))
-          (loop while (and (< i n) (not (xml-blank-p (char text i))) (char/= (char text i) #\=)) do (incf i))
+          (loop while (and (< i n) (not (blank-char-p (char text i))) (char/= (char text i) #\=)) do (incf i))
           (let ((name-end i))
             (skip-blanks)
             (when (and (< i n) (char= (char text i) #\=))
@@ -184,12 +195,11 @@ second value."
                               (decf depth)
                               (setf (cddr element) (nreverse (cddr element)))))
                           (setf i (1+ e))))
-                       ((null (xml-tag-end text i)) (return))
                        (t
-                        (let* ((e (xml-tag-end text i))
+                        (let* ((e (or (xml-tag-end text i) (return)))
                                (self (and (> e (1+ i)) (char= (char text (1- e)) #\/)))
                                (inside (subseq text (1+ i) (if self (1- e) e)))
-                               (space (position-if #'xml-blank-p inside))
+                               (space (position-if #'blank-char-p inside))
                                (name (let ((name (subseq inside 0 (or space (length inside)))))
                                        (or (gethash name names) (setf (gethash name names) name))))
                                (attributes '()))
@@ -236,19 +246,50 @@ XML has no place for (a control character, a raw byte's) as U+FFFD."
 ;;; XML as text, its elements found by their tags: for changing a document's
 ;;; XML in place, what is not touched kept as it was
 
+(defun xml-hidden-ranges (xml start end)
+  "Where XML from START below END holds comments and CDATA sections, whose
+text is no tags, as a vector of (BEGIN . END), in order."
+  (let ((ranges '()) (p start))
+    (loop
+      (let ((comment (search "<!--" xml :start2 p :end2 end))
+            (cdata (search "<![CDATA[" xml :start2 p :end2 end)))
+        (when (and (null comment) (null cdata)) (return))
+        (let* ((at (if (and comment (or (null cdata) (< comment cdata))) comment cdata))
+               (closer (if (eql at comment) "-->" "]]>"))
+               (close (search closer xml :start2 (min end (+ at (if (eql at comment) 4 9))) :end2 end))
+               (after (if close (+ close (length closer)) end)))
+          (push (cons at after) ranges)
+          (setf p after))))
+    (coerce (nreverse ranges) 'simple-vector)))
+
 (defun xml-elements (xml name &key (start 0) (end (length xml)) count)
   "The elements of XML from START below END called NAME (w:p), as (BEGIN .
 END) of each, the outermost only, in order, no more than COUNT of them when
 it is given; one cut short at the end left out. XML nesting NAME deeper than
 *XML-DEEPEST*, or holding more than *XML-MOST-ELEMENTS* of them, is refused,
-as XML-PARSE refuses it. Each part of XML is read once."
+as XML-PARSE refuses it. Tags within comments and CDATA sections are none, as
+XML-PARSE has them. Each part of XML is read once."
   (let ((found '()) (taken 0) (seen 0) (counted -1) (p start)
-        (open (format nil "<~a" name)) (close (format nil "</~a>" name)))
+        (open (format nil "<~a" name)) (close (format nil "</~a>" name))
+        (hidden (xml-hidden-ranges xml start end)))
     (labels ((name-ends-at (i)
-               (and (< i (length xml)) (find (char xml i) '(#\Space #\> #\/ #\Newline #\Tab))))
+               (and (< i (length xml)) (xml-name-end-p (char xml i))))
+             (hidden-p (i)
+               ;; within a comment or CDATA, by bisection of HIDDEN
+               (let ((low 0) (high (length hidden)))
+                 (loop while (< low high)
+                       do (let ((middle (floor (+ low high) 2)))
+                            (if (<= (car (svref hidden middle)) i) (setf low (1+ middle)) (setf high middle))))
+                 (and (plusp low) (< i (cdr (svref hidden (1- low)))))))
+             (outside (needle from)
+               ;; the next NEEDLE from FROM not within a comment or CDATA
+               (loop for s = (search needle xml :start2 from :end2 end)
+                       then (search needle xml :start2 (1+ s) :end2 end)
+                     while (and s (hidden-p s))
+                     finally (return s)))
              (open-from (q)
                ;; the next opening tag of NAME from Q, each counted once against the most allowed
-               (loop for s = (search open xml :start2 q :end2 end) then (search open xml :start2 (1+ s) :end2 end)
+               (loop for s = (outside open q) then (outside open (1+ s))
                      while (and s (not (name-ends-at (+ s (length open)))))
                      finally (when (and s (> s counted))
                                (setf counted s)
@@ -268,7 +309,7 @@ as XML-PARSE refuses it. Each part of XML is read once."
               ;; opening and closing tags are each looked for again only once passed
               (t
                (let* ((depth 1) (q (1+ tag-end)) (next-open (open-from q))
-                      (next-close (search close xml :start2 q :end2 end)))
+                      (next-close (outside close q)))
                  (loop while (plusp depth)
                        do (cond ((null next-close) (return-from xml-elements (nreverse found)))
                                 ((and next-open (< next-open next-close))
@@ -278,10 +319,10 @@ as XML-PARSE refuses it. Each part of XML is read once."
                                      (when (>= (incf depth) *xml-deepest*)
                                        (error "XML nested deeper than ~d elements" *xml-deepest*)))
                                    (setf q (1+ e) next-open (open-from q))
-                                   (when (< next-close q) (setf next-close (search close xml :start2 q :end2 end)))))
+                                   (when (< next-close q) (setf next-close (outside close q)))))
                                 (t (decf depth)
                                    (setf q (+ next-close (length close))
-                                         next-close (search close xml :start2 q :end2 end))
+                                         next-close (outside close q))
                                    (when (and next-open (< next-open q)) (setf next-open (open-from q))))))
                  (push (cons at q) found) (incf taken)
                  (setf p q))))))))
@@ -298,14 +339,20 @@ END) as XML-ELEMENTS gives them, or NIL; what follows it is not looked at."
     (loop
       (let ((at (position #\< xml :start p :end end)))
         (unless (and at (< (1+ at) end)) (return))
-        (if (member (char xml (1+ at)) '(#\/ #\? #\!))
-            (setf p (1+ at))
-            (let* ((name-end (position-if (lambda (c) (find c '(#\Space #\> #\/ #\Newline #\Tab))) xml :start (1+ at)))
+        (cond
+          ((string= "<!--" xml :start2 at :end2 (min end (+ at 4)))
+           (setf p (let ((close (search "-->" xml :start2 (+ at 4) :end2 end))) (if close (+ close 3) end))))
+          ((string= "<![CDATA[" xml :start2 at :end2 (min end (+ at 9)))
+           (setf p (let ((close (search "]]>" xml :start2 (+ at 9) :end2 end))) (if close (+ close 3) end))))
+          ((member (char xml (1+ at)) '(#\/ #\? #\!))
+           (setf p (1+ at)))
+          (t
+            (let* ((name-end (position-if #'xml-name-end-p xml :start (1+ at)))
                    (name (subseq xml (1+ at) name-end))
                    (element (xml-element xml name :start at :end end)))
               (unless element (return))
               (push (list* name element) found)
-              (setf p (cdr element))))))
+              (setf p (cdr element)))))))
     (nreverse found)))
 
 (defun xml-element-inner (xml element)
@@ -346,7 +393,7 @@ its entities read (&amp; as &); NIL when there is none."
           do (let ((after (+ at (length open))))
                (setf p (1+ at))
                (when (and (< after (length xml))
-                          (let ((c (char xml after))) (or (xml-blank-p c) (char= c #\/) (char= c #\>))))
+                          (let ((c (char xml after))) (or (blank-char-p c) (char= c #\/) (char= c #\>))))
                  (let ((end (xml-tag-end xml at)))
                    (unless end (return nil))
                    (xml-map-attributes (lambda (name value)

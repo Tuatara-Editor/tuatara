@@ -122,6 +122,12 @@ list, has the frontend show pictures. Returns the frontend and the editor."
                                             "stty raw -echo; printf 'READY\\r\\n'; c=$(dd bs=1 count=1 2>/dev/null | od -An -tx1 | tr -d ' '); printf 'GOT %s\\r\\n' \"$c\"; sleep 30")))
       (tuatara-user:unbind-key "C-;" :mode 'tuatara-user::terminal))))
 
+(define-test (terminal version-key-from-layout)
+  ;; the number that asks the library for its version string comes from its headers
+  (when (tuatara.terminal-emulator::terminal-library-p)
+    (true (integerp (tuatara.terminal-emulator::vt :build-info-version)))
+    (true (tuatara.terminal-emulator::terminal-library-version))))
+
 (define-test (terminal library-version-said)
   ;; what the loaded library says of itself is what the pin builds
   (when (tuatara.terminal-emulator::terminal-library-p)
@@ -447,12 +453,42 @@ list, has the frontend show pictures. Returns the frontend and the editor."
         (true (uiop:string-prefix-p "*terminal*" (tuatara.buffer:buffer-name (session-buffer editor))))
         (is eq :insert (tuatara.defaults::modal-state (session-buffer editor)))))))
 
+(define-test (terminal hidden-not-drawn)
+  ;; a hidden terminal's program goes on writing with nothing drawn; shown again, all it wrote is there
+  (let ((refreshed nil) (start 0))
+    (multiple-value-bind (f editor)
+        (unwind-protect
+             (terminal-session (list "M-x t e r m i n a l - t o g g l e RET" (list :until (buffer-holding "$"))
+                                     "s l e e p SPC 0 . 5 ; SPC e c h o SPC d o n e - $ ( ( 1 5 0 * 2 ) ) RET"
+                                     "M-x t e r m i n a l - t o g g l e RET"
+                                     (list :do (lambda (b)
+                                                 (declare (ignore b))
+                                                 (setf start (get-internal-real-time) refreshed 0)
+                                                 (sb-int:encapsulate
+                                                  'tuatara.terminal-emulator::terminal-refresh 'hidden
+                                                  (lambda (function &rest arguments)
+                                                    (incf refreshed)
+                                                    (apply function arguments)))))
+                                     (list :until (lambda (b)
+                                                    (declare (ignore b))
+                                                    (> (tuatara.runtime:seconds-since start) 1.5)))
+                                     (list :do (lambda (b)
+                                                 (declare (ignore b))
+                                                 (sb-int:unencapsulate
+                                                  'tuatara.terminal-emulator::terminal-refresh 'hidden)))
+                                     "M-x t e r m i n a l - t o g g l e RET" (list :until (buffer-holding "done-300")))
+                               :place :bottom :height 30)
+          (sb-int:unencapsulate 'tuatara.terminal-emulator::terminal-refresh 'hidden))
+      (declare (ignore f))
+      (is = 0 refreshed)
+      (true (search "done-300" (tuatara.buffer:buffer-string (session-buffer editor)))))))
+
 (defun copied (text)
   "A step of TERMINAL-SESSION: TEXT copied, first on the kill ring."
   (list :do (lambda (buffer) (declare (ignore buffer)) (tuatara.defaults::push-kill text))))
 
 (define-test (terminal pasted-marked-and-safe)
-  ;; a program that asks for pastes marked gets them so, the paste's Escape made a space
+  ;; a program that asks for pastes marked gets them so, the paste's Escape taken out
   (multiple-value-bind (f editor)
       (terminal-session (list "M-x t e r m i n a l RET" (copied (format nil "one~ctwo~%" #\Escape))
                               (list :until (buffer-holding "ready"))
@@ -461,8 +497,21 @@ list, has the frontend show pictures. Returns the frontend and the editor."
                         :program '("sh" "-c" "printf '\\033[?2004hready\\n'; stty -echo; cat -v"))
     (declare (ignore f))
     (let ((text (tuatara.buffer:buffer-string (session-buffer editor))))
-      (true (search "^[[200~one two" text))
+      (true (search "^[[200~onetwo" text))
       (true (search "^[[201~" text)))))
+
+(define-test (terminal pasted-end-marker-taken-out)
+  ;; a paste holding the end of a marked paste, by Escape or by the one character CSI, cannot end it early
+  (multiple-value-bind (f editor)
+      (terminal-session (list "M-x t e r m i n a l RET"
+                              (copied (format nil "a~c[201~~b~cc~%" #\Escape (code-char #x9b)))
+                              (list :until (buffer-holding "ready"))
+                              "C-V" (list :until (buffer-holding "bc"))
+                              "RET" (list :until (buffer-holding "201~")))
+                        :program '("sh" "-c" "printf '\\033[?2004hready\\n'; stty -echo; cat -v"))
+    (declare (ignore f))
+    (let ((text (tuatara.buffer:buffer-string (session-buffer editor))))
+      (true (search "^[[200~a[201~bc" text) "~a" text))))
 
 (define-test (terminal pasted-into-the-outer-terminal)
   ;; text pasted into the terminal Tuatara runs in goes to the program, marked and made safe
@@ -480,7 +529,7 @@ list, has the frontend show pictures. Returns the frontend and the editor."
                         :program '("sh" "-c" "printf '\\033[?2004hready\\n'; stty -echo; cat -v"))
     (declare (ignore f))
     (let ((text (tuatara.buffer:buffer-string (session-buffer editor))))
-      (true (search "^[[200~one :two" text))
+      (true (search "^[[200~one:two" text))
       (true (search "^[[201~" text)))))
 
 (define-test (terminal pasted-lines-wait-for-ret)
@@ -985,12 +1034,12 @@ be shown 4 columns by 2 rows, then prints ready and waits."
     (drain-debug-reports)
     (unwind-protect
          (progn
-           (true (tuatara.terminal-emulator::key-among-p key '("C-<nokey>" "C-x")))
-           (false (tuatara.terminal-emulator::key-among-p key '("C-<nokey>")))
+           (true (tuatara.terminal-emulator::key-among-p (tuatara.frontend:key-spec key) '("C-<nokey>" "C-x")))
+           (false (tuatara.terminal-emulator::key-among-p (tuatara.frontend:key-spec key) '("C-<nokey>")))
            (true (sb-concurrency:queue-empty-p tuatara.runtime:*debug-reports*))
            (tuatara.runtime:set-debug t)
            ;; a list read for the first time: the one above is kept, parsed once
-           (false (tuatara.terminal-emulator::key-among-p key (list "C-<nokey>")))
+           (false (tuatara.terminal-emulator::key-among-p (tuatara.frontend:key-spec key) (list "C-<nokey>")))
            (let ((texts (loop for report = (sb-concurrency:dequeue tuatara.runtime:*debug-reports*)
                               while report collect (princ-to-string (fourth report)))))
              (true (find-if (lambda (text) (search "reading the keys \"C-<nokey>\" failed" text)) texts)
@@ -1029,16 +1078,15 @@ be shown 4 columns by 2 rows, then prints ready and waits."
 
 (define-test (terminal typed-keys-are-not-parsed-again)
   ;; the configured key lists are read once, not again for each key typed
-  (let ((key (tuatara.frontend:make-key #\a)))
-    (tuatara.terminal-emulator::terminal-paste-key-p key)
-    (tuatara.terminal-emulator::key-among-p key tuatara-user:*terminal-editor-keys*)
+  (let ((spec (tuatara.frontend:key-spec (tuatara.frontend:make-key #\a))))
+    (tuatara.terminal-emulator::terminal-paste-key-p spec)
+    (tuatara.terminal-emulator::key-among-p spec tuatara-user:*terminal-editor-keys*)
     (let ((calls (nth-value 1 (counting-calls (tuatara.frontend:parse-key-sequence)
                                 (dotimes (i 50)
-                                  (tuatara.terminal-emulator::terminal-paste-key-p key)
-                                  (tuatara.terminal-emulator::key-among-p key tuatara-user:*terminal-editor-keys*))))))
+                                  (tuatara.terminal-emulator::terminal-paste-key-p spec)
+                                  (tuatara.terminal-emulator::key-among-p spec tuatara-user:*terminal-editor-keys*))))))
       (is = 0 calls))
-    (true (tuatara.terminal-emulator::key-among-p (tuatara.frontend:make-key #\x :ctrl t)
-                                                  tuatara-user:*terminal-editor-keys*))))
+    (true (tuatara.terminal-emulator::key-among-p '(:ctrl #\x) tuatara-user:*terminal-editor-keys*))))
 
 (define-test (terminal program-directory-looked-at-once-while-it-is-quiet)
   ;; a terminal that printed nothing new is not asked for its program's directory and title again

@@ -44,20 +44,21 @@ its last line (a line opened below it), stays outside it."
 (defun banked-spans (buffer)
   "BUFFER's banked lines in order, each (START . END) widened to the whole lines
 it touches, those that come to share a line made one. Banks whose text has
-gone are forgotten."
-  (let ((live '()) (spans '()))
-    (dolist (bank (buffer-banks buffer))
+gone are forgotten, the list of banks kept as it is while none has gone."
+  (let ((live '()) (spans '()) (banks (buffer-banks buffer)))
+    (dolist (bank banks)
       (multiple-value-bind (start end) (bank-bounds buffer bank)
         (when (< start end)
           (push bank live)
           (push (whole-lines-span buffer start end) spans))))
-    (setf (buffer-banks buffer) (nreverse live))
+    (unless (= (length live) (length banks))
+      (setf (buffer-banks buffer) (nreverse live)))
     ;; banks that only touch stay apart: each is undone on its own
     (tuatara.text:merge-ranges spans :touching nil)))
 
 (defun banked-p (&optional (buffer (current-buffer)))
-  "True when BUFFER has lines banked."
-  (and (buffer-banks buffer) (banked-spans buffer) t))
+  "True when BUFFER has lines banked (BANKED-SPANS-NOW)."
+  (and (buffer-banks buffer) (plusp (length (banked-spans-now buffer)))))
 
 (defun span-line-count (buffer spans)
   "How many lines of BUFFER SPANS, each (START . END), take in."
@@ -68,8 +69,8 @@ gone are forgotten."
                 0)))
 
 (defun banked-line-count (buffer)
-  "How many lines of BUFFER are banked."
-  (span-line-count buffer (banked-spans buffer)))
+  "How many lines of BUFFER are banked (BANKED-SPANS-NOW)."
+  (span-line-count buffer (coerce (banked-spans-now buffer) 'list)))
 
 (defun bank-span (buffer span)
   "Bank the whole lines of SPAN, (START . END), in BUFFER, those search
@@ -141,7 +142,7 @@ while lines are banked: the banked lines, and the lines of the selection made at
 the time; in order, those beside each other made one, the lines search
 filters hide left out (TUATARA.DISPLAY:SHOWN-PARTS)."
   (loop for (start . end) in (tuatara.text:merge-ranges
-                              (sort (append (banked-spans buffer)
+                              (sort (append (coerce (banked-spans-now buffer) 'list)
                                             (multiple-value-bind (start end) (selection-range)
                                               (and start (< start end) (list (whole-lines-span buffer start end)))))
                                     #'< :key #'car))
@@ -159,13 +160,18 @@ is looked at once, however many SPANS there are."
 
 (defun banked-spans-now (buffer)
   "BUFFER's banked lines in order (BANKED-SPANS) as a vector, worked out again
-only once its text or its banks have changed."
+only once its text, its banks, its folds or the part it is narrowed to have
+changed: a fold widens a banked line to all it hides."
   (let ((kept (tuatara.buffer:buffer-local buffer 'banked-spans-kept))
-        (version (tuatara.buffer:buffer-version buffer)))
-    (if (and kept (eq (first kept) version) (eq (second kept) (buffer-banks buffer)))
-        (third kept)
+        (version (tuatara.buffer:buffer-version buffer))
+        (banks (buffer-banks buffer))
+        (folds (tuatara.buffer:buffer-local buffer :folds))
+        (narrowing (tuatara.buffer:buffer-narrowing buffer)))
+    (if (and kept (eql (first kept) version) (eq (second kept) banks) (eq (third kept) folds)
+             (eq (fourth kept) narrowing))
+        (fifth kept)
         (let ((spans (coerce (banked-spans buffer) 'simple-vector)))
-          (setf (tuatara.buffer:buffer-local buffer 'banked-spans-kept) (list version (buffer-banks buffer) spans))
+          (setf (tuatara.buffer:buffer-local buffer 'banked-spans-kept) (list version banks folds narrowing spans))
           spans))))
 
 (defun banked-highlights (editor window rows)
@@ -219,8 +225,7 @@ Banked lines outlast \\[tuatara-quit]: \\[bank-release-line],
 \\<normal>\\[copy-selection-or-char]/\\[delete-selection-or-char]/\\[yank-over-selection]~;~]"
                         unbanking lines (bank-total-note b) (left-out-note left-out) unbanking)))
             ((banked-run-at b (point))
-             (bank-release-span b (whole-lines-span b (point) (point)))
-             (message "Unbanked this line ~a" (bank-total-note b)))
+             (bank-release-line))
             (t
              (let ((span (whole-lines-span b (point) (point))))
                (if (>= (car span) (cdr span))

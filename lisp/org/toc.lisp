@@ -60,9 +60,9 @@ text's last line, with no line end after it."
 line is taken as its beginning, its tags past that unseen.")
 
 (defun toc-line-tags (line)
-  "The tags at the end of the headline LINE: the words
-between colons of the last run of characters with no space in it, which ends
-with a colon (a \" -->\" after it left out); NIL when the line ends in none."
+  "The tags at the end of the headline LINE: the words between colons of the
+last run of characters with no space in it, which ends with a colon (a \" -->\"
+after it left out); NIL when the line ends in none."
   (let* ((trimmed (string-right-trim '(#\Space #\Tab) line))
          (trimmed (if (uiop:string-suffix-p trimmed "-->")
                       (string-right-trim '(#\Space #\Tab) (subseq trimmed 0 (- (length trimmed) 3)))
@@ -157,9 +157,9 @@ cl-ppcre takes it (\\\\1 its first group)."
     (setf (toc-line-text line) (cl-ppcre:regex-replace scanner (toc-line-text line) replacement))))
 
 (defun toc-gh-anchor (heading taken)
-  "HEADING as a GitHub anchor: spaces made dashes, in
-lower case, all but letters, digits, _ and - left out, after a #; -1, -2 and
-on added until it is none of TAKEN (a hash table), which it is put in."
+  "HEADING as a GitHub anchor: spaces made dashes, in lower case, all but
+letters, digits, _ and - left out, after a #; -1, -2 and on added until it is
+none of TAKEN (a hash table), which it is put in."
   (let* ((base (concatenate 'string "#"
                             (remove-if-not (lambda (c) (or (alphanumericp c) (find c "_-")))
                                            (string-downcase (substitute #\- #\Space heading)))))
@@ -169,13 +169,13 @@ on added until it is none of TAKEN (a hash table), which it is put in."
     anchor))
 
 (defun toc-entries (text &key markdown)
-  "The table of contents of the Org TEXT, when a headline
-is tagged :TOC:: five values, its entries (each the line written, the target
-of its link and the character its headline begins at), where the tagged
-headline begins, what goes before and after them (a quote block's lines with
-:QUOTE:), and the tag's match. NIL when no headline is tagged. With MARKDOWN,
-TEXT is a Markdown file as TOC-MARKDOWN-VIEW shows it, and the entries are
-written as Markdown links, the quote a fenced block."
+  "The table of contents of the Org TEXT, when a headline is tagged :TOC:: five
+values, its entries (each the line written, the target of its link and the
+character its headline begins at), where the tagged headline begins, what goes
+before and after them (a quote block's lines with :QUOTE:), and the tag's
+match. NIL when no headline is tagged. With MARKDOWN, TEXT is a Markdown file
+as TOC-MARKDOWN-VIEW shows it, and the entries are written as Markdown links,
+the quote a fenced block."
   (multiple-value-bind (lines keywords) (toc-headline-lines text)
     (let* ((tagged (find-if (lambda (line) (toc-tag-of (toc-line-text line))) lines)))
       (when tagged
@@ -311,8 +311,7 @@ being right under the drawers."
                                   (setf p (1+ e)))))))
          (unless drawer (return))
          (setf point
-               (or (position-if-not (lambda (c) (member c '(#\Space #\Tab #\Newline #\Return #\Page))) text
-                                    :start drawer) n)))))
+               (or (position-if-not #'blank-char-p text :start drawer) n)))))
     (setf point (string-line-start text point))
     (if (and (< point n) (char= (char text point) mark))
         (values point point "" t)
@@ -342,11 +341,11 @@ written with #s."
   (typep (buffer-major-mode buffer) 'markdown-mode))
 
 (defun toc-update (buffer &key quiet)
-  "Make BUFFER's table of contents again, as on saving; true when
-there is one. A table as it should be already is left alone. QUIET says
-nothing of it. The buffer is searched for :TOC first, in place, and its text
-taken and read, nothing parsed, only when it is there. A buffer in Markdown
-mode has it written as Markdown."
+  "Make BUFFER's table of contents again, as on saving; true when there is one.
+A table as it should be already is left alone. QUIET says nothing of it. The
+buffer is searched for :TOC first, in place, and its text taken and read,
+nothing parsed, only when it is there. A buffer in Markdown mode has it written
+as Markdown."
   (let* ((tagged (tuatara.syntax:regex-search-forward (tuatara.buffer:buffer-text buffer) ":toc" :threads 1))
          (parse (and tagged (org-text-now buffer))))
     (multiple-value-bind (start end replacement count)
@@ -365,16 +364,16 @@ mode has it written as Markdown."
 
 (define-command toc-org-insert-toc ()
   "Make the table of contents of the current Org file again, under its first
-headline tagged :TOC: (as saving does, with
-*org-toc-on-save*), a list of links to its headlines, two levels deep unless
-the tag says how deep (:TOC_3:), to GitHub's anchors unless it says :TOC_2_org:
-for their titles; :TOC:QUOTE: puts it in a quote block. Headlines tagged
-:noexport: (or, for those under them, :noexport_1:), and those under a COMMENT
-headline, are left out; TODO keywords, priorities, tags and links are taken
-out of the titles. \\`RET' or \\[org-open-at-point] on a link goes to its headline.
-In a Markdown file the same, under its first heading tagged :TOC: (## Contents
-<!-- :TOC: -->), its links [Title](#title), in a fenced block with :QUOTE:,
-saving making it again with *markdown-toc-on-save*."
+headline tagged :TOC: (as saving does, with *org-toc-on-save*), a list of links
+to its headlines, two levels deep unless the tag says how deep (:TOC_3:), to
+GitHub's anchors unless it says :TOC_2_org: for their titles; :TOC:QUOTE: puts
+it in a quote block. Headlines tagged :noexport: (or, for those under them,
+:noexport_1:), and those under a COMMENT headline, are left out; TODO keywords,
+priorities, tags and links are taken out of the titles. \\`RET' or
+\\[org-open-at-point] on a link goes to its headline. In a Markdown file the
+same, under its first heading tagged :TOC: (## Contents <!-- :TOC: -->), its
+links [Title](#title), in a fenced block with :QUOTE:, saving making it again
+with *markdown-toc-on-save*."
   (let ((buffer (current-buffer)))
     (check-writable buffer)
     (unless (toc-update buffer)

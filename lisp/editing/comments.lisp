@@ -161,7 +161,10 @@ job, or :QUEUED when another job runs or waits in BUFFER."
                              (setf (svref found i) (cons least all))))))
                      pieces)
                 :parallelism (max 1 (- (tuatara.runtime:cpu-count) 2)))
-               (setf column (loop for (least . nil) across found when least minimize least)
+               (setf column (loop with low = nil
+                                  for (least . nil) across found
+                                  when least do (setf low (if low (min low least) least))
+                                  finally (return low))
                      commenting (and column (notevery (lambda (entry) (or (null (car entry)) (cdr entry))) found))))))
       (start-line-job
        buffer from to
@@ -189,14 +192,13 @@ Uncommenting takes away the run of marker characters and the space after it. A
 language whose comments have an end (HTML's <!-- -->) has each line so enclosed.
 One undoable edit. Returns :COMMENTED, :UNCOMMENTED, or NIL when the language
 has no comments."
-  (multiple-value-bind (marker insert) (mode-comment-syntax (buffer-major-mode buffer))
+  (multiple-value-bind (marker insert opener closer) (mode-comment-style (buffer-major-mode buffer))
     (cond
       ((null marker)
-       (multiple-value-bind (opener closer) (mode-block-comment-syntax (buffer-major-mode buffer))
-         (and opener
-              (if (too-large-here-p start end "Commenting")
-                  :too-large
-                  (block-comment-lines buffer start end opener closer)))))
+       (and opener
+            (if (too-large-here-p start end "Commenting")
+                :too-large
+                (block-comment-lines buffer start end opener closer))))
       ((large-for-here-p start end)
        (check-writable buffer)
        (let ((from (tuatara.buffer:buffer-line-start buffer start))
@@ -227,6 +229,14 @@ has no comments."
                    lines))
              (if commenting :commented :uncommented))))))))
 
+(defun comment-region-lines (buffer start end)
+  "Comment the lines of BUFFER from START to END, or uncomment them when they
+all are, and let go of the region; say so when the mode has no comment
+syntax."
+  (unless (comment-or-uncomment-lines buffer start end)
+    (message "No comment syntax is defined"))
+  (setf (tuatara.buffer:buffer-mark-active-p buffer) nil))
+
 (define-command toggle-comment-lines-ret ()
   "Comment the lines the region touches, or the line point is on, then going
 to the next line, or uncomment them when they are all commented; it has no
@@ -239,14 +249,10 @@ your init file:
   (bind-key \"C-z C\" 'toggle-comment-lines-ret)
   (bind-key \"C\" 'toggle-comment-lines-ret :map :normal)"
   (let* ((b (current-buffer))
-         (active (and (tuatara.buffer:buffer-mark-active-p b)
-                      (multiple-value-bind (s e) (tuatara.buffer:buffer-region b) (< s e)))))
-    (if active
-        (multiple-value-bind (start end) (tuatara.buffer:buffer-region b)
-          ;; the line the region ends on is one of them, though it ends at its start
-          (unless (comment-or-uncomment-lines b start (tuatara.buffer:buffer-line-end b end))
-            (message "No comment syntax is defined"))
-          (setf (tuatara.buffer:buffer-mark-active-p b) nil))
+         (region (selected-region b)))
+    (if region
+        ;; the line the region ends on is one of them, though it ends at its start
+        (comment-region-lines b (first region) (tuatara.buffer:buffer-line-end b (second region)))
         (let* ((n (max 1 (prefix)))
                (end (tuatara.buffer:buffer-end b))
                (start (tuatara.buffer:buffer-line-start b (point)))
@@ -278,50 +284,39 @@ uncomment them when they all are (as \\[toggle-comment-lines-ret]); on a line
 with a comment, go into it; on a blank line, begin a comment; after code,
 begin one at the line's end, at *COMMENT-COLUMN*."
   (let* ((b (current-buffer))
-         (mode (buffer-major-mode b)))
-    (if (and (tuatara.buffer:buffer-mark-active-p b)
-             (multiple-value-bind (s e) (tuatara.buffer:buffer-region b) (< s e)))
-        (multiple-value-bind (start end) (tuatara.buffer:buffer-region b)
-          (unless (comment-or-uncomment-lines b start end)
-            (message "No comment syntax is defined"))
-          (setf (tuatara.buffer:buffer-mark-active-p b) nil))
-        (multiple-value-bind (marker insert) (mode-comment-syntax mode)
-          (multiple-value-bind (opener closer) (if marker (values nil nil) (mode-block-comment-syntax mode))
-            (let* ((p (point))
-                   (line-start (tuatara.buffer:buffer-line-start b p))
-                   (line-end (tuatara.buffer:buffer-line-end b p))
-                   (line (tuatara.buffer:buffer-string b :start line-start :end line-end))
-                   (start-marker (or marker opener))
-                   (at (and start-marker (end-of-line-comment-at b line-start line-end start-marker))))
-              (cond
-                ((null start-marker) (message "No comment syntax is defined"))
-                (at
-                 ;; into the comment there, after its marker and a space
-                 (let* ((rest (tuatara.buffer:buffer-string b :start at :end line-end))
-                        (markers (or (position-if-not (lambda (c) (find c start-marker)) rest) (length rest)))
-                        (skip (length (string-right-trim " " (subseq rest 0 markers)))))
-                   (goto (min line-end
-                              (+ at skip (if (and (< (+ at skip) line-end) (eql (char rest skip) #\Space)) 1 0))))))
-                (t
-                 (check-writable b)
-                 (let* ((blank (blank-text-p line))
-                        (begin (if blank (or insert opener) (or marker opener)))
-                        (code-end (+ line-start (tuatara.text:string-octet-length
-                                                 (string-right-trim '(#\Space #\Tab) line))))
-                        (column (tuatara.display:buffer-screen-column b code-end))
-                        (gap (cond (blank "")
-                                   ((< column *comment-column*)
-                                    (let ((tabs (buffer-indent-tabs-p b)) (width (buffer-tab-width b))
-                                          (col column)
-                                          (out '()))
-                                      (when tabs
-                                        (loop while (<= (next-tab-stop col width) *comment-column*)
-                                              do (push #\Tab out) (setf col (next-tab-stop col width))))
-                                      (loop while (< col *comment-column*) do (push #\Space out) (incf col))
-                                      (coerce (nreverse out) 'string)))
-                                   (t " ")))
-                        (at (if blank (+ line-start (tuatara.text:string-octet-length line)) code-end))
-                        (text (format nil "~a~a " gap begin))
-                        (after (if closer (format nil " ~a" closer) "")))
-                   (tuatara.buffer:buffer-replace b at line-end (concatenate 'string text after))
-                   (goto (+ at (tuatara.text:string-octet-length text))))))))))))
+         (mode (buffer-major-mode b))
+         (region (selected-region b)))
+    (if region
+        (comment-region-lines b (first region) (second region))
+        (multiple-value-bind (marker insert opener closer) (mode-comment-style mode)
+          (let* ((p (point))
+                 (line-start (tuatara.buffer:buffer-line-start b p))
+                 (line-end (tuatara.buffer:buffer-line-end b p))
+                 (line (tuatara.buffer:buffer-string b :start line-start :end line-end))
+                 (start-marker (or marker opener))
+                 (at (and start-marker (end-of-line-comment-at b line-start line-end start-marker))))
+            (cond
+              ((null start-marker) (message "No comment syntax is defined"))
+              (at
+               ;; into the comment there, after its marker and a space
+               (let* ((rest (tuatara.buffer:buffer-string b :start at :end line-end))
+                      (markers (or (position-if-not (lambda (c) (find c start-marker)) rest) (length rest)))
+                      (skip (length (string-right-trim " " (subseq rest 0 markers)))))
+                 (goto (min line-end
+                            (+ at skip (if (and (< (+ at skip) line-end) (eql (char rest skip) #\Space)) 1 0))))))
+              (t
+               (check-writable b)
+               (let* ((blank (blank-text-p line))
+                      (begin (if blank (or insert opener) (or marker opener)))
+                      (code-end (+ line-start (tuatara.text:string-octet-length
+                                               (string-right-trim '(#\Space #\Tab) line))))
+                      (column (tuatara.display:buffer-screen-column b code-end))
+                      (gap (cond (blank "")
+                                 ((< column *comment-column*)
+                                  (indentation-text b *comment-column* :from column))
+                                 (t " ")))
+                      (at (if blank (+ line-start (tuatara.text:string-octet-length line)) code-end))
+                      (text (format nil "~a~a " gap begin))
+                      (after (if closer (format nil " ~a" closer) "")))
+                 (tuatara.buffer:buffer-replace b at line-end (concatenate 'string text after))
+                 (goto (+ at (tuatara.text:string-octet-length text)))))))))))

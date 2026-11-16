@@ -20,6 +20,16 @@ room for its text. 0 for a headline, or a line that is not set in."
         (min 20 (hanging-columns head))
         0)))
 
+(defvar *org-space-runs* (make-array 64 :initial-element nil)
+  "Strings of N spaces for N below 64, made when first asked for.")
+
+(defun org-space-run (count)
+  "A string of COUNT spaces, shared: not to be changed."
+  (if (< -1 count (length *org-space-runs*))
+      (or (svref *org-space-runs* count)
+          (setf (svref *org-space-runs* count) (spaces count)))
+      (spaces count)))
+
 (defun org-line-prefix (buffer line-start continuation)
   "What the indented view shows before the line of BUFFER beginning at
 LINE-START (a row CONTINUATION of it when true): before a headline of level N,
@@ -30,13 +40,11 @@ list item begins, after its bullet and its checkbox."
   (let ((base (when (org-indented-p buffer)
                 (multiple-value-bind (begin level) (org-headline-at-or-before buffer line-start)
                   (when begin
-                    (spaces (if (and (= begin line-start) (not continuation))
-                                     (1- level)
-                                     (* 2 level)))))))
+                    (if (and (= begin line-start) (not continuation))
+                        (1- level)
+                        (* 2 level))))))
         (hang (if continuation (org-hanging-columns buffer line-start) 0)))
-    (if (plusp hang)
-        (concatenate 'string base (spaces hang))
-        base)))
+    (and (or base (plusp hang)) (org-space-run (+ (or base 0) hang)))))
 
 (defvar *org-level-heights* (cons -1 nil)
   "Whether any headline level's face has a :height, as of the faces'
@@ -77,7 +85,7 @@ star (*ORG-BULLETS*), as ORG-DISPLAY-REPLACEMENTS has them."
     (map-org-headlines buffer start end
                        (lambda (begin level)
                          (let ((star (+ begin level -1)))
-                           (push (list star (1+ star) (let ((bullets (setting-list '*org-bullets* *org-bullets*)))
+                           (push (list star (1+ star) (let ((bullets (setting-in-force '*org-bullets*)))
                                                         (and bullets (nth (mod (1- level) (length bullets)) bullets)))
                                        (org-level-face level))
                                  found))))
@@ -101,7 +109,7 @@ only where the text still holds what it stands for."
                           (head (octets-at line (min 200 (- size line))))
                           (at (and head (position-if-not #'space-or-tab-char-p head)))
                           (sign (cdr (assoc bullet
-                                            (setting-list '*org-list-bullets* *org-list-bullets* :pairs t)
+                                            (setting-in-force '*org-list-bullets*)
                                             :test #'string=))))
                      (when (and at (< (+ line at) end) (uiop:string-prefix-p bullet (subseq head at)))
                        (when sign
@@ -112,8 +120,7 @@ only where the text still holds what it stands for."
                                         (string-trim " " (subseq head (+ at (length bullet)) box-at))))
                               (box-sign (and box (string= box "") (org-property node :checkbox)
                                              (cdr (assoc (subseq head box-at (+ box-at 3))
-                                                         (setting-list '*org-checkbox-signs* *org-checkbox-signs*
-                                                                       :pairs t)
+                                                         (setting-in-force '*org-checkbox-signs*)
                                                          :test #'string=)))))
                          ;; a space after the sign, so that one drawn wider than its cell is not half under the cursor
                          (when box-sign
@@ -173,8 +180,8 @@ of indent and noindent there says; give it the indented view's and the
 bullets' ways of showing it, and links shown as their labels or as written as
 *ORG-LINK-DESCRIPTIVE* or the last of descriptivelinks and literallinks says."
   (setf (tuatara.buffer:buffer-local buffer :line-prefix-function) 'org-line-prefix
-        (tuatara.buffer:buffer-local buffer :line-scale-function) 'org-line-scale
-        (tuatara.display:buffer-replacements-function buffer) 'org-display-replacements)
+        (tuatara.buffer:buffer-local buffer :line-scale-function) 'org-line-scale)
+  (tuatara.display:add-replacements buffer :mode 'org-display-replacements)
   (let ((indent (org-startup-choice options :indent))
         (links (org-startup-choice options :links)))
     (setf (tuatara.buffer:buffer-local buffer 'org-indent)

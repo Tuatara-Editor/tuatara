@@ -138,9 +138,12 @@ scratch file, given to the clipboard unasked, nor exported unasked. No core dump
               (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file))
                                        "f i r s t SPC n o t e"
                                        "C-x C-s"
-                                       (list :wait 0.2)
+                                       (list :until (lambda () (not (some #'tuatara.defaults::gpg-job-p
+                                                                          tuatara.runtime:*jobs*))))
                                        "RET"
                                        "C-x C-s"
+                                       (list :until (lambda () (not (some #'tuatara.defaults::gpg-job-p
+                                                                          tuatara.runtime:*jobs*))))
                                        "C-n C-n RET RET"
                                        (list :until (lambda () (not (decrypting-p)))))
                                  :width 140)
@@ -223,7 +226,7 @@ scratch file, given to the clipboard unasked, nor exported unasked. No core dump
             ;; a file encrypted (to the key marked), signed (detached) and verified; the original untouched
             (multiple-value-bind (f editor)
                 (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed plain))
-                                         (typed "gpg-encrypt-file") "C-n C-n RET RET" (settle) "n RET"
+                                         (typed "gpg-encrypt-file") (settle) "C-n C-n RET RET" (settle) "n RET"
                                          (typed "gpg-sign-file") "RET RET" (settle)))
               (declare (ignore editor))
               (true (tuatara.frontend.fake:fake-frame-showing f "Encrypted as")))
@@ -265,7 +268,7 @@ scratch file, given to the clipboard unasked, nor exported unasked. No core dump
             ;; the region: encrypted in place as an armoured block, decrypted back, the buffer then kept from the disk
             (multiple-value-bind (f editor)
                 (auto-save-session (list "C-x b s c r a t c h - r e g i o n RET" "s e c r e t SPC l i n e" "C-x h"
-                                         (typed "gpg-encrypt-region") "C-n C-n RET RET" (settle)))
+                                         (typed "gpg-encrypt-region") (settle) "C-n C-n RET RET" (settle)))
               (declare (ignore f editor))
               (let ((buffer (tuatara.buffer:find-buffer "scratch-region")))
                 (true (and buffer (search "-----BEGIN PGP MESSAGE-----" (tuatara.buffer:buffer-string buffer))))
@@ -283,7 +286,7 @@ scratch file, given to the clipboard unasked, nor exported unasked. No core dump
             (let ((tuatara.defaults::*modal-editing* t))
               (tuatara.buffer:make-buffer "scratch-region" :text (format nil "before~%secret~%after~%"))
               (auto-save-session (list "C-x b s c r a t c h - r e g i o n RET"
-                                       "g e k V" (typed "gpg-encrypt-region") "C-n C-n RET RET" (settle)))
+                                       "g e k V" (typed "gpg-encrypt-region") (settle) "C-n C-n RET RET" (settle)))
               (let ((buffer (tuatara.buffer:find-buffer "scratch-region")))
                 (false (tuatara.buffer:buffer-mark-active-p buffer))
                 (false (search "after" (tuatara.buffer:buffer-string buffer))))
@@ -956,3 +959,163 @@ nothing more."
         (unwind-protect (tuatara.defaults::block-passphrase cipher)
           (sb-int:unencapsulate 'tuatara.defaults::gpg-read-passphrase 'asked))
         (is equal "Passphrase for the block: " asked))))
+
+(define-test (encrypted keys-listed-in-the-background)
+  ;; how to encrypt is asked once gpg has listed the keys, in the background: a gpg slow to list them
+  ;; (a keyring locked, an agent stuck) never holds up the keys typed meanwhile
+  (with-test-directory (dir)
+    (let ((tuatara.defaults::*gpg-program*
+            (put-program (merge-pathnames "gpg" dir)
+                         (format nil "#!/bin/sh~%[ \"$1\" = --dump-options ] && exit 0~%exec sleep 20~%")))
+          (tuatara.defaults::*gpg-listing-seconds* 30)
+          (tuatara.defaults::*modal-editing* nil)
+          (tuatara-user:*gpg-passphrase-from* :minibuffer)
+          (start (get-internal-real-time)))
+      (multiple-value-bind (f editor)
+          (run-keys "C-x h M-x g p g - e n c r y p t - r e g i o n RET C-g C-e x y z" :text "abc")
+        (declare (ignore f))
+        (is string= "abcxyz" (session-text editor))
+        (true (< (- (get-internal-real-time) start) (* 10 internal-time-units-per-second)))))))
+
+(define-test (encrypted keys-asked-once-for-a-live-buffer)
+  ;; how a buffer is encrypted is asked once at a time, and never once the buffer is killed while its
+  ;; keys were listed
+  (with-test-directory (dir)
+    (let ((tuatara.defaults::*gpg-program*
+            (put-program (merge-pathnames "gpg" dir)
+                         (format nil "#!/bin/sh~%[ \"$1\" = --dump-options ] && exit 0~%sleep 1~%")))
+          (tuatara-user:*gpg-passphrase-from* :minibuffer)
+          (buffer (tuatara.buffer:make-buffer "*keys asked test*"))
+          (chosen nil))
+      (flet ((listings ()
+               (remove-if-not (lambda (job) (and (tuatara.defaults::gpg-job-p job)
+                                                 (eq (tuatara.runtime:job-buffer job) buffer)))
+                              tuatara.runtime:*jobs*)))
+        (tuatara.defaults::choose-encryption "it" '() (lambda (e) (setf chosen e)) :buffer buffer)
+        (true (tuatara.defaults::choosing-encryption-p buffer))
+        (tuatara.defaults::choose-encryption "it" '() (lambda (e) (setf chosen e)) :buffer buffer)
+        (is = 1 (length (listings)))
+        (let ((job (first (listings))))
+          (tuatara.buffer:kill-buffer buffer)
+          (tuatara.runtime:wait-until (lambda () (not (tuatara.runtime:job-running-p job))) 20)
+          (when (eq (tuatara.runtime:job-status job) :done)
+            (tuatara.runtime:job-take-in job))
+          (false chosen)
+          (setf tuatara.runtime:*jobs* (remove job tuatara.runtime:*jobs*)))))))
+
+(defmacro with-gpg-run-giving ((output &rest values) &body body)
+  "Run BODY with GPG-RUN giving back OUTPUT, octets, and VALUES (its status lines, whether it ended well,
+what it said) without running gpg."
+  `(progn
+     (sb-int:encapsulate 'tuatara.defaults::gpg-run 'given
+                         (lambda (function &rest arguments)
+                           (declare (ignore function arguments))
+                           (values ,output ,@values)))
+     (unwind-protect (progn ,@body)
+       (sb-int:unencapsulate 'tuatara.defaults::gpg-run 'given))))
+
+(define-test (encrypted failed-decryption-wiped)
+  ;; what gpg gave before it failed may be part of the plaintext: it is wiped, not left for the collector
+  (let ((given (tuatara.text:string-octets "half of the secret")))
+    (with-gpg-run-giving (given (list "DECRYPTION_FAILED") nil "decryption failed")
+      (multiple-value-bind (text info) (tuatara.defaults::gpg-decrypt (tuatara.text:string-octets "cipher"))
+        (false text)
+        (true (getf info :error))))
+    (true (every #'zerop given))))
+
+(define-test (encrypted input-wiped-once-gpg-has-it)
+  ;; the octets handed to gpg (a selection to encrypt) are wiped once it has them, whether or not the job
+  ;; is taken in; what a job stopped or failed gave is wiped when it is taken in, and AFTER then hears of it
+  (let ((buffer (tuatara.buffer:make-buffer "*gpg input test*"))
+        (plain (tuatara.text:string-octets "the selection"))
+        (heard :nothing))
+    (unwind-protect
+         (with-gpg-run-giving ((tuatara.text:string-octets "cipher") '() t "")
+           (let ((tuatara-user:*gpg-passphrase-from* :minibuffer))
+             (let ((job (tuatara.defaults::run-gpg-work "encrypting the test" '() (lambda (&rest values) values)
+                                                        :input plain :buffer buffer)))
+               (tuatara.runtime:wait-until (lambda () (not (tuatara.runtime:job-running-p job))) 20)
+               (setf tuatara.runtime:*jobs* (remove job tuatara.runtime:*jobs*))
+               (true (every #'zerop plain)))))
+      (tuatara.buffer:kill-buffer buffer))
+    (let* ((given (tuatara.text:string-octets "part of a decryption"))
+           (job (tuatara.defaults::make-gpg-job nil "decrypting the test" (lambda (&rest values) values) t
+                                                (lambda (done) (setf heard done)))))
+      (setf (tuatara.defaults::gpg-job-results job) (list given '() nil "")
+            (tuatara.runtime:job-status job) :stopped)
+      (tuatara.runtime:job-take-in job)
+      (true (every #'zerop given))
+      (false heard))))
+
+(define-test (encrypted passphrase-pipe-closed-on-failure)
+  ;; a passphrase pipe whose write fails leaves no descriptor open behind it
+  (flet ((open-descriptors () (length (directory "/proc/self/fd/*" :resolve-symlinks nil))))
+    (sb-int:encapsulate 'tuatara.io:write-octets 'failing
+                        (lambda (function &rest arguments)
+                          (declare (ignore function arguments))
+                          (error "the pipe is broken")))
+    (let ((before (open-descriptors)))
+      (unwind-protect (ignore-errors (tuatara.defaults::gpg-passphrase-pipe "kea"))
+        (sb-int:unencapsulate 'tuatara.io:write-octets 'failing))
+      (is = before (open-descriptors)))))
+
+(define-test (encrypted marked-files-one-at-a-time)
+  ;; gpg works on the files marked in a list one at a time, the next started once the one before is taken
+  ;; in; stopping one stops the rest, and the last step runs either way
+  (let ((started '()) (afters '()) (finished 0))
+    (tuatara.defaults::gpg-files-in-turn '("a" "b" "c")
+                                         (lambda (path after) (push path started) (push after afters))
+                                         (lambda () (incf finished)))
+    (is equal '("a") started)
+    (funcall (pop afters) t)
+    (is equal '("b" "a") started)
+    (funcall (pop afters) nil)
+    (is equal '("b" "a") started)
+    (is = 1 finished)
+    (setf started '() afters '())
+    (tuatara.defaults::gpg-files-in-turn '("a" "b")
+                                         (lambda (path after) (push path started) (funcall after t))
+                                         (lambda () (incf finished)))
+    (is equal '("b" "a") started)
+    (is = 2 finished)))
+
+(define-test (encrypted files-in-turn-kept-to-their-buffer)
+  ;; the files of a run are jobs of the buffer it began in, whichever buffer is current as the next starts; a
+  ;; question left with C-g stops the rest, the last step run once
+  (let ((list (tuatara.buffer:make-buffer "*in turn list*"))
+        (other (tuatara.buffer:make-buffer "*in turn other*"))
+        (seen '()) (afters '()) (finished 0))
+    (unwind-protect
+         (progn
+           (let ((tuatara.command::*current-buffer* list))
+             (tuatara.defaults::gpg-files-in-turn
+              '("a" "b") (lambda (path after) (declare (ignore path)) (push (tuatara.command:current-buffer) seen) (push after afters))))
+           (let ((tuatara.command::*current-buffer* other))
+             (funcall (pop afters) t))
+           (is eq list (first seen))
+           (let ((tuatara.command::*current-buffer* list))
+             (ignore-errors
+              (tuatara.defaults::gpg-files-in-turn
+               '("c" "d") (lambda (path after) (declare (ignore after)) (when (string= path "c") (error "quit")))
+               (lambda () (incf finished)))))
+           (is = 1 finished))
+      (tuatara.buffer:kill-buffer list)
+      (tuatara.buffer:kill-buffer other))))
+
+(define-test (encrypted input-wiped-with-no-thread)
+  ;; the octets handed to gpg are wiped even when the job never runs, as when no thread can be had for it
+  (let ((buffer (tuatara.buffer:make-buffer "*gpg no thread*"))
+        (plain (tuatara.text:string-octets "the selection")))
+    (sb-int:encapsulate 'tuatara.runtime:start-job-thread 'no-thread
+                        (lambda (function job &rest more)
+                          (declare (ignore function more))
+                          (setf (tuatara.runtime:job-status job) :failed)
+                          (tuatara.runtime:job-take-in job)
+                          job))
+    (unwind-protect
+         (let ((tuatara-user:*gpg-passphrase-from* :minibuffer))
+           (tuatara.defaults::run-gpg-work "encrypting the test" '() (lambda (&rest values) values)
+                                           :input plain :buffer buffer)
+           (true (every #'zerop plain)))
+      (sb-int:unencapsulate 'tuatara.runtime:start-job-thread 'no-thread)
+      (tuatara.buffer:kill-buffer buffer))))

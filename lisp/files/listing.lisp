@@ -78,9 +78,9 @@ written as text, SVG, is text, and so is UTF-8 with a byte order mark). NIL as
 well when it is encrypted, as its name or its header says (ENCRYPTED-FILE-P).
 So only text is read for searching, and the text of an encrypted file never is.
 With MOST, a file larger than MOST octets is not read beyond its first 64 KB,
-its size known from the system: NIL, with :TOO-LARGE as a second value, so that
-a gigantic file never passes through memory for a search that would not keep
-it. Its access time is left alone where the system allows, and a named pipe
+its size known from the system, nor beyond MOST when it gives more than the
+system says: NIL, with :TOO-LARGE as a second value, so that a gigantic file
+never passes through memory for a search that would not keep it. Its access time is left alone where the system allows, and a named pipe
 cannot hold it up."
   (unless (encrypted-name-p (tuatara.io:native-file-name path))
     (ignoring-errors-reported ("reading ~a to search" path)
@@ -97,6 +97,9 @@ cannot hold it up."
                  (cond ((and most (> (max size (length head)) most)) (values nil :too-large))
                        ((< (length head) (min tuatara.io:+binary-sample+ (max 8192 (1+ size)))) head)
                        ;; larger than the system said (/proc, /sys) or than the head: read whole
-                       (t (let ((octets (tuatara.io:read-fd-octets fd :path path :size-hint (1+ size))))
-                            (and (not (tuatara.io:binary-head-p octets)) octets))))))))
+                       ;; held to MOST as it is read: such a file may give more than it says
+                       (t (let ((octets (tuatara.io:read-fd-octets fd :path path :size-hint (1+ size) :most most)))
+                            (cond ((and most (> (length octets) most)) (values nil :too-large))
+                                  ((tuatara.io:binary-head-p octets) nil)
+                                  (t octets)))))))))
         (tuatara.io:file-system-error (condition) (values nil condition))))))

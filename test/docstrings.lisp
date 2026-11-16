@@ -117,11 +117,14 @@ package's settings left out."
     (sort settings #'string< :key #'symbol-name)))
 
 (define-test (documentation settings-declare-values)
-  ;; every setting says the values it takes where it is defined, and its value now is one of them
+  ;; every setting says the values it takes where it is defined, more than in words alone, so that
+  ;; a value is checked when it is set; its value now and its standard value are among them
   (dolist (symbol (own-settings))
     (let ((name (string-downcase symbol)))
       (true (tuatara.runtime::setting-values symbol) "~a declares no values (define-setting :values)" name)
-      (false (tuatara.runtime::setting-value-fault symbol)))))
+      (false (stringp (tuatara.runtime::setting-values symbol)) "~a declares its values in words alone" name)
+      (false (tuatara.runtime::setting-value-fault symbol))
+      (false (tuatara.runtime::setting-value-fault symbol (tuatara.runtime:setting-standard-value symbol))))))
 
 (define-test (documentation values-in-words)
   ;; a description of the values a setting takes, in words, and whether a value is one of them
@@ -152,6 +155,19 @@ package's settings left out."
     (is eq :unknown (fits 'anything "words"))
     (is eq :unknown (fits '((a . b)) '(list-of "(NAME . PATTERN)")))
     (is eq :no (fits 3 '(list-of "(NAME . PATTERN)")))
+    (is string= "text of exactly two characters" (words '(string 2)))
+    (is eq :yes (fits "jk" '(string 2)))
+    (is eq :no (fits "j" '(string 2)))
+    (is string= "a pair (A . B), A a list, each text and B a list, each text"
+        (words '(cons (list-of string) (list-of string))))
+    (is eq :yes (fits '(("TODO") . ("DONE")) '(cons (list-of string) (list-of string))))
+    (is eq :no (fits '(("TODO") . "DONE") '(cons (list-of string) (list-of string))))
+    (is eq :yes (fits #\Tab 'character))
+    (is eq :no (fits "x" 'character))
+    (is eq :yes (fits :org 'keyword))
+    (is eq :no (fits 'org 'keyword))
+    (is eq :yes (fits 'ao-dark 'symbol))
+    (is eq :no (fits '(1 . 2) 'list))
     ;; a description no one understands is refused where the setting is defined
     (fail (macroexpand-1 '(tuatara.runtime::define-setting *no-such-setting* 1 "A setting." :values (intger 0 *))))
     (fail (macroexpand-1 '(tuatara.runtime::define-setting *no-such-setting* 1 "A setting." :values (integer 0))))
@@ -189,3 +205,16 @@ package's settings left out."
     (true (refusal '(tuatara.runtime:define-record (bare-record) (size 0 :documentation "How large it is."))))
     (false (refusal '(tuatara.runtime:define-record (bare-record) "A record."
                       (size 0 :documentation "How large it is."))))))
+
+(define-test (documentation accessors-documented-beside-records)
+  ;; a class's accessors are given their slots' documentation where a record's are, in the runtime
+  (is eq :external (nth-value 1 (find-symbol "DOCUMENT-ACCESSORS" :tuatara.runtime)))
+  (false (eq :external (nth-value 1 (find-symbol "DOCUMENT-ACCESSORS" :tuatara.frontend))))
+  (true (documentation 'tuatara.display:window-buffer 'function)))
+
+(define-test (documentation key-references-written-whole)
+  ;; a key and a command named in a docstring are written \\`KEY' and \\[COMMAND], so that help shows
+  ;; the key: one backslash in the source reads as none, and help shows the bare text
+  (let ((doc (documentation 'tuatara.defaults::list-back-keys 'function)))
+    (true (search "\\`h'" doc) "~a" doc)
+    (true (search "\\[quit-window]" doc) "~a" doc)))

@@ -17,13 +17,6 @@
   "Octets of overlap between regex chunks; the longest match found across a
 chunk edge.")
 
-(sb-ext:defglobal *fold-table*
-    (let ((table (make-array 256 :element-type '(unsigned-byte 8))))
-      (dotimes (b 256 table)
-        (setf (aref table b) (if (<= 65 b 90) (+ b 32) b))))
-  "ASCII case folding for octets: upper-case letters mapped to lower case.")
-(declaim (type (simple-array (unsigned-byte 8) (256)) *fold-table*))
-
 (defun needle-octets (string case-fold)
   "STRING as UTF-8 octets, folded when CASE-FOLD."
   (let ((octets (tuatara.text:string-octets string)))
@@ -50,109 +43,6 @@ which matches a line end of either kind, as \\n in a pattern does."
   "A scanner for STRING's text, nothing in it special, ignoring case when
 CASE-FOLD (COMPILE-REGEX)."
   (compile-regex (cl-ppcre:quote-meta-chars string) :case-fold case-fold))
-
-(declaim (inline needle-at-p))
-(defun needle-at-p (chunk i needle case-fold)
-  "True when NEEDLE, its octets ASCII case folded when CASE-FOLD, stands in
-CHUNK at index I, whose octet matches its first already."
-  (declare (type tuatara.text:octets chunk needle) (type fixnum i) (optimize speed (safety 0)))
-  (let ((table *fold-table*))
-    (loop for k of-type fixnum from 1 below (length needle)
-          always (= (if case-fold (aref table (aref chunk (+ i k))) (aref chunk (+ i k)))
-                    (aref needle k)))))
-
-(defconstant +near-octets+ 32
-  "How many octets on a search looks at one by one for where its needle's
-first octet stands, before it hands the rest to POSITION: a needle that
-begins with a common octet finds it nearby without a call, and a long
-stretch without it is gone through many octets at a time.")
-
-(defun scan-chunk (chunk needle case-fold from below &optional (filled (length chunk)) other-case)
-  "Index of the first occurrence of NEEDLE in the first FILLED octets of CHUNK
-starting at or after FROM and before BELOW (the start index limit), or NIL.
-Both are octet vectors. The places its first octet stands are found one
-octet at a time nearby (+NEAR-OCTETS+), else by POSITION, which looks at many
-octets at a time. The rest of it is compared there. Ignoring case, a letter's
-other case is looked for no further than the first case's next place, so the
-first found is the first there is, and no octet is looked at twice.
-OTHER-CASE, a cons kept by a caller that searches the same CHUNK again from
-where it left off, holds where the other case stands next and how far it was
-looked for, so that it is looked for once for the whole chunk."
-  (declare (type tuatara.text:octets chunk needle) (type fixnum from below filled) (optimize speed (safety 0)))
-  (let ((n (length needle)))
-    (declare (type fixnum n))
-    (when (zerop n) (return-from scan-chunk from))
-    (let* ((first (aref needle 0))
-           (other (and case-fold (<= 97 first 122) (- first 32)))
-           (limit (min below (- (1+ filled) n))))
-      (declare (type (unsigned-byte 8) first) (type fixnum limit))
-      (when (>= from limit) (return-from scan-chunk nil))
-      (flet ((next (octet start end)
-               (declare (type (unsigned-byte 8) octet) (type fixnum start end))
-               (let ((near (min end (+ start +near-octets+))))
-                 (declare (type fixnum near))
-                 (loop for k of-type fixnum from start below near
-                       when (= (aref chunk k) octet) do (return-from next k))
-                 (and (< near end) (position octet chunk :start near :end end)))))
-        ;; A, the first case's next place; B, the other case's, looked for only as far
-        ;; as A (to LOOKED), so that no octet is looked at twice, nor further than needed
-        (let* ((a (next first from limit))
-               (kept (and other-case (cdr other-case) (>= (cdr other-case) from)))
-               (b (and kept (car other-case) (>= (car other-case) from) (car other-case)))
-               (looked (if kept (cdr other-case) from)))
-          (declare (type fixnum looked))
-          (flet ((done (at)
-                   (when other-case (setf (car other-case) b (cdr other-case) looked))
-                   (return-from scan-chunk at)))
-            (loop
-              ;; with OTHER-CASE kept, as far as the chunk: looked for once for all of it
-              (let ((end (if other-case limit (or a limit))))
-                (when (and other (null b) (< looked end))
-                  (setf b (next other looked end)
-                        looked (if b (1+ b) end))))
-              (let ((at (if (and b (or (null a) (< b a))) b a)))
-                (unless at (done nil))
-                (when (needle-at-p chunk at needle case-fold) (done at))
-                (if (eql at a)
-                    (setf a (next first (1+ a) limit))
-                    (setf b nil))))))))))
-
-(defun scan-chunk-backward (chunk needle case-fold from &optional (filled (length chunk)))
-  "Index of the last occurrence of NEEDLE in the first FILLED octets of CHUNK
-starting at or before FROM, or NIL. As SCAN-CHUNK, backwards: the places its
-first octet stands found nearby one by one, else by POSITION from the end, a
-letter's other case looked for no further back than the first case's next
-place, the nearer to FROM taken first."
-  (declare (type tuatara.text:octets chunk needle) (type fixnum from filled) (optimize speed (safety 0)))
-  (let ((n (length needle)))
-    (declare (type fixnum n))
-    (when (zerop n) (return-from scan-chunk-backward from))
-    (let* ((first (aref needle 0))
-           (other (and case-fold (<= 97 first 122) (- first 32)))
-           (top (min from (- filled n))))
-      (declare (type (unsigned-byte 8) first) (type fixnum top))
-      (when (minusp top) (return-from scan-chunk-backward nil))
-      (flet ((previous (octet below floor)
-               (declare (type (unsigned-byte 8) octet) (type fixnum below floor))
-               (let ((near (max floor (- below +near-octets+))))
-                 (declare (type fixnum near))
-                 (loop for k of-type fixnum from (1- below) downto near
-                       when (= (aref chunk k) octet) do (return-from previous k))
-                 (and (> near floor) (position octet chunk :start floor :end near :from-end t)))))
-        ;; as SCAN-CHUNK, backwards: B looked for only down to A (to LOOKED)
-        (let ((a (previous first (1+ top) 0)) (b nil) (looked (1+ top)))
-          (declare (type fixnum looked))
-          (loop
-            (let ((floor (if a (1+ a) 0)))
-              (when (and other (null b) (> looked floor))
-                (setf b (previous other looked floor)
-                      looked (or b floor))))
-            (let ((at (if (and b (or (null a) (> b a))) b a)))
-              (unless at (return nil))
-              (when (needle-at-p chunk at needle case-fold) (return at))
-              (if (eql at a)
-                  (setf a (previous first a 0))
-                  (setf b nil)))))))))
 
 (defvar *serial-window* (* 4 1024 1024)
   "Octets a directional search scans on the calling thread before going
@@ -373,92 +263,6 @@ parallel, case and STOP as for SEARCH-FORWARD."
         (cond (hit (values hit (+ hit n)))
               (stopped (values nil :stopped)))))))
 
-(defun search-all (rope string &key (start 0) (end (tuatara.text:rope-octet-length rope))
-                                    (case-fold (case-fold-p string)) (threads (tuatara.runtime:cpu-count))
-                                    (limit most-positive-fixnum))
-  "All non-overlapping occurrences of STRING in ROPE between START and END as a
-sorted vector of byte offsets (fixnums), searched in parallel on up to THREADS
-threads, at most LIMIT of them, as one scan from START finds them: a piece the
-last occurrence of the piece before runs into is searched again from where
-that one ends (JOIN-PIECES). Matches are collected in number vectors, not
-lists, so parallel threads do not contend for the allocator. A STRING that
-goes by the pattern of its text (BY-PATTERN-P) is searched as COLLECT-MATCHES
-searches.
-Complexity: O((END - START) / THREADS)."
-  (declare (type fixnum start end))
-  (when (by-pattern-p string case-fold)
-    (return-from search-all
-      (let ((scanner (literal-scanner string case-fold)))
-        (multiple-value-bind (matches stopped count)
-            (collect-matches (lambda (function from to halt)
-                               (map-regex-matches function rope scanner from to :bound end :halt halt :texts nil))
-                             (character-start-from rope start) end :threads threads)
-          (declare (ignore stopped))
-          (let ((found (make-array (min count limit) :element-type 'fixnum)))
-            (loop for match in matches
-                  for k below (length found)
-                  do (setf (aref found k) (first match)))
-            found)))))
-  (let* ((needle (needle-octets string case-fold)) (n (length needle)))
-    (if (or (zerop n) (< (- end start) n))
-        (make-array 0 :element-type 'fixnum)
-        (let* ((span (- end start))
-               ;; eight pieces a thread: the fast cores take more of them than the slow ones
-               (pieces (max 1 (min (* 8 threads) (ceiling span (* 4 +search-chunk+)))))
-               (piece (ceiling span pieces)))
-          (labels ((grown (vector)
-                     (let ((bigger (make-array (* 2 (length vector)) :element-type 'fixnum)))
-                       (replace bigger vector)))
-                   (piece-matches (a b)
-                     ;; matches starting in [a, b), as (VECTOR . COUNT); reading may
-                     ;; extend past b by the needle, through a kept chunk
-                     (let ((found (make-array 256 :element-type 'fixnum)) (count 0) (pos a))
-                       (declare (type fixnum pos count) (type (simple-array fixnum (*)) found))
-                       (tuatara.text:with-octet-block (chunk (+ +search-chunk+ n))
-                         (loop while (< pos b)
-                               do (let* ((chunk-end (min end (+ pos +search-chunk+ (1- n))))
-                                         (filled (tuatara.text:rope-copy-into rope pos chunk-end chunk))
-                                         (below (min filled +search-chunk+ (- b pos)))
-                                         (i 0)
-                                         (other-case (cons nil nil)))
-                                    (declare (type fixnum i below filled))
-                                    (loop
-                                      (let ((hit (and (< count limit)
-                                                      (scan-chunk chunk needle case-fold i below filled other-case))))
-                                        (unless hit (return))
-                                        (when (= count (length found)) (setf found (grown found)))
-                                        (setf (aref found count) (+ pos hit))
-                                        (incf count)
-                                        (setf i (+ hit n))))
-                                    ;; a match running past the chunk: the next chunk from its end
-                                    (setf pos (if (> i +search-chunk+) (+ pos i) (+ pos +search-chunk+))))))
-                       (cons found count)))
-                   (piece-bounds (i)
-                     (values (+ start (* i piece)) (min end (+ start (* (1+ i) piece))))))
-            (let ((results (run-pieces pieces
-                                       (lambda (i halt)
-                                         (declare (ignore halt))
-                                         (multiple-value-call #'piece-matches (piece-bounds i)))
-                                       nil threads))
-                  (out (make-array 256 :element-type 'fixnum))
-                  (k 0))
-              (declare (type fixnum k) (type (simple-array fixnum (*)) out))
-              (join-pieces pieces #'piece-bounds
-                           (lambda (i from)
-                             (destructuring-bind (found . count) (aref results i)
-                               (declare (type (simple-array fixnum (*)) found) (type fixnum count))
-                               (when (and from (plusp count) (< (aref found 0) from))
-                                 (multiple-value-bind (a b) (piece-bounds i)
-                                   (destructuring-bind (again . many) (piece-matches (max a from) b)
-                                     (setf found again count many))))
-                               (loop for j of-type fixnum from 0 below count
-                                     while (< k limit)
-                                     do (when (= k (length out)) (setf out (grown out)))
-                                        (setf (aref out k) (aref found j))
-                                        (incf k))
-                               (and (plusp count) (+ (aref found (1- count)) n)))))
-              (subseq out 0 k)))))))
-
 ;;; Regular expressions
 ;;;
 ;;; A pattern is matched against windows of decoded text: each window starts
@@ -663,7 +467,7 @@ and return the index after it."
              (write-char char out)
              (1+ close)))
           ((and (not brace) code (>= code #x80))
-           (write-char (code-char (+ #xDC00 code)) out)
+           (write-char (tuatara.text:raw-byte-char code) out)
            (+ i 4))
           (t (write-string "\\x" out) (+ i 2)))))
 
@@ -775,7 +579,6 @@ pattern in a set with other members or turned round."
         (repeat-from nil) (groups '())
         ;; what DATE-PATTERN-AT gave for the set opening here, when one does
         (date nil))
-
     (with-output-to-string (out out-text)
       (loop while (< i n)
             do (let ((c (char regex i)) (in-set (< i set-end)) (start (fill-pointer out-text)))
@@ -919,7 +722,6 @@ PATTERN-REFUSED for a name it does not know."
            (let ((category (intern (string-upcase key) :keyword)))
              (lambda (c) (eq category (sb-unicode:general-category c)))))
           (t (let ((script (unicode-script key)))
-
                (unless script (refuse-pattern "invalid: no character property \\p{~a}" name))
                (lambda (c) (eq script (sb-unicode:script c))))))))
 
@@ -958,7 +760,8 @@ It is put in as a group, so that [[:NAME:]]+ repeats it, and may hold no
 group that counts, so that \\1 stays the first group a search writes: write
 \(?:...) for a group. It ignores case when the search does, as any part of a
 pattern does. Defining NAME again replaces it; a POSIX class's name or a
-named pattern of Tuatara's is refused. The starter init file has an
+named pattern of Tuatara's is refused, and a pattern the searches cannot use
+signals PATTERN-REFUSED, saying why. The starter init file has an
 example, commented out."
   (unless (and (stringp name) (cl-ppcre:scan "^[a-z][a-z0-9]*$" name))
     (error "A named pattern's name is small letters, then digits too: not ~s." name))
@@ -988,7 +791,10 @@ example, commented out."
             (setf (gethash name **own-named-patterns**) (first before))
             (remhash name **own-named-patterns**))
         (forget-compiled-regexes)
-        (error "[[:~a:]] is not defined: ~a" name e))))
+        ;; refused for what it holds: still a PATTERN-REFUSED, which callers catch as such
+        (if (typep e 'pattern-refused)
+            (error 'pattern-refused :words (format nil "[[:~a:]] is not defined: ~a" name e))
+            (error "[[:~a:]] is not defined: ~a" name e)))))
   name)
 
 (defun literal-runs (tree)
@@ -1096,7 +902,6 @@ its lower case (ODD-CASES)."
   (let* ((cases (list* char (char-upcase char) (char-downcase char)
                        (char-upcase (char-downcase char)) (char-downcase (char-upcase char))
                        (append (odd-cases (char-downcase char)) (odd-cases (char-downcase (char-upcase char))))))
-
          (forms (mapcar (lambda (c) (tuatara.text:string-octets (string c)))
                         (remove-duplicates (remove-if-not (lambda (c) (char-equal c char)) cases))))
          (n (length (first forms))))
@@ -1548,19 +1353,36 @@ groups among them; 0 for a pattern that cannot be used."
                 ((or cl-ppcre:ppcre-syntax-error pattern-refused) () nil)))))
     count))
 
-(defun nested-repeat-p (pattern)
-  "True when PATTERN, a regular expression, repeats without bound a part that
-itself repeats, as (a+)+ or (x*y)* do: a scan of such a pattern can take time
-growing exponentially with the text it fails on."
+(defparameter *repeat-bound-most* 10
+  "The largest bound of a repeat taken as bounded by NESTED-REPEAT-TREE-P: a
+repeat up to more times counts as one without bound.")
+
+(defun nested-repeat-tree-p (tree &key alternations)
+  "True when TREE, a regular expression as CL-PPCRE:PARSE-STRING reads one,
+repeats without bound, or more than *REPEAT-BOUND-MOST* times, a part that
+itself repeats, as (a+)+ or (x*y){2,30} do, or with ALTERNATIONS one that
+holds a choice, as (a|a)* does: a scan of such a pattern can take time
+growing exponentially with the text it fails on. Repeats one after another,
+as .*.*.*x, take time growing as a power of the text's length, and are not
+refused."
   (labels ((repeat-p (x) (and (consp x) (member (first x) '(:greedy-repetition :non-greedy-repetition))))
            (holds-repeat-p (x)
-             (and (consp x) (or (and (repeat-p x) (not (eql (third x) 1))) (some #'holds-repeat-p (rest x)))))
+             (and (consp x)
+                  (or (and (repeat-p x) (not (eql (third x) 1)))
+                      (and alternations (eq (first x) :alternation))
+                      (some #'holds-repeat-p (rest x)))))
            (walk (x)
              (and (consp x)
-                  (or (and (repeat-p x) (null (third x)) (holds-repeat-p (fourth x)))
+                  (or (and (repeat-p x) (or (null (third x)) (> (third x) *repeat-bound-most*))
+                           (holds-repeat-p (fourth x)))
                       (some #'walk (rest x))))))
-    (walk (handler-case (with-pattern-syntax (cl-ppcre:parse-string (engine-pattern pattern)))
-            ((or cl-ppcre:ppcre-syntax-error pattern-refused) () nil)))))
+    (walk tree)))
+
+(defun nested-repeat-p (pattern)
+  "True when PATTERN, a regular expression as every search reads one, repeats
+without bound a part that itself repeats (NESTED-REPEAT-TREE-P)."
+  (nested-repeat-tree-p (handler-case (with-pattern-syntax (cl-ppcre:parse-string (engine-pattern pattern)))
+                          ((or cl-ppcre:ppcre-syntax-error pattern-refused) () nil))))
 
 (defun compile-pattern (pattern &key (regex t) (case-fold nil fold-given) or-text untrusted)
   "A scanner for PATTERN as every search reads it (COMPILE-REGEX): a regular
@@ -1883,7 +1705,10 @@ new buffers."
                                          (when (>= bs limit) (return t))
                                          (when (and reached (= me count) (> me ms))
                                            ;; a filter read the match on past the window: it ends there
-                                           (let* ((whole (and texts (rope-text rope bs reached)))
+                                           (let* ((whole (and texts
+                                                              (tuatara.text:octets-string
+                                                               (tuatara.text:rope-octets rope :start bs :end reached)
+                                                               :base t)))
                                                   (result (funcall function bs reached
                                                                    (and whole
                                                                         (matched-text texts whole 0 (length whole)))
@@ -1910,24 +1735,11 @@ new buffers."
                                                                      (matched-text texts string ms me)
                                                                      (matched-groups texts string
                                                                                      group-starts group-ends))))
-
                                                (when result (return-from map-regex-matches result))
                                                (setf last-end be from me))))))))
                          (return))))))
                (setf pos (max limit last-end)))))
     nil))
-
-(defun rope-text (rope start end)
-  "ROPE's text from octet START below END, a base string when every octet is
-ASCII, as a window's text is."
-  (let ((octets (tuatara.text:rope-octets rope :start start :end end)))
-    (declare (type tuatara.text:octets octets) (optimize speed))
-    (if (loop for b across octets always (< b #x80))
-        (let ((text (make-string (length octets) :element-type 'base-char)))
-          (loop for i of-type fixnum from 0 below (length octets)
-                do (setf (schar text i) (code-char (aref octets i))))
-          text)
-        (tuatara.text:octets-string octets))))
 
 (defun regex-scanner (regex case-fold)
   "REGEX itself when it is already a compiled scanner, else its scanner."
@@ -2072,7 +1884,6 @@ of a few texts make nothing each."
   (when (by-pattern-p string case-fold)
     (return-from map-literal-matches
       (map-regex-matches function rope (literal-scanner string case-fold) (character-start-from rope start) end
-
                          :bound bound :halt halt :texts texts)))
   (with-decoder (decoder)
     (let* ((needle (needle-octets string case-fold)) (n (length needle))

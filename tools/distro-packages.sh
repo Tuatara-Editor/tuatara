@@ -19,8 +19,8 @@
 # as it is.
 #
 # The version is Tuatara's (tuatara.asd) with the day and commit it is made
-# from, as each system writes a snapshot's; the packager is git's user.name
-# and user.email.
+# from, as each system writes a snapshot's; the packager is TUATARA_PACKAGER
+# ("Name <address>"), else the project's name with a no-reply address.
 #
 # --check installs each package made in a new container of its system, with
 # nothing else installed first, checks that every library Tuatara loads came
@@ -53,8 +53,9 @@ version=$(sed -n 's/^ *:version "\(.*\)"$/\1/p' tuatara.asd)
 commit=$(git rev-parse --short=7 HEAD)
 day=$(git log -1 --format=%cd --date=format:%Y%m%d HEAD)
 changelog_day=$(LC_ALL=C git log -1 --format=%cd --date=format:'%a %b %d %Y' HEAD)
-# who made the packages: git's name and address here, else the commit's author's
-packager="$(git config user.name || git log -1 --format=%an HEAD) <$(git config user.email || git log -1 --format=%ae HEAD)>"
+# who made the packages: TUATARA_PACKAGER ("Name <address>") when set, else the project's name
+# and a no-reply address, never the git identity of whoever builds
+packager="${TUATARA_PACKAGER:-Tuatara Editor <tuatara-editor@users.noreply.github.com>}"
 # each system's way of writing a snapshot's version, and the file named by it
 rpm_release="0.${day}git$commit"
 deb_version="$version~git$day.$commit"

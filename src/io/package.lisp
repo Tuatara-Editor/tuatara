@@ -3,11 +3,12 @@
 
 (defpackage #:tuatara.io
   (:use #:cl #:alexandria)
-  (:import-from #:tuatara.runtime #:define-record #:refuse #:define-setting #:own-variable)
+  (:import-from #:tuatara.runtime #:define-record #:refuse #:define-setting #:own-variable
+                #:define-c-function #:c-type #:null-pointer #:null-pointer-p #:with-c-string #:sap-string
+                #:+o-cloexec+ #:duplicate-fd)
   (:import-from #:tuatara.text #:octet-at #:octets-integer #:octets-signed #:octets-put-integer #:octets-at-p
                 #:base64-octets #:base64-string #:octets-ascii #:octets-search #:octets-find
-                #:command-words #:version-numbers #:version-at-least-p)
-  (:import-from #:tuatara.text #:drop-cached)
+                #:command-words #:software-version-numbers #:software-version-at-least-p #:octets-words #:drop-cached)
   (:import-from #:tuatara-user #:*default-directory* #:*cache-directory* #:*state-directory* #:*sandbox*
                 #:*sandbox-seconds* #:*sandbox-memory* #:*sandbox-input-limit* #:*sandbox-total-memory*
                 #:*sandbox-seccomp* #:*program-output-limit* #:*directory-tree-depth-limit*
@@ -27,7 +28,7 @@ elsewhere.")
    ;; what the system says about files
    #:stamp #:stamp-p #:path-stamp #:path-size #:fd-stamp #:stamp-kind #:make-stamp #:same-content-p
    #:stamp-dev #:stamp-ino #:stamp-size #:stamp-mtime #:stamp-nlink #:stamp-mode #:stamp-uid #:stamp-gid #:stamp-ctime
-   #:file-holes-p
+   #:file-holes-p #:fd-holes-p
    #:same-stamped-file-p #:symlink-target
    #:fd-file-system #:file-system-class #:free-octets #:free-inodes #:set-path-mode #:umask-bits #:now-nanoseconds
    #:read-only-mount-p #:can-give-owner-p #:writable-p #:nearest-directory #:writing-refused #:host-writing-refusal
@@ -61,24 +62,27 @@ elsewhere.")
    #:kind-name-disagrees-p #:name-kinds
    #:sandbox-status #:sandbox-status-now #:sandbox-run #:sandbox-start #:end-sandbox #:*sandbox-carried-settings*
    #:end-sandboxes #:sandbox-memory-scope-p #:shown-place-p #:real-place #:sealed-copy #:sandbox-input-refusal
-   #:memory-file #:sealed-file-size #:sandbox-run-on-file #:sandbox-find-program #:system-program #:sandbox-filtered-p
+   #:memory-file #:call-with-memory-file #:sealed-file-size #:sandbox-run-on-file #:sandbox-find-program
+   #:system-program #:sandbox-filtered-p
    #:*sandbox-path* #:*sandbox-file-limit* #:find-program #:program-search-path #:*default-program-path*
    #:program-missing #:program-output #:program-environment #:*own-variables* #:program-variable #:own-variable
    #:own-directory #:variable-listed-p #:listed-environment #:host-program-environment #:start-program #:in-starter
    #:holding-starter #:call-with-program #:done-with-program #:user-shell #:session-command #:session-leader
    #:session-processes #:signal-session #:process-unreaped-p #:filter-through-program #:*program-said-limit*
-   #:command-words #:setpriv-command #:desktop-p #:askpass-program #:*askpass-programs* #:*restricted-variables*
-   #:restricted-environment #:version-numbers #:version-at-least-p
+   #:command-words #:setpriv-command #:terminal-p #:desktop-p #:askpass-program #:*askpass-programs*
+   #:*restricted-variables*
+   #:restricted-environment #:software-version-numbers #:software-version-at-least-p
    #:rename-path #:make-directory #:path-join #:parent-path #:copy-path-tree #:delete-tree #:move-path #:trash-path
    #:walk-directory #:tree-size
    #:trash-for #:home-trash #:scratch-directory #:buffer-scratch-directory #:kind-words #:size-words
    #:open-scratch-file #:open-unnamed-file #:name-unnamed-file #:cache-directory #:chosen-directory
-   #:directory-in-memory-p #:directories-in-memory-words #:data-home #:read-line-bounded #:read-stream-octets
+   #:directory-in-memory-p #:directories-in-memory-words #:data-home #:config-home #:cache-home #:read-line-bounded
+   #:read-stream-octets
    #:session-log #:move-session-log #:state-directory #:write-private-file #:write-new-file #:replace-file
    #:open-lock-file #:lock-file-held-p #:call-with-state-lock
    #:sync-directory #:run-program-again #:*saved-program* #:slash-ended #:directory-name #:setsid-command
    #:drive-trash-sound-p
-   #:ensure-private-directory #:path-kind #:fd-kind #:clean-path #:dot-entry-name-p #:fit-name
+   #:ensure-private-directory #:path-kind #:fd-kind #:fd-size #:clean-path #:dot-entry-name-p #:entry-name-p #:fit-name
    #:remove-file-if-there #:environment-without #:duplicate-fd #:path-directory-and-name #:owner-name #:owner-group-name
    #:user-font-directories
    ;; new names, and what a program shut in came to
@@ -88,7 +92,7 @@ elsewhere.")
    #:*zip-largest-entry* #:*zip-largest-ratio*
    ;; memory outside Lisp
    #:with-octets-sap #:with-foreign-memory #:sap-octets #:null-pointer #:null-pointer-p
-   #:sap-string #:with-c-string #:c-type #:define-c-function
+   #:sap-string #:with-c-string #:c-type #:define-c-function #:%read #:%free #:%send #:%realloc
    ;; visiting, checking, saving, reverting
    #:*memory-read-limit* #:*lease-large-files* #:*clone-large-files* #:*snapshot-large-files* #:*snapshot-free-margin*
    #:open-for-reading #:open-file-text #:visit-file #:buffer-for-file #:copy-descriptor-to-scratch #:scratch-file-text

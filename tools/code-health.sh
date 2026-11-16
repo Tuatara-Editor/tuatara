@@ -16,19 +16,11 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 . tools/inside.sh
-tree="$PWD/"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 # one system load for the sections that need the code
-inside sbcl --dynamic-space-size 4GB --non-interactive \
-  --load tools/quicklisp.lisp \
-  --eval "(push #p\"$tree\" asdf:*central-registry*)" \
-  --eval '(ql:quickload :tuatara/tests :silent t)' \
-  --eval "(unless (uiop:subpathp tuatara.tests::*reuse-index-file* #p\"$tree\")
-            (format *error-output* \"~&The tree loaded is ~a, not $tree.~%\"
-                    (asdf:system-source-directory :tuatara))
-            (uiop:quit 1))" \
-  --eval "(flet ((section (name function)
+in_tree :tuatara/tests \
+  "(flet ((section (name function)
                    (with-open-file (out (format nil \"$work/~a\" name) :direction :output :if-exists :supersede)
                      (funcall function out))))
             (section \"3-dead\" 'tuatara.tests::dead-code-report)

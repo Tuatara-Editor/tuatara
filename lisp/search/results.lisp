@@ -215,12 +215,12 @@ entries, TEXT :CONFLICT when the two were changed to different text."
 (define-record (write-back-job (:include tuatara.runtime:job) (:constructor make-write-back-job (buffer files))
                               (:copier nil))
   "The lines changed in BUFFER, lines found, being written back into their files, a job
-\(TUATARA.RUNTIME:JOB). FILES is each (PATH . LINES) not handed over yet (CHANGES-BY-FILE). TOTAL is
-files in all. REQUEST is the file handed to the editor, and ANSWERED says when it has dealt with it.
-ROOTS is what is known of whether the projects are looked at only. SAVING is the buffers being
-saved, each (BUFFER LINES MADE DONE). WRITTEN is lines written in FILES-WRITTEN files, REFUSED the
-reasons the others were not, and LEFT what else is to say of a file, each a sentence."
-  (files nil :documentation "The files of JOB, each (PATH . LINES),, not handed over yet.")
+\(TUATARA.RUNTIME:JOB). FILES is each (PATH . LINES) not handed over yet (CHANGES-BY-FILE). TOTAL is files
+in all. REQUEST is the file handed to the editor, and ANSWERED says when it has dealt with it. ROOTS is
+what is known of whether the projects are looked at only. SAVING is the buffers being saved, each (BUFFER
+LINES MADE DONE), and SAVED is signalled as each is done. WRITTEN is lines written in FILES-WRITTEN
+files, REFUSED the reasons the others were not, and LEFT what else is to say of a file, each a sentence."
+  (files nil :documentation "The files of JOB, each (PATH . LINES), not handed over yet.")
   (total (length files) :documentation "How many files in all JOB writes back.")
   (request nil :documentation "The file JOB handed to the editor, NIL when none waits.")
   (answered (sb-thread:make-semaphore)
@@ -228,6 +228,7 @@ reasons the others were not, and LEFT what else is to say of a file, each a sent
   (roots (make-hash-table :test 'equal)
          :documentation "A table from each project root to what is known of whether it is looked at only.")
   (saving '() :documentation "The buffers JOB is saving, each (BUFFER LINES MADE DONE).")
+  (saved (sb-thread:make-semaphore) :documentation "A semaphore signalled as each save of JOB is done.")
   (written 0 :documentation "How many lines JOB has written.")
   (files-written 0 :documentation "How many files JOB has written lines in.")
   (refused '() :documentation "The reasons JOB did not write the other lines, latest first.")
@@ -355,7 +356,8 @@ asked to stop between the files; at the end wait for the saves to end."
                (setf idle (or idle (get-internal-real-time))))
            (when (and idle (> (- (get-internal-real-time) idle) (* 3 internal-time-units-per-second)))
              (return))
-           (sleep 0.05)))
+           ;; woken as soon as a save ends, else looked at again in a moment
+           (sb-thread:wait-on-semaphore (write-back-job-saved job) :timeout 0.05)))
 
 (defun write-back-tick (editor)
   "Tick function: deal with the file a job writing lines back has handed over, on the editor's thread,
@@ -384,6 +386,7 @@ file changed on disk since it was read (for a buffer EXISTING already)."
   "The edit that puts TEXT in the place of the line ENTRY was found on in BUFFER, keeping the white space
 before it; or why the line is not changed, a phrase, as a second value, when it no longer holds the text found.
 The line lies from the octet START to END when those are given, else it is found by its number."
+  ;; a line that cannot be read as it was found (its file changed since) is one not written, the others go on
   (handler-case
       (reporting-errors ("finding the line of ~a" (tuatara.buffer:buffer-name buffer))
         (unless start
@@ -410,7 +413,8 @@ made for the purpose goes."
     (incf (write-back-job-written job) lines)
     (incf (write-back-job-files-written job))
     (when (and made (tuatara.buffer:live-buffer-p buffer))
-      (tuatara.buffer:kill-buffer buffer))))
+      (tuatara.buffer:kill-buffer buffer))
+    (sb-thread:signal-semaphore (write-back-job-saved job))))
 
 (defun write-back-file (job given path located)
   "Write the lines LOCATED, each ((NUMBER ENTRIES . TEXT) START END), into the file at PATH, where it really

@@ -371,12 +371,14 @@ since their commit."
                    ("grep" "--open-files")
                    ("blame" "--contents" "/etc/shadow" "a.txt")
                    ("log" "--use-mailmap")
+                   ("log" "--format" "%H %an")
+                   ("log" "--end-of-options" "--output=x")
                    ("shortlog" "--format=%aN")
                    ("branch" "--edit-desc") ("notes" "add") ("reflog" "-n1" "expire") ("worktree" "list" "lock")))
     (true (tuatara.git::git-reading-refusal words) "~s" words))
   (dolist (words '(("rev-parse" "--git-dir")
                    ("rev-parse" "--absolute-git-dir")
-                   ("log" "--format" "%H %an")
+                   ("log" "--format=%H %an")
                    ("log" "-p" "-1")
                    ("tag")
                    ("notes" "list")
@@ -384,7 +386,7 @@ since their commit."
                    ("check-attr" "-a" "a.txt")
                    ("shortlog" "-s")
                    ("worktree" "list" "--porcelain")
-                   ("log" "--" "--output=x") ("log" "--end-of-options" "--output=x")))
+                   ("log" "--" "--output=x")))
     (false (tuatara.git::git-reading-refusal words) "~s" words)))
 
 (define-test (git look-only-ignores-your-git-variables)
@@ -596,6 +598,11 @@ in the private cache, not those of other sessions sharing the cache."
       (alexandria:write-string-into-file (make-string 100000 :initial-element #\x) plain)
       (true (tuatara.io:file-holes-p sparse))
       (false (tuatara.io:file-holes-p plain))
+      ;; and on the file opened, which is what a copy then reads, whatever is at its name after
+      (dolist (path (list sparse plain))
+        (let ((fd (tuatara.io:open-for-reading path t :accept '(:regular) :follow nil)))
+          (unwind-protect (is eq (eq path sparse) (tuatara.io:fd-holes-p fd (tuatara.io:fd-stamp fd path)))
+            (sb-posix:close fd))))
       (is = (* 256 1024 1024) (tuatara.git::git-file-most "shallow")))))
 
 (define-test (git timed-out-left-alone)
@@ -703,3 +710,72 @@ in the private cache, not those of other sessions sharing the cache."
     (is string= (format nil "[core]~%~arepositoryformatversion = 1~%~abare = false~%~alogallrefupdates = false~%[extensions]~%~aobjectformat = sha256~%"
                         tab tab tab tab)
         (tuatara.git::git-shadow-settings-text '(("objectformat" "sha256"))))))
+
+(define-test (git format-and-pretty-take-no-next-word)
+  ;; git reads --pretty alone and --format only with an =, so the word after them is an option of its own:
+  ;; an --output there would write, and is refused wherever it stands before a lone --
+  (dolist (command '(("log") ("whatchanged") ("show") ("rev-list" "HEAD") ("reflog") ("reflog" "show")
+                     ("stash" "list")))
+    (dolist (more '(("--pretty" "--output=x" "--pretty=format:%B") ("--format" "--output=x") ("--pretty" "--output" "x")
+                    ("--output-directory=x")))
+      (true (tuatara.git::git-reading-refusal (append command more)) "~s" (append command more))))
+  (true (tuatara.git::git-reading-refusal '("log" "--author" "--output=x")))
+  (false (tuatara.git::git-reading-refusal '("log" "--pretty=oneline" "-1")))
+  (false (tuatara.git::git-reading-refusal '("log" "--author" "me" "--format=%H")))
+  (with-test-directory (dir)
+    (scratch-repository dir)
+    (with-looked-at-only (dir)
+      (dolist (arguments '(("log" "--pretty" "--output=written" "--pretty=format:%B")
+                           ("log" "--format" "--output=written")))
+        (handler-case (progn (tuatara.git:run-git (namestring dir) arguments) (false t "~s ran" arguments))
+          (tuatara.git::git-refused () (true t)))
+        (false (probe-file (merge-pathnames "written" dir)) "~s wrote a file" arguments)))))
+
+(define-test (git shadows-of-ended-sessions-deleted-away-from-the-editor)
+  ;; the shadows crashed sessions left are deleted on a thread of their own, so a start never waits on them
+  (let ((thread nil) (here sb-thread:*current-thread*))
+    (sb-int:encapsulate 'tuatara.defaults:forget-abandoned-directories 'where
+                        (lambda (f &rest arguments)
+                          (setf thread sb-thread:*current-thread*)
+                          (apply f arguments)))
+    (unwind-protect
+         (progn
+           (tuatara.git::install-git)
+           (true (tuatara.runtime:wait-until (lambda () thread) 10))
+           (false (eq thread here)))
+      (sb-int:unencapsulate 'tuatara.defaults:forget-abandoned-directories 'where))))
+
+(define-test (git shadow-copy-never-follows-a-link-put-in-place)
+  ;; a link put in place of a file of git's own after it was examined is not followed into the copy
+  (with-test-directory (dir)
+    (let* ((top (tuatara.io:native dir))
+           (secret (namestring (put-file (merge-pathnames "secret.txt" dir) "not git's")))
+           (from (tuatara.io:path-join top "packed-refs"))
+           (to (tuatara.io:path-join top "shadow/packed-refs"))
+           (plain (tuatara.io:path-stamp secret :follow nil)))
+      (tuatara.io:make-symbolic-link secret from)
+      ;; the examination sees the file that was there before the link took its place
+      (sb-int:encapsulate 'tuatara.io:path-stamp 'swapped
+                          (lambda (f path &rest keys)
+                            (if (equal path from) plain (apply f path keys))))
+      (unwind-protect
+           (handler-case (tuatara.git::git-copy-file
+                          top from to "packed-refs" (tuatara.git::make-git-shadow (tuatara.io:path-join top "shadow/")))
+             (tuatara.git::git-refused () nil))
+        (sb-int:unencapsulate 'tuatara.io:path-stamp 'swapped))
+      (false (tuatara.io:path-kind to :follow nil)))))
+
+(define-test (git shadow-copy-says-what-failed)
+  ;; a file of git's that cannot be opened is refused saying so, not as one replaced meanwhile
+  (with-test-directory (dir)
+    (let* ((top (tuatara.io:native dir))
+           (from (namestring (put-file (merge-pathnames "packed-refs" dir) "refs")))
+           (said nil))
+      (sb-posix:chmod from 0)
+      (unwind-protect
+           (handler-case (tuatara.git::git-copy-file
+                          top from (tuatara.io:path-join top "shadow/packed-refs") "packed-refs"
+                          (tuatara.git::make-git-shadow (tuatara.io:path-join top "shadow/")))
+             (tuatara.git::git-refused (c) (setf said (princ-to-string c))))
+        (sb-posix:chmod from #o600))
+      (true (and said (search "could not be opened" said)) "~a" said))))

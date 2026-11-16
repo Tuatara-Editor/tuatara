@@ -44,7 +44,7 @@ where it is null."
   (dolist (step path (if (eq value :null) nil value))
     (setf value (typecase value
                   (hash-table (and (stringp step) (gethash step value)))
-                  (vector (and (integerp step) (< -1 step (length value)) (aref value step)))
+                  ((and vector (not string)) (and (integerp step) (< -1 step (length value)) (aref value step)))
                   (t nil)))))
 
 (defun json-true-p (value)

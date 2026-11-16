@@ -222,8 +222,10 @@ Word documents are, and in rimu's preview.")
       (is string= "application/vnd.ms-excel" (tuatara.defaults::file-mime-type :ole "old.xls"))
       (is string= "application/vnd.openxmlformats-officedocument.presentationml.slideshow"
           (tuatara.defaults::file-mime-type :pptx "kea.ppsx"))
-      (false (tuatara.defaults::open-externally-refusal xlsx))
-      (false (tuatara.defaults::open-externally-refusal pptx)))))
+      ;; held back unless their kinds are added, for they can hold macros
+      (true (tuatara.defaults::open-externally-refusal xlsx))
+      (false (tuatara.defaults::open-externally-refusal xlsx :also '(:xlsx)))
+      (false (tuatara.defaults::open-externally-refusal pptx :also '(:pptx))))))
 
 (defun office-busy-p ()
   "True while an Office document is being read or drawn."
@@ -548,7 +550,7 @@ manifest's entries for its text when given."
           (odp (write-office-test-file (merge-pathnames "kea.odp" dir) *odp-test-parts*)))
       (is eq :odt (getf (tuatara.defaults::office-file-format odt) :kind))
       (is eq :ods (getf (tuatara.defaults::office-preview-format :ods "anything.bin") :kind))
-      (false (tuatara.defaults::open-externally-refusal odt))
+      (false (tuatara.defaults::open-externally-refusal odt :also '(:odt)))
       (let ((tuatara.defaults::*office-view-pages* nil))
         (dolist (case (list (list odt "kea.odt (text)" "** Findings") (list ods "birds.ods (text)" "* Sheet 1: Birds")
                             (list odp "kea.odp (text)" "* Slide 1: Kea survey")))

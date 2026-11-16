@@ -2,9 +2,8 @@
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; M-x rimu-find lists the files under a directory whose names match a
-;;;; pattern (*.pdf), as Emacs's find-name-dired; M-x rimu-find-text those
-;;;; whose text matches, as find-grep-dired; M-x rimu-duplicates the files
-;;;; that are the same as another, grouped, as the dired-duplicates package.
+;;;; pattern (*.pdf); M-x rimu-find-text those whose text matches; M-x
+;;;; rimu-duplicates the files that are the same as another, grouped.
 ;;;; Each is a rimu list like any other, its names the paths from the
 ;;;; directory searched: marks, C R D, the preview and the columns work on
 ;;;; them. The walk is Tuatara's own (FILES-UNDER), no find program run, as a
@@ -56,6 +55,14 @@ how many groups, and what the copies beyond the first of each take."
                 (octets-words (loop for group being the hash-keys of counts using (hash-value n)
                                     sum (* (1- n) (gethash group sizes))))))))
 
+(defun rimu-grouped-listing (directory pairs words)
+  "A RIMU-LISTING of DIRECTORY's entries in groups, PAIRS each (ENTRY . GROUP)
+in their order, the line under it WORDS, or what WORDS, a function of the
+entries and the groups (two vectors), makes of them."
+  (let ((entries (map 'simple-vector #'car pairs))
+        (groups (map 'simple-vector #'cdr pairs)))
+    (make-rimu-listing directory entries nil nil (if (functionp words) (funcall words entries groups) words) groups)))
+
 (defun rimu-found-again (listing)
   "LISTING, a list of files found, with each file looked at again: those gone
 left out, and of duplicates the groups left with one file; a group numbered
@@ -70,10 +77,8 @@ its size."
     (if groups
         (let* ((counts (let ((table (make-hash-table)))
                          (dolist (k kept table) (incf (gethash (cdr k) table 0)))))
-               (left (remove-if (lambda (k) (and (plusp (cdr k)) (< (gethash (cdr k) counts) 2))) kept))
-               (entries (map 'simple-vector #'car left))
-               (groups (map 'simple-vector #'cdr left)))
-          (make-rimu-listing directory entries nil nil (rimu-duplicates-words entries groups) groups))
+               (left (remove-if (lambda (k) (and (plusp (cdr k)) (< (gethash (cdr k) counts) 2))) kept)))
+          (rimu-grouped-listing directory left #'rimu-duplicates-words))
         (make-rimu-listing directory (map 'simple-vector #'car kept) nil nil (rimu-listing-found listing)))))
 
 ;;; Finding, as a job of the list
@@ -175,14 +180,21 @@ first."
          (directory (getf spec :directory))
          (cancel (rimu-search-cancel job))
          (by-size (make-hash-table))
+         (seen (make-hash-table :test 'equal))
          (buffer (make-array (* 1024 1024) :element-type '(unsigned-byte 8)))
          (groups '()) (group 0))
-    ;; files of one size only may be the same
+    ;; files of one size only may be the same; a file's other names (hard links) are the file, not copies of
+    ;; it, and an empty file holds nothing to free
     (dolist (root (getf spec :roots))
       (let ((prefix (subseq root (length directory))))
         (rimu-search-walk job root (lambda (path relative)
                                      (let ((stamp (tuatara.io:path-stamp path :follow nil :failure nil)))
-                                       (when (and stamp (eq (tuatara.io:stamp-kind stamp) :regular))
+                                       (when (and stamp (eq (tuatara.io:stamp-kind stamp) :regular)
+                                                  (plusp (tuatara.io:stamp-size stamp))
+                                                  (not (shiftf (gethash (cons (tuatara.io:stamp-dev stamp)
+                                                                              (tuatara.io:stamp-ino stamp))
+                                                                        seen)
+                                                               t)))
                                          (push (concatenate 'string prefix relative)
                                                (gethash (tuatara.io:stamp-size stamp) by-size))))))))
     (flet ((path (relative) (concatenate 'string directory relative)))
@@ -209,20 +221,17 @@ first."
               (let ((entry (rimu-found-entry directory relative)))
                 (when entry (push (cons entry group) groups))))))
         (when (car cancel) (return-from rimu-find-duplicates nil))))
-    (let* ((pairs (nreverse groups))
-           (entries (map 'simple-vector #'car pairs))
-           (numbers (map 'simple-vector #'cdr pairs)))
-      (make-rimu-listing directory entries nil nil (rimu-duplicates-words entries numbers) numbers))))
+    (rimu-grouped-listing directory (nreverse groups) #'rimu-duplicates-words)))
 
 (defun rimu-find-given (spec)
   "The files SPEC gives (RIMU-SHOW-PATHS), as a RIMU-LISTING in their groups
 and order, those no longer there left out: nothing is searched."
-  (let* ((directory (getf spec :directory))
-         (pairs (loop for (path . group) in (getf spec :paths)
-                      for entry = (rimu-found-entry directory (subseq path (length directory)))
-                      when entry collect (cons entry group))))
-    (make-rimu-listing directory (map 'simple-vector #'car pairs) nil nil (getf spec :words)
-                       (map 'simple-vector #'cdr pairs))))
+  (let ((directory (getf spec :directory)))
+    (rimu-grouped-listing directory
+                          (loop for (path . group) in (getf spec :paths)
+                                for entry = (rimu-found-entry directory (subseq path (length directory)))
+                                when entry collect (cons entry group))
+                          (getf spec :words))))
 
 (defun rimu-find-by-name (job)
   "On JOB's thread, the files under the directory JOB searches whose names
@@ -301,10 +310,11 @@ full native names, in that order: each group after the one before, a line
 apart, its files in the order given; the files may stand in any directories,
 each named by its path from the one all are in. WORDS is the line saying what
 the list holds; with SAFE it is opened safely (its preview showing files as
-they are opened safely); DETAILS, when given, says whether it shows the
-details (\\<rimu-mode>\\[rimu-toggle-details]). It is like any list of files found: marks, the
-preview, the operations and the columns work on it, and \\<rimu-mode>\\[revert-buffer]
-looks at each file again, keeping the order. Returns the list."
+they are opened safely); DETAILS, when given, says whether it shows the details
+\(\\<rimu-mode>\\[rimu-toggle-details]). It is like any list of files found:
+marks, the preview, the operations and the columns work on it, and
+\\<rimu-mode>\\[revert-buffer] looks at each file again, keeping the order.
+Returns the list."
   (let* ((paths (loop for group in groups
                       for number downfrom -1
                       append (loop for path in group collect (cons path number))))
@@ -355,14 +365,16 @@ background (\\[stop-job] stops it); \\<rimu-mode>\\[revert-buffer] searches agai
                        (format nil "*Found ~a in ~a*" text (abbreviated-path directory))))))
 
 (define-command rimu-duplicates ()
-  "List in a rimu list the files that are the same as another, in groups:
-in the directories marked in this rimu list, or
-else under a directory asked for. Files of the same size are compared by their
-SHA-256 sums, in the background, its progress in the mode line (\\[stop-job]
-stops it); the largest first. Names starting with a dot and backups are left
-out; with \\[universal-argument] first, those starting with a dot are looked in too. Mark
-the copies you do not want and \\<rimu-mode>\\[list-delete-marked] puts them in the trash; the list keeps
-up, a group left with one file leaving it. \\[revert-buffer] compares again."
+  "List in a rimu list the files that are the same as another, in groups: in
+the directories marked in this rimu list, or else under a directory asked
+for. Files of the same size are compared by their SHA-256 sums, in the
+background, its progress in the mode line (\\[stop-job] stops it); the
+largest first. Names starting with a dot and backups are left out; with
+\\[universal-argument] first, those starting with a dot are looked in too.
+Another name of the same file (a hard link) is no copy of it, and empty files
+hold nothing to free: neither is listed. Mark the copies you do not want and
+\\<rimu-mode>\\[list-delete-marked] puts them in the trash; the list keeps up,
+a group left with one file leaving it. \\[revert-buffer] compares again."
   (let* ((hidden (and (prefix-argument) t))
          (buffer (current-buffer))
          (marked (and (rimu-list-p buffer) (not (rimu-found-p buffer))

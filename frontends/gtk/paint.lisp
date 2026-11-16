@@ -17,12 +17,18 @@ is none."
 
 (defun window-paper (part)
   "The colour of PART, :fg or :bg, where no face gives one: the desktop's with
-*WINDOW-COLOURS-FROM-DESKTOP* when GTK's theme gives them, else black text on
-a white ground; three numbers from 0 to 1."
+*WINDOW-COLOURS-FROM-DESKTOP* when GTK's theme gives them, else the text and
+ground of the plain theme's palette (black on white); three numbers from 0 to
+1."
   (let ((desktop (and *window-colours-from-desktop* *desktop-colours*)))
     (ecase part
-      (:fg (if desktop (first desktop) '(0d0 0d0 0d0)))
-      (:bg (if desktop (second desktop) '(1d0 1d0 1d0))))))
+      (:fg (if desktop (first desktop) (colour-rgb (plain-paper 'text))))
+      (:bg (if desktop (second desktop) (colour-rgb (plain-paper 'ground)))))))
+
+(defun plain-paper (role)
+  "The colour ROLE, text or ground, stands for in the palette of the plain
+theme, the colourless one."
+  (tuatara.display:theme-role-colour (tuatara.display:find-theme 'plain) role))
 
 (defvar *face-colours* (tuatara.display:make-face-cache)
   "What FACE-COLOURS gives for each face spec, as a list, kept until a face or
@@ -474,9 +480,10 @@ everything, the first on top."
                                          ;; a mark or a joined emoji goes with the letter it is drawn on, whatever its
                                          ;; own face
                                          (j (tuatara.text:string-cluster-end string i below))
-                                         (stop (loop for (from) in joined
-                                                     when (> from i) minimize from into low
-                                                     finally (return (if (plusp low) (min low below) below)))))
+                                         (stop (loop with stop = below
+                                                     for (from) in joined
+                                                     when (< i from stop) do (setf stop from)
+                                                     finally (return stop))))
                                     (loop while (and (< j stop) (equal (or (aref faces j) face) spec))
                                           do (setf j (tuatara.text:string-cluster-end string j below)))
                                     (let ((columns (tuatara.display:string-columns string :start i :end j)))
@@ -1110,7 +1117,22 @@ TOP, and have it painted again; tell the input method where it is."
         (gtk-fixed-set-child-transform (gtk-above f) area transform)
         (gsk-transform-unref transform))
       (gtk-widget-queue-draw area)
-      (gtk-im-context-set-cursor-location (gtk-im f) (round (+ left x)) (round (+ top y)) (round w) (round h)))))
+      (place-input-method f left top x y w h))))
+
+(defun paint-cursor-layer (f cr layouts frame focused)
+  "Paint the cursor of F's FRAME on CR, a bar after the text the input method is
+composing when there is some (the preedit), else as the frame's cursor shape
+says."
+  (let ((preedit (gtk-preedit f)))
+    (if preedit
+        (paint-cursor f cr layouts frame focused :column (paint-preedit f cr layouts frame preedit) :shape :bar)
+        (paint-cursor f cr layouts frame focused))))
+
+(defun place-input-method (f left top x y w h)
+  "Tell F's input method where the cursor box X Y, W wide and H high, is in
+the grid, whose top left is LEFT TOP in the window, so that its window opens
+beside it."
+  (gtk-im-context-set-cursor-location (gtk-im f) (round (+ left x)) (round (+ top y)) (round w) (round h)))
 
 (define-callback on-draw-cursor :void ((area :pointer) (cr :pointer) (width :int) (height :int) (data :pointer))
   (declare (ignore area width height))
@@ -1119,11 +1141,7 @@ TOP, and have it painted again; tell the input method where it is."
     (when frame
       (let ((layouts (frame-layouts f)) (at (gtk-cursor-at f)))
         (cairo-translate cr (float (- (car at)) 1d0) (float (- (cdr at)) 1d0))
-        (let ((preedit (gtk-preedit f)))
-          (if preedit
-              (paint-cursor f cr layouts frame (gtk-focused f)
-                            :column (paint-preedit f cr layouts frame preedit) :shape :bar)
-              (paint-cursor f cr layouts frame (gtk-focused f))))))))
+        (paint-cursor-layer f cr layouts frame (gtk-focused f))))))
 
 (defun follow-display-scale (f widget)
   "Have F's text set out for the scale of the screen WIDGET is on, as layouts
@@ -1237,11 +1255,7 @@ cursor."
                                 (cairo-fill cr)))))
         (with-grid (f cr width height grid-width)
           (paint-images f cr frame)
-          (let ((preedit (gtk-preedit f)))
-            (if preedit
-                (paint-cursor f cr layouts frame focused
-                              :column (paint-preedit f cr layouts frame preedit) :shape :bar)
-                (paint-cursor f cr layouts frame focused))))))))
+          (paint-cursor-layer f cr layouts frame focused))))))
 
 (define-callback on-draw :void ((area :pointer) (cr :pointer) (width :int) (height :int) (data :pointer))
   (let ((f (data-window data)))
@@ -1252,10 +1266,7 @@ cursor."
           ;; where the cursor is, for the input method's window, whether or not the painting went through
           (when frame
             (multiple-value-bind (x y w h) (frame-cursor-pixels f frame)
-              (gtk-im-context-set-cursor-location (gtk-im f)
-                                                  (round (+ (fourth (gtk-padding f)) x))
-                                                  (round (+ (first (gtk-padding f)) y))
-                                                  (round w) (round h)))))))))
+              (place-input-method f (fourth (gtk-padding f)) (first (gtk-padding f)) x y w h))))))))
 
 (defun call-with-painted-frame (function frame &key (columns 80) (rows 24) (font (font-name)) (focused t) preedit
                                                     (padding 0))

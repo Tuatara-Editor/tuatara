@@ -1,7 +1,7 @@
 ;;;; lisp/git/rewind.lisp --- Going back through git's history: a file, or a directory, as each commit left it.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; As Emacs's git-timemachine does for a file: C-x G in a file
+;;;; C-x G in a file
 ;;;; shows it as its latest commit left it, read only, in its own mode; p goes
 ;;;; a commit older, n newer, r to a commit chosen from its log, c shows the
 ;;;; commit, C-c w copies its hash. In rimu it does that for the directory, in
@@ -44,8 +44,11 @@ one chosen from its log, \\`c' the commit, \\`C-c w' copies its hash, \\`q'
 closes.")
 
 (defun git-rewind-buffer-p (buffer)
-  "True when BUFFER goes through a file's or a directory's history (\\[git-rewind])."
-  (and (tuatara.buffer:buffer-local buffer 'git-rewind-revisions) t))
+  "True when BUFFER goes through a file's or a directory's history (\\[git-rewind]),
+its history read or still being read."
+  (and (or (tuatara.buffer:buffer-local buffer 'git-rewind-revisions)
+           (eq (buffer-override-keymap buffer) *git-rewind-keymap*))
+       t))
 
 (defun git-rewind-words (buffer index)
   "What is said of the commit INDEX (0 the latest) of BUFFER's history: which
@@ -169,16 +172,24 @@ later move asked for another before it came, that one is shown instead."
                            (message "~a" (git-rewind-words buffer index))))
                        :quiet t :buffer buffer))))
 
+(defun git-rewind-commit-shown (buffer)
+  "The commit BUFFER's history shows (GIT-REWIND-SHOWN); NIL, said so, while
+the history is still being read and none is shown yet."
+  (or (git-rewind-shown buffer)
+      (progn (message "No commit shown yet: it is being read")
+             nil)))
+
 (defun git-rewind-move (by)
   "Show the current history BY commits older (newer for a negative BY), said
 so at its ends."
-  (let* ((buffer (current-buffer))
-         (revisions (tuatara.buffer:buffer-local buffer 'git-rewind-revisions))
-         (index (+ (tuatara.buffer:buffer-local buffer 'git-rewind-wanted) by))
-         (what (if (rimu-source buffer) "directory" "file")))
-    (cond ((< index 0) (message "This is the latest commit of the ~a" what))
-          ((>= index (length revisions)) (message "This is the first commit of the ~a" what))
-          (t (git-rewind-show buffer index)))))
+  (let ((buffer (current-buffer)))
+    (when (git-rewind-commit-shown buffer)
+      (let ((revisions (tuatara.buffer:buffer-local buffer 'git-rewind-revisions))
+            (index (+ (tuatara.buffer:buffer-local buffer 'git-rewind-wanted) by))
+            (what (if (rimu-source buffer) "directory" "file")))
+        (cond ((< index 0) (message "This is the latest commit of the ~a" what))
+              ((>= index (length revisions)) (message "This is the first commit of the ~a" what))
+              (t (git-rewind-show buffer index)))))))
 
 (define-command git-rewind-older ()
   "Show the file or directory of this history as the commit before left it."
@@ -191,36 +202,35 @@ so at its ends."
 (define-command git-rewind-to ()
   "Show the file or directory of this history as a commit chosen from its log
 left it, the latest first, by its hash, date, author or subject."
-  (let ((index (completing-read-value
-                "Rewind to: "
-                (loop for revision across (tuatara.buffer:buffer-local (current-buffer) 'git-rewind-revisions)
-                      for i from 0
-                      collect (make-candidate (format nil
-                                                      "~a ~a ~a: ~a"
-                                                      (git-commit-short revision)
-                                                      (git-commit-date revision)
-                                                      (escape-controls (git-commit-author revision))
-                                                      (escape-controls (git-commit-subject revision)))
-                                              :value i))
-                :require-match t :keep-order t)))
-    (when (integerp index) (git-rewind-show (current-buffer) index))))
+  (when (git-rewind-commit-shown (current-buffer))
+    (let ((index (completing-read-value
+                  "Rewind to: "
+                  (loop for revision across (tuatara.buffer:buffer-local (current-buffer) 'git-rewind-revisions)
+                        for i from 0
+                        collect (make-candidate (format nil
+                                                        "~a ~a ~a: ~a"
+                                                        (git-commit-short revision)
+                                                        (git-commit-date revision)
+                                                        (escape-controls (git-commit-author revision))
+                                                        (escape-controls (git-commit-subject revision)))
+                                                :value i))
+                  :require-match t :keep-order t)))
+      (when (integerp index) (git-rewind-show (current-buffer) index)))))
 
 (define-command git-rewind-show-commit ()
   "Show the commit that left the file or directory of this history as it is
 shown: what it says and its changes."
-  (let ((revision (git-rewind-shown (current-buffer))))
-    (if revision
-        (git-show-commit (git-here) (git-commit-hash revision))
-        (message "No commit shown yet: it is being read"))))
+  (let ((revision (git-rewind-commit-shown (current-buffer))))
+    (when revision
+      (git-show-commit (git-here) (git-commit-hash revision)))))
 
 (define-command git-rewind-copy-hash ()
   "Copy the short hash of the commit that left the file or directory of this
 history as it is shown."
-  (let ((short (let ((revision (git-rewind-shown (current-buffer)))) (and revision (git-commit-short revision)))))
-    (if short
-        (progn (kill-text short :append nil)
-               (message "Copied ~a" short))
-        (message "No commit shown yet: it is being read"))))
+  (let ((revision (git-rewind-commit-shown (current-buffer))))
+    (when revision
+      (kill-text (git-commit-short revision) :append nil)
+      (message "Copied ~a" (git-commit-short revision)))))
 
 (commands-for-mode 'git-rewind-buffer-p "a file's or directory's history (\\[git-rewind])"
                    'git-rewind-older 'git-rewind-newer 'git-rewind-to 'git-rewind-show-commit 'git-rewind-copy-hash)

@@ -245,7 +245,7 @@ defaults do."
          (if answer (funcall answer ,@call) (call-next-method))))))
 
 (define-test-answer tuatara.runtime:host-wake)
-(define-test-answer tuatara.runtime:host-say-hook-failure text)
+(define-test-answer tuatara.runtime:host-say-problem text)
 (define-test-answer tuatara.runtime:host-secret-buffer-p buffer)
 (define-test-answer tuatara.io:host-writing-refusal path &key dirfd fd)
 (define-test-answer tuatara.io:host-say-writing words)
@@ -1221,7 +1221,14 @@ TEXTS with the mode line's sign of work, P, lit in :mode-line-sign."
     (true (search "[>31u" (asked t)))
     (true (search "[?1004h" (asked t)))
     (true (search "[>5u" (asked nil)))
-    (false (search "[?1004h" (asked nil)))))
+    (false (search "[?1004h" (asked nil))))
+  ;; the protocol decided on at the first key, after the setting was changed: the flags as it says then
+  (let ((tuatara-user:*altgr-as-meta* t) (tuatara-user:*kitty-keyboard* t)
+        (tuatara.frontend.tui::*kitty-keyboard-decided* nil) (tuatara.frontend.tui::*kitty-keyboard-on* nil)
+        (tuatara.frontend.tui::*kitty-flags* nil) (tuatara.frontend.tui::*altgr-held* nil))
+    (true (search "[>31u" (with-output-to-string (*standard-output*)
+                            (tuatara.frontend.tui::decide-kitty-keyboard))))
+    (is eql 31 tuatara.frontend.tui::*kitty-flags*)))
 
 (define-test (command tui-mouse-reports)
   ;; the terminal's reports of the mouse (SGR's form) as the editor's mouse keys, at the
@@ -2005,3 +2012,23 @@ TUATARA: what a job of its own would take from a buffer before it starts.")
         (tuatara.buffer:buffer-insert b 0 "x")
         (funcall then 5)
         (is equal '((3 4) (1 2)) taken)))))
+
+(define-test (command startup-entry-named-in-words)
+  (is string= "standard input" (tuatara.command::startup-entry-name '(:standard-input 0)))
+  (is string= "a.txt" (tuatara.command::startup-entry-name "a.txt"))
+  (is string= "b.txt" (tuatara.command::startup-entry-name '("b.txt" 3 1))))
+
+(define-test (command key-hints-made-once-for-a-frame)
+  ;; the hints of a pending prefix are worked out once for the panel's height and its rows
+  (let ((made 0))
+    (sb-int:encapsulate 'tuatara.command::prefix-entries 'counting
+                        (lambda (function &rest arguments) (incf made) (apply function arguments)))
+    (unwind-protect
+         (multiple-value-bind (f editor) (run-keys "" :width 60 :height 14)
+           (declare (ignore f))
+           (setf (tuatara.command:editor-pending editor) (tuatara.frontend:parse-key-sequence "C-x"))
+           (setf made 0)
+           (tuatara.command::key-hint-parts editor)
+           (tuatara.command::key-hint-parts editor)
+           (is = 1 made "the key hints made ~d times" made))
+      (sb-int:unencapsulate 'tuatara.command::prefix-entries 'counting))))

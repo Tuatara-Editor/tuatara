@@ -102,7 +102,7 @@ nothing to draw it with, which is said)."
                                        "its picture"))
         (view (make-image-view native kind words)))
     (setf (tuatara.display:buffer-header-line buffer)
-          (let ((text (format nil " ~a" words))) (lambda (window) (declare (ignore window)) (values text nil)))
+          (static-header-line (format nil " ~a" words))
           (tuatara.buffer:buffer-local buffer 'image-view) view)
     (push buffer *image-views*)
     (image-view-start buffer view)
@@ -121,9 +121,8 @@ file's octets in its place, and why (FILE-VIEW-FALL-TO-OCTETS)."
              (file-view-fall-to-octets buffer (format nil "The picture could not be drawn (~a)" words)))
             ((not (and *editor* (tuatara.frontend:frontend-images-p (editor-frontend *editor*))))
              (file-view-fall-to-octets buffer "Pictures are not shown here"))
-            (t (let ((text (format nil " ~a" words)))
-                 (setf (tuatara.display:buffer-header-line buffer) (lambda (window) (declare (ignore window)) (values text nil))
-                       (tuatara.buffer:buffer-local buffer :image) image)))))))
+            (t (setf (tuatara.display:buffer-header-line buffer) (static-header-line (format nil " ~a" words))
+                     (tuatara.buffer:buffer-local buffer :image) image))))))
 
 (defun image-view-forget (buffer)
   "Forget BUFFER, killed, among the images shown; its drawing, a job of its, is stopped with it."

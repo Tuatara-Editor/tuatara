@@ -189,7 +189,7 @@ kept of it nor of any answer about it; all taken away afterwards."
               (let ((store (tuatara.syntax:user-grammar-store)))
                 (when store
                   (uiop:delete-directory-tree store :validate t :if-does-not-exist :ignore)))
-              (tuatara.syntax:forget-grammars)))
+              (clrhash tuatara.syntax::**grammars**)))
        (unwind-protect
             (progn
               (true (add-test-grammar ,directory) "compiled")
@@ -216,7 +216,7 @@ kept of it nor of any answer about it; all taken away afterwards."
 a new session would."
   (clrhash tuatara.defaults::*user-grammar-verdicts*)
   (setf tuatara.defaults::*grammars-on-table* nil)
-  (tuatara.syntax:forget-grammars))
+  (clrhash tuatara.syntax::**grammars**))
 
 (define-test (grammars-on grammar-you-add)
   ;; a grammar you add: off until you turn it on, never one of the common
@@ -297,10 +297,10 @@ a new session would."
       (let ((tuatara.syntax:*grammar-directories*
               (list (namestring own) (namestring later)
                     (namestring (asdf:system-relative-pathname :tuatara "build/grammars/")))))
-        (tuatara.syntax:forget-grammars)
+        (clrhash tuatara.syntax::**grammars**)
         (unwind-protect (false (loop repeat 3 thereis (tuatara.syntax:find-grammar "testjson") do (sleep 0.2)))
           (tuatara.syntax:stop-helpers)
-          (tuatara.syntax:forget-grammars))))))
+          (clrhash tuatara.syntax::**grammars**))))))
 
 (define-test (grammars-on own-languages-not-replaced)
   ;; an init file or a package adds languages; one of Tuatara's own is not

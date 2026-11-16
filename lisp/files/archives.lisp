@@ -20,9 +20,8 @@
 ;;;; own, from which what it made is moved into place without replacing
 ;;;; anything. So an archive from elsewhere, whatever names and links it
 ;;;; holds, reads nothing beside it and changes nothing outside what it
-;;;; adds. A password goes to
-;;;; the program on its standard input, never among its arguments, which other
-;;;; programs can read.
+;;;; adds. A password goes to the program on its standard input, never among
+;;;; its arguments, which other programs can read.
 
 (in-package #:tuatara.defaults)
 
@@ -135,7 +134,8 @@ Ubuntu and Arch, 7z or 7za on Fedora. An older program of those names that
 is not 7-Zip's own (p7zip, 16.02 and before) is not taken.")
 
 (sb-ext:defglobal **seven-zip** nil
-  "7-Zip as last found (SEVEN-ZIP): (PATH VERSION FORMATS), or NIL before.")
+  "7-Zip as last found (SEVEN-ZIP): (PATH VERSION FORMATS), (PATH) when the
+program found there is not 7-Zip's own, or NIL before.")
 
 (defun seven-zip-said (text)
   "7-Zip's version (a list of two numbers) and the formats it reads (their
@@ -156,15 +156,20 @@ when TEXT is not 7-Zip's own, at version 21 or later."
 
 (defun seven-zip ()
   "7-Zip where it is installed for programs shut in, as (PATH VERSION
-FORMATS) (SEVEN-ZIP-SAID); NIL when it is not. Asked of it shut in once for
-each program found, and kept."
+FORMATS) (SEVEN-ZIP-SAID); NIL when it is not, or what is found is not
+7-Zip's own. Asked of it shut in once for each program found, and kept,
+whatever it answered: 7-Zip's own put in place of another at the same path
+is seen at the next start."
   (let ((path (some #'tuatara.io:sandbox-find-program *seven-zip-names*)))
     (cond ((null path) nil)
-          ((equal path (first **seven-zip**)) **seven-zip**)
-          (t (let ((said (multiple-value-bind (output outcome)
-                             (tuatara.io:sandbox-run path (list "i") :seconds 10 :output-limit (* 1024 1024))
-                           (and (eq outcome :done) (seven-zip-said (tuatara.text:octets-string output))))))
-               (setf **seven-zip** (and said (cons path said))))))))
+          ((equal path (first **seven-zip**)) (and (rest **seven-zip**) **seven-zip**))
+          (t (multiple-value-bind (output outcome)
+                 (tuatara.io:sandbox-run path (list "i") :seconds 10 :output-limit (* 1024 1024))
+               (let ((said (and (eq outcome :done) (seven-zip-said (tuatara.text:octets-string output)))))
+                 ;; a program that answered is kept, 7-Zip's own or not; one that did not is asked again
+                 (when (eq outcome :done)
+                   (setf **seven-zip** (cons path said)))
+                 (and said (cons path said))))))))
 
 (defun seven-zip-reads-p (kind)
   "True when 7-Zip is installed and reads archives of KIND, an entry of
@@ -226,9 +231,9 @@ what was SAID, as TUATARA.IO:SANDBOX-RUN gives them. With PASSWORD given, a
 wrong one is said to be wrong; one that slips past the one-byte check of the
 old zip encryption and fails only in unpacking is said to be wrong or the
 archive damaged, since the two cannot be told apart. An archive locked with a
-password that bsdtar
-cannot open is said so by its kind, with 7-Zip to install for it. An archive
-holding what the program cannot read is said so too."
+password that bsdtar cannot open is said so by its kind, with 7-Zip to install
+for it. An archive holding what the program cannot read is said so too. The
+second value is true when the archive was found locked and no password given."
   (let ((words (archive-said-words said))
         (kind-words (getf (rest kind) :words))
         (label (string-downcase (program-path program))))
@@ -236,12 +241,13 @@ holding what the program cannot read is said so too."
            (sandbox-outcome-words outcome words :label label :seconds-setting '*archive-seconds*))
           ((or (search "Couldn't read passphrase" words) (search "Wrong password" words)
                (and (eq program :7zz) (search "E_FAIL" words)))
-           (if password "the password is not right" "it is locked with a password"))
+           (if password "the password is not right" (values "it is locked with a password" t)))
           ((and password (or (search "decompression failed" words) (search "bad CRC" words)))
            "the password is not right, or the archive is damaged")
           ((search "encrypted, but currently not supported" words)
-           (format nil "it is locked with a password: bsdtar opens no ~a archive so locked; 7-Zip does (~a)"
-                   kind-words (outside-program-install-words :seven-zip)))
+           (values (format nil "it is locked with a password: bsdtar opens no ~a archive so locked; 7-Zip does (~a)"
+                           kind-words (outside-program-install-words :seven-zip))
+                   (not password)))
           ((and kind-words (or (search "nsupported" words) (search "not supported" words)))
            (format nil "this ~a archive holds what ~a cannot read: ~a" kind-words label
                    (escape-controls (first (uiop:split-string words :separator '(#\Newline))))))
@@ -264,29 +270,40 @@ FILE-SYSTEM-ERROR."
     (unwind-protect (funcall function copy)
       (sb-posix:close copy))))
 
-(defun run-archive-program (program kind arguments &key cancel copy directories writable files output-limit
+(define-condition archive-program-failed (refusal)
+  ((outcome :initarg :outcome :reader archive-program-outcome
+            :documentation "How the program went, as TUATARA.IO:SANDBOX-RUN says it: :FAILED, :TOO-MUCH ...")
+   (locked :initarg :locked :initform nil :reader archive-program-locked-p
+           :documentation "True when the program found the archive locked with a password and none was given."))
+  (:documentation "A program listing, testing, unpacking or making an archive did not end well, said in
+words of the editor's own (ARCHIVE-FAILURE-WORDS)."))
+
+(defun run-archive-program (program kind arguments &key cancel copy directories links writable files output-limit
                                                          (output-kept t) file-limit password (seconds *archive-seconds*)
                                                          (start "/tmp"))
   "Run PROGRAM (:TAR, :7ZZ, :BSDTAR, as ARCHIVE-PROGRAM chooses it for KIND,
 an entry of *ARCHIVE-KINDS*) with ARGUMENTS shut in (TUATARA.IO:SANDBOX-RUN),
 starting in the directory START, shown COPY, the sealed copy of the archive
 it reads (CALL-WITH-ARCHIVE-COPY), at *ARCHIVE-SEEN-PATH*, DIRECTORIES read
-only and WRITABLE to write in, FILES as it has them, writing no file larger than FILE-LIMIT octets
-\(NIL: no limit), its environment ARCHIVE-ENVIRONMENT's, for SECONDS at most;
-stopped when CANCEL's car turns true. 7-Zip and bsdtar are given PASSWORD, or nothing, when they
-ask for one, on their standard input. What it printed, as text, up to
+only, LINKS as it has them (TUATARA.IO:SANDBOX-RUN) and WRITABLE to write in,
+FILES as it has them, writing no file larger than FILE-LIMIT octets (NIL: no limit), its environment ARCHIVE-ENVIRONMENT's,
+for SECONDS at most; stopped when CANCEL's car turns true. 7-Zip and bsdtar
+are given PASSWORD, or nothing, when they ask for one, on their standard
+input. What it printed, as text, up to
 OUTPUT-LIMIT octets (NIL: let go; with OUTPUT-KEPT NIL, counted, never kept,
-and NIL returned); an error saying why when it does not end well
-\(ARCHIVE-FAILURE-WORDS)."
+and NIL returned); an ARCHIVE-PROGRAM-FAILED saying why when it does not end
+well (ARCHIVE-FAILURE-WORDS)."
   (multiple-value-bind (output outcome said)
       (tuatara.io:sandbox-run (program-path program) arguments
                               :seconds seconds :output-limit output-limit :output-kept output-kept
                               :file-limit file-limit :cancel cancel :directories directories
-                              :writable writable :files (if copy (acons *archive-seen-path* copy files) files)
+                              :links links :writable writable :files (if copy (acons *archive-seen-path* copy files) files)
                               :environment (archive-environment) :directory start
                               :secret (and (not (eq program :tar)) (or password "")))
     (unless (eq outcome :done)
-      (refuse "~a" (archive-failure-words program kind outcome said password)))
+      (multiple-value-bind (words locked) (archive-failure-words program kind outcome said password)
+        (error 'archive-program-failed :format-control "~a" :format-arguments (list words)
+                                       :outcome outcome :locked locked)))
     (and output-limit output-kept (tuatara.text:octets-string output))))
 
 (defun check-compressor (kind)
@@ -297,33 +314,41 @@ and NIL returned); an error saying why when it does not end well
     (when (and program (not (tuatara.io:sandbox-find-program program)))
       (refuse "~a is not installed: install it for archives compressed so" program))))
 
-(defun archive-kind (archive)
-  "The entry of *ARCHIVE-KINDS* of the archive ARCHIVE, told by its first
-octets (FILE-KIND), never by its name; an error saying so when it is no
-archive of those kinds."
-  (let ((by-octets (nth-value 1 (file-kind archive))))
-    (or (assoc (if (member by-octets *zip-kinds*) :zip by-octets) *archive-kinds*)
-        ;; tar archives of before POSIX have no mark to be told by
-        (and (null by-octets) (eq :tar (first (archive-kind-of-name archive))) (assoc :tar *archive-kinds*))
-        (refuse "it is no archive: a tar one (gzip, bzip2, xz or zstd compressed, or not), ~
-                 zip, 7z, rar, ISO 9660 or cpio"))))
+(defun archive-kind (archive copy)
+  "The entry of *ARCHIVE-KINDS* of the archive ARCHIVE, told by the first
+octets of COPY, its sealed copy (CALL-WITH-ARCHIVE-COPY), which the programs
+read, never by its name; an error saying so when it is no archive of those
+kinds. A RAR 5 archive's entry has :READER \"Rar5\", 7-Zip's reader of it."
+  (multiple-value-bind (words by-octets)
+      (tuatara.io:octets-kind (tuatara.io:read-fd-start copy archive (tuatara.io:fd-size copy 0)
+                                                        tuatara.io:+binary-sample+))
+    (let ((kind (or (assoc (if (member by-octets *zip-kinds*) :zip by-octets) *archive-kinds*)
+                    ;; tar archives of before POSIX have no mark to be told by
+                    (and (null by-octets) (eq :tar (first (archive-kind-of-name archive)))
+                         (assoc :tar *archive-kinds*))
+                    (refuse "it is no archive: a tar one (gzip, bzip2, xz or zstd compressed, or not), ~
+                             zip, 7z, rar, ISO 9660 or cpio"))))
+      (if (and (eq (first kind) :rar) (search "version 5" (or words "")))
+          (list* :rar :reader "Rar5" (rest kind))
+          kind))))
 
 (defun archive-arguments (program kind action archive &key directory names locked (names-file "/tmp/names"))
   "The arguments of PROGRAM (:TAR, :7ZZ, :BSDTAR) reading or making archives
 of KIND (*ARCHIVE-KINDS*) for ACTION on the archive ARCHIVE: made where it
-really is, read as its copy at *ARCHIVE-SEEN-PATH*. :CREATE makes it of NAMES, relative to the directory the
-program starts in, directories with all in them and links as links: 7-Zip is
-given them after --, taken as they are, no * or ? matched; tar and bsdtar
-read them from NAMES-FILE, each ended by a null character. LOCKED, it asks
-for a password on its standard input and locks the archive with it: zip with
-AES-256, 7z with its names locked too. :LIST gives its contents, a line each
-\(7-Zip's as its technical list, SEVEN-ZIP-LISTING reads it; bsdtar's ending
-with the format it read). :EXTRACT
-unpacks them into DIRECTORY. The files are yours, their modes as your umask has
-them. None is written outside DIRECTORY nor through a link, and those there
-already are left as they are. :TEST, 7-Zip's and bsdtar's, has every file
-unpacked and let go, nothing written. 7-Zip is held to the archive's format. An
-error when the program compressing it is not there."
+really is, read as its copy at *ARCHIVE-SEEN-PATH*. :CREATE makes it of
+NAMES, relative to the directory the program starts in, directories with all
+in them and links as links: 7-Zip is given them after --, taken as they are,
+no * or ? matched; tar and bsdtar read them from NAMES-FILE, each ended by a
+null character. LOCKED, it asks for a password on its standard input and
+locks the archive with it: zip with AES-256, 7z with its names locked too.
+:LIST gives its contents, a line each (7-Zip's as its technical list,
+SEVEN-ZIP-LISTING reads it; bsdtar's ending with the format it read).
+:EXTRACT unpacks them into DIRECTORY. The files are yours, their modes as
+your umask has them. None is written outside DIRECTORY nor through a link,
+and those there already are left as they are. :TEST, 7-Zip's and bsdtar's,
+has every file unpacked and let go, nothing written. 7-Zip is held to the
+archive's format, read by KIND's :READER where it has one. An error when the
+program compressing it is not there."
   (check-compressor kind)
   (let ((file (if (eq action :create)
                   (tuatara.io:path-join (tuatara.io:real-place (tuatara.io:parent-path archive))
@@ -349,11 +374,7 @@ error when the program compressing it is not there."
                          "--no-xattrs" "--no-acls" "--no-fflags"))
          (:test (list "-x" "-O" "--file" file))))
       (:7zz
-       ;; RAR 5 archives have a reader of their own
-       (let ((switches (list (format nil "-t~a" (if (and (eq (first kind) :rar)
-                                                         (search "version 5" (or (file-kind archive) "")))
-                                                    "Rar5"
-                                                    (getf (rest kind) :type)))
+       (let ((switches (list (format nil "-t~a" (getf (rest kind) :reader (getf (rest kind) :type)))
                              "-sccUTF-8" "-bsp0" "-bso1" "-bse2")))
          (ecase action
            (:create (append (list "a" "-snl" "-spd") switches
@@ -417,21 +438,18 @@ link leads."
 \(ARCHIVE-PROGRAM), needs a password to unpack that PROGRAM can take: a zip
 archive with an entry locked (TUATARA.IO:ZIP-LOCKED-P, from its directory
 alone) for bsdtar; for 7-Zip, any of its kinds whose list says so, or which
-cannot be listed without one. 7-Zip reads COPY, the archive's sealed copy
+cannot be listed without one. Both read COPY, the archive's sealed copy
 \(CALL-WITH-ARCHIVE-COPY), made here when not given. Takes time: call it in
 the background."
-  (case program
-    (:bsdtar (and (eq (first kind) :zip)
-                  (handler-case (tuatara.io:call-with-file path (lambda (fd name size)
-                                                                  (declare (ignore name))
-                                                                  (tuatara.io:zip-locked-p fd size)))
-                    (tuatara.io:file-system-error () nil))))
-    (:7zz (flet ((locked (copy)
-                   (handler-case (search (format nil "~%Encrypted = +")
+  (flet ((locked (copy)
+           (case program
+             (:bsdtar (and (eq (first kind) :zip) (tuatara.io:zip-locked-p copy (tuatara.io:fd-size copy 0))))
+             (:7zz (handler-case (search (format nil "~%Encrypted = +")
                                          (run-archive-program program kind (archive-arguments program kind :list path)
                                                               :copy copy :output-limit *archive-listing-limit*))
-                     (refusal (e) (search "locked with a password" (princ-to-string e))))))
-            (if copy (locked copy) (call-with-archive-copy path #'locked))))))
+                     (archive-program-failed (e) (archive-program-locked-p e))
+                     (refusal () nil))))))
+    (if copy (locked copy) (call-with-archive-copy path #'locked))))
 
 (defun archive-health-words ()
   "What lists and unpacks archives other than tar ones here, as \\[check-health] says it: 7-Zip for the best of it."
@@ -474,12 +492,14 @@ ARCHIVE-MADE-P): a tar one, compressed as its name says, by tar; a zip or
 7z one by 7-Zip, else bsdtar (ARCHIVE-PROGRAM). Each is kept inside with its
 path below the deepest directory all of them are in. With PASSWORD a zip or
 7z archive is locked (ARCHIVE-ARGUMENTS), the password given the program on
-its standard input. The program sees PATHS alone (ARCHIVE-SHOWN-PATHS) and
+its standard input. The program sees PATHS alone (ARCHIVE-SHOWN) and
 writes the archive in a new directory of its own beside ARCHIVE; it is given
 ARCHIVE's name once whole, what is there already moved to the trash first
 with REPLACE; nothing is left when it fails or CANCEL's car turns true. An
 error saying why when it does not work, the program to install among it
-when there is none, before anything is written."
+when there is none, before anything is written. A link lying directly in your
+home directory is recorded with the time it is packed, not its own, and one
+whose name or text is no UTF-8 is refused there."
   (let* ((kind (or (archive-kind-of-name archive :made t)
                    (refuse "~a is not named as an archive made here is (~a)" (tuatara.io:native-file-name archive)
                            (archive-made-endings))))
@@ -491,6 +511,7 @@ when there is none, before anything is written."
                                    paths))
                            paths))
          (root (paths-common-directory paths))
+         (shown (multiple-value-list (archive-shown paths)))
          (passing (tuatara.io:slash-ended
                    (tuatara.io:path-join (tuatara.io:parent-path archive)
                                          (format nil ".~a.~a.part" (tuatara.io:native-file-name archive)
@@ -510,7 +531,8 @@ when there is none, before anything is written."
                                                                 :locked (and password t) :names-file names-file)
                                 :cancel cancel
                                 :start (tuatara.io:real-place root)
-                                :directories (archive-shown-paths paths)
+                                :directories (first shown)
+                                :links (second shown)
                                 :writable (list passing)
                                 :files (list (cons names-file (format nil "~{~a~c~}"
                                                                       (loop for name in names
@@ -525,16 +547,25 @@ when there is none, before anything is written."
         (tuatara.io:delete-tree passing)))
     archive))
 
-(defun archive-shown-paths (paths)
+(defun archive-shown (paths)
   "What a program packing PATHS, files and directories, is shown of them, shut
-in: each alone, but a symbolic link, packed as a link, by the directory it
-is in."
-  (remove-duplicates (mapcar (lambda (path)
-                               (if (eq :symlink (tuatara.io:path-kind path :follow nil))
-                                   (tuatara.io:parent-path path)
-                                   path))
-                             paths)
-                     :test #'string=))
+in, as two values: the directories and files it is shown, each alone but a
+symbolic link, packed as a link, by the directory it is in; and, for a link in
+a directory that may not be shown (your home directory), the link itself, each
+\(PATH . WHAT-IT-HOLDS), which the program is given as a link of its own
+\(TUATARA.IO:SANDBOX-RUN). Refused, naming it, a link of that kind whose name
+or text is no UTF-8: a program is passed no other."
+  (let ((shown '()) (links '()))
+    (dolist (path paths)
+      (let ((text (tuatara.io:symlink-target path)))
+        (cond ((null text) (push path shown))
+              ((tuatara.io:shown-place-p (tuatara.io:parent-path path)) (push (tuatara.io:parent-path path) shown))
+              ((flet ((escaped (string) (find-if (lambda (c) (<= #xDC80 (char-code c) #xDCFF)) string)))
+                 (or (escaped path) (escaped text)))
+               (refuse "the link ~a is in your home directory and its name or text is not UTF-8"
+                       (tuatara.io:native-file-name path)))
+              (t (push (cons (string-right-trim "/" path) text) links)))))
+    (values (remove-duplicates (nreverse shown) :test #'string=) (nreverse links))))
 
 ;;; Unpacking
 
@@ -560,7 +591,7 @@ programs read a sealed copy of ARCHIVE (CALL-WITH-ARCHIVE-COPY)."
   "Unpack the archive ARCHIVE, read from COPY, its sealed copy, into DIRECTORY,
 as EXTRACT-ARCHIVE says, with CANCEL and PASSWORD as it has them."
   (let* ((*secret-at-hand* (or *secret-at-hand* (and password t)))
-         (kind (archive-kind archive))
+         (kind (archive-kind archive copy))
          (program (archive-program kind))
          (directory (tuatara.io:slash-ended directory))
          (made (not (tuatara.io:path-stamp directory :follow nil)))
@@ -578,10 +609,9 @@ as EXTRACT-ARCHIVE says, with CANCEL and PASSWORD as it has them."
                                            :cancel cancel :copy copy
                                            :password password :seconds *archive-test-seconds*
                                            :output-limit room :output-kept nil)
-          (refusal (e)
-            (if (search "printed more than it may" (princ-to-string e))
-                (refuse "unpacking stopped: ~a has less than ~a free (*archive-free-reserve*)"
-                        (abbreviated-path directory) (tuatara.io:octets-words *archive-free-reserve*))
+          (archive-program-failed (e)
+            (if (eq (archive-program-outcome e) :too-much)
+                (refuse-archive-full directory)
                 (error e))))))
     (tuatara.io:ensure-directories directory)
     (setf passing (tuatara.io:slash-ended (tuatara.io:path-join directory (format nil ".unpacking.~a.part"
@@ -665,17 +695,21 @@ before it has room for fewer than it keeps (*ARCHIVE-LEAST-FILES-LEFT*, or
 it has less than *ARCHIVE-FREE-RESERVE* free."
   (- (or (tuatara.io:free-octets directory) most-positive-fixnum) *archive-free-reserve*))
 
+(defun refuse-archive-full (directory)
+  "Say no to unpacking more into DIRECTORY, whose drive has less than
+*ARCHIVE-FREE-RESERVE* free."
+  (refuse "unpacking stopped: ~a has less than ~a free (*archive-free-reserve*)"
+          (abbreviated-path directory) (tuatara.io:octets-words *archive-free-reserve*)))
+
 (defun unpack-archive (program kind archive copy directory cancel password)
   "Unpack ARCHIVE, of KIND (*ARCHIVE-KINDS*), read from COPY, its sealed copy,
-into DIRECTORY, a new empty directory, by PROGRAM (ARCHIVE-PROGRAM), with PASSWORD, as EXTRACT-ARCHIVE
-says: stopped when CANCEL's car turns true, or before the drive has less
-than *ARCHIVE-FREE-RESERVE* free or room for too few more files
-\(ARCHIVE-FILES-LEFT), said so."
+into DIRECTORY, a new empty directory, by PROGRAM (ARCHIVE-PROGRAM), with
+PASSWORD, as EXTRACT-ARCHIVE says: stopped when CANCEL's car turns true, or
+before the drive has less than *ARCHIVE-FREE-RESERVE* free or room for too
+few more files (ARCHIVE-FILES-LEFT), said so."
   (flet ((room-left () (archive-room-left directory))
          (files-left () (or (archive-files-left directory) most-positive-fixnum))
-         (full ()
-           (refuse "unpacking stopped: ~a has less than ~a free (*archive-free-reserve*)"
-                  (abbreviated-path directory) (tuatara.io:octets-words *archive-free-reserve*)))
+         (full () (refuse-archive-full directory))
          (crowded ()
            (refuse "unpacking stopped: the drive of ~a would have room for too few more files: ~
                     the larger of ~:d and 1 in 100 of all it holds is kept"
@@ -722,20 +756,21 @@ sealed copy of the archive (CALL-WITH-ARCHIVE-COPY). Stopped when CANCEL's car t
 saying why when it cannot be read, is locked with a password 7-Zip needs, is
 read as another format than it is, or the list is longer than
 *ARCHIVE-LISTING-LIMIT*."
-  (let* ((kind (archive-kind archive))
-         (program (archive-program kind))
-         (arguments (archive-arguments program kind :list archive))
-         (text (call-with-archive-copy archive (lambda (copy)
-                                                 (run-archive-program program kind arguments :cancel cancel :copy copy
-                                                                      :output-limit *archive-listing-limit*)))))
-    (format nil "~{~a~%~}"
-            (mapcar #'escape-controls
-                    (remove "" (uiop:split-string (case program
-                                                    (:7zz (seven-zip-listing text))
-                                                    (:bsdtar (bsdtar-format-checked kind text))
-                                                    (t text))
-                                                  :separator '(#\Newline))
-                            :test #'string=)))))
+  (call-with-archive-copy
+   archive
+   (lambda (copy)
+     (let* ((kind (archive-kind archive copy))
+            (program (archive-program kind))
+            (text (run-archive-program program kind (archive-arguments program kind :list archive)
+                                       :cancel cancel :copy copy :output-limit *archive-listing-limit*)))
+       (format nil "~{~a~%~}"
+               (mapcar #'escape-controls
+                       (remove "" (uiop:split-string (case program
+                                                       (:7zz (seven-zip-listing text))
+                                                       (:bsdtar (bsdtar-format-checked kind text))
+                                                       (t text))
+                                                     :separator '(#\Newline))
+                               :test #'string=)))))))
 
 ;;; Shown in a buffer
 

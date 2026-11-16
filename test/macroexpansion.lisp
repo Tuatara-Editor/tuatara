@@ -77,6 +77,27 @@ in *Pp Macroexpand Output*; with C-u the expansion goes in after the call.")
     (let ((symbol (find-symbol "MACROEXPAND-TEST-CIRCULAR" :tuatara-user)))
       (when symbol (fmakunbound symbol) (unintern symbol :tuatara-user)))))
 
+(define-modal-test (macroexpansion expansion-settings-put-back-said)
+  ;; a macro that gives a setting a value it does not take as it expands: put back, and said, even
+  ;; when showing the expansion fails
+  (let ((width tuatara-user:*fill-column*))
+    (sb-int:encapsulate 'tuatara.defaults::show-expansion 'failing
+                        (lambda (f text) (declare (ignore f text)) (error "expansion not shown")))
+    (unwind-protect
+         (progn
+           (with-messages-said (said)
+             (fresh-start (format nil "o ~a C-M-x o ~a C-g C-c C-m"
+                                  (key-string (concatenate 'string "(defmacro macroexpand-test-setting ()"
+                                                           " (setf *fill-column* \"wide\") 1)"))
+                                  (key-string "(macroexpand-test-setting)"))
+                          :width 200 :height 20)
+             (is eql width tuatara-user:*fill-column*)
+             (true (search "*fill-column* is \"wide\", but it takes" (said)) "~a" (said))))
+      (sb-int:unencapsulate 'tuatara.defaults::show-expansion 'failing)
+      (setf tuatara-user:*fill-column* width)
+      (let ((symbol (find-symbol "MACROEXPAND-TEST-SETTING" :tuatara-user)))
+        (when symbol (fmakunbound symbol) (unintern symbol :tuatara-user))))))
+
 (define-modal-test (macroexpansion only-the-call-is-read)
   ;; the call is read once, #. refused, and anything after it is refused rather than evaluated
   (let ((marker (format nil "~amacroexpand-~d" (namestring *test-state-directory*) (random 1000000)))

@@ -51,7 +51,7 @@ overlapping it go."
           (remove-if (lambda (fold)
                        (let ((s (tuatara.text:anchor-position (car fold) version))
                              (e (tuatara.text:anchor-position (cdr fold) version)))
-                         (or (>= s e) (and (< s end) (> e start)) (and (= s e start)))))
+                         (or (>= s e) (and (< s end) (> e start)))))
                      (tuatara.buffer:buffer-local buffer :folds)))))
 
 (defun unfold-ranges (buffer ranges)
@@ -239,12 +239,11 @@ in the rows and between them is left out (SHOWN-PARTS, UNFOLDED-PARTS)."
           ;; the first character shown, past what a line scrolled sideways hides and
           ;; what stands for no character before it (an indentation that is no text)
           for start = (if (row-mixed row)
-                          (loop for byte across bytes when (>= byte 0) minimize byte into low
-                                finally (return (if (< low most-positive-fixnum) low (row-start row))))
+                          (let ((low most-positive-fixnum))
+                            (loop for byte across bytes when (>= byte 0) do (setf low (min low byte)))
+                            (if (< low most-positive-fixnum) low (row-start row)))
                           (or (find-if-not #'minusp bytes) (row-start row)))
-          for end = (max start (row-shown-end row) (if (or shown (row-truncated-p row))
-                                                                      0
-                                                                      (row-end row)))
+          for end = (max start (row-shown-end row) (if (or shown (row-truncated-p row)) 0 (row-end row)))
           do (cond ((and ranges (< (- start (cdr (first ranges))) join))
                     (setf (cdr (first ranges)) (max end (cdr (first ranges)))))
                    ;; a row showing nothing, past the end of the text, adds nothing

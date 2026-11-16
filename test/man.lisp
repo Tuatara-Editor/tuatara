@@ -333,3 +333,22 @@ faces, its references links; reading what man prints; asking for pages.")
     (tuatara.defaults::man-pieces text (lambda (name section) (list name section)))
     (true (< (- (sb-ext:get-bytes-consed) before) (* 30 (length text))) "~:d octets for ~:d characters"
           (- (sb-ext:get-bytes-consed) before) (length text))))
+
+(define-test (man headings-but-header-and-footer)
+  ;; n and p go from heading to heading: the page's plain header and footer, though they begin at the margin,
+  ;; are none
+  (let* ((bold (lambda (words) (format nil "~c[1m~a~c[0m" (code-char 27) words (code-char 27))))
+         (text (format nil "LS(1)       User Commands       LS(1)~%~%~a~%       ls - list~%~%~a~%       ls [FILE]~%~%~
+                            GNU coreutils 9.4      August 2023      LS(1)~%"
+                       (funcall bold "NAME") (funcall bold "SYNOPSIS"))))
+    (is equal '(2 5) (tuatara.defaults::man-heading-lines (tuatara.defaults::man-pieces text (constantly nil))))))
+
+(define-test (man sections-of-a-page-without-bold)
+  ;; a page printed with no heading in bold keeps its sections: the lines that begin at the margin
+  (let ((buffer (tuatara.buffer:make-buffer "plain page" :text (format nil "NAME~%   ls~%SYNOPSIS~%   ls [FILE]~%"))))
+    (unwind-protect
+         (let ((tuatara.command::*current-buffer* buffer))
+           (setf (tuatara.buffer:buffer-point buffer) 0)
+           (tuatara.defaults::man-step-section 1)
+           (is = 2 (tuatara.buffer:buffer-line-number buffer (tuatara.buffer:buffer-point buffer))))
+      (tuatara.buffer:kill-buffer buffer))))

@@ -1600,9 +1600,9 @@ entry file of a package of a source nothing names, kept in it."
                  (size (find-symbol "*VALUER-SIZE*" :tuatara-user)))
              (is string= ":left, :right" (tuatara.runtime::setting-values-words side))
              (false (tuatara.runtime::setting-value-fault side))
-             (setf (symbol-value side) :middle)
+             (fail (tuatara.runtime:set-setting side :middle))
              (is string= "*valuer-side* is :middle, but it takes :left, :right"
-                 (tuatara.runtime::setting-value-fault side))
+                 (tuatara.runtime::setting-value-fault side :middle))
              (is = 3 (symbol-value size))
              (false (tuatara.runtime::setting-values-words size))))
       (dolist (name '("*VALUER-SIDE*" "*VALUER-SIZE*"))

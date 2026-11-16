@@ -44,17 +44,26 @@ asked for."
         (delete-package-directory (namestring other))))
     here))
 
-(defun package-fasl (file)
-  "Where the compiled FILE of a package is kept: in the cache, by which
-Tuatara and which Steel Bank Common Lisp (SBCL) compile it (PACKAGE-CACHE), in
-directories as the file's own are, fetched/ for a package fetched and local/ for
-one of a directory of yours."
-  (let* ((native (tuatara.io:native file))
-         (fetched (tuatara.io:native (packages-directory)))
-         (inside (if (uiop:string-prefix-p fetched native)
+(defun package-cache-place (path)
+  "Where what a package keeps at PATH, a file or a directory (its native name
+ending in /), is compiled to: in the cache, by which Tuatara and which Steel
+Bank Common Lisp (SBCL) compile it (PACKAGE-CACHE), in directories as its own
+are, fetched/ for a package fetched and local/ for one of a directory of
+yours."
+  (let* ((native (tuatara.io:native path))
+         (fetched (tuatara.io:native (packages-directory))))
+    (concatenate 'string (package-cache)
+                 (if (uiop:string-prefix-p fetched native)
                      (concatenate 'string "fetched/" (subseq native (length fetched)))
-                     (concatenate 'string "local" native))))
-    (format nil "~a~a.fasl" (package-cache) inside)))
+                     (concatenate 'string "local" native)))))
+
+(defun package-fasl (file)
+  "Where the compiled FILE of a package is kept (PACKAGE-CACHE-PLACE)."
+  (concatenate 'string (package-cache-place file) ".fasl"))
+
+(defun compiled-directory-of (directory)
+  "The directory the files of what is kept in DIRECTORY, of the packages directory, are compiled into."
+  (package-cache-place (tuatara.io:slash-ended (tuatara.io:native directory))))
 
 (defun tuatara-user:package-file (name)
   "The file NAME (\"helper.sh\") of the package being loaded: in its
@@ -325,7 +334,7 @@ this Tuatara lacks (BESIDE-FASL), its files are as they were then and those
 names are not there still; else forget that it was. Not while a package is
 compiled apart (REFUSE-PACKAGE)."
   (let ((file (and (not (member *package-compiling* '(:apart :apart-said))) (package-check-refusal check))))
-    (multiple-value-bind (kept read) (read-kept-list file)
+    (multiple-value-bind (kept read) (and file (read-kept-list file))
       (when read
         (let* ((needs (handler-case (getf kept :needs) (type-error () nil)))
                (sources (handler-case (getf kept :sources) (type-error () nil)))
@@ -597,7 +606,8 @@ it allowed); NIL when there is none."
         for trimmed = (string-trim '(#\Space #\Tab #\Return) (subseq text start end))
         while (or (zerop (length trimmed)) (char= (char trimmed 0) #\;))
         do (let ((found (nth-value 1 (cl-ppcre:scan-to-strings
-                                      "(?i)^;+\\s*Needs:\\s*Tuatara\\s+([0-9]+(?:\\.[0-9]+){0,3})(?:\\s+or\\s+later)?\\s*\\.?$"
+                                      (concatenate 'string "(?i)^;+\\s*Needs:\\s*Tuatara\\s+([0-9]+(?:\\.[0-9]+){0,3})"
+                                                   "(?:\\s+or\\s+later)?\\s*\\.?$")
                                       trimmed))))
              (when found (return (aref found 0))))
         until (= end (length text))))
@@ -609,19 +619,17 @@ says none, or has no entry."
   (let ((entry (package-entry directory name file)))
     (when entry
       (let ((octets (ignoring-errors-reported ("reading the header of ~a" entry)
-                                              (tuatara.io:call-with-file (tuatara.io:native (merge-pathnames entry
-                                                                                                             directory))
-                                                                         (lambda (fd path size)
-                                                                           (tuatara.io:read-fd-start fd path size
-                                                                                                     *package-header-octets*))))))
+                      (tuatara.io:call-with-file (tuatara.io:native (merge-pathnames entry directory))
+                                                 (lambda (fd path size)
+                                                   (tuatara.io:read-fd-start fd path size *package-header-octets*))))))
         (and octets (needed-version-in (tuatara.text:lenient-string octets)))))))
 
 (defun tuatara-fits-p (needed)
   "True when this Tuatara is the version NEEDED or later, each number
 compared in turn, one left out counted 0; true too when this one's version
 is not known."
-  (let ((have (tuatara.io:version-numbers (tuatara:version))))
-    (or (null have) (tuatara.io:version-at-least-p have (tuatara.io:version-numbers needed)))))
+  (let ((have (tuatara.io:software-version-numbers (tuatara:version))))
+    (or (null have) (tuatara.io:software-version-at-least-p have (tuatara.io:software-version-numbers needed)))))
 
 (defun unfitting-version (directory name file)
   "The version of Tuatara the package NAME in DIRECTORY needs when it is newer

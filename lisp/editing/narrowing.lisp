@@ -73,10 +73,8 @@ the buffer is out of sight and out of reach until \\[widen]. Text typed at
 either edge goes inside. The mode line says Narrow meanwhile. Saving writes
 the whole file still. Without a selection, does nothing and says so."
   (let ((b (current-buffer)))
-    (multiple-value-bind (start end) (values-list (selected-region b))
-      (if (null start)
-          (message "No selection: narrow-to-region was not run")
-          (narrow-to b start end)))))
+    (multiple-value-bind (start end) (selected-region-or-say b 'narrow-to-region)
+      (when start (narrow-to b start end)))))
 
 (define-command narrow-to-section ()
   "Show only the section point is in, and keep every command to it, as

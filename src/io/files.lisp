@@ -88,9 +88,7 @@ the system allows (your own files). PATH names it in messages."
                           (cond ((null fd) (values nil errno))
                                 ((let ((now (tuatara.runtime:ignoring-errors-reported ("examining ~a" path)
                                               (fd-stamp fd path))))
-                                   (and now
-                                        (= (stamp-dev now) (stamp-dev stamp))
-                                        (= (stamp-ino now) (stamp-ino stamp))))
+                                   (same-stamped-file-p now stamp))
                                  fd)
                                 (t (sb-posix:close fd)
                                    (error 'file-system-error :operation operation :path path
@@ -406,11 +404,14 @@ never read: a FILE-SYSTEM-ERROR, as for a file that cannot be read."
              (sb-posix:close fd)))
       (sb-posix:close dirfd))))
 
-(defun call-with-file (path function)
+(defun call-with-file (path function &key (operation "open") (follow t))
   "Call FUNCTION with a descriptor open on the file at PATH, its name and its
 size, as CALL-WITH-ENTRY does: its access time left alone where the system
-allows, and what is not a regular file refused unopened (a FILE-SYSTEM-ERROR)."
-  (let ((fd (open-for-reading path t :accept '(:regular))))
+allows, and what is not a regular file refused unopened (a FILE-SYSTEM-ERROR
+saying OPERATION, \"copy\" say, could not be done). With FOLLOW NIL a symbolic
+link at PATH itself is refused too, never followed: for a file a program shut
+in the sandbox wrote, which could have made it a link to any file of yours."
+  (let ((fd (open-for-reading path t :accept '(:regular) :operation operation :follow follow)))
     (unwind-protect (funcall function fd path (stamp-size (fd-stamp fd path)))
       (sb-posix:close fd))))
 
@@ -432,11 +433,11 @@ returns instead."
       (when (and limit (> (length octets) limit)) (too-large (length octets)))
       octets)))
 
-(defun file-octets (path &key limit)
-  "The octets of the file at PATH, read whole (CALL-WITH-FILE): its name taken
-as it is, a [ or * in it only a character. With LIMIT, a FILE-SYSTEM-ERROR
-for a file of more octets than that (FD-OCTETS)."
-  (call-with-file path (lambda (fd name size) (fd-octets fd name size limit))))
+(defun file-octets (path &key limit (follow t))
+  "The octets of the file at PATH, read whole (CALL-WITH-FILE, which takes
+FOLLOW): its name taken as it is, a [ or * in it only a character. With
+LIMIT, a FILE-SYSTEM-ERROR for a file of more octets than that (FD-OCTETS)."
+  (call-with-file path (lambda (fd name size) (fd-octets fd name size limit)) :follow follow))
 
 (defun file-text (path &key limit too-large (missing nil missing-p) (replacement #\?))
   "The text of the file at PATH, read whole as UTF-8 (CALL-WITH-FILE), its
@@ -541,10 +542,6 @@ for a buffer whose file was not there."
 (defun (setf buffer-file-stamp) (stamp buffer)
   "Note STAMP as that of BUFFER's file as just read or saved (BUFFER-FILE-STAMP)."
   (setf (tuatara.buffer:buffer-local buffer :file-stamp) stamp))
-
-(defun same-stamped-file-p (stamp other)
-  "True when the STAMP OTHER, a file's, names the same file as STAMP: the same device and inode."
-  (and stamp other (= (stamp-dev stamp) (stamp-dev other)) (= (stamp-ino stamp) (stamp-ino other))))
 
 (defun buffer-for-file (path &key except safe)
   "The buffer visiting the file at PATH, other than EXCEPT, found by the file
@@ -689,7 +686,7 @@ count as :SAME."
         ((null recorded) :changed)
         ((same-content-p recorded now) :same)
         ((and (reads-own-file-p buffer)
-              (= (stamp-dev recorded) (stamp-dev now)) (= (stamp-ino recorded) (stamp-ino now)))
+              (same-stamped-file-p recorded now))
          :stale)
         (t :changed)))
 
@@ -782,7 +779,7 @@ BUFFER."
                   (values (lambda (position bias) (declare (ignore bias)) (min position new-size))
                           (lambda (position bias) (declare (ignore bias)) (min position old-size))))
             (let ((tuatara.buffer:*hex-view-resizing* t))
-              (tuatara.buffer:buffer-swap-text buffer rope forward backward))
+              (tuatara.buffer:buffer-swap-text buffer rope forward backward :asked t))
             (setf done t)))
         (when stale
           (tuatara.buffer:forget-history buffer))
@@ -907,7 +904,7 @@ otherwise or grew by more than *MEMORY-READ-LIMIT* octets."
                            (old (stamp-size recorded))
                            (grown (- (stamp-size now) old)))
                       (when (and (eq (stamp-kind now) :regular)
-                                 (= (stamp-dev now) (stamp-dev recorded)) (= (stamp-ino now) (stamp-ino recorded))
+                                 (same-stamped-file-p now recorded)
                                  (< 0 grown) (<= grown *memory-read-limit*) (<= (length tail) old))
                         (let ((check (make-array (length tail) :element-type '(unsigned-byte 8))))
                           (when (and (= (read-fd-at fd check (- old (length tail)) :path path) (length tail))

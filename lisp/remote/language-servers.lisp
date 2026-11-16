@@ -43,10 +43,6 @@ is put in commands the server's shell reads."
   "The list of what was brought, from the home directory of the server."
   (brought-path ".manifest"))
 
-(defun server-program-path (name)
-  "Where the language server NAME, already checked, is kept on the server, from its home directory."
-  (brought-path name))
-
 ;;; What a program needs
 
 (defun elf-octets (fd count offset size name)
@@ -80,8 +76,9 @@ STRINGS, as a list of numbers, NIL when it wants none."
                            (when text
                              (let ((version (if (string= text "GLIBC_ABI_DT_RELR")
                                                 '(2 36)
-                                                (tuatara.io:version-numbers text "^GLIBC_"))))
-                               (when (and version (or (null highest) (tuatara.io:version-at-least-p version highest)))
+                                                (tuatara.io:software-version-numbers text "^GLIBC_"))))
+                               (when (and version (or (null highest)
+                                                      (tuatara.io:software-version-at-least-p version highest)))
                                  (setf highest version)))))
                       (setf auxiliary (+ auxiliary (field (+ auxiliary 12) 4)))))
               (let ((next (field (+ at 12) 4)))
@@ -173,7 +170,7 @@ be reached, is a kind not known or says no number for the account."
               (let ((version (third lines)))
                 (and version
                      (cl-ppcre:scan "^glibc \\d+\\.\\d+$" version)
-                     (tuatara.io:version-numbers version "^glibc ")))))))
+                     (tuatara.io:software-version-numbers version "^glibc ")))))))
 
 (defun refuse-unless-it-fits (needs name host machine glibc)
   "Refuse, saying why, when the program NAME, needing NEEDS (ELF-PROGRAM-NEEDS),
@@ -190,7 +187,7 @@ would not run on HOST, a server of the kind MACHINE with the glibc GLIBC."
       (refuse "~a is started by ~a, which ~a may not have: it needs a self-contained build" name
               (or loader "a loader of its own") host))
     (let ((wanted (getf needs :glibc)))
-      (when (and loader wanted (not (and glibc (tuatara.io:version-at-least-p glibc wanted))))
+      (when (and loader wanted (not (and glibc (tuatara.io:software-version-at-least-p glibc wanted))))
         (refuse "~a wants glibc ~{~a~^.~} or later and ~a has ~:[none that says so~;~:*~{~a~^.~}~]" name wanted host
                 glibc)))))
 
@@ -208,8 +205,7 @@ there is no list."
             for count from 1 to 256
             for parts = (uiop:split-string line :separator " ")
             when (and (= (length parts) 2) (tuatara.lsp:language-server-program-name-p (first parts))
-                      (= 64 (length (second parts)))
-                      (every (lambda (c) (find c "0123456789abcdef")) (second parts)))
+                      (tuatara.text:lowercase-hex-p (second parts) 64))
             collect parts))))
 
 (defun write-server-manifest (host entries)
@@ -219,13 +215,13 @@ list taken away when ENTRIES is empty."
   (if (null entries)
       (when (remote-attributes host (manifest-path) :follow nil)
         (remote-change host :remove (manifest-path)))
-      (let* ((octets (tuatara.text:string-octets (format nil "~:{~a ~a~%~}" entries)))
-             (fd (tuatara.io:memory-file "language-servers manifest" octets :kept nil)))
-        (unwind-protect
-             (remote-upload host (manifest-path) fd (length octets)
-                            :permissions #o600 :like '(:permissions #o600) :expected (constantly nil)
-                            :linked-refusal "the list of what was brought is kept under one name")
-          (sb-posix:close fd)))))
+      (let ((octets (tuatara.text:string-octets (format nil "~:{~a ~a~%~}" entries))))
+        (tuatara.io:call-with-memory-file
+         "language-servers manifest" octets
+         (lambda (fd)
+           (remote-upload host (manifest-path) fd (length octets)
+                          :permissions #o600 :like '(:permissions #o600) :expected (constantly nil)
+                          :linked-refusal "the list of what was brought is kept under one name"))))))
 
 (defun server-sum (host path)
   "The SHA-256 sum of the file at PATH on HOST as sha256sum there says it, in
@@ -236,7 +232,7 @@ answer in time, sha256sum failing, or an answer that is not a sum."
     (let ((why (or (server-unreached-words host code said 300)
                    (and (not (eql code 0)) (format nil "sha256sum on ~a says: ~a" host (server-said-shown said)))
                    (and (not (and (<= 66 (length output))
-                                  (every (lambda (c) (find c "0123456789abcdef")) (subseq output 0 64))
+                                  (tuatara.text:lowercase-hex-p (subseq output 0 64) 64)
                                   (string= output "  " :start1 64 :end1 66)))
                         (format nil "~a answered with something that is not a sum" host)))))
       (if why (values nil why) (values (subseq output 0 64) nil)))))
@@ -330,6 +326,57 @@ not brought is not ours."
           (refuse "~a on ~a is not what this command put there: it is left alone" name host))
         sum))))
 
+(defun keep-brought-server (job found ours others)
+  "For JOB, whose program, of sum OURS, is on its server already, FOUND its
+attributes there: refused when the daemon there would not use it, else listed
+among what was brought, after OTHERS, the rest of that list."
+  (let ((host (server-program-job-host job))
+        (name (server-program-job-program job)))
+    (unless (and (server-entry-usable-p found (server-program-job-uid job))
+                 (logtest (or (getf found :permissions) 0) #o100))
+      (refuse "~a is on ~a already, but the daemon there would not use it: another's, not runnable, ~
+               or others may write it" name host))
+    (write-server-manifest host (append others (list (list name ours))))
+    (setf (server-program-job-words job) (format nil "~a is on ~a already" name host))))
+
+(defun copy-language-server (job fd size found ours entries others)
+  "For JOB, send its program, open as file descriptor (FD), SIZE octets of sum
+OURS, to its server, where FOUND are the attributes of what has its name
+(NIL for nothing), to take its name only once its sum there is OURS. It is
+listed among what was brought (ENTRIES) first, and the list put back when it
+does not take its name; once it does, it is listed after OTHERS, the rest
+of that list."
+  (let ((host (server-program-job-host job))
+        (name (server-program-job-program job))
+        (placed nil))
+    (setf (server-program-job-doing job) "Copying" (server-program-job-size job) size)
+    (write-server-manifest host (append entries (list (list name ours))))
+    (unwind-protect
+         (progn
+           (remote-upload host (brought-path name) fd size
+                          :permissions #o755 :like '(:permissions #o755)
+                          :linked-refusal "a brought program is kept under one name"
+                          :expected (lambda (attributes)
+                                      (unless (and (eq (null attributes) (null found))
+                                                   (eql (getf attributes :size) (getf found :size))
+                                                   (eql (getf attributes :mtime) (getf found :mtime)))
+                                        "it changed on the server while it was being brought"))
+                          :vet (lambda (temporary)
+                                 (setf (server-program-job-doing job) "Verifying")
+                                 (multiple-value-bind (sum why) (server-sum host temporary)
+                                   (unless sum
+                                     (refuse "~a was not put in place on ~a, what was there stays: ~a" name host why))
+                                   (unless (string= sum ours)
+                                     (refuse "~a was not put in place on ~a, what was there stays: ~
+                                              the copy does not have the sum sent" name host)))))
+           (setf placed t))
+      (unless placed
+        (ignoring-errors-reported ("putting back the list of what was brought to ~a" host)
+          (write-server-manifest host entries))))
+    (write-server-manifest host (append others (list (list name ours))))
+    (setf (server-program-job-words job)
+          (format nil "~a brought to ~a, in ~a" name host tuatara.lsp:*brought-language-servers-directory*))))
+
 (defun bring-language-server (job)
   "The work of JOB: send its program, when it fits the server and nothing of
 the same name but what was brought is there. It is written in the server's
@@ -339,7 +386,7 @@ taken, never takes the name. The list of what was brought is put back."
   (let* ((host (server-program-job-host job))
          (name (server-program-job-program job))
          (local (server-program-job-path job))
-         (remote (server-program-path name))
+         (remote (brought-path name))
          (*sftp-octets-sent* (server-program-job-sent job))
          (fd (tuatara.io:open-for-reading local nil :accept '(:regular))))
     (unwind-protect
@@ -361,43 +408,8 @@ taken, never takes the name. The list of what was brought is put back."
                     (there (check-server-file host remote name entries))
                     (others (remove name entries :key #'first :test #'string=)))
                (if (equal there ours)
-                   (progn
-                     (unless (and (server-entry-usable-p found (server-program-job-uid job))
-                                  (logtest (or (getf found :permissions) 0) #o100))
-                       (refuse "~a is on ~a already, but the daemon there would not use it: another's, not runnable, ~
-                                or others may write it" name host))
-                     (write-server-manifest host (append others (list (list name ours))))
-                     (setf (server-program-job-words job) (format nil "~a is on ~a already" name host)))
-                   (let ((placed nil))
-                     (setf (server-program-job-doing job) "Copying" (server-program-job-size job) size)
-                     (write-server-manifest host (append entries (list (list name ours))))
-                     (unwind-protect
-                          (progn
-                            (remote-upload host remote fd size
-                                           :permissions #o755 :like '(:permissions #o755)
-                                           :linked-refusal "a brought program is kept under one name"
-                                           :expected (lambda (attributes)
-                                                       (unless (and (eq (null attributes) (null found))
-                                                                    (eql (getf attributes :size) (getf found :size))
-                                                                    (eql (getf attributes :mtime) (getf found :mtime)))
-                                                         "it changed on the server while it was being brought"))
-                                           :vet (lambda (temporary)
-                                                  (setf (server-program-job-doing job) "Verifying")
-                                                  (multiple-value-bind (sum why) (server-sum host temporary)
-                                                    (unless sum
-                                                      (refuse "~a was not put in place on ~a, what was there stays: ~a"
-                                                              name host why))
-                                                    (unless (string= sum ours)
-                                                      (refuse "~a was not put in place on ~a, what was there stays: ~
-                                                               the copy does not have the sum sent" name host)))))
-                            (setf placed t))
-                       (unless placed
-                         (ignoring-errors-reported ("putting back the list of what was brought to ~a" host)
-                                                   (write-server-manifest host entries))))
-                     (write-server-manifest host (append others (list (list name ours))))
-                     (setf (server-program-job-words job)
-                           (format nil "~a brought to ~a, in ~a" name host
-                                   tuatara.lsp:*brought-language-servers-directory*)))))))
+                   (keep-brought-server job found ours others)
+                   (copy-language-server job fd size found ours entries others)))))
       (sb-posix:close fd))))
 
 (defun remove-language-server (job)
@@ -416,7 +428,7 @@ directory too once nothing is left in it."
              (setf (server-program-job-program job) (or name "nothing"))
              (when (member name names :test #'string=)
                (setf (server-program-job-doing job) "Taking away")
-               (let ((path (server-program-path name)))
+               (let ((path (brought-path name)))
                  (when (check-server-file host path name entries)
                    (remote-change host :remove path))
                  (let ((left (remove name entries :key #'first :test #'string=)))

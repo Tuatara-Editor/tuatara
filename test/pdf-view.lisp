@@ -126,6 +126,47 @@ and zooms kept for the next time."
         (true (tuatara.frontend.fake:fake-images f)))
       (pdf-forget))))
 
+(define-test (pdf-view pages-turned-from-another-buffer)
+  ;; one command turns the pages: of the PDF in the current buffer, or else of the one another window
+  ;; shows; in the text, l moves as in any text, <next> goes to where the next page begins
+  (with-test-directory (dir)
+    (let ((file (merge-pathnames "report.pdf" dir)))
+      (alexandria:write-byte-vector-into-file (pdf-octets '("One" "Two" "Three")) file)
+      (false (tuatara.command:find-command 'tuatara.defaults::pdf-view-next-page-anywhere))
+      (false (tuatara.command:find-command 'tuatara.defaults::pdf-view-previous-page-anywhere))
+      (pdf-forget)
+      (multiple-value-bind (f editor)
+          (pdf-session file nil "C-x 3 C-x b * s c r a t c h * RET M-x p d f - v i e w - n e x t - p a g e RET"
+                       :cell-pixels '(10 20))
+        (let ((shown (find-if #'tuatara.defaults::pdf-view-of
+                              (mapcar #'tuatara.display:window-buffer (tuatara.command:editor-windows editor)))))
+          (true shown)
+          (is equal "*scratch*" (tuatara.buffer:buffer-name
+                                 (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
+          (is = 2 (and shown (tuatara.defaults::pdf-view-page (tuatara.defaults::pdf-view-of shown)))))
+        (false (tuatara.frontend.fake:fake-frame-showing f "No PDF is shown")))
+      ;; where pictures are not shown, its text: the window showing it goes to where the page begins,
+      ;; and again on the next, from its own point
+      (pdf-forget)
+      (multiple-value-bind (f editor)
+          (pdf-session file nil (list "C-x 3 C-x b * s c r a t c h * RET M-x p d f - v i e w - n e x t - p a g e RET"
+                                      "M-x p d f - v i e w - n e x t - p a g e RET"))
+        (declare (ignore f))
+        (let ((window (find-if (lambda (w) (tuatara.defaults::pdf-view-of (tuatara.display:window-buffer w)))
+                               (tuatara.command:editor-windows editor))))
+          (true window)
+          (when window
+            (is = (tuatara.defaults::pdf-view-page-start
+                   (tuatara.defaults::pdf-view-of (tuatara.display:window-buffer window)) 3)
+                (tuatara.display:window-point window)))))
+      (pdf-forget)
+      (let ((f (run-keys "M-x p d f - v i e w - n e x t - p a g e RET" :text "" :width 120)))
+        (true (tuatara.frontend.fake:fake-frame-showing f "No PDF is shown")))
+      (let ((f (pdf-session file nil "T l" :cell-pixels '(10 20))))
+        (true (tuatara.frontend.fake:fake-frame-showing f "Text, page 1"))
+        (false (tuatara.frontend.fake:fake-frame-showing f "Page 2 of 3")))
+      (pdf-forget))))
+
 (define-test (pdf-view one-copy)
   (with-test-directory (dir)
     (let ((file (merge-pathnames "report.pdf" dir)))
@@ -155,7 +196,8 @@ and zooms kept for the next time."
           (loop repeat 200
                 while (tuatara.defaults::pdf-view-job view)
                 do (sleep 0.02) (tuatara.defaults::pdf-view-tick nil))
-          (true (subsetp '(4 5 6 7 8) (mapcar #'first (tuatara.defaults::pdf-view-images view))))
+          (true (subsetp '(4 5 6 7 8) (mapcar #'tuatara.defaults::pdf-page-picture-page
+                                              (tuatara.defaults::pdf-view-images view))))
           (is equal '(5 6 7 8 4) (tuatara.defaults::pdf-view-wanted-pages view))))
       ;; past the memory allowed: the farthest let go of, never the page shown
       (let* ((image (lambda () (tuatara.frontend:make-image 10 10 3 (make-array 300 :element-type '(unsigned-byte 8)))))
@@ -163,12 +205,13 @@ and zooms kept for the next time."
              (tuatara.defaults::*pdf-view-memory* 1000))
         (setf (tuatara.defaults::pdf-view-page view) 5
               (tuatara.defaults::pdf-view-images view)
-              (loop for p in '(1 9 5 6 4) collect (list p 100 (funcall image) nil)))
+              (loop for p in '(1 9 5 6 4)
+                    collect (tuatara.defaults::make-pdf-page-picture p 100 (funcall image) nil nil)))
         (tuatara.defaults::pdf-view-let-go view 100)
-        (is equal '(5 6 4) (mapcar #'first (tuatara.defaults::pdf-view-images view)))
+        (is equal '(5 6 4) (mapcar #'tuatara.defaults::pdf-page-picture-page (tuatara.defaults::pdf-view-images view)))
         (setf tuatara.defaults::*pdf-view-memory* 0)
         (tuatara.defaults::pdf-view-let-go view 100)
-        (is equal '(5) (mapcar #'first (tuatara.defaults::pdf-view-images view))))
+        (is equal '(5) (mapcar #'tuatara.defaults::pdf-page-picture-page (tuatara.defaults::pdf-view-images view))))
       (pdf-forget))))
 
 (define-test (pdf-view never-its-text-between-pages)
@@ -200,7 +243,7 @@ and zooms kept for the next time."
           (true (tuatara.frontend.fake:fake-frame-showing f "Page 1 could not be drawn"))
           (let ((view (tuatara.defaults::pdf-view-of (tuatara.display:window-buffer (tuatara.command:editor-window editor)))))
             (false (tuatara.defaults::pdf-view-job view))
-            (true (find 1 (tuatara.defaults::pdf-view-images view) :key #'first)))))
+            (true (find 1 (tuatara.defaults::pdf-view-images view) :key #'tuatara.defaults::pdf-page-picture-page)))))
       ;; where the pages begin in the text, in octets, characters of more than one octet before
       (is equalp #() (tuatara.defaults::text-page-starts "One page only"))
       (let ((text (tuatara.defaults::pdf-pages-text (format nil "é one~%~ctwo~%~cthree~c" #\Page #\Page #\Page))))
@@ -362,7 +405,7 @@ and zooms kept for the next time."
         (setf tuatara.defaults::*pdf-view-dark-pages* dark))
       ;; a dark page is made again when the theme's colours change, not kept from before
       (let* ((image (tuatara.frontend:make-image 1 1 3 (coerce '(255 255 255) '(simple-array (unsigned-byte 8) (*)))))
-             (entry (list 1 1 image nil))
+             (entry (tuatara.defaults::make-pdf-page-picture 1 1 image nil nil))
              (tuatara.defaults::*pdf-view-dark-pages* t)
              (first (tuatara.defaults::pdf-view-shown-image entry)))
         (is eq first (tuatara.defaults::pdf-view-shown-image entry))
@@ -383,9 +426,11 @@ and zooms kept for the next time."
              (multiple-value-bind (f editor) (pdf-session file nil "l" :cell-pixels '(10 20))
                (declare (ignore f))
                (let* ((view (tuatara.defaults::pdf-view-of (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
-                      (entry (find 3 (tuatara.defaults::pdf-view-images view) :key #'first)))
+                      (entry (find 3 (tuatara.defaults::pdf-view-images view)
+                                   :key #'tuatara.defaults::pdf-page-picture-page)))
                  (true entry)
-                 (is eql tuatara.display:*face-generation* (car (fourth entry))))))
+                 (is eql tuatara.display:*face-generation*
+                     (tuatara.defaults::pdf-page-picture-dark-generation entry)))))
         (setf tuatara.defaults::*pdf-view-dark-pages* dark))
       ;; C-s: the page the text is on, and the line
       (pdf-forget)

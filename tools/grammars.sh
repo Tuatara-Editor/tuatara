@@ -59,7 +59,6 @@ mkdir -p "$out" "$sources" "$root/build/tools"
 . "$root/tools/inside.sh"
 inside bash -euo pipefail -c '
 root="$1"; out="$2"; sources="$3"; record="$4"
-manifest() { grep -v "^#" "$root/syntax/grammars.tsv" | grep -v "^[[:space:]]*$"; }
 . "$root/tools/grammar-build.sh"
 . "$root/tools/fetch.sh"
 fetch() { fetch_grammar "$sources/$1" "$2" "$3"; }  # fetch repository $2 at commit $3 into $sources/$1
@@ -78,7 +77,7 @@ while IFS=$'"'"'\t'"'"' read -r name url commit license subpath; do
     tree-sitter-cli) get_cli "$url" "${commit#sha256:}" ;;
     *) fetch "$name" "$url" "$commit" ;;
   esac
-done < <(manifest)
+done < <(grammar_manifest)
 # then the licences, to go with the release: the licence files of the grammar
 # itself, else those at the top of its repository, else the text in
 # syntax/licenses/ for a repository that has none or only names its licence;
@@ -124,7 +123,7 @@ while IFS=$'"'"'\t'"'"' read -r name url commit license subpath; do
   else
     unlicensed="$unlicensed $name"
   fi
-done < <(manifest)
+done < <(grammar_manifest)
 if [ -n "$unlicensed" ]; then
   echo "tools/grammars.sh: no licence for:$unlicensed. Its text goes in syntax/licenses/NAME.txt, or the grammar is left out." >&2
   exit 1
@@ -163,7 +162,7 @@ if [ -n "$record" ]; then
     else
       grep "  $name\$" "$recorded" || true
     fi
-  done < <(manifest))"
+  done < <(grammar_manifest))"
   { grep "^#" "$recorded"; echo "$lines"; } > "$recorded.new"
   mv "$recorded.new" "$recorded"
   echo "Recorded in $recorded: ${*:-every grammar}" >&2
@@ -187,11 +186,8 @@ while IFS=$'"'"'\t'"'"' read -r name url commit license subpath; do
       # file names it from the top of the sources, not from this machine;
       # its names seen by the grammars it loads, which take their memory
       # through it (syntax/counted-memory.h)
-      cc -O2 -std=c11 -DNDEBUG -D_POSIX_C_SOURCE=200112L -D_DEFAULT_SOURCE \
-         -ffile-prefix-map="$root/=" -ffile-prefix-map="$dir/=tree-sitter/" \
-         -I"$dir/lib/include" -I"$dir/lib/src" \
-         "$dir/lib/src/lib.c" "$root/syntax/syntax.c" "$root/syntax/helper.c" \
-         -rdynamic -lpthread -ldl -o "$out/tuatara-syntax-helper"
+      compile_helper "$root" "$dir" "$out/tuatara-syntax-helper" -O2 -DNDEBUG \
+         -ffile-prefix-map="$root/=" -ffile-prefix-map="$dir/=tree-sitter/"
       rm -f "$out/libtuatara-syntax.so" ;;
     *)
       patch="$root/syntax/patches/$name.patch"
@@ -204,11 +200,11 @@ while IFS=$'"'"'\t'"'"' read -r name url commit license subpath; do
         echo "$made" > "$out/$name.commit"
       fi ;;
   esac
-done < <(manifest)
+done < <(grammar_manifest)
 # a grammar left out of the manifest is left out of what is built
 for made in "$out"/*.so; do
   name="$(basename "$made" .so)"
-  manifest | cut -f1 | grep -qx "$name" || rm -f "$made" "$out/$name.commit"
+  grammar_manifest | cut -f1 | grep -qx "$name" || rm -f "$made" "$out/$name.commit"
 done
 ' grammars "$root" "$out" "$sources" "$record"
 [ -n "$record" ] && exit 0

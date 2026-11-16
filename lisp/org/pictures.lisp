@@ -5,11 +5,12 @@
 ;;;; [[./diagram.png]] with no description, is shown as the picture while
 ;;;; inline-pictures-mode is on (#+STARTUP: inlineimages turns it on for a
 ;;;; file, noinlineimages off). Its #+ATTR_ORG: line sizes and places it as
-;;;; Org 9.7 reads that line: :width 400 or 400px in pixels, 50% or 0.5 of the
-;;;; text's width (the window's, up to the fill column), t its own width, else
-;;;; the first other #+ATTR_...: line's width that reads so; for a picture
-;;;; alone in its paragraph, :align left, center or right, or :center t, from
-;;;; #+ATTR_ORG: first, then any other. C-c C-x w and then + = - 0 change the
+;;;; Org 9.7 reads that line. :width is 400 or 400px in pixels, 50% or 0.5 of
+;;;; the text's width (the window's, up to the fill column), or t for its own
+;;;; width; failing that, the first other #+ATTR_...: line with a width that
+;;;; reads so. A picture alone in its paragraph is placed by :align left,
+;;;; center or right, or :center t, on #+ATTR_ORG: first, then any other line.
+;;;; C-c C-x w and then + = - 0 change the
 ;;;; width written there. Formulas are shown as pictures too: $...$ and \(...\)
 ;;;; inside a line, \[...\] or $$...$$ alone on their lines and LaTeX
 ;;;; environments on rows of their own.
@@ -88,9 +89,9 @@ rational; NIL when it is no such number."
 
 (defun org-picture-width-value (text)
   "The width a #+ATTR_...: line's :width TEXT asks of a picture shown among the
-lines, as an INLINE-PICTURE's width: T for t (its own width), a whole number
-of pixels for 400 or 400px, a fraction of the text's width
-\(INLINE-PICTURE-ROOM) for 50% or for a number with a point up to 2 (0.5); NIL
+lines, as an INLINE-PICTURE's width. T for t, the picture's own width. A whole
+number of pixels for 400 or 400px. A fraction of the text's width
+\(INLINE-PICTURE-ROOM) for 50% or for a number with a point up to 2 (0.5). NIL
 when it reads as none of these."
   (when text
     (let ((text (string-trim " " text)))
@@ -106,9 +107,9 @@ when it reads as none of these."
 
 (defun org-picture-float-value (float placement)
   "The side a #+ATTR_...: line's :float FLOAT and :placement PLACEMENT have a
-picture stand on with the text going round it: :left or :right for left or
-right; for wrap (LaTeX's wrapfigure), :right when PLACEMENT begins {r or {R,
-else :left, as Org's LaTeX export places it; NIL for anything else."
+picture stand on with the text going round it. :left or :right for left or
+right. For wrap (LaTeX's wrapfigure), :right when PLACEMENT begins {r or {R,
+else :left, as Org's LaTeX export places it. NIL for anything else."
   (cond ((string-equal float "left") :left)
         ((string-equal float "right") :right)
         ((string-equal float "wrap")
@@ -116,12 +117,12 @@ else :left, as Org's LaTeX export places it; NIL for anything else."
 
 (defun org-picture-attributes (paragraph)
   "How the #+ATTR_...: lines of PARAGRAPH size and place its picture, as three
-values: its width (ORG-PICTURE-WIDTH-VALUE), from #+ATTR_ORG: when it reads,
-else from the first other line whose :width reads; its place across the
-window, :left, :center or :right, from :align (or :center t) on #+ATTR_ORG:,
-else on any other #+ATTR_...: line; and the side it stands on with the text
-going round it (ORG-PICTURE-FLOAT-VALUE), from :float on #+ATTR_ORG: first,
-then on any other, or NIL."
+values. First its width (ORG-PICTURE-WIDTH-VALUE), from #+ATTR_ORG: when it
+reads, else from the first other line whose :width reads. Second its place
+across the window, :left, :center or :right, from :align (or :center t) on
+#+ATTR_ORG:, else on any other #+ATTR_...: line. Third the side it stands on
+with the text going round it (ORG-PICTURE-FLOAT-VALUE), from :float on
+#+ATTR_ORG: first, then on any other, or NIL."
   (let* ((affiliated (org-property paragraph :affiliated))
          (lines (cons (getf affiliated :attr_org)
                       (loop for (key value) on affiliated by #'cddr
@@ -143,15 +144,15 @@ then on any other, or NIL."
 
 (defun org-inline-pictures (buffer start end &key (formulas t))
   "The pictures BUFFER, an Org buffer, shows among its lines that begin from
-octet START below END, as INLINE-PICTUREs in order: each link to a picture
-\(ORG-PICTURE-LINK-P) with nothing else on its line but blanks, sized by the
-#+ATTR_...: lines of its paragraph (ORG-PICTURE-ATTRIBUTES), and placed
-across the window by them when it is the paragraph's only content; its path
-from the buffer's directory. With FORMULAS, each formula too, drawn with
-ORG-FORMULA-PREAMBLE: a fragment (ORG-FORMULA-FRAGMENT-P) inside a line, in
-its columns; one in display delimiters alone on its lines, and a LaTeX
-environment, centred on rows of their own. True as a second value when the
-parses read are of the text as it is now."
+octet START below END, as INLINE-PICTUREs in order. Each is a link to a
+picture (ORG-PICTURE-LINK-P) with nothing else on its line but blanks. It is
+sized by the #+ATTR_...: lines of its paragraph (ORG-PICTURE-ATTRIBUTES), and
+placed across the window by them when it is the paragraph's only content. Its
+path is from the buffer's directory. With FORMULAS, each formula is shown too,
+drawn with ORG-FORMULA-PREAMBLE. A fragment (ORG-FORMULA-FRAGMENT-P) inside a
+line stays in its columns. One in display delimiters alone on its lines, and a
+LaTeX environment, are centred on rows of their own. True as a second value
+when the parses read are of the text as it is now."
   (let ((found '()) (current t)
         (end (min end (tuatara.buffer:buffer-size buffer)))
         (directory (buffer-directory buffer)))
@@ -164,24 +165,27 @@ parses read are of the text as it is now."
                  (to (org-view-char buffer view (max (min end (org-view-to view)) (org-view-from view))))
                  ;; a link on the last line begun is looked for to that line's end
                  (reach (or (position #\Newline text :start (min to (length text))) (length text))))
-            (labels ((picture (paragraph link)
-                       (let* ((begin (org-node-begin link))
-                              (line (1+ (or (position #\Newline text :end begin :from-end t) -1)))
-                              (after (min (length text) (org-node-end link)))
-                              (line-end (or (position #\Newline text :start after) (length text))))
-                         (when (and (<= from line) (< line to)
-                                    (blank-text-p text line begin) (blank-text-p text after line-end))
-                           (let ((line-start (org-view-byte buffer view line)))
-                             (multiple-value-bind (width align float) (org-picture-attributes paragraph)
-                               (push (make-inline-picture
-                                      line-start (tuatara.buffer:buffer-line-end buffer line-start)
-                                      (tuatara.io:native (tuatara.io:expand-path (org-property link :path)
-                                                                                 :directory directory))
-                                      :width width :float float
-                                      :align (if (org-export-picture-alone-p paragraph #'org-picture-link-p)
-                                                 align
-                                                 :left))
-                                     found))))))
+            (labels ((line-bounds (begin after)
+                       ;; where the line BEGIN is on starts, and where the line AFTER is on ends
+                       (values (1+ (or (position #\Newline text :end begin :from-end t) -1))
+                               (or (position #\Newline text :start after) (length text))))
+                     (picture (paragraph link)
+                       (let ((begin (org-node-begin link))
+                             (after (min (length text) (org-node-end link))))
+                         (multiple-value-bind (line line-end) (line-bounds begin after)
+                           (when (and (<= from line) (< line to)
+                                      (blank-text-p text line begin) (blank-text-p text after line-end))
+                             (let ((line-start (org-view-byte buffer view line)))
+                               (multiple-value-bind (width align float) (org-picture-attributes paragraph)
+                                 (push (make-inline-picture
+                                        line-start (tuatara.buffer:buffer-line-end buffer line-start)
+                                        (tuatara.io:native (tuatara.io:expand-path (org-property link :path)
+                                                                                   :directory directory))
+                                        :width width :float float
+                                        :align (if (org-export-picture-alone-p paragraph #'org-picture-link-p)
+                                                   align
+                                                   :left))
+                                       found)))))))
                      (formula (from-char to-char value inline)
                        ;; FROM-CHAR its start, TO-CHAR its end, as characters of the view's text
                        (when (and (<= from from-char) (< from-char to))
@@ -194,13 +198,12 @@ parses read are of the text as it is now."
                      (fragment (child)
                        (let* ((value (org-property child :value))
                               (begin (org-node-begin child))
-                              (after (min (length text) (+ begin (length value))))
-                              (line (1+ (or (position #\Newline text :end begin :from-end t) -1)))
-                              (line-end (or (position #\Newline text :start after) (length text))))
-                         (if (and (or (uiop:string-prefix-p "\\[" value) (uiop:string-prefix-p "$$" value))
-                                  (blank-text-p text line begin) (blank-text-p text after line-end))
-                             (formula line line-end value nil)
-                             (formula begin after value t))))
+                              (after (min (length text) (+ begin (length value)))))
+                         (multiple-value-bind (line line-end) (line-bounds begin after)
+                           (if (and (or (uiop:string-prefix-p "\\[" value) (uiop:string-prefix-p "$$" value))
+                                    (blank-text-p text line begin) (blank-text-p text after line-end))
+                               (formula line line-end value nil)
+                               (formula begin after value t)))))
                      (environment (node)
                        (let* ((value (org-property node :value))
                               (line (or (search value text :start2 (org-node-begin node)) (org-node-begin node)))
@@ -424,8 +427,7 @@ are filled to *HELP-COLUMN*."
                                              *latex-math-environments*)
                                      "Writing a link"
                                      "\\<org-mode>\\[insert-link] writes a link as the mode writes links; a picture
-                                      is a link
-                                     to its file with no label.")
+                                     is a link to its file with no label.")
                          :width 14)
      (write-help-section s "#+ATTR_ORG: and the lines like it"
                          :intro "Written right above the link, after #+CAPTION: and #+NAME:. Each argument is

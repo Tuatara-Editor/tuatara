@@ -13,6 +13,8 @@
   "A pattern matching the names a language's syntax tree gives the parts of a
 document that are not prose: code, tables, link targets, maths.")
 
+(defparameter *laid-out-node-scanner* (cl-ppcre:create-scanner *laid-out-node-names*)
+  "*LAID-OUT-NODE-NAMES* made ready to match, once.")
 
 (defun half-typed-p (line-text)
   "True when LINE-TEXT, a line up to a position, leaves something open that is
@@ -24,11 +26,9 @@ begun after a blank or at the line's start and not closed yet."
       (oddp (count #\` line-text))
       (cl-ppcre:scan "(?:^|[ \\t])(?:~[^ \\t~][^~]*|=[^ \\t=][^=]*)$" line-text)))
 
-
 (defun line-before (buffer position)
   "The text of BUFFER's line up to POSITION."
   (tuatara.buffer:buffer-string buffer :start (tuatara.buffer:buffer-line-start buffer position) :end position))
-
 
 (defun prose-buffer-p (buffer)
   "True when BUFFER's major mode is one for text, prose throughout but its
@@ -38,15 +38,13 @@ prose is its comments."
   (let ((mode (buffer-major-mode buffer)))
     (or (typep mode 'text-mode) (eq (type-of mode) 'fundamental-mode))))
 
-
 (defun laid-out-node-p (syntax position)
   "True when POSITION of SYNTAX's text is inside a part its tree names as not
 prose (*LAID-OUT-NODE-NAMES*)."
   (some (lambda (node)
           (and (tuatara.syntax:tree-node-named node)
-               (cl-ppcre:scan *laid-out-node-names* (tuatara.syntax:tree-node-name node))))
+               (cl-ppcre:scan *laid-out-node-scanner* (tuatara.syntax:tree-node-name node))))
         (tuatara.syntax:node-ancestry syntax position (1+ position))))
-
 
 (defun prose-ready-p (buffer)
   "True when PROSE-P can tell for BUFFER now: an Org buffer, one with no
@@ -54,7 +52,6 @@ syntax tree, or one whose syntax tree is up to date."
   (or (typep (buffer-major-mode buffer) 'org-mode)
       (null (tuatara.syntax:buffer-syntax buffer))
       (and (ready-syntax buffer) t)))
-
 
 (defun prose-p (buffer position)
   "True when the octet POSITION of BUFFER is in prose: in an Org buffer as its
@@ -73,7 +70,6 @@ and is not ready (PROSE-READY-P)."
         (t (let ((syntax (ready-syntax buffer)))
              (and syntax (eq (tuatara.syntax:text-kind-around syntax position) :comment))))))
 
-
 (defun prose-test (buffer)
   "A function telling, as PROSE-P does, whether an octet position of BUFFER is
 in prose, for positions asked in order from the first: an Org buffer's parse
@@ -87,4 +83,3 @@ read once for all of them."
             (loop while (and ranges (<= (cdar ranges) at)) do (pop ranges))
             (org-text-prose-p ranges text at))))
       (lambda (position) (prose-p buffer position))))
-

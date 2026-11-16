@@ -210,6 +210,8 @@ sbcl_pinned="$("$root/build/tuatara" --version 2>/dev/null | sed -n 's/.* on SBC
 sbcl_newest="$(GIT_TERMINAL_PROMPT=0 timeout 60 git ls-remote --tags https://github.com/sbcl/sbcl 2>/dev/null |
   sed -n 's|^[0-9a-f]*\trefs/tags/sbcl-\([0-9.]*\)$|\1|p' | sort -V | tail -1 || true)"
 
+sbcl_ci_pinned="$(sed -n 's|^sbcl_url=.*/sbcl/\([0-9.]*\)/.*|\1|p' "$root/tools/ci-setup.sh")"
+
 # what tools/appimage.sh builds the AppImage with: appimagetool's release, the
 # runtime's, the commit of the list of libraries left out, and the Ubuntu image, by its digest
 appimage_field() { sed -n "s|^$1=||p" "$root/tools/appimage.sh"; }
@@ -268,6 +270,7 @@ grep -rhoE 'uses: +[^ ]+@[0-9a-f]{40} +# .*' "$root/.github/workflows" | sed 's/
   version_line zig "$zig_pinned" "$zig_newest"
   version_line quicklisp "$ql_pinned" "$ql_newest"
   version_line sbcl "$sbcl_pinned" "$sbcl_newest"
+  version_line "sbcl (CI)" "$sbcl_ci_pinned" "$sbcl_newest"
   version_line appimagetool "$appimagetool_pinned" "$appimagetool_newest"
   version_line "AppImage runtime" "$runtime_pinned" "$runtime_newest"
   cat "$work/excludelist"

@@ -38,8 +38,7 @@ name as written and what it sets.")
     ("%^{Prompt|one|two}" "an answer chosen among those listed")
     ("%^g" "tags asked for, offering those used in the target and the agenda")
     ("%^t, %^T" "a date asked for as \\<org-mode>\\[org-time-stamp] asks it (fri 10:00, +3d, every week 10:00),
-     written as an
-active timestamp; several days chosen in the calendar make a timestamp each, a run of days a range")
+written as an active timestamp; several days chosen in the calendar make a timestamp each, a run of days a range")
     ("%<%H:%M>" "the time as the pattern says, as format-time's % letters do")
     ("%%" "a % itself"))
   "The % placeholders a capture template's text may hold, each as it is
@@ -137,7 +136,7 @@ has no key."
 (defun capture-template-directories ()
   "The directories your capture templates are in (*CAPTURE-TEMPLATE-DIRECTORIES*):
 capture-templates/ in your configuration directory when it names none."
-  (or (setting-list '*capture-template-directories* *capture-template-directories*)
+  (or *capture-template-directories*
       (list (config-path "capture-templates/"))))
 
 (defun capture-templates ()
@@ -376,6 +375,7 @@ the capture is for that day (ORG-CAPTURE-ON-DAY)."
          (target (capture-template-target template))
          (link (multiple-value-list (org-link-to-here origin)))
          (target-buffer (and (member (first target) '(:file-headline :file :olp))
+                             (search "%^g" (capture-template-text template))
                              (ignoring-errors-reported ("reading ~a to capture into" (second target))
                                (org-capture-target-buffer target)))))
     (multiple-value-bind (text point)
@@ -384,8 +384,8 @@ the capture is for that day (ORG-CAPTURE-ON-DAY)."
                                                            :target-buffer target-buffer
                                                            :day day)
       (when (and day (not (eq (first target) :journal))
-                 (not (search "%t" (capture-template-text template)))
-                 (not (search "%T" (capture-template-text template))))
+                 (notany (lambda (form) (search form (capture-template-text template)))
+                         '("%t" "%T" "%^t" "%^T")))
         (multiple-value-setq (text point) (org-capture-on-day-text text point day)))
       (let ((buffer (tuatara.buffer:make-buffer (tuatara.buffer:unique-buffer-name "*Capture*") :text text))
             (description (capture-template-name template)))

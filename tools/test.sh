@@ -11,4 +11,5 @@ tools/grammars.sh
 tools/terminal-library.sh
 # A 4 GB heap: SBCL's default of 1 GB fills up late in the run, and the tests
 # that check for room before large edits then fail though they pass alone.
-inside env TUATARA_TEST_MODAL="${TUATARA_TEST_MODAL:-}" sbcl --dynamic-space-size 4GB --non-interactive --load test/run.lisp
+inside env TUATARA_TEST_MODAL="${TUATARA_TEST_MODAL:-}" sbcl --dynamic-space-size 4GB --non-interactive \
+  --load test/run.lisp

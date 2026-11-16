@@ -94,17 +94,19 @@ each its name or key as text, gives the same for both."
 
 (defun copy-own-file (directories directory file-name text what)
   "Write TEXT, one of Tuatara's own WHAT (\"snippet\") called FILE-NAME, into the
-first of DIRECTORIES (in its directory DIRECTORY, when given) and visit it; one there
-already is visited as it is, never written over."
+first of DIRECTORIES (in its directory DIRECTORY, when given) as a new file,
+readable by you alone, and visit it; anything there already, a link too, is
+visited as it is, never written over or through."
   (let* ((place (tuatara.io:native (own-subdirectory (first directories) directory)))
          (path (concatenate 'string place file-name)))
-    (if (probe-file (sb-ext:parse-native-namestring path))
-        (progn (visit-path path) (message "~a is yours already" (abbreviated-path path)))
-        (progn (tuatara.io:ensure-directories place)
-               (tuatara.io:write-private-file path text)
-               (visit-path path)
+    (tuatara.io:ensure-directories place)
+    (if (handler-case (progn (tuatara.io:write-new-file path text :mode #o600) t)
+          (tuatara.io:file-system-error (e)
+            (if (eql (tuatara.io:file-system-error-errno e) sb-posix:eexist) nil (error e))))
+        (progn (visit-path path)
                (message "Copied the ~a ~a to ~a: yours takes the place of Tuatara's"
-                        what file-name (abbreviated-path path))))))
+                        what file-name (abbreviated-path path)))
+        (progn (visit-path path) (message "~a is yours already" (abbreviated-path path))))))
 
 (defun copy-chosen-own-file (prompt candidates directories what)
   "Ask with PROMPT for one of CANDIDATES, each one of Tuatara's own WHAT

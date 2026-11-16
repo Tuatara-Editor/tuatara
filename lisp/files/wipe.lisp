@@ -26,8 +26,10 @@ not (a copy-on-write file system, a solid-state drive).
 
 (defun wipe-caveat (paths)
   "What wiping PATHS cannot promise, in a few words: a copy-on-write file
-system keeps old copies of their blocks; a solid-state drive may."
-  (if (some (lambda (path) (ignoring-errors-reported ("examining ~a" path) (tuatara.io:copy-on-write-p path))) paths)
+system keeps old copies of their blocks; a solid-state drive may. Each
+directory of them is asked once."
+  (if (some (lambda (path) (ignoring-errors-reported ("examining ~a" path) (tuatara.io:copy-on-write-p path)))
+            (remove-duplicates paths :key #'tuatara.io:parent-path :test #'string=))
       "its file system keeps old copies (copy-on-write)"
       "an SSD may keep old copies"))
 
@@ -68,13 +70,15 @@ at PATH, a named pipe or a device, is refused without being opened."
   (let ((fd (tuatara.io:open-for-reading path t :accept '(:regular))))
     (unwind-protect
          (and (= (tuatara.io:stamp-size (tuatara.io:fd-stamp fd path)) (length octets))
-              (let ((piece (make-array (* 1024 1024) :element-type '(unsigned-byte 8))))
+              (let ((piece (make-array (* 1024 1024) :element-type '(unsigned-byte 8))) (at 0))
                 (unwind-protect
-                     (loop for at from 0 by (length piece)
-                           for n = (tuatara.io:read-fd-at fd piece at :path path)
-                           while (plusp n)
-                           always (and (<= (+ at n) (length octets))
-                                       (not (mismatch piece octets :end1 n :start2 at :end2 (+ at n)))))
+                     (and (loop for n = (tuatara.io:read-fd-at fd piece at :path path)
+                                while (plusp n)
+                                always (and (<= (+ at n) (length octets))
+                                            (not (mismatch piece octets :end1 n :start2 at :end2 (+ at n))))
+                                do (incf at n))
+                          ;; all of it read: a file cut short while it was read holds less
+                          (= at (length octets)))
                   (fill piece 0))))
       (ignoring-errors-reported ("closing ~a" path) (sb-posix:close fd)))))
 
@@ -82,27 +86,29 @@ at PATH, a named pipe or a device, is refused without being opened."
   "Wipe PATHS in the background (TUATARA.IO:WIPE-FILE, *WIPE-PASSES* times);
 with SAME-AS, octets, the one path only once it is seen to hold them
 \(FILE-HOLDS-P), none wiped else, and SAME-AS overwritten with zeros after."
-  (let ((total (* *wipe-passes* (loop for path in paths
-                                      sum (tuatara.io:path-size path)))))
-    (tuatara.runtime:start-job-thread
-     (make-wipe-job (current-buffer) paths total)
-     (let ((passes *wipe-passes*))
-       (lambda (job)
-         (if (and same-as (not (unwind-protect (ignoring-errors-reported ("comparing ~a" (first paths))
-                                                 (file-holds-p (first paths) same-as))
-                                 (fill same-as 0))))
-             (setf (wipe-job-refused job)
-                   (format nil "~a is not wiped: what was encrypted does not hold the same octets"
-                           (tuatara.io:native-file-name (first paths))))
-             (let ((before 0))
-               (dolist (path (wipe-job-paths job))
-                 (let ((size (* passes (tuatara.io:path-size path))))
-                   (when (eq :stopped (tuatara.io:wipe-file path :passes passes :cancel (tuatara.runtime:job-cancel job)
-                                                                  :progress (lambda (n) (setf (wipe-job-done job) (+ before n)))))
-                     (tuatara.runtime:job-check-stop))
-                   (push path (wipe-job-wiped job))
-                   (incf before size)))))))
-     :name "tuatara wipe")))
+  (tuatara.runtime:start-job-thread
+   (make-wipe-job (current-buffer) paths 0)
+   (let ((passes *wipe-passes*))
+     (lambda (job)
+       ;; their sizes asked here, not on the editor's thread
+       (setf (wipe-job-total job) (* passes (loop for path in paths sum (tuatara.io:path-size path))))
+       (if (and same-as (not (unwind-protect (ignoring-errors-reported ("comparing ~a" (first paths))
+                                               (file-holds-p (first paths) same-as))
+                               (fill same-as 0))))
+           (setf (wipe-job-refused job)
+                 (format nil "~a is not wiped: what was encrypted does not hold the same octets"
+                         (tuatara.io:native-file-name (first paths))))
+           (let ((before 0))
+             (dolist (path (wipe-job-paths job))
+               (let ((size (* passes (tuatara.io:path-size path))))
+                 (when (eq :stopped (tuatara.io:wipe-file path :passes passes
+                                                                :cancel (tuatara.runtime:job-cancel job)
+                                                                :progress (lambda (n)
+                                                                            (setf (wipe-job-done job) (+ before n)))))
+                   (tuatara.runtime:job-check-stop))
+                 (push path (wipe-job-wiped job))
+                 (incf before size)))))))
+   :name "tuatara wipe"))
 
 (defun confirm-wipe (paths &optional what)
   "True when, asked, you say to wipe PATHS for good, what it cannot promise said;
@@ -128,14 +134,9 @@ says. A link, a directory, and a file with other names are refused."
 ;;; After encrypting
 
 (defun encryption-yours-p (encryption)
-  "True when ENCRYPTION can be opened by you again: with a passphrase, or to
-one of your own keys among its :KEYS."
-  (or (getf encryption :symmetric)
-      (let ((ids (getf encryption :keys)))
-        (some (lambda (key)
-                (and (getf key :secret)
-                     (some (lambda (id) (member id ids :test #'string-equal)) (cons (getf key :id) (getf key :subkeys)))))
-              (ignoring-errors-reported ("listing the keys") (gpg-keys))))))
+  "True when ENCRYPTION, as READ-ENCRYPTION chose it, can be opened by you
+again: with a passphrase, or to one of your own keys (its :YOURS)."
+  (or (getf encryption :symmetric) (getf encryption :yours)))
 
 (defun wipe-original-question (what encryption caveat)
   "The question whether to wipe WHAT once encrypted as ENCRYPTION says, CAVEAT

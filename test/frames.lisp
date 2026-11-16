@@ -522,13 +522,10 @@ in, each event naming the frame that display names."
 
 (define-test (frames terminal-hidden-frame-never-painted)
   ;; a frame waiting its turn is never painted, though the buffer it shows changes: every frame
-  ;; painted while F2 is shown names F2, and each key paints one frame, the settings never looked
-  ;; at for others
-  (let ((tuatara.command::*frame-at-least-every* 0) (paints 0) (looks 0) (counting nil) (screens '()))
+  ;; painted while F2 is shown names F2, and each key paints one frame
+  (let ((tuatara.command::*frame-at-least-every* 0) (paints 0) (counting nil) (screens '()))
     (sb-int:encapsulate 'tuatara.command:redisplay 'hidden-frames
                         (lambda (function &rest arguments) (when counting (incf paints)) (apply function arguments)))
-    (sb-int:encapsulate 'tuatara.command::look-at-settings 'hidden-frames
-                        (lambda (function &rest arguments) (when counting (incf looks)) (apply function arguments)))
     (unwind-protect
          (multiple-value-bind (f editor)
              (run-keys (list "C-x 5 2 i" (lambda () (setf counting t)) "a b c d e f"
@@ -540,14 +537,102 @@ in, each event naming the frame that display names."
            (let ((hidden (first (tuatara.command:editor-frames editor))))
              ;; one for each key, and one for the wake that began the count
              (is = 7 paints)
-             (is = 0 looks)
              (false (tuatara.command::frame-painted hidden))
              ;; painted before C-x 5 2 had no name; none showed F1 until it was shown again
              (false (some (lambda (screen) (some (lambda (row) (search "] F1 " row)) screen)) screens))
              (true (tuatara.frontend.fake:fake-frame-showing f "] F1 *scratch*"))
              (true (tuatara.frontend.fake:fake-frame-showing f "abcdef"))))
-      (sb-int:unencapsulate 'tuatara.command:redisplay 'hidden-frames)
-      (sb-int:unencapsulate 'tuatara.command::look-at-settings 'hidden-frames))))
+      (sb-int:unencapsulate 'tuatara.command:redisplay 'hidden-frames))))
+
+(define-test (frames settings-told-when-moved)
+  ;; the frontends are told of the settings when one was given another value, not after every command
+  (let ((told 0) (counts '()))
+    (sb-int:encapsulate 'tuatara.frontend:frontend-settings-changed 'settings-told
+                        (lambda (function &rest arguments) (incf told) (apply function arguments)))
+    (unwind-protect
+         (let ((tuatara-user:*tui-padding* 0))
+           (flet ((count-now () (push told counts)))
+             (run-keys (list (lambda () (setf told 0)) "a b c" #'count-now
+                             (lambda () (setf tuatara-user:*tui-padding* 2)) "d" #'count-now "e" #'count-now
+                             ;; another thread's own binding is not the editor's
+                             (lambda ()
+                               (sb-thread:join-thread
+                                (sb-thread:make-thread (lambda ()
+                                                         (let ((tuatara-user:*tui-padding* 0))
+                                                           (setf tuatara-user:*tui-padding* 5))))))
+                             "f" #'count-now)))
+           (is equal '(0 1 1 1) (reverse counts)))
+      (sb-int:unencapsulate 'tuatara.frontend:frontend-settings-changed 'settings-told))))
+
+(define-test (frames settings-told-to-each-frontend)
+  ;; a frontend is told of the settings once as it joins, every frontend again when one moved, and the
+  ;; frame not worked in is to be painted again for it, though its text did not change
+  (let ((told '()) (seen '()))
+    (sb-int:encapsulate 'tuatara.frontend:frontend-settings-changed 'settings-told
+                        (lambda (function frontend) (push frontend told) (funcall function frontend)))
+    (unwind-protect
+         (let ((tuatara-user:*tui-padding* 0))
+           (flet ((other () (second (tuatara.command:editor-frames tuatara.command:*editor*)))
+                  (tellings ()
+                    (mapcar (lambda (frame) (count (tuatara.command::frame-frontend frame) told))
+                            (tuatara.command:editor-frames tuatara.command:*editor*))))
+             (run-frames (list (list 0 "C-g")
+                               (list 0 (lambda ()
+                                         (push (tellings) seen)
+                                         (tuatara.command::note-frame-painted (other))))
+                               (list 0 "C-g")
+                               (list 0 (lambda ()
+                                         (push (tuatara.command::frame-shown-changed-p (other)) seen)
+                                         (setf tuatara-user:*tui-padding* 2)
+                                         (tuatara.command::note-frame-painted (other))))
+                               (list 0 "C-g")
+                               (list 0 (lambda ()
+                                         (push (tuatara.command::frame-shown-changed-p (other)) seen)
+                                         (push (tellings) seen))))
+                         :count 2))
+           (destructuring-bind (joined unmoved moved after) (reverse seen)
+             (is equal '(1 1) joined "once each, as the editor started and as the frame was added")
+             (false unmoved "nothing moved: not to be painted again")
+             (true moved "a setting moved: to be painted again")
+             (is equal '(2 2) after)))
+      (sb-int:unencapsulate 'tuatara.frontend:frontend-settings-changed 'settings-told))))
+
+(define-test (frames settings-watched-in-each-thread)
+  ;; each watch sees the settings as the thread looking has them: a value bound in one thread moves
+  ;; that thread's watch only, and a look in another thread never hides it
+  (let ((mine (tuatara.runtime::make-settings-watch)) (theirs (tuatara.runtime::make-settings-watch)))
+    (flet ((in-thread (function)
+             (sb-thread:join-thread (sb-thread:make-thread function))))
+      (let ((tuatara-user:*tui-padding* 0))
+        (true (tuatara.runtime::settings-moved-p mine) "never looked")
+        (false (tuatara.runtime::settings-moved-p mine))
+        (in-thread (lambda () (tuatara.runtime::settings-moved-p theirs)))
+        (setf tuatara-user:*tui-padding* 3)
+        (false (in-thread (lambda () (tuatara.runtime::settings-moved-p theirs))) "their binding stays")
+        (true (tuatara.runtime::settings-moved-p mine))
+        (false (tuatara.runtime::settings-moved-p mine))
+        (true (in-thread (lambda ()
+                           (let ((tuatara-user:*tui-padding* 7))
+                             (tuatara.runtime::settings-moved-p theirs)
+                             (setf tuatara-user:*tui-padding* 8)
+                             (tuatara.runtime::settings-moved-p theirs))))
+              "bound and set in one thread, seen there")
+        (false (tuatara.runtime::settings-moved-p mine) "not here")))))
+
+(define-test (frames settings-watch-makes-no-garbage)
+  ;; the look after every command, nothing moved: nothing made
+  (let ((watch (tuatara.runtime::make-settings-watch)))
+    (tuatara.runtime::settings-moved-p watch)
+    (flet ((garbage (count)
+             (let ((before (sb-ext:get-bytes-consed)))
+               (dotimes (i count) (tuatara.runtime::settings-moved-p watch))
+               (- (sb-ext:get-bytes-consed) before))))
+      (garbage 100)
+      ;; the count is every thread's: another's garbage can only raise it, so the least of a few rounds
+      (let ((per-look (loop repeat 5
+                            minimize (/ (- (min (garbage 20000) (garbage 20000)) (min (garbage 2000) (garbage 2000)))
+                                        18000.0))))
+        (true (< per-look 1) "~,2f octets a look" per-look)))))
 
 (defun ticks-garbage-per-key (keys &key hidden)
   "The octets the work done between keys makes (RUN-TICK-FUNCTIONS and

@@ -7,7 +7,7 @@
 ;;;; text as Org reads it, a line's carriage return before its newline left
 ;;;; out; positions in it are turned into the buffer's and back here, and
 ;;;; ORG-ASK-KEEPING-PLACES asks a question while keeping places of a parse
-;;;; where they were.
+;;;; where they were. The headlines of a tree are found here too.
 
 (in-package #:tuatara.defaults)
 
@@ -161,9 +161,9 @@ as holding nothing Org shows (ORG-EMPTY-TREE)."
 (defun org-worker-parse (job)
   "Parse what JOB, as ORG-WANT-PARSE asks for it, holds: (TREE TEXT RETURNS
 PLACES), PLACES where the parts are in a whole buffer's parse (ORG-ASSEMBLE).
-For a text the parser cannot read, the text read as holding nothing
-\(ORG-UNPARSED), what went wrong said in the debug log and given as a
-second value; NIL for a text that cannot be read at all. The text of a
+For a text the parser cannot read, or one it ran out of memory for, the text
+read as holding nothing (ORG-UNPARSED), what went wrong said in the debug log
+and given as a second value; NIL for a text that cannot be read at all. The text of a
 buffer kept secret (its fifth, true) leaves only the kind of failure said."
   (let ((source (second job))
         (tuatara.runtime:*secret-at-hand* (or tuatara.runtime:*secret-at-hand* (fifth job))))
@@ -172,7 +172,8 @@ buffer kept secret (its fifth, true) leaves only the kind of failure said."
             (multiple-value-list (org-assemble source))
             (multiple-value-bind (text returns) (org-job-text job)
               (list (org-parse text :todo-keywords (fourth job)) text returns nil)))
-      (error (condition)
+      ;; memory run short is said so too, the worker going on, not waited for
+      ((or error storage-condition) (condition)
         (let ((failed (tuatara.runtime:failure-words condition)))
           (tuatara.runtime:debug-report
            :parse "the Org text at version ~a was not parsed, shown plain until it changes: ~a"
@@ -365,28 +366,31 @@ background, the editor reading keys meanwhile (\\`C-g' gives the command up)."
 
 ;;; A parse and the buffer it is of
 
-(define-record (org-parse (:constructor make-org-parse (buffer version root text returns)) (:copier nil)
+(define-record (org-parse (:constructor make-org-parse (buffer version root text returns &optional view)) (:copier nil)
                           (:predicate nil))
   "The parse of an Org buffer, as ORG-BUFFER-PARSE and ORG-PARSE-NOW give it:
 its tree of elements and objects (ORG-PARSE-TREE), whose positions are
-characters of TEXT, the text BUFFER had at VERSION as Org reads it. A position
-of the parse goes to an octet of BUFFER by ORG-PARSE-OCTET and back by
-ORG-PARSE-CHAR, RETURNS theirs to use. While BUFFER is at VERSION they count
-by the parse's own text; once it has changed, by the text it has now, so that
-a position given after an edit is one of the text after it. A command that
-asks something keeps its places across the answer by ORG-ASK-KEEPING-PLACES.
-ORG-TEXT-NOW makes one with no tree, of the text alone. KEYWORDS, its TODO
-keywords once ORG-PARSE-TODO-KEYWORDS has found them."
+characters of the text the buffer had at its version, as Org reads it. A
+position of the parse goes to an octet of the buffer by ORG-PARSE-OCTET and back
+by ORG-PARSE-CHAR. While the buffer is at that version they count by the parse's
+own text; once it has changed, by the text it has now, so that a position given
+after an edit is one of the text after it. A command that asks something keeps
+its places across the answer by ORG-ASK-KEEPING-PLACES. ORG-TEXT-NOW makes one
+with no tree, of the text alone, and ORG-PARSE-AT-NOW one of the part of a
+large buffer that holds a place."
   (buffer nil :documentation "The buffer ORG-PARSE is of.")
   (version nil :documentation "The version ORG-PARSE's buffer had when its text was read.")
   (root nil :documentation "The root of the tree of ORG-PARSE, or NIL when it has no tree.")
   (text nil :documentation "The text of ORG-PARSE's buffer at its version, as Org reads it.")
   (returns nil
-           :documentation "Where the text Org read lost a carriage return before a newline, for ORG-PARSE's own
-version.")
+           :documentation "Where the text Org read lost a carriage return before a newline, for
+ORG-PARSE's own version.")
   (keywords nil
-            :documentation "The TODO keywords of ORG-PARSE once
-ORG-PARSE-TODO-KEYWORDS has found them, or NIL before."))
+            :documentation "The TODO keywords of ORG-PARSE once ORG-PARSE-TODO-KEYWORDS has found
+them, or NIL before.")
+  (view nil
+        :documentation "The ORG-VIEW of the part of its buffer ORG-PARSE is of, whose text and tree it has, or NIL for
+a parse of the whole buffer."))
 
 (defun org-parse-tree (parse)
   "The tree of PARSE, its root an ORG-NODE of type ORG-DATA over all of its
@@ -436,12 +440,34 @@ return before a newline: PARSE's own while the buffer is as it was parsed."
 PARSE's text is; a position at a line's end stands before its carriage
 return and line feed. After an edit, POSITION is a character of the text
 after it."
-  (org-char->byte (org-parse-buffer parse) position (org-parse-returns-now parse)))
+  (let ((view (org-parse-view parse)))
+    (if view
+        (org-char->byte (org-parse-buffer parse) position nil (org-view-base-char (org-parse-buffer parse) view))
+        (org-char->byte (org-parse-buffer parse) position (org-parse-returns-now parse)))))
 
 (defun org-parse-char (parse octet)
   "The character of PARSE's text at OCTET of its buffer, as it is now: a
 carriage return before a newline taken as that newline."
-  (org-byte->char (org-parse-buffer parse) octet (org-parse-returns-now parse)))
+  (let ((view (org-parse-view parse)))
+    (if view
+        (org-byte->char (org-parse-buffer parse) octet nil (org-view-base-char (org-parse-buffer parse) view))
+        (org-byte->char (org-parse-buffer parse) octet (org-parse-returns-now parse)))))
+
+(defun org-parse-at-now (buffer position)
+  "An ORG-PARSE of BUFFER as it is now that holds its octet POSITION, for a
+command that changes only what is there (a table's row, an item): BUFFER's
+whole parse (ORG-PARSE-NOW) while it is small or its parse is current; else
+the parse of the part holding POSITION (ORG-VIEW-AT), which is quick to make,
+when it is current and its lines end in a line feed alone, the whole parse
+waited for otherwise. A part's parse has the tree and text of that part only."
+  (or (and (> (tuatara.buffer:buffer-size buffer) *org-parse-at-once*)
+           (not (org-parse-current-p buffer))
+           (not (buffer-crlf-p buffer))
+           (let ((view (org-view-at buffer position)))
+             (and view (org-view-current view) (null (org-view-returns view))
+                  (make-org-parse buffer (tuatara.buffer:buffer-version buffer) (org-view-tree view)
+                                  (org-view-text view) nil view))))
+      (org-parse-now buffer)))
 
 (defun org-parse-point (parse)
   "The point of PARSE's buffer as a character of PARSE's text."
@@ -479,3 +505,35 @@ asked about again at these places, and refuses where one is NIL."
                                   (and (= (- to from) (- old-to old-from))
                                        (string= after-text text :start1 from :end1 to :start2 old-from :end2 old-to)
                                        from))))))))
+
+;;; Headlines of a tree
+
+(defun org-headlines (tree)
+  "Every headline of TREE, in order."
+  (let ((found '()))
+    (labels ((walk (node)
+               (when (eq (org-node-type node) 'headline) (push node found))
+               (when (member (org-node-type node) '(org-data headline))
+                 (mapc #'walk (org-node-children node)))))
+      (walk tree))
+    (nreverse found)))
+
+(defun org-headline-titled (tree title)
+  "The first headline of TREE whose title, as written, is TITLE; NIL for none."
+  (find title (org-headlines tree) :key (lambda (h) (org-property h :raw-value)) :test #'string=))
+
+(defun org-headline-on-line (tree text position)
+  "The headline whose line holds the character POSITION of TEXT, or NIL."
+  (let ((line (string-line-start text position)))
+    (org-node-at tree line (lambda (node) (and (eq (org-node-type node) 'headline) (= (org-node-begin node) line))))))
+
+(defun org-child-headlines (headline)
+  "The headlines right under HEADLINE."
+  (org-children-of headline 'headline))
+
+(defun org-last-content-end (text from to)
+  "Where the text from FROM below TO ends, the blank lines after it left out:
+the newline ending its last line that is not blank (or TO)."
+  (let* ((*org-text* text)
+         (last (org-skip-blanks-backward to from)))
+    (if (= last from) from (org-line-end (1- last)))))

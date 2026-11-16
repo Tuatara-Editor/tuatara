@@ -104,14 +104,19 @@ Returns the name."
                                                              (list (tuatara.buffer:buffer-name (current-buffer))))
                                                  :preview (and *preview-buffers* show)))))
 
+(defun switch-to-buffer-reading (prompt show)
+  "Ask with PROMPT for a buffer (READ-BUFFER) and show it with SHOW, a function
+of the buffer; a new name makes one, and nothing typed does nothing."
+  (let ((name (read-buffer prompt)))
+    (unless (zerop (length name))
+      (funcall show (find-or-make-buffer name)))))
+
 (define-command switch-to-buffer ()
   "Show another buffer, completing on the live buffers, the ones used lately
 first (\\<minibuffer>\\[minibuffer-finish] alone goes back to the one used
 last); a new name creates one. With *preview-buffers*, the buffer selected is
 shown meanwhile."
-  (let ((name (read-buffer "Switch to buffer: ")))
-    (unless (zerop (length name))
-      (show-buffer (find-or-make-buffer name)))))
+  (switch-to-buffer-reading "Switch to buffer: " #'show-buffer))
 
 (define-command switch-other-buffer ()
   "Switch to the buffer used before this one (one no other window shows,
@@ -140,6 +145,20 @@ NIL to stay."
         (yes-or-no-p* (format nil "~a failed (~a); ~a anyway?" (hook-function-name function)
                               (tuatara.runtime:failure-words failure :said t) going))
         answer)))
+
+(defun ask-quit-queries (going)
+  "Ask each of *QUIT-QUERY-FUNCTIONS* before GOING (\"exit\") as QUERY-ANSWER
+does: their answers, in order, or :STAY as soon as one says to stay, the
+rest then not asked. SETTLE-QUIT acts on the answers once going is certain."
+  (loop for query in *quit-query-functions*
+        for answer = (query-answer query going)
+        unless answer return :stay
+        collect answer))
+
+(defun settle-quit (answers)
+  "Now that going is certain, call each of ANSWERS (ASK-QUIT-QUERIES) that is a
+function, which stops the work its question was about."
+  (dolist (answer answers) (when (functionp answer) (call-hook-function answer))))
 
 (defun kill-buffer-allowed-p (buffer)
   "True when every one of *KILL-BUFFER-QUERY-FUNCTIONS* lets BUFFER be killed
@@ -221,7 +240,7 @@ client of an editor running in the background, the client's own buffers."
           ((let ((*buffers-asked-about* changed))
              (y-or-n-p* (format nil "Save ~d changed file~:p: ~{~a~^, ~}?"
                                 (length changed) (mapcar #'tuatara.buffer:buffer-name changed))))
-           (save-buffers-where (lambda (b) (member b changed)) "Saved ~d file~:p"))
+           (save-buffers-saying changed "Saved ~d file~:p"))
           (t (message "Nothing saved")))))
 
 (define-command save-buffers-kill-editor ()
@@ -233,13 +252,9 @@ buffers, which close with it (CLOSE-CLIENT); its other buffers stay in the
 editor, for another client to take up, and the editor goes on."
   (when (client-remote (current-client))
     (return-from save-buffers-kill-editor (close-client)))
-  (let ((answers (loop for query in *quit-query-functions*
-                       for answer = (query-answer query "exit")
-                       unless answer return :stay
-                       collect answer)))
+  (let ((answers (ask-quit-queries "exit")))
     (when (and (not (eq answers :stay))
                (or (notany #'unsaved-p tuatara.buffer:*buffers*)
                    (yes-or-no-p* "Modified buffers exist; exit anyway?")))
-      ;; what the questions said to stop, now that the exit is certain
-      (dolist (answer answers) (when (functionp answer) (call-hook-function answer)))
+      (settle-quit answers)
       (setf (editor-running *editor*) nil))))

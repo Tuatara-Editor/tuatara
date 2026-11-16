@@ -36,27 +36,36 @@ long as it takes). Returns what DONE-P last returned."
           (when (and left (<= left 0)) (return nil))
           (wait-on waitqueue mutex left))))))
 
-(defun cpu-count ()
-  "Number of processors Tuatara may run on: those its affinity allows, as a
-container or taskset leaves them, else those online, or 4 if neither can be
-told."
+(sb-ext:defglobal **cpu-count** nil
+  "The number of processors Tuatara may run on, once asked (CPU-COUNT).")
+
+(defun forget-cpu-count ()
+  "Have the processors counted again when next asked, as for a program saved
+to run on another machine."
+  (setf **cpu-count** nil))
+
+(pushnew 'forget-cpu-count sb-ext:*save-hooks*)
+
+(defun count-processors ()
+  "Count the processors the calling thread may run on, asking the system: those
+its affinity allows, as a container or taskset leaves them, else those online,
+or 4 if neither can be told."
   (handler-case
       (let ((allowed (sb-alien:with-alien ((mask (array (sb-alien:unsigned 8) 128)))
-                       (when (zerop (sb-alien:alien-funcall
-                                     (sb-alien:extern-alien "sched_getaffinity"
-                                                            (function sb-alien:int sb-alien:int sb-alien:unsigned-long
-                                                                      (* (array (sb-alien:unsigned 8) 128))))
-                                     0 128 (sb-alien:addr mask)))
+                       (when (zerop (%sched-getaffinity 0 128 (sb-alien:alien-sap mask)))
                          (loop for i below 128 sum (logcount (sb-alien:deref mask i))))))
-            (online (sb-alien:alien-funcall
-                     (sb-alien:extern-alien "sysconf" (function sb-alien:long sb-alien:int))
-                     84)))              ; _SC_NPROCESSORS_ONLN on Linux
+            (online (%sysconf 84)))     ; _SC_NPROCESSORS_ONLN on Linux
         (cond ((and allowed (plusp allowed)) allowed)
               ((plusp online) online)
               (t 4)))
     (error (e)
       (when *debug-on* (report-error "counting the processors" '() e))
       4)))
+
+(defun cpu-count ()
+  "Number of processors Tuatara may run on (COUNT-PROCESSORS), asked of the
+system once: each batch of work run in parallel asks."
+  (or **cpu-count** (setf **cpu-count** (count-processors))))
 
 (defun worker-count ()
   "How many worker threads the pool runs: nine in ten of the processors,
@@ -65,7 +74,10 @@ file's lines, searching) always leaves the editor's own thread room to
 answer keys, on a machine with few processors as on one with many."
   (max 1 (floor (* 9 (cpu-count)) 10)))
 
-(define-record (batch (:constructor make-batch (tasks)) (:copier nil))
+(define-record (batch (:constructor make-batch (tasks &aux (results (make-array (length tasks) :initial-element nil))
+                                                      (errors (make-array (length tasks) :initial-element nil))
+                                                      (remaining (list (length tasks)))))
+                     (:copier nil))
   "A set of TASKS (thunks) being run: RESULTS and ERRORS by task index, NEXT
 the index the next worker takes, REMAINING the tasks not yet finished, and
 DONE, signalled when REMAINING reaches zero."
@@ -120,7 +132,7 @@ signal DONE when the last task of the batch finishes."
               (setf (pool-threads pool)
                     (loop for i below (pool-size pool)
                           collect (make-guarded-thread #'worker-loop :name (format nil "tuatara worker ~a" i)
-                                                                     :arguments (list pool))))
+                                                                     :arguments (list pool) :secret nil)))
               (setf *pool* pool))))))
 
 (defvar *task-wrappers* '()
@@ -128,6 +140,33 @@ signal DONE when the last task of the batch finishes."
 calling RUN-TASKS with every one of its tasks and giving the function to run
 in its place: the parts of the editor that keep something for the work under
 way on that thread carry it to the tasks so.")
+
+(defun wrap-tasks (tasks cut)
+  "TASKS, a simple-vector of thunks, made ready to run for the work this
+thread does (TASKS itself when nothing wraps them): each holds the secret at hand here
+\(*SECRET-AT-HAND*), is passed over once that work is stopped (*STOP-CELLS*,
+CUT's car then set), and runs as *TASK-WRAPPERS* make it, they outermost, so
+that each wrapper runs for every task, one passed over too."
+  (let* ((cells *stop-cells*)
+         (tasks (if *secret-at-hand*
+                    ;; the workers hold the secret too
+                    (map 'simple-vector (lambda (task) (lambda () (let ((*secret-at-hand* t)) (funcall task)))) tasks)
+                    tasks))
+         (tasks (if cells
+                    (map 'simple-vector
+                         (lambda (task)
+                           (lambda ()
+                             (if (some #'car cells)
+                                 ;; the work was stopped: the tasks left are passed over at once
+                                 (progn (setf (car cut) t) nil)
+                                 (let ((value nil))
+                                   (unless (call-within-stop-cells cells (lambda () (setf value (funcall task))))
+                                     (setf (car cut) t))
+                                   value))))
+                         tasks)
+                    tasks)))
+    (dolist (wrapper *task-wrappers* tasks)
+      (setf tasks (map 'simple-vector wrapper tasks)))))
 
 (defun run-tasks (tasks &key (parallelism (cpu-count)) discard)
   "Run TASKS, a simple-vector of thunks, in parallel on the worker pool and the
@@ -141,35 +180,11 @@ short when it is stopped, on every thread, the tasks not yet begun are passed
 over, and the calling thread then leaves that work here. Each task, one
 passed over too, is run as *TASK-WRAPPERS* make it."
   (let* ((n (length tasks))
-         (tasks (if *secret-at-hand*
-                    ;; the workers hold the secret too
-                    (map 'simple-vector (lambda (task) (lambda () (let ((*secret-at-hand* t)) (funcall task)))) tasks)
-                    tasks))
          (helpers (min (1- n) (1- (max 1 parallelism))))
          ;; made before the tasks are wrapped, so that each wrapped task runs
          (pool (and (plusp n) (plusp helpers) (ensure-pool)))
-         (cells *stop-cells*)
          (cut (list nil))
-         (tasks (if cells
-                    (map 'simple-vector
-                         (lambda (task)
-                           (lambda ()
-                             (if (some #'car cells)
-                                 ;; the work was stopped: the tasks left are passed over at once
-                                 (progn (setf (car cut) t) nil)
-                                 (let ((value nil))
-                                   (unless (call-within-stop-cells cells (lambda () (setf value (funcall task))))
-                                     (setf (car cut) t))
-                                   value))))
-                         tasks)
-                    tasks))
-         ;; outermost, so that each runs for every task, a task passed over too
-         (batch (make-batch (let ((tasks tasks))
-                              (dolist (wrapper *task-wrappers* tasks)
-                                (setf tasks (map 'simple-vector wrapper tasks)))))))
-    (setf (batch-results batch) (make-array n :initial-element nil)
-          (batch-errors batch) (make-array n :initial-element nil)
-          (car (batch-remaining batch)) n)
+         (batch (make-batch (wrap-tasks tasks cut))))
     (when (plusp n)
       (when pool
         (loop repeat (min helpers (pool-size pool))

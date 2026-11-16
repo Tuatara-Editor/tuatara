@@ -561,8 +561,9 @@ INLINE-PICTURE-ROWS and INLINE-PICTURE-REPLACEMENTS as them
         (tuatara.buffer:buffer-local buffer :float-before-function) 'inline-picture-float-before)
   (unless (tuatara.buffer:buffer-local buffer :line-scale-function)
     (setf (tuatara.buffer:buffer-local buffer :line-scale-function) 'inline-picture-rows))
-  (unless (tuatara.display:buffer-replacements-function buffer)
-    (setf (tuatara.display:buffer-replacements-function buffer) 'inline-picture-replacements)))
+  ;; a mode showing replacements of its own takes the pictures into them (Org's)
+  (unless (tuatara.display:buffer-replacements-p buffer :mode)
+    (tuatara.display:add-replacements buffer :pictures 'inline-picture-replacements)))
 
 (defun forget-inline-pictures (buffer)
   "Have BUFFER show no pictures among its lines any more: what
@@ -572,5 +573,4 @@ SHOW-INLINE-PICTURES gave it taken away, as its mode is left."
     (setf (tuatara.buffer:buffer-local buffer local) nil))
   (when (eq (tuatara.buffer:buffer-local buffer :line-scale-function) 'inline-picture-rows)
     (setf (tuatara.buffer:buffer-local buffer :line-scale-function) nil))
-  (when (eq (tuatara.display:buffer-replacements-function buffer) 'inline-picture-replacements)
-    (setf (tuatara.display:buffer-replacements-function buffer) nil)))
+  (tuatara.display:remove-replacements buffer :pictures))

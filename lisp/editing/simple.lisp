@@ -109,47 +109,6 @@ one or none (FIXUP-WHITESPACE-AT), point left at the last join."
       (:done (format nil "Joined the lines ~a" (job-done-words seconds kept)))
       (:none "No line to join"))))
 
-(declaim (inline block-octet))
-(defun block-octet (rope block block-start block-end p)
-  "The octet at offset P of ROPE: from BLOCK, the octets from BLOCK-START below
-BLOCK-END, when it holds it."
-  (if (and (>= p block-start) (< p block-end))
-      (aref block (- p block-start))
-      (tuatara.text:rope-octet rope p)))
-
-(define-record (line-slice (:constructor make-line-slice (rope)) (:copier nil))
-  "A line of ROPE as work over lines reads it (START-LINE-JOB, MAP-PIECE-LINES):
-START its first octet, END where its text ends (before its newline, or the
-carriage return before that), NEXT the next line's start. BLOCK holds the
-octets read around it, ROPE's from BLOCK-START below BLOCK-END, which
-SLICE-OCTET and SLICE-OCTETS read the line from. One slice is filled again for
-each line in turn: it is not kept."
-  (rope nil :documentation "The text SLICE is a line of.")
-  (start 0 :type fixnum :documentation "Where the line of SLICE starts.")
-  (end 0 :type fixnum :documentation "Where the text of the line of SLICE ends, before its line end.")
-  (next 0 :type fixnum :documentation "Where the line after the one of SLICE starts, or the end of the text.")
-  (block nil :documentation "The octets read around the line of SLICE.")
-  (block-start 0 :type fixnum :documentation "Where the octets read around the line of SLICE start in its text.")
-  (block-end 0 :type fixnum :documentation "Where the octets read around the line of SLICE end in its text."))
-
-(declaim (inline slice-octet))
-(defun slice-octet (slice p)
-  "The octet at offset P of the text SLICE is a line of: from the octets read
-around the line when they hold it."
-  (block-octet (line-slice-rope slice) (line-slice-block slice)
-               (line-slice-block-start slice) (line-slice-block-end slice) p))
-
-(defun slice-octets (slice &optional (from (line-slice-start slice)) (to (line-slice-end slice)))
-  "Three values, octets holding the text SLICE is a line of from FROM below
-TO and where that starts and ends in them. By default it is the line's text
-without its line end. The octets are those read around the line when they
-hold it, else the text read now."
-  (declare (type fixnum from to))
-  (let ((block-start (line-slice-block-start slice)))
-    (if (and (>= from block-start) (<= to (line-slice-block-end slice)))
-        (values (line-slice-block slice) (- from block-start) (- to block-start))
-        (values (tuatara.text:rope-octets (line-slice-rope slice) :start from :end to) 0 (- to from)))))
-
 (defun joining-line (top bottom prefixes)
   "A function changing each line for START-LINE-JOB, so that the lines from the
 one starting at TOP to the one starting at BOTTOM become one, as
@@ -305,9 +264,9 @@ blank lines at its end too.")
 (define-command delete-trailing-whitespace ()
   "Delete the spaces and tabs at the end of every line, of the selection when
 there is one, else of the whole buffer (of the part shown of a narrowed one),
-and then the blank lines at its end too (*DELETE-TRAILING-LINES*). A form
-feed is not whitespace. A
-large buffer is done in the background, as \\[replace-regexp] does it."
+and then the blank lines at its end too (*DELETE-TRAILING-LINES*). A form feed
+is not whitespace. A large buffer is done in the background, as
+\\[replace-regexp] does it."
   (let* ((b (current-buffer))
          (region (tuatara.buffer:buffer-mark-active-p b))
          (origin (point)))
@@ -562,18 +521,20 @@ narrowed buffer, the lines of the part shown."
       (tuatara.buffer:buffer-delete b start end)
       (goto start))))
 
+(pushnew 'kill-whole-line *kill-commands*)
+
 (defun read-typed-char (prompt &optional (for "to use here"))
   "A character typed at PROMPT: a key without Control or Meta, RET for a line
 end and TAB for a tab; \\`C-g' (and Escape when it quits) gives up; any other
 key is said to be no character FOR that."
-  (let ((key (read-key prompt)))
-    (let ((base (tuatara.frontend:key-base key)))
-      (cond ((quit-key-p key) (keyboard-quit-signal))
-            ((and (characterp base) (not (tuatara.frontend:key-ctrl key)) (not (tuatara.frontend:key-meta key))) base)
-            ((eq base :enter) #\Newline)
-            ((eq base :tab) #\Tab)
-            (t (refuse "~a is no character ~a"
-                       (tuatara.frontend:key-description (tuatara.frontend:key-spec key)) for))))))
+  (let* ((key (read-key prompt))
+         (base (tuatara.frontend:key-base key))
+         (char (and (or (characterp base) (member base '(:enter :tab)))
+                    (not (tuatara.frontend:key-ctrl key))
+                    (key-character key :enter #\Newline))))
+    (cond ((quit-key-p key) (keyboard-quit-signal))
+          (char char)
+          (t (refuse "~a is no character ~a" (tuatara.frontend:key-description (tuatara.frontend:key-spec key)) for)))))
 
 (defun find-char-occurrence (buffer position char count fold)
   "Where the COUNTth CHAR after POSITION of BUFFER ends, or where the -COUNTth
@@ -644,6 +605,9 @@ count N, to the Nth, back when N is negative. An upper-case character is
 looked for in that case only."
   (let ((n (prefix)))
     (zap (read-typed-char "Zap up to char: " "to zap to") n :up-to t)))
+
+(pushnew 'zap-to-char *kill-commands*)
+(pushnew 'zap-up-to-char *kill-commands*)
 
 ;;; Counting words
 
@@ -718,7 +682,7 @@ car turns true."
                (let ((word (word-char-p char)))
                  (when (and word (not in-word)) (incf words))
                  (setf in-word word))
-               (let ((blank (member char '(#\Space #\Tab #\Newline #\Return))))
+               (let ((blank (blank-char-p char)))
                  ;; after a sentence's end, what follows says whether it ends there
                  (case ending
                    (:end (unless (sentence-closing-char-p char)
@@ -770,13 +734,9 @@ car turns true."
       (when (and (< start end) last-octet (/= last-octet 10)) (incf lines))
       (values lines sentences words chars))))
 
-(defun count-progress (job)
+(defmethod tuatara.runtime:job-percent ((job count-job))
   "How much of JOB is counted, from 0 to 99 while it runs."
   (tuatara.runtime:running-percent (car (count-job-done job)) (count-job-total job)))
-
-(defmethod tuatara.runtime:job-percent ((job count-job))
-  "How much of JOB is counted, from 0 to 99 while it runs (COUNT-PROGRESS)."
-  (count-progress job))
 
 (defmethod tuatara.runtime:job-take-in ((job count-job))
   "Say what JOB, which has ended, counted, or why it did not; nothing once its
@@ -789,14 +749,15 @@ buffer was killed."
       ((:stopped :failed) (message "~a" (tuatara.runtime:job-ending-words job))))))
 
 (define-command count-words ()
-  "Say how many lines, sentences, words and characters the selection has, or
-the whole buffer without one (the part shown of a narrowed one): \"Region
-has 2 lines, 2 sentences, 9 words, and 48 characters\". A sentence ends where \\[forward-sentence] finds its end: at
-. ? ! or … and a space or a line end after it (two spaces, a tab or a line
-end with *SENTENCE-END-DOUBLE-SPACE*), or at a blank line. The lines search filters hide
-\(\\[search-filter-regex]) are not counted. A large text is counted in the background, its
-progress in the mode line; \\[stop-job] stops it. While another job runs in
-the buffer it waits its turn (\\[list-jobs])."
+  "Say how many lines, sentences, words and characters the selection has, or the
+whole buffer without one (the part shown of a narrowed one): \"Region has 2
+lines, 2 sentences, 9 words, and 48 characters\". A sentence ends where
+\\[forward-sentence] finds its end: at . ? ! or … and a space or a line end
+after it (two spaces, a tab or a line end with *SENTENCE-END-DOUBLE-SPACE*), or
+at a blank line. The lines search filters hide (\\[search-filter-regex]) are not
+counted. A large text is counted in the background, its progress in the mode
+line; \\[stop-job] stops it. While another job runs in the buffer it waits its
+turn (\\[list-jobs])."
   (let ((b (current-buffer)))
     (multiple-value-bind (start end what)
         (if (tuatara.buffer:buffer-mark-active-p b)

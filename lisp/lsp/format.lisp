@@ -60,10 +60,6 @@ out.")
     :verb "format"
     :left-words "the text is as it was")
 
-(defun buffer-language (buffer)
-  "The language of BUFFER's major mode, or NIL."
-  (mode-language (buffer-major-mode buffer)))
-
 (defun formatting-p (buffer)
   "True while a formatter lays out BUFFER's text."
   (and (tuatara.runtime:running-job buffer 'format-job) t))
@@ -94,33 +90,37 @@ and its arguments) prints when given INPUT (octets) from DIRECTORY, as two
 values: the octets, or NIL when it failed, and what it said then. Shut in
 the sandbox when *FORMAT-IN-SANDBOX*."
   (if *format-in-sandbox*
-      (let ((fd (tuatara.io:memory-file "tuatara-format" input :kept nil))
-            (directories (remove-duplicates
+      (let ((directories (remove-duplicates
                           (remove-if-not #'tuatara.io:shown-place-p
                                          (list directory (tuatara.io:parent-path program)
                                                (tuatara.io:parent-path
                                                 (or (tuatara.io:resolve-links program) program))))
                           :test #'equal)))
-        (unwind-protect
-             (multiple-value-bind (output outcome said)
-                 (tuatara.io:sandbox-run program (rest command)
-                                         :input fd :seconds *format-seconds* :cancel cancel
-                                         :output-limit (+ (* 4 (length input)) (* 1024 1024))
-                                         :directories directories
-                                         :directory (if (tuatara.io:shown-place-p directory) directory "/tmp"))
-               (case outcome
-                 (:done (values output nil))
-                 (:unavailable (values nil (format nil "~a; *format-in-sandbox* nil runs formatters without it"
-                                                   (sandbox-outcome-words outcome said :label "it"))))
-                 (:failed (values nil (if (plusp (length said)) said "it failed")))
-                 (t (values nil (sandbox-outcome-words outcome said :label "it" :seconds-setting '*format-seconds*)))))
-          (sb-posix:close fd)))
-      (multiple-value-bind (output ok)
-          (tuatara.io:program-output (cons program (rest command))
-                                     :input (tuatara.text:octets-string input)
-                                     :seconds *format-seconds*
-                                     :directory directory)
-        (if ok (values (tuatara.text:string-octets output) nil) (values nil "it failed")))))
+        (tuatara.io:call-with-memory-file
+         "tuatara-format" input
+         (lambda (fd)
+           (multiple-value-bind (output outcome said)
+               (tuatara.io:sandbox-run program (rest command)
+                                       :input fd :seconds *format-seconds* :cancel cancel
+                                       :output-limit (+ (* 4 (length input)) (* 1024 1024))
+                                       :directories directories
+                                       :directory (if (tuatara.io:shown-place-p directory) directory "/tmp"))
+             (case outcome
+               (:done (values output nil))
+               (:unavailable (values nil (format nil "~a; *format-in-sandbox* nil runs formatters without it"
+                                                 (sandbox-outcome-words outcome said :label "it"))))
+               (:failed (values nil (if (plusp (length said)) said "it failed")))
+               (t (values nil (sandbox-outcome-words outcome said :label "it" :seconds-setting '*format-seconds*))))))))
+      (multiple-value-bind (output said code)
+          (tuatara.io:filter-through-program (cons program (rest command))
+                                             (lambda (fd)
+                                               ;; a formatter that ends before reading all of it failed
+                                               (handler-case (tuatara.io:write-octets fd input :path program)
+                                                 (tuatara.io:file-system-error () nil)))
+                                             :seconds *format-seconds* :directory directory)
+        (if (and output (eql code 0))
+            (values output nil)
+            (values nil (if (plusp (length said)) said "it failed"))))))
 
 (defun formatter-output-refusal (input output)
   "Why OUTPUT, the octets a formatter gave back for the octets INPUT, is not
@@ -214,24 +214,24 @@ the text was put in."
 (defmethod tuatara.runtime:job-take-in ((job format-job))
   "Put the laid-out text in when the buffer is as it was given, say why not
 otherwise, and go on with what was waiting for it."
-  (let* ((buffer (tuatara.runtime:job-buffer job))
-         (output (format-job-output job))
-         (formatted
-          (cond ((not (live-buffer-p buffer)) (return-from tuatara.runtime:job-take-in))
-                (t (finish-formatting buffer
-                                      (tuatara.io:native-file-name (format-job-program job))
-                                      (format-job-version job)
-                                      (case (tuatara.runtime:job-status job)
-                                        (:stopped (format nil "it was stopped; ~a"
-                                                          (tuatara.runtime:job-left-words job)))
-                                        (:failed (short-failure-words (or (tuatara.runtime:job-error job)
-                                                                          "it ended unexpectedly")))
-                                        (t (and (null output) (short-failure-words (format-job-said job)))))
-                                      (lambda ()
-                                        (put-text-by-lines buffer (tuatara.text:version-rope (format-job-version job))
-                                                           (tuatara.text:octets->rope
-                                                            (coerce output 'tuatara.text:octets)))))))))
-    (when (format-job-then job) (funcall (format-job-then job) buffer formatted))))
+  (let ((buffer (tuatara.runtime:job-buffer job))
+        (output (format-job-output job)))
+    (unless (live-buffer-p buffer)
+      (return-from tuatara.runtime:job-take-in))
+    (let ((formatted
+            (finish-formatting buffer
+                               (tuatara.io:native-file-name (format-job-program job))
+                               (format-job-version job)
+                               (case (tuatara.runtime:job-status job)
+                                 (:stopped (format nil "it was stopped; ~a" (tuatara.runtime:job-left-words job)))
+                                 (:failed (short-failure-words (or (tuatara.runtime:job-error job)
+                                                                   "it ended unexpectedly")))
+                                 (t (and (null output) (short-failure-words (format-job-said job)))))
+                               (lambda ()
+                                 (put-text-by-lines buffer (tuatara.text:version-rope (format-job-version job))
+                                                    (tuatara.text:octets->rope
+                                                     (coerce output 'tuatara.text:octets)))))))
+      (when (format-job-then job) (funcall (format-job-then job) buffer formatted)))))
 
 (define-command format-buffer ()
   "Lay out the code of the current buffer as its language's formatter does

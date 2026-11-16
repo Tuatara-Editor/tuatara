@@ -24,6 +24,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from repositories import package_roots
+
 CODE_COLUMN = 120
 DOCUMENT_COLUMN = 80
 CODE = {".lisp", ".asd", ".c", ".h", ".sh", ".py", ".el", ".js", ".rs", ".yml", ".yaml"}
@@ -56,12 +59,6 @@ def long_lines(path, text):
               and not ONLY_LINK.match(line)):
             found.append((n, len(line)))
     return found
-
-
-def package_roots():
-    """The package repositories that sit beside this checkout, in name order."""
-    beside = Path(__file__).resolve().parent.parent.parent / "tuatara-packages"
-    return sorted(p for p in beside.glob("tuatara-*") if (p / ".git").exists() and not p.name.endswith("-pc10"))
 
 
 def count_long_lines(root, label, summary):

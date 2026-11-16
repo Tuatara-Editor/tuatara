@@ -5,7 +5,14 @@
 ;;;; BidiTest.txt and BidiCharacterTest.txt (UAX #9) through BIDI-LEVELS,
 ;;;; LINE-LEVELS and VISUAL-ORDER, and says how many agree.
 
-(in-package #:tuatara.display)
+(defpackage #:tuatara.bidi-conformance
+  (:use #:cl)
+  (:import-from #:tuatara.display #:bidi-levels #:line-levels #:visual-order #:removed-class-p #:code-bidi-class
+                #:bracket-pair)
+  (:export #:run-bidi-conformance)
+  (:documentation "The conformance run of tools/bidi-conformance.sh, apart from the editor's own packages."))
+
+(in-package #:tuatara.bidi-conformance)
 
 (defun conformance-line-result (classes paragraph-level codes)
   "The levels and the order shown of one line of CLASSES (and CODES), as the

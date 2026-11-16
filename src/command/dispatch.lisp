@@ -109,7 +109,8 @@ terminal while it is typed into)."
 
 (defun escape-as-quit (event)
   "EVENT, a key of Escape made \\`C-g' while *ESCAPE-QUITS* says so (and keys
-are not read as typed, nor wanted so where they are typed); any other event as it is."
+are not read as typed, nor wanted so where they are typed); any other event as
+it is."
   (if (and tuatara-user:*escape-quits* (not *keys-as-typed*) (not (keys-as-typed-here-p))
            (eq (tuatara.frontend:event-kind event) :key)
            (equal (tuatara.frontend:key-spec (tuatara.frontend:event-key event)) '(:escape)))
@@ -715,8 +716,7 @@ a refusal) stops recorded keys that are playing."
   (note-selected-buffer (selected-window-buffer editor))
   (dolist (f (editor-post-command-functions editor)) (call-guarded f f editor))
   ;; a command may have set what the frontends read (M-: (setf *gui-padding* 12))
-  (dolist (frame (editor-frames editor))
-    (tuatara.frontend:frontend-settings-changed (frame-frontend frame))))
+  (call-guarded 'follow-settings #'follow-settings editor))
 
 (defun collect-prefix-key (editor key)
   "While \\[universal-argument] is collecting a numeric argument, absorb KEY if

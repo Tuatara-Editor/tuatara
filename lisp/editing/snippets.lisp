@@ -13,18 +13,18 @@
 ;;;;   #+end_src
 ;;;;
 ;;;; Its key typed before the cursor and \`TAB' put it in, the key's place
-;;;; taken; M-x insert-snippet chooses one by name, each listed with its key
-;;;; and whose it is; M-x copy-snippet makes one of Tuatara's yours to change.
-;;;; Its text is written as
-;;;; language servers write theirs: $1, $2... are fields \`TAB' goes to in
-;;;; turn and \`S-TAB' back, ${1:text} one holding text that typing replaces,
-;;;; ${1|a,b,c|} one offering a choice, $0 where the cursor ends; a field's
-;;;; number used again is filled in as the field is. $NAME stands for a value such as
-;;;; the date ($CURRENT_YEAR, $CURRENT_MONTH, $CURRENT_DATE...), the file
-;;;; ($TM_FILENAME, $TM_FILENAME_BASE, $TM_DIRECTORY), the text selected
-;;;; ($TM_SELECTED_TEXT), your name ($AUTHOR); \$ is a dollar sign. Nothing in
-;;;; a snippet is ever run. Tuatara's own snippets come first; one of yours with
-;;;; the same name in the same mode takes its place.
+;;;; taken; M-x insert-snippet chooses one by name, each listed with its key and
+;;;; whose it is; M-x copy-snippet makes one of Tuatara's yours to change. Its
+;;;; text is written as language servers write theirs: $1, $2... are fields
+;;;; \`TAB' goes to in turn and \`S-TAB' back, ${1:text} one holding text that
+;;;; typing replaces, ${1|a,b,c|} one offering a choice, $0 where the cursor
+;;;; ends; a field's number used again is filled in as the field is. $NAME
+;;;; stands for a value such as the date ($CURRENT_YEAR, $CURRENT_MONTH,
+;;;; $CURRENT_DATE...), the file ($TM_FILENAME, $TM_FILENAME_BASE,
+;;;; $TM_DIRECTORY), the text selected ($TM_SELECTED_TEXT), your name ($AUTHOR);
+;;;; \$ is a dollar sign. Nothing in a snippet is ever run. Tuatara's own
+;;;; snippets come first; one of yours with the same name in the same mode takes
+;;;; its place.
 
 (in-package #:tuatara.defaults)
 
@@ -39,7 +39,7 @@
 (defun snippet-directories ()
   "The directories your snippets are in (*SNIPPET-DIRECTORIES*): snippets/ in
 your configuration directory (CONFIG-PATH) when it names none."
-  (or (setting-list '*snippet-directories* *snippet-directories*)
+  (or *snippet-directories*
       (list (config-path "snippets/"))))
 
 (define-setting *snippet-tab* t
@@ -67,9 +67,10 @@ one of Tuatara's (NIL for one of yours)."
   (own nil :documentation "True for a snippet of Tuatara's, NIL for one of yours."))
 
 (defun read-snippet (file-name text)
-  "The snippet a file called FILE-NAME holding TEXT is: its name and key from the lines before # -- (# name:, #
-key:; its name the file's when it gives none), its body after;
-the whole text its body when it has no such head (TEMPLATE-HEAD)."
+  "The snippet a file called FILE-NAME holding TEXT is: its name and key from
+the lines before # -- (# name:, # key:; its name the file's when it gives none),
+its body after; the whole text its body when it has no such head
+\(TEMPLATE-HEAD)."
   (multiple-value-bind (head body) (template-head text)
     (let ((key (cdr (assoc "key" head :test #'string=))))
       (make-snippet (or (cdr (assoc "name" head :test #'string=)) (pathname-name file-name))
@@ -600,9 +601,7 @@ place, the selected text where it has $TM_SELECTED_TEXT."
                                               (mapcar (lambda (s) (snippet-candidate s s)) snippets)
                                               :require-match t)))
           (when (snippet-p snippet)
-            (multiple-value-bind (start end) (if (tuatara.buffer:buffer-mark-active-p buffer)
-                                                 (tuatara.buffer:buffer-region buffer)
-                                                 (values (point) (point)))
+            (multiple-value-bind (start end) (region-or-point buffer)
               (let ((selected (and (< start end) (tuatara.buffer:buffer-string buffer :start start :end end))))
                 (setf (tuatara.buffer:buffer-mark-active-p buffer) nil)
                 (put-snippet buffer start end snippet :selected selected))))))))

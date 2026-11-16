@@ -228,7 +228,7 @@ read for them rather than for it.")
 (defun org-known-tags (&rest buffers)
   "The tags used in BUFFERS and in the agenda files: the headings' and the
 #+FILETAGS:, each once, in the order first met; the agenda files' as the
-agenda keeps them (ORG-AGENDA-ENTRIES), never opened for it."
+agenda keeps them (ORG-AGENDA-FILES-KEPT), never opened for it."
   (let ((tags '()))
     (dolist (buffer buffers)
       (when buffer
@@ -237,8 +237,9 @@ agenda keeps them (ORG-AGENDA-ENTRIES), never opened for it."
             (dolist (tag (org-file-tags (org-parse-text parse))) (pushnew tag tags :test #'string=))
             (dolist (headline (org-headlines (org-parse-tree parse)))
               (dolist (tag (org-property headline :tags)) (pushnew tag tags :test #'string=)))))))
-    (dolist (path (ignoring-errors-reported ("listing the agenda files") (org-agenda-file-paths)))
-      (dolist (entry (ignoring-errors-reported ("reading the tags of ~a" path) (org-agenda-entries path)))
+    (dolist (kept (org-agenda-files-kept (ignoring-errors-reported ("listing the agenda files")
+                                            (org-agenda-file-paths))))
+      (dolist (entry (second kept))
         (dolist (tag (agenda-entry-tags entry)) (pushnew tag tags :test #'string=))))
     (nreverse tags)))
 
@@ -432,16 +433,11 @@ SOURCE KEY).")
 (defun org-agenda-snapshot (&optional (paths (org-agenda-file-paths)))
   "Where each of the agenda files PATHS is read from now, for working the agenda
 out on another thread: a list of (PATH SOURCE KEY). SOURCE is :DISK, the text of
-a buffer as it is now (its rope, which never changes; a copy for a file mapped
-from disk, whose mapping may go with its buffer) or NIL. KEY is what tells
-whether it changed."
+a buffer as it is now (ORG-OPEN-TEXT) or NIL. KEY is what tells whether it
+changed."
   (loop for path in paths
         collect (multiple-value-bind (source key) (org-agenda-file-source path)
-                  (list path
-                        (cond ((or (null source) (eq source :disk)) source)
-                              ((tuatara.buffer:buffer-mapping source) (tuatara.buffer:buffer-string source))
-                              (t (tuatara.buffer:buffer-text source)))
-                        key))))
+                  (list path (if (or (null source) (eq source :disk)) source (org-open-text source)) key))))
 
 (defun org-agenda-open-snapshot ()
   "On the editor's thread: the agenda files open now, as their buffers have
@@ -459,14 +455,33 @@ Nothing on disk is looked at."
            when (and path (or (uiop:string-suffix-p path ".org") (member path named :test #'equal)))
              collect path))))
 
-(defun org-agenda-in-background (name settings work)
+(defparameter *org-agenda-carried-settings*
+  '(*org-now*
+    *org-agenda-files*
+    *org-agenda-file-functions*
+    *org-agenda-time-grid*
+    *org-agenda-category-width*
+    *org-agenda-untimed-text*
+    *org-agenda-event-kind-text*
+    *org-agenda-task-kind-text*
+    *org-agenda-date-in-title*
+    *org-agenda-current-time-string*
+    *org-deadline-warning-days* *org-agenda-start-on-weekday*)
+  "The settings the agenda is worked out with, carried to the thread that works
+it out in the background, and to the one marking its days in the calendar, as
+they are on the editor's (TUATARA.RUNTIME:CARRY-SETTINGS).")
+
+(defun org-agenda-in-background (name work &key (settings *org-agenda-carried-settings*))
   "Call WORK, a function, on a thread of its own named NAME with a snapshot of
 the agenda files (ORG-AGENDA-SNAPSHOT-WITH), those open taken here on the
-editor's thread, the settings named by SETTINGS, a list, carried to it as
-they are here."
+editor's thread, the agenda read from it there (*ORG-AGENDA-SNAPSHOT*), and
+the settings named by SETTINGS, a list, carried to it as they are here. The
+thread is returned."
   (let ((open (org-agenda-open-snapshot)))
     (tuatara.runtime:make-guarded-thread
-     (tuatara.runtime:carry-settings settings (lambda () (funcall work (org-agenda-snapshot-with open))))
+     (tuatara.runtime:carry-settings settings (lambda ()
+                                                (let ((*org-agenda-snapshot* (org-agenda-snapshot-with open)))
+                                                  (funcall work *org-agenda-snapshot*))))
      :name name)))
 
 (defun org-agenda-snapshot-with (open &optional (paths (org-agenda-file-paths)))
@@ -482,6 +497,24 @@ files are listed, and the files looked at, here."
 (defparameter *org-file-read-limit* (* 64 1024 1024)
   "The most octets of a file read from disk for the agenda or a clock table:
 a larger one is left out, and said to be.")
+
+(defun org-open-text (buffer)
+  "BUFFER's text for a thread of its own to read while BUFFER goes on being
+edited: its rope, which never changes; for a file mapped from disk, whose
+mapping may go with its buffer, a copy when BUFFER has changes not saved. NIL
+when its file is to be read from disk instead: a file mapped from disk with no
+changes, or BUFFER holding more than *ORG-FILE-READ-LIMIT* octets (refused as
+too large there)."
+  (cond ((org-read-from-disk-p buffer) nil)
+        ((tuatara.buffer:buffer-mapping buffer) (tuatara.buffer:buffer-string buffer))
+        (t (tuatara.buffer:buffer-text buffer))))
+
+(defun org-read-from-disk-p (buffer)
+  "True when a thread of its own reads the file of BUFFER from disk rather than
+take BUFFER's text (ORG-OPEN-TEXT): a file mapped from disk with no changes, or
+BUFFER holding more than *ORG-FILE-READ-LIMIT* octets."
+  (or (> (tuatara.buffer:buffer-size buffer) *org-file-read-limit*)
+      (and (tuatara.buffer:buffer-mapping buffer) (not (tuatara.buffer:buffer-modified-p buffer)))))
 
 (defun org-read-file-text (path)
   "The text of the file at PATH read from disk as the agenda reads it: through
@@ -511,13 +544,15 @@ UTF-8 read as a replacement character; NIL when it cannot be read."
 (defun org-agenda-file-source (path)
   "Where the agenda file at PATH is read from, as two values: a buffer visiting
 it or :DISK, and what tells whether it changed (the buffer's version, the
-file's time and size); NIL when it is neither open nor on disk. While the
+file's time and size); NIL when it is neither open nor on disk. A buffer whose
+file is read from disk instead (ORG-READ-FROM-DISK-P) gives :DISK. While the
 agenda is worked out elsewhere, as *ORG-AGENDA-SNAPSHOT* has it."
   (let ((taken (and *org-agenda-snapshot* (assoc path *org-agenda-snapshot* :test #'equal))))
     (when taken
       (return-from org-agenda-file-source (values (second taken) (third taken)))))
   (let ((buffer (buffer-visiting path)))
-    (if buffer
+    ;; a buffer whose file is read from disk is known by the file's own key
+    (if (and buffer (not (org-read-from-disk-p buffer)))
         (values buffer (list :buffer buffer (tuatara.buffer:buffer-version buffer)))
         (org-agenda-disk-source path))))
 
@@ -564,9 +599,65 @@ keeps them; NIL when it cannot be read."
 (defun org-agenda-forget-files (paths)
   "Let go of what the agenda keeps of files that are not among PATHS, the
 agenda files now."
-  (loop for path being the hash-keys of *org-agenda-file-cache*
-        unless (member path paths :test #'string=)
-          do (remhash path *org-agenda-file-cache*)))
+  ;; other threads add to the table meanwhile: its keys are taken under its lock
+  (dolist (path (sb-ext:with-locked-hash-table (*org-agenda-file-cache*)
+                  (loop for path being the hash-keys of *org-agenda-file-cache*
+                        unless (member path paths :test #'string=)
+                          collect path)))
+    (remhash path *org-agenda-file-cache*)))
+
+(defparameter *org-agenda-at-once* (* 256 1024)
+  "The most octets the agenda files may hold together for a week's agenda, or
+a list of tasks, to be drawn again at once after a change made from it; a
+longer span may hold as much less as it has more weeks. Past that it is
+worked out in the background, the change shown once that is done. Also the
+most octets of agenda files not read yet that a question offering their tags
+or headings, or a clock command, reads before it goes on.")
+
+(defun org-agenda-source-size (key)
+  "The octets of an agenda file whose KEY (ORG-AGENDA-FILE-SOURCE's second value)
+is as given: its buffer's size, or the file's; 0 for one neither open nor on disk."
+  (case (first key)
+    (:buffer (tuatara.buffer:buffer-size (second key)))
+    (:file (or (third key) 0))
+    (t 0)))
+
+(defun org-agenda-files-read-soon-p (paths)
+  "True when the agenda files PATHS that are not kept as they are now
+\(*ORG-AGENDA-FILE-CACHE*) hold at most *ORG-AGENDA-AT-ONCE* octets together,
+so that reading them here keeps nobody waiting."
+  (<= (loop for path in paths
+            sum (multiple-value-bind (source key) (org-agenda-file-source path)
+                  (let ((kept (and source (gethash path *org-agenda-file-cache*))))
+                    (if (and kept (equal (first kept) key)) 0 (org-agenda-source-size key)))))
+      *org-agenda-at-once*))
+
+(defvar *org-agenda-reading* nil
+  "The thread reading the agenda files for ORG-AGENDA-FILES-KEPT, while it runs.")
+
+(defun org-agenda-files-kept (paths)
+  "What the agenda keeps of each of the agenda files PATHS (ORG-AGENDA-FILE-READ),
+a list in their order: read now when those not kept as they are are few
+\(ORG-AGENDA-FILES-READ-SOON-P); else what is kept of each that is as it was
+read, NIL for the others, which are read in the background, said so, for the
+next time: what changed since is never given. On the editor's thread."
+  (if (org-agenda-files-read-soon-p paths)
+      (mapcar (lambda (path) (ignoring-errors-reported ("reading ~a for the agenda" path)
+                               (org-agenda-file-read path)))
+              paths)
+      (progn
+        (unless (and *org-agenda-reading* (sb-thread:thread-alive-p *org-agenda-reading*))
+          (message "Reading the agenda files in the background: what they hold is offered once read")
+          (setf *org-agenda-reading*
+                (org-agenda-in-background "tuatara agenda files read"
+                                          (lambda (snapshot)
+                                            (dolist (taken snapshot)
+                                              (ignoring-errors-reported ("reading ~a for the agenda" (first taken))
+                                                (org-agenda-file-read (first taken))))))))
+        (mapcar (lambda (path)
+                  (let ((kept (gethash path *org-agenda-file-cache*)))
+                    (and kept (equal (first kept) (nth-value 1 (org-agenda-file-source path))) kept)))
+                paths))))
 
 (defun org-clocks-left-open (&optional (now (org-now)))
   "The clocks left running in the agenda files, their CLOCK: lines open, as
@@ -896,6 +987,11 @@ Sched. 2x:, or Scheduled: on its day."
                                               (if (and (/= current deadline) (/= current repeat)) nil text)
                                               (+ (if today-p (- diff) 0) (agenda-entry-priority entry)))))))))
 
+(defun org-log-on-day-p (stamp day)
+  "True when STAMP, the timestamp of a note or clock line ([2026-10-01 Thu
+17:30]), is of the day whose date DAY writes as 2026-10-01."
+  (and (> (length stamp) (length day)) (string= day stamp :start2 1 :end2 (1+ (length day)))))
+
 (defun org-closing-replaces-scheduled-p (entry following current)
   "True when, in log mode, the line of ENTRY's closing on the day CURRENT
 stands for its scheduled line: ENTRY is done, does not repeat, is scheduled
@@ -905,7 +1001,7 @@ entries after it."
        (not (org-entry-repeats-p entry))
        (not (org-agenda-stamp-time (agenda-entry-scheduled entry)))
        (let ((day (format-day "%F" current)))
-         (find-if (lambda (log) (and (eq (first log) :closed) (uiop:string-prefix-p day (subseq (second log) 1))))
+         (find-if (lambda (log) (and (eq (first log) :closed) (org-log-on-day-p (second log) day)))
                   (agenda-entry-logs entry)))
        (loop for next in following
              while (and (equal (agenda-entry-file next) (agenda-entry-file entry))
@@ -1039,8 +1135,7 @@ line of its closing, the line of its date saying it is cancelled already."
   (let ((day (format-day "%F" current)))
     (loop for entry in entries
           for logs = (loop for log in (agenda-entry-logs entry)
-                           when (and (member (first log) '(:closed :clock))
-                                     (uiop:string-prefix-p day (subseq (second log) 1)))
+                           when (and (member (first log) '(:closed :clock)) (org-log-on-day-p (second log) day))
                              collect log)
           when logs
             append (let ((title (format nil "~@[~a ~]~a" (agenda-entry-todo entry) (agenda-entry-title entry)))
@@ -1073,7 +1168,7 @@ checkboxes ticked then when its note says (its own cleared for the next time)."
     (loop for entry in entries
           when (org-entry-repeats-p entry)
             append (loop for (kind timestamp nil nil ticked) in (agenda-entry-logs entry)
-                         when (and (eq kind :done-note) (uiop:string-prefix-p day (subseq timestamp 1)))
+                         when (and (eq kind :done-note) (org-log-on-day-p timestamp day))
                            collect (org-agenda-item entry current "repeat-done" "Done:      " timestamp 100000
                                                     :search-heading nil
                                                     :title (format nil "DONE ~a"
@@ -1213,7 +1308,7 @@ when it has no time of day or the same as that line's."
 what was done that day when LOG is true, the repeating tasks done that day, what
 is scheduled, the ranges and the timestamps. An entry's timestamp is left out
 where it is listed already (ORG-AGENDA-WITHOUT-TWICE-LISTED). The times
-cancelled or moved one at a time shown so instead \(ORG-AGENDA-NOTED-LINES), The
+cancelled or moved one at a time shown so instead \(ORG-AGENDA-NOTED-LINES). The
 lines are ordered by time of day and then urgency \(ORG-AGENDA-SORT).
 ENTRIES-BY-FILE, when given, the entries of each file, read before."
   (org-agenda-sort
@@ -1235,15 +1330,23 @@ ENTRIES-BY-FILE, when given, the entries of each file, read before."
                        items))))
    '(:time :urgency)))
 
+(defmacro with-org-agenda-memos (&body body)
+  "Run BODY with the tables an agenda is made with, so that what it reads of a
+timestamp, a time of day or an entry is read once for all its days
+\(*ORG-AGENDA-TS-MEMO*, *ORG-AGENDA-TIME-MEMO*, *ORG-AGENDA-ENTRIES-MEMO*);
+tables already made around it are used as they are."
+  `(let ((*org-agenda-ts-memo* (or *org-agenda-ts-memo* (make-hash-table :test 'equal)))
+         (*org-agenda-entries-memo* (or *org-agenda-entries-memo* (make-hash-table :test 'eq)))
+         (*org-agenda-time-memo* (or *org-agenda-time-memo* (make-hash-table :test 'equal))))
+     ,@body))
+
 (defun org-agenda-span (first count &rest arguments)
   "The agenda lines of COUNT days from the day FIRST, day by day, as ORG-AGENDA-DAY gives each (with its ARGUMENTS)."
-  (let* ((*org-agenda-ts-memo* (or *org-agenda-ts-memo* (make-hash-table :test 'equal)))
-         (*org-agenda-entries-memo* (or *org-agenda-entries-memo* (make-hash-table :test 'eq)))
-         (*org-agenda-time-memo* (or *org-agenda-time-memo* (make-hash-table :test 'equal)))
-         (files (getf arguments :files (org-agenda-file-paths)))
-         (entries-by-file (mapcar #'org-agenda-entries files)))
-    (loop for day from first below (+ first count)
-          append (apply #'org-agenda-day day :files files :entries-by-file entries-by-file arguments))))
+  (with-org-agenda-memos
+    (let* ((files (getf arguments :files (org-agenda-file-paths)))
+           (entries-by-file (mapcar #'org-agenda-entries files)))
+      (loop for day from first below (+ first count)
+            append (apply #'org-agenda-day day :files files :entries-by-file entries-by-file arguments)))))
 
 (defun org-agenda-todo-list (&key (files (org-agenda-file-paths)) keyword)
   "The tasks not done in FILES, the most urgent first (ORG-AGENDA-SORT); with

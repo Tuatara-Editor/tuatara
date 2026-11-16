@@ -8,23 +8,25 @@
 
 (in-package #:tuatara.runtime)
 
+(defconstant +lock-shared+ 1 "flock's LOCK_SH: a lock others may share.")
+(defconstant +lock-alone+ 2 "flock's LOCK_EX: a lock held alone.")
+(defconstant +lock-no-wait+ 4 "flock's LOCK_NB: fail at once rather than wait for another holder.")
+(defconstant +lock-let-go+ 8 "flock's LOCK_UN: let go of the lock.")
+
 (defun lock-fd (fd &key shared (wait 0))
   "Take a lock on the file open as file descriptor (FD), shared with others
 that take it SHARED, else held alone: true when it was had, waiting at most
 WAIT seconds for another holder to let it go. The lock goes when FD is
 closed or the process ends."
   (wait-until (lambda ()
-                ;; LOCK_SH 1 or LOCK_EX 2, with LOCK_NB 4: never blocked in the call itself
-                (zerop (sb-alien:alien-funcall
-                        (sb-alien:extern-alien "flock" (function sb-alien:int sb-alien:int sb-alien:int))
-                        fd (logior (if shared 1 2) 4))))
+                ;; with LOCK_NB: never blocked in the call itself
+                (zerop (%flock fd (logior (if shared +lock-shared+ +lock-alone+) +lock-no-wait+))))
               wait :interval 1/200))
 
 (defun unlock-fd (fd)
   "Let go of the lock LOCK-FD took on the file open as file descriptor (FD),
 for every descriptor of it duplicated from FD too."
-  ;; LOCK_UN 8
-  (sb-alien:alien-funcall (sb-alien:extern-alien "flock" (function sb-alien:int sb-alien:int sb-alien:int)) fd 8)
+  (%flock fd +lock-let-go+)
   nil)
 
 (defun log-in-use-p (native)

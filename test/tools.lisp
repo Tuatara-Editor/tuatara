@@ -312,6 +312,38 @@ generate_parser \"$1\" \"$cli\" 2>&1; echo \"went on\"" (tools-script "grammar-b
         (true (stale-p)))))
   (true (search "image_stale \"$root\"" (uiop:read-file-string (tools-script "tuatara-tui.sh")))))
 
+(define-test (tools terminal-library-built-again-only-for-its-inputs)
+  ;; the terminal library is built again when its pin, layout.c or shim.c change, not when
+  ;; the script that builds it is only reworded
+  (with-test-directory (directory)
+    (let ((root (string-right-trim "/" (uiop:native-namestring directory))))
+      (flet ((put (name text)
+               (let ((path (format nil "~a/~a" root name)))
+                 (ensure-directories-exist path)
+                 (with-open-file (o path :direction :output :if-exists :supersede) (write-string text o))
+                 path))
+             (run (&rest arguments)
+               (multiple-value-bind (out err code)
+                   (uiop:run-program (list* "env" "PATH=/nonexistent:/usr/bin:/bin" "bash"
+                                            (format nil "~a/tools/terminal-library.sh" root) arguments)
+                                     :output :string :error-output :string :ignore-error-status t)
+                 (declare (ignore err))
+                 (values (string-trim '(#\Newline) out) code))))
+        (put "tools/terminal-library.sh" (uiop:read-file-string (tools-script "terminal-library.sh")))
+        (put "tools/fetch.sh" (uiop:read-file-string (tools-script "fetch.sh")))
+        (put "lisp/terminal/library.pin" (format nil "repository	x~%commit	y~%zig	99.0.0~%version	1~%"))
+        (put "lisp/terminal/layout.c" "int main(void) { return 0; }")
+        (put "lisp/terminal/shim.c" "")
+        (put "build/terminal/libghostty-vt.so" "")
+        (put "build/terminal/.built-from" (format nil "~a~%" (run "--stamp")))
+        (is = 0 (nth-value 1 (run)))
+        (put "tools/terminal-library.sh"
+             (concatenate 'string (uiop:read-file-string (tools-script "terminal-library.sh"))
+                          (format nil "~%# a comment reworded~%")))
+        (is = 0 (nth-value 1 (run)))
+        (put "lisp/terminal/shim.c" "int changed;")
+        (isnt = 0 (nth-value 1 (run)))))))
+
 (define-test (tools inside-says-what-is-missing)
   ;; run on this system, a program that is not installed is said with what to install,
   ;; after env and its NAME=VALUE words, as the package tests run sbcl; one that is runs
@@ -1150,7 +1182,8 @@ printf 'Source: foo\\nChecksums-Sha256:\\n %s 4 foo_1.0.orig.tar.xz\\nFiles:\\n 
       (ensure-directories-exist (merge-pathnames "tools/" directory))
       (ensure-directories-exist (merge-pathnames "test/api/" directory))
       (ensure-directories-exist (merge-pathnames "lisp/" directory))
-      (uiop:copy-file (tools-script "possible-copies.sh") (path "tools/possible-copies.sh"))
+      (dolist (name '("possible-copies.sh" "possible-copies.py" "meaning.py"))
+        (uiop:copy-file (tools-script name) (path (format nil "tools/~a" name))))
       (with-open-file (out (path "test/api/reuse-index.txt") :direction :output)
         (format out "~{~a~%~}"
                 '(";; The reuse index"
@@ -1272,3 +1305,314 @@ printf 'Source: foo\\nChecksums-Sha256:\\n %s 4 foo_1.0.orig.tar.xz\\nFiles:\\n 
       (let ((out (run-python-tool "line-check.py" r q)))
         (true (search "r/a.lisp:3: 148" out) "~a" out)
         (true (search "1 lines past the column" out) "~a" out)))))
+
+(defun tools-text (name)
+  "The text of the file NAME in this repository's tools/."
+  (uiop:read-file-string (tools-script name)))
+
+(define-test (tools sanitized-grammar-compile)
+  ;; fuzzing compiles a grammar as the build does but for the sanitizers, assertions kept, and links a C++ scanner
+  ;; with them too
+  (with-test-directory (directory)
+    (let ((src (uiop:native-namestring (merge-pathnames "src/" directory))))
+      (write-test-file directory "src/parser.c" "")
+      (write-test-file directory "src/scanner.cc" "")
+      (let ((lines (uiop:split-string
+                    (string-right-trim '(#\Newline)
+                                       (bash-output (format nil ". '~a'
+cc() { printf 'cc'; printf ' [%s]' \"$@\"; echo; }
+c++() { printf 'c++'; printf ' [%s]' \"$@\"; echo; }
+compile_grammar \"$1\" /tmp/made-up/g.so --sanitize" (tools-script "grammar-build.sh")) src))
+                    :separator '(#\Newline))))
+        (is = 3 (length lines))
+        (true (search "[-fsanitize=address,undefined]" (first lines)))
+        (true (search "safe-ctype.h]" (first lines)))
+        (true (search "[-fsanitize=address,undefined] [/tmp/made-up/g.so.parser.o]" (third lines)))
+        (false (search "NDEBUG" (format nil "~{~a~}" lines)))
+        (false (search "[-O2]" (format nil "~{~a~}" lines)))))))
+
+(define-test (tools helper-compiled-one-way)
+  ;; the program that runs the grammars is compiled from one function, by the build and by the fuzzer
+  (let ((build (tools-text "grammar-build.sh")))
+    (true (search "compile_helper() {" build))
+    (true (search "compile_helper \"$root\"" (tools-text "grammars.sh")))
+    (true (search "compile_helper \"$root\"" (tools-text "fuzz-helper.sh")))
+    (false (search "-rdynamic" (tools-text "grammars.sh")))
+    (false (search "-rdynamic" (tools-text "fuzz-helper.sh")))
+    (true (search "run_shut_in \"$cli\" \"$copy\"" build))))
+
+(define-test (tools grammar-manifest-read-once)
+  ;; the manifest's rows and a grammar's directory come from one place, comments and blank lines left out
+  (with-test-directory (directory)
+    (let ((tools (merge-pathnames "tools/" directory)))
+      (uiop:copy-file (tools-script "grammar-build.sh") (merge-pathnames "grammar-build.sh" (ensure-directories-exist tools)))
+      (write-test-file directory "syntax/grammars.tsv"
+                       (format nil "# comment~%a	https://x/a	1	MIT~%~%b	https://x/b	2	MIT	sub/dir~%  ~%"))
+      (is string= (format nil "a	https://x/a	1	MIT~%b	https://x/b	2	MIT	sub/dir~%")
+          (bash-output ". \"$1\"; grammar_manifest"
+                       (uiop:native-namestring (merge-pathnames "grammar-build.sh" tools))))
+      (is string= (format nil "sub/dir~%")
+          (bash-output ". \"$1\"; grammar_subpath b" (uiop:native-namestring (merge-pathnames "grammar-build.sh" tools))))
+      (is string= (format nil "~%")
+          (bash-output ". \"$1\"; grammar_subpath a" (uiop:native-namestring (merge-pathnames "grammar-build.sh" tools)))))
+    (dolist (script '("grammars.sh" "check-grammar-sources.sh" "fuzz-grammars.sh" "release.sh"))
+      (false (search "grep -v '^#' \"$root/syntax/grammars.tsv\"" (tools-text script)) script)
+      (false (search "$1 == n { print $5 }" (tools-text script)) script))))
+
+(define-test (tools names-this-machine-looks-for-its-host-name)
+  ;; the check that nothing published names this machine tries the host name too, and the manual's pages go
+  ;; through the same check
+  (with-test-directory (directory)
+    (let ((file (uiop:native-namestring (merge-pathnames "page" directory))))
+      (flet ((names-p (text)
+               (with-open-file (o file :direction :output :if-exists :supersede) (write-string text o))
+               (string= "yes" (string-trim '(#\Newline)
+                                           (bash-output (format nil "export HOME=/home/annt USER=annt
+hostname() { echo kiwi-box; }
+. '~a'
+names_this_machine \"$1\" 2>/dev/null && echo yes || echo no" (tools-script "inside.sh"))
+                                                        file)))))
+        (true (names-p "served from kiwi-box"))
+        (true (names-p "kiwi-box, served"))
+        (false (names-p "served from kiwi"))
+        (false (names-p "kiwi-boxes and kiwi-boxed"))))
+    ;; a host with a common word for a name is not found inside longer words
+    (let ((file (uiop:native-namestring (merge-pathnames "page" directory))))
+      (flet ((names-p (host text)
+               (with-open-file (o file :direction :output :if-exists :supersede) (write-string text o))
+               (string= "yes" (string-trim '(#\Newline)
+                                           (bash-output (format nil "export HOME=/home/annt USER=annt
+hostname() { echo ~a; }
+. '~a'
+names_this_machine \"$1\" 2>/dev/null && echo yes || echo no" host (tools-script "inside.sh"))
+                                                        file)))))
+        (false (names-p "port" "a report and its porter"))
+        (false (names-p "rata" "ratatouille"))
+        (true (names-p "rata" "the rata is here"))))
+    (let ((publish (tools-text "manual-publish.sh")))
+      (true (search "names_this_machine" publish))
+      (false (search "for word in" publish)))))
+
+(define-test (tools lisp-archives-stop-without-quicklisp)
+  ;; with no Quicklisp found the script stops, rather than going on in the current directory
+  (with-test-directory (directory)
+    (multiple-value-bind (script quicklisp) (archive-check-tree directory)
+      (declare (ignore quicklisp))
+      (multiple-value-bind (out error code)
+          (uiop:run-program (list "env" "-i" (format nil "HOME=~a" (uiop:native-namestring directory))
+                                  "PATH=/usr/bin:/bin" "bash" script "check")
+                            :output :string :error-output :string :ignore-error-status t)
+        (declare (ignore out))
+        (is = 1 code)
+        (true (search "Quicklisp is not installed" error))
+        (false (search "dists/quicklisp/archives" error))))))
+
+(define-test (tools lisp-archives-add-cleans-up-quietly)
+  ;; adding a library leaves no complaint from the cleanup of its scratch directory, and its line is in the list
+  (with-test-directory (directory)
+    (multiple-value-bind (script quicklisp) (archive-check-tree directory)
+      (let ((fakes (uiop:native-namestring (merge-pathnames "fakes/" directory))))
+        (write-test-file directory "fakes/curl"
+                         "#!/bin/sh
+while [ $# -gt 0 ]; do case \"$1\" in -o) out=$2; shift 2 ;; *) url=$1; shift ;; esac; done
+case \"$url\" in
+  */releases.txt) echo 'proj https://example.org/proj-1.tgz 3 900150983cd24fb0d6963f7d28e17f72 0 0 proj-1' > \"$out\" ;;
+  *) printf abc > \"$out\" ;;
+esac
+")
+        (uiop:run-program (list "chmod" "+x" (concatenate 'string fakes "curl")))
+        (multiple-value-bind (out error code)
+            (uiop:run-program (list "env" (format nil "PATH=~a:/usr/bin:/bin" (string-right-trim "/" fakes))
+                                    "bash" script "add" "proj" quicklisp)
+                              :output :string :error-output :string :ignore-error-status t)
+          (declare (ignore out))
+          (is = 0 code "~a" error)
+          (false (search "unbound" error))
+          (true (search "proj-1.tgz" (uiop:read-file-string
+                                      (merge-pathnames "tools/lisp-archives.sha256" directory)))))))))
+
+(define-test (tools downloads-keep-to-https)
+  ;; a download of the Lisp libraries or the grammars' hosts goes over HTTPS only, a redirect too, and never waits for good
+  (multiple-value-bind (out error code)
+      (uiop:run-program (list "bash" "-c" ". \"$1\"; https_curl -o /dev/null http://127.0.0.1:9/never" "_"
+                              (tools-script "fetch.sh"))
+                        :output :string :error-output :string :ignore-error-status t)
+    (declare (ignore out))
+    (is = 1 code)
+    (true (search "disabled" error)))
+  (let ((archives (tools-text "lisp-archives.sh")) (sources (tools-text "check-grammar-sources.sh")))
+    (is = 0 (length (cl-ppcre:all-matches "(?m)^\\s*curl " archives)))
+    (false (search "Authorization: Bearer $GITHUB_TOKEN\" \"https" sources))
+    (false (search "curl -sSf \"https://codeberg" sources))
+    (false (search "curl -sSf \"https://gitlab" sources))))
+
+(define-test (tools sample-files-in-a-directory-of-their-own)
+  ;; with no directory given the files go to a new one, mode 700, never to a name another account could have made
+  (with-test-directory (directory)
+    (let ((script (tools-script "sample-files.sh"))
+          (temporary (string-right-trim "/" (uiop:native-namestring directory))))
+      (flet ((made ()
+               (let ((line (first (uiop:split-string
+                                   (uiop:run-program (list "env" (format nil "TMPDIR=~a" temporary) "bash" script)
+                                                     :output :string)
+                                   :separator '(#\Newline)))))
+                 (string-right-trim ":" (subseq line (1+ (position #\Space line :from-end t)))))))
+        (let ((first (made)) (second (made)))
+          (false (string= first second))
+          (true (uiop:string-prefix-p (concatenate 'string temporary "/tuatara-sample-files.") first))
+          (is string= "700" (string-trim '(#\Newline)
+                                         (uiop:run-program (list "stat" "-c" "%a" first) :output :string))))
+        (uiop:run-program (list "ln" "-s" temporary (concatenate 'string temporary "/link")))
+        (multiple-value-bind (out error code)
+            (uiop:run-program (list "bash" script (concatenate 'string temporary "/link"))
+                              :output :string :error-output :string :ignore-error-status t)
+          (declare (ignore out error))
+          (is = 1 code))
+        ;; also through a trailing slash, and for a directory others may write in
+        (multiple-value-bind (out error code)
+            (uiop:run-program (list "bash" script (concatenate 'string temporary "/link/"))
+                              :output :string :error-output :string :ignore-error-status t)
+          (declare (ignore out error))
+          (is = 1 code))
+        (let ((open (concatenate 'string temporary "/open")))
+          (uiop:run-program (list "mkdir" "-m" "777" open))
+          (multiple-value-bind (out error code)
+              (uiop:run-program (list "bash" script open) :output :string :error-output :string
+                                                          :ignore-error-status t)
+            (declare (ignore out error))
+            (is = 1 code))
+          (uiop:run-program (list "chmod" "700" open))
+          (is = 0 (nth-value 2 (uiop:run-program (list "bash" script open) :output :string))))))))
+
+(define-test (tools scripts-name-no-person)
+  ;; packages are made under TUATARA_PACKAGER or the project's name, not the builder's git identity; the CI's Zig
+  ;; is the library pin's
+  (flet ((packager (&optional set)
+           (string-trim '(#\Newline)
+                        (bash-output (format nil "~@[export TUATARA_PACKAGER='~a'~]
+git() { echo 'Somebody <somebody@example.org>'; }
+eval \"$(grep '^packager=' '~a')\"
+echo \"$packager\"" set (tools-script "distro-packages.sh"))))))
+    (is string= "A B <a@b.example>" (packager "A B <a@b.example>"))
+    (let ((default (packager)))
+      (true (search "Tuatara Editor <" default))
+      (false (search "somebody" default))))
+  (with-test-directory (directory)
+    (write-test-file directory "lisp/terminal/library.pin" (format nil "zig	9.9.9~%"))
+    (is string= "https://ziglang.org/download/9.9.9/zig-x86_64-linux-9.9.9.tar.xz"
+        (string-trim '(#\Newline)
+                     (bash-output (format nil "root='~a'
+eval \"$(grep -E '^zig_(version|url)=' '~a')\"
+echo \"$zig_url\"" (string-right-trim "/" (uiop:native-namestring directory)) (tools-script "ci-setup.sh")))))))
+
+(define-test (tools grammar-probes-keep-the-token-off-the-command-line)
+  ;; GitHub's API is asked with the token on curl's input, never in its arguments
+  (with-test-directory (directory)
+    (write-test-file directory "bin/curl"
+                     (format nil "#!/bin/sh~%printf '%s\\n' \"$@\" > \"$RECORD.argv\"~%/usr/bin/cat > \"$RECORD.stdin\"~%echo '{}'~%"))
+    (uiop:run-program (list "chmod" "+x" (uiop:native-namestring (merge-pathnames "bin/curl" directory))))
+    (let ((record (uiop:native-namestring (merge-pathnames "record" directory)))
+          (bin (string-right-trim "/" (uiop:native-namestring (merge-pathnames "bin/" directory)))))
+      (uiop:run-program
+       (list "env" (format nil "RECORD=~a" record) "GITHUB_TOKEN=s3cret"
+             "/usr/bin/bash" "-c"
+             "text=\"$(sed -n '/^https_only=/p;/^github() {/,/^}/p' \"$1\")\"; PATH=$2; eval \"$text\"; github repos/a/b"
+             "_" (tools-script "check-grammar-sources.sh") bin)
+       :output :string :ignore-error-status t)
+      (let ((argv (uiop:read-file-string (concatenate 'string record ".argv")))
+            (stdin (uiop:read-file-string (concatenate 'string record ".stdin"))))
+        (false (search "s3cret" argv))
+        (true (search "s3cret" stdin))
+        (true (search "--proto" argv))))))
+
+(define-test (tools desktop-installer-builds-before-copying)
+  ;; the completion is copied after the entries are made, which build the program that writes it, and said only
+  ;; when it was copied
+  (let ((text (tools-text "install-desktop.sh")))
+    (true (< (search "entries >/dev/null" text) (search "cp \"$source_completion\"" text)))
+    (true (search "completion_copied" text))))
+
+(define-test (tools fuzzers-catch-hangs-and-keep-going)
+  ;; the SFTP reader is cut at the deadline, and the second connection of the helper fuzzer goes on after the
+  ;; first one it loses
+  (true (search "(sb-ext:with-timeout *deadline* (read-stream octets))" (tools-text "fuzz-sftp.lisp")))
+  (let ((helper (tools-text "fuzz-helper.py")))
+    (false (search "except (Ended, ConnectionError, socket.timeout, OSError):
+            return" helper))
+    (true (search "class Mismatch" helper))
+    (true (search "other = connect()" helper))
+    (true (search "'interfering'" helper)))
+  (true (search "(defpackage #:tuatara.bidi-conformance" (tools-text "bidi-conformance.lisp"))))
+
+(define-test (tools python-tools-documented)
+  ;; every module, function and class of the Python tools has a docstring
+  (is string= "" (string-trim '(#\Newline)
+                              (uiop:run-program
+                               (list "python3" "-I" "-c" "import ast, glob, sys
+for name in glob.glob(sys.argv[1] + '/*.py') + glob.glob(sys.argv[1] + '/languages/*.py'):
+    tree = ast.parse(open(name).read())
+    if not ast.get_docstring(tree):
+        print(name, 'module')
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.ClassDef)) and not ast.get_docstring(node):
+            print(name, node.name, node.lineno)"
+                                     (string-right-trim "/" (tools-script "")))
+                               :output :string))))
+
+(define-test (tools helix-commit-needs-helix)
+  ;; with no Helix checkout the generators stop, rather than writing a notice naming no commit
+  (multiple-value-bind (out error code)
+      (uiop:run-program (list "env" "HELIX_SOURCE=/nonexistent/helix" "python3" "-I" "-c"
+                              (format nil "import sys; sys.path.insert(0, '~a'); import common; common.helix_commit()"
+                                      (tools-script "languages")))
+                        :output :string :error-output :string :ignore-error-status t)
+    (declare (ignore out error))
+    (is /= 0 code)))
+
+(define-test (tools meaning-cache-follows-the-model)
+  ;; the cached vectors are kept for each model file, not mixed when the model is replaced
+  (with-test-directory (directory)
+    (write-test-file directory "a.gguf" "one")
+    (write-test-file directory "b.gguf" "three")
+    (flet ((path (model)
+             (uiop:run-program (list "env" (format nil "TUATARA_AI_MODEL=~a" (uiop:native-namestring (merge-pathnames model directory)))
+                                     (format nil "TUATARA_AI_CACHE=~a" (uiop:native-namestring directory))
+                                     "python3" "-I" "-c"
+                                     (format nil "import sys; sys.path.insert(0, '~a'); import meaning; print(meaning.cache_path())"
+                                             (string-right-trim "/" (tools-script ""))))
+                               :output :string)))
+      (false (string= (path "a.gguf") (path "b.gguf")))
+      (true (search "a.gguf-3" (path "a.gguf"))))))
+
+(define-test (tools package-roots-are-repositories)
+  ;; the package repositories beside the checkout: those with a .git directory, not the worktrees of their branches
+  (with-test-directory (directory)
+    (write-test-file directory "tuatara/tools/repositories.py" (tools-text "repositories.py"))
+    (ensure-directories-exist (merge-pathnames "tuatara-packages/tuatara-a/.git/" directory))
+    (ensure-directories-exist (merge-pathnames "tuatara-packages/tuatara-b/" directory))
+    (write-test-file directory "tuatara-packages/tuatara-b/.git" "gitdir: elsewhere")
+    (ensure-directories-exist (merge-pathnames "tuatara-packages/tuatara-c-work/.git/" directory))
+    (ensure-directories-exist (merge-pathnames "tuatara-packages/other/.git/" directory))
+    (is string= (format nil "tuatara-a tuatara-c-work~%")
+        (uiop:run-program (list "python3" "-I" "-c"
+                                (format nil "import sys; sys.path.insert(0, '~a'); import repositories
+print(*[p.name for p in repositories.package_roots()])"
+                                        (uiop:native-namestring (merge-pathnames "tuatara/tools" directory))))
+                          :output :string))))
+
+(define-test (tools package-reaches-reads-code-only)
+  ;; a double colon inside a string or a block comment is no reach; a semicolon inside a string or a character
+  ;; does not hide what follows it
+  (with-test-directory (directory)
+    (write-test-file directory "r/a.lisp"
+                     (format nil "(in-package #:one)~%(format t \"two::g ~~a ; x\" (y))~%(f #\\; three::i)~%~
+                                  #| four::j |#~%(five::k \"a;b\" six::l)~%"))
+    (uiop:run-program (list "bash" "-c" "cd \"$1\" && git init -q && git add . && git -c user.name=t -c user.email=t@example.invalid commit -q -m x"
+                            "_" (uiop:native-namestring (merge-pathnames "r/" directory))))
+    (let ((out (run-python-tool "package-reaches.py" (uiop:native-namestring (merge-pathnames "r/" directory)))))
+      (false (search "two::g" out))
+      (false (search "four::j" out))
+      (true (search "three::i" out))
+      (true (search "five::k" out))
+      (true (search "six::l" out))
+      (true (search "3 references" out) "~a" out))))

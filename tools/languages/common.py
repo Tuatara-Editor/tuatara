@@ -10,7 +10,8 @@ HELIX = os.environ.get('HELIX_SOURCE') or os.path.join(os.getcwd(), '..', 'helix
 
 def helix_commit():
     """The first 12 digits of the commit Helix's sources are at."""
-    return subprocess.run(['git', '-C', HELIX, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()[:12]
+    return subprocess.run(['git', '-C', HELIX, 'rev-parse', 'HEAD'], capture_output=True, text=True,
+                          check=True).stdout.strip()[:12]
 
 def lisp_string(s):
     """S written as a Lisp string, its backslashes and double quotes escaped."""

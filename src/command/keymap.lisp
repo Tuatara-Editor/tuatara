@@ -81,12 +81,12 @@ error."
   (let ((specs (if (stringp keys) (tuatara.frontend:parse-key-sequence keys) keys)))
     (when (null specs) (refuse "Empty key sequence."))
     (with-keymaps-held
-     (loop for (spec . rest) on specs
-          do (if rest
-                 (setf keymap (prefix-keymap keymap spec))
-                 (let ((table (or (gethash keymap *key-labels*)
-                                  (setf (gethash keymap *key-labels*) (make-hash-table :test 'equal)))))
-                   (if label (setf (gethash spec table) label) (remhash spec table))))))
+      (loop for (spec . rest) on specs
+            do (if rest
+                   (setf keymap (prefix-keymap keymap spec))
+                   (let ((table (or (gethash keymap *key-labels*)
+                                    (setf (gethash keymap *key-labels*) (make-hash-table :test 'equal)))))
+                     (if label (setf (gethash spec table) label) (remhash spec table))))))
     label))
 
 (defun key-label (keymap spec)
@@ -114,16 +114,16 @@ needed."
   (let ((specs (if (stringp keys) (tuatara.frontend:parse-key-sequence keys) keys)))
     (when (null specs) (refuse "Empty key sequence."))
     (with-keymaps-held
-     (incf *keymaps-generation*)
-     (loop for (spec . rest) on specs
-          do (if (null rest)
-                 (if command
-                     (setf (gethash spec (keymap-table keymap)) command)
-                     (progn (remhash spec (keymap-table keymap))
-                            ;; an unbound key keeps no label
-                            (let ((labels (gethash keymap *key-labels*)))
-                              (when labels (remhash spec labels)))))
-                 (setf keymap (prefix-keymap keymap spec :replace t)))))
+      (incf *keymaps-generation*)
+      (loop for (spec . rest) on specs
+            do (if (null rest)
+                   (if command
+                       (setf (gethash spec (keymap-table keymap)) command)
+                       (progn (remhash spec (keymap-table keymap))
+                              ;; an unbound key keeps no label
+                              (let ((labels (gethash keymap *key-labels*)))
+                                (when labels (remhash spec labels)))))
+                   (setf keymap (prefix-keymap keymap spec :replace t)))))
     command))
 
 (defun define-keys (keymap bindings)

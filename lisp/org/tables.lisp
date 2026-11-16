@@ -99,7 +99,7 @@ the line of the character POSITION, or NIL."
 
 (defun org-table-columns (model)
   "How many columns MODEL's table has: the fields of its longest row."
-  (loop for row in (org-table-rows model) unless (eq row :rule) maximize (length row)))
+  (or (loop for row in (org-table-rows model) unless (eq row :rule) maximize (length row)) 0))
 
 (defun org-string-columns (string)
   "How many columns STRING, a table's field, takes on screen: a link as its
@@ -247,14 +247,16 @@ meanwhile, the table left as it is."
 (defmacro with-org-table ((parse model) &body body)
   "Run BODY with MODEL the Org table point is in as an ORG-TABLE-MODEL and PARSE
 the ORG-PARSE of the current buffer it was read from, then write the table
-back aligned into PARSE; true when point was in a table. BODY that asks
+back aligned into PARSE; true when point was in a table. In a large note
+PARSE is of the part holding the table alone (ORG-PARSE-AT-NOW), so that a key
+in a table waits for no parse of the whole file. BODY that asks
 something sets PARSE to the parse ORG-TABLE-ASK gives. BODY returning
 :NOT-DONE leaves the table as it was. A line that does not begin with | is no
 table's, and the file is not parsed for it."
   (let ((buffer (gensym)) (text (gensym)) (position (gensym)) (table (gensym)) (result (gensym)))
     `(let* ((,buffer (current-buffer))
             (,parse (and (uiop:string-prefix-p "|" (string-left-trim *org-blanks* (buffer-line-head ,buffer (point))))
-                         (org-parse-now ,buffer))))
+                         (org-parse-at-now ,buffer (point)))))
        (when ,parse
          (let* ((,text (org-parse-text ,parse))
                 (,position (org-parse-point ,parse))

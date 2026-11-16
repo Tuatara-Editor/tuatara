@@ -1,15 +1,15 @@
 ;;;; src/command/menu.lisp --- Menus of keys: actions and the switches they take, shown in the panel.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; A menu is opened by a key and shown in the panel under the prompt, as
-;;;; the keys under a prefix are: its actions, each a key and a command, and
-;;;; its switches and options, each a key and an argument that the actions
-;;;; read (MENU-ARGUMENTS). A switch or an option typed keeps the menu open,
-;;;; flipping or setting it; an action runs and closes it, as does any other
-;;;; key, C-g among them, unless the menu holds: then a key not in it is
-;;;; said so and the menu stays, and C-g asks before what was set is lost. C-h lists all of the menu in *Help*. Magit's
-;;;; transient menus work this way; the actions here are commands of their
-;;;; own, run as well from M-x without the menu.
+;;;; A menu is opened by a key and shown in the panel under the prompt, as the
+;;;; keys under a prefix are: its actions, each a key and a command, and its
+;;;; switches and options, each a key and an argument that the actions read
+;;;; (MENU-ARGUMENTS). A switch or an option typed keeps the menu open, flipping
+;;;; or setting it; an action runs and closes it, as does any other key, C-g
+;;;; among them, unless the menu holds: then a key not in it is said so and the
+;;;; menu stays, and C-g asks before what was set is lost. C-h lists all of the
+;;;; menu in *Help*. Magit's transient menus work this way; the actions here are
+;;;; commands of their own, run as well from M-x without the menu.
 
 (in-package #:tuatara.command)
 
@@ -228,11 +228,19 @@ now; the menu stays open."
              (given (menu-given entry (second open))))
         (if (and given (not (menu-entry-replace entry)))
             (setf (second open) (remove given (second open) :test #'string=))
-            (let ((value (apply (menu-entry-reader entry) (format nil "~a " (menu-entry-label entry))
-                                (and given (list (subseq given (length argument)))))))
+            (let ((value (funcall-reader (menu-entry-reader entry) (format nil "~a " (menu-entry-label entry))
+                                         (and given (subseq given (length argument))))))
               (setf (second open) (remove given (second open) :test #'string=))
               (when (plusp (length value))
                 (push (concatenate 'string argument value) (second open)))))))))
+
+(defun funcall-reader (reader prompt value)
+  "Ask READER, a function of a prompt, for an answer, offering VALUE when there
+is one: READ-STRING takes it as the text to start from, any other reader as a
+second argument."
+  (cond ((null value) (funcall reader prompt))
+        ((member reader (list 'read-string #'read-string)) (funcall reader prompt :initial value))
+        (t (funcall reader prompt value))))
 
 (defun menu-changed-p (open)
   "True when the menu OPEN, as EDITOR-MENU has it, has arguments on other than
@@ -326,12 +334,20 @@ all."
            ;; one column width for every group, so that they line up
            (column (apply #'key-hint-column-width (mapcar #'third groups)))
            (unavailable (loop for (entry) in refused collect (menu-entry-key entry)))
-           (rows (list (group-title-row (menu-title menu) width))))
+           (rows (list (group-title-row (menu-title menu) width)))
+           (left-out nil))
       (loop for (title entries cells) in groups
-            do (setf rows (append rows (list (list title nil (list (list 0 (length title) :completion-group-title))))
+            do (when (< (- room (length rows)) 2)
+                 (setf left-out t)
+                 (return))
+               (setf rows (append rows (list (list title nil (list (list 0 (length title) :completion-group-title))))
                                   (mapcar (lambda (row) (menu-row-arguments row entries arguments))
                                           (key-hint-rows cells width (max 1 (- room (length rows) 1))
                                                          :column-width column :unavailable unavailable)))))
+      ;; groups left out: the last row kept says where all of them are
+      (when left-out
+        (setf rows (append (subseq rows 0 (min (length rows) (1- room)))
+                           (list (list (format nil "... ~a lists all" *prefix-help-key*) nil nil)))))
       (append (subseq rows 0 (min (length rows) room)) summary))))
 
 (defun menu-panel-height (editor width room)
@@ -345,7 +361,10 @@ without laying the entries out."
            (column (apply #'key-hint-column-width (mapcar #'third groups)))
            (rows 1))
       (loop for (nil nil cells) in groups
-            do (incf rows (1+ (key-hint-row-count cells width (max 1 (- room rows 1)) :column-width column))))
+            do (when (< (- room rows) 2)
+                 (setf rows room)
+                 (return))
+               (incf rows (1+ (key-hint-row-count cells width (max 1 (- room rows 1)) :column-width column))))
       (+ (min rows room) summary))))
 
 (defun menu-keys-pending-p (editor)

@@ -208,6 +208,11 @@ directory, is."
   "True when WHERE is a directory of your disk rather than a repository's address."
   (and (plusp (length where)) (find (char where 0) "/~")))
 
+(defun fetched-source-p (source)
+  "True when SOURCE, a package's source as load-package names it (or NIL), is
+a repository the package is fetched from, not a directory of your disk."
+  (and source (not (local-source-p (package-where source)))))
+
 (defun check-package-where (where)
   "Signal an error unless WHERE, a package's source, is an address or a directory
 named whole (/ or ~/ first). One named from the directory Tuatara starts in would
@@ -442,14 +447,19 @@ later or nothing is."
   "Evaluate FORMS, the :init or :config (WHAT) of the package NAME, in the init
 file's package, each by itself, the compiler's warnings unsaid (a setting
 named before its package defines it): one that fails is said, with why, and
-the others still evaluated."
-  (let ((*package* (find-package :tuatara-user)))
+the others still evaluated. A setting they give a value it does not take is
+put back and said, as for the rest of the init file
+\(TUATARA.RUNTIME:PUT-BACK-MISFIT-SETTINGS), when the forms run later too."
+  (let ((*package* (find-package :tuatara-user))
+        (settings (tuatara.runtime:settings-snapshot)))
     (dolist (form forms)
       (handler-case (reporting-errors ("evaluating ~a's ~(~s~)" name what)
                                       (handler-bind ((warning #'muffle-warning)) (eval form)))
         (error (e)
           (message "~a's ~(~s~): ~a failed: ~a" name what (let ((*print-length* 4) (*print-level* 2))
-                                                            (prin1-to-string form)) e))))))
+                                                            (prin1-to-string form)) e))))
+    (dolist (words (tuatara.runtime:put-back-misfit-settings settings))
+      (message "~a's ~(~s~): ~a" name what words))))
 
 (defun package-loaded-p (name)
   "True when the package NAME has loaded this session."
@@ -623,7 +633,7 @@ DEFER alone, once the editor has started. Never once NAME is removed
              (add-mode-hook (mode-named mode) (lambda (buffer) (declare (ignore buffer)) (funcall start)))))
           (defer
            (pushnew name *deferred-packages* :test #'string=)
-              (defer-action start))
+           (defer-action start))
           (t (funcall start)))))
 
 (defun edit-distance (a b)
@@ -714,8 +724,9 @@ once. Returns the file loaded, or NIL when it is loaded later or nothing is."
            (declared (list name source version file directory))
            (arrange (lambda () (load-package-from name source version file))))
           (t
-           (let ((mode (and (string/= name "tuatara") (ignoring-errors-reported ("finding the mode ~a" name)
-                                                                                (mode-named (intern (string-upcase name) :keyword)))))
+           (let ((mode (and (string/= name "tuatara")
+                            (ignoring-errors-reported ("finding the mode ~a" name)
+                              (mode-named (intern (string-upcase name) :keyword)))))
                  (near nil))
              (unless (or mode (string= name "tuatara"))
                (setf near (known-package-name-near name))

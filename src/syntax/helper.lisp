@@ -34,7 +34,7 @@ data directory ($XDG_DATA_HOME, ~/.local/share/ unless set), each NAME.so with
 its rules in rules/, indents/, textobjects/, injections/, locals/ and tags/
 beside it, as Tuatara's own syntax/ has them. Grammars are never loaded from it:
 turned on, one is copied into USER-GRAMMAR-STORE."
-  (uiop:xdg-data-home "tuatara/grammars/"))
+  (merge-pathnames "tuatara/grammars/" (tuatara.io:data-home)))
 
 (sb-ext:defglobal **store-refused** nil
   "Why the directory of grammars you added and turned on cannot be used, in
@@ -99,8 +99,7 @@ asked of it once."
   (or **physical-memory**
       (setf **physical-memory**
             (flet ((conf (name)
-                     (sb-alien:alien-funcall (sb-alien:extern-alien "sysconf" (function sb-alien:long sb-alien:int))
-                                             name)))
+                     (tuatara.runtime:%sysconf name)))
               (let ((pages (conf 85)) (size (conf 30)))      ; _SC_PHYS_PAGES, _SC_PAGESIZE
                 (if (and (plusp pages) (plusp size)) (* pages size) 0))))))
 
@@ -114,6 +113,11 @@ stopped (*SYNTAX-MEMORY-LIMIT*).")
   "The seconds a program parsing for the editor (its syntax helper) may take
 to answer, over the time a parse may take: one that takes longer, a grammar's
 code looping in it, is ended, and another started when it is next needed.")
+
+(defconstant +quick-answer-wait+ 1/4
+  "The seconds the editor waits, as you type and move, for the program parsing
+to answer what it answers at once (an edit told to a tree, a step through
+it): one that hangs is ended then, and holds the editor no longer.")
 
 (defgeneric host-trusted-text-p (host buffer)
   (:documentation "True when BUFFER's text may be parsed by the helper parsing the files of
@@ -178,8 +182,9 @@ FAULTED holds the names of the grammars that crashed in it, or in the helpers
 before it for the same buffer. IDLE holds its connections no call uses now,
 CONNECTIONS all it has. WRITE-LOCK is held while the first connection is
 written to, and while IDLE and CONNECTIONS change. QUERIES holds the numbers
-of the queries it has been given. ALIVE is set until it ends, ENDED says what
-ended it, USED when it was last asked something."
+of the queries it has been given. LATE-READERS counts the replies come late
+read on now (+LATE-READERS-MOST+ at most). ALIVE is set until it ends, ENDED
+says what ended it, USED when it was last asked something."
   (process nil :read-only t :documentation "The helper's process.")
   (fd -1 :type fixnum :read-only t :documentation "The helper's first connection.")
   (directories '() :read-only t :documentation "The grammar directories the helper was given.")
@@ -197,6 +202,8 @@ lose it (an export), never ended for room.")
 and the connections change.")
   (queries (make-hash-table :synchronized t) :read-only t
            :documentation "The numbers of the queries the helper has been given.")
+  (late-readers (list 0) :documentation "How many replies come late are read on now, in a cons for atomic
+counting.")
   (alive t :documentation "True until the helper ends.")
   (ended nil :documentation "What ended the helper: :CRASHED, :HUNG, :SLOW (honest
 work past its time), :BROKEN (a reply that cannot be right) or :STOPPED; NIL
@@ -210,6 +217,10 @@ while it runs.")
 (defmethod print-object ((helper helper) stream)
   (print-unreadable-object (helper stream :type t :identity t)
     (format stream "~(~a~)~:[ ended~;~]" (helper-kind helper) (helper-alive helper))))
+
+(defconstant +late-readers-most+ 2
+  "The most replies come late a helper's connections are kept open for at
+once: one more ends the helper, as one that does not answer.")
 
 (sb-ext:defglobal **helpers** '()
   "Every helper running.")
@@ -236,7 +247,9 @@ reply's body is put, IN-SIZE octets of IN-ROOM. HEADER is where a message's
 header is read. TEXT is where the text a parse reads is given from. STATUS is
 what the reply's header said, :DEAD when the helper ended first. OPEN is true
 while a request is out and its reply not read whole, as when reading it was
-cut short: such a connection is closed when given back, never used again."
+cut short: such a connection is closed when given back, never used again; or
+a function, when the reply came late and is to be read on (CALL-SEND's
+LATE), which reads it when the connection is given back."
   (helper nil :read-only t :documentation "The helper the connection is to.")
   (fd -1 :type fixnum :read-only t :documentation "The connection's socket.")
   (out (null-pointer) :type sb-sys:system-area-pointer :documentation "Foreign memory the request is written in.")
@@ -250,24 +263,21 @@ cut short: such a connection is closed when given back, never used again."
   (text (null-pointer) :type sb-sys:system-area-pointer
         :documentation "Foreign memory the text a parse reads is given through.")
   (status nil :documentation "How the request went: its reply's third number, or :DEAD.")
-  (open nil :documentation "True while the connection's request is out and its reply not read whole."))
+  (open nil :documentation "True while the connection's request is out and its reply not read whole; a
+function reading on a reply come late."))
 
 (defun foreign-grow (sap room wanted)
   "Foreign memory of at least WANTED octets holding what SAP's ROOM octets
 held (SAP freed), and its room, as two values."
   (let* ((new (max wanted (* 2 room) 4096))
-         (got (sb-alien:alien-funcall
-               (sb-alien:extern-alien "realloc" (function sb-alien:unsigned-long sb-alien:unsigned-long
-                                                          sb-alien:unsigned-long))
-               (sb-sys:sap-int sap) new)))
-    (when (zerop got)
+         (got (tuatara.io:%realloc sap new)))
+    (when (null-pointer-p got)
       (error 'storage-condition))
-    (values (sb-sys:int-sap got) new)))
+    (values got new)))
 
 (defun foreign-free (sap)
   "Free the foreign memory at SAP, from FOREIGN-GROW."
-  (sb-alien:alien-funcall (sb-alien:extern-alien "free" (function sb-alien:void sb-alien:unsigned-long))
-                          (sb-sys:sap-int sap)))
+  (tuatara.io:%free sap))
 
 (defun milliseconds-to (deadline)
   "The milliseconds until DEADLINE (an internal real time), 0 once it has passed."
@@ -277,27 +287,20 @@ held (SAP freed), and its room, as two values."
   "Read (DIRECTION :READ) or write (:WRITE) SIZE octets at SAP over file
 descriptor (FD) by DEADLINE, an internal real time (NIL for none): T when
 done, :ENDED when FD ended or failed first, :LATE when the deadline came
-first. FD may be one that does not wait (O_NONBLOCK)."
+first, with the octets moved by then as a second value. FD may be one that
+does not wait (O_NONBLOCK)."
   (let ((done 0))
     (loop while (< done size)
           do (let ((moved (if (eq direction :read)
-                              (sb-alien:alien-funcall
-                               (sb-alien:extern-alien "read"
-                                                      (function sb-alien:long sb-alien:int sb-sys:system-area-pointer
-                                                                sb-alien:unsigned-long))
-                               fd (sb-sys:sap+ sap done) (- size done))
-                              (sb-alien:alien-funcall
-                               (sb-alien:extern-alien "send"
-                                                      (function sb-alien:long sb-alien:int sb-sys:system-area-pointer
-                                                                sb-alien:unsigned-long sb-alien:int))
-                               fd (sb-sys:sap+ sap done) (- size done) 16384)))) ; MSG_NOSIGNAL
+                              (tuatara.io:%read fd (sb-sys:sap+ sap done) (- size done))
+                              (tuatara.io:%send fd (sb-sys:sap+ sap done) (- size done) 16384)))) ; MSG_NOSIGNAL
                (cond ((plusp moved) (incf done moved))
                      ((zerop moved) (return-from transfer :ended))
                      (t (let ((errno (sb-alien:get-errno)))
                           (cond ((= errno sb-posix:eintr))
                                 ((= errno sb-posix:eagain)
                                  (when (and deadline (tuatara.runtime:deadline-passed-p deadline))
-                                   (return-from transfer :late))
+                                   (return-from transfer (values :late done)))
                                  (poll-fd fd (if (eq direction :read) 1 4)
                                           (if deadline (milliseconds-to deadline) 1000)))
                                 (t (return-from transfer :ended))))))))
@@ -356,7 +359,11 @@ between calls: more, taken for a large one, is let go.")
 (defun give-back-call (call)
   "Keep the connection CALL to be used again, its memory for requests and
 replies no more than +KEPT-ROOM+, or close it when its helper has ended or
-the reply to its request was not read whole (CALL-OPEN)."
+the reply to its request was not read whole (CALL-OPEN). A reply come late,
+to be read on, is read first on a thread of its own, which gives CALL back
+after."
+  (when (functionp (call-open call))
+    (return-from give-back-call (read-late-reply call)))
   (when (> (call-in-room call) +kept-room+)
     (foreign-free (call-in call))
     (multiple-value-bind (in room) (foreign-grow (null-pointer) 0 4096)
@@ -371,6 +378,32 @@ the reply to its request was not read whole (CALL-OPEN)."
                 (progn (push call (helper-idle helper)) nil)
                 (progn (setf (helper-connections helper) (remove call (helper-connections helper))) t)))
       (close-call call))))
+
+(defun read-late-reply (call)
+  "Read on, in a thread of its own, the reply come late to CALL's request
+(CALL-OPEN, a function then), and give CALL back after. A helper no thread
+can be made for is ended, as one that did not answer."
+  (let* ((read-on (call-open call))
+         (carried (with-helper-settings))
+         (helper (call-helper call))
+         ;; taken by the thread or by the fallback below, never both: one of them gives CALL back
+         (claim (list nil)))
+    (flet ((give-back ()
+             (sb-ext:atomic-decf (car (helper-late-readers helper)))
+             (give-back-call call)))
+      (unless (tuatara.runtime:ignoring-errors-reported ("reading a late reply of the syntax helper")
+                (tuatara.runtime:make-guarded-thread
+                 (lambda ()
+                   (unless (sb-ext:compare-and-swap (car claim) nil :thread)
+                     (unwind-protect
+                          (catch 'reply-malformed
+                            (funcall carried read-on))
+                       (give-back))))
+                 :name "syntax helper's late reply"))
+        (unless (sb-ext:compare-and-swap (car claim) nil :here)
+          (setf (call-open call) t)
+          (end-helper helper :hung)
+          (give-back))))))
 
 (defun call-room (call octets)
   "Make room in CALL's request for OCTETS more."
@@ -412,7 +445,7 @@ multiple of four octets."
 (defun reply-overrun (call)
   "End the helper of CALL, whose reply cannot be right, and leave the
 WITH-CALL that CALL belongs to, which gives NIL."
-  (end-helper (call-helper call) :broken)
+  (reply-malformed (call-helper call))
   (throw 'reply-malformed nil))
 
 (declaim (inline reply-has))
@@ -505,17 +538,19 @@ none past its end, by DEADLINE; as TRANSFER says."
     (transfer (call-fd call) out (+ 12 size) :write deadline)))
 
 (defun op-reply-most (op)
-  "The most octets a reply to a request asking OP may hold."
-  (cond ((member op (list +op-has-error+ +op-copy+ +op-parser+ +op-edits+)) 4)
-        ((= op +op-parse+) 8)
-        ((= op +op-select+) 12)
-        ;; a grammar's node types, names of a few hundred octets at most
-        ((= op +op-grammar+) (* 16 1024 1024))
-        ((= op +op-memory+) 24)
-        ((= op +op-ancestry+) (* 20 4096))
-        ((= op +op-children+) (+ 4 (* 8 4096)))
-        ((member op (list +op-parser-delete+ +op-tree-delete+ +op-reset+ +op-disable+ +op-query-delete+)) 0)
-        (t +reply-most+)))
+  "The most octets a reply to a request asking OP may hold. Asked for every
+request, so nothing is made."
+  (case op
+    ((#.+op-has-error+ #.+op-copy+ #.+op-parser+ #.+op-edits+) 4)
+    (#.+op-parse+ 8)
+    (#.+op-select+ 12)
+    ;; a grammar's node types, names of a few hundred octets at most
+    (#.+op-grammar+ (* 16 1024 1024))
+    (#.+op-memory+ 24)
+    (#.+op-ancestry+ (* 20 4096))
+    (#.+op-children+ (+ 4 (* 8 4096)))
+    ((#.+op-parser-delete+ #.+op-tree-delete+ #.+op-reset+ #.+op-disable+ #.+op-query-delete+) 0)
+    (t +reply-most+)))
 
 (defun call-send (call &key seconds cancel input most (late :hung))
   "Send CALL's request and wait for its reply: its status (0 when it went
@@ -524,35 +559,86 @@ ended when the whole call, its request, the text its parse asks for and its
 reply, takes more than SECONDS (*SYNTAX-HELPER-WAIT* unless given), or its
 reply is longer than MOST octets (unless given, the most for what it asked,
 OP-REPLY-MOST); ended as LATE when late (:HUNG unless given: :SLOW for work
-that may honestly take that long). A reply is taken in as it comes, the room
-for it growing with what came, not with what its header says. CANCEL, a
-function of no arguments, is called now and then while waiting, to say a
-parse is to stop; INPUT is the text a parse asked reads."
+that may honestly take that long). With LATE :DROP, for a reply no one needs,
+the helper is not ended for being late, the connection is closed and :LATE
+given. LATE may instead be a function of CALL,
+for a request that asks no text: the helper is then not ended for being late,
+and :LATE is given. Its reply, when it comes within *SYNTAX-HELPER-WAIT* more
+seconds, is read on a thread of its own once CALL is given back, and when it
+went well the function is called with CALL holding it, and may ask more on
+CALL; a helper that does not answer by then, or with +LATE-READERS-MOST+
+replies come late read on already, is ended as :HUNG. A reply is
+taken in as it comes, the room for it growing with what came, not with what
+its header says. CANCEL, a function of no arguments, is called now and then
+while waiting, to say a parse is to stop; INPUT is the text a parse asked
+reads."
   (let* ((helper (call-helper call))
-         (fd (call-fd call))
          (sap (call-out call))
-         (header (call-header call))
          (deadline (tuatara.runtime:deadline-in (or seconds *syntax-helper-wait*)))
          (most (min +reply-most+ (or most (op-reply-most (sb-sys:sap-ref-32 (call-out call) 8))))))
     (setf (sb-sys:sap-ref-32 sap 0) (- (call-out-size call) 12)
           (sb-sys:sap-ref-32 sap 4) 1
           (helper-used helper) (get-internal-real-time)
           (call-open call) t)
-    (flet ((dead (why)
-             (end-helper helper why)
-             (return-from call-send (setf (call-status call) :dead)))
-           (moved (result)
-             (case result
-               (:late (end-helper helper late) (return-from call-send (setf (call-status call) :dead)))
-               (:ended (end-helper helper :crashed) (return-from call-send (setf (call-status call) :dead))))))
-      (moved (transfer fd sap (call-out-size call) :write deadline))
+    (case (transfer (call-fd call) sap (call-out-size call) :write deadline)
+      ;; a request not sent whole is never answered: the connection is closed when given back
+      (:late (if (or (functionp late) (eq late :drop))
+                 (setf (call-status call) :late)
+                 (progn (end-helper helper late) (setf (call-status call) :dead))))
+      (:ended (end-helper helper :crashed) (setf (call-status call) :dead))
+      (t (call-reply call deadline most :cancel cancel :input input :late late)))))
+
+(defun read-on-later (call most function header-got body-got)
+  "Have the reply come late to CALL's request read on once CALL is given back
+\(READ-LATE-REPLY), from HEADER-GOT octets of its header and BODY-GOT of its
+body, and FUNCTION called with CALL when it went well, MOST as CALL-SEND
+says; NIL when the helper has +LATE-READERS-MOST+ replies read on already."
+  (let ((readers (helper-late-readers (call-helper call))))
+    (if (>= (sb-ext:atomic-incf (car readers)) +late-readers-most+)
+        (progn (sb-ext:atomic-decf (car readers)) nil)
+        (setf (call-open call)
+              (lambda ()
+                (setf (call-open call) t)
+                (when (eql 0 (call-reply call (tuatara.runtime:deadline-in *syntax-helper-wait*) most
+                                         :header-got header-got :body-got body-got))
+                  (funcall function call)))))))
+
+(defun call-reply (call deadline most &key cancel input (late :hung) (header-got 0) (body-got 0))
+  "Wait for the reply to CALL's request, sent whole, by DEADLINE: as
+CALL-SEND says, MOST, CANCEL, INPUT and LATE as there. HEADER-GOT and
+BODY-GOT are the octets of the reply's header and body read before, when a
+reply read late is read on."
+  (let ((helper (call-helper call))
+        (fd (call-fd call))
+        (header (call-header call)))
+    (labels ((dead (why)
+               (end-helper helper why)
+               (return-from call-reply (setf (call-status call) :dead)))
+             (dropped ()
+               ;; the connection, its reply not read whole (CALL-OPEN), is closed when given back
+               (return-from call-reply (setf (call-status call) :late)))
+             (late (header-got body-got)
+               (cond ((eq late :drop) (dropped))
+                     ((not (functionp late)) (dead late))
+                     ((read-on-later call most late header-got body-got)
+                      (return-from call-reply (setf (call-status call) :late)))
+                     (t (dead :hung))))
+             (moved (result)
+               (case result
+                 (:late (if (eq late :drop) (dropped) (dead (if (functionp late) :hung late))))
+                 (:ended (dead :crashed)))))
       (loop
         (cond ((not (helper-alive helper)) (return (setf (call-status call) :dead)))
-              ((tuatara.runtime:deadline-passed-p deadline) (dead late))
-              ((zerop (poll-fd fd 1 (min 5 (milliseconds-to deadline))))
+              ((and (zerop header-got) (tuatara.runtime:deadline-passed-p deadline)) (late 0 0))
+              ((and (zerop header-got) (zerop (poll-fd fd 1 (min 5 (milliseconds-to deadline)))))
                (when cancel (funcall cancel)))
               (t
-               (moved (transfer fd header 12 :read deadline))
+               (multiple-value-bind (result done)
+                   (transfer fd (sb-sys:sap+ header header-got) (- 12 header-got) :read deadline)
+                 (case result
+                   (:late (late (+ header-got done) 0))
+                   (:ended (dead :crashed))))
+               (setf header-got 0)
                (let ((size (sb-sys:sap-ref-32 header 0))
                      (id (sb-sys:sap-ref-32 header 4))
                      (status (sb-sys:sap-ref-32 header 8)))
@@ -577,18 +663,24 @@ parse is to stop; INPUT is the text a parse asked reads."
                      (progn
                        (unless (and (= id 1) (<= size most)) (dead :broken))
                        ;; room made as the reply comes, at most twice what came before
-                       (loop with got = 0
+                       (loop with got = body-got
                              while (< got size)
                              do (let ((part (min (- size got) (max 65536 got))))
                                   (when (> (+ got part) (call-in-room call))
                                     (multiple-value-bind (in room)
                                         (foreign-grow (call-in call) (call-in-room call) (+ got part))
                                       (setf (call-in call) in (call-in-room call) room)))
-                                  (moved (transfer fd (sb-sys:sap+ (call-in call) got) part :read deadline))
+                                  (multiple-value-bind (result done)
+                                      (transfer fd (sb-sys:sap+ (call-in call) got) part :read deadline)
+                                    (case result
+                                      ;; the header kept: read on from the octets of the body that came
+                                      (:late (late 12 (+ got done)))
+                                      (:ended (dead :crashed))))
                                   (incf got part)))
                        (setf (call-in-size call) size
                              (call-open call) nil)
                        (return (setf (call-status call) status)))))))))))
+
 
 (defmacro with-call ((call helper op) &body body)
   "Run BODY with CALL a connection to HELPER (CALL-SEND) no other call uses,
@@ -705,7 +797,6 @@ holds already."
                       :parse "syntax helper (~(~a~)) started, ~
                               ~:[not shut in: no sandbox, *syntax-helper-unconfined* set~;shut in~]"
                       kind (eq how :shut-in))
-
                      helper))
                   (t
                    (sb-posix:close mine)

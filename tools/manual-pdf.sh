@@ -10,7 +10,6 @@ cd "$(dirname "$0")/.."
 . tools/inside.sh
 command -v xelatex >/dev/null || { echo "No xelatex: install TeX Live" >&2; exit 1; }
 tools/manual-tables.sh > /dev/null
-tree="$PWD/"
 out="$PWD/build/manual"
 mkdir -p "$out"
 config="$(mktemp -d "$PWD/build/.manual-config.XXXXXX")"
@@ -30,12 +29,9 @@ if inside test -d /run/host/usr/share/fonts; then
 XML
   fonts=(FONTCONFIG_FILE="$config/fonts.conf")
 fi
-inside env XDG_CONFIG_HOME="$config" "${fonts[@]}" sbcl --dynamic-space-size 4GB --non-interactive \
-  --load tools/quicklisp.lisp \
-  --eval "(push #p\"$tree\" asdf:*central-registry*)" \
-  --eval '(ql:quickload (list :tuatara/defaults :tuatara/frontend-fake :tuatara/terminal) :silent t)' \
-  --load tools/manual-html.lisp \
-  --eval "(manual-html:run-pdf #p\"$tree\")"
+in_tree ${fonts[@]+"${fonts[@]}"} '(list :tuatara/defaults :tuatara/frontend-fake :tuatara/terminal)' \
+  '(load "tools/manual-html.lisp")' \
+  "(manual-html:run-pdf #p\"$PWD/\")"
 cd "$work"
 for pass in 1 2 3; do
   xelatex -interaction=nonstopmode -halt-on-error "$out/tuatara-manual.tex" > xelatex-$pass.log ||

@@ -3,18 +3,17 @@
 
 (defpackage #:tuatara.command
   (:use #:cl #:alexandria)
-  (:import-from #:tuatara.runtime #:define-record #:refuse #:define-setting)
+  (:import-from #:tuatara.runtime #:define-record #:refuse #:define-setting #:quit #:quit-words)
   (:import-from #:tuatara-user #:*use-system-clipboard* #:*cursor-shape* #:*cursor-colour* #:message #:current-buffer
                 #:*message-log-max* #:*mode-line-name-limit* #:*gui-title* #:place-buffers #:*split-height-threshold*
-                #:*split-width-threshold*
-                #:*show-completion-count* #:*prompt-above-candidates* #:*key-hint-rows* #:*debug-on-error*)
+                #:*split-width-threshold* #:*show-completion-count* #:*prompt-above-candidates* #:*key-hint-rows*
+                #:*debug-on-error*)
   (:import-from #:tuatara.buffer #:live-buffer-p)
+  (:import-from #:tuatara.display #:escape-controls #:shown-name)
   (:documentation "Events, keymaps and key-sequence reading in precedence order, interactive calls,
 hooks, the minibuffer core, the modal state slot.")
-  (:import-from #:tuatara.display #:escape-controls #:shown-name)
   (:export #:escape-controls #:escape-format-tildes)
   (:export #:buffer-override-keymap #:buffer-given-directory #:buffer-mode-name #:buffer-kind)
-  (:import-from #:tuatara.runtime #:quit #:quit-words)
   (:export #:keymap #:keymap-p #:make-keymap #:define-key #:define-keys #:label-keys #:lookup-key #:keymaps-lookup
            #:map-keymap-bindings #:keymap-parent #:keymap-entries #:keymap-name #:unbind-commands-if
            #:define-command #:key-only-command-p #:find-command #:command-symbol #:command-names #:*commands*
@@ -42,7 +41,7 @@ hooks, the minibuffer core, the modal state slot.")
            #:host-startup-buffer #:*line-highlight-functions*
            #:resize #:run-command #:handle-key #:default-mode-line
            #:candidate #:make-candidate #:candidate-string #:candidate-annotation #:candidate-value #:candidate-result
-           #:candidate-group #:candidate-columns #:candidate-suffix #:candidate-rank #:group-candidates #:match-spans
+           #:candidate-group #:candidate-columns #:candidate-suffix #:candidate-rank #:candidate-ranked #:group-candidates #:match-spans
            #:join-fields #:fit-fields #:fields-columns #:panel-columns
            #:filter-candidates #:component-match #:first-line #:first-sentence #:where-is #:prefix-entries
            #:set-key-label #:key-label
@@ -74,8 +73,8 @@ hooks, the minibuffer core, the modal state slot.")
            #:*buffers-for-every-client* #:*client-end-functions* #:editor-idle-frontend #:idle-frame-p
            #:keep-idle-frame #:client-group-words #:*client-variables* #:client-variable-p #:client-far-p
            #:*buffers-asked-about* #:buffer-held-by-question-p
-           #:select-frame #:call-in-frame #:*display-generation* #:editor-job-waker #:buffer-window #:buffer-windows
-           #:editor-selections #:one-window-p #:fit-windows #:select-window #:split-window
+           #:select-frame #:call-in-frame #:follow-settings #:*display-generation* #:editor-job-waker #:buffer-window
+           #:buffer-windows #:editor-selections #:one-window-p #:fit-windows #:select-window #:split-window
            #:remove-window #:only-window #:swap-windows #:rotate-window-states #:window-towards
            #:window-cursor-cell #:window-at-cell #:window-text-cell #:window-cell-position #:most-recent-window
            #:place-buffers #:*buffer-places* #:*places* #:buffer-place #:buffer-place-p #:buffer-place-which

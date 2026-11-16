@@ -43,7 +43,8 @@ why."
 (defun pdf-string-text (octets)
   "OCTETS, a PDF text string, as text: UTF-16 with its mark, UTF-8 with its,
 else each octet its character."
-  (cond ((and (>= (length octets) 2) (= (aref octets 0) #xFE) (= (aref octets 1) #xFF)) (utf-16-text octets :big-endian t))
+  (cond ((and (>= (length octets) 2) (= (aref octets 0) #xFE) (= (aref octets 1) #xFF))
+         (utf-16-text octets :big-endian t))
         ((and (>= (length octets) 3) (= (aref octets 0) #xEF) (= (aref octets 1) #xBB) (= (aref octets 2) #xBF))
          (octets-text octets 3 (length octets)))
         (t (tuatara.text:octets-latin-1 octets))))
@@ -173,20 +174,22 @@ bracket however long it is. No more than 64 KB of it is kept."
     (values (if raw (coerce out '(simple-array (unsigned-byte 8) (*))) (pdf-string-text out)) j)))
 
 (defparameter *pdf-item-limit* 1000
-  "The most items of a PDF array read (PDF-OBJECT-AT): the rest of a longer
-one is passed over.")
+  "The most items of a PDF array kept (PDF-OBJECT-AT): the rest of a longer
+one is read past, not kept.")
 
 (defun pdf-array-at (octets i depth)
-  "The [array] in OCTETS from I, nested DEPTH deep, as a list of no more than
-*PDF-ITEM-LIMIT* items, and where it ends: past the closing bracket, or
-where the items stopped being read."
+  "The [array] in OCTETS from I, nested DEPTH deep, as a list of its first
+*PDF-ITEM-LIMIT* items, and where it ends: past the closing bracket, the items
+past the limit read over without being kept, or where an item could not be
+read."
   (let ((n (length octets)) (items '()) (count 0) (j (1+ i)))
     (loop
       (setf j (pdf-skip-space octets j))
-      (when (or (>= j n) (= (aref octets j) 93) (> count *pdf-item-limit*)) (setf j (min n (1+ j))) (return))
+      (when (or (>= j n) (= (aref octets j) 93)) (setf j (min n (1+ j))) (return))
       (multiple-value-bind (item next) (pdf-object-at octets j (1+ depth))
         (when (<= next j) (return))
-        (push item items) (incf count) (setf j next)))
+        (when (< count *pdf-item-limit*) (push item items) (incf count))
+        (setf j next)))
     (values (nreverse items) j)))
 
 (defun pdf-name-at (octets i)
@@ -279,7 +282,9 @@ NUMBER GENERATION); NIL when it is none."
 
 (defun pdf-dictionary-p (value)
   "True when VALUE is a dictionary: a list of (NAME . VALUE), each NAME
-beginning with a /."
+beginning with a /. Arrays are lists too, told apart only by this shape, so
+an array whose items are all arrays beginning with a name ([[/A 1] [/B 2]])
+passes as well."
   (and (consp value) (not (eq (first value) :ref))
        (every (lambda (pair)
                 (and (consp pair) (stringp (car pair)) (plusp (length (car pair))) (char= #\/ (char (car pair) 0))))
@@ -347,7 +352,8 @@ when no NUMBER GENERATION stands before P."
   (let ((i (1- p)))
     (flet ((back-white ()
              (let ((from i)) (loop while (and (>= i 0) (pdf-white-p (aref octets i))) do (decf i)) (< i from)))
-           (back-numerals () (let ((to i)) (loop while (and (>= i 0) (<= 48 (aref octets i) 57) (< (- to i) 12)) do (decf i)) (< i to))))
+           (back-numerals ()
+             (let ((to i)) (loop while (and (>= i 0) (<= 48 (aref octets i) 57) (< (- to i) 12)) do (decf i)) (< i to))))
       (when (and (back-white) (back-numerals))
         (let ((generation-start (1+ i)))
           (when (and (back-white) (back-numerals))
@@ -375,7 +381,8 @@ reaches an endstream."
                      (or (>= (+ obj 3) n) (pdf-delimiter-p (aref octets (+ obj 3)))))
             (multiple-value-bind (value value-end) (pdf-object-at octets (+ obj 3))
               (let* ((next (pdf-skip-space octets value-end))
-                     (object (make-pdf-indirect :number number :generation generation :value value :at at :end value-end)))
+                     (object (make-pdf-indirect :number number :generation generation :value value
+                                                :at at :end value-end)))
                 (when (and (tuatara.io:octets-at-p octets "stream" next)
                            (or (>= (+ next 6) n) (member (aref octets (+ next 6)) '(10 13 32))))
                   (let* ((data (pdf-line-end-after octets (+ next 6)))
@@ -398,7 +405,9 @@ reaches an endstream."
                           (and (or exact (and close (pdf-length-after-p octets length data close))) t)
                           next (if close (pdf-skip-space octets (+ close 9)) n))))
                 (setf (pdf-indirect-end object)
-                      (if (tuatara.io:octets-at-p octets "endobj" next) (+ next 6) (max next (pdf-indirect-end object))))
+                      (if (tuatara.io:octets-at-p octets "endobj" next)
+                          (+ next 6)
+                          (max next (pdf-indirect-end object))))
                 object))))))))
 
 ;;; The file's objects, saves and cross-reference tables
@@ -506,7 +515,8 @@ it."
           do (when (zerop (logand count 4095)) (tuatara.runtime:job-check-stop))
              (let ((stream (pdf-stream-holding objects at t)))
                (if stream
-                   (progn (pushnew stream holding)
+                   ;; the search goes on past the stream's end: a stream is met once
+                   (progn (push stream holding)
                           (setf at (tuatara.io:octets-search mark octets :start (pdf-indirect-stream-end stream))))
                    (progn (push at outside) (incf kept)
                           (setf at (tuatara.io:octets-search mark octets :start (+ at 5)))))))
@@ -729,10 +739,7 @@ such a file."
   "The object of OBJECTS (a vector of PDF-INDIRECT in the order written)
 whose stream holds AT, the last one beginning before it, when its end is
 CONFIRMED or, with CONFIRMED NIL, when it is not; else NIL."
-  (let ((low 0) (high (length objects)))
-    (loop while (< low high)
-          do (let ((middle (floor (+ low high) 2)))
-               (if (<= (pdf-indirect-at (aref objects middle)) at) (setf low (1+ middle)) (setf high middle))))
+  (let ((low (tuatara.runtime:bisect (middle 0 (length objects)) (<= (pdf-indirect-at (aref objects middle)) at))))
     (let ((object (and (plusp low) (aref objects (1- low)))))
       (and object (pdf-indirect-stream-start object)
            (eq (and (pdf-indirect-confirmed object) t) (and confirmed t))
@@ -881,7 +888,9 @@ order they are undone."
 (defun pdf-predicted (data parameters)
   "DATA undone of the predictor PARAMETERS (a filter's /DecodeParms) name:
 PNG's (10 to 15) row by row, or TIFF's (2); DATA itself for none."
-  (let ((predictor (or (pdf-get parameters "/Predictor") 1)))
+  (let ((predictor (or (pdf-get parameters "/Predictor") 1))
+        (data (coerce data '(simple-array (unsigned-byte 8) (*)))))
+    (declare (type (simple-array (unsigned-byte 8) (*)) data))
     (if (not (and (integerp predictor) (>= predictor 2)))
         data
         (let* ((colours (let ((c (pdf-get parameters "/Colors"))) (if (and (integerp c) (<= 1 c 32)) c 1)))
@@ -898,6 +907,7 @@ PNG's (10 to 15) row by row, or TIFF's (2); DATA itself for none."
                 out)
               (let* ((rows (floor (length data) (1+ row)))
                      (out (make-array (* rows row) :element-type '(unsigned-byte 8) :initial-element 0)))
+                (declare (type (simple-array (unsigned-byte 8) (*)) out) (type fixnum rows row pixel))
                 (dotimes (r rows out)
                   (let ((kind (aref data (* r (1+ row))))
                         (in (1+ (* r (1+ row))))
@@ -925,6 +935,7 @@ SIZE of them, at most LIMIT."
 
 (defun pdf-decoded-put (out octet limit)
   "Put OCTET at the end of OUT (PDF-DECODED-OUT); an error past LIMIT octets."
+  (declare (type (and (vector (unsigned-byte 8)) (not simple-array)) out) (type (unsigned-byte 8) octet))
   (when (>= (fill-pointer out) limit)
     (refuse "it decodes to more than ~:d octets" limit))
   (vector-push-extend octet out))
@@ -947,7 +958,8 @@ SIZE of them, at most LIMIT."
              (let ((value 0))
                (dolist (d (reverse group)) (setf value (+ (* value 85) d)))
                (loop repeat (- 5 count) do (setf value (+ (* value 85) 84)))
-               (loop for k from 3 downto (- 4 (1- count)) do (pdf-decoded-put out (ldb (byte 8 (* 8 k)) value) limit)))))
+               (loop for k from 3 downto (- 4 (1- count))
+                     do (pdf-decoded-put out (ldb (byte 8 (* 8 k)) value) limit)))))
       (loop for c across data
             do (cond ((= c 126) (return))
                      ((and (= c 122) (null group)) (dotimes (k 4) (pdf-decoded-put out 0 limit)))
@@ -973,8 +985,10 @@ code early, as standard), as the octets it stands for, at most LIMIT of them."
         (setf bit-buffer (ldb (byte bit-count 0) bit-buffer))
         (cond ((= code 256) (setf next 258 width 9 previous nil))
               ((= code 257) (return))
-              (t (let ((entry (cond ((aref table code))
-                                    ((and previous (= code next)) (concatenate 'tuatara.text:octets previous (subseq previous 0 1)))
+              ;; past NEXT the table holds what came before a clear code, not this code's
+              (t (let ((entry (cond ((and (< code next) (aref table code)))
+                                    ((and previous (= code next))
+                                     (concatenate 'tuatara.text:octets previous (subseq previous 0 1)))
                                     (t (return)))))
                    (loop for o across entry do (pdf-decoded-put out o limit))
                    (when (and previous (< next 4096))

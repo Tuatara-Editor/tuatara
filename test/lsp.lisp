@@ -1322,7 +1322,8 @@ place, where the text as it is now has them: each (AT TEXT FACE)."
   (let ((rope (tuatara.text:string->rope (format nil "aé€~%b~a" (string (code-char #x1F600)))))
         (utf-8 (fake-server "/nowhere/" :utf-8))
         (utf-16 (fake-server "/nowhere/" :utf-16)))
-    (flet ((at (server line character) (tuatara.lsp::lsp-line-byte server rope line character)))
+    (flet ((at (server line character)
+             (tuatara.lsp::rope-line-byte (tuatara.lsp::lsp-server-encoding server) rope line character)))
       (is = 1 (at utf-8 0 2) "within é: its start")
       (is = 3 (at utf-8 0 4) "within €: its start")
       (is = 6 (at utf-8 0 99) "past the line: its end")
@@ -2379,3 +2380,280 @@ which offers CAPABILITY and never answers: the buffer and the server."
     (let ((held (tuatara.lsp::directory-contents (namestring dir))))
       (true (typep (gethash "a.py" held) 'fixnum))
       (is eq :directory (gethash "sub" held)))))
+
+(define-test (lsp mode-line-warnings-alone)
+  ;; warnings alone are counted with no space before them; errors and warnings with one between
+  (multiple-value-bind (buffer doc server) (one-doc-session (format nil "alpha = 1~%beta = 2~%"))
+    (tuatara.lsp::keep-diagnostics buffer (cons doc server) (list (tuatara.lsp::make-diagnostic 8 9 2 "two" "kea")))
+    (is equal '("⚠1" :warning) (tuatara.lsp::diagnostic-mode-line nil buffer))
+    (tuatara.lsp::keep-diagnostics buffer (cons doc server) (list (tuatara.lsp::make-diagnostic 8 9 1 "one" "kea")))
+    (is equal '("✘1" :error) (tuatara.lsp::diagnostic-mode-line nil buffer))))
+
+(define-test (lsp file-diagnostics-kept-worst-first)
+  ;; what a server finds in a file not open is kept as for an open one: the worst, so many at most
+  (with-test-directory (dir)
+    (let* ((root (namestring (ensure-directories-exist (merge-pathnames "proj/" dir))))
+           (server (fake-server root))
+           (path (namestring (merge-pathnames "a.py" root)))
+           (tuatara.lsp::*lsp-most-diagnostics* 100)
+           (tuatara.lsp::*lsp-file-diagnostics* (make-hash-table :test 'equal))
+           (range (tuatara.text:json-object "start" (tuatara.text:json-object "line" 0 "character" 0)
+                                            "end" (tuatara.text:json-object "line" 0 "character" 1)))
+           (items (coerce (loop for i below 300
+                                collect (tuatara.text:json-object "range" range "message" "m"
+                                                                  "severity" (if (< i 250) 2 1)))
+                          'vector)))
+      (alexandria:write-string-into-file (format nil "first~%") path)
+      (tuatara.lsp::keep-file-diagnostics server (tuatara.defaults::path-uri path) items)
+      (let ((kept (cdr (first (gethash path tuatara.lsp::*lsp-file-diagnostics*)))))
+        (is = 100 (length kept))
+        (is = 50 (count 1 kept :key (lambda (d) (tuatara.text:json-integer d "severity"))))))))
+
+(define-test (lsp diagnostics-list-made-once-a-second)
+  ;; changes coming one after another make the list of diagnostics again once a second, not for each
+  (let ((tuatara.lsp::*diagnostics-changes* 0)
+        (tuatara.lsp::*diagnostics-listed* (cons 0 0)))
+    (incf tuatara.lsp::*diagnostics-changes*)
+    (is = 1 (tuatara.lsp::diagnostics-list-key nil))
+    (incf tuatara.lsp::*diagnostics-changes*)
+    (is = 1 (tuatara.lsp::diagnostics-list-key nil))
+    (setf (cdr tuatara.lsp::*diagnostics-listed*) (- (get-internal-real-time) (* 2 internal-time-units-per-second)))
+    (is = 2 (tuatara.lsp::diagnostics-list-key nil)))
+  (true (search "\\[lsp-diagnostics]" (documentation 'tuatara.lsp::*diagnostics-changes* 'variable)))
+  (run-keys "")
+  (is eq 'tuatara.defaults::list-visit-other
+      (tuatara.command:lookup-key (tuatara.modes:mode-keymap 'tuatara.lsp::diagnostics-mode)
+                                  (tuatara.frontend:parse-key-sequence "o"))))
+
+(define-test (lsp visit-starts-servers-of-trusted-roots-only)
+  ;; a note whose two languages have projects of their own: opening it starts the servers of the
+  ;; project trusted alone, never those of the other
+  (with-test-directory (dir)
+    (let* ((trusted (namestring (ensure-directories-exist (merge-pathnames "trusted/" dir))))
+           (other (namestring (ensure-directories-exist (merge-pathnames "other/" dir))))
+           (buffer (tuatara.buffer:make-buffer "two-projects.org" :text "x"))
+           (started '())
+           (tuatara-user:*trusted-projects* (list trusted))
+           (tuatara-user:*language-servers* '((python ("stand-in-python")) (rust ("stand-in-rust")))))
+      (flet ((wrap (name function) (sb-int:encapsulate name 'two-projects function)))
+        (wrap 'tuatara.command:defer-action (lambda (f action &rest keys) (declare (ignore f keys)) (funcall action)))
+        (wrap 'tuatara.lsp::lsp-doc-specs
+              (lambda (f b &rest keys) (declare (ignore f b keys))
+                (list (list 'python "file:///a.py" nil 1) (list 'rust "file:///a.rs" nil 1))))
+        (wrap 'tuatara.lsp::lsp-project-of (lambda (f b language) (declare (ignore f b))
+                                             (if (eq language 'python) trusted other)))
+        (wrap 'tuatara.lsp::installed-program (lambda (f command) (declare (ignore f)) (first command)))
+        (wrap 'tuatara.lsp::lsp-start (lambda (f spec root language) (declare (ignore f spec language))
+                                        (push root started) nil)))
+      (unwind-protect (tuatara.lsp::lsp-visit buffer)
+        (dolist (name '(tuatara.command:defer-action tuatara.lsp::lsp-doc-specs tuatara.lsp::lsp-project-of
+                        tuatara.lsp::installed-program tuatara.lsp::lsp-start))
+          (sb-int:unencapsulate name 'two-projects))
+        (tuatara.buffer:kill-buffer buffer))
+      (true (member trusted started :test #'string=))
+      (false (member other started :test #'string=)))))
+
+(define-test (lsp forget-project-tells-what-shows-trust)
+  ;; taking back a project's trust tells what shows it (git's status among them), as trust-project does
+  (with-test-directory (dir)
+    (let* ((root (namestring dir))
+           (file (namestring (put-file (merge-pathnames "a.py" dir) (format nil "x = 1~%"))))
+           (told '())
+           (tuatara.defaults::*trust-changed-functions* (list (lambda (r) (push r told)))))
+      (sb-int:encapsulate 'tuatara.lsp::lsp-project-of 'here
+                          (lambda (f buffer language) (declare (ignore f buffer language)) root))
+      (unwind-protect
+           (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file))
+                                    (lambda () (tuatara.lsp::lsp-forget-project))))
+        (sb-int:unencapsulate 'tuatara.lsp::lsp-project-of 'here))
+      (is equal (list root) told))))
+
+(define-test (lsp forget-project-forgets-all-its-trust)
+  ;; taking back a project's trust forgets every answer of it in one place, look only too, as
+  ;; trust-project's n does
+  (with-test-directory (dir)
+    (let* ((root (namestring dir))
+           (real (tuatara.defaults::real-directory root))
+           (file (namestring (put-file (merge-pathnames "a.py" dir) (format nil "x = 1~%")))))
+      (sb-int:encapsulate 'tuatara.lsp::lsp-project-of 'here
+                          (lambda (f buffer language) (declare (ignore f buffer language)) root))
+      (unwind-protect
+           (progn
+             (tuatara.defaults::state-list-put tuatara.defaults::*look-only* (list real))
+             (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file))
+                                      (lambda () (tuatara.lsp::lsp-forget-project))))
+             (false (member real (tuatara.defaults::state-list-entries tuatara.defaults::*look-only*)
+                            :test #'equal)))
+        (sb-int:unencapsulate 'tuatara.lsp::lsp-project-of 'here)
+        (tuatara.defaults::state-list-drop tuatara.defaults::*look-only* (list real))))))
+
+(define-test (lsp place-lines-read-without-a-string-a-line)
+  ;; the line beside a place a server names is found in the file's text, not by cutting the
+  ;; whole file into strings: reading a file of 100,000 lines for one makes little more than the file
+  (with-test-directory (dir)
+    (let* ((root (namestring dir))
+           (server (fake-server root))
+           (path (namestring (merge-pathnames "big.py" dir)))
+           (least most-positive-fixnum))
+      (with-open-file (out path :direction :output)
+        (dotimes (i 100000) (format out "line~5,'0d~%" i)))
+      (dotimes (run 3)
+        (let ((tuatara.lsp::*location-files* (make-hash-table :test 'equal))
+              (before (sb-ext:get-bytes-consed)))
+          (is string= "line54321" (tuatara.lsp::location-line server path 54321))
+          (setf least (min least (- (sb-ext:get-bytes-consed) before)))))
+      ;; the file is a million octets; cut into strings it made over ten million
+      (true (< least (* 4 1000000)) "~:d octets made" least))))
+
+(define-test (lsp lenses-resolved-near-the-view-shown-once)
+  ;; what code lenses say is asked for those near the lines shown alone, and shown once all of it came
+  (multiple-value-bind (buffer doc server)
+      (one-doc-session (format nil "~{~a~%~}" (loop for i below 300 collect (format nil "x~d = ~d" i i))))
+    (let* ((lenses (loop for line below 300
+                         collect (tuatara.text:json-object
+                                  "range" (tuatara.text:json-object
+                                           "start" (tuatara.text:json-object "line" line "character" 0)
+                                           "end" (tuatara.text:json-object "line" line "character" 1)))))
+           (asked 0))
+      (sb-int:encapsulate 'tuatara.lsp::lsp-request 'answered
+                          (lambda (f server method lens then &rest keys)
+                            (declare (ignore f server method lens keys))
+                            (incf asked)
+                            (funcall then (tuatara.text:json-object
+                                           "command" (tuatara.text:json-object "title" "1 reference"))
+                                     nil)))
+      (unwind-protect
+           (is = 1 (nth-value 1 (counting-calls (tuatara.lsp::show-lenses)
+                                  (tuatara.lsp::resolve-lenses buffer doc server lenses (cons 0 50)))))
+        (sb-int:unencapsulate 'tuatara.lsp::lsp-request 'answered))
+      (is = 50 asked)
+      (is = 50 (count-if #'tuatara.lsp::lens-title lenses)))))
+
+(defun watched-test-tree (root)
+  "A tree of the project at ROOT, its directories found now, ready (PROJECT-DIRECTORIES)."
+  (let ((tree (tuatara.lsp::make-watched-tree root)))
+    (multiple-value-bind (directories stamps) (tuatara.lsp::project-directories root)
+      (setf (tuatara.lsp::watched-tree-directories tree) directories
+            (tuatara.lsp::watched-tree-stamps tree) stamps
+            (tuatara.lsp::watched-tree-ready tree) t))
+    tree))
+
+(define-test (lsp watched-tree-made-at-once)
+  ;; directories made at once, one in another, are all watched, the files in them told as made
+  (with-test-directory (dir)
+    (let* ((root (namestring dir))
+           (tree (watched-test-tree root)))
+      (ensure-directories-exist (merge-pathnames "src/a/b/" dir))
+      (put-file (merge-pathnames "src/a/b/x.rs" dir) "x")
+      (let ((changes (tuatara.lsp::directory-changes tree root)))
+        (true (member (list (concatenate 'string root "src/a/b/x.rs") 1) changes :test #'equal)))
+      (true (member (concatenate 'string root "src/a/b/") (tuatara.lsp::watched-tree-directories tree)
+                    :test #'string=)))))
+
+(define-test (lsp watched-empty-directory-looked-at-again)
+  ;; a directory empty when the project was listed is looked at again when it changes
+  (with-test-directory (dir)
+    (ensure-directories-exist (merge-pathnames "empty/" dir))
+    (let* ((root (namestring dir))
+           (empty (concatenate 'string root "empty/"))
+           (server (fake-server root))
+           (tree (watched-test-tree root))
+           (watchers (list (list* server root
+                                  (list (cons "all" (list (cons (tuatara.defaults::glob-alternatives
+                                                                 (concatenate 'string root "**"))
+                                                                7))))))))
+      (put-file (merge-pathnames "empty/y.rs" dir) "y")
+      (let ((told (tuatara.lsp::watched-changes (list tree) watchers (list empty))))
+        (true (find (tuatara.defaults::path-uri (concatenate 'string empty "y.rs"))
+                    (cdr (first told)) :key (lambda (event) (tuatara.text:json-text event "uri")) :test #'equal))))))
+
+(define-test (lsp stop-tells-every-waiting)
+  ;; a server stopped tells all that waited for its answers, though one of them fails
+  (let ((server (server-taking-changes :utf-16))
+        (told 0))
+    (setf (gethash 1 (tuatara.lsp::lsp-server-waiting server)) (lambda (result error)
+                                                                   (declare (ignore result error))
+                                                                   (error "a waiting function failed"))
+          (gethash 2 (tuatara.lsp::lsp-server-waiting server)) (lambda (result error)
+                                                                   (declare (ignore result error))
+                                                                   (incf told))
+          (gethash 3 (tuatara.lsp::lsp-server-waiting server)) (lambda (result error)
+                                                                   (declare (ignore result error))
+                                                                   (incf told)))
+    (setf (tuatara.lsp::lsp-server-status server) :starting)
+    (tuatara.lsp::lsp-stop server)
+    (is = 2 told)))
+
+(define-test (lsp formatter-outside-the-sandbox-keeps-every-octet)
+  ;; a formatter run outside the sandbox is given the text's octets as they are and its own taken back
+  (let ((tuatara.lsp::*format-in-sandbox* nil)
+        (input (concatenate '(vector (unsigned-byte 8)) (tuatara.text:string-octets "a ") #(255 254 10))))
+    (multiple-value-bind (output said)
+        (tuatara.lsp::formatter-output "/usr/bin/cat" '("cat") input "/tmp/" (list nil))
+      (is equalp (coerce input 'list) (coerce output 'list) "~a" said))))
+
+(define-test (lsp find-symbol-sends-changes-first)
+  ;; a project's names are asked for once what was typed last is sent, as every other question is
+  (let ((done '())
+        (server (server-taking-changes :utf-16)))
+    (flet ((wrap (name function) (sb-int:encapsulate name 'in-step function)))
+      (wrap 'tuatara.lsp::buffer-servers (lambda (f buffer) (declare (ignore f buffer)) (list server)))
+      (wrap 'tuatara.lsp::server-offers-p (lambda (f &rest arguments) (declare (ignore f arguments)) t))
+      (wrap 'tuatara.command:read-string (lambda (f &rest arguments) (declare (ignore f arguments)) "one"))
+      (wrap 'tuatara.lsp::lsp-in-step (lambda (f buffer) (push :sent done) (funcall f buffer)))
+      (wrap 'tuatara.lsp::lsp-request (lambda (f &rest arguments) (declare (ignore f arguments)) (push :asked done))))
+    (unwind-protect (auto-save-session (list (lambda () (tuatara.lsp::lsp-find-symbol))))
+      (dolist (name '(tuatara.lsp::buffer-servers tuatara.lsp::server-offers-p tuatara.command:read-string
+                      tuatara.lsp::lsp-in-step tuatara.lsp::lsp-request))
+        (sb-int:unencapsulate name 'in-step)))
+    (is equal '(:sent :asked) (reverse done))))
+
+(define-test (lsp place-lines-of-a-long-line-cut-short)
+  ;; many places on one line of a megabyte (a minified file) make no whole-line string each
+  (with-test-directory (dir)
+    (let* ((root (namestring dir))
+           (server (fake-server root))
+           (path (namestring (merge-pathnames "min.js" dir)))
+           (least most-positive-fixnum))
+      (with-open-file (out path :direction :output)
+        (dotimes (i 100000) (write-string "var a=1; " out)))
+      (dotimes (run 3)
+        (let ((tuatara.lsp::*location-files* (make-hash-table :test 'equal))
+              (before (sb-ext:get-bytes-consed)))
+          (dotimes (i 50) (tuatara.lsp::location-line server path 0))
+          (setf least (min least (- (sb-ext:get-bytes-consed) before)))))
+      (is = tuatara.lsp::*lsp-location-line-length*
+          (length (tuatara.lsp::location-line server path 0)))
+      ;; the file is under a megabyte; a whole-line string each would make some 180 megabytes
+      (true (< least (* 10 1000000)) "~:d octets made" least))))
+
+(define-test (lsp watched-link-back-up-not-followed)
+  ;; a new directory holding a link back up is watched once, the link not gone through again and again
+  (with-test-directory (dir)
+    (let* ((root (namestring dir))
+           (tuatara.lsp::*lsp-watched-most* 50)
+           (tree (watched-test-tree root)))
+      (ensure-directories-exist (merge-pathnames "new/" dir))
+      (sb-posix:symlink ".." (concatenate 'string root "new/up"))
+      (tuatara.lsp::directory-changes tree root)
+      (is equal (list (concatenate 'string root "new/"))
+          (remove-if-not (lambda (d) (uiop:string-prefix-p (concatenate 'string root "new/") d))
+                         (tuatara.lsp::watched-tree-directories tree))))))
+
+(define-test (lsp lens-resolve-asked-again-when-it-failed)
+  ;; what a code lens says is asked again when the server failed to answer, a few times at most
+  (multiple-value-bind (buffer doc server) (one-doc-session (format nil "x = 1~%"))
+    (let ((lenses (list (tuatara.text:json-object
+                         "range" (tuatara.text:json-object
+                                  "start" (tuatara.text:json-object "line" 0 "character" 0)
+                                  "end" (tuatara.text:json-object "line" 0 "character" 1)))))
+          (asked 0))
+      (sb-int:encapsulate 'tuatara.lsp::lsp-request 'failing
+                          (lambda (f server method lens then &rest keys)
+                            (declare (ignore f server method lens keys))
+                            (incf asked)
+                            (funcall then nil :timeout)))
+      (unwind-protect
+           (dotimes (i 5) (tuatara.lsp::resolve-lenses buffer doc server lenses (cons 0 10)))
+        (sb-int:unencapsulate 'tuatara.lsp::lsp-request 'failing))
+      (is = tuatara.lsp::*lsp-lens-resolve-tries* asked))))

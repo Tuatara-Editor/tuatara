@@ -21,6 +21,15 @@
 
 (in-package #:tuatara.defaults)
 
+(defparameter *odf-list-items* '("text:list-item" "text:list-header")
+  "The elements of an OpenDocument list that hold an item.")
+
+(defparameter *odf-table-cells* '("table:table-cell" "table:covered-table-cell")
+  "The elements of an OpenDocument table's row that stand for a cell.")
+
+(defparameter *odf-row-groups* '("table:table-header-rows" "table:table-rows" "table:table-row-group")
+  "The elements of an OpenDocument table that hold rows of it.")
+
 (defvar *odf-styles* nil
   "The styles of the OpenDocument file being read, by name: each a plist of
 :LOOK (what Org's markup can say of its text, as DOCX-READ-RUN-LOOK's),
@@ -48,6 +57,58 @@ stretch of it from its change's :FROM to its :TO.")
 comments it has had so far, a plist of :FOOTNOTE, :ENDNOTE and :COMMENT.")
 
 ;;; Styles
+
+(defparameter *odf-namespaces*
+  (let ((table (make-hash-table :test 'equal)))
+    (loop for (name . prefix) in '(("office" . "office") ("style" . "style") ("text" . "text") ("table" . "table")
+                                   ("drawing" . "draw") ("xsl-fo-compatible" . "fo") ("meta" . "meta")
+                                   ("datastyle" . "number") ("presentation" . "presentation")
+                                   ("svg-compatible" . "svg") ("chart" . "chart") ("dr3d" . "dr3d")
+                                   ("form" . "form") ("script" . "script") ("manifest" . "manifest")
+                                   ("animation" . "anim") ("smil-compatible" . "smil") ("config" . "config"))
+          do (setf (gethash (format nil "urn:oasis:names:tc:opendocument:xmlns:~a:1.0" name) table) prefix))
+    (setf (gethash "http://www.w3.org/1999/xlink" table) "xlink"
+          (gethash "http://purl.org/dc/elements/1.1/" table) "dc")
+    table)
+  "The prefix the OpenDocument standard writes each of its namespaces with, by
+the namespace's name: the names the reader looks for are written so.")
+
+(defun odf-standard-names (tree)
+  "TREE, a part of the OpenDocument file being read as XML-PARSE reads it, its
+elements' and attributes' names written in place with the prefixes the standard
+gives their namespaces (*ODF-NAMESPACES*), whatever prefixes the file binds
+them to, so that what the file holds is read as its program shows it. A name
+of another namespace written with one of those prefixes gets x- before it, and
+is passed over as the file's program passes it over."
+  (let ((standard (loop for prefix being the hash-values of *odf-namespaces* collect prefix)))
+    (labels ((named (name bindings element)
+               (let* ((colon (position #\: name))
+                      (prefix (cond (colon (subseq name 0 colon)) (element "") (t nil))))
+                 (if (or (null prefix) (equal prefix "xmlns"))
+                     name
+                     (let* ((space (cdr (assoc prefix bindings :test #'string=)))
+                            (wanted (and space (gethash space *odf-namespaces*)))
+                            (local (if colon (subseq name (1+ colon)) name)))
+                       (cond ((equal wanted prefix) name)
+                             (wanted (concatenate 'string wanted ":" local))
+                             ((member prefix standard :test #'string=) (concatenate 'string "x-" name))
+                             (t name))))))
+             (walk (node bindings)
+               (when (consp node)
+                 (dolist (attribute (second node))
+                   (let ((name (car attribute)))
+                     (cond ((string= name "xmlns") (push (cons "" (cdr attribute)) bindings))
+                           ((uiop:string-prefix-p "xmlns:" name)
+                            (push (cons (subseq name 6) (cdr attribute)) bindings)))))
+                 (setf (first node) (named (first node) bindings t))
+                 (dolist (attribute (second node))
+                   (setf (car attribute) (named (car attribute) bindings nil)))
+                 (dolist (child (cddr node))
+                   (walk child bindings)))))
+      (when tree
+        (dolist (child (xml-children tree))
+          (walk child '())))
+      tree)))
 
 (defun odf-read-styles ()
   "The styles of the OpenDocument file being read (*ODF-STYLES*), from
@@ -144,7 +205,7 @@ comment and when, and what is not text left out."
                                            (and t2 (xml-all-text t2)))
                                          (xml-attribute frame "draw:name")))))
                (and words (org-safe-line words)))))
-    (cond (box (format nil "[text box: ~a]" (org-safe-line (string-trim " " (odf-plain-text box)))))
+    (cond (box (format nil "[text box: ~a]" (org-safe-line (office-value (string-trim " " (odf-plain-text box))))))
           (image (format nil "[picture~@[ ~a~]~@[: ~a~]]" (let ((href (xml-attribute image "xlink:href")))
                                                             (and href (org-safe-line href))) alt))
           ((xml-find-all frame "draw:object") "[an embedded object]")
@@ -179,8 +240,9 @@ heading, or what it holds) to OUT as Org text."
              (let ((label (if (equal (xml-attribute child "text:note-class") "endnote")
                               (format nil "e~d" (incf (getf *odf-note-numbers* :endnote 0)))
                               (format nil "~d" (incf (getf *odf-note-numbers* :footnote 0))))))
-               (push (cons label (org-safe-line (string-trim " " (odf-plain-text (or (xml-child child "text:note-body")
-                                                                                     child)))))
+               (push (cons label (org-safe-line
+                                  (office-value (string-trim " " (odf-plain-text (or (xml-child child "text:note-body")
+                                                                                     child))))))
                      *odf-notes*)
                (format out "[fn:~a]" label)))
             ((string= name "office:annotation")
@@ -194,7 +256,7 @@ heading, or what it holds) to OUT as Org text."
                                    "Comment by ~a~@[, ~a~]: ~a"
                                    (org-safe-line (or author "someone"))
                                    (and date (org-safe-line date))
-                                   (org-safe-line words)))
+                                   (org-safe-line (office-value words))))
                      *odf-notes*)
                (format out "[fn:~a]" label)))
             ((string= name "text:change-start")
@@ -242,7 +304,7 @@ NUMBERS counts the items of each level."
          (numbered (odf-list-numbered-p style (1+ level))))
     (setf (gethash level numbers) 0)
     (dolist (item (xml-children list))
-      (when (member (xml-name item) '("text:list-item" "text:list-header") :test #'equal)
+      (when (member (xml-name item) *odf-list-items* :test #'equal)
         (let ((first t))
           (dolist (part (xml-children item))
             (let ((name (xml-name part)))
@@ -270,8 +332,7 @@ within reason, each cell taken from the room left for the note
                  (let ((name (xml-name child)))
                    (cond ((equal name "table:table-row")
                           (let ((cells (loop for cell in (xml-children child)
-                                             when (member (xml-name cell) '("table:table-cell"
-                                                                            "table:covered-table-cell") :test #'equal)
+                                             when (member (xml-name cell) *odf-table-cells* :test #'equal)
                                              append (make-list (max 1 (min 64 (or (docx-read-number
                                                                                    cell "table:number-columns-repeated")
                                                                                   1)))
@@ -280,8 +341,7 @@ within reason, each cell taken from the room left for the note
                               ;; each cell given takes room in the note, an empty one too
                               (office-spend (length cells))
                               (push cells rows))))
-                         ((member name '("table:table-header-rows" "table:table-rows" "table:table-row-group")
-                                  :test #'equal)
+                         ((member name *odf-row-groups* :test #'equal)
                           (walk child)))))))
       (walk table))
     (nreverse rows)))
@@ -306,7 +366,7 @@ empty ones after it, so that the columns line up."
                                                  (office-spend (length text))
                                                  text))))))
     ;; rows of empty cells at the end, as a table's last rows repeated often are, left out
-    (loop while (and rows (every (lambda (c) (zerop (length c))) (car (last rows)))) do (setf rows (butlast rows)))
+    (setf rows (reverse (member-if-not (lambda (row) (every (lambda (c) (zerop (length c))) row)) (reverse rows))))
     (when rows (org-write-table-rows rows out))))
 
 (defun odf-read-block (node out)
@@ -384,7 +444,7 @@ file's page styles, when they have any."
                                                   ("style:footer-first" . "Footer, first page"))
                                 :test #'equal))))
           (when kind
-            (let ((text (org-safe-line (string-trim " " (odf-plain-text part)))))
+            (let ((text (org-safe-line (office-value (string-trim " " (odf-plain-text part))))))
               (when (plusp (length text))
                 (push (format nil "- ~a (page style ~a) :: ~a~%" kind
                               (org-safe-line (or (xml-attribute page "style:display-name")
@@ -447,7 +507,7 @@ how many cells were written."
              (row-cells (row number hidden)
                (let ((column 0))
                  (dolist (cell (xml-children row))
-                   (when (member (xml-name cell) '("table:table-cell" "table:covered-table-cell") :test #'equal)
+                   (when (member (xml-name cell) *odf-table-cells* :test #'equal)
                      (let* ((repeat (repeat cell "table:number-columns-repeated" *sheet-most-columns*))
                             (value (value-of cell))
                             (formula (let ((f (xml-attribute cell "table:formula")))
@@ -479,8 +539,7 @@ how many cells were written."
                                   (incf row-at)
                                   (when (or (sheet-cells-cut cells) (> row-at *sheet-most-rows*)) (return))
                                   (row-cells child row-at (hidden-p child))))))
-                         ((member name '("table:table-header-rows" "table:table-rows" "table:table-row-group")
-                                  :test #'equal)
+                         ((member name *odf-row-groups* :test #'equal)
                           (walk-rows child)))))))
       (walk-columns table)
       (walk-rows table))
@@ -501,7 +560,7 @@ out (it is the heading). With NOTES, the notes' text alone."
                         (slide-item out (string-trim " " (odf-plain-text child)) level))
                        ((equal name "text:list")
                         (dolist (item (xml-children child))
-                          (when (member (xml-name item) '("text:list-item" "text:list-header") :test #'equal)
+                          (when (member (xml-name item) *odf-list-items* :test #'equal)
                             (paragraphs item (if (equal (xml-name node) "text:list-item") (min 8 (1+ level)) level)))))
                        ((consp child) (paragraphs child level))))))
            (walk (n)
@@ -727,6 +786,8 @@ file's header says, no larger than *OFFICE-NOTE-SIZE-LIMIT* characters; CANCEL,
 a cons, stops the reading when its car turns true. Signals ZIP-ERROR or an
 error when it cannot be read, or is locked with a password."
   (let ((*docx-reading* (docx-reading-of path octets cancel)))
+    (dolist (part '("META-INF/manifest.xml" "meta.xml" "styles.xml" "content.xml"))
+      (odf-standard-names (docx-reading-part part)))
     (when (odf-locked-p)
       (refuse "~a is locked with a password, and is not read" (tuatara.io:native-file-name path)))
     (let* ((content (docx-reading-part "content.xml"))

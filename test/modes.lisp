@@ -36,7 +36,12 @@ extension and #! line, the mode name in the mode line, CSV colours and the colum
   (is equal '("%" "%%") (multiple-value-list (tuatara.modes:mode-comment-syntax (make-instance 'test-child-mode))))
   (is equal '(nil)
       (multiple-value-list (tuatara.modes:mode-comment-syntax (make-instance 'tuatara.defaults::text-mode))))
-  (is equal '(nil) (multiple-value-list (tuatara.modes:mode-block-comment-syntax (make-instance 'test-child-mode)))))
+  (is equal '(nil) (multiple-value-list (tuatara.modes:mode-block-comment-syntax (make-instance 'test-child-mode))))
+  ;; and both asked at once: a line comment when there is one, else one with an end
+  (is equal '("%" "%%" nil nil)
+      (multiple-value-list (tuatara.modes:mode-comment-style (make-instance 'test-child-mode))))
+  (is equal '(nil nil "<!--" "-->")
+      (multiple-value-list (tuatara.modes:mode-comment-style (make-instance 'tuatara.defaults::html-mode)))))
 
 (define-test (modes file-patterns-compiled-once)
   ;; the patterns on a file's whole path are compiled as their modes are defined: a
@@ -253,8 +258,10 @@ the buffer killed."
       ;; set, taken always: a comma, and the semicolons are text of one column
       (let ((tuatara-user:*csv-separator* #\,))
         (is equal one (first-row (csv-run '("") text))))
-      ;; set as a character, a string of one or a name, or what the first line has most of
-      (dolist (separator (list #\; ";" "semicolon" :detect))
+      ;; set as a character, or what the first line has most of; text is refused
+      (dolist (separator (list ";" "semicolon" "ab"))
+        (fail (tuatara.runtime:set-setting 'tuatara-user:*csv-separator* separator)))
+      (dolist (separator (list #\; :detect))
         (let ((tuatara-user:*csv-separator* separator))
           (is equal three (first-row (csv-run '("") text)) "~s" separator)))
       ;; an empty file, or one made empty, takes it from what is typed in its first line
@@ -263,9 +270,6 @@ the buffer killed."
         (is equal two (first-row (csv-run '("% d i a ; b ESC") (format nil "x,y~%"))))
         ;; set, it stays
         (is equal '((0 3 :csv-column-0)) (first-row (csv-run '("C-c C-s c o m m a RET i a ; b ESC") ""))))
-      ;; what cannot separate fields: a comma
-      (let ((tuatara-user:*csv-separator* "ab"))
-        (is equal one (first-row (csv-run '("") text))))
       ;; C-c C-s asks, opening on the separator in use: by name, as typed, or detected
       (true (tuatara.frontend.fake:fake-frame-showing (csv-run '("C-c C-s") text) "Separator (default semicolon):"))
       (dolist (keys '("C-c C-s s e m i RET" "C-c C-s ; RET" "C-c C-s d e t e c t RET"))
@@ -511,3 +515,8 @@ the buffer killed."
            (is = 0 compiled)
            (true (< (hash-table-count tuatara.defaults::*injection-languages*) 1100)))
       (sb-int:unencapsulate 'cl-ppcre:create-scanner 'counting))))
+
+(define-test (modes encrypted-file-name-with-wildcard-characters)
+  ;; the mode of what an encrypted file holds is found from its name as text, whatever characters it has
+  (is eq 'tuatara.modes:fundamental-mode (tuatara.modes:mode-for-file "/tmp/notes.o*.gpg"))
+  (is eq (tuatara.modes:mode-for-file "/tmp/notes.txt") (tuatara.modes:mode-for-file "/tmp/notes.txt.gpg")))

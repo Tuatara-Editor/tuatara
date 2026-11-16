@@ -128,10 +128,7 @@ just before its closing bracket. Not in a string or comment."
 negative, as one kill."
   (let ((b (current-buffer)) (p (point)))
     (multiple-value-bind (q why) (sexp-motion b p count)
-      (cond ((null q)
-             (message (if (eq why :unbalanced)
-                          "The brackets do not balance"
-                          (if (plusp count) "No next sexp" "No previous sexp"))))
+      (cond ((null q) (sexp-failure-message why))
             ((/= q p)
              (goto (kill-span b (min p q) (max p q) :prepend (< q p))))))))
 
@@ -147,6 +144,9 @@ With a count, that many; a negative count kills those after point. Kills in a
 row join into one."
   (kill-sexps (- (prefix))))
 
+(pushnew 'kill-sexp *kill-commands*)
+(pushnew 'backward-kill-sexp *kill-commands*)
+
 (define-command mark-sexp ()
   "Set the mark after the next balanced expression, point staying, and
 activate it; with a count, that many expressions, or before point when
@@ -161,10 +161,7 @@ a count, that many."
          (from (if extend mark (point)))
          (count (or argument (if (and extend (< mark (point))) -1 1))))
     (multiple-value-bind (q why) (sexp-motion b from count)
-      (cond ((null q)
-             (message (if (eq why :unbalanced)
-                          "The brackets do not balance"
-                          (if extend "No more sexp to select" "No sexp to select"))))
+      (cond ((null q) (sexp-failure-message why))
             (extend (setf (tuatara.buffer:buffer-mark b) q
                           (tuatara.buffer:buffer-mark-active-p b) t))
             ;; a new mark puts the one before on the mark ring
@@ -209,7 +206,7 @@ two are no pair of *PAIR-DELIMITERS*, delete nothing and say so."
 BUFFER's up-to-date syntax tree, as two values, when its language has such
 rules and BUFFER a tree; NIL when a definition is a line that begins with an
 opening bracket."
-  (let* ((language (mode-language (buffer-major-mode buffer)))
+  (let* ((language (buffer-language buffer))
          (query (and language (language-compiled-query language :definitions)))
          (syntax (and query (ready-syntax buffer))))
     (when syntax (values query syntax))))
@@ -506,13 +503,13 @@ unless the command before was the same, or the region is active."
 with a count, that many definitions back, or forward to the start of the ones
 after when negative. In Lisp and in text a definition starts at an opening
 bracket at the start of a line, one in a string or comment not counting, and
-with none before point \\[beginning-of-defun] goes to the start of the text.
-In a language whose rules name its definitions (Rust's functions, impls,
-structs and enums; C's functions, types and macros; shell functions; LaTeX's
-sections and environments) it is one
-of those, one inside another counting too: \\[beginning-of-defun] goes to the
-start of the one around point, or of the one before it beside it. The first
-of a run leaves the mark where point was, unless the region is active."
+with none before point \\[beginning-of-defun] goes to the start of the text. In
+a language whose rules name its definitions (Rust's functions, impls, structs
+and enums; C's functions, types and macros; shell functions; LaTeX's sections
+and environments) it is one of those, one inside another counting too:
+\\[beginning-of-defun] goes to the start of the one around point, or of the one
+before it beside it. The first of a run leaves the mark where point was, unless
+the region is active."
   (multiple-value-bind (p found) (beginning-of-defun-position (current-buffer) (point) (prefix))
     (push-mark-before-defun-run 'beginning-of-defun)
     (goto p)

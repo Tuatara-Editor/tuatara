@@ -535,7 +535,10 @@ above it, so tagging a whole project once is enough.
 
 ~C-c C-q~ sets the tags of the heading the cursor is under. It offers the
 tags the heading has. Type the words with spaces between them, or nothing to
-remove them all. You can also type tags by hand.
+remove them all. You can also type tags by hand. The tags of your agenda
+files are offered too. When those files are large and have changed since
+they were last read, the question opens at once with the tags known so far,
+and the files are read in the background for the next time.
 
 As standard the tags sit one space after the heading's text. If you like them
 lined up at the right, set =*org-tags-column*= to a negative number, such as
@@ -1077,7 +1080,10 @@ time so far and the task's name, so you cannot forget it. Starting the clock
 on another task stops the first.
 
 ~C-x a o~ stops the clock from any buffer. The line is finished with the
-time you stopped and how long that was:
+time you stopped and how long that was. With no clock running, it looks in
+your agenda files for one left running, as after a restart. When the files
+to read are large, it looks in the background and says so; the clock it
+finds runs again, and ~C-x a o~ then stops it:
 
 #+begin_example
 CLOCK: [2026-10-13 Tue 10:00]--[2026-10-13 Tue 10:45] =>  0:45
@@ -1090,7 +1096,8 @@ drawer and fold away with it. With =(setf *org-clock-into-drawer* nil)= the
 ~C-x a j~ takes you to the task that is being clocked, from wherever you
 are. ~C-c C-x C-q~ stops the clock and removes its line, for when you
 started it by mistake. In the agenda, ~I~ and ~O~ start and stop the clock
-on the line's entry.
+on the line's entry. Large agenda files changed since they were last read are
+read in the background, as for tags, and their headings are offered once read.
 
 If you leave Tuatara while the clock runs, it asks whether to stop it. If
 you say no, the clock is found again at the next start and goes on counting.
@@ -1581,7 +1588,9 @@ echo "Water the beds at dawn"
 
 ~C-c C-v t~ then writes every such block to its file. Blocks that name the
 same file go into it in order. Before anything is written, Tuatara lists the
-files and says which are new and which would change, and asks. This suits
+files and says which are new and which would change, and asks. The files are
+worked out and compared with those on disk in the background, so a large note
+never holds up typing; the list comes up once that is done. This suits
 settings files well: the note says why each setting is there, and the file
 the program reads is made from it.
 
@@ -1772,7 +1781,9 @@ They run as LaTeX does, shut in the sandbox (chapter 12): they read the
 document's directory, the TeX installation and the directories in
 =*export-trusted-directories*=, and write only in the export's own working
 directory. Keep the =.bib= file beside the note, or in one of those directories,
-so that they can read it.
+so that they can read it. What they leave in that working directory is read
+back only when it is a file of its own: a symbolic link there, which a
+document could make to lead to any file of yours, is never followed.
 
 *** Making a Word document
 
@@ -1957,9 +1968,10 @@ templates call it =\hide{...}=, add it:
 
 A box is of little use if the same name stands in plain text two pages
 later. ~M-x export-check-redactions~ looks for every hidden text that also
-appears unhidden and lists the places. The export runs the same check and
-asks before it goes on. Only the enhanced export hides text. The plain
-export refuses a note that asks for it.
+appears unhidden and lists the places. The export runs the same check in
+the background before it writes anything, and when it finds such a place
+it lists them and asks whether to go on. Only the enhanced export hides
+text. The plain export refuses a note that asks for it.
 
 *** Notes from other people
 
@@ -1982,6 +1994,13 @@ A note in =~/notes/work/= that says =#+SETUPFILE: ~/notes/latex/house.org= is
 then exported with that file. Without the line the export leaves the file out
 and, when it is done, says =house.org= was left out. Allow only directories you
 wrote yourself, since whoever sends you a note can name any file in them.
+
+Each setup file is read once for an export, the first time it is named. A
+setup file named again, by the note or by another setup file, adds nothing the
+second time, so setup files that name each other cannot make an export read
+them over and over. Bibliography files are held to the same directories, and
+one named without an ending is looked for with =.bib= added, as BibTeX looks
+for it.
 
 #+table: commands org-export-latex-pdf-enhanced org-export-latex-pdf-enhanced-buffer org-export-latex-pdf-enhanced-xdg org-export-latex-enhanced org-export-docx org-export-docx-xdg org-export-html
 

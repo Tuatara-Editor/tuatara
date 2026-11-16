@@ -176,7 +176,6 @@ grow the run by paragraphs.")
     ("." repeat) ("v" mark-run-refuse) ("V" mark-run-refuse))
   "The keys of *MARK-RUN-KEYMAP*.")
 
-
 (defparameter *mark-run-hint*
   (concatenate 'string
                "Mark run: \\<*mark-run-keymap*>"

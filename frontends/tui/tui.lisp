@@ -88,6 +88,7 @@ C-m.
 (define-c-function ("tigetnum" %tigetnum) :int (name :string))
 (define-c-function ("del_curterm" %del-curterm) :int (terminal :pointer))
 (define-c-function ("endwin" %endwin) :int)
+(define-c-function ("resizeterm" %resizeterm) :int (rows :int) (columns :int))
 (define-c-function ("raw" %raw) :int)
 (define-c-function ("noecho" %noecho) :int)
 (define-c-function ("nonl" %nonl) :int)
@@ -213,22 +214,6 @@ that terminal takes for its own palette, become 256 (#000100, no colour the eye
 tells from its neighbours)."
   (max 256 (+ (ash r 16) (ash g 8) b)))
 
-(defparameter *terminfo-directories*
-  '("/etc/terminfo/" "/lib/terminfo/" "/usr/share/terminfo/" "/usr/lib/terminfo/" "/usr/share/lib/terminfo/")
-  "Where terminal descriptions are installed, after $TERMINFO, ~/.terminfo and $TERMINFO_DIRS.")
-
-(defun terminfo-installed-p (name)
-  "True when a description of terminal type NAME is installed where ncurses looks for one."
-  (let ((dirs (append (let ((dir (tuatara.io:own-variable "TERMINFO"))) (and (plusp (length dir)) (list dir)))
-                      (list (namestring (merge-pathnames ".terminfo/" (user-homedir-pathname))))
-                      (tuatara.text:split-words (or (tuatara.io:own-variable "TERMINFO_DIRS") "") ":")
-                      *terminfo-directories*)))
-    (some (lambda (dir)
-            (let ((dir (string-right-trim "/" dir)))
-              (or (probe-file (format nil "~a/~a/~a" dir (char name 0) name))
-                  (probe-file (format nil "~a/~(~2,'0x~)/~a" dir (char-code (char name 0)) name)))))
-          dirs)))
-
 (defun terminfo-colours (term)
   "How many colours the installed description of terminal type TERM gives (0
 for none), or NIL when there is none installed."
@@ -262,7 +247,7 @@ installed."
                      (not (uiop:string-prefix-p "linux" term))
                      (or (null term-colours) (>= term-colours 8))))
          (t nil))
-       (terminfo-installed-p "xterm-direct256")
+       (terminfo-colours "xterm-direct256")
        "xterm-direct256"))
 
 (defun colours-used (wanted colours direct)
@@ -354,8 +339,9 @@ description names (KEY-NAME-KEY)."
           ((<= 277 code 324)
            (multiple-value-bind (group n) (floor (- code 265) 12)
              (tuatara.frontend:make-key (intern (format nil "F~d" (1+ n)) :keyword)
-                                        :shift (and (member group '(1 3))
-                                                    t) :ctrl (and (member group '(2 3)) t) :meta (= group 4))))
+                                        :shift (and (member group '(1 3)) t)
+                                        :ctrl (and (member group '(2 3)) t)
+                                        :meta (= group 4))))
           (t (key-name-key (tuatara.runtime:ignoring-errors-reported ("naming the key ~d" code) (%keyname code)))))))
 
 (defvar *kitty-keyboard-decided* nil
@@ -496,7 +482,44 @@ sends such a terminal its text in the order it is stored.")
   (when *tui-mouse* (tell-terminal-mouse t))
   (tell-terminal-pastes t)
   (tell-terminal-order t)
-  (setf (tui-wake f) (tuatara.io:make-wake-pipe)))
+  (setf (tui-wake f) (tuatara.io:make-wake-pipe))
+  (watch-terminal-size f))
+
+(sb-ext:defglobal **terminal-resized** (list nil)
+  "A cell holding true from when the terminal's size changed (SIGWINCH) until
+FOLLOW-TERMINAL-SIZE has looked at it.")
+
+(sb-ext:defglobal **frontend-woken** (list nil)
+  "A cell holding true from FRONTEND-WAKE until the wait for events has returned
+the tick it asks for: the wake pipe is written by a resize as well.")
+
+(defun wake-gives-tick-p ()
+  "True when the wake pipe, just drained, was written for a tick: by
+FRONTEND-WAKE, or by nothing but a resize that was not one (the size is the
+same); a resize alone gives none, ncurses being told of it instead."
+  (or (shiftf (car **frontend-woken**) nil) (not (car **terminal-resized**))))
+
+(defun follow-terminal-size (f)
+  "When the terminal's size changed since this was last called, tell ncurses
+the size it has now, which has it give the next read KEY_RESIZE."
+  (when (shiftf (car **terminal-resized**) nil)
+    (multiple-value-bind (rows columns)
+        (if (tuatara.io:terminal-window-size 1)
+            (tuatara.io:terminal-window-size 1)
+            (tuatara.io:terminal-window-size 0))
+      (when (and rows (plusp rows) (plusp columns)
+                 (or (/= rows (%getmaxy (tui-window f))) (/= columns (%getmaxx (tui-window f)))))
+        (%resizeterm rows columns)))))
+
+(defun watch-terminal-size (f)
+  "Have the terminal's size changing (SIGWINCH) wake the wait for events of F,
+in place of ncurses' own handler, so that the wait needs no timeout."
+  (sb-sys:enable-interrupt sb-unix:sigwinch
+                           (lambda (signal info context)
+                             (declare (ignore signal info context))
+                             (setf (car **terminal-resized**) t)
+                             (let ((wake (tui-wake f)))
+                               (when wake (tuatara.io:wake wake))))))
 
 (defun start-screen (f)
   "Start ncurses on the terminal for the colours asked for (WANTED-COLOURS):
@@ -512,7 +535,10 @@ the first time, or again in place of the screen before, which has ended."
                         (unwind-protect
                              (%newterm (or direct term) (c-variable "stdout" sb-sys:system-area-pointer)
                                        (c-variable "stdin" sb-sys:system-area-pointer))
-                          (when direct (sb-posix:setenv "TERM" term 1))))))
+                          (when direct
+                            (if term
+                                (sb-posix:setenv "TERM" term 1)
+                                (sb-posix:unsetenv "TERM")))))))
     (when (null-pointer-p screen)
       (error "The terminal ~a is not known (TERM)" (or term "not set")))
     (%set-term screen)
@@ -585,6 +611,7 @@ characters shown in the order sent, and the screen painted whole, as what was dr
 (defmethod tuatara.frontend:frontend-stop ((f tui-frontend))
   (stop-clipboard-watch)
   (forget-shared-pictures)
+  (sb-sys:enable-interrupt sb-unix:sigwinch :default)
   (let ((wake (tui-wake f)))
     (when wake
       (setf (tui-wake f) nil)
@@ -603,7 +630,7 @@ characters shown in the order sent, and the screen painted whole, as what was dr
       (let ((kitty *kitty-keyboard-on*) (mouse (tui-mouse f)))
         (give-terminal-back f)
         (when words
-          (format t "~%~a~%" (tuatara.command:escape-controls words))
+          (format t "~%~a~%" (tuatara.display:escape-controls words))
           (finish-output))
         (unwind-protect (funcall function)
           (take-terminal-again f kitty mouse)))))
@@ -730,10 +757,13 @@ octets so far, is true."
         (when (or (<= left 0) (funcall done octets)) (return octets))
         (let ((ready (tuatara.io:wait-for-fds (list 0) left)))
           (when (and (consp ready) (member 0 ready))
-            (let ((n (sb-unix:unix-read 0 (sb-sys:vector-sap buffer) (length buffer))))
-              (if (and n (plusp n))
-                  (loop for i below n do (vector-push-extend (aref buffer i) octets))
-                  (return octets)))))))))
+            (multiple-value-bind (n errno)
+                (tuatara.io:with-octets-sap (sap buffer) (sb-unix:unix-read 0 sap (length buffer)))
+              (cond ((and n (plusp n))
+                     (loop for i below n do (vector-push-extend (aref buffer i) octets)))
+                    ;; a signal ended the read before any octets came: wait again
+                    ((eql errno sb-posix:eintr))
+                    (t (return octets))))))))))
 
 (defun terminal-answer (key)
   "Whether the terminal does KEY, as it said when asked (ASK-TERMINAL, the
@@ -1261,9 +1291,9 @@ sequence of no use here, such as a key let go."
 as it takes): a key, a resize, or a :TICK when the time ran out or another
 thread called FRONTEND-WAKE; :QUIT once the terminal is gone. What ncurses has
 read ahead, and a resize it was told of, come first; then the terminal and the
-wake pipe are waited on together, a second at a time, since the resize signal
-may reach another thread and so not end the wait. A key of no use (a key let
-go) is no event: the wait goes on."
+wake pipe are waited on together, for as long as it takes: the signal of a
+resize wakes the pipe (WATCH-TERMINAL-SIZE), so the wait costs nothing at rest.
+A key of no use (a key let go) is no event: the wait goes on."
   (let ((pending (pop (tui-pending f))))
     (when pending (return-from next-event pending)))
   (decide-kitty-keyboard)
@@ -1272,6 +1302,7 @@ go) is no event: the wait goes on."
         (deadline (and seconds (tuatara.runtime:deadline-in seconds)))
         (empty 0))                     ; the terminal said it had input, and ncurses found none
     (loop
+      (follow-terminal-size f)
       (multiple-value-bind (status value)
           (progn (%nodelay window t)
                  (unwind-protect (read-wide-char window) (%nodelay window nil)))
@@ -1282,10 +1313,12 @@ go) is no event: the wait goes on."
       (let* ((left (and deadline (tuatara.runtime:seconds-left deadline)))
              (ready (if (and left (<= left 0))
                         '()
-                        (tuatara.io:wait-for-fds (list 0 (car wake)) (if left (min left 1) 1)))))
+                        (tuatara.io:wait-for-fds (list 0 (car wake)) left))))
         (cond ((and (consp ready) (member (car wake) ready))
                (tuatara.io:drain-wake-pipe wake)
-               (return (tuatara.frontend:make-event :tick)))
+               ;; a resize alone is no event: ncurses is told of it at the top of the loop
+               (when (wake-gives-tick-p)
+                 (return (tuatara.frontend:make-event :tick))))
               ((and (consp ready) (member 0 ready))
                ;; readable again and again with nothing to read: the terminal hung up
                (when (> (incf empty) 50) (return (tuatara.frontend:make-event :quit))))
@@ -1300,7 +1333,9 @@ go) is no event: the wait goes on."
 
 (defmethod tuatara.frontend:frontend-wake ((f tui-frontend))
   (let ((wake (tui-wake f)))
-    (when wake (tuatara.io:wake wake))))
+    (when wake
+      (setf (car **frontend-woken**) t)
+      (tuatara.io:wake wake))))
 
 (defmethod tuatara.frontend:frontend-input-pending-p ((f tui-frontend))
   ;; ncurses reads the terminal a byte at a time as keys are asked for, so

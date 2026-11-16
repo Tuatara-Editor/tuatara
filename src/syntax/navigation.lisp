@@ -13,10 +13,6 @@
 (defconstant +deepest+ 1024
   "The most nodes around a place looked at, from the innermost out.")
 
-(defconstant +navigation-wait+ 1/4
-  "The seconds moving by the syntax tree waits for the program parsing to
-answer: one that hangs is ended then, and holds the editor no longer.")
-
 (defun node-ancestry (syntax start end)
   "The smallest node of SYNTAX's tree spanning octets START below END, then
 each node around it out to the root, as a list of TREE-NODE; NIL when there
@@ -26,7 +22,7 @@ is no tree."
     (when tree
       (with-call (call (tree-helper tree) +op-ancestry+)
         (call-u32 call (tree-number tree)) (call-u32 call start) (call-u32 call end)
-        (when (eql 0 (call-send call :seconds +navigation-wait+))
+        (when (eql 0 (call-send call :seconds +quick-answer-wait+))
           ;; each node around the one before it, all within the text
           (loop with bytes = (tuatara.text:rope-octet-length (syntax-rope syntax))
                 with low = most-positive-fixnum and high = -1
@@ -53,7 +49,7 @@ such node."
       (with-call (call (tree-helper tree) +op-select+)
         (call-u32 call (tree-number tree)) (call-u32 call start) (call-u32 call end)
         (call-u32 call (ecase how (:smallest 0) (:larger 1) (:first-child 2) (:next 3) (:previous 4)))
-        (when (and (eql 0 (call-send call :seconds +navigation-wait+)) (= 1 (reply-u32 call 0)))
+        (when (and (eql 0 (call-send call :seconds +quick-answer-wait+)) (= 1 (reply-u32 call 0)))
           (let ((from (reply-u32 call 1)) (to (reply-u32 call 2)))
             (unless (<= from to (tuatara.text:rope-octet-length (syntax-rope syntax)))
               (reply-overrun call))
@@ -392,7 +388,6 @@ the start of the scan."
       (let ((at (and (> q (bracket-scan-from scan))
                      (tuatara.text:rope-find-any-octet rope tuatara.text:*bracket-octets*
                                                        :start (bracket-scan-from scan) :end q :from-end t))))
-
         (unless at (return nil))
         (let ((span (scan-span-at scan at)))
           (if span

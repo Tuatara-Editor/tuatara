@@ -54,6 +54,22 @@ when no keys play."
       (setf (playing-failed playing) :quit)
       t)))
 
+(defun merge-play-undo (stacks)
+  "Make what a play of recorded keys changed in each buffer one step to undo
+there. STACKS lists each buffer there was when the play began with its undo
+stack then, in the order of TUATARA.BUFFER:*BUFFERS*; a buffer not in it began
+with none."
+  (let ((rest stacks))
+    (dolist (buffer tuatara.buffer:*buffers*)
+      (let ((since (if (eq (car (first rest)) buffer)
+                       (cdr (pop rest))
+                       (cdr (assoc buffer stacks)))))
+        (tuatara.buffer:merge-undo-groups buffer since)
+        ;; the play's step stands as it is, never joined with the next by the command playing it
+        (let ((cell *command-undo-since*))
+          (when (and cell (eq (car cell) buffer))
+            (setf (cdr cell) (tuatara.buffer:buffer-undo-stack buffer))))))))
+
 (defun play-once (editor events)
   "Play EVENTS, recorded keys, once: each handed to the command loop as if
 typed, the windows laid out before each as the command loop lays them out
@@ -80,13 +96,7 @@ command that failed, or T, or :QUIT after \\`C-g', when one did
       (setf (editor-pending editor) '()
             (editor-prefix-argument editor) nil
             (editor-collecting-prefix editor) nil)
-      (dolist (buffer tuatara.buffer:*buffers*)
-        (let ((since (cdr (assoc buffer stacks))))
-          (tuatara.buffer:merge-undo-groups buffer since)
-          ;; the play's step stands as it is, never joined with the next by the command playing it
-          (let ((cell *command-undo-since*))
-            (when (and cell (eq (car cell) buffer))
-              (setf (cdr cell) (tuatara.buffer:buffer-undo-stack buffer)))))))
+      (merge-play-undo stacks))
     (playing-failed playing)))
 
 (defun play-keys (events times)

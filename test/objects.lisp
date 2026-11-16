@@ -114,7 +114,7 @@
       (selection-after "w w w w l m i \" m i" "\"No use \"writing on paper.\" That\""))
   (multiple-value-bind (f editor) (run-keys "m i x" :text "abc")
     (declare (ignore editor))
-    (true (search "Unsupported delimiter `x'" (tuatara.frontend.fake:fake-screen-line f 7))))
+    (true (search "Unsupported delimiter 'x'" (tuatara.frontend.fake:fake-screen-line f 7))))
   (multiple-value-bind (f editor) (run-keys "l m i (" :text "abc")
     (declare (ignore editor))
     (true (search "No '(' found near cursor" (tuatara.frontend.fake:fake-screen-line f 7)))))
@@ -588,12 +588,20 @@ abc")
                        :text ""
                        :width 100)))
       (true (tuatara.frontend.fake:fake-frame-showing f "SV<"))))
-  ;; your own under SPC i, made into commands
+  ;; your own under SPC i, made into commands; taken away again after, so that no later test finds
+  ;; the command or its key
   (let ((tuatara-user:*input-method-keys* '(("s" "swedish" "swedish-postfix")
                                             ("&" "taken" "rfc1345")
-                                            ("x" "none" "no-such-method"))))
-    (is string= "å" (session-text (nth-value 1 (run-keys "SPC i s i a a C-g" :text ""))))
-    (true (tuatara.command:find-command 'tuatara.defaults::input-method-swedish)))
+                                            ("x" "none" "no-such-method")))
+        (name 'tuatara.defaults::input-method-swedish))
+    (unwind-protect
+         (progn
+           (is string= "å" (session-text (nth-value 1 (run-keys "SPC i s i a a C-g" :text ""))))
+           (true (tuatara.command:find-command name)))
+      (tuatara.command:define-key tuatara.defaults::*tuatara-leader-keymap* "i s" nil)
+      (tuatara.command:forget-command name)
+      (remprop name 'tuatara.defaults::input-method-key)
+      (fmakunbound name)))
   ;; its rules listed
   (true (tuatara.frontend.fake:fake-frame-showing
          (run-keys "M-x d e s c r i b e - i n p u t - m e t h o d RET s w e d i s h - p o s t f i x RET"
@@ -614,6 +622,12 @@ abc")
     (run-keys "SPC i t" :text "")
     (is eq before (fdefinition 'tuatara.defaults::input-method-step))
     (false (tuatara.command:find-command 'tuatara.defaults::input-method-step))))
+
+(define-modal-test (objects input-method-key-dotted-left-out)
+  ;; an entry with a dotted tail is left out and said, and the editor goes on
+  (let ((tuatara-user:*input-method-keys* '(("d" "dotted" . "swedish-postfix"))))
+    (true (tuatara.frontend.fake:fake-frame-showing (run-keys "SPC i" :text "" :width 100) "is left out"))
+    (false (tuatara.command:find-command 'tuatara.defaults::input-method-dotted))))
 
 (define-test (objects insert-char)
   (let ((tuatara-user:*modal-editing* nil))
@@ -694,23 +708,24 @@ abcd")))))
   ;; off, as it is unless asked for
   (is string= "(" (session-text (nth-value 1 (run-keys "i ( C-g" :text "")))))
 
-(define-modal-test (objects pairs-from-a-slip)
-  ;; pairs written as one dotted pair, or a list with a dotted tail, still pair
-  (let ((tuatara-user:*electric-pair-mode* t))
-    (flet ((typed (keys) (session-text (nth-value 1 (run-keys keys :text "")))))
-      (let ((tuatara-user:*pair-delimiters* '(#\( . #\))))
-        (is string= "(a)" (typed "i ( a C-g"))
-        (is string= "[a" (typed "i [ a C-g")))
-      (let ((tuatara-user:*pair-delimiters* '((#\( . #\)) (#\[ . #\]) . #\x)))
-        (is string= "[a]" (typed "i [ a C-g")))
-      (let ((tuatara-user:*electric-pair-safe-exclusions* '(#\< . #\()))
-        (is string= "(a" (typed "i ( a C-g"))
-        (is string= "[a]" (typed "i [ a C-g")))
-      (let ((tuatara-user:*electric-pair-typing* '(#\[ . #\()))
-        (is string= "(a)" (typed "i ( a C-g"))
-        (is string= "{a" (typed "i { a C-g")))
-      (let ((tuatara-user:*electric-pair-typing* #\())
-        (is string= "(a)" (typed "i ( a C-g"))))))
+(define-test (objects pairs-from-a-slip)
+  ;; pairs written as one dotted pair, or a list with a dotted tail, are refused by the editor, naming
+  ;; the setting
+  (loop for (setting value) in '((tuatara-user:*pair-delimiters* (#\( . #\)))
+                                 (tuatara-user:*pair-delimiters* ((#\( . #\)) (#\[ . #\]) . #\x))
+                                 (tuatara-user:*electric-pair-safe-exclusions* (#\< . #\())
+                                 (tuatara-user:*electric-pair-typing* (#\[ . #\())
+                                 (tuatara-user:*electric-pair-typing* #\())
+        do (let ((words (handler-case (progn (tuatara.runtime:set-setting setting value) nil)
+                          (tuatara.runtime:refusal (e) (princ-to-string e)))))
+             (true (search (string-downcase (symbol-name setting)) words) "~s for ~s" words value))))
+
+(define-modal-test (objects pairs-past-a-slip-in-lisp)
+  ;; pairs set as one dotted pair by Lisp the editor did not look at: typing goes on, with the
+  ;; standard pairs
+  (let ((tuatara-user:*electric-pair-mode* t) (tuatara-user:*pair-delimiters* '(#\( . #\)))
+        (tuatara-user:*electric-pair-typing* '(#\( . #\[)))
+    (is string= "(a)" (session-text (nth-value 1 (run-keys "i ( a C-g" :text ""))))))
 
 (define-modal-test (objects pairs-far-and-limited)
   ;; the pair found however far, fast; with none, said at once, even in a large text
@@ -768,7 +783,7 @@ abcd")))))
     ;; the buffer's, RET alone keeps it, 0 is no column, a count answers at once
     (multiple-value-bind (f editor) (run-keys "C-x f 7 2 RET" :text line :width 80)
       (true (tuatara.frontend.fake:fake-frame-showing f "Set fill column (now 80): "))
-      (true (tuatara.frontend.fake:fake-frame-showing f "Fill column set to 72 (was 80)"))
+      (true (tuatara.frontend.fake:fake-frame-showing f "Fill column 72 for this buffer (was 80)"))
       (is = 72 (tuatara.defaults::buffer-fill-column (session-buffer editor)))
       (is string= line (session-text editor)))
     (multiple-value-bind (f editor) (run-keys "C-x f RET" :text line :width 80)
@@ -1154,7 +1169,7 @@ RIGHT applied through the job's mapper, KEYS as ROWS-JOB-SPEC takes them."
 (defun rows-job-written (text kind left right &rest keys &key folds &allow-other-keys)
   "TEXT with the rows job KIND over all its lines between the columns LEFT and
 RIGHT written in the background by the job's writer, in tiny pieces, KEYS as
-START-ROWS-JOB takes them; the octets of FOLDS, each (START . END), folded
+ROWS-JOB-SPEC takes them; the octets of FOLDS, each (START . END), folded
 first."
   (let ((f (tuatara.frontend.fake:make-fake-frontend :width 60 :height 10))
         (keys (alexandria:remove-from-plist keys :folds)))
@@ -1166,8 +1181,8 @@ first."
      f (lambda ()
          (let* ((b (tuatara.buffer:find-buffer "*scratch*"))
                 (bottom (tuatara.buffer:buffer-line-start b (1- (tuatara.buffer:buffer-size b)))))
-           (apply #'tuatara.defaults::start-rows-job b kind 0 bottom left right
-                  (tuatara.defaults::rows-between b 0 bottom) :announce :none keys))))
+           (tuatara.defaults::start-rows-job b (apply #'tuatara.defaults::rows-job-spec b kind 0 bottom left right keys)
+                                             (tuatara.defaults::rows-between b 0 bottom) :announce :none))))
     (tuatara.frontend.fake:fake-queue-action
      f (lambda ()
          (loop while (find-if #'tuatara.runtime:job-running-p tuatara.runtime:*jobs*) do (sleep 0.01))))
@@ -1310,11 +1325,28 @@ first."
     (unwind-protect
          (progn
            (tuatara.defaults::set-major-mode b 'tuatara.defaults::lisp-mode)
-           (is equal '(6 15) (multiple-value-list (tuatara.defaults::symbol-at (tuatara.buffer:buffer-text b) 8 b))))
+           (is equal '(6 15) (multiple-value-list
+                            (tuatara.defaults::word-bounds-at b 8 (lambda (c) (tuatara.defaults::symbol-char-p c b))))))
       (tuatara.buffer:kill-buffer b)))
   (let ((b (tuatara.buffer:make-buffer "sym-test.txt" :text "a *foo* b")))
     (unwind-protect
-         (is equal '(3 6) (multiple-value-list (tuatara.defaults::symbol-at (tuatara.buffer:buffer-text b) 4 b)))
+         (is equal '(3 6) (multiple-value-list
+                            (tuatara.defaults::word-bounds-at b 4 (lambda (c) (tuatara.defaults::symbol-char-p c b)))))
+      (tuatara.buffer:kill-buffer b))))
+
+(define-test (objects symbol-suggested-within-reach)
+  ;; the symbol a search suggests is never cut short: a long token is suggested whole, and one running past the
+  ;; reach is not suggested at all, rather than a part of it no search finds
+  (let* ((token (make-string 1024 :initial-element #\k))
+         (b (tuatara.buffer:make-buffer "long-symbol.txt" :text (format nil "x ~a y" token))))
+    (unwind-protect
+         (let ((tuatara.command::*current-buffer* b))
+           (is string= token (tuatara.defaults::symbol-search-text 500 nil nil)))
+      (tuatara.buffer:kill-buffer b)))
+  (let ((b (tuatara.buffer:make-buffer "longer-symbol.txt" :text (make-string 1000000 :initial-element #\a))))
+    (unwind-protect
+         (let ((tuatara.command::*current-buffer* b))
+           (false (tuatara.defaults::symbol-search-text 500000 nil)))
       (tuatara.buffer:kill-buffer b))))
 
 (define-test (objects two-spaces-between-sentences)

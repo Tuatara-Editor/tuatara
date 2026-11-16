@@ -184,6 +184,15 @@ FROM or after. Complexity: O(log conflicts)."
     (tuatara.runtime:bisect (i 0 (length conflicts))
       (< (tuatara.text:anchor-position (conflict-end (svref conflicts i)) version) from))))
 
+(defun conflict-index-starting (buffer position &key after)
+  "The index of the first of BUFFER's conflicts whose <<<<<<< line starts at
+POSITION or after it, or with AFTER after it; how many there are when none
+does. Complexity: O(log conflicts)."
+  (let ((conflicts (conflict-list buffer)))
+    (tuatara.runtime:bisect (i 0 (length conflicts))
+      (let ((start (conflict-start-at buffer (svref conflicts i))))
+        (if after (<= start position) (< start position))))))
+
 (defun conflict-index-range (buffer start end)
   "The indices of BUFFER's conflicts that have lines from octet START below END, two values, from and below."
   (let* ((conflicts (conflict-list buffer))
@@ -470,14 +479,13 @@ SEPARATOR END AFTER) after CONFLICT-PLACES, or NIL."
   "Put point at the start of the next conflict after point (DIRECTION 1), or
 the one before (-1), and say which of how many it is."
   (let* ((buffer (current-buffer))
-         (starts (map 'list (lambda (c) (conflict-start-at buffer c)) (conflict-list buffer)))
-         (point (point))
-         (target (if (plusp direction)
-                     (find-if (lambda (start) (> start point)) starts)
-                     (find-if (lambda (start) (< start point)) starts :from-end t))))
-    (if target
-        (progn (goto target)
-               (message "Conflict ~:d of ~:d" (1+ (position target starts)) (length starts)))
+         (conflicts (conflict-list buffer))
+         (i (if (plusp direction)
+                (conflict-index-starting buffer (point) :after t)
+                (1- (conflict-index-starting buffer (point))))))
+    (if (< -1 i (length conflicts))
+        (progn (goto (conflict-start-at buffer (svref conflicts i)))
+               (message "Conflict ~:d of ~:d" (1+ i) (length conflicts)))
         (message "No conflict ~:[before~;after~] this one" (plusp direction)))))
 
 (define-command conflict-next ()
@@ -528,12 +536,12 @@ to stage the file, point where the conflict was."
                (tuatara.buffer:buffer-replace buffer start after text)
                (setf (tuatara.buffer:buffer-local buffer 'conflict-list) (remove conflict (conflict-list buffer)))
                (conflict-follow-keymap buffer)
-               (let* ((starts (map 'list (lambda (c) (conflict-start-at buffer c)) (conflict-list buffer)))
-                      (next (or (find-if (lambda (s) (>= s start)) starts) (first starts))))
-                 (goto (or next start))
-                 (if next
-                     (message "Kept ~a; ~:d conflict~:p left" what (length starts))
-                     (message "~a" (conflict-done-words buffer))))))))))
+               (let* ((conflicts (conflict-list buffer))
+                      (left (length conflicts))
+                      (i (conflict-index-starting buffer start)))
+                 (cond ((zerop left) (goto start) (message "~a" (conflict-done-words buffer)))
+                       (t (goto (conflict-start-at buffer (svref conflicts (if (< i left) i 0))))
+                          (message "Kept ~a; ~:d conflict~:p left" what left))))))))))
 
 (define-command conflict-keep-first-side ()
   "Put the conflict point is in right by keeping its first side, the lines

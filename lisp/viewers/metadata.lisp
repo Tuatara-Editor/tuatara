@@ -78,8 +78,10 @@ to find what it says of itself: all of it, or its first and last halves of
 true when they are cut so)."
   (let ((limit *metadata-largest-read*))
     (if (<= size limit)
-        (let ((octets (make-array size :element-type '(unsigned-byte 8))))
-          (values (subseq octets 0 (tuatara.io:read-fd-at fd octets 0)) nil))
+        (let* ((octets (make-array size :element-type '(unsigned-byte 8)))
+               (read (tuatara.io:read-fd-at fd octets 0)))
+          ;; copied only for a short read
+          (values (if (= read size) octets (subseq octets 0 read)) nil))
         (let* ((half (floor limit 2))
                (octets (make-array (* 2 half) :element-type '(unsigned-byte 8))))
           (tuatara.io:read-fd-at fd octets 0 :end half)
@@ -288,7 +290,7 @@ picture was last changed, in words."
   (destructuring-bind (year month day hour minute second)
       (cons (octets-integer octets data 2 :big-endian t) (coerce (subseq octets (+ data 2) (+ data 7)) 'list))
     (if (and (valid-date-p year month day) (< hour 24) (< minute 60) (< second 61))
-        (utc-time-words (+ (* 86400 (day-number year month day)) (* 3600 hour) (* 60 minute) second))
+        (utc-time-words (utc-universal-time year month day hour minute second))
         (format nil "no such time: year ~d, month ~d, day ~d, ~d:~d:~d" year month day hour minute second))))
 
 (defun png-text-value (octets type nul end inflated most)
@@ -398,10 +400,11 @@ a job, asking it to stop ends the reading between two of them."
 (defun mp4-data-text (octets start end)
   "The value of a data box (from START below END of OCTETS) of an MP4 item: text
 as its type says, a number, or its size."
-  (let ((type (octets-integer octets start 4 :big-endian t)) (from (+ start 8)))
+  (let* ((type (octets-integer octets start 4 :big-endian t)) (from (+ start 8))
+         (cut (min end (+ from *metadata-text-most*))))
     (cond ((or (null type) (> from end)) nil)
-          ((member type '(1 4)) (octets-text octets from end))
-          ((member type '(2 5)) (utf-16-text octets :start from :end end :big-endian t))
+          ((member type '(1 4)) (octets-text octets from cut))
+          ((member type '(2 5)) (utf-16-text octets :start from :end cut :big-endian t))
           ((and (member type '(0 21 22)) (<= 1 (- end from) 8)) (princ-to-string (octets-integer octets from (- end from) :big-endian t)))
           (t (format nil "~:d octets" (- end from))))))
 
@@ -437,7 +440,9 @@ brand, and its own items (title, maker, model, place, software)."
                        (not (tuatara.io:box-find octets (second box) (third box) "data")))
               (let ((length (octets-integer octets (second box) 2 :big-endian t)))
                 (when (and length (<= (+ (second box) 4 length) (third box)))
-                  (push (cons name (octets-text octets (+ (second box) 4) (+ (second box) 4 length))) fields))))))))
+                  (push (cons name (octets-text octets (+ (second box) 4)
+                                                (+ (second box) 4 (min length *metadata-text-most*))))
+                        fields))))))))
     ;; MP4's items (in udta's meta, or moov's), and QuickTime's keyed items (moov's meta with keys)
     (dolist (path '(("moov" "udta" "meta") ("moov" "meta")))
       (let ((meta (apply #'tuatara.io:box-find octets 0 n path)))
@@ -478,10 +483,11 @@ EXIF its item of that kind holds."
       (let* ((children (tuatara.io:box-children octets (+ 4 (second meta)) (third meta)))
              (iinf (find "iinf" children :key #'first :test #'string=))
              (iloc (find "iloc" children :key #'first :test #'string=))
-             (exif-id (when iinf
+             ;; a box empty at the file's end holds no item, not an error
+             (exif-id (when (and iinf (< (second iinf) n))
                         (let ((at (+ (second iinf) (if (zerop (aref octets (second iinf))) 6 8))))
                           (loop for (type start nil) in (tuatara.io:box-children octets at (third iinf))
-                                when (string= type "infe")
+                                when (and (string= type "infe") (< start n))
                                   do (let ((version (aref octets start)))
                                        (when (>= version 2)
                                          (let* ((wide (>= version 3))
@@ -490,7 +496,7 @@ EXIF its item of that kind holds."
                                                                    (+ start (if wide 10 8))
                                                                    (+ start (if wide 14 12)))))
                                            (when (string= kind "Exif") (return id)))))))))
-             (place (when (and iloc exif-id)
+             (place (when (and iloc exif-id (octets-integer octets (+ (second iloc) 4) 2 :big-endian t))
                       (let* ((at (second iloc)) (version (aref octets at))
                              (sizes (octets-integer octets (+ at 4) 2 :big-endian t))
                              (offset-size (ldb (byte 4 12) sizes)) (length-size (ldb (byte 4 8) sizes))
@@ -716,27 +722,34 @@ bits in each."
                              (> data-end (length tag)))
                      (return))
                    (let ((name (or (cdr (assoc id *id3-frames* :test #'string=)) id))
-                         (encoding (if (< data data-end) (aref tag data) 0)))
+                         (encoding (if (< data data-end) (aref tag data) 0))
+                         ;; a text no longer than *METADATA-TEXT-MOST* octets is made into a string
+                         (cut (min data-end (+ data 4 *metadata-text-most*))))
                      (push (cons name
                                  (cond ((zerop length) "")
                                        ((member id '("TXXX" "WXXX" "TXX" "WXX") :test #'string=)
-                                        (multiple-value-bind (stop next) (id3-split tag (1+ data) data-end encoding)
+                                        (multiple-value-bind (stop next) (id3-split tag (1+ data) cut encoding)
                                           (format nil "~a: ~a" (id3-text tag (1+ data) stop encoding)
                                                   (if (char= (char id 0) #\W)
-                                                      (octets-text tag next data-end)
-                                                      (id3-text tag next data-end encoding)))))
+                                                      (octets-text tag next cut)
+                                                      (id3-text tag next cut encoding)))))
                                        ((char= (char id 0) #\T) (substitute #\/
                                                                             (code-char 0)
-                                                                            (id3-text tag (1+ data) data-end encoding)))
-                                       ((char= (char id 0) #\W) (octets-text tag data data-end))
+                                                                            (id3-text tag (1+ data) cut encoding)))
+                                       ((char= (char id 0) #\W) (octets-text tag data cut))
                                        ((member id '("COMM" "USLT" "COM" "ULT") :test #'string=)
-                                        (multiple-value-bind (stop next) (id3-split tag (+ data 4) data-end encoding)
+                                        ;; a frame too short for its language is read as empty
+                                        (multiple-value-bind (stop next)
+                                            (id3-split tag (min (+ data 4) cut) cut encoding)
                                           (declare (ignore stop))
-                                          (id3-text tag next data-end encoding)))
-                                       ((member id '("APIC" "PIC") :test #'string=) (format nil "~:d octets of a picture kept inside it" length))
+                                          (id3-text tag next cut encoding)))
+                                       ((member id '("APIC" "PIC") :test #'string=)
+                                        (format nil "~:d octets of a picture kept inside it" length))
                                        ((string= id "PRIV")
-                                        (multiple-value-bind (stop) (id3-split tag data data-end 0)
-                                          (format nil "~a: ~:d octets" (octets-text tag data stop) (- data-end stop))))
+                                        ;; its owner, then its data: the data's size counted from the owner's end
+                                        (multiple-value-bind (stop next) (id3-split tag data data-end 0)
+                                          (format nil "~a: ~:d octets" (octets-text tag data (min stop cut))
+                                                  (- data-end next))))
                                        (t (format nil "~:d octets" length))))
                            fields))
                    (setf at data-end)))))
@@ -757,9 +770,13 @@ bits in each."
                     (data (+ at 4)) (end (+ data length)))
                (when (> end (length octets)) (return))
                (case type
-                 (0 (let* ((rate (ldb (byte 20 44) (octets-integer octets (+ data 10) 8 :big-endian t)))
-                           (samples (ldb (byte 36 0) (octets-integer octets (+ data 10) 8 :big-endian t))))
-                      (when (plusp rate) (push (cons "Length" (format nil "~,1f seconds, ~:d samples a second" (/ samples rate) rate)) fields))))
+                 ;; STREAMINFO: 18 octets at least, else it is passed over
+                 (0 (let ((bits (and (>= length 18) (octets-integer octets (+ data 10) 8 :big-endian t))))
+                      (when bits
+                        (let ((rate (ldb (byte 20 44) bits)) (samples (ldb (byte 36 0) bits)))
+                          (when (plusp rate)
+                            (push (cons "Length" (format nil "~,1f seconds, ~:d samples a second" (/ samples rate) rate))
+                                  fields))))))
                  (4 (let* ((vendor (octets-integer octets data 4)) (p (+ data 4 (or vendor 0))))
                       (when vendor (push (cons "Made by" (octets-text octets (+ data 4) (min end p))) fields))
                       (let ((items (octets-integer octets p 4)))
@@ -767,7 +784,8 @@ bits in each."
                         (dotimes (i (min (or items 0) *metadata-most-fields*))
                           (let ((size (octets-integer octets p 4)))
                             (unless (and size (<= (+ p 4 size) end)) (return))
-                            (let* ((text (octets-text octets (+ p 4) (+ p 4 size))) (equals (position #\= text)))
+                            (let* ((text (octets-text octets (+ p 4) (+ p 4 (min size *metadata-text-most*))))
+                                   (equals (position #\= text)))
                               (push (if equals
                                         (cons (subseq text 0 equals) (subseq text (1+ equals)))
                                         (cons "Comment" text)) fields))
@@ -1222,9 +1240,12 @@ gpg, when it looks up keys, is given your keyring alone, not the file."
                                                               :look-up-keys look-up-keys)))
                   :name "tuatara metadata")))))))
 
+;; the keys of the lists of directories, defined in a file loaded after this one
+(declaim (special *rimu-keymap*))
+
 (defun install-metadata ()
   "Have M-x show-file-metadata read pictures, PDFs, sound and video, and Office and
 OpenDocument files, and bind \\`g i' to it in lists of directories."
-  (define-key (symbol-value '*rimu-keymap*) "g i" 'show-file-metadata)
+  (define-key *rimu-keymap* "g i" 'show-file-metadata)
   (pushnew 'office-metadata *file-metadata-functions*)
   (pushnew 'built-in-metadata *file-metadata-functions*))

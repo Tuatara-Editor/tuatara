@@ -156,17 +156,36 @@ programs read to find libraries and alternatives."
                 append (list "--ro-bind-try" path path))))
 
 (defvar *bwrap-versions* (make-hash-table :test 'equal :synchronized t)
-  "The version of each bwrap program asked so far, by its path: a list of numbers, or :UNKNOWN.")
+  "What each bwrap program asked so far says of its version, by its path, trimmed.")
+
+(defun bwrap-version-text (program)
+  "What the bwrap PROGRAM (its path) says of its version, trimmed: asked once."
+  (or (gethash program *bwrap-versions*)
+      (setf (gethash program *bwrap-versions*)
+            (string-trim '(#\Space #\Newline #\Return #\Tab) (version-text program)))))
+
+(defvar *bwrap-descriptor-binds* (make-hash-table :test 'equal :synchronized t)
+  "Whether each bwrap program asked so far shows a place given as a descriptor
+\(--ro-bind-fd), by its path: T or :NO.")
+
+(defun bwrap-binds-descriptors-p (program)
+  "True when the bwrap PROGRAM (its path) shows a place given as a descriptor
+\(--ro-bind-fd and --bind-fd), as its --help says: asked once. A sandbox is
+never run without it, as a place given by name could be swapped after it
+was checked."
+  (eq t (or (gethash program *bwrap-descriptor-binds*)
+            (setf (gethash program *bwrap-descriptor-binds*)
+                  (if (search "--ro-bind-fd" (or (program-output (list program "--help") :seconds 5 :environment '())
+                                                 ""))
+                      t
+                      :no)))))
 
 (defun bwrap-version-at-least-p (major minor)
   "True when the bwrap found for the program SANDBOX-PROGRAM gives is version
 MAJOR.MINOR or later, as it says it is."
-  (let ((program (and (sandbox-program) (find-program (sandbox-program)))))
-    (when program
-      (let ((version (or (gethash program *bwrap-versions*)
-                         (setf (gethash program *bwrap-versions*)
-                               (or (version-numbers (version-text program)) :unknown)))))
-        (and (consp version) (version-at-least-p version (list major minor)))))))
+  (let* ((program (and (sandbox-program) (find-program (sandbox-program))))
+         (version (and program (software-version-numbers (bwrap-version-text program)))))
+    (and version (software-version-at-least-p version (list major minor)))))
 
 (defparameter *seccomp-refused*
   '((:x86-64 #xC000003E
@@ -198,6 +217,11 @@ MAJOR.MINOR or later, as it says it is."
   "For each processor the seccomp filter knows (a feature of the Lisp, then
 the kernel's AUDIT_ARCH number), the system calls refused, by number.")
 
+(defun seccomp-cpu ()
+  "The entry of *SECCOMP-REFUSED* for the processor the editor runs on, or NIL
+for one the seccomp filter does not know."
+  (find-if (lambda (entry) (member (first entry) *features*)) *seccomp-refused*))
+
 (defparameter *seccomp-calls*
   '((:x86-64 :clone 56 :clone3 435 :ioctl 16 :socket 41)
     (:arm64 :clone 220 :clone3 435 :ioctl 29 :socket 198))
@@ -213,7 +237,7 @@ ENOSYS (so that its flags, out of reach of the filter, are asked through
 clone). clone making a namespace fails too, and so do ioctl pushing input into
 a terminal (TIOCSTI, TIOCLINUX) and a socket that is not a local one
 \(AF_UNIX). Everything else is let be."
-  (let* ((cpu (find-if (lambda (entry) (member (first entry) *features*)) *seccomp-refused*))
+  (let* ((cpu (seccomp-cpu))
          (calls (and cpu (rest (assoc (first cpu) *seccomp-calls*))))
          (code '()))
     (when cpu
@@ -264,7 +288,7 @@ a terminal (TIOCSTI, TIOCLINUX) and a socket that is not a local one
 (defun sandbox-filtered-p ()
   "True when programs in the sandbox run under its seccomp filter: turned on
 (*SANDBOX-SECCOMP*) and a processor it knows."
-  (and *sandbox-seccomp* (find-if (lambda (entry) (member (first entry) *features*)) *seccomp-refused*) t))
+  (and *sandbox-seccomp* (seccomp-cpu) t))
 
 (defconstant +unchanging-seals+ 14
   "The seals that keep a file in memory as it is: nothing may write it, make it
@@ -285,7 +309,7 @@ error signalled, when it cannot be made, filled or sealed."
     (when (minusp fd) (fail "make a file in memory called" name))
     (tuatara.runtime:with-fd-closed-on-error (fd "the file in memory ~a" name)
       (funcall fill fd)
-      (when (minusp (fcntl-int fd 1033 +all-seals+))  ; F_ADD_SEALS
+      (when (minusp (%fcntl fd 1033 +all-seals+))  ; F_ADD_SEALS
         (fail "seal" "a file in memory"))
       (sb-posix:lseek fd 0 sb-posix:seek-set)
       fd)))
@@ -296,17 +320,27 @@ so that nothing can change it (SEALED-MEMORY-FILE), and with KEPT kept open
 in programs started (for bwrap to read)."
   (sealed-memory-file name (lambda (fd) (write-octets fd octets :path name)) :kept kept))
 
+(defun call-with-memory-file (name octets function &key kept)
+  "Call FUNCTION with the descriptor of a new file in memory called NAME
+holding OCTETS, at its start and sealed so that nothing can change it (as
+MEMORY-FILE makes it, KEPT, NIL unless given, as it has it), and close the descriptor when
+FUNCTION is done, whether it returns or leaves with an error. Returns what
+FUNCTION returns. The file is gone once nothing holds it open."
+  (let ((fd (memory-file name octets :kept kept)))
+    (unwind-protect (funcall function fd)
+      (tuatara.runtime:close-fd-quietly fd "the file in memory ~a" name))))
+
 (defun sealed-p (fd &optional (seals +all-seals+))
   "True when file descriptor (FD) has every seal of SEALS (F_GET_SEALS): as
 standard, sealed as SEALED-MEMORY-FILE seals a copy."
-  (let ((have (fcntl-int fd 1034 0)))  ; F_GET_SEALS
+  (let ((have (%fcntl fd 1034 0)))  ; F_GET_SEALS
     (and (>= have 0) (= seals (logand have seals)))))
 
 (defun sealed-file-size (fd)
   "The size in octets of the file open as file descriptor (FD) when it is
 sealed so that nothing can write it, make it shorter or make it longer
 \(+UNCHANGING-SEALS+); NIL when it is not."
-  (and (sealed-p fd +unchanging-seals+) (sb-posix:stat-size (sb-posix:fstat fd))))
+  (and (sealed-p fd +unchanging-seals+) (fd-size fd)))
 
 (defparameter *sandbox-own-directories* '("/usr" "/bin" "/sbin" "/lib" "/lib64" "/lib32" "/tmp" "/proc" "/dev" "/etc")
   "The directories at the root that the sandbox makes itself, never made links
@@ -374,59 +408,108 @@ through: /run/user/UID and $XDG_RUNTIME_DIR, each where it really is."
                                               (real-path-so-far runtime)))))
                      :test #'string=))
 
+(defun place-unshown-why (place)
+  "Why PLACE, a file or directory, may not be shown to a program shut in, in
+words, or NIL when it may. It is looked at where it really is, its links
+followed (REAL-PATH-SO-FAR). Refused: a directory the sandbox makes its own
+\(*SANDBOX-OWN-DIRECTORIES*), whose real one holds the sockets of programs
+outside it (the X server, ssh-agent, tmux); the directory of your own
+programs' sockets (SESSION-SOCKET-DIRECTORIES) or one holding it, as a
+program reaching such a socket could have a program outside the sandbox act
+for it; your home directory or one holding it, where your private keys and
+more sockets are; the root, which holds all of them."
+  (let ((place (string-right-trim "/" (real-path-so-far place))))
+    (cond ((zerop (length place)) "it is the root, which holds every file")
+          ((or (member place *sandbox-own-directories* :test #'string=)
+               (some (lambda (sockets) (path-within-p sockets place)) (session-socket-directories)))
+           "programs outside the sandbox are reached through it")
+          ((some (lambda (home) (path-within-p (real-place home) place)) (home-directory-names))
+           "it is your home directory, or holds it"))))
+
 (defun shown-place-p (place)
-  "True when PLACE, where it really is, may be shown to a program shut in: not
-a directory the sandbox makes its own (*SANDBOX-OWN-DIRECTORIES*), whose real
-one holds the sockets of programs outside it (the X server, ssh-agent, tmux),
-nor the directory of your own programs' sockets (SESSION-SOCKET-DIRECTORIES)
-or one holding it. A program reaching such a socket could have a program
-outside the sandbox act for it. The root is let by: it is never shown."
-  (let ((place (string-right-trim "/" place)))
-    (not (and (plusp (length place))
-              (or (member place *sandbox-own-directories* :test #'string=)
-                  (some (lambda (sockets) (path-within-p sockets place)) (session-socket-directories)))))))
+  "True when PLACE may be shown to a program shut in (PLACE-UNSHOWN-WHY)."
+  (not (place-unshown-why place)))
 
 (defun check-shown-place (place)
-  "Signal a FILE-SYSTEM-ERROR when PLACE, where it really is, may not be shown
-to a program shut in (SHOWN-PLACE-P). Show the files it needs instead."
-  (unless (shown-place-p place)
-    (error 'file-system-error :operation "show to a program shut in" :path (string-right-trim "/" place)
-                              :reason "programs outside the sandbox are reached through it")))
+  "Signal a FILE-SYSTEM-ERROR, saying why, when PLACE may not be shown to a
+program shut in (PLACE-UNSHOWN-WHY). Show the files it needs instead."
+  (let ((why (place-unshown-why place)))
+    (when why
+      (error 'file-system-error :operation "show to a program shut in" :path (string-right-trim "/" place)
+                                :reason why))))
 
-(defun mount-arguments (directories writable overlays)
+(defun open-shown-place (source)
+  "A descriptor naming SOURCE, a file or directory where it really is, as it
+was checked (CHECK-SHOWN-PLACE), for bwrap to show in place of its name, so
+that nothing swapped in after the check is shown: NIL when nothing is there
+\(a bind of what may be missing is then left out). A FILE-SYSTEM-ERROR when a
+link stands at SOURCE now, or the descriptor names another place than
+SOURCE, a part of its path swapped for a link meanwhile."
+  (let ((fd (handler-case (sb-posix:open source (logior +o-path+ +o-nofollow+))
+              (sb-posix:syscall-error (condition)
+                (if (= (sb-posix:syscall-errno condition) sb-posix:enoent)
+                    (return-from open-shown-place nil)
+                    (fail "show to a program shut in" source (sb-posix:syscall-errno condition)))))))
+    (let ((link (= (logand (sb-posix:stat-mode (sb-posix:fstat fd)) sb-posix:s-ifmt) sb-posix:s-iflnk))
+          (there (handler-case (sb-posix:readlink (format nil "/proc/self/fd/~d" fd))
+                   (sb-posix:syscall-error () nil))))
+      (when (or link (not (equal there source)))
+        (tuatara.runtime:close-fd-quietly fd "~a" source)
+        (error 'file-system-error :operation "show to a program shut in" :path source
+                                  :reason "it changed while it was looked at"))
+      fd)))
+
+(defun mount-arguments (directories writable overlays &key opened)
   "bwrap's arguments showing DIRECTORIES read only, WRITABLE ones to write in
 and OVERLAYS, as SANDBOX-RUN has them, those that exist, a directory in
 another shown after it, so that both are seen; with the links at the root
 their paths go through (ROOT-LINK-ARGUMENTS). An entry may be a single file,
 shown alone. A directory a link leads to is shown where it is written too, so
 that a path through the link finds it. The root itself is never shown: the
-sandbox's root is its own. A place outside programs are reached through is
-refused (CHECK-SHOWN-PLACE), and so is a directory to write in that is, or
-holds, a place nothing may be written in (CHECK-TREE-WRITING)."
+sandbox's root is its own. Each is checked and shown where it really is, its
+links followed, under a directory the sandbox makes its own too: a place
+outside programs are reached through is refused (CHECK-SHOWN-PLACE), and so
+is a directory to write in that is, or holds, a place nothing may be written
+in (CHECK-TREE-WRITING). With OPENED, a cons, each directory or file shown is
+given to bwrap as a descriptor opened where it was checked (OPEN-SHOWN-PLACE),
+pushed on OPENED's car for the caller to hand over and close; overlays are
+given by name."
   (let ((mounts '()) (written '()))
     (flet ((add (entry how)
-             (multiple-value-bind (source target) (sandbox-place entry)
-               (check-shown-place (if (consp entry) (real-place source) source))
-               (when (eq how :write)
-                 (check-tree-writing source "let a program write in"))
-               (push (if (consp entry) (cdr entry) entry) written)
-               ;; at its real place, and where it is written when a link leads there (~/scratch to /tmp/scratch)
-               (dolist (place (remove-duplicates (list target (if (consp entry) target (root-resolved entry)))
-                                                 :test #'string=))
-                 (push (cons place (ecase how
-                                     (:read (list "--ro-bind-try" source place))
-                                     (:write (list "--bind-try" source place))))
-                       mounts)))))
+             (multiple-value-bind (as-written target) (sandbox-place entry)
+               ;; bwrap follows the links in what it shows, under /tmp too: checked and shown where it really is
+               (let ((source (real-path-so-far as-written)))
+                 ;; the root is never shown
+                 (when (zerop (length (string-right-trim "/" source))) (return-from add))
+                 (check-shown-place source)
+                 (when (eq how :write)
+                   (check-tree-writing source "let a program write in"))
+                 (push (if (consp entry) (cdr entry) entry) written)
+                 ;; at its real place, and where it is written when a link leads there (~/scratch to /tmp/scratch)
+                 (dolist (place (remove-duplicates (list target (if (consp entry) target (root-resolved entry)))
+                                                   :test #'string=))
+                   (if opened
+                       (let ((fd (open-shown-place source)))
+                         (when fd
+                           (push fd (car opened))
+                           (push (cons place (list (if (eq how :read) "--ro-bind-fd" "--bind-fd")
+                                                   (princ-to-string fd) place))
+                                 mounts)))
+                       (push (cons place (ecase how
+                                           (:read (list "--ro-bind-try" source place))
+                                           (:write (list "--bind-try" source place))))
+                             mounts)))))))
       (dolist (entry directories) (add entry :read))
       (dolist (entry writable) (add entry :write))
       (loop for (source upper work) in overlays
-            do (multiple-value-bind (lower target) (sandbox-place source)
-                 (check-shown-place lower)
-                 (push source written)
-                 (push (cons target (if (bwrap-version-at-least-p 0 11)
-                                        (list "--overlay-src" lower "--overlay" upper work target)
-                                        (list "--ro-bind-try" lower target)))
-                       mounts))))
+            do (multiple-value-bind (as-written target) (sandbox-place source)
+                 (let ((lower (real-path-so-far as-written)))
+                   (check-shown-place lower)
+                   (push source written)
+                   (push (cons target (if (bwrap-version-at-least-p 0 11)
+                                          (list "--overlay-src" lower "--overlay" upper work target)
+                                          (list "--ro-bind-try" lower target)))
+                         mounts)))))
     ;; the last given for a place wins; a parent before what is in it; the root itself never
     (setf mounts (stable-sort (remove-duplicates (remove "" (nreverse mounts) :key #'car :test #'string=)
                                                  :key #'car :test #'string= :from-end nil)
@@ -435,9 +518,9 @@ holds, a place nothing may be written in (CHECK-TREE-WRITING)."
             (loop for mount in mounts append (cdr mount)))))
 
 (defun sandbox-arguments (program arguments seconds memory &key seccomp files environment directories writable overlays
-                                                              (directory "/tmp") (file-limit *sandbox-file-limit*)
+                                                              links (directory "/tmp") (file-limit *sandbox-file-limit*)
                                                               (processes *sandbox-process-limit*) (scratch t)
-                                                              (descriptors nil))
+                                                              (descriptors nil) opened)
   "Bwrap's arguments for running PROGRAM with ARGUMENTS shut in. Each process
 is limited to SECONDS of processor time (NIL: no limit) and MEMORY octets (NIL:
 no limit). Its scratch /tmp is limited to MEMORY octets too. It is limited to
@@ -446,9 +529,10 @@ limit). SECCOMP is the file descriptor (FD) of its seccomp filter. FILES is
 the descriptors of files it is shown read only, each (PATH . FD). ENVIRONMENT
 is what it has in its environment besides, each (NAME VALUE), a later one for
 the same NAME in place of the earlier. DIRECTORIES, WRITABLE and OVERLAYS are
-the directories it is shown as SANDBOX-RUN says. DIRECTORY is the one it
-starts in. Without SCRATCH it has no /tmp at all. DESCRIPTORS, when given, is
-the most files it may have open at once."
+the directories it is shown as SANDBOX-RUN says, LINKS the links it has.
+DIRECTORY is the one it starts in. Without SCRATCH it has no /tmp at all.
+DESCRIPTORS, when given, is the most files it may have open at once. OPENED is
+MOUNT-ARGUMENTS's."
   (append (list "--unshare-all" "--unshare-user" "--disable-userns" "--die-with-parent" "--new-session"
                 "--cap-drop" "ALL" "--clearenv"
                 "--setenv" "PATH" *sandbox-path* "--setenv" "HOME" "/tmp" "--setenv" "LC_ALL" "C.UTF-8")
@@ -458,7 +542,9 @@ the most files it may have open at once."
           ;; the scratch /tmp is memory too: held to the memory a program may take, where bwrap can (0.10 on)
           (and scratch memory (bwrap-version-at-least-p 0 10) (list "--size" (princ-to-string memory)))
           (and scratch (list "--tmpfs" "/tmp"))
-          (mount-arguments directories writable overlays)
+          (mount-arguments directories writable overlays :opened opened)
+          (loop for (path . text) in links
+                append (list "--symlink" text (path-join (real-place (parent-path path)) (native-file-name path))))
           (loop for (path . fd) in files append (list "--ro-bind-data" (princ-to-string fd) path))
           (and seccomp (list "--seccomp" (princ-to-string seccomp)))
           (list "--chdir" directory
@@ -598,7 +684,7 @@ when systemd-run can make one. Its outputs are streams to read, or let go
 when OUTPUTS is NIL. STARTED, when given, is called with the process as soon
 as it is counted, before anything can stop this thread, to keep it where the
 caller ends it."
-  (let ((seccomp nil) (data '()))
+  (let ((seccomp nil) (data '()) (opened (list nil)))
     (unwind-protect
          (let* ((program-octets (and *sandbox-seccomp* (seccomp-program)))
                 (arguments (progn
@@ -610,9 +696,9 @@ caller ends it."
                                                            (sealed-for-program contents)))
                                             data))
                              (apply #'sandbox-arguments program arguments seconds memory
-                                    :seccomp seccomp :files (reverse data)
+                                    :seccomp seccomp :files (reverse data) :opened opened
                                     (alexandria:remove-from-plist keys :files :total :outputs :started))))
-                (keep (remove nil (cons seccomp (mapcar #'cdr data))))
+                (keep (remove nil (append (list seccomp) (mapcar #'cdr data) (car opened))))
                 (scope (and total **sandbox-scope**))
                 (unit (and scope (scope-name))))
            ;; counted among those running before this thread can be ended
@@ -636,7 +722,8 @@ caller ends it."
                process)))
       ;; bwrap has its own descriptors of them once started
       (when seccomp (tuatara.runtime:close-fd-quietly seccomp "the sandbox's system call filter"))
-      (dolist (file data) (tuatara.runtime:close-fd-quietly (cdr file) "~a" (car file))))))
+      (dolist (file data) (tuatara.runtime:close-fd-quietly (cdr file) "~a" (car file)))
+      (dolist (fd (car opened)) (tuatara.runtime:close-fd-quietly fd "a place shown to a program shut in")))))
 
 (defun sandbox-start (program arguments stdin &key memory directories (processes *sandbox-process-limit*) descriptors)
   "Start PROGRAM (a full path to one it is shown) with ARGUMENTS shut in as
@@ -711,7 +798,13 @@ background (END-SCOPES-LEFT)."
           (t (let ((left (end-sandboxes-left)))
                (when (plusp left)
                  (tuatara.runtime:debug-report :job "sandbox: ~d left behind by an editor gone, ended" left)))
-             (let ((version (said-text (sb-ext:string-to-octets (version-text path)))))
+             (let ((version (bwrap-version-text path)))
+               (unless (bwrap-binds-descriptors-p path)
+                 (return-from try-sandbox
+                   (list :broken (format nil "~a (~a) cannot be given the places it shows as descriptors ~
+                                              (--ro-bind-fd): a later bubblewrap is needed"
+                                         (if (plusp (length version)) version program) path)
+                         path)))
                (multiple-value-bind (output outcome said)
                    (handler-case (tuatara.runtime:reporting-errors ("trying the sandbox ~a" path)
                                    (%sandbox-run path "true" '() nil 10 (* 64 1024 1024) 0 nil '(0) t))
@@ -799,18 +892,23 @@ being such a copy already, a descriptor of its own on it (REOPEN-SEALED), so
 that one copy serves many programs."
   (if (sealed-p fd) (reopen-sealed fd) (sealed-copy fd :kept t)))
 
+(sb-ext:defglobal **sandbox-trial** (list nil)
+  "A cons whose car is true while a trial of the sandbox started by
+SANDBOX-STATUS-NOW runs, so that one is started at a time.")
+
 (defun sandbox-status-now ()
   "SANDBOX-STATUS's first value without waiting, for the editor's own thread:
-what was found when the sandbox was last tried; :OFF or :MISSING, told at
-once; or :UNKNOWN while bwrap is there but not tried yet (or tried again), the
-trying then started in the background."
+what was found when the sandbox was last tried; :OFF, told at once; or
+:UNKNOWN while it is not tried yet (or tried again), one trial then started
+in the background, which tells :MISSING too."
   (let ((state **sandbox-state**))
     (cond ((and state (equal (sandbox-program) (fourth state))) (first state))
           ((null (sandbox-program)) :off)
-          ((null (find-program (sandbox-program))) :missing)
-          (t (unless (sb-thread:mutex-owner **sandbox-lock**)
+          (t (when (null (sb-ext:compare-and-swap (car **sandbox-trial**) nil t))
                (tuatara.runtime:make-guarded-thread
-                (lambda () (tuatara.runtime:ignoring-errors-reported ("trying the sandbox") (sandbox-status)))
+                (lambda ()
+                  (unwind-protect (tuatara.runtime:ignoring-errors-reported ("trying the sandbox") (sandbox-status))
+                    (setf (car **sandbox-trial**) nil)))
                 :name "sandbox trial"))
              :unknown))))
 
@@ -827,7 +925,7 @@ with a FILE-SYSTEM-ERROR, never left to block."
     (let* ((line (if (string= secret "") (make-string 0) (concatenate 'string secret (string #\Newline))))
            (octets (tuatara.text:string-octets line))
            (made nil))
-      (unwind-protect (progn (let ((room (fcntl-int out 1032 0)))         ; F_GETPIPE_SZ
+      (unwind-protect (progn (let ((room (%fcntl out 1032 0)))         ; F_GETPIPE_SZ
                                (when (and (plusp room) (> (length octets) room))
                                  (error 'file-system-error :operation "pass" :path "a secret"
                                                            :reason (format nil "it is longer than ~:d octets" room))))
@@ -843,7 +941,7 @@ with a FILE-SYSTEM-ERROR, never left to block."
 (defun sandbox-run (program arguments &key input secret (seconds *sandbox-seconds*) (memory *sandbox-memory*)
                                            (output-limit (* 256 1024 1024)) (output-kept t) cancel files
                                            environment directories
-                                           writable overlays (directory "/tmp") (file-limit *sandbox-file-limit*)
+                                           writable overlays links (directory "/tmp") (file-limit *sandbox-file-limit*)
                                            (ended-well '(0)))
   "Run PROGRAM (a name looked for on the sandbox's PATH, /usr/bin:/bin, or a
 full path to one it is shown) with ARGUMENTS (strings, never through a shell)
@@ -889,7 +987,12 @@ OVERLAYS are directories it sees where they are and may seem to write in, each
 own, SOURCE never changed. WORK is an empty directory beside UPPER that the
 system needs for it (where bwrap cannot do that, before 0.11, SOURCE is shown
 read only). Those that do not exist are left out. A directory in another one
-shown is seen in it. DIRECTORY is where it starts, /tmp unless given."
+shown is seen in it. LINKS are symbolic links it has at their paths, each
+\(PATH . TEXT), TEXT what the link holds, with no more of PATH's directory
+than the link itself: a link in your home directory can be given it so, the
+directory being no place to show. Each is a new link, made when the program
+starts, with that time and the program's owner, and PATH and TEXT must be
+UTF-8. DIRECTORY is where it starts, /tmp unless given."
   (multiple-value-bind (status detail bwrap) (sandbox-status)
     (if (eq status :ready)
         (multiple-value-bind (copy writer)
@@ -900,7 +1003,8 @@ shown is seen in it. DIRECTORY is where it starts, /tmp unless given."
                  (multiple-value-bind (output outcome said)
                      (%sandbox-run bwrap program arguments copy seconds memory output-limit cancel ended-well
                                    output-kept :files files :environment environment :directories directories
-                                   :writable writable :overlays overlays :directory directory :file-limit file-limit)
+                                   :writable writable :overlays overlays :links links :directory directory
+                                   :file-limit file-limit)
                    (tuatara.runtime:debug-report :job "sandbox: ~a ~{~a~^ ~}: ~(~a~) in ~,3f s, ~:d octets~@[: ~a~]"
                                                  program arguments outcome (tuatara.runtime:seconds-since start)
                                                  (length output) (and (plusp (length said)) said))

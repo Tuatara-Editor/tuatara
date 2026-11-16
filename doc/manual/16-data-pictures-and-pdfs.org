@@ -477,6 +477,11 @@ where you left it.
 first page and ~g l~ to the last. ~g p~ asks for a page number and goes
 there, which is the quick way to page 212 of a manual.
 
+~M-x pdf-view-next-page~ and ~M-x pdf-view-previous-page~ work from another
+buffer too: they turn the page of the first PDF a window shows. With a PDF
+beside the LaTeX or Org file it was made from, bind them to keys of your own
+and read on without leaving the text you are writing.
+
 ~j~ and ~k~ scroll down and up within a page. At the bottom of a page, ~j~
 goes on to the top of the next, so you can read a whole document with one key.
 When the whole page fits in the window there is nothing to scroll, and ~j~ and
@@ -567,7 +572,7 @@ A double click on the page goes to the line of the point you clicked. Chapter
 
 *** Commands and settings for PDFs
 
-#+table: commands pdf-view-next-page pdf-view-previous-page pdf-view-next-page-anywhere pdf-view-previous-page-anywhere pdf-view-first-page pdf-view-last-page pdf-view-goto-page pdf-view-page-top pdf-view-page-end pdf-view-scroll-down pdf-view-scroll-up pdf-view-scroll-left pdf-view-scroll-right pdf-view-scroll-by-wheel
+#+table: commands pdf-view-next-page pdf-view-previous-page pdf-view-first-page pdf-view-last-page pdf-view-goto-page pdf-view-page-top pdf-view-page-end pdf-view-scroll-down pdf-view-scroll-up pdf-view-scroll-left pdf-view-scroll-right pdf-view-scroll-by-wheel
 
 #+table: commands pdf-view-fit-page pdf-view-fit-width pdf-view-zoom-in pdf-view-zoom-out pdf-view-zoom-reset pdf-view-toggle-dark
 

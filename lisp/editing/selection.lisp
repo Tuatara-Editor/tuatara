@@ -26,6 +26,25 @@ the region active and not empty; else NIL."
        (let ((region (multiple-value-list (tuatara.buffer:buffer-region buffer))))
          (and (< (first region) (second region)) region))))
 
+(defun say-not-run (command &optional (why "No selection"))
+  "Say that COMMAND, a command's name, was not run, for WHY (that nothing is
+selected, unless given), and return NIL."
+  (message "~a: ~(~a~) was not run" why command)
+  nil)
+
+(defun selected-region-or-say (buffer command &key change)
+  "The start and end of BUFFER's selection as two values when text is
+selected (SELECTED-REGION); else NIL, having said that COMMAND was not run.
+With CHANGE, for a command that rewrites the selected text as a whole, it is
+refused first when BUFFER is read-only (CHECK-WRITABLE) or search filters
+hide any of its lines (CHECK-HIDDEN-LINES)."
+  (let ((region (selected-region buffer)))
+    (cond ((null region) (say-not-run command))
+          (t (when change
+               (check-writable buffer)
+               (check-hidden-lines buffer (first region) (second region)))
+             (values-list region)))))
+
 (defun select-bounds (buffer start end &optional forward)
   "Make the region of BUFFER the text from START below END, point at START,
 or at END when FORWARD: a plain selection, whatever kind the one before was
@@ -139,7 +158,7 @@ a function's body, else all of it. With \\[universal-argument] N, the Nth
 out."
   (let* ((b (current-buffer))
          (word (cdr (assoc object *text-objects* :test #'string=)))
-         (language (mode-language (buffer-major-mode b)))
+         (language (buffer-language b))
          (query (and language (language-compiled-query language :text-objects)))
          (syntax (and query (ready-syntax b))))
     (if (null syntax)

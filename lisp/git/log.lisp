@@ -1,7 +1,7 @@
 ;;;; lisp/git/log.lisp --- The log and the reflog, and differences, each from a menu of its own.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; In a status L opens the log menu, as Magit's l does: L the branch
+;;;; In a status L opens the log menu: L the branch
 ;;;; checked out, o another branch or revision, b every branch, a every
 ;;;; reference, f a file's history, r the reflog; its switches draw the graph
 ;;;; or leave merges out, its options limit how many, by whom, saying what,
@@ -13,7 +13,8 @@
 
 ;;; Tables of what git printed
 
-(defun git-show-table (doing top arguments name mode parse columns fields &key title (entry #'identity) empty)
+(defun git-show-table (doing top arguments name mode parse columns fields
+                       &key title (entry #'identity) empty other)
   "Run git with ARGUMENTS for the repository at TOP as a job doing DOING and
 show what it printed as a table in the buffer NAME in MODE, a row a line
 \(RENDER-MADE-TABLE-LIST), a filter able to try a pattern on one column. On the
@@ -21,7 +22,8 @@ job's thread PARSE, a function of the text, gives the rows. COLUMNS (as
 TABLE-HEADING-PIECES takes them, or a function of the rows giving them) head
 them. FIELDS, a function of a row, gives its cells (TABLE-LIST-ROWS). ENTRY, a
 function of a row, gives what its line is about (LIST-ENTRY-AT). TITLE, when
-given, is a line above it all; EMPTY is said when there are no rows."
+given, is a line above it all; EMPTY is said when there are no rows. With
+OTHER, the buffer is shown in another window, the one selected staying so."
   (start-git-job doing
                  (lambda (job)
                    (let* ((rows (funcall parse (git-job-output job top arguments)))
@@ -34,7 +36,7 @@ given, is a line above it all; EMPTY is said when there are no rows."
                      (render-made-table-list buffer columns pieces texts first
                                              :before (and title (list (cons (format nil "~a~%" title) :heading)))
                                              :point (if title 3 2) :entries entries)
-                     (show-buffer buffer)
+                     (if other (display-buffer buffer :other t) (show-buffer buffer))
                      (when (and empty (zerop (length entries))) (message "~a" empty))))
                  :quiet t))
 
@@ -62,12 +64,14 @@ hash, the date, the author, and the subject after the names at the commit."
                     (escape-controls (git-commit-subject commit))))
       (list (git-commit-graph commit) "" "" "")))
 
-(defun git-show-log (top title arguments)
+(defun git-show-log (top title arguments &key other)
   "List the commits git log gives with ARGUMENTS for the repository at TOP in
-the log buffer, TITLE at its top, a line each, in the background."
+the log buffer, TITLE at its top, a line each, in the background; with
+OTHER, in another window, the one selected staying so."
   (git-show-table "Reading the log" top (append (list "log" *git-commit-format* "--date=short" "--no-color") arguments)
                   "*git log*" 'git-log-mode #'parse-git-commits #'git-log-columns #'git-log-row-fields
-                  :title title :entry (lambda (commit) (and (git-commit-hash commit) commit)) :empty "No commits"))
+                  :title title :entry (lambda (commit) (and (git-commit-hash commit) commit)) :empty "No commits"
+                  :other other))
 
 (defun git-log-menu-arguments (switches)
   "SWITCHES, the arguments of git log the log menu had on, with how many
@@ -125,10 +129,7 @@ moved it there (a commit, a checkout, a reset), as git's reflog keeps it."
 
 (define-command git-log-show ()
   "Show the commit on the current line of the log."
-  (let ((hash (git-commit-at-point)))
-    (if hash
-        (git-show-commit (git-here) hash)
-        (message "No commit on this line"))))
+  (list-visit))
 
 (define-menu git-log-menu (:title "Log" :show git-menu-shows-p :note git-menu-note)
   "Open the log menu: list the commits of the branch checked out, another,
@@ -166,25 +167,25 @@ options shape the list. \\`C-h' there lists every action."
       "HEAD"
       (git-output-line job top (list "hash-object" "-t" "tree" "/dev/null"))))
 
-(defun git-show-diff (top name arguments &key (empty "No changes") against-head)
-  "Show what git diff gives with ARGUMENTS (and the diff menu's switches)
-for the repository at TOP in the buffer NAME (GIT-SHOW-OUTPUT); with
-AGAINST-HEAD, compared with HEAD (GIT-HEAD-OR-EMPTY), ARGUMENTS then the
-switches and the paths after --. EMPTY is said when it gives nothing."
-  (git-show-output "Reading the changes" top
-                   (if against-head
-                       (lambda (job)
-                         (destructuring-bind (switches paths) arguments
-                           (append (list "diff" "--no-color" "--no-ext-diff") switches
-                                   (list (git-head-or-empty job top) "--") paths)))
-                       (append (list "diff" "--no-color" "--no-ext-diff") arguments))
-                   name :empty empty))
+(defun git-show-diff (top name arguments &key (empty "No changes") head)
+  "Show what git diff gives with ARGUMENTS (the diff menu's switches, then --
+and the paths, if any) for the repository at TOP in the buffer NAME
+\(GIT-SHOW-OUTPUT). With HEAD, compared with HEAD (GIT-HEAD-OR-EMPTY), which
+goes before the --. EMPTY is said when it gives nothing."
+  (let ((words (list* "diff" "--no-color" "--no-ext-diff" arguments)))
+    (git-show-output "Reading the changes" top
+                     (if head
+                         (lambda (job)
+                           (let ((at (position "--" words :test #'string=)))
+                             (append (subseq words 0 at) (list (git-head-or-empty job top)) (subseq words at))))
+                         words)
+                     name :empty empty)))
 
 (define-command git-diff ()
   "Show every change of the repository not yet committed, staged or not, in a
 buffer of its own; the diff menu's switches shape it."
   (with-git-repository (top switches)
-    (git-show-diff top "*git diff*" (list switches '()) :against-head t)))
+    (git-show-diff top "*git diff*" (append switches (list "--")) :head t)))
 
 (define-command git-diff-staged ()
   "Show what is staged: the changes the next commit makes."
@@ -242,7 +243,7 @@ its switches shape them. \\`C-h' there lists every action."
    ("= U" "Lines round each change" :option "--unified=" :read read-whole-number-string)))
 
 (defun install-git-log ()
-  "Bind the log menu to L and the diff menu to d in a status, and RET, l and h in a log."
+  "Bind the log menu to L and the diff menu to d in a status, and in a log
+the keys of a list whose entries are opened (ENTRY-LIST-KEYS)."
   (define-keys *git-status-keymap* '(("L" git-log-menu) ("d" git-diff-menu)))
-  (define-keys *git-log-keymap* '(("RET" git-log-show) ("l" git-log-show) ("C-f" git-log-show)
-                                  ("h" quit-window) ("C-b" quit-window))))
+  (entry-list-keys 'git-log-mode "a repository's log (\\[git-log-menu] in a status)"))

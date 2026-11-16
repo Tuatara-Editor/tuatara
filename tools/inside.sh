@@ -45,19 +45,50 @@ image_stale() {
 }
 # names_this_machine FILE: true, and where (the octet each is found at, with
 # the text around it), when FILE names this machine's home directory ($HOME, or
-# the directory it leads to) or the account's name ($USER); false when it names neither
+# the directory it leads to), the account's name ($USER) or the machine's host
+# name (as a whole word: a host called port is not found in "report");
+# false when it names none of them. Names under three characters, and
+# localhost, are not looked for.
 names_this_machine() {
-  local home real user found=1
+  local home real user name found=1 match
   home="${HOME%/}"; real="$(realpath -m "$home")"; user="${USER:-$(id -un)}"
-  for name in "$home" "$real" "$user"; do
-    [ -n "$name" ] || continue
-    if [ "$(grep -a -c -F -- "$name" "$1")" != 0 ]; then
-      echo "$1 names $name $(grep -a -c -F -- "$name" "$1") times, at:" >&2
-      grep -a -o -b -F -- "$name" "$1" | head -n 10 | while IFS=: read -r at _; do
+  for name in "$home" "$real" "$user" "$(hostname 2>/dev/null)" "$(hostname -f 2>/dev/null)"; do
+    [ "${#name}" -ge 3 ] && [ "$name" != localhost ] || continue
+    match=(-F)
+    if [ "$name" != "$home" ] && [ "$name" != "$real" ] && [ "$name" != "$user" ]; then match=(-F -w); fi
+    if [ "$(grep -a -c "${match[@]}" -- "$name" "$1")" != 0 ]; then
+      echo "$1 names $name $(grep -a -c "${match[@]}" -- "$name" "$1") times, at:" >&2
+      grep -a -o -b "${match[@]}" -- "$name" "$1" | head -n 10 | while IFS=: read -r at _; do
         echo "  $at: $(dd if="$1" bs=1 skip=$((at > 40 ? at - 40 : 0)) count=120 status=none | tr -c '[:print:]' '.')" >&2
       done
       found=0
     fi
   done
   return $found
+}
+# in_tree [NAME=VALUE...] SYSTEMS FORM...  run inside, in the current
+# directory's tree and no other one Quicklisp or ASDF knows of, an SBCL with
+# the Lisp expression SYSTEMS (a system's name, or a list of them) loaded, then
+# each FORM evaluated in turn. tools/fence.lisp is loaded, not called: a FORM
+# that runs the editor calls (tuatara.fence:fence-person-data nil) first, and
+# the tests fence themselves as they load. Ends with exit 1 and no form run
+# when the tuatara system loaded is not of this tree. The NAME=VALUE words are
+# put in the environment of the Lisp.
+in_tree() {
+  local environment=() args=() form
+  while [[ "${1:-}" == [A-Z_]*=* ]]; do environment+=("$1"); shift; done
+  local systems="$1" tree="$PWD/"
+  shift
+  for form in "$@"; do args+=(--eval "$form"); done
+  inside env ${environment[@]+"${environment[@]}"} sbcl --dynamic-space-size 4GB --non-interactive \
+    --load tools/quicklisp.lisp \
+    --eval "(push #p\"$tree\" asdf:*central-registry*)" \
+    --eval "(ql:quickload $systems :silent t)" \
+    --load tools/fence.lisp \
+    --eval "(unless (let ((loaded (asdf:system-source-directory :tuatara)))
+                      (and loaded (uiop:pathname-equal (truename loaded) (truename #p\"$tree\"))))
+              (format *error-output* \"~&The tree loaded is ~a, not $tree: nothing done.~%\"
+                      (asdf:system-source-directory :tuatara))
+              (uiop:quit 1))" \
+    ${args[@]+"${args[@]}"}
 }

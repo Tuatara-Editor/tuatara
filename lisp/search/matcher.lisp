@@ -217,22 +217,6 @@ pkg:name)."
            (find char "_-")
            (and (typep (buffer-major-mode buffer) 'lisp-mode) (lisp-name-part-p char)))))
 
-(defun symbol-at (rope byte &optional (buffer (current-buffer)))
-  "Two values: the start and end of the symbol in ROPE, BUFFER's text, at byte
-offset BYTE, or just before it when BYTE ends one; NIL when there is none."
-  (let ((total (tuatara.text:rope-octet-length rope)))
-    (flet ((symbol-at-p (position) (symbol-char-p (tuatara.text:rope-char-at rope position) buffer))
-           (before (position) (tuatara.text:rope-previous-boundary rope position)))
-      (let ((at (cond ((and (< byte total) (symbol-at-p byte)) byte)
-                      ((and (plusp byte) (symbol-at-p (before byte))) (before byte)))))
-        (when at
-          (let ((start at) (end at))
-            (loop while (and (plusp start) (symbol-at-p (before start)))
-                  do (setf start (before start)))
-            (loop while (and (< end total) (symbol-at-p end))
-                  do (setf end (tuatara.text:rope-next-boundary rope end)))
-            (values start end)))))))
-
 (defun symbol-chars-pattern (&optional (buffer (current-buffer)))
   "A set, written as a pattern, of the characters SYMBOL-CHAR-P takes for a
 symbol's in BUFFER."

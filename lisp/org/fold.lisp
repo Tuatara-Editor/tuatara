@@ -28,36 +28,6 @@ changed, a fold left after a line that no longer folds is opened
 
 ;;; Subtrees
 
-(defun org-headlines (tree)
-  "Every headline of TREE, in order."
-  (let ((found '()))
-    (labels ((walk (node)
-               (when (eq (org-node-type node) 'headline) (push node found))
-               (when (member (org-node-type node) '(org-data headline))
-                 (mapc #'walk (org-node-children node)))))
-      (walk tree))
-    (nreverse found)))
-
-(defun org-headline-titled (tree title)
-  "The first headline of TREE whose title, as written, is TITLE; NIL for none."
-  (find title (org-headlines tree) :key (lambda (h) (org-property h :raw-value)) :test #'string=))
-
-(defun org-headline-on-line (tree text position)
-  "The headline whose line holds the character POSITION of TEXT, or NIL."
-  (let ((line (string-line-start text position)))
-    (org-node-at tree line (lambda (node) (and (eq (org-node-type node) 'headline) (= (org-node-begin node) line))))))
-
-(defun org-child-headlines (headline)
-  "The headlines right under HEADLINE."
-  (org-children-of headline 'headline))
-
-(defun org-last-content-end (text from to)
-  "Where the text from FROM below TO ends, the blank lines after it left out:
-the newline ending its last line that is not blank (or TO)."
-  (let* ((*org-text* text)
-         (last (org-skip-blanks-backward to from)))
-    (if (= last from) from (org-line-end (1- last)))))
-
 (defun org-fold-chars (parse from to)
   "Fold the characters FROM below TO of PARSE (an ORG-PARSE) in its buffer."
   (when (< from to)
@@ -425,12 +395,14 @@ to the next field. After a snippet's key (<s for a source block), the snippet
                (not (org-parse-current-p buffer)))
       (when (org-cycle-headline-at buffer start)
         (return-from org-cycle)))
+    ;; a table reads only the part of the file it is in
+    (when (and (uiop:string-prefix-p "|" bare) (org-table-next-field))
+      (return-from org-cycle))
     (let* ((parse (org-parse-now buffer))
            (tree (and parse (org-parse-tree parse)))
            (text (and parse (org-parse-text parse)))
            (headline (and tree (org-headline-on-line tree text (org-parse-point parse)))))
-      (cond ((org-table-next-field))
-            ((expand-snippet-at-point))
+      (cond ((expand-snippet-at-point))
             (headline (org-cycle-headline parse headline))
             ((and *org-cycle-include-plain-lists* tree
                   (let ((item (org-item-on-line tree (string-line-start text (org-parse-point parse)))))
@@ -531,7 +503,7 @@ parse and its parts, and what is kept from them.")
 and the parse is not kept."
   (dolist (local *org-mode-locals*)
     (setf (tuatara.buffer:buffer-local buffer local) nil))
-  (setf (tuatara.display:buffer-replacements-function buffer) nil)
+  (tuatara.display:remove-replacements buffer :mode)
   (call-next-method))
 
 (defun install-org-folding (editor)

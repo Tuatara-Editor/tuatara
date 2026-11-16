@@ -268,10 +268,10 @@ asks for a name and goes to the place. ~C-x m d~ forgets a bookmark.
 ~C-x m l~ opens the bookmark manager, a list that works like the buffer list.
 It has a section for each category, with a heading saying how many bookmarks
 the section holds, and one for the bookmarks in no category. A bookmark in two
-categories appears in both. Folding, marking and the ~RET~, ~l~ and ~o~ keys
-work as described for the buffer list. In the manager, ~r~ gives the bookmark
-under the cursor another name and ~c~ changes its categories. A bookmark
-whose file has gone is shown faint.
+categories appears in both. Folding, marking and the ~RET~, ~l~, ~o~, ~n~ and
+~p~ keys work as described for the buffer list. In the manager, ~r~ gives the
+bookmark under the cursor another name and ~c~ changes its categories. A
+bookmark whose file has gone is shown faint.
 
 A bookmark on a directory listing keeps the directory and the entry the cursor
 is on, so you can bookmark a directory you visit often.

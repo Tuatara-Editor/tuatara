@@ -116,6 +116,11 @@ it has been asked to stop. Elsewhere, nothing."
   "The name of the buffer JOB belongs to, for reports."
   (funcall *job-buffer-name* (job-buffer job)))
 
+(defun job-secret-p (job)
+  "True when JOB's work holds a secret: one was at hand where it is asked
+\(*SECRET-AT-HAND*), or JOB is for a buffer of secret text."
+  (or *secret-at-hand* (secret-buffer-p (job-buffer job))))
+
 (defun condition-words (condition &key headline)
   "CONDITION in words on one line, as an error is said: its report as ONE-LINE
 gives it, each run of spaces its printer laid out one space; a few words of its
@@ -204,6 +209,8 @@ group of their own."
   "Keep PROCESS as the program JOB runs, ended when JOB is stopped; ended at
 once when JOB was stopped before it started. Returns PROCESS."
   (setf (job-process job) process)
+  ;; the store seen before the stop is looked at, as JOB-STOP stores the stop before looking at the process
+  (sb-thread:barrier (:memory))
   (when (car (job-cancel job)) (end-program process))
   process)
 
@@ -369,6 +376,38 @@ it (STOPPABLE-WORK). FUNCTION runs as background work (CALL-AS-LONG-WORK)."
      :name name)
     cell))
 
+(define-record (background-work (:constructor make-background-work (key result cancel)) (:copier nil))
+  "Work started in the background by START-BACKGROUND-WORK, for KEY: its
+RESULT turns up in the background, CANCEL stops it (STOP-BACKGROUND-WORK)."
+  (key nil :documentation "What the work is for, to tell whether it is still the work wanted.")
+  (result nil :documentation "A cell whose car becomes what the work gave (START-BACKGROUND-RESULT).")
+  (cancel nil :documentation "The cell that stops the work (STOP-WORK)."))
+
+(defun start-background-work (key function name wake)
+  "Call FUNCTION, of the cell that stops it (STOP-WORK), on a thread of its own
+named NAME, for KEY (what the work is for), as START-BACKGROUND-RESULT does,
+WAKE called once it is done; return the BACKGROUND-WORK. BACKGROUND-WORK-VALUE
+gives what it gave once it is there."
+  (let ((cancel (list nil)))
+    (make-background-work key (start-background-result (lambda () (funcall function cancel)) name wake cancel)
+                          cancel)))
+
+(defun background-work-value (work)
+  "What WORK (a BACKGROUND-WORK, or NIL) gave, or (:ERROR TEXT) when it failed;
+NIL while it goes on, and for no work."
+  (and work (car (background-work-result work))))
+
+(defmacro stop-background-work (place &environment environment)
+  "Stop the BACKGROUND-WORK PLACE holds, when it holds one, so that what it
+finds is never taken in, and set PLACE to NIL. PLACE's forms are evaluated
+once."
+  (multiple-value-bind (variables values stores setter getter) (get-setf-expansion place environment)
+    (let ((work (gensym "WORK")))
+      `(let* (,@(mapcar #'list variables values) (,work ,getter))
+         (when ,work
+           (stop-work (background-work-cancel ,work))
+           (let ((,(first stores) nil)) ,setter))))))
+
 (defun start-job-thread (job work &key (name "tuatara job") details)
   "Start JOB: keep it in *JOBS* and run WORK, a function of JOB, on a guarded
 thread called NAME, *JOB* bound to JOB there, its errors reported in the debug
@@ -387,7 +426,7 @@ and background work (CALL-AS-LONG-WORK). Returns JOB."
   (flet ((run ()
            (unwind-protect
                 (let ((*job* job)
-                      (*secret-at-hand* (or *secret-at-hand* (secret-buffer-p (job-buffer job)))))
+                      (*secret-at-hand* (job-secret-p job)))
                   (handler-case
                       (progn
                         (reporting-errors ("~a in ~a" (job-description job) (job-buffer-name job))
@@ -411,7 +450,7 @@ and background work (CALL-AS-LONG-WORK). Returns JOB."
                     (setf (job-thread job) (make-guarded-thread #'run :name name)))
       ;; no thread to be had (too many, no memory): the job ends at once, failed
       (serious-condition (condition)
-        (setf (job-error job) (let ((*secret-at-hand* (or *secret-at-hand* (secret-buffer-p (job-buffer job)))))
+        (setf (job-error job) (let ((*secret-at-hand* (job-secret-p job)))
                                 (failure-words condition :said t))
               (job-status job) :failed)
         (job-wake-editor job))))
@@ -440,7 +479,7 @@ stays for a later call. Returns the jobs taken in."
         (report-job-ended job)
         (push job taken)
         (let ((*job-taken-in* job)
-              (*secret-at-hand* (or *secret-at-hand* (secret-buffer-p (job-buffer job)))))
+              (*secret-at-hand* (job-secret-p job)))
           (host-take-in-job *host* job (lambda () (job-take-in job))))))
     (nreverse taken)))
 

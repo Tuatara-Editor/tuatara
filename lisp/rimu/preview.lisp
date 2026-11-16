@@ -13,10 +13,11 @@
 ;;;; (Word, Excel, PowerPoint) its first page, drawn from the PDF LibreOffice
 ;;;; makes of it in the sandbox, and its text as an Org note read by Tuatara
 ;;;; itself (office-view.lisp); a kind a package reads (*PREVIEW-TEXT-FUNCTIONS*)
-;;;; the text it makes of it; moving on stops it. P turns the preview on and off. o edits the file in the preview's
-;;;; place, the quick edit: the file itself, opened as C-x C-f opens it, until
-;;;; q (NORMAL), C-c C-c or the cursor going back to the list returns to the
-;;;; preview, asking whether to save.
+;;;; the text it makes of it; moving on stops it. P turns the preview on and
+;;;; off. o edits the file in the preview's place, the quick edit: the file
+;;;; itself, opened as C-x C-f opens it, until q (NORMAL), C-c C-c or the
+;;;; cursor going back to the list returns to the preview, asking whether to
+;;;; save.
 
 (in-package #:tuatara.defaults)
 
@@ -109,16 +110,18 @@ opened safely."
 (defun rimu-previewing-p (buffer)
   "True when BUFFER is a rimu list, not one made for a preview, with its
 preview on. In a list opened safely the preview shows each file as a file
-opened safely is shown: its text with no major mode, a picture or a PDF only
-as the sandbox draws it. A list of a directory on another machine starts with its
+opened safely is shown: its text with no major mode, a picture or a PDF only as
+the sandbox draws it. A list of a directory on another machine starts with its
 preview off, as each file shown has to come from there first
-\(*REMOTE-PREVIEW-SIZE-LIMIT*), and opened safely has none: nothing there is read unasked."
+\(*REMOTE-PREVIEW-SIZE-LIMIT*), and opened safely has none: nothing there is
+read unasked."
   (and (rimu-list-p buffer)
        (list-preview-p buffer)
        (not (tuatara.buffer:buffer-local buffer 'rimu-preview-buffer))
        (not (rimu-safe-on-server-p buffer))))
 
 (defmethod list-preview-refusal ((mode rimu-mode) list)
+  "No preview in a list of a directory on a server opened safely: nothing there is read unasked."
   (and (rimu-safe-on-server-p list)
        "No preview here: this directory on a server is opened safely, and nothing there is read unasked"))
 
@@ -156,10 +159,11 @@ saved."
         (and modified (not goes))))))
 
 (defun rimu-quick-edit-leave (state)
-  "End the preview STATE's quick edit as \\<*rimu-quick-edit-keymap*>\\[rimu-quick-edit-finish] does, asking first
-whether to save the file's changes: saved, or let go when the quick edit
-opened the file (a buffer open before keeps them). \\[keyboard-quit] at the
-question goes on with the quick edit. True when the file was saved."
+  "End the preview STATE's quick edit as
+\\<*rimu-quick-edit-keymap*>\\[rimu-quick-edit-finish] does, asking first
+whether to save the file's changes: saved, or let go when the quick edit opened
+the file (a buffer open before keeps them). \\[keyboard-quit] at the question
+goes on with the quick edit. True when the file was saved."
   (let* ((buffer (rimu-preview-editing state))
          (modified (and (live-buffer-p buffer) (tuatara.buffer:buffer-modified-p buffer)))
          (save (and modified (y-or-n-p* (format nil "Save ~a?" (tuatara.buffer:buffer-name buffer))))))
@@ -198,14 +202,21 @@ preview's window away."
     (when (and state (rimu-preview-editing state))
       (rimu-quick-edit-leave state))))
 
+(defun rimu-preview-drop-job (state)
+  "Stop the file being read for the preview STATE, when one is, and have it
+show no entry yet."
+  (let ((job (rimu-preview-job state)))
+    (when job (setf (car (rimu-preview-job-cancel job)) t)))
+  (setf (rimu-preview-job state) nil
+        (rimu-preview-shown state) nil))
+
 (defun rimu-close-preview ()
   "Close the preview: its window, but when it is the only one, and its buffer
 when that was made for it. A file being quick-edited stays open when it has
 changes not saved, and goes otherwise when the quick edit opened it."
   (let ((state (shiftf *rimu-preview-state* nil)))
     (when state
-      (let ((job (rimu-preview-job state)))
-        (when job (setf (car (rimu-preview-job-cancel job)) t)))
+      (rimu-preview-drop-job state)
       (when (and (rimu-preview-editing state) (rimu-quick-edit-end state))
         (message "~a keeps its changes, not saved" (tuatara.buffer:buffer-name (rimu-preview-buffer state))))
       (side-preview-close state))))
@@ -218,11 +229,8 @@ those LIST shows: a search filter hid it, or the list was read again."
 
 (defun rimu-preview-empty (state)
   "Have the preview STATE show no entry, saying so, a file being read for it stopped."
-  (let ((job (rimu-preview-job state)))
-    (when job (setf (car (rimu-preview-job-cancel job)) t)))
-  (setf (rimu-preview-job state) nil
-        (rimu-preview-wanted state) nil
-        (rimu-preview-shown state) nil)
+  (rimu-preview-drop-job state)
+  (setf (rimu-preview-wanted state) nil)
   (rimu-preview-show state (side-preview-note "rimu" "No entry on this line.") t nil))
 
 (defun rimu-preview-follow (editor)
@@ -297,27 +305,14 @@ preview closed."
          (list (tuatara.display:window-buffer list-window))
          (state *rimu-preview-state*))
     (if (and state (rimu-previewing-p list) (eq (rimu-preview-list-window state) list-window))
-        (let ((entry (list-entry-at list (tuatara.buffer:buffer-point list)))
-              (job (rimu-preview-job state)))
-          (when job (setf (car (rimu-preview-job-cancel job)) t))
-          (setf (rimu-preview-job state) nil
-                (rimu-preview-wanted state) (cons entry (tuatara.buffer:buffer-local list 'rimu-directory))
+        (let ((entry (list-entry-at list (tuatara.buffer:buffer-point list))))
+          (rimu-preview-drop-job state)
+          (setf (rimu-preview-wanted state) (cons entry (tuatara.buffer:buffer-local list 'rimu-directory))
                 (rimu-preview-shown state) entry)
           (unless (rimu-preview-show state buffer nil entry)
             (display-buffer buffer :other t)))
         (progn (rimu-close-preview)
                (display-buffer buffer :other t)))))
-
-(defun rimu-preview-words (entry)
-  "What the preview says of ENTRY, which it does not open: a named pipe, a
-socket, a device, a link that leads nowhere, an entry that could not be
-examined."
-  (let ((name (escape-controls (tuatara.io:listed-name entry)))
-        (kind (rimu-leads-to entry)))
-    (cond ((null (tuatara.io:listed-stamp entry)) (format nil "~a could not be examined." name))
-          ((null kind) (format nil "~a is a symbolic link that leads nowhere: ~a" name
-                               (escape-controls (or (tuatara.io:listed-target entry) ""))))
-          (t (format nil "~a is ~a; rimu does not open it." name (tuatara.io:kind-words kind))))))
 
 (defun rimu-preview-directory-list (state entry directory)
   "Show in the preview STATE's window a list of the directory ENTRY of
@@ -421,7 +416,8 @@ the rest at once."
                (rimu-preview-show state visiting nil entry)
                (setf (rimu-preview-job state)
                      (rimu-preview-read (make-rimu-preview-job entry directory) rewound editor)))))
-        (t (rimu-preview-show state (side-preview-note (tuatara.io:listed-name entry) (rimu-preview-words entry))
+        (t (rimu-preview-show state (side-preview-note (tuatara.io:listed-name entry)
+                                                     (format nil "~a." (rimu-unopenable-reason entry)))
                               t entry))))))
 
 (defun rimu-preview-kind-line (buffer kind name &optional notes)
@@ -447,8 +443,7 @@ name has when that is not one of the kind's."
                        (push (list (file-position out) (+ (file-position out) (length named)) :warning) spans)
                        (write-string named out)))))
         (setf spans (nreverse spans))
-        (setf (tuatara.display:buffer-header-line buffer)
-              (lambda (window) (declare (ignore window)) (values text spans))
+        (setf (tuatara.display:buffer-header-line buffer) (static-header-line text spans)
               (tuatara.buffer:buffer-local buffer :header-line-over-hex) t)))))
 
 (defun rimu-preview-take-in (state job)
@@ -527,10 +522,8 @@ or NIL."
              ;; point moved on while a file was read or decoded: stop it
              (when (and job (not (rimu-preview-job-done job))
                         (not (eq (rimu-preview-job-entry job) (car (rimu-preview-wanted state)))))
-               (setf (car (rimu-preview-job-cancel job)) t
-                     (rimu-preview-job state) nil
-                     (rimu-preview-shown state) nil
-                     job nil))
+               (rimu-preview-drop-job state)
+               (setf job nil))
              (when (and job (rimu-preview-job-done job))
                (setf (rimu-preview-job state) nil)
                (rimu-preview-take-in state job)
@@ -572,11 +565,12 @@ the picture again. True when BUFFER is one."
 
 (defun rimu-quick-edit-file (state entry directory safe &optional place)
   "Edit the file ENTRY of DIRECTORY in the preview STATE's window, visited as
-\\[find-file] visits it, safely where that would be or with SAFE; the cursor goes
-there, and with PLACE, (POINT START) where the preview of its start stood, to
-the same place. A binary file (TUATARA.IO:BINARY-HEAD-P of its first 64 KB) the quick edit opens is shown in
-the hex view, as its preview is; one open before stays as it is shown. With no
-room beside the list, the file is shown in the list's window."
+\\[find-file] visits it, safely where that would be or with SAFE; the cursor
+goes there, and with PLACE, (POINT START) where the preview of its start stood,
+to the same place. A binary file (TUATARA.IO:BINARY-HEAD-P of its first 64 KB)
+the quick edit opens is shown in the hex view, as its preview is; one open
+before stays as it is shown. With no room beside the list, the file is shown in
+the list's window."
   (let* ((path (rimu-path directory entry))
          (expanded (ignoring-errors-reported ("finding ~a" path) (tuatara.io:expand-path path)))
          (before (or (buffer-visiting path)
@@ -647,6 +641,7 @@ file on another machine is opened with \\`RET' instead."
   (let* ((list (current-buffer))
          (list-window (current-window))
          (entry (list-entry-at))
+         (why (and entry (rimu-unopenable-reason entry)))
          (directory (tuatara.buffer:buffer-local list 'rimu-directory))
          (state *rimu-preview-state*)
          (place nil))
@@ -660,7 +655,7 @@ file on another machine is opened with \\`RET' instead."
            (message "This list is opened safely: RET opens the file safely, nothing is edited here"))
           ((and (rimu-preview-editing state) (eq entry (rimu-preview-edit-entry state)))
            (select-window (rimu-preview-window state)))
-          ((rimu-unopenable-reason entry) (message "~a" (rimu-unopenable-reason entry)))
+          (why (message "~a" why))
           (t
            (when (rimu-preview-editing state)
              (rimu-quick-edit-leave state))

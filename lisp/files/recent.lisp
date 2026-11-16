@@ -89,22 +89,40 @@ file on another machine is remembered by its name there."
           ((and file (tuatara.io:path-stamp file :failure nil))
            (remember-file file :safe (tuatara.io:safe-visit-p buffer))))))
 
+(defun start-recent-file-stamps (entries)
+  "Start examining the files of ENTRIES, each a (PATH . SAFE) of the recent
+files, on a thread of their own (START-GATHERING), so that a file on a drive
+that does not answer holds nothing up: the GATHERING gives (PATH . STAMP)
+for each, STAMP NIL for a file not found. Those on another machine are not
+asked."
+  (start-gathering "tuatara recent files examined"
+                   (lambda (give cancel)
+                     (loop for (path) in entries
+                           until (car cancel)
+                           unless (remote-name-p path)
+                             do (funcall give (cons path (tuatara.io:path-stamp path :failure nil)))))))
+
+(defun take-recent-file-stamps (gathering stamps)
+  "Keep in STAMPS what GATHERING (START-RECENT-FILE-STAMPS) has found since
+last asked, by path; true when it found any."
+  (let ((found (take-gathered gathering)))
+    (loop for (path . stamp) in found
+          do (setf (gethash path stamps) stamp))
+    (and found t)))
+
 (defun recent-file-fields (entry stamps now)
   "What is shown at the right of ENTRY, a (PATH . SAFE) of the recent files: as
 for any file its permissions, size and when it last changed, or not found;
-for a file on another machine, that it is there, the machine not asked.
-STAMPS keeps what was learnt of each file while the question is open, so that
-each is examined once."
+for a file on another machine, that it is there, the machine not asked; ...
+while it is still being examined. STAMPS keeps what was found of each file
+so far (TAKE-RECENT-FILE-STAMPS)."
   (let ((path (car entry)))
     (when (remote-name-p path)
       (return-from recent-file-fields (list (list "on another machine" :completion-annotation))))
     (multiple-value-bind (stamp known) (gethash path stamps)
-      (unless known
-        (setf stamp (tuatara.io:path-stamp path :failure nil)
-              (gethash path stamps) stamp))
-      (if stamp
-          (stamp-fields stamp now)
-          (list (list "not found" :completion-annotation))))))
+      (cond ((not known) (list (list "..." :completion-annotation)))
+            (stamp (stamp-fields stamp now))
+            (t (list (list "not found" :completion-annotation)))))))
 
 (define-command find-recent-file ()
   "Visit a file visited lately: the latest first, each with its permissions,
@@ -120,24 +138,34 @@ file selected is shown meanwhile, opened safely."
     (if (null entries)
         (message "No recent files")
         (let* ((stamps (make-hash-table :test 'equal))
+               (gathering (start-recent-file-stamps entries))
                (now (get-universal-time))
                ;; a file opened safely says so right after its name
                (candidates (mapcar (lambda (entry)
                                      (make-candidate (abbreviated-path (car entry)) :value entry
                                                      :suffix (and (cdr entry) (list (list "safe" :completion-safe)))))
                                    entries))
-               (chosen (call-with-window-preview
-                        (lambda (candidate made)
-                          (preview-file-buffer (car (candidate-value candidate)) made))
-                        (lambda (show)
-                          (completing-read "Open recent file: " candidates
-                                        ;; the latest first, among those that match, not the best
-                                        ;; match first: the two ways of one file stay in order
-                                        :keep-order t
-                                        :require-match t
-                                        :annotate (lambda (candidate)
-                                                    (recent-file-fields (candidate-value candidate) stamps now))
-                                        :preview (and *preview-files* show))))))
+               (chosen (unwind-protect
+                            (call-with-window-preview
+                             (lambda (candidate made)
+                               (preview-file-buffer (car (candidate-value candidate)) made))
+                             (lambda (show)
+                               (completing-read "Open recent file: " candidates
+                                                ;; the latest first, among those that match, not the best
+                                                ;; match first: the two ways of one file stay in order
+                                                :keep-order t
+                                                :require-match t
+                                                :annotate (lambda (candidate)
+                                                            (recent-file-fields (candidate-value candidate)
+                                                                                stamps now))
+                                                ;; drawn again as the files are examined, the
+                                                ;; candidates and the one selected staying as they are
+                                                :source (lambda ()
+                                                          (when (take-recent-file-stamps gathering stamps)
+                                                            (incf tuatara.command:*display-generation*))
+                                                          (values nil nil (length candidates)))
+                                                :preview (and *preview-files* show))))
+                         (stop-gathering gathering))))
           (when (consp chosen)
             (visit-path (car chosen) :safe (cdr chosen)))))))
 

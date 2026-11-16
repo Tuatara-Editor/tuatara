@@ -27,6 +27,20 @@ M-p and M-n bring back inputs; C-c C-b chooses the working buffer; Modal editing
         count t
         do (setf start (+ at (length part)))))
 
+(define-test (ielm settings-put-back-said)
+  ;; a setting given a value it does not take is put back, and said, even when showing the results
+  ;; fails
+  (let ((width tuatara-user:*fill-column*))
+    (sb-int:encapsulate 'tuatara.defaults::ielm-results 'failing
+                        (lambda (f result) (declare (ignore f result)) (error "results not shown")))
+    (unwind-protect
+         (with-messages-said (said)
+           (in-ielm (format nil "~a RET" (key-string "(setf *fill-column* \"wide\")")) :width 200)
+           (is eql width tuatara-user:*fill-column*)
+           (true (search "*fill-column* is \"wide\", but it takes" (said)) "~a" (said)))
+      (sb-int:unencapsulate 'tuatara.defaults::ielm-results 'failing)
+      (setf tuatara-user:*fill-column* width))))
+
 (define-test (ielm evaluating)
   ;; the banner and a prompt naming the package
   (multiple-value-bind (f editor) (in-ielm "")

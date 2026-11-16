@@ -17,13 +17,12 @@
 (defun indent-captures (query tree rope start end)
   "What QUERY, a language's indentation rules, captures in TREE (the tree of
 ROPE) touching octets START below END: a table from each node captured, as a
-list (START END SYMBOL), to the lines it begins and ends on, NIL until they
-are needed, and what it is captured as, (FIRST-LINE LAST-LINE . WHAT), each of
-WHAT one of (:INDENT
-HEADER), (:INDENT-ALWAYS HEADER), (:OUTDENT), (:OUTDENT-ALWAYS), (:ALIGN
-ANCHOR), ANCHOR being the octet its lines line up under, (:OPAQUE), (:EXTEND)
-or (:EXTEND-PREVENT-ONCE). HEADER is true when the rule has the node's lines
-begin at its parent's first line."
+list (START END SYMBOL), to the lines it begins and ends on, NIL until they are
+needed, and what it is captured as, (FIRST-LINE LAST-LINE . WHAT), each of WHAT
+one of (:INDENT HEADER), (:INDENT-ALWAYS HEADER), (:OUTDENT), (:OUTDENT-ALWAYS),
+\(:ALIGN ANCHOR), ANCHOR being the octet its lines line up under, (:OPAQUE),
+\(:EXTEND) or (:EXTEND-PREVENT-ONCE). HEADER is true when the rule has the
+node's lines begin at its parent's first line."
   (let ((table (make-hash-table :test 'equal))
         (names (tuatara.syntax:query-captures query))
         (properties (tuatara.syntax:query-properties query)))
@@ -198,10 +197,9 @@ in *Messages*, when the buffer has no syntax tree."
                (stop (tuatara.text:rope-line-start rope end))
                ;; from the text before the first line, which may reach on to it (@extend)
                (from (let* ((low (max 0 (- first 4096)))
-                            (text (tuatara.text:rope-octets rope :start low :end first))
-                            (last (position-if-not (lambda (octet) (member octet tuatara.text:*blank-octets*))
-                                                   text :from-end t)))
-                       (if last (+ low last) first)))
+                            (end (tuatara.text:rope-skip-octets rope first tuatara.text:*blank-octets*
+                                                                :backward t :bound low)))
+                       (if (> end low) (1- end) first)))
                (captures (indent-captures (language-compiled-query language :indent) tree rope from
                                           (tuatara.text:rope-line-end rope stop)))
                (moved (make-hash-table))

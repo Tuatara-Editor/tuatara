@@ -468,7 +468,7 @@
                (parse-done syntax)
                (is equal (tuatara.buffer:buffer-string buffer)
                    (tuatara.text:rope-string (tuatara.syntax:syntax-rope syntax)))
-               (false (tuatara.syntax:tree-has-error-p (tuatara.syntax:syntax-tree syntax))))))
+               (false (tree-holds-error-p (tuatara.syntax:syntax-tree syntax))))))
       (tuatara.syntax:detach-syntax buffer)
       (tuatara.buffer:kill-buffer buffer))))
 
@@ -639,7 +639,7 @@
            (false left "the tree of the text before the edit is kept")
            (parse-done syntax)
            (true (tuatara.syntax:syntax-tree syntax))
-           (false (tuatara.syntax:tree-has-error-p (tuatara.syntax:syntax-tree syntax))))
+           (false (tree-holds-error-p (tuatara.syntax:syntax-tree syntax))))
       (sb-int:unencapsulate 'tuatara.syntax::call-send 'refusing)
       (tuatara.syntax:detach-syntax buffer)
       (tuatara.buffer:kill-buffer buffer))))

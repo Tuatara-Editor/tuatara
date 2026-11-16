@@ -192,6 +192,12 @@ the keys it names as keys."
         (format nil "~{~a~^, ~}" (mapcar #'mark-key keys))
         (format nil "not bound to any key; use ~a" (mark-key (format nil "M-x ~(~a~)" symbol))))))
 
+(defun command-key-words (command)
+  "The key that runs COMMAND now, in words, as a docstring or a message names
+it with \\=\\[COMMAND] (SUBSTITUTE-COMMAND-KEYS): M-x and its name when no key
+does."
+  (substitute-command-keys (format nil "\\[~(~a~)]" command)))
+
 (defun documentation-text (symbol kind)
   "SYMBOL's documentation of KIND (FUNCTION, VARIABLE) filled to *HELP-COLUMN*
 \(WRITE-DOCUMENTATION), the keys it names written in and marked
@@ -317,18 +323,57 @@ TUATARA-USER less."
                           (or (string= name "TUATARA") (and (> (length name) 8) (string= "TUATARA." name :end2 8))))))
                  (list-all-packages)))
 
+(defvar *help-candidates* '()
+  "The candidates the help commands complete over, kept: a property list of
+each kind's (KEY . CANDIDATES), KEY what they were made from (HELP-CANDIDATES).")
+
+(defun help-candidates (kind key make)
+  "The completion candidates of KIND (:FUNCTIONS, :VARIABLES, :FACES) that
+MAKE, a function of no arguments, makes from what KEY says: those made last
+while KEY is EQUAL to what it was then, else made anew and kept."
+  (let ((kept (getf *help-candidates* kind)))
+    (copy-list (if (and kept (equal key (car kept)))
+                   (cdr kept)
+                   (let ((made (funcall make)))
+                     (setf (getf *help-candidates* kind) (cons key made))
+                     made)))))
+
+(defun definitions-key ()
+  "What the functions and variables help completes over are made from, in a
+few numbers: the bindings made so far (TUATARA.COMMAND:*KEYMAPS-GENERATION*),
+for the keys their descriptions name, the commands, and the functions and
+variables at home in TUATARA-USER and the editor's packages, counted. It
+stays the same while none is defined or taken away, so a docstring changed
+in place (a function defined again with other words) shows in the
+candidates' annotations once a definition comes or goes or a key is bound;
+the description itself is always read anew."
+  (let ((functions 0) (variables 0))
+    (dolist (p (cons (find-package :tuatara-user) (editor-packages)))
+      (do-symbols (s p)
+        (when (eq (symbol-package s) p)
+          (when (fboundp s) (incf functions))
+          (when (boundp s) (incf variables)))))
+    (list tuatara.command:*keymaps-generation* (hash-table-count *commands*) functions variables)))
+
 (defun function-candidates ()
   "Completion candidates for the operators one can name: those the Lisp one
 types sees (Common Lisp's and TUATARA-USER's) and the commands by their names,
 the editor's packages' others by package:name; each with what it is and the
-first sentence of its documentation beside it."
+first sentence of its documentation beside it. Made once, and again only
+when a definition has come or gone or a key been bound (DEFINITIONS-KEY,
+which a docstring changed in place does not move)."
+  (help-candidates :functions (definitions-key) #'make-function-candidates))
+
+(defun make-function-candidates ()
+  "The candidates FUNCTION-CANDIDATES gives, made now."
   (let ((seen (make-hash-table :test 'eq)) (candidates '()))
     (flet ((add (symbol name)
              (unless (gethash symbol seen)
                (setf (gethash symbol seen) t)
                (push (make-candidate name
-                                     :annotation (list (list (function-kind symbol) :completion-annotation 18)
-                                                       (documentation-field (documentation symbol 'function) 1/2))
+                                     :annotation (lambda ()
+                                                   (list (list (function-kind symbol) :completion-annotation 18)
+                                                         (documentation-field (documentation symbol 'function) 1/2)))
                                      :value symbol)
                      candidates))))
       (let ((user (find-package :tuatara-user)))
@@ -358,8 +403,9 @@ describe-command gives it, with its keys."
 (define-command describe-function ()
   "Show what a function, macro or command does: its parameters, its
 documentation, the keys that run it when it is a command, and where it is
-defined, the file a link that shows the definition. The one named at point in a Lisp buffer is the default, offered
-first: \\<minibuffer>\\[minibuffer-finish] alone describes it."
+defined, the file a link that shows the definition. The one named at point in a
+Lisp buffer is the default, offered first: \\<minibuffer>\\[minibuffer-finish]
+alone describes it."
   (let* ((b (current-buffer))
          (here (and (typep (buffer-major-mode b) 'lisp-mode)
                     (let ((name (ignoring-errors-reported ("reading the name at point") (symbol-at-point b))))
@@ -405,12 +451,20 @@ TUATARA-USER, as symbols, sorted by name."
     (sort (remove-duplicates symbols) #'string< :key #'symbol-name)))
 
 (defun variable-candidates ()
-  "Completion candidates for the editor's variables, each with the first sentence of its documentation beside it."
-  (mapcar (lambda (s)
-            (make-candidate (format nil "~(~a::~a~)" (package-name (symbol-package s)) (symbol-name s))
-                            :annotation (list (documentation-field (documentation s 'variable) 1/2))
-                            :value s))
-          (tuatara-variables)))
+  "Completion candidates for the editor's variables, each with the first
+sentence of its documentation beside it. Made once, and again only when a
+definition has come or gone or a key been bound (DEFINITIONS-KEY, which a
+docstring changed in place does not move)."
+  (help-candidates :variables (definitions-key)
+                   (lambda ()
+                     (mapcar (lambda (s)
+                               (make-candidate (format nil "~(~a::~a~)" (package-name (symbol-package s))
+                                                       (symbol-name s))
+                                               :annotation (lambda ()
+                                                             (list (documentation-field
+                                                                    (documentation s 'variable) 1/2)))
+                                               :value s))
+                             (tuatara-variables)))))
 
 (defparameter *variable-value-shown* 4000
   "The most characters of a variable's value \\[describe-variable] shows; past

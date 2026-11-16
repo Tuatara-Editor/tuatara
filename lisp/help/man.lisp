@@ -84,11 +84,11 @@ not got)."
 (defun man-formatting (text)
   "TEXT, what man printed, as two values: its plain text, and a vector holding,
 for each character of it, 1 for bold, 2 for underlined, 3 for both, 0 for
-neither. Bold and underline are read as groff writes them, as escape
-sequences (SGR) or as a character struck twice and an underscore struck under
-one, whichever; every other escape sequence and every control character,
-those of the C1 range too, is left out, a device control string with its
-payload."
+neither. Bold and underline are read as groff writes them, as Select Graphic
+Rendition (SGR) escape sequences or as a character struck twice and an
+underscore struck under one, whichever; every other escape sequence and every
+control character, those of the C1 range too, is left out, a device control
+string with its payload."
   (let* ((end (length text))
          (out (make-string end))
          (marks (make-array end :element-type '(unsigned-byte 8)))
@@ -285,9 +285,11 @@ with a dash, is refused: man would take it for a file or an option."
 (define-record (man-job (:include tuatara.runtime:job) (:constructor make-man-job (buffer asked))
                        (:copier nil))
   "A page being formatted for BUFFER, a job: ASKED, the page named; PIECES, the
-page as text and links (MAN-PIECES) once it is."
+page as text and links (MAN-PIECES) once it is, and HEADINGS, the lines its
+section headings are on (MAN-HEADING-LINES)."
   (asked nil :documentation "The manual page MAN-JOB was asked for, as typed.")
-  (pieces nil :documentation "The page of MAN-JOB as text and links (MAN-PIECES) once it is formatted."))
+  (pieces nil :documentation "The page of MAN-JOB as text and links (MAN-PIECES) once it is formatted.")
+  (headings '() :documentation "The lines, from 0, the section headings of the page of MAN-JOB are on."))
 
 (tuatara.runtime:define-job-words man-job
     :doing "Formatting"
@@ -306,9 +308,8 @@ else of the selected one; at least 40."
   "Start formatting the page BUFFER shows, for the width it has now, in the
 background; the page replaces the text when it is done (a job, \\[stop-job] ends it).
 A formatting of the same page still going on is stopped."
-  (dolist (job tuatara.runtime:*jobs*)
-    (when (and (man-job-p job) (eq (tuatara.runtime:job-buffer job) buffer) (tuatara.runtime:job-running-p job))
-      (tuatara.runtime:job-stop job)))
+  (let ((running (tuatara.runtime:running-job buffer 'man-job)))
+    (when running (tuatara.runtime:job-stop running)))
   (let ((file (tuatara.buffer:buffer-local buffer :man-file))
         (arguments (tuatara.buffer:buffer-local buffer :man-arguments))
         (width (man-width buffer)))
@@ -319,7 +320,8 @@ A formatting of the same page still going on is stopped."
                     (man-run (if file (list "--local-file") arguments) :width width :file file
                              :cancel (tuatara.runtime:job-cancel job)))))
          (setf (man-job-pieces job)
-               (man-pieces text (lambda (name section) (man-open (format nil "~a(~a)" name section) :from buffer))))))
+               (man-pieces text (lambda (name section) (man-open (format nil "~a(~a)" name section) :from buffer)))
+               (man-job-headings job) (man-heading-lines (man-job-pieces job)))))
      :name "tuatara man")))
 
 (defmethod tuatara.runtime:job-take-in ((job man-job))
@@ -328,7 +330,8 @@ A formatting of the same page still going on is stopped."
     (when (live-buffer-p buffer)
       (if (eq (tuatara.runtime:job-status job) :done)
           (progn
-            (setf (tuatara.buffer:buffer-local buffer :man-formatted) t)
+            (setf (tuatara.buffer:buffer-local buffer :man-formatted) t
+                  (tuatara.buffer:buffer-local buffer :man-headings) (man-job-headings job))
             (render-pieces buffer (man-job-pieces job) :point :start :refill #'format-man-page))
           (progn
             (message "~a: ~a" (man-job-asked job) (tuatara.runtime:job-ending-words job))
@@ -380,20 +383,41 @@ whether the system has it."
 
 ;;; Moving in a page
 
+(defun man-heading-lines (pieces)
+  "The lines, from 0, that PIECES (MAN-PIECES) make section headings of: those
+whose text begins with a heading's piece (:MARKUP.HEADING), never the page's
+header and footer, which are plain."
+  (let ((line 0) (line-start t) (headings '()))
+    (dolist (piece pieces (nreverse headings))
+      (let ((text (if (consp piece) (car piece) piece)))
+        (when (and line-start (plusp (length text)) (consp piece) (eq (cdr piece) :markup.heading))
+          (push line headings))
+        (let ((newlines (count #\Newline text)))
+          (incf line newlines)
+          (when (plusp (length text))
+            (setf line-start (char= (char text (1- (length text))) #\Newline))))))))
+
 (defun man-heading-line-p (buffer line)
-  "True when LINE of BUFFER begins with a character that is not a space: a section heading."
+  "True when LINE of BUFFER begins with a character that is not a space: a
+section heading of a page printed without bold."
   (let ((char (tuatara.buffer:buffer-char-at buffer (tuatara.buffer:buffer-goto-line buffer line))))
     (and char (not (member char '(#\Space #\Tab #\Newline))))))
 
 (defun man-step-section (direction)
   "Move to the start of the next section heading, or with DIRECTION -1 the
-one before; say so when there is none."
+one before; say so when there is none. The headings are those the page was
+formatted with in bold (MAN-HEADING-LINES); a page with none in bold has its
+lines that begin at the margin taken for them (MAN-HEADING-LINE-P)."
   (let* ((buffer (current-buffer))
          (here (tuatara.buffer:buffer-line-number buffer (tuatara.buffer:buffer-point buffer)))
+         (headings (tuatara.buffer:buffer-local buffer :man-headings))
          (last (1- (tuatara.buffer:buffer-line-count buffer)))
-         (found (loop for line = (+ here direction) then (+ line direction)
-                      while (<= 1 line last)
-                      when (man-heading-line-p buffer line) return line)))
+         (found (cond ((null headings)
+                       (loop for line = (+ here direction) then (+ line direction)
+                             while (<= 1 line last)
+                             when (man-heading-line-p buffer line) return line))
+                      ((plusp direction) (find-if (lambda (line) (> line here)) headings))
+                      (t (find-if (lambda (line) (< line here)) headings :from-end t)))))
     (if found
         (setf (tuatara.buffer:buffer-point buffer) (tuatara.buffer:buffer-goto-line buffer found))
         (message (if (plusp direction) "No more sections below" "No more sections above")))))

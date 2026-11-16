@@ -105,15 +105,18 @@ window; signals an error when there is not enough room."
       (fit-windows editor)
       new)))
 
+(defun window-best (windows key predicate)
+  "Of WINDOWS, the one whose KEY comes first by PREDICATE, the earliest of those
+that tie."
+  (reduce (lambda (a b) (if (funcall predicate (funcall key b) (funcall key a)) b a)) windows))
+
 (defun most-recent-window (windows)
   "Of WINDOWS, the one selected last."
-  (reduce (lambda (a b) (if (> (tuatara.display:window-use-time b) (tuatara.display:window-use-time a)) b a))
-          windows))
+  (window-best windows #'tuatara.display:window-use-time #'>))
 
 (defun least-recent-window (windows)
   "Of WINDOWS, the one selected longest ago."
-  (reduce (lambda (a b) (if (< (tuatara.display:window-use-time b) (tuatara.display:window-use-time a)) b a))
-          windows))
+  (window-best windows #'tuatara.display:window-use-time #'<))
 
 (defun window-kept-elsewhere-p (window buffer &optional (editor *editor*))
   "True when WINDOW is kept for buffers other than BUFFER (PLACE-BUFFERS with
@@ -347,10 +350,7 @@ its name). NIL, as on the core's own host, for an empty *scratch*.")
   "The buffer made to show when there is no other (HOST-NEW-BUFFER), DYING the
 one being killed, if any."
   (or (host-new-buffer tuatara.runtime:*host* dying)
-      (tuatara.buffer:make-buffer
-       (loop for n from 1
-             for name = (if (= n 1) "*scratch*" (format nil "*scratch*<~d>" n))
-             unless (tuatara.buffer:find-buffer name) return name))))
+      (tuatara.buffer:make-buffer (tuatara.buffer:unique-buffer-name "*scratch*"))))
 
 (defun buffers-in-use-order ()
   "Every live buffer, those used lately first, the latest first
@@ -419,7 +419,7 @@ lately: below it when it has *SPLIT-HEIGHT-THRESHOLD* rows, beside it when it
 has *SPLIT-WIDTH-THRESHOLD* columns, below a lone window when it has room.
 NIL when no window may be split."
   (let* ((windows (remove-if #'tuatara.display:window-kept (editor-windows)))
-         (largest (and windows (reduce (lambda (a b) (if (> (window-area-size b) (window-area-size a)) b a)) windows)))
+         (largest (and windows (window-best windows #'window-area-size #'>)))
          (least (and windows (least-recent-window windows))))
     (dolist (window (remove-duplicates (remove nil (list largest least))))
       (let ((height (tuatara.display:area-height window))
@@ -481,7 +481,7 @@ else the selected window, kept for nothing from then on."
          (selected (editor-window editor))
          (windows (editor-windows editor))
          (keep (and rule (buffer-place-keep rule))))
-    (or (let ((showing (find buffer windows :key #'tuatara.display:window-buffer)))
+    (or (let ((showing (buffer-window buffer)))
           (and showing (not (and other (eq showing selected))) showing))
         (let ((kept (and keep (find rule windows :key #'tuatara.display:window-kept))))
           (and kept (show-in-window kept buffer rule)))

@@ -84,7 +84,7 @@ the parser. Release them with RELEASE-PARSE."
   (multiple-value-bind (tree rope parser) (parse-string "html"
                                                         (format nil "<p>a <b>b</b></p>~%<script>let x = 1;</script>~%"))
     (declare (ignore rope))
-    (false (tuatara.syntax:tree-has-error-p tree))
+    (false (tree-holds-error-p tree))
     (release-parse tree parser))
   ;; every language's rules compile, and its sample parses without errors
   (loop for (name grammar sample) in '((rust "rust" "sample.rs")
@@ -97,7 +97,7 @@ the parser. Release them with RELEASE-PARSE."
              (multiple-value-bind (tree rope parser) (parse-string grammar
                                                                    (uiop:read-file-string (syntax-sample sample)))
                (declare (ignore rope))
-               (false (tuatara.syntax:tree-has-error-p tree) "~a parses without errors" sample)
+               (false (tree-holds-error-p tree) "~a parses without errors" sample)
                (release-parse tree parser))))
   ;; a broken query says where
   (let ((error (handler-case (tuatara.syntax:compile-query (tuatara.syntax:find-grammar "rust") "(identifier) @a
@@ -118,7 +118,7 @@ the parser. Release them with RELEASE-PARSE."
     (multiple-value-bind (tree rope parser) (parse-string "commonlisp" text)
       (unwind-protect
            (progn
-             (false (tuatara.syntax:tree-has-error-p tree))
+             (false (tree-holds-error-p tree))
              (is equal '("~/" "~ " "~10@a" "~:*" "~,1f" "~/pkg:fn/" "~a" "~%")
                  (let ((found '())
                        (query (tuatara.syntax:compile-query (tuatara.syntax:find-grammar "commonlisp") "(format_specifier) @f")))
@@ -133,7 +133,7 @@ the parser. Release them with RELEASE-PARSE."
   (dolist (text '("#|| a ||# (foo)" "(lambda nil 1)" "(defun f nil 1)"))
     (multiple-value-bind (tree rope parser) (parse-string "commonlisp" text)
       (declare (ignore rope))
-      (false (tuatara.syntax:tree-has-error-p tree))
+      (false (tree-holds-error-p tree))
       (release-parse tree parser))))
 
 (define-test (syntax lisp-loop-named-parses)
@@ -142,7 +142,7 @@ the parser. Release them with RELEASE-PARSE."
     (multiple-value-bind (tree rope parser) (parse-string "commonlisp" text)
       (unwind-protect
            (progn
-             (false (tuatara.syntax:tree-has-error-p tree))
+             (false (tree-holds-error-p tree))
              (is equal '("named outer")
                  (let ((found '())
                        (query (tuatara.syntax:compile-query (tuatara.syntax:find-grammar "commonlisp")
@@ -161,7 +161,7 @@ the parser. Release them with RELEASE-PARSE."
   (let ((text (format nil "\\begin{longtable}{lll}~%a & b & c \\\\~%d&e&\\textbf{f} \\\\~%\\end{longtable}~%Tom \\& Jerry~%")))
     (multiple-value-bind (tree rope parser) (parse-string "latex" text)
       (declare (ignore rope))
-      (false (tuatara.syntax:tree-has-error-p tree))
+      (false (tree-holds-error-p tree))
       (release-parse tree parser))
     (let ((ranges (ranges-text text
                                (rich-ranges "latex" text (tuatara.defaults::language-rules (language-named 'latex))))))
@@ -522,7 +522,7 @@ nothing. The helper is ended after."
       (is eq :broken (try (lambda (fd how body) (declare (ignore how body))
                             (fake-send fd (logior +top-bit+ 0) 64 (words 0 0)))
                           (lambda (helper)
-                            (false (tuatara.syntax:tree-has-error-p (tuatara.syntax::%make-tree helper 1))))))
+                            (false (tree-holds-error-p (tuatara.syntax::%make-tree helper 1))))))
       (dolist (bad (list (list (logior +top-bit+ 9) (words 9 0))        ; another parser's
                          (list (logior +top-bit+ 5) (words 5 100))      ; past the text
                          (list (logior +top-bit+ 5) (words 5 0 0 0))    ; not a request for text
@@ -624,7 +624,7 @@ nothing. The helper is ended after."
                         (dotimes (i (length all))
                           (unless (fake-send-octet fd (aref all i)) (return))
                           (sleep 0.3))))
-                    (lambda (helper) (false (tuatara.syntax:tree-has-error-p (tuatara.syntax::%make-tree helper 1))))))
+                    (lambda (helper) (false (tree-holds-error-p (tuatara.syntax::%make-tree helper 1))))))
       ;; asking for text without end
       (true (member (ends-in-time
                      (lambda (fd how body)
@@ -667,7 +667,7 @@ should not, drawn with the random state RANDOM."
          (ended 0))
     (flet ((within (ranges) (every (lambda (r) (<= 0 (car r) (cdr r) bytes)) ranges)))
       (let ((asks
-              (list (lambda (helper tree) (declare (ignore helper)) (tuatara.syntax:tree-has-error-p tree))
+              (list (lambda (helper tree) (declare (ignore helper)) (tree-holds-error-p tree))
                     (lambda (helper tree) (declare (ignore helper)) (tuatara.syntax::copy-tree-pointer tree))
                     (lambda (helper tree) (declare (ignore helper))
                       (true (within (tuatara.syntax:node-child-ranges tree 0 bytes 1))))

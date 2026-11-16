@@ -60,7 +60,7 @@ REAL where each really is, NIL for one not there then.")
   "Where the directories of *TRUSTED-PROJECTS* really are, those there: each
 looked up once while the setting stays the same, one not there looked for
 again each time."
-  (let ((directories (setting-list '*trusted-projects* *trusted-projects*))
+  (let ((directories *trusted-projects*)
         (seen *trusted-directories-seen*))
     (unless (equal directories (car seen))
       (setf seen (cons (copy-list directories) (make-list (length directories)))
@@ -178,19 +178,31 @@ again."
                git reads it and nothing of it runs; n: not now (y, l or n) "
           (abbreviated-path real)))
 
+(defun forget-project-trust (root)
+  "Forget what was answered of the project at ROOT, trusted or looked at only,
+so that it is asked about again, and tell those who keep answers of it
+\(*TRUST-CHANGED-FUNCTIONS*): its language servers, git and M-x compile run
+nothing of it until it is trusted again. A directory of *TRUSTED-PROJECTS*
+stays trusted."
+  (let ((real (or (real-directory root) root)))
+    (state-list-drop *trusted* (list real))
+    (state-list-drop *look-only* (list real))
+    (run-hook *trust-changed-functions* root)))
+
 (defun ask-project-trust (root &key again)
   "Whether the project at ROOT may run its own programs: :TRUSTED,
 :LOOK-ONLY, or NIL when not, and as a second value why it can never be
 trusted when it is evidence (PROJECT-EVIDENCE-WORDS). It is either trusted
 already, answered look only already, or asked now (with AGAIN, asked whatever
 was answered before). The keys are these: y, then yes typed (trusting cannot
-be taken back once its programs ran), trusts it, unless a directory holding it is
-looked at only. l keeps it to looking only, each remembered. n leaves it to be
-asked again, and with AGAIN forgets what was answered. The question
-\(TRUST-QUESTION) says all a yes allows, whatever asks it, and only a key
-pressed once it is shown answers it. A project that is, is in or holds an
-evidence directory, or is within a directory answered look only, is looked at only,
-never asked of (asked again with AGAIN, it stays so)."
+be taken back once its programs ran), trusts it, unless a directory holding
+it is looked at only. l keeps it to looking only, each remembered. n leaves
+it to be asked again, and with AGAIN forgets what was answered
+\(FORGET-PROJECT-TRUST). The question (TRUST-QUESTION) says all a yes allows,
+whatever asks it, and only a key pressed once it is shown answers it. A
+project that is, is in or holds an evidence directory, or is within a
+directory answered look only, is looked at only, never asked of (asked again
+with AGAIN, it stays so)."
   (let ((real (real-directory root))
         (evidence (project-evidence-words root)))
     (cond (evidence (values :look-only evidence))
@@ -205,9 +217,7 @@ never asked of (asked again with AGAIN, it stays so)."
                (#\l (state-list-drop *trusted* (list real))
                 (state-list-put *look-only* (list real))
                 :look-only)
-               (t (when again
-                    (state-list-drop *trusted* (list real))
-                    (state-list-drop *look-only* (list real)))
+               (t (when again (forget-project-trust real))
                   nil))))))
 
 (defun trusted-when-asked-p (root)
@@ -237,7 +247,8 @@ project in or holding an evidence directory cannot be trusted, and a directory o
     (if (null root)
         (message "~a is in no project" (tuatara.buffer:buffer-name buffer))
         (multiple-value-bind (answer evidence) (ask-project-trust root :again t)
-          (run-hook *trust-changed-functions* root)
+          ;; an answer forgotten has told them already
+          (when answer (run-hook *trust-changed-functions* root))
           (message "~a ~a" (abbreviated-path root)
                    (cond (evidence (format nil "cannot be trusted: ~a" evidence))
                          ((eq answer :trusted) "is trusted")

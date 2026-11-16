@@ -17,10 +17,6 @@
 
 (in-package #:tuatara.defaults)
 
-(defparameter *docx-largest-file* (* 256 1024 1024)
-  "The most octets a Word document, an Excel workbook or a PowerPoint
-presentation read as text may have.")
-
 (defparameter *docx-largest-unpacked* (* 256 1024 1024)
   "The most octets the parts read of a Word document, an Excel workbook or a
 PowerPoint presentation may take unpacked, together: past it the document is
@@ -28,15 +24,36 @@ refused, as made to exhaust the memory.")
 
 (defun docx-read-directory (directory)
   "Every file under DIRECTORY, a Word template unpacked, as (NAME . OCTETS), NAME
-its path from DIRECTORY with /, sorted; backups left out (FILES-UNDER). Signals
-a FILE-SYSTEM-ERROR when its files take more than *DOCX-LARGEST-UNPACKED*
-octets together."
-  (let ((left *docx-largest-unpacked*))
-    (sort (loop for (path . relative) in (files-under directory :hidden t)
-                for octets = (tuatara.io:file-octets path :limit left)
-                do (decf left (length octets))
-                collect (cons relative octets))
-          #'string< :key #'car)))
+its path from DIRECTORY with /, sorted; backups left out (FILES-UNDER). A
+symbolic link is never followed, nor a file reached through one: what it names
+may be a file of yours from elsewhere, so it is left out, and said to be
+\(EXPORT-NOTE). Signals a
+FILE-SYSTEM-ERROR when its files take more than *DOCX-LARGEST-UNPACKED* octets
+together."
+  (let ((left *docx-largest-unpacked*)
+        (links '()))
+    (multiple-value-bind (files more) (files-under directory :hidden t)
+      (when more
+        (export-note "The template's directory holds more files than are read: those past them are left out"))
+      (prog1 (sort (loop for (path . relative) in files
+                        for stamp = (tuatara.io:path-stamp path :follow nil :failure nil)
+                        ;; a link to a directory is listed as one, and walked through: what is below it too
+                        if (not (and stamp (eq (tuatara.io:stamp-kind stamp) :regular)
+                                     (tuatara.io:really-within-p path directory)))
+                          do (push relative links)
+                        else
+                          collect (let ((fd (tuatara.io:open-for-reading path t :accept '(:regular) :follow nil)))
+                                    (unwind-protect
+                                         (let ((octets (tuatara.io:fd-octets fd path
+                                                                             (tuatara.io:stamp-size
+                                                                              (tuatara.io:fd-stamp fd path))
+                                                                             left)))
+                                           (decf left (length octets))
+                                           (cons relative octets))
+                                      (sb-posix:close fd))))
+                  #'string< :key #'car)
+       (when links
+         (export-note "The template's ~{~a~^, ~} left out: a link is not followed" (nreverse links)))))))
 
 (defparameter *docx-largest-xml* (* 32 1024 1024)
   "The most octets one XML part of a document read may take unpacked (a Word
@@ -143,6 +160,11 @@ linked are gathered in *DOCX-READ-PICTURES*, each (TARGET . FILE).")
   "The DOCX-READING of the Word document, Excel workbook or PowerPoint
 presentation being read.")
 
+(defvar *docx-reading-from* nil
+  "The name of the part being read when it is not the main part (a header,
+footer, footnote or comment), whose own relations its links and pictures use;
+NIL for the main part.")
+
 (defun docx-reading-part (name)
   "The part NAME of the document being read, as an XML tree, or NIL when it
 has none; its elements and those of the parts read before it no more than
@@ -177,6 +199,20 @@ reading there, TUATARA.RUNTIME:JOB-STOPPED, when it has been asked to stop."
     (tuatara.runtime:job-check-stop)
     (when (minusp (decf (docx-reading-room reading) characters))
       (error 'office-note-full))))
+
+(defun office-write-lines (s items line &optional (more "- And ~:d more (*office-most-listed*)~%"))
+  "Write to stream S the line LINE, a function of one of ITEMS, makes of each
+of them, at most *OFFICE-MOST-LISTED*, each taken from the room left for the
+note (OFFICE-SPEND); then, when there are more, MORE, a format control, with
+how many."
+  (loop for item in items
+        repeat *office-most-listed*
+        do (let ((text (funcall line item)))
+             (office-spend (length text))
+             (write-string text s)))
+  (let ((left (- (length items) *office-most-listed*)))
+    (when (plusp left)
+      (format s more left))))
 
 (defun office-value (text)
   "TEXT, a value an office file holds (a cell's, a formula), no longer than
@@ -422,6 +458,15 @@ with f before it when that begins with c, e or f. No two kinds share a label."
                            (t (format nil "~{~a~}" (mapcar #'text (xml-children n))))))))))
     (text node)))
 
+(defun xml-flag-p (node name)
+  "True when the attribute NAME of the element NODE is 1 or true."
+  (and (member (xml-attribute node name) '("1" "true") :test #'equal) t))
+
+(defun docx-current-relations ()
+  "The relations of the part being read: the main part's, or those of the
+header, footer, footnote or comment bound in *DOCX-READING-FROM*."
+  (docx-part-relations (or *docx-reading-from* (docx-main-part))))
+
 (defun docx-read-run-part (part out)
   "Write PART, what a run holds (its text, a tab, a break, a note's
 reference, a picture, a text box), to OUT as Org text."
@@ -454,7 +499,7 @@ reference, a picture, a text box), to OUT as Org text."
                                         (org-safe-line (with-output-to-string (b) (docx-read-block box b)) :escaped t)))
                    (let* ((blip (first (xml-find-all part "a:blip")))
                           (target (and blip
-                                       (docx-relation-target (docx-part-relations (docx-main-part))
+                                       (docx-relation-target (docx-current-relations)
                                                              (xml-attribute blip "r:embed"))))
                           (doc (first (xml-find-all part "wp:docPr")))
                           (alt (and doc (or (xml-attribute doc "descr") (xml-attribute doc "title")))))
@@ -489,7 +534,7 @@ tracked change."
           ((string= name "w:hyperlink")
            ;; a link within the document (its contents, a cross-reference) as its words
            (let* ((words (with-output-to-string (s) (docx-read-inline child s :change change)))
-                  (target (getf (docx-relation-with-id (docx-part-relations (docx-main-part))
+                  (target (getf (docx-relation-with-id (docx-current-relations)
                                                        (xml-attribute child "r:id")) :target)))
              (if (and target (plusp (length words)))
                  (write-string (org-safe-link target words) out)
@@ -706,13 +751,20 @@ plist of those they set: :FONT (a name, or (:THEME :MAJOR) or (:THEME :MINOR)),
     (docx-read-merge '(:size 20) (docx-read-properties ppr rpr))))
 
 (defun docx-read-style-look (id &optional (depth 0))
-  "The look of the style ID, through the styles it is based on, without the defaults."
-  (let ((style (gethash id (docx-read-style-nodes))))
-    (if (or (null style) (> depth 20))
-        '()
-        (let ((based (xml-child style "w:basedOn")))
-          (docx-read-merge (if based (docx-read-style-look (xml-attribute based "w:val") (1+ depth)) '())
-                           (docx-read-properties (xml-child style "w:pPr") (xml-child style "w:rPr")))))))
+  "The look of the style ID, through the styles it is based on, without the
+defaults; worked out once for each style."
+  (flet ((look ()
+           (let ((style (gethash id (docx-read-style-nodes))))
+             (if (or (null style) (> depth 20))
+                 '()
+                 (let ((based (xml-child style "w:basedOn")))
+                   (docx-read-merge (if based (docx-read-style-look (xml-attribute based "w:val") (1+ depth)) '())
+                                    (docx-read-properties (xml-child style "w:pPr") (xml-child style "w:rPr"))))))))
+    (if (plusp depth)
+        (look)
+        (let ((known (docx-reading-parts *docx-reading*)) (key (list :style-look id)))
+          (multiple-value-bind (look found) (gethash key known)
+            (if found look (setf (gethash key known) (look))))))))
 
 (defun docx-read-default-style ()
   "The id of the style of paragraphs that name none (Normal)."
@@ -797,31 +849,34 @@ to the font it names to stand in where it is missing."
   "Write to stream S the table of the pages of each section of BODY, a
 document's body: its paper, margins, columns and headers and footers."
   (format s "** Pages~%| Section | Paper | Margins: top, bottom, left, right | Columns | Headers, footers |~%|-~%")
-  (loop for section in (and body (xml-find-all body "w:sectPr"))
-        for n from 1
-        do (let* ((size (xml-child section "w:pgSz"))
-                  (margins (xml-child section "w:pgMar"))
-                  (cols (xml-child section "w:cols"))
-                  (w (docx-read-number size "w:w")) (h (docx-read-number size "w:h"))
-                  (paper (and w h (let ((short (min w h)) (long (max w h)))
-                                    (loop for (name sw sh) in '(("A4" 11906 16838)
-                                                                ("Letter" 12240 15840)
-                                                                ("Legal" 12240 20160)
-                                                                ("A3" 16838 23811)
-                                                                ("A5" 8391 11906))
-                                          when (and (< (abs (- short sw)) 30) (< (abs (- long sh)) 30)) return name))))
-                  (columns (or (docx-read-number cols "w:num") 1)))
-             (format s "| ~d | ~:[~a × ~a cm~*~;~*~*~a~], ~:[portrait~;landscape~] | ~{~a~^, ~} cm | ~d~:[~*~;, ~a ~
+  (office-write-lines
+   s (loop for section in (and body (xml-find-all body "w:sectPr")) for n from 1 collect (cons n section))
+   (lambda (numbered)
+     (destructuring-bind (n . section) numbered
+       (let* ((size (xml-child section "w:pgSz"))
+             (margins (xml-child section "w:pgMar"))
+             (cols (xml-child section "w:cols"))
+             (w (docx-read-number size "w:w")) (h (docx-read-number size "w:h"))
+             (paper (and w h (let ((short (min w h)) (long (max w h)))
+                               (loop for (name sw sh) in '(("A4" 11906 16838)
+                                                           ("Letter" 12240 15840)
+                                                           ("Legal" 12240 20160)
+                                                           ("A3" 16838 23811)
+                                                           ("A5" 8391 11906))
+                                     when (and (< (abs (- short sw)) 30) (< (abs (- long sh)) 30)) return name))))
+             (columns (or (docx-read-number cols "w:num") 1)))
+         (format nil "| ~d | ~:[~a × ~a cm~*~;~*~*~a~], ~:[portrait~;landscape~] | ~{~a~^, ~} cm | ~d~:[~*~;, ~a ~
 cm apart~] | ~a |~%"
-                     n paper (and w (docx-twips-cm w)) (and h (docx-twips-cm h)) paper (and w h (> w h))
-                     (mapcar (lambda (a) (let ((v (docx-read-number margins a))) (if v (docx-twips-cm v) "?")))
-                             '("w:top" "w:bottom" "w:left" "w:right"))
-                     columns (> columns 1)
-                     (let ((space (docx-read-number cols "w:space"))) (if space (docx-twips-cm space) "?"))
-                     (format nil "~d~:[~;, the first page its own~]"
-                             (+ (length (xml-find-all section "w:headerReference"))
-                                (length (xml-find-all section "w:footerReference")))
-                             (xml-child section "w:titlePg"))))))
+                 n paper (and w (docx-twips-cm w)) (and h (docx-twips-cm h)) paper (and w h (> w h))
+                 (mapcar (lambda (a) (let ((v (docx-read-number margins a))) (if v (docx-twips-cm v) "?")))
+                         '("w:top" "w:bottom" "w:left" "w:right"))
+                 columns (> columns 1)
+                 (let ((space (docx-read-number cols "w:space"))) (if space (docx-twips-cm space) "?"))
+                 (format nil "~d~:[~;, the first page its own~]"
+                         (+ (length (xml-find-all section "w:headerReference"))
+                            (length (xml-find-all section "w:footerReference")))
+                         (xml-child section "w:titlePg"))))))
+   "| And ~:d sections more (*office-most-listed*) |~%"))
 
 (defun docx-read-by-hand-words (look)
   "What LOOK, a paragraph's properties set by hand, sets, as a list of words:
@@ -904,32 +959,44 @@ paragraphs), each line taken from the room left for the note (OFFICE-SPEND)."
             (docx-read-pages s body)
             (format s "~%** Paragraph styles used~%~
 | Style | Paragraphs | Font | Size | Before | After | Lines | Indent | Align |~%|-~%")
-            (dolist (id order)
-              (let ((look (docx-read-merge defaults
-                                           (docx-read-merge (if (and normal (not (equal id normal)))
-                                                                (docx-read-style-look normal) '())
-                                                            (docx-read-style-look id)))))
-                (when (getf look :font) (use-font (getf look :font) (docx-read-style-name id)))
-                (format s "| ~a | ~d | ~a~:[~; bold~]~:[~; italic~] | ~a pt | ~a pt | ~a pt | ~a | ~a | ~a |~%"
-                        (cell (docx-read-style-name id)) (gethash id used)
-                        (if (getf look :font) (cell (docx-read-font-name (getf look :font) major minor)) "?")
-                        (getf look :bold) (getf look :italic)
-                        (docx-twips-pt (* 10 (or (getf look :size) 20)))
-                        (docx-twips-pt (or (getf look :before) 0)) (docx-twips-pt (or (getf look :after) 0))
-                        (docx-read-lines-words look) (docx-read-indent-words look)
-                        (docx-read-align-words (getf look :align)))))
+            ;; the fonts of every style are counted, the rows of no more of them than a list shows
+            (let ((looks (loop for id in order
+                               collect (cons id (docx-read-merge
+                                                 defaults
+                                                 (docx-read-merge (if (and normal (not (equal id normal)))
+                                                                      (docx-read-style-look normal) '())
+                                                                  (docx-read-style-look id)))))))
+              (loop for (id . look) in looks
+                    when (getf look :font) do (use-font (getf look :font) (docx-read-style-name id)))
+              (office-write-lines
+               s looks
+               (lambda (styled)
+                 (destructuring-bind (id . look) styled
+                   (format nil "| ~a | ~d | ~a~:[~; bold~]~:[~; italic~] | ~a pt | ~a pt | ~a pt | ~a | ~a | ~a |~%"
+                           (cell (docx-read-style-name id)) (gethash id used)
+                           (if (getf look :font) (cell (docx-read-font-name (getf look :font) major minor)) "?")
+                           (getf look :bold) (getf look :italic)
+                           (docx-twips-pt (* 10 (or (getf look :size) 20)))
+                           (docx-twips-pt (or (getf look :before) 0)) (docx-twips-pt (or (getf look :after) 0))
+                           (docx-read-lines-words look) (docx-read-indent-words look)
+                           (docx-read-align-words (getf look :align)))))
+               "| And ~:d styles more (*office-most-listed*) |~%"))
             (format s "~%** Fonts~%| Font | Used by | Stands in where missing | Here |~%|-~%")
             (let ((names '()) (installed (installed-font-families :every-kind t)) (stand-ins (list 0)))
               (maphash (lambda (name where) (push (cons name (reverse where)) names)) fonts)
-              (dolist (entry (sort names #'string< :key #'car))
-                (let ((family (let ((paren (search " (" (car entry))))
-                                (if paren (subseq (car entry) 0 paren) (car entry)))))
-                  (format s
-                          "| ~a | ~{~a~^, ~} | ~a | ~a |~%"
-                          (cell (car entry))
-                          (mapcar #'cell (cdr entry))
-                          (cell (or (gethash family font-table) ""))
-                          (if (string= family "unknown") "" (docx-read-font-here family installed stand-ins))))))
+              (office-write-lines
+               s (sort names #'string< :key #'car)
+               (lambda (entry)
+                 (let ((family (let ((paren (search " (" (car entry))))
+                                 (if paren (subseq (car entry) 0 paren) (car entry))))
+                       (users (cdr entry)))
+                   (format nil "| ~a | ~{~a~^, ~}~@[, and ~:d more~] | ~a | ~a |~%"
+                           (cell (car entry))
+                           (mapcar #'cell (subseq users 0 (min (length users) *office-most-listed*)))
+                           (and (> (length users) *office-most-listed*) (- (length users) *office-most-listed*))
+                           (cell (or (gethash family font-table) ""))
+                           (if (string= family "unknown") "" (docx-read-font-here family installed stand-ins)))))
+               "| And ~:d fonts more (*office-most-listed*) |~%"))
             (when (or by-hand-paragraphs (plusp (hash-table-count by-hand-runs)))
               (format s "~%** Set by hand, not by a style~%")
               (dolist (entry (reverse by-hand-paragraphs))
@@ -939,10 +1006,13 @@ paragraphs), each line taken from the room left for the note (OFFICE-SPEND)."
                   (write-string line s)))
               (when (> by-hand-count *office-most-listed*)
                 (format s "- And ~:d paragraphs more (*office-most-listed*)~%" (- by-hand-count *office-most-listed*)))
-              (maphash (lambda (key value)
-                         (format s "- Text in ~a :: ~d run~:p, first \"~a\"~%"
-                                 (org-safe-line key) (first value) (org-safe-line (second value))))
-                       by-hand-runs))
+              (office-write-lines
+               s (loop for key being the hash-keys of by-hand-runs using (hash-value value) collect (cons key value))
+               (lambda (run)
+                 (destructuring-bind (key . value) run
+                   (format nil "- Text in ~a :: ~d run~:p, first \"~a\"~%"
+                           (org-safe-line key) (first value) (org-safe-line (second value)))))
+               "- And ~:d fonts and sizes more set by hand (*office-most-listed*)~%"))
             (terpri s)))))))
 
 (defun docx-read-headers (s)
@@ -958,7 +1028,8 @@ footers, when it has any."
     (when parts
       (format s "* Headers and footers~%")
       (dolist (part (sort parts #'string< :key #'cdr))
-        (let ((tree (docx-reading-part (cdr part))))
+        (let ((tree (docx-reading-part (cdr part)))
+              (*docx-reading-from* (cdr part)))
           (format s "- ~a (~a) :: ~a~%" (car part) (org-safe-line (cdr part))
                   (if tree
                       (string-trim " " (org-safe-line (with-output-to-string (b)
@@ -971,12 +1042,16 @@ footers, when it has any."
 ;;; The note
 
 (defun metadata-value (text)
-  "TEXT, a value a file holds, as the note shows it: on one line, kept from
-being read as markup (ORG-SAFE-LINE), at most *METADATA-VALUE-MOST*
-characters."
-  (let ((text (org-safe-line (string-trim '(#\Space #\Tab #\Nul) (or text ""))))
+  "TEXT, a value a file holds, as the note shows it: its first
+*METADATA-VALUE-MOST* characters, on one line, kept from being read as markup
+\(ORG-SAFE-LINE), and how many characters it has when they are more. It is cut
+before it is kept from markup, so that a long value is never escaped whole and
+the cut never falls within what keeps a character from markup."
+  (let ((text (string-trim '(#\Space #\Tab #\Nul) (or text "")))
         (most *metadata-value-most*))
-    (if (> (length text) most) (format nil "~a... (~:d characters)" (subseq text 0 most) (length text)) text)))
+    (if (> (length text) most)
+        (format nil "~a... (~:d characters)" (org-safe-line (subseq text 0 most)) (length text))
+        (org-safe-line text))))
 
 (defun metadata-lines (fields out)
   "Write to OUT a line - LABEL :: VALUE for each of FIELDS, each (LABEL .
@@ -1128,8 +1203,9 @@ footnotes; true when there was one."
         (let ((note (gethash id (docx-reading-footnotes *docx-reading*))))
           (when note
             (setf any t)
-            (format out "[fn:~a] ~a~%" id (string-trim '(#\Space #\Newline)
-                                                       (with-output-to-string (n) (docx-read-block note n))))))))))
+            (let ((*docx-reading-from* (if (char= (char id 0) #\e) "word/endnotes.xml" "word/footnotes.xml")))
+              (format out "[fn:~a] ~a~%" id (string-trim '(#\Space #\Newline)
+                                                         (with-output-to-string (n) (docx-read-block note n)))))))))))
 
 (defun docx-read-note (path &key octets cancel)
   "The Word document at PATH as an Org note, read as this file's header says,
@@ -1154,9 +1230,10 @@ Signals ZIP-ERROR or an error when it cannot be read."
                                    (docx-read-note-label :comment id)
                                    (org-safe-line (or (xml-attribute comment "w:author") "someone"))
                                    (let ((date (xml-attribute comment "w:date"))) (and date (org-safe-line date)))
-                                   (string-trim " "
-                                                (org-safe-line (with-output-to-string (n) (docx-read-block comment n))
-                                                               :escaped t)))))))))
+                                   (let ((*docx-reading-from* "word/comments.xml"))
+                                     (string-trim " "
+                                                  (org-safe-line (with-output-to-string (n) (docx-read-block comment n))
+                                                                 :escaped t))))))))))
            (changes (office-changes-section (reverse (docx-reading-changes *docx-reading*)))))
       (office-note path
                    (docx-read-about path)

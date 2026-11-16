@@ -53,10 +53,10 @@
     ("diff-files" :options ("-r" "-c" "-q" "--ignore-submodules=" ,@*git-diff-options*))
     ("diff-index" :options ("-r" "--cached" "-m" "--ignore-submodules=" ,@*git-diff-options*))
     ("diff-tree" :options ("-r" "-t" "--root" "-c" "--no-commit-id" "--always" ,@*git-diff-options*))
-    ("log" :options ,*git-log-options* :values ("--format" "--pretty" "-n" "--max-count" "--author" "--grep"))
-    ("whatchanged" :options ,*git-log-options* :values ("--format" "--pretty" "-n"))
-    ("show" :options ,*git-log-options* :values ("--format" "--pretty"))
-    ("rev-list" :options ,*git-log-options* :values ("--format" "--pretty" "-n" "--max-count"))
+    ("log" :options ,*git-log-options* :values ("-n" "--max-count" "--author" "--grep"))
+    ("whatchanged" :options ,*git-log-options* :values ("-n"))
+    ("show" :options ,*git-log-options*)
+    ("rev-list" :options ,*git-log-options* :values ("-n" "--max-count"))
     ("range-diff" :options ("--creation-factor=" "--no-dual-color" ,@*git-log-options*))
     ("cherry" :options ("-v" "--abbrev" "--abbrev="))
     ("shortlog" :options ("-s" "-n" "-e" "-c" "-w" "--summary" "--numbered" "--email" "--committer" "--group="
@@ -106,13 +106,13 @@
     ("count-objects" :options ("-v" "--verbose" "-H" "--human-readable"))
     ("version" :options ("--build-options"))
     ("hash-object" :options ("--no-filters" "--literally") :values ("-t"))
-    ("stash list" :options ,*git-log-options* :values ("--format" "--pretty"))
+    ("stash list" :options ,*git-log-options*)
     ("stash show" :options ("--include-untracked" "-u" "--only-untracked" ,@*git-diff-options*))
     ("worktree list" :options ("--porcelain" "-v" "--verbose" "-z") :plain nil)
     ("notes list" :options ())
     ("notes show" :options ())
-    ("reflog" :options ,*git-log-options* :values ("--format" "--pretty") :plain nil)
-    ("reflog show" :options ,*git-log-options* :values ("--format" "--pretty"))
+    ("reflog" :options ,*git-log-options* :plain nil)
+    ("reflog show" :options ,*git-log-options*)
     ("remote" :options ("-v" "--verbose") :plain nil)
     ("remote get-url" :options ("--push" "--all"))
     ("branch" :options ("--show-current" "--list" "-l" "-a" "--all" "-r" "--remotes" "-v" "-vv" "--verbose"
@@ -131,8 +131,10 @@ word after it for those of several parts: stash list), each with the
 options it may be given there, those only shaping what it shows. An option
 is written as git takes it, alone in its word; one ending in = takes the
 value written after it, in # a number, in * anything. :VALUES are options
-taking the next word as their value; :PLAIN NIL, no word that is not an
-option (one of several parts given none after its options); :LISTING, names
+taking the next word as their value, only those git itself takes so;
+--format and --pretty are given only with an =, and refused alone, since git
+takes the next word as their value in neither case; :PLAIN NIL, no word that
+is not an option (one of several parts given none after its options); :LISTING, names
 given only with -l or --list (to list those matching); :CONFIG, only git
 config's forms that read (GIT-CONFIG-READING-P).")
 
@@ -204,8 +206,9 @@ sentence. NIL when they only read. They only read when all of these hold.
 There is no option before the command but those of *GIT-LINE-OPTIONS-ALLOWED*.
 A command of *GIT-READING-OPTIONS* (with its first word for one of several
 parts) is given only the options listed for it, each in a word of its own,
-whose values ask for no signature and no name mapped. Names to branch and tag
-come only when listing. git config is only reading."
+whose values ask for no signature and no name mapped. No word, value or
+not, is an --output option before a lone --. Names to branch and tag come only when listing.
+git config is only reading."
   (let* ((words (git-command-words arguments))
          (leading (git-leading-options-refused arguments words))
          (command (first words))
@@ -215,9 +218,12 @@ come only when listing. git config is only reading."
                     (first more)))
          (key (if part (format nil "~a ~a" command part) command))
          (spec (cdr (assoc key *git-reading-options* :test #'equal)))
+         (output (find-if (lambda (word) (uiop:string-prefix-p "--output" word))
+                         (ldiff more (member "--" more :test #'string=))))
          (plain '()) (refusal nil))
     (cond (leading (format nil "git is given no option before its command here (not ~a)" (first leading)))
           ((null command) "no git command is given")
+          (output (format nil "git is given no ~a here, where git only reads" output))
           ((null spec) (format nil "git ~a is not run here, where git only reads" key))
           (t
            (loop with options = (getf spec :options)
@@ -269,13 +275,20 @@ commondir) may hold to be read.")
 (defun git-small-file (top path what)
   "The text of the file at PATH, of the repository at TOP: a regular file of
 at most *GIT-SMALL-FILE-MOST* octets, examined before it is opened, so that a
-named pipe or a device is never opened; WHAT names it when it cannot be."
-  (let ((stamp (tuatara.io:path-stamp path :follow nil :failure nil)))
-    (unless (and stamp (eq (tuatara.io:stamp-kind stamp) :regular))
-      (git-refuse-reading top "its ~a is ~:[not there~;not a file~]" what stamp))
-    (when (> (tuatara.io:stamp-size stamp) *git-small-file-most*)
-      (git-refuse-reading top "its ~a is too large to be one" what))
-    (string-right-trim '(#\Newline #\Return #\Space) (tuatara.text:lenient-string (tuatara.io:file-octets path)))))
+named pipe or a device is never opened, and never through a link; WHAT names
+it when it cannot be."
+  (let ((fd (handler-case (tuatara.io:open-for-reading path t :accept '(:regular) :follow nil)
+              (tuatara.io:file-system-error () nil))))
+    (unless fd
+      (git-refuse-reading top "its ~a is ~:[not there~;not a file~]" what
+                          (tuatara.io:path-stamp path :follow nil :failure nil)))
+    (unwind-protect
+         (let ((size (tuatara.io:fd-size fd 0)))
+           (when (> size *git-small-file-most*)
+             (git-refuse-reading top "its ~a is too large to be one" what))
+           (string-right-trim '(#\Newline #\Return #\Space)
+                              (tuatara.text:lenient-string (tuatara.io:fd-octets fd path size *git-small-file-most*))))
+      (sb-posix:close fd))))
 
 (defun git-directory-from (base text)
   "The directory TEXT, as a file of git's own names it, from BASE when it is
@@ -407,8 +420,10 @@ in the private cache (MAKE-OWNED-DIRECTORY), made the first time one is wanted."
 (defun forget-old-git-shadows ()
   "Delete the shadows of sessions on this machine no longer running, as one
 that ended without deleting its own (a crash) leaves them
-\(FORGET-ABANDONED-DIRECTORIES)."
-  (forget-abandoned-directories "git-shadow/" :own (car *git-shadows-directory*)))
+\(FORGET-ABANDONED-DIRECTORIES). This session's own directory of shadows
+is not made while they are deleted, so it is never taken for one of theirs."
+  (sb-thread:with-mutex (*git-shadows-directory-lock*)
+    (forget-abandoned-directories "git-shadow/" :own (car *git-shadows-directory*))))
 
 (defun git-file-row (path &optional stamp)
   "What a shadow knows of the file or directory at PATH, a link not followed:
@@ -461,24 +476,40 @@ reference to a new name, then renames it over the old)."
   "Copy the file FROM, of the repository at TOP, to TO, in SHADOW, when it is
 there, as WHAT (index, packed-refs, logs, references, or another of git's
 own files). It is examined first, so that a named pipe or a device is never
-opened; refused (GIT-REFUSE-READING) when it is not a file, holds holes (a
-file of more octets than the disk gives it), is larger than such a file
-may be (GIT-FILE-MOST), or would take the shadow past *GIT-SHADOW-MOST*."
-  (let ((stamp (tuatara.io:path-stamp from :follow nil :failure nil)))
-    (cond ((null stamp))
-          ((not (eq (tuatara.io:stamp-kind stamp) :regular))
+opened, and opened once, never through a link; what is copied is what was
+examined. Refused (GIT-REFUSE-READING) when it is not a file, is put in
+place of the one examined, holds holes (a file of more octets than the disk
+gives it), is larger than such a file may be (GIT-FILE-MOST), or would take
+the shadow past *GIT-SHADOW-MOST*."
+  (let ((examined (tuatara.io:path-stamp from :follow nil :failure nil)))
+    (cond ((null examined))
+          ((not (eq (tuatara.io:stamp-kind examined) :regular))
            (git-refuse-reading top "its ~a ~a is not a file" what (abbreviated-path from)))
-          ((tuatara.io:file-holes-p from)
-           (git-refuse-reading top "its ~a ~a has holes, more octets than the disk holds" what (abbreviated-path from)))
-          ((> (tuatara.io:stamp-size stamp) (git-file-most what))
-           (git-refuse-reading top "its ~a ~a is larger than any a repository holds (~a)" what (abbreviated-path from)
-                               (tuatara.io:octets-words (tuatara.io:stamp-size stamp))))
-          ((> (+ (git-shadow-copied shadow) (tuatara.io:stamp-size stamp)) *git-shadow-most*)
-           (git-refuse-reading top "its references, logs and index together are larger than ~a"
-                               (tuatara.io:octets-words *git-shadow-most*)))
-          (t (incf (git-shadow-copied shadow) (tuatara.io:stamp-size stamp))
-             (ensure-directories-exist (sb-ext:parse-native-namestring (tuatara.io:parent-path to)))
-             (tuatara.io:copy-regular-file from to)))))
+          (t
+           (let ((in (handler-case (tuatara.io:open-for-reading from t :accept '(:regular) :follow nil
+                                                                       :operation "copy")
+                       (tuatara.io:file-system-error (e)
+                         (git-refuse-reading top "its ~a ~a could not be opened: ~a" what (abbreviated-path from)
+                                             (tuatara.io:file-system-error-reason e))))))
+             (unwind-protect
+                  (let ((stamp (tuatara.io:fd-stamp in from)))
+                    (cond ((not (tuatara.io:same-stamped-file-p stamp examined))
+                           (git-refuse-reading top "its ~a ~a was replaced while it was read" what
+                                               (abbreviated-path from)))
+                          ((tuatara.io:fd-holes-p in stamp)
+                           (git-refuse-reading top "its ~a ~a has holes, more octets than the disk holds" what
+                                               (abbreviated-path from)))
+                          ((> (tuatara.io:stamp-size stamp) (git-file-most what))
+                           (git-refuse-reading top "its ~a ~a is larger than any a repository holds (~a)" what
+                                               (abbreviated-path from)
+                                               (tuatara.io:octets-words (tuatara.io:stamp-size stamp))))
+                          ((> (+ (git-shadow-copied shadow) (tuatara.io:stamp-size stamp)) *git-shadow-most*)
+                           (git-refuse-reading top "its references, logs and index together are larger than ~a"
+                                               (tuatara.io:octets-words *git-shadow-most*)))
+                          (t (incf (git-shadow-copied shadow) (tuatara.io:stamp-size stamp))
+                             (ensure-directories-exist (sb-ext:parse-native-namestring (tuatara.io:parent-path to)))
+                             (tuatara.io:copy-open-file-to in from to))))
+               (sb-posix:close in)))))))
 
 (defun git-copy-tree (top from to what shadow)
   "Copy the directory FROM, of the repository at TOP, into TO, in SHADOW: its

@@ -2,12 +2,26 @@
 # tools/sample-files.sh --- Write small sample files for trying Tuatara by hand.
 # Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 # Write small sample files for trying Tuatara by hand. Usage: tools/sample-files.sh [DIRECTORY]
-# (default tuatara-sample-files in the system's directory for temporary files).
+# (default a new directory made in the system's directory for temporary files;
+# a DIRECTORY that exists must be of mode 700 and owned by this account).
 set -euo pipefail
-dir=${1:-${TMPDIR:-/tmp}/tuatara-sample-files}
-mkdir -p "$dir"
+if [ -n "${1:-}" ]; then
+  dir="$1"
+  [ -e "$dir" ] || mkdir -m 700 -p "$dir"
+  if [ -L "${dir%/}" ] || [ ! -d "$dir" ] || [ ! -O "$dir" ] || [ "$(stat -c %a "$dir")" != 700 ]; then
+    echo "$dir is not a directory of mode 700 owned by this account: nothing written" >&2
+    exit 1
+  fi
+else
+  dir="$(mktemp -d "${TMPDIR:-/tmp}/tuatara-sample-files.XXXXXX")"
+fi
 # UTF-8 text: two-, three- and four-octet characters, wide ones, a combining mark
-printf 'Plain ASCII line\nLatin: café, Zoë, München, Ångström\nCJK wide: 中文字 日本語 한국어\nEmoji: 😀 🎉 👍\nCombining: e\xcc\x81 (e + U+0301)\nTab:\tafter a tab\n' > "$dir/utf8.txt"
+printf '%b' 'Plain ASCII line\n' \
+  'Latin: café, Zoë, München, Ångström\n' \
+  'CJK wide: 中文字 日本語 한국어\n' \
+  'Emoji: 😀 🎉 👍\n' \
+  'Combining: e\xcc\x81 (e + U+0301)\n' \
+  'Tab:\tafter a tab\n' > "$dir/utf8.txt"
 # A CSV saved as Latin-1 by an older program: é and ü are single octets, not UTF-8
 printf 'name,city\nJos\xe9,M\xfcnchen\nFran\xe7ois,Qu\xe9bec\nZo\xc3\xab,Wellington\n' > "$dir/latin1.csv"
 # A Windows CSV: every line ends with a carriage return and a newline

@@ -563,11 +563,12 @@
            (fold-end (tuatara.buffer:buffer-goto-line b 90))
            (after (tuatara.buffer:buffer-goto-line b 91)))
       (tuatara.display:fold-region b fold-start fold-end)
-      (setf (tuatara.buffer:buffer-local b :display-replacements-function)
-            (lambda (buffer from to)
-              (declare (ignore buffer))
-              (push (cons from to) asked)
-              (when (and (<= from after) (< after to)) (list (list after (+ after 4) "LINE" nil)))))
+      (tuatara.display:add-replacements b :test
+                                        (lambda (buffer from to)
+                                          (declare (ignore buffer))
+                                          (push (cons from to) asked)
+                                          (when (and (<= from after) (< after to))
+                                            (list (list after (+ after 4) "LINE" nil)))))
       (let ((hidden (tuatara.display::window-hidden b 0 20 5)))
         (true asked)
         (loop for (from . to) in asked
@@ -582,8 +583,7 @@
              (loop for line from 2 to (* 2 count) by 2
                    for line-start = (tuatara.buffer:buffer-goto-line b line)
                    do (tuatara.display:fold-region b (1- line-start) (tuatara.buffer:buffer-line-end b line-start)))
-             (setf (tuatara.buffer:buffer-local b :display-replacements-function)
-                   (lambda (buffer from to) (declare (ignore buffer from to)) '()))
+             (tuatara.display:add-replacements b :test (lambda (buffer from to) (declare (ignore buffer from to)) '()))
              (let ((start (tuatara.buffer:buffer-goto-line b (- (* 2 count) 20))))
                (tuatara.display::window-hidden b start 40 10)
                ;; the least of three: a collection may count once in a while
@@ -1161,3 +1161,30 @@ HEIGHT rows tall, found as the difference of two lengths of KEYS, the least of t
     (let ((page (/ (garbage-of-keys '("C-v") :height height) height)))
       (true (< page *garbage-budget-per-page-row*) "a page at ~d rows made ~,2f KB a row, over ~d" height
             (/ page 1024) (/ *garbage-budget-per-page-row* 1024)))))
+
+(define-test (display hex-colours-take-only-hex-digits)
+  (is equal '(255 0 127) (multiple-value-list (tuatara.display:parse-hex-colour "#ff007f")))
+  (false (tuatara.display:parse-hex-colour "#-1-1-1"))
+  (false (tuatara.display:parse-hex-colour "#+f+f+f"))
+  (false (tuatara.display:parse-hex-colour "# f f f")))
+
+(define-test (display highlights-made-without-calling-the-view-hooks)
+  ;; asking for a window's highlight ranges has no effect: the hooks run when the window is drawn
+  (multiple-value-bind (f editor) (run-keys "" :text "kia ora" :width 40 :height 6)
+    (declare (ignore f))
+    (let* ((window (tuatara.command:editor-window editor)) (calls 0)
+           (tuatara.command:*view-change-functions*
+             (list (lambda (editor window rows) (declare (ignore editor window rows)) (incf calls)))))
+      (tuatara.command:window-highlights-for editor window (tuatara.display:window-rows window))
+      (is = 0 calls))))
+
+(define-test (display host-settings-asked-once-for-a-layout)
+  ;; a window laid out with its point kept in sight asks the host about its buffer's tab width once
+  (multiple-value-bind (f editor) (run-keys "" :text (format nil "a~%b~%c") :width 40 :height 6)
+    (declare (ignore f))
+    (let ((window (tuatara.command:editor-window editor)) (asked 0))
+      (sb-int:encapsulate 'tuatara.display:host-tab-width 'counting
+                          (lambda (function &rest arguments) (incf asked) (apply function arguments)))
+      (unwind-protect (tuatara.display:window-ensure-point-visible window)
+        (sb-int:unencapsulate 'tuatara.display:host-tab-width 'counting))
+      (true (<= asked 1) "the host was asked ~d times" asked))))

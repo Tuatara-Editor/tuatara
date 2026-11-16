@@ -9,7 +9,7 @@
 
 (in-package #:tuatara.command)
 
-(define-record (candidate (:constructor make-candidate (string &key annotation value group columns suffix rank))
+(define-record (candidate (:constructor make-candidate (string &key ((:annotation note)) value group columns ((:suffix tail)) rank))
                          (:copier nil))
   "One completion candidate. STRING is what is matched, and what is shown
 unless COLUMNS says otherwise. SUFFIX is fields shown right after STRING, such
@@ -24,18 +24,50 @@ WIDTH, when given, is the columns it takes, its text at the left of them, or
 at the right for a negative WIDTH, or a fraction, that share of the row. The
 text is cut to fit at its end, or in its middle when CUT is :MIDDLE. RANK,
 when given, puts it with the entries of a completing read's history, the lower
-the sooner: for files, how lately it was chosen."
+the sooner: for files, how lately it was chosen. An ANNOTATION or SUFFIX may be
+a function of no arguments instead, called when the candidate's row is first
+drawn, not before: a list of thousands of candidates then costs only for
+the few rows shown."
   (string "" :type string :read-only t :documentation "The text of CANDIDATE.")
-  (annotation nil :type (or null string list) :read-only t :documentation "The annotation of CANDIDATE, or NIL.")
+  (note nil :type (or null string list function)
+        :documentation "The annotation of CANDIDATE as it was given: NIL, text, fields, or the function making them.")
   (value nil :read-only t :documentation "The value CANDIDATE stands for, or NIL to mean its string.")
   (group nil :type (or null string) :read-only t
          :documentation "The title of the group CANDIDATE is listed under, or NIL.")
   (columns nil :type list :read-only t :documentation "The fields CANDIDATE is shown as, or NIL to show its string.")
-  (suffix nil :type list :read-only t :documentation "The fields shown right after CANDIDATE's string, or NIL.")
+  (tail nil :type (or list function)
+        :documentation "The suffix of CANDIDATE as it was given: NIL, fields, or the function making them.")
   (rank nil :read-only t :documentation "How soon CANDIDATE comes with a read's history (lower sooner), or NIL."))
 
 (setf (documentation 'make-candidate 'function) "Return a CANDIDATE for STRING with ANNOTATION,
 VALUE, GROUP and COLUMNS.")
+
+(defun candidate-annotation (candidate)
+  "The annotation of CANDIDATE, or NIL: a string or a list of fields. A function
+given for it is called the first time and its answer kept; when it fails, the
+error is reported once and the annotation is NIL."
+  (let ((note (candidate-note candidate)))
+    (if (functionp note)
+        (setf (candidate-note candidate)
+              (tuatara.runtime:ignoring-errors-reported ("annotating a candidate") (funcall note)))
+        note)))
+
+(defun candidate-suffix (candidate)
+  "The fields shown right after CANDIDATE's string, or NIL. A function given for
+them is called the first time and its answer kept; when it fails, the error is
+reported once and there are none."
+  (let ((tail (candidate-tail candidate)))
+    (if (functionp tail)
+        (setf (candidate-tail candidate)
+              (tuatara.runtime:ignoring-errors-reported ("showing what follows a candidate") (funcall tail)))
+        tail)))
+
+(defun candidate-ranked (candidate rank)
+  "A copy of CANDIDATE with RANK as its rank. Its annotation and suffix, if
+still to be made, are made for the copy when its row is drawn."
+  (make-candidate (candidate-string candidate) :annotation (candidate-note candidate) :value (candidate-value candidate)
+                                               :group (candidate-group candidate) :columns (candidate-columns candidate)
+                                               :suffix (candidate-tail candidate) :rank rank))
 
 (defun candidate-result (candidate)
   "What choosing CANDIDATE returns: its value, or its string."
@@ -309,11 +341,12 @@ itself. Sorted, the matches make no garbage but the vector returned
                         matching)
                     matching)))))
     (let ((exact (plusp (length input)))
-          (places (let ((table (make-hash-table :test 'equal)))
-                    (loop for entry in history
-                          for i from 0
-                          unless (gethash entry table) do (setf (gethash entry table) i))
-                    table))
+          (places (and history
+                       (let ((table (make-hash-table :test 'equal)))
+                         (loop for entry in history
+                               for i from 0
+                               unless (gethash entry table) do (setf (gethash entry table) i))
+                         table)))
           (count 0))
       (declare (type fixnum count))
       (with-filter-room (keys order items spare (length candidates))
@@ -324,9 +357,7 @@ itself. Sorted, the matches make no garbage but the vector returned
                        (setf (aref items count) c
                              (aref keys count)
                              (candidate-sort-key (if (and exact (string= input string)) 0 1) closeness
-                                                 (if (plusp (hash-table-count places))
-                                                     (or (gethash string places) (candidate-rank c))
-                                                     (candidate-rank c))
+                                                 (or (and places (gethash string places)) (candidate-rank c))
                                                  score (length string)))
                        (incf count))))))
           (if (listp candidates)

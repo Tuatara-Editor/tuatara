@@ -462,7 +462,7 @@ sub-tasks were opened, as a second value."
                (let ((rest (cl-ppcre:regex-replace "CLOSED: \\[[^]\\n]*\\][ \\t]*" line "")))
                  (unless (string= (string-trim *org-blanks* rest) "") (push rest out))))
               (t (setf after-opened nil)
-                 (push (if (cl-ppcre:scan "^\\*+ " line) (org-cookies-nought line) line) out)))))
+                 (push (if (cl-ppcre:scan *org-headline-line-scanner* line) (org-cookies-nought line) line) out)))))
     (values (nreverse out) opened)))
 
 (defun org-keyword-span (text headline old)
@@ -527,11 +527,9 @@ they count checkboxes; its sub-tasks done are opened again
 \(ORG-SUBTASKS-REOPENED), and its counts with them when they count those. How
 many were ticked or done is said under the note of DONE when its headline
 counts them (*ORG-BOXES-TICKED-NOTE*), for the agenda's line of the day it
-was done.
-The times cancelled one at a time
-\(ORG-OCCURRENCE-NOTES) are passed over. CANCELLING-TIME, an occurrence, is
-the time this one is cancelled, not done: noted as such
-\(ORG-OCCURRENCE-NOTE), whatever *ORG-LOG-REPEAT* says."
+was done. The times cancelled one at a time \(ORG-OCCURRENCE-NOTES) are
+passed over. CANCELLING-TIME, an occurrence, is the time this one is cancelled,
+not done: noted as such \(ORG-OCCURRENCE-NOTE), whatever *ORG-LOG-REPEAT* says."
   (let* ((text (org-parse-text parse))
          (keywords (org-parse-todo-keywords parse))
          (begin (org-node-begin headline))
@@ -702,7 +700,7 @@ it is not ticked or a TODO under it not done; with none other to go to, say
 what is open. True when it handled the line."
   ;; the file parsed only for a line that is a headline
   (when (and *org-return-cycles-todo* (typep (buffer-major-mode buffer) 'org-mode)
-             (cl-ppcre:scan "^\\*+ " (buffer-line-head buffer (tuatara.buffer:buffer-point buffer))))
+             (cl-ppcre:scan *org-headline-line-scanner* (buffer-line-head buffer (tuatara.buffer:buffer-point buffer))))
     (let* ((parse (org-parse-now buffer))
            (text (and parse (org-parse-text parse)))
            (headline (and parse (org-headline-on-line (org-parse-tree parse) text (org-parse-point parse))))
@@ -895,6 +893,25 @@ its time too if it changes (READ-ORG-DATE), and move it (ORG-MOVE-OCCURRENCE)."
                                (cons (org-ts-day-number ts) (org-ts-time-of-day ts))))
         (org-no-date))))
 
+(defun org-ask-about-headline (parse headline ask refusal &key skip find)
+  "Ask by calling ASK (see ORG-ASK-KEEPING-PLACES) about HEADLINE of PARSE, then
+find it again where the buffer is now. Four values: the answer; the parse after
+asking; the headline found again; point as a character of that parse. When the
+headline is gone, the command is refused with the message REFUSAL, unless SKIP,
+a function of the answer, is true of it (the answer needs no headline).
+FIND, a function of the parse and the character where the headline began,
+looks it up in place of ORG-HEADLINE-ON-LINE and returns NIL for none."
+  (multiple-value-bind (answer parse places)
+      (org-ask-keeping-places parse (list (org-line-span (org-parse-text parse) (org-node-begin headline))) ask)
+    (let* ((begin (first places))
+           (found (and begin
+                       (if find
+                           (funcall find parse begin)
+                           (org-headline-on-line (org-parse-tree parse) (org-parse-text parse) begin)))))
+      (unless (or found (and skip (funcall skip answer)))
+        (refuse refusal))
+      (values answer parse found (org-parse-point parse)))))
+
 (define-command org-cancel-task ()
   "Cancel the task of the headline point is in: its keyword made CANCELLED, a
 done keyword that \\[org-todo] and the other keys that go round the keywords
@@ -911,20 +928,16 @@ ended, not moved on."
         (let ((headline (org-current-headline tree position)))
           (if (null headline)
               (message "Not in a subtree")
-              (multiple-value-bind (choice parse places)
-                  (org-ask-keeping-places parse (list (org-line-span text (org-node-begin headline)))
-                                          (lambda () (org-occurrence-choice "Cancel")))
-                (let ((begin (first places))
-                      (position (org-parse-point parse)))
-                  (let ((headline (and begin
-                                       (org-headline-on-line (org-parse-tree parse) (org-parse-text parse) begin)))
-                        (keyword (org-cancel-keyword (org-parse-todo-keywords parse))))
-                    (cond ((eq choice :none))
-                          ((null headline) (refuse "The headline is no longer there: nothing cancelled"))
-                          ((eq choice :this) (org-cancel-occurrence parse headline position *org-agenda-occurrence*))
-                          ((null keyword) (message "No CANCELLED among this file's #+TODO: keywords"))
-                          (t (org-put-todo parse position headline keyword :repeat nil)
-                             (org-todo-changed buffer)))))))))))
+              (multiple-value-bind (choice parse headline position)
+                  (org-ask-about-headline parse headline (lambda () (org-occurrence-choice "Cancel"))
+                                          "The headline is no longer there: nothing cancelled"
+                                          :skip (lambda (choice) (eq choice :none)))
+                (let ((keyword (org-cancel-keyword (org-parse-todo-keywords parse))))
+                  (cond ((eq choice :none))
+                        ((eq choice :this) (org-cancel-occurrence parse headline position *org-agenda-occurrence*))
+                        ((null keyword) (message "No CANCELLED among this file's #+TODO: keywords"))
+                        (t (org-put-todo parse position headline keyword :repeat nil)
+                           (org-todo-changed buffer))))))))))
 
 ;;; Tags and notes
 
@@ -992,24 +1005,21 @@ tags of every headline of the buffer put there instead (\\[org-align-all-tags]).
     (let ((headline (org-current-headline tree position)))
       (if (null headline)
           (message "Not under a headline")
-          (multiple-value-bind (tags parse places)
-              (org-ask-keeping-places parse (list (org-line-span text (org-node-begin headline)))
-                                      (lambda () (read-org-tags buffer (org-property headline :tags))))
-            (let ((begin (first places))
-                  (position (org-parse-point parse)))
-              (let ((text (org-parse-text parse)))
-                (unless (and begin (org-headline-on-line (org-parse-tree parse) text begin))
-                  (refuse "The headline is no longer there: tags not set"))
-                (let* ((line-end (string-line-end text begin))
-                       (line (subseq text begin line-end))
-                       (new (org-headline-with-tags line tags)))
-                  (if (string= new line)
-                      (message "Tags as they were")
-                      (progn (org-replace-chars parse begin line-end new
-                                                :point (if (> position line-end)
-                                                           (+ position (- (length new) (- line-end begin)))
-                                                           (min position (+ begin (length new)))))
-                             (message "~:[No tags~;~:*Tags: ~{~a~^ ~}~]" tags)))))))))))
+          (multiple-value-bind (tags parse headline position)
+              (org-ask-about-headline parse headline (lambda () (read-org-tags buffer (org-property headline :tags)))
+                                      "The headline is no longer there: tags not set")
+            (let* ((text (org-parse-text parse))
+                   (begin (org-node-begin headline))
+                   (line-end (string-line-end text begin))
+                   (line (subseq text begin line-end))
+                   (new (org-headline-with-tags line tags)))
+              (if (string= new line)
+                  (message "Tags as they were")
+                  (progn (org-replace-chars parse begin line-end new
+                                            :point (if (> position line-end)
+                                                       (+ position (- (length new) (- line-end begin)))
+                                                       (min position (+ begin (length new)))))
+                         (message "~:[No tags~;~:*Tags: ~{~a~^ ~}~]" tags)))))))))
 
 (defun org-tags-alignment-edits (headlines text)
   "The edits, (FROM TO NEW) of TEXT's characters, putting the tags of each of
@@ -1082,23 +1092,25 @@ under it. An empty note is not kept."
       (let ((owner (owner parse position)))
         (if (null owner)
             (message "Not under a headline")
-            (multiple-value-bind (note parse places)
-                (org-ask-keeping-places parse (list (org-line-span text (org-node-begin owner)))
-                                        (lambda () (string-trim *org-blanks* (read-string "Note: "))))
-              (let ((begin (first places))
-                    (position (org-parse-point parse)))
-                (multiple-value-bind (owner item) (if begin (owner parse begin) (values nil nil))
-                  (cond ((zerop (length note)) (message "No note taken: it was empty"))
-                        ((not (and owner (= (org-node-begin owner) begin)))
-                         (refuse "The entry is no longer there: no note taken"))
-                        (t (org-apply-edits parse
+            (let ((item nil))
+              (multiple-value-bind (note parse owner position)
+                  (org-ask-about-headline parse owner (lambda () (read-string "Note: " :trim t))
+                                          "The entry is no longer there: no note taken"
+                                          :skip (lambda (note) (zerop (length note)))
+                                          :find (lambda (parse begin)
+                                                  (multiple-value-bind (found found-item) (owner parse begin)
+                                                    (setf item found-item)
+                                                    (and found (= (org-node-begin found) begin) found))))
+                (if (zerop (length note))
+                    (message "No note taken: it was empty")
+                    (progn (org-apply-edits parse
                                             (list (org-log-edit owner (org-parse-text parse)
                                                                 (list (format nil "- Note taken on ~a \\\\"
                                                                               (org-timestamp-text (org-now)))
                                                                       (format nil "  ~a" note))
                                                                 :drawer (or item *org-log-into-drawer*)))
                                             :point position)
-                           (message "Note taken")))))))))))
+                           (message "Note taken"))))))))))
 
 ;;; New headlines and items
 
@@ -1215,3 +1227,16 @@ made again."
           ((and existing (not (eq (tuatara.io:path-kind file) :regular))))
           ((org-agenda-autosave-file-p buffer) (org-agenda-autosave buffer))
           ((not was-modified) (org-save-soon buffer)))))
+
+(defun save-org-buffers-where (test words)
+  "Save each Org buffer visiting a file with changes not saved that TEST, a
+function of the buffer, is true of, and say WORDS of them once they are
+saved (SAVE-BUFFERS-WHERE); how many are saved or being saved."
+  (save-buffers-where (lambda (buffer) (and (typep (buffer-major-mode buffer) 'org-mode) (funcall test buffer)))
+                      words))
+
+(define-command org-save-all-org-buffers ()
+  "Save every Org buffer with changes not saved:
+those the agenda changed among them, and any other. \\<org-agenda-mode>\\[org-agenda-save-all-buffers]
+saves only the agenda files."
+  (save-org-buffers-where (constantly t) "~[No Org buffer to save~;Saved 1 Org buffer~:;Saved ~:*~d Org buffers~]"))

@@ -52,7 +52,7 @@ available unqualified, and the public API of TUATARA is used.")
            ;; language servers and formatters
            #:*language-servers* #:*language-formatters* #:*trusted-projects* #:*lsp-languages*
            #:*lsp-signature-help* #:*lsp-inlay-hints*
-           #:*lsp-wait* #:*lsp-watch-files* #:*lsp-watch-skipped*
+           #:*lsp-wait* #:*lsp-largest-message* #:*lsp-largest-document* #:*lsp-watch-files* #:*lsp-watch-skipped*
            #:*lsp-idle-delay* #:*lsp-hover-echo* #:*lsp-highlight-symbol* #:*lsp-code-lenses* #:*lsp-outline*
            #:*lsp-diagnostics-display* #:*lsp-diagnostics-style* #:*lsp-semantic-tokens* #:*lsp-semantic-faces*
            #:*format-on-save*
@@ -64,7 +64,7 @@ available unqualified, and the public API of TUATARA is used.")
            #:*file-local-variables* #:*snippet-directories* #:*snippet-tab* #:*bookmarks-kept*
            #:*bookmark-set-asks-categories* #:*git-log-length*
            #:*git-recent-commits* #:*git-menus* #:*git-slim-actions* #:*git-diff-lines* #:*git-section-lines*
-           #:*git-watch-seconds*
+           #:*git-watch-seconds* #:*vc-gutter-enabled*
            ;; rimu, the lists of directories
            #:*rimu-details* #:*rimu-hidden-columns* #:*rimu-permissions* #:*rimu-dotfiles* #:*rimu-git-info*
            #:*rimu-directory-sizes* #:*rimu-sort*
@@ -103,8 +103,8 @@ available unqualified, and the public API of TUATARA is used.")
            #:*journal-directory* #:*journal-keyword* #:*journal-title-format* #:*journal-interval*
            #:*journal-file-type* #:*journal-file-name* #:*journal-org-header*
            ;; the terminal
-           #:*kitty-keyboard* #:*altgr-as-meta* #:*terminal-send-escape* #:*terminal-editor-keys* #:*terminal-paste-keys*
-           #:*terminal-title-limit*
+           #:*kitty-keyboard* #:*altgr-as-meta* #:*terminal-send-escape* #:*terminal-editor-keys*
+           #:*terminal-paste-keys* #:*terminal-title-limit*
            #:*terminal-compress-after* #:*terminal-picture-memory* #:*terminal-place* #:*terminal-size*
            #:*terminal-width* #:*terminal-program* #:*terminal-scrollback*
            ;; marks, places kept, input methods, help windows and Escape

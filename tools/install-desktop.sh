@@ -94,12 +94,15 @@ for f in "$source_icons"/*/apps/tuatara.*; do
   mkdir -p "$(dirname "$dest")"
   cp "$f" "$dest"
 done
+# the entries come first: from a fresh checkout they build the program that writes the completion
+entries >/dev/null
 # the completion of the options for bash, where bash-completion looks for the user's own
+completion_copied=no
 if [ -f "$source_completion" ]; then
   mkdir -p "$completions"
   cp "$source_completion" "$completions/tuatara"
+  completion_copied=yes
 fi
-entries >/dev/null
 # a desktop that keeps a cache of the icons sees the new one at once
 if command -v gtk-update-icon-cache >/dev/null && [ -f "$icons/index.theme" ]; then
   gtk-update-icon-cache -q -t "$icons" || true
@@ -109,4 +112,4 @@ if command -v update-desktop-database >/dev/null; then
 fi
 [ -n "${appimage:-}" ] && echo "Installed $installed"
 echo "Wrote $applications/tuatara.desktop, tuatara-client.desktop, the icon under $icons"
-echo "and the bash completion $completions/tuatara"
+if [ "$completion_copied" = yes ]; then echo "and the bash completion $completions/tuatara"; fi

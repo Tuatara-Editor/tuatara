@@ -1,8 +1,7 @@
 ;;;; lisp/git/references.lisp --- Tags, remotes, and a list of every branch and tag.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; In a status t opens the tag menu and M the remote menu, as Magit's do,
-;;;; and y lists every branch and tag.
+;;;; In a status t opens the tag menu and M the remote menu, and y lists every branch and tag.
 ;;;; A remote's address is never one of git's ext:: kind, which names a
 ;;;; program to run, nor anything git would read as an option.
 
@@ -73,7 +72,7 @@ run), no space or control character in it."
   "Ask with PROMPT for a remote's address (INITIAL to begin with), a directory
 on this computer written from ~/ made whole; NIL, said so, when it could not
 be given to git (GIT-ADDRESS-P)."
-  (let* ((address (string-trim '(#\Space #\Tab) (read-string prompt :initial initial)))
+  (let* ((address (read-string prompt :initial initial :trim t))
          (address (if (uiop:string-prefix-p "~/" address)
                       (tuatara.io:native (tuatara.io:expand-path address))
                       address)))
@@ -151,8 +150,9 @@ remove it, or forget its branches gone. \\`C-h' there lists every action."
 (define-major-mode git-refs-mode special-mode
   "A repository's branches, its remotes' branches and its tags, a line each
 with the commit it is at (\\[git-show-refs]), in a section for each kind.
-\\<git-refs-mode>\\[git-refs-log] lists the log of the one on the line, \\[list-toggle-fold] folds or unfolds the
-section of the line, \\[list-toggle-all-folds] all of them; \\[quit-window] closes."
+\\<git-refs-mode>\\[list-visit] lists the log of the one on the line, \\[list-visit-other]
+in another window with the list kept selected, \\[list-toggle-fold] folds or
+unfolds the section of the line, \\[list-toggle-all-folds] all of them; \\[quit-window] closes."
   :lighter "Git refs" :interactive nil)
 
 (defparameter *git-refs-sections*
@@ -216,13 +216,18 @@ sections; RET on one lists its log."
 (define-command git-refs-log ()
   "List the log of the branch or tag on the line of the list of references;
 on a section's heading, fold or unfold the section."
-  (let* ((list (current-buffer))
-         (entry (list-entry-at list))
-         (ref (entry-member entry)))
+  (list-visit))
+
+(defmethod visit-entry ((mode git-refs-mode) list entry other)
+  "List the log of the branch or tag on the line ENTRY, with OTHER in another
+window, the list kept selected; on a section's heading, fold or unfold the
+section."
+  (let ((ref (entry-member entry)))
     (cond (ref (let ((name (second ref)))
                  (git-show-log (git-here)
                                (format nil "Log of ~a" name)
-                               (list (format nil "--max-count=~d" *git-log-length*) name "--"))))
+                               (list (format nil "--max-count=~d" *git-log-length*) name "--")
+                               :other other)))
           ((eq (first entry) :section) (list-toggle-section list (second entry)))
           (t (message "No branch or tag on this line")))))
 
@@ -231,9 +236,8 @@ on a section's heading, fold or unfold the section."
 
 (defun install-git-references ()
   "Bind the tag menu to t, the remote menu to M and the list of references
-to y in a status, and RET, l and h in that list, TAB and S-TAB folding its
-sections."
+to y in a status; give that list the keys of a list whose entries are
+opened (ENTRY-LIST-KEYS), TAB and S-TAB folding its sections."
   (define-keys *git-status-keymap* '(("t" git-tag-menu) ("M" git-remote-menu) ("y" git-show-refs)))
-  (define-keys (mode-keymap 'git-refs-mode) '(("RET" git-refs-log) ("l" git-refs-log) ("C-f" git-refs-log)
-                                               ("h" quit-window) ("C-b" quit-window)
-                                               ("TAB" list-toggle-fold) ("S-TAB" list-toggle-all-folds))))
+  (entry-list-keys 'git-refs-mode "a repository's references (\\[git-show-refs])")
+  (define-keys (mode-keymap 'git-refs-mode) '(("TAB" list-toggle-fold) ("S-TAB" list-toggle-all-folds))))

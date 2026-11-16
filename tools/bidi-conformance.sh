@@ -19,9 +19,6 @@ fetch() {  # Unicode's file $1 into the directory, checked against SHA-256 $2
 fetch BidiTest.txt 72a7a509dba0e147322c17997fb5159431042ff4a49fa08c7c25ccc1e291bbfe
 fetch BidiCharacterTest.txt 3c423c301f7b8dc41b879062cbf01fd1b4ec2ea4826e20d276c44b52129a01b6
 fetch BidiBrackets.txt 333ae1e99db0504ca8a046a07dc45b5e7aa91869c685e6bf955ebe674804827a
-inside sbcl --dynamic-space-size 2GB --non-interactive \
-  --load tools/quicklisp.lisp \
-  --eval "(push (truename \"./\") asdf:*central-registry*)" \
-  --eval "(ql:quickload :tuatara/core :silent t)" \
-  --load tools/bidi-conformance.lisp \
-  --eval "(let ((*print-pretty* nil)) (tuatara.display::run-bidi-conformance (truename \"$directory/\")))"
+in_tree :tuatara/core \
+  '(load "tools/bidi-conformance.lisp")' \
+  "(let ((*print-pretty* nil)) (tuatara.bidi-conformance:run-bidi-conformance (truename \"$directory/\")))"

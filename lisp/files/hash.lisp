@@ -68,17 +68,18 @@ through, FILE-SOURCE), however the sum ended: called with NIL instead of a
 buffer, a source does so and gives 0. Twice is as once."
   (funcall source nil))
 
-(defun sum-source (job source buffer &key (digest :sha256))
+(defun sum-source (source buffer &key (digest :sha256) (cancel (list nil)) (done (list 0)) job)
   "The sum, in hex, of the octets SOURCE gives, by DIGEST (:SHA256, or :MD5),
 summed by *HASH-LIBRARY* when it is there, else by *HASH-PROGRAM* (md5sum for
-an MD5 digest); NIL when JOB is stopped first. SOURCE is a function that fills
-BUFFER with the next octets and returns how many, 0 at the end; each piece
-counts in JOB's DONE. SOURCE is closed at the end, however it comes
+an MD5 digest); NIL when CANCEL's car turns true first. SOURCE is a function
+that fills BUFFER with the next octets and returns how many, 0 at the end;
+each piece is added to DONE's car. A program summing them is JOB's, when
+given, which stopping ends. SOURCE is closed at the end, however it comes
 \(CLOSE-SOURCE)."
   (unwind-protect (if (hash-library-p)
-                      (library-sum job source buffer digest)
-                      (program-sum job source buffer (if (eq digest :md5) "md5sum" *hash-program*)
-                                   (if (eq digest :md5) 32 64)))
+                      (library-sum source buffer digest cancel done)
+                      (program-sum source buffer (if (eq digest :md5) "md5sum" *hash-program*)
+                                   (if (eq digest :md5) 32 64) cancel done job))
     (close-source source)))
 
 (tuatara.io:define-c-function ("EVP_MD_CTX_new" evp-md-ctx-new) :pointer
@@ -106,9 +107,9 @@ counts in JOB's DONE. SOURCE is closed at the end, however it comes
   "Write the sum in CONTEXT at OUT, SIZE a null pointer."
   (context :pointer) (out :pointer) (size :pointer))
 
-(defun library-sum (job source buffer digest)
-  "The sum SUM-SOURCE gives with DIGEST, summed by *HASH-LIBRARY*, SOURCE left
-open."
+(defun library-sum (source buffer digest cancel done)
+  "The sum SUM-SOURCE gives with DIGEST, summed by *HASH-LIBRARY*, CANCEL and
+DONE as it has them, SOURCE left open."
   (let ((ctx (evp-md-ctx-new))
         (null (sb-sys:int-sap 0)))
     (when (sb-sys:sap= ctx null) (refuse "~a could not start a sum" *hash-library*))
@@ -116,34 +117,34 @@ open."
          (progn
            (unless (= 1 (evp-digest-init ctx (ecase digest (:sha256 (evp-sha256)) (:md5 (evp-md5))) null))
              (refuse "~a could not start a ~:[SHA-256~;MD5~] sum" *hash-library* (eq digest :md5)))
-           (loop for n = (if (car (hash-job-cancel job)) (return-from library-sum nil) (funcall source buffer))
+           (loop for n = (if (car cancel) (return-from library-sum nil) (funcall source buffer))
                  while (plusp n)
                  do (sb-sys:with-pinned-objects (buffer)
                       (evp-digest-update ctx (sb-sys:vector-sap buffer) n))
-                    (incf (car (hash-job-done job)) n))
+                    (incf (car done) n))
            (let ((sum (make-array (if (eq digest :md5) 16 32) :element-type '(unsigned-byte 8))))
              (sb-sys:with-pinned-objects (sum)
                (evp-digest-final ctx (sb-sys:vector-sap sum) null))
              (tuatara.text:octets-hex sum)))
       (evp-md-ctx-free ctx))))
 
-(defun program-sum (job source buffer program digits)
+(defun program-sum (source buffer program digits cancel done job)
   "The sum SUM-SOURCE gives, DIGITS hex digits long, written through a pipe to
-PROGRAM, which prints it, SOURCE left open. Signals, with what the program
-said, when it prints no sum."
+PROGRAM, which prints it, CANCEL, DONE and JOB as it has them, SOURCE left
+open. Signals, with what the program said, when it prints no sum."
   (tuatara.io:call-with-program
    (list (or (tuatara.io:find-program program) (refuse "There is no program ~a to take the sum with" program)))
    (lambda (process)
      (let ((fd (sb-sys:fd-stream-fd (sb-ext:process-input process))))
-       (loop for n = (if (car (hash-job-cancel job)) 0 (funcall source buffer))
+       (loop for n = (if (car cancel) 0 (funcall source buffer))
              while (plusp n)
              do (handler-case (tuatara.io:write-octets fd buffer :end n :path program)
                   ;; it ended without reading everything: what it printed says why
                   (tuatara.io:file-system-error () (return)))
-                (incf (car (hash-job-done job)) n)))
+                (incf (car done) n)))
      (ignoring-errors-reported ("closing the input of ~a" program) (close (sb-ext:process-input process)))
      (sb-ext:process-wait process)
-     (unless (car (hash-job-cancel job))
+     (unless (car cancel)
        (let* ((output (with-output-to-string (s)
                         (loop for line = (read-line (sb-ext:process-output process) nil) while line
                               do (write-line line s))))
@@ -162,7 +163,7 @@ the files the kernel makes up as they are read (/proc). A large file is read
 through once (TUATARA.TEXT:BEGIN-FILE-READ-PASS), so that summing it leaves
 in memory what was there; called with NIL, it lets go of that (CLOSE-SOURCE)."
   (let ((at 0)
-        (pass (tuatara.text:begin-file-read-pass fd (sb-posix:stat-size (sb-posix:fstat fd)) path)))
+        (pass (tuatara.text:begin-file-read-pass fd (tuatara.io:stamp-size (tuatara.io:fd-stamp fd path)) path)))
     (lambda (buffer)
       (if (null buffer)
           ;; closed (CLOSE-SOURCE)
@@ -216,8 +217,10 @@ here. Returns the job."
           *hash-carried-settings*
           (lambda (job)
             (let ((sum (unwind-protect
-                            (let ((sum (sum-source job source (make-array (hash-piece-octets total)
-                                                                          :element-type '(unsigned-byte 8)))))
+                            (let ((sum (sum-source source (make-array (hash-piece-octets total)
+                                                                      :element-type '(unsigned-byte 8))
+                                                   :cancel (hash-job-cancel job) :done (hash-job-done job)
+                                                   :job job)))
                               (when (and sum finish) (funcall finish sum))
                               sum)
                          (when finish (ignoring-errors-reported ("ending the sum") (funcall finish nil))))))
@@ -254,10 +257,9 @@ said instead, except for the files the kernel makes up as they are read."
 for messages), read from its start at explicit offsets on the thread that
 asks, as FILE-SHA256 sums; NIL when it cannot be read or CANCEL's car turns
 true first."
-  (let* ((carrier (%make-hash-job :what path :cancel cancel :done done))
-         (buffer (or buffer (make-array *hash-piece* :element-type '(unsigned-byte 8)))))
+  (let ((buffer (or buffer (make-array *hash-piece* :element-type '(unsigned-byte 8)))))
     (ignoring-errors-reported ("summing ~a" path)
-      (sum-source carrier (file-source fd path) buffer))))
+      (sum-source (file-source fd path) buffer :cancel cancel :done done))))
 
 (defun file-sha256 (path &key (cancel (list nil)) (done (list 0)) buffer)
   "The SHA-256 sum, in hex, of the file at PATH as it is on disk, summed on the
@@ -320,9 +322,8 @@ say) before anything is summed or copied; an error it signals stops the copy."
   "The sum of OCTETS from START below END in hex, by DIGEST (:SHA256 or :MD5),
 from *HASH-LIBRARY*, else from *HASH-PROGRAM* or md5sum."
   (let* ((end (or end (length octets)))
-         (carrier (%make-hash-job :what "octets" :cancel (list nil) :done (list 0)))
          (buffer (make-array (max 1 (min *hash-piece* (- end start))) :element-type '(unsigned-byte 8))))
-    (sum-source carrier (vector-source octets start end) buffer :digest digest)))
+    (sum-source (vector-source octets start end) buffer :digest digest)))
 
 (defun octets-sha256 (octets &key (start 0) end)
   "The SHA-256 sum, in lower-case hex, of OCTETS from START below END (their

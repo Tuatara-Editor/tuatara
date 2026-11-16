@@ -16,8 +16,7 @@
              :documentation "The areas in the split, from the top or from the left."))
   (:documentation "A split of the screen: two areas or more, one above another or side by side."))
 
-(setf (documentation 'split-arrangement 'function) "How SPLIT holds its areas: :STACKED or :SIDE-BY-SIDE."
-      (documentation 'split-children 'function) "The areas in SPLIT, from the top or from the left.")
+(tuatara.runtime:document-accessors 'split)
 
 (define-setting *window-min-height* 4
   "The fewest rows, its mode line included, a window may be left with when it

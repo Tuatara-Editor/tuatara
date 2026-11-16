@@ -1,7 +1,7 @@
 ;;;; tools/fuzz-remote.lisp --- Fuzz the messages of a remote frontend and its client, both ways.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; Loaded by tools/fuzz-remote.sh, which sets the limits. Records what an
+;;;; Loaded by tools/fuzz-lisp.sh remote, after tools/fuzz-common.lisp. Records what an
 ;;;; editor sends a client over a few frames (names, every face, rows, kept
 ;;;; rows, a cursor, a title, a question, its settings, another window asked
 ;;;; for) and what a client sends an editor (a hello, its screen, every kind
@@ -28,40 +28,12 @@
 ;;;; run ends with exit 1.
 
 (defpackage #:tuatara.fuzz-remote
-  (:use #:cl)
-  (:documentation "The remote frontend's fuzzer, run by tools/fuzz-remote.sh."))
+  (:use #:cl #:tuatara.fuzz)
+  (:documentation "The remote frontend's fuzzer, run by tools/fuzz-lisp.sh remote."))
 
 (in-package #:tuatara.fuzz-remote)
 
-(defvar *root* (pathname (concatenate 'string (string-right-trim "/" (sb-ext:posix-getenv "FUZZ_ROOT")) "/"))
-  "The Tuatara source tree fuzzed, as tools/fuzz-remote.sh gives it.")
-
-(load (merge-pathnames "tools/quicklisp.lisp" *root*))
-(push *root* asdf:*central-registry*)
-(ql:quickload '(:tuatara/defaults :tuatara/frontend-fake) :silent t)
-
-(defun environment-integer (name default)
-  "The whole number the environment variable NAME holds, or DEFAULT."
-  (let ((text (sb-ext:posix-getenv name)))
-    (or (and text (parse-integer text :junk-allowed t)) default)))
-
-(defparameter *rounds* (environment-integer "FUZZ_ROUNDS" 200000)
-  "How many spoilt streams of messages are read.")
-
-(defparameter *seed* (environment-integer "FUZZ_SEED" 1)
-  "The seed of the run's random choices: the same seed spoils alike.")
-
-(defparameter *deadline* (environment-integer "FUZZ_DEADLINE" 10)
-  "The most seconds one stream may take to be read before it counts as a hang.")
-
-(defparameter *heap-cap* (* (environment-integer "FUZZ_HEAP_MB" 1024) 1024 1024)
-  "The most octets of heap in use after a stream is read, once collected.")
-
-(defparameter *random* (sb-ext:seed-random-state *seed*)
-  "The run's random state.")
-
-;; no init file is read, and so no package fetched or asked about
-(setf tuatara.defaults::*config-file* #p"/nonexistent/init.lisp")
+(ql:quickload :tuatara/frontend-fake :silent t)
 
 (tuatara.defaults:install-defaults (tuatara.command::make-editor (tuatara.frontend.fake:make-fake-frontend)))
 
@@ -569,18 +541,9 @@ refused as it should be and leaves no descriptor open, else what went wrong."
 
 ;;; The run
 
-(defun keep-failed (octets round)
-  "Write OCTETS, which failed in ROUND, under build/fuzz/; its path."
-  (let ((path (merge-pathnames (format nil "build/fuzz/remote-failed-~d-~d.bin" *seed* round) *root*)))
-    (ensure-directories-exist path)
-    (alexandria:write-byte-vector-into-file octets path :if-exists :supersede)
-    path))
-
 (defun fail (round octets side control &rest arguments)
   "Say ROUND failed reading OCTETS as SIDE, for the reason CONTROL and ARGUMENTS make, and end the run."
-  (format t "~&FAILED round ~d (~(~a~)): ~? (octets in ~a)~%" round side control arguments (keep-failed octets round))
-  (finish-output)
-  (sb-ext:exit :code 1 :abort t))
+  (failed round octets "~(~a~): ~?" side control arguments))
 
 (defun run ()
   "Read *ROUNDS* spoilt streams, each as the side its seed is read by."

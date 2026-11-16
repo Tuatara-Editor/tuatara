@@ -215,13 +215,13 @@
   (let ((written 0)
         (fields (list (format nil "a~cb" #\Tab) (list (format nil "c~cd" #\Tab) :list-size -8)
                       (list (format nil "e~cf" #\Tab) :list-date 1/2))))
-    (sb-int:encapsulate 'tuatara.command:escape-controls 'counting
+    (sb-int:encapsulate 'tuatara.display:escape-controls 'counting
                         (lambda (function text &rest more)
                           (let ((shown (apply function text more)))
                             (unless (eq shown text) (incf written))
                             shown)))
     (unwind-protect (tuatara.command:fit-fields fields 20 :row-width 40)
-      (sb-int:unencapsulate 'tuatara.command:escape-controls 'counting))
+      (sb-int:unencapsulate 'tuatara.display:escape-controls 'counting))
     (is = 3 written)))
 
 ;; a question asked while another is open is refused, the open one keeping its candidates
@@ -684,3 +684,53 @@
     (is string= "a.txt" (switched-to "b.txt" "C-x b a . t x t RET"))
     ;; the buffer shown already is no candidate: the name typed is taken as typed
     (is string= "a.txt" (switched-to "a.txt" "C-x b a . t x t RET"))))
+
+(tuatara.command:define-menu menu-test-default-reader-menu (:title "Default reader menu")
+  "Open the menu whose option uses the standard reader."
+  ("Options" ("= d" "Depth" :option "--depth=" :replace t)))
+
+(define-test (completion menu-option-asked-again-with-the-standard-reader)
+  ;; an option asked again with its value, read as any text is: the value is the text to start from
+  (multiple-value-bind (f editor)
+      (run-keys "M-x m e n u - t e s t - d e f a u l t - r e a d e r - m e n u RET = d 3 RET = d 4 RET"
+                :width 100 :height 16)
+    (declare (ignore f))
+    (is equal '("--depth=34") (second (tuatara.command:editor-menu editor)))))
+
+(define-test (completion menu-taller-than-its-room-says-where-the-rest-is)
+  ;; a group's title is not shown with none of its keys: the last row kept says C-h lists them all
+  (let ((f (run-keys "M-x m e n u - t e s t - t a l l - m e n u RET" :width 80 :height 8)))
+    (true (tuatara.frontend.fake:fake-frame-showing f "lists all"))))
+
+(define-test (completion annotations-made-for-the-rows-drawn)
+  ;; M-x makes the annotation of a command only when its row is drawn, not for each of the thousand it lists
+  (let ((made 0))
+    (sb-int:encapsulate 'tuatara.defaults::documentation-field 'count-made
+                        (lambda (function &rest arguments) (incf made) (apply function arguments)))
+    (unwind-protect
+         (let ((f (run-keys "M-x e n d - o f - b u f" :text "abc" :width 100 :height 12)))
+           (true (tuatara.frontend.fake:fake-frame-showing f "end-of-buffer"))
+           (true (tuatara.frontend.fake:fake-frame-showing f "Move point to the end of the buffer"))
+           (true (plusp made))
+           (true (< made 50) "~d annotations made" made))
+      (sb-int:unencapsulate 'tuatara.defaults::documentation-field 'count-made))))
+
+(define-test (completion annotation-function-that-fails)
+  ;; an annotation or suffix function that signals is answered NIL, once: the row is still drawn, nothing retried
+  (let* ((calls 0)
+         (candidate (tuatara.command:make-candidate "bad" :annotation (lambda () (incf calls) (error "no annotation"))
+                                                          :suffix (lambda () (incf calls) (error "no suffix")))))
+    (false (tuatara.command:candidate-annotation candidate))
+    (false (tuatara.command:candidate-annotation candidate))
+    (false (tuatara.command:candidate-suffix candidate))
+    (false (tuatara.command:candidate-suffix candidate))
+    (is = 2 calls)))
+
+(define-test (completion ranked-candidate-keeps-annotation-unmade)
+  ;; ranking a candidate again makes no annotation: it is made, for the copy, when its row is drawn
+  (let* ((calls 0)
+         (candidate (tuatara.command:make-candidate "a" :annotation (lambda () (incf calls) "note")))
+         (ranked (tuatara.command:candidate-ranked candidate 5)))
+    (is = 0 calls)
+    (is = 5 (tuatara.command:candidate-rank ranked))
+    (is equal "note" (tuatara.command:candidate-annotation ranked))))

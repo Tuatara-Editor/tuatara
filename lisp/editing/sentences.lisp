@@ -28,7 +28,7 @@ blank or a line end after them ends it; where sentences are two spaces
 apart (DOUBLE-SPACE), a tab or a line end does, a space only with one more
 after it."
   (cond ((null next) t)
-        ((not (member next '(#\Space #\Tab #\Newline #\Return))) nil)
+        ((not (blank-char-p next)) nil)
         ((and double-space (char= next #\Space)) :blank)
         (t t)))
 

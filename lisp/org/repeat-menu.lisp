@@ -257,8 +257,9 @@ Wednesday, 18:00, until Mon 21 Dec 2026."
          (kind (repeat-kind arguments))
          (every (repeat-every arguments))
          (weekday (aref *weekday-names* (weekday start)))
-         (count (nth-value 0 (repeat-ends arguments)))
-         (end-day (nth-value 1 (repeat-ends arguments))))
+         (ends (multiple-value-list (repeat-ends arguments)))
+         (count (first ends))
+         (end-day (second ends)))
     (flet ((every-of (unit units)
              (if (= every 1) (format nil "Every ~a" unit) (format nil "Every ~d ~a" every units))))
       (format nil "~a~@[, ~a~]~:[~;~:*, ~a~]"
@@ -331,8 +332,8 @@ or CURRENT when nothing is read."
 (defun read-repeat-time (prompt &optional current)
   "Ask PROMPT for a time of day, 10:00 or 10:00-11:00, CURRENT offered; an
 empty answer takes it away."
-  (string-trim " " (read-string (format nil "~a(10:00 or 10:00-11:00) " prompt)
-                                :initial (or current "") :select-initial t)))
+  (read-string (format nil "~a(10:00 or 10:00-11:00) " prompt)
+               :initial (or current "") :select-initial t :trim t))
 
 (defun read-repeat-kind (prompt &optional current)
   "Ask PROMPT how a repeat goes, the ways named from its start (REPEAT-KINDS); CURRENT the one it had."
@@ -346,7 +347,7 @@ empty answer takes it away."
 CURRENT offered; for a custom repeat, the unit after it (2 weeks), asked
 next."
   (let* ((number (and current (cl-ppcre:scan-to-strings "^\\d+" current)))
-         (typed (string-trim " " (read-string prompt :initial (or number "2") :select-initial t))))
+         (typed (read-string prompt :initial (or number "2") :select-initial t :trim t)))
     (cond ((not (cl-ppcre:scan "^\\d{1,3}$" typed)) "")
           ((repeat-custom-p (menu-arguments))
            (let ((unit (completing-read (format nil "Every ~a " typed) (mapcar #'first *repeat-units*)
@@ -366,7 +367,7 @@ CURRENT, what it said."
     (case how
       (:day (let ((ts (read-org-date "Ends on: ")))
               (if (org-ts-p ts) (format-day "%F" (org-ts-day-number ts)) "")))
-      (:times (let ((typed (string-trim " " (read-string "How many times: " :initial "10" :select-initial t))))
+      (:times (let ((typed (read-string "How many times: " :initial "10" :select-initial t :trim t)))
                 (if (cl-ppcre:scan "^\\d{1,4}$" typed) (format nil "~ax" typed) "")))
       (t ""))))
 
@@ -386,8 +387,8 @@ ways it repeats, is every so many days, weeks, months or years (n asks the
 number, then the unit), on the days of the week switched on (1 to 7) for
 weeks; for days, those switched on are the only ones it comes on (1 to 5:
 weekends dropped). A key not in the menu leaves it open, and \\`C-g' asks
-before what was set is lost. It is opened from the
-date prompt of \\[org-schedule], \\[org-deadline] and \\[org-time-stamp] by \\`C-r'
+before what was set is lost. It is opened from the date prompt of \\[org-schedule], \\[org-deadline] and
+\\[org-time-stamp] by \\`C-r'
 \(ORG-DATE-REPEAT-MENU)."
   ("When"
    ("s" "Starts" :option "start=" :read read-repeat-start :replace t)
@@ -435,7 +436,7 @@ calendar's day."
       (message "Only at the date prompt of a schedule, deadline or timestamp")
       (progn (setf (first *org-date-repeat-asked*) t
                    (second *org-date-repeat-asked*) (editor-minibuffer-text *editor*)
-                   (third *org-date-repeat-asked*) (and *org-date-calendar* (live-buffer-p *org-date-calendar*)
+                   (third *org-date-repeat-asked*) (and (org-date-calendar-live)
                                                         (calendar-date-at *org-date-calendar*)))
              (finish-minibuffer))))
 

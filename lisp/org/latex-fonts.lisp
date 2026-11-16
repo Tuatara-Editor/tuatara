@@ -59,13 +59,16 @@ installed are as they were (FONTS-STAMP).")
   "Held while *FONTCONFIG-ANSWERS* is read or changed.")
 
 (defun fonts-stamp ()
-  "When the directories fonts are installed in last changed, as a list, so
-that an answer of fontconfig's is asked again once a font is added or taken
-away."
+  "When the directories fonts are installed in last changed, and the
+directories fontconfig keeps its caches in (which it rewrites when a font is
+added or taken away below any of them), as a list, so that an answer of
+fontconfig's is asked again then."
   (mapcar (lambda (directory)
             (let ((stamp (tuatara.io:path-stamp directory :failure nil)))
               (and stamp (tuatara.io:stamp-mtime stamp))))
-          (list* "/usr/share/fonts" "/usr/local/share/fonts" (tuatara.io:user-font-directories))))
+          (list* "/usr/share/fonts" "/usr/local/share/fonts" "/var/cache/fontconfig"
+                 (tuatara.io:path-join (tuatara.io:cache-home) "fontconfig")
+                 (tuatara.io:user-font-directories))))
 
 (defun fontconfig-output (program &rest arguments)
   "What fontconfig's PROGRAM (fc-list, fc-match) prints given ARGUMENTS, or NIL

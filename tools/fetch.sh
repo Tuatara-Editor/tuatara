@@ -6,13 +6,20 @@
 # DEST is there with that hash nothing is downloaded, and a download that has
 # another is removed and said so on the error output, returning 1.
 #
+# https_curl ARGS...  runs curl quietly, failing on an HTTP error, following
+# redirects and retrying, over HTTPS only (a redirect too).
+#
 # quicklisp_setup  prints where Quicklisp's setup.lisp is, as tools/quicklisp.lisp
 # finds it: the file QUICKLISP_SETUP names, else ~/quicklisp/ or
 # ~/.local/share/quicklisp/; returns 1, saying so, when there is none.
 
+https_curl() {
+  curl -sSfL --proto '=https' --proto-redir '=https' --retry 3 "$@"
+}
+
 checked_download() {
   if echo "$3  $2" | sha256sum -c --status 2>/dev/null; then return 0; fi
-  if ! curl -sSfL --proto '=https' --proto-redir '=https' --retry 3 --connect-timeout 30 --max-time 1200 \
+  if ! https_curl --connect-timeout 30 --max-time 1200 \
     -o "$2.part" "$1"; then
     rm -f "$2.part"
     echo "$1 could not be downloaded" >&2

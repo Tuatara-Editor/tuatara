@@ -21,7 +21,7 @@ typed (those *ELECTRIC-PAIR-TYPING* names), what \\[insert-pair] puts around the
 region, and what select-pair selects within and the wrap keys wrap with.
 - a list of (OPEN . CLOSE): each pair the characters that open and close it;
   a character that both opens and closes is its own pair."
-  :values (list-of "(OPEN . CLOSE)"))
+  :values (list-of (cons character character)))
 
 (define-setting *electric-pair-mode* nil
   "Whether delimiters are closed as they are typed. An opening one writes its
@@ -40,14 +40,14 @@ for, by \\[electric-pair-mode] or in the init file.
 - :all: every one of them.
 - a list of opening characters: those, taken as the list has them; an empty
   list pairs nothing."
-  :values (or (member :safe :all) (list-of "an opening character")))
+  :values (or (member :safe :all) (list-of character)))
 
 (define-setting *electric-pair-safe-exclusions* '(#\< #\' #\` #\= #\* #\~ #\| #\\ #\/ #\: #\+ #\_ #\$)
   "The delimiters :safe leaves out of *ELECTRIC-PAIR-TYPING*: ordinary text far
 more often than a delimiter, such as the apostrophe in don't, a colon,
 less-than.
 - a list of characters: the opening characters left out."
-  :values (list-of "a character"))
+  :values (list-of character))
 
 (defvar *pairs-read* nil
   "The pair settings as last read: (DELIMITERS TYPING EXCLUSIONS PAIRS
@@ -64,20 +64,21 @@ value than it did."
              (eq (second read) *electric-pair-typing*)
              (eq (third read) *electric-pair-safe-exclusions*))
         read
-        (let* ((pairs (setting-list '*pair-delimiters* *pair-delimiters* :pairs t))
+        ;; read once each setting changes; a value one does not take is read as its standard
+        (let* ((pairs (setting-in-force '*pair-delimiters*))
                (openers (mapcar #'car pairs))
-               (typed (case *electric-pair-typing*
-                        (:safe (let ((exclusions (setting-list '*electric-pair-safe-exclusions*
-                                                               *electric-pair-safe-exclusions*)))
+               (typing (setting-in-force '*electric-pair-typing*))
+               (typed (case typing
+                        (:safe (let ((exclusions (setting-in-force '*electric-pair-safe-exclusions*)))
                                  (remove-if (lambda (c) (member c exclusions)) openers)))
                         (:all openers)
-                        (t (intersection (setting-list '*electric-pair-typing* *electric-pair-typing*) openers)))))
+                        (t (intersection typing openers)))))
           (setf *pairs-read* (list *pair-delimiters* *electric-pair-typing* *electric-pair-safe-exclusions*
                                    pairs typed))))))
 
 (defun pair-delimiters ()
-  "The pairs of *PAIR-DELIMITERS*, read as a list of pairs however it was set
-(SETTING-LIST)."
+  "The pairs of *PAIR-DELIMITERS* as last read, kept until the setting
+changes."
   (fourth (pairs-read)))
 
 (defun bind-free-delimiter-keys (keymap command)
@@ -216,13 +217,12 @@ The pairs are *PAIR-DELIMITERS*."
   (let* ((buffer (current-buffer))
          (key (editor-this-key *editor*))
          (base (and key (tuatara.frontend:key-base key)))
-         (char (or (and (characterp base) (pair-open-for base)) #\()))
-    (if (and (tuatara.buffer:buffer-mark-active-p buffer)
-             (multiple-value-bind (start end) (tuatara.buffer:buffer-region buffer) (< start end)))
-        (multiple-value-bind (start end) (tuatara.buffer:buffer-region buffer)
-          (let ((at (wrap-between buffer start end char)))
-            (setf (tuatara.buffer:buffer-mark-active-p buffer) nil)
-            (goto at)))
+         (char (or (and (characterp base) (pair-open-for base)) #\())
+         (region (selected-region buffer)))
+    (if region
+        (let ((at (wrap-between buffer (first region) (second region) char)))
+          (setf (tuatara.buffer:buffer-mark-active-p buffer) nil)
+          (goto at))
         (let* ((p (point))
                (open (string char))
                (close (string (pair-closer char)))

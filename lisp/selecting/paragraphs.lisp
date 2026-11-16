@@ -223,8 +223,8 @@ negative count moves forward."
   "Move point to the end of the sentence: after its . ? ! or … and any closing
 quotes or brackets, where a space or a line end follows (two spaces, a tab or
 a line end where sentences are two spaces apart, *SENTENCE-END-DOUBLE-SPACE*),
-or to the end of the paragraph's text. With a count, that many sentences; a negative count moves
-back."
+or to the end of the paragraph's text. With a count, that many sentences; a
+negative count moves back."
   (goto (sentence-motion (current-buffer) (point) (prefix))))
 
 (define-command backward-sentence ()

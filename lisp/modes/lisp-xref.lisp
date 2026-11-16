@@ -84,10 +84,15 @@ or NIL and what to say when it cannot be reached."
 as a string; NIL when there is none.")
   (:method (mode buffer position) (declare (ignore mode buffer position)) nil))
 
+(defgeneric mode-finds-definitions-p (mode buffer)
+  (:documentation "True when MODE looks up where names are defined for BUFFER
+\(MODE-FIND-DEFINITIONS).")
+  (:method (mode buffer) (declare (ignore mode buffer)) nil))
+
 (defgeneric mode-find-definitions (mode buffer name)
   (:documentation "Where NAME, a string, is defined, as MODE looks it up for BUFFER: a list of
-DEFINITION; :NONE when MODE looks up no definitions. For a NAME not empty it may be a LATER giving
-the list once it comes, for a mode that asks a program.")
+DEFINITION, or a LATER giving the list once it comes, for a mode that asks a program; :NONE when
+MODE looks up no definitions (MODE-FINDS-DEFINITIONS-P).")
   (:method (mode buffer name) (declare (ignore mode buffer name)) :none))
 
 (defgeneric mode-name-candidates (mode buffer)
@@ -119,7 +124,7 @@ is asked: the files the editor was built from, and the buffers definitions
 were evaluated from."
   (let* ((b (current-buffer))
          (mode (buffer-major-mode b)))
-    (when (eq (mode-find-definitions mode b "") :none)
+    (unless (mode-finds-definitions-p mode b)
       (message "No way to find definitions in ~a buffers" (mode-lighter (type-of mode)))
       (return-from xref-find-definitions nil))
     (xref-find-definitions-in b mode)))
@@ -275,12 +280,17 @@ named), in any case."
 
 (defun top-level-form-start (buffer number)
   "The octet of BUFFER where its top-level form NUMBER begins, counting from 0
-as the reader reads them; NIL when there are fewer."
-  (let* ((rope (tuatara.buffer:buffer-text buffer))
-         (tops (remove-if-not (lambda (e) (zerop (third e)))
-                              (lisp-elements (tuatara.text:rope-octets rope)))))
-    (let ((form (nth number tops)))
-      (and form (first form)))))
+as the reader reads them; NIL when there are fewer. The text is read no
+further than that form."
+  (let ((rope (tuatara.buffer:buffer-text buffer)) (seen -1))
+    (block found
+      (advance-scan (make-lisp-scan rope 0 :elements-kept nil
+                                           :on-element (lambda (start end depth)
+                                                         (declare (ignore end))
+                                                         (when (and (zerop depth) (= (incf seen) number))
+                                                           (return-from found start))))
+                    (tuatara.text:rope-octet-length rope))
+      nil)))
 
 (defun locate-in-file (path symbol offset form-number)
   "The buffer visiting PATH and the octet where the definition of SYMBOL there
@@ -383,6 +393,11 @@ were evaluated from in this session."
   "The Lisp name at point in BUFFER."
   (declare (ignore position))
   (ignoring-errors-reported ("reading the name at point") (symbol-at-point buffer)))
+
+(defmethod mode-finds-definitions-p ((mode lisp-mode) buffer)
+  "Lisp looks up definitions in the running Lisp."
+  (declare (ignore buffer))
+  t)
 
 (defmethod mode-find-definitions ((mode lisp-mode) buffer name)
   "Where NAME, read in BUFFER's package, is defined."

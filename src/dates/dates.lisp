@@ -114,6 +114,11 @@ own, those before it counted back from it in the offset it has.")
 is read in local time as the time zone has it, since it is 1901 by then in
 every time zone; a time before it as DAY-UNIVERSAL-TIME counts it.")
 
+(defun utc-universal-time (year month day &optional (hour 0) (minute 0) (second 0) (zone 0))
+  "The universal time of YEAR-MONTH-DAY at HOUR:MINUTE:SECOND in a time ZONE
+minutes east of universal time (0 for universal time itself), any year."
+  (- (+ (* 86400 (day-number year month day)) (* 3600 hour) (* 60 minute) second) (* 60 zone)))
+
 (defun day-universal-time (day &optional (hour 0) (minute 0) (second 0))
   "The universal time of HOUR:MINUTE:SECOND in local time on the day number
 DAY, any year: times before 1901 are counted back from the start of 1901 in
@@ -227,56 +232,53 @@ part capitals (%^p, %^a). OFFSET is the seconds local time is ahead of
 universal time for %z; NIL to work it out. O(length of PATTERN)."
   (multiple-value-bind (year month date) (day-date day)
     (with-output-to-string (out)
-      (let ((i 0) (n (length pattern)))
-        (loop while (< i n)
-              do (let ((c (char pattern i)))
-                   (if (or (char/= c #\%) (= (1+ i) n))
-                       (progn (write-char c out) (incf i))
-                       (let ((plain nil) (upper nil) (colon nil))
-                         (incf i)
-                         (loop while (and (< i n) (find (char pattern i) "-^:"))
-                               do (case (char pattern i) (#\- (setf plain t)) (#\^ (setf upper t)) (t (setf colon t)))
-                                  (incf i))
-                         (when (< i n)
-                           (let* ((spec (char pattern i))
-                                  (two (lambda (v) (if plain (format nil "~d" v) (format nil "~2,'0d" v))))
-                                  (four (lambda (v)
-                                          (if (or plain (minusp v)) (format nil "~d" v) (format nil "~4,'0d" v))))
-                                  (text (case spec
-                                          (#\Y (funcall four year))
-                                          (#\y (funcall two (mod year 100)))
-                                          (#\G (funcall four (nth-value 0 (iso-week day))))
-                                          (#\m (funcall two month))
-                                          (#\d (funcall two date))
-                                          (#\e (if plain (format nil "~d" date) (format nil "~2d" date)))
-                                          (#\j
-                                           (if plain
-                                               (format nil "~d" (year-day day))
-                                               (format nil "~3,'0d" (year-day day))))
-                                          (#\V (funcall two (nth-value 1 (iso-week day))))
-                                          (#\u (format nil "~d" (nth-value 2 (iso-week day))))
-                                          (#\w (format nil "~d" (weekday day)))
-                                          (#\A (aref *weekday-names* (weekday day)))
-                                          (#\a (aref *short-weekday-names* (weekday day)))
-                                          (#\B (aref *month-names* (1- month)))
-                                          (#\b (aref *short-month-names* (1- month)))
-                                          (#\H (funcall two hour))
-                                          (#\I (funcall two (let ((h (mod hour 12))) (if (zerop h) 12 h))))
-                                          (#\p (if (< hour 12) "AM" "PM"))
-                                          (#\M (funcall two minute))
-                                          (#\S (funcall two second))
-                                          (#\F (format nil "~a-~2,'0d-~2,'0d" (funcall four year) month date))
-                                          (#\T (format nil "~2,'0d:~2,'0d:~2,'0d" hour minute second))
-                                          (#\R (format nil "~2,'0d:~2,'0d" hour minute))
-                                          (#\z
-                                           (let* ((east (or offset
-                                                            (local-offset (day-universal-time day hour minute second))))
-                                                      (minutes (round (abs east) 60)))
-                                             (format nil "~:[+~;-~]~2,'0d~:[~;:~]~2,'0d"
-                                                     (minusp east) (floor minutes 60) colon (mod minutes 60))))
-                                          (#\% "%")
-                                          (t (format nil "%~c" spec)))))
-                             (write-string (if upper (string-upcase text) text) out)
+      (labels ((digits (value width plain)
+                 ;; VALUE in WIDTH digits at least, zeros before, unless PLAIN
+                 (if (or plain (minusp value)) (format out "~d" value) (format out "~v,'0d" width value)))
+               (text (string upper)
+                 (write-string (if upper (string-upcase string) string) out))
+               (piece (spec plain upper colon)
+                 (case spec
+                   (#\Y (digits year 4 plain))
+                   (#\y (digits (mod year 100) 2 plain))
+                   (#\G (digits (nth-value 0 (iso-week day)) 4 plain))
+                   (#\m (digits month 2 plain))
+                   (#\d (digits date 2 plain))
+                   (#\e (if plain (format out "~d" date) (format out "~2d" date)))
+                   (#\j (digits (year-day day) 3 plain))
+                   (#\V (digits (nth-value 1 (iso-week day)) 2 plain))
+                   (#\u (format out "~d" (nth-value 2 (iso-week day))))
+                   (#\w (format out "~d" (weekday day)))
+                   (#\A (text (aref *weekday-names* (weekday day)) upper))
+                   (#\a (text (aref *short-weekday-names* (weekday day)) upper))
+                   (#\B (text (aref *month-names* (1- month)) upper))
+                   (#\b (text (aref *short-month-names* (1- month)) upper))
+                   (#\H (digits hour 2 plain))
+                   (#\I (digits (let ((h (mod hour 12))) (if (zerop h) 12 h)) 2 plain))
+                   (#\p (write-string (if (< hour 12) "AM" "PM") out))
+                   (#\M (digits minute 2 plain))
+                   (#\S (digits second 2 plain))
+                   (#\F (digits year 4 plain) (format out "-~2,'0d-~2,'0d" month date))
+                   (#\T (format out "~2,'0d:~2,'0d:~2,'0d" hour minute second))
+                   (#\R (format out "~2,'0d:~2,'0d" hour minute))
+                   (#\z (let* ((east (or offset (local-offset (day-universal-time day hour minute second))))
+                               (minutes (round (abs east) 60)))
+                          (format out "~:[+~;-~]~2,'0d~:[~;:~]~2,'0d"
+                                  (minusp east) (floor minutes 60) colon (mod minutes 60))))
+                   (#\% (write-char #\% out))
+                   (t (text (format nil "%~c" spec) upper)))))
+        (let ((i 0) (n (length pattern)))
+          (loop while (< i n)
+                do (let ((c (char pattern i)))
+                     (if (or (char/= c #\%) (= (1+ i) n))
+                         (progn (write-char c out) (incf i))
+                         (let ((plain nil) (upper nil) (colon nil))
+                           (incf i)
+                           (loop while (and (< i n) (find (char pattern i) "-^:"))
+                                 do (case (char pattern i) (#\- (setf plain t)) (#\^ (setf upper t)) (t (setf colon t)))
+                                    (incf i))
+                           (when (< i n)
+                             (piece (char pattern i) plain upper colon)
                              (incf i)))))))))))
 
 (defun format-time (pattern time)
@@ -295,6 +297,22 @@ NIL for none."
       (multiple-value-bind (hour rest) (floor seconds 3600)
         (multiple-value-bind (minute second) (floor rest 60)
           (format-day "%F %T UTC" day hour minute second))))))
+
+(defun duration-words (seconds)
+  "SECONDS, how long something took or may take, in words: 1 second, 0.25
+seconds, 2.4 seconds, 3 minutes 12 seconds, 2 hours 5 minutes. A whole number
+of seconds is said without a fraction, less than a second to two significant
+digits, any other to a tenth."
+  (let ((seconds (if (and (>= seconds 1) (< seconds 60)) (/ (round seconds 1/10) 10) seconds)))
+    (multiple-value-bind (minutes rest) (floor seconds 60)
+      (cond ((and (< seconds 60) (= seconds (round seconds)))
+             (format nil "~d second~:p" (round seconds)))
+            ((< seconds 1)
+             (let ((digits (max 1 (- 1 (floor (log seconds 10))))))
+               (format nil "~a seconds" (string-right-trim "0" (format nil "~,vf" digits seconds)))))
+            ((< seconds 60) (format nil "~,1f seconds" seconds))
+            ((< minutes 60) (format nil "~d minute~:p ~d second~:p" minutes (floor rest)))
+            (t (format nil "~d hour~:p ~d minute~:p" (floor minutes 60) (mod minutes 60)))))))
 
 (defun short-time-words (time)
   "The universal TIME in local time, short, as a list shows it: 2026-10-07
@@ -497,13 +515,13 @@ begins at, and the hour and minute it ends at, NIL for no range; NIL when
 no time of day is there, or a range's end is none (10:00-25:00)."
   (multiple-value-bind (at hour minute) (time-at text start end)
     (when at
-      (multiple-value-bind (after end-hour end-minute)
-          (and (char-at-p text at end "-") (ascii-digit text (1+ at) end) (time-at text (1+ at) end :last 24))
-        (when (and (null after) (char-at-p text at end "-") (ascii-digit text (1+ at) end))
-          (return-from time-range-at nil))
-        (let ((at (or after at)))
-          (unless (or (ascii-digit text at end) (char-at-p text at end ":"))
-            (values at hour minute end-hour end-minute)))))))
+      (let ((range (and (char-at-p text at end "-") (ascii-digit text (1+ at) end))))
+        (multiple-value-bind (after end-hour end-minute) (and range (time-at text (1+ at) end :last 24))
+          (when (and range (null after))
+            (return-from time-range-at nil))
+          (let ((at (or after at)))
+            (unless (or (ascii-digit text at end) (char-at-p text at end ":"))
+              (values at hour minute end-hour end-minute))))))))
 
 (defun find-time-range (text &key (start 0) (end (length text)))
   "The first time of day or range of two in TEXT from START below END that
@@ -710,7 +728,7 @@ when it gives none."
                      (cond ((null zone) nil) ((char= mark #\Z) "UTC")
                            (t (format nil "~c~2,'0d:~2,'0d" mark (floor (abs zone) 60) (mod (abs zone) 60)))))
              (and (valid-date-p year month day) (<= hour 23) (<= minute 59) (<= second 59)
-                  (- (+ (* 86400 (day-number year month day)) (* 3600 hour) (* 60 minute) second) (* 60 (or zone 0))))
+                  (utc-universal-time year month day hour minute second (or zone 0)))
              zone))))))
 
 (defun iso-date-time (text)
@@ -726,9 +744,9 @@ when it gives none; NIL when it names no date."
             ((let ((at (nth-value 3 (written-date-at text 0 end :iso))))
                (and at (not (ascii-digit text at end))))
              (multiple-value-bind (year month day) (written-date-at text 0 end :iso)
-               (values (* 86400 (day-number year month day)) nil)))
+               (values (utc-universal-time year month day) nil)))
             ;; a month alone: its first day
             (t (let ((year (fixed-digits text 0 4 end))
                      (month (and (char-at-p text 4 end "-") (fixed-digits text 5 2 end))))
                  (when (and year month (<= 1 month 12) (not (ascii-digit text 7 end)) (not (char-at-p text 7 end "-")))
-                   (values (* 86400 (day-number year month 1)) nil))))))))
+                   (values (utc-universal-time year month 1) nil))))))))

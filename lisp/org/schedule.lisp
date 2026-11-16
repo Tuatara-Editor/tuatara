@@ -50,6 +50,10 @@ The prompt is that of \\[org-schedule] and \\[org-deadline].
   "While Org's date prompt shows the calendar: its buffer; NIL otherwise.")
 (pushnew '*org-date-calendar* *question-variables*)
 
+(defun org-date-calendar-live ()
+  "The calendar shown under a date prompt, or NIL when there is none or it is gone."
+  (and *org-date-calendar* (live-buffer-p *org-date-calendar*) *org-date-calendar*))
+
 (defun org-date-calendar-show (day)
   "Show the calendar below the window the date prompt was asked from, point on
 the day DAY, that window staying selected; true when a window was made for it."
@@ -64,7 +68,7 @@ the day DAY, that window staying selected; true when a window was made for it."
 
 (defun org-date-calendar-follow (ts)
   "Put the calendar the date prompt shows on the day of TS, as it is read."
-  (when (and *org-date-calendar* (live-buffer-p *org-date-calendar*))
+  (when (org-date-calendar-live)
     (calendar-show-day *org-date-calendar* (org-ts-day-number ts))))
 
 (sb-ext:defglobal **org-date-prompt-keymap**
@@ -154,7 +158,7 @@ calendar, the days chosen and the keys after it."
 (defun org-date-choice-shown (choice)
   "Show the days CHOICE has marked in the calendar of the date question, and
 the days chosen in its prompt."
-  (when (and *org-date-calendar* (live-buffer-p *org-date-calendar*))
+  (when (org-date-calendar-live)
     (setf (tuatara.buffer:buffer-local *org-date-calendar* 'calendar-chosen) (org-date-choice-marked choice)))
   (when (editor-minibuffer-active *editor*)
     (setf (editor-minibuffer-prompt *editor*) (org-date-choosing-prompt (org-date-choice-prompt choice)))))
@@ -172,7 +176,7 @@ the prompt, with the question's own keys; the marks stay shown with KEEP-MARKS."
 
 (defun org-date-choose-move (days &optional (months 0))
   "Move the calendar of the date question DAYS days and MONTHS months on from its day."
-  (when (and *org-date-calendar* (live-buffer-p *org-date-calendar*))
+  (when (org-date-calendar-live)
     (let ((from (or (calendar-date-at *org-date-calendar*) (org-today))))
       (calendar-show-day *org-date-calendar* (if (zerop months) (+ from days) (day-months-on from months))))
     (when *org-date-choosing* (org-date-choice-shown *org-date-choosing*))))
@@ -289,7 +293,7 @@ or of several timestamps, or NIL when what was typed is no date."
            (cond ((or (org-ts-p time) (stringp time)) time)
                  ((and (consp time) (eq (first time) :several)) (second time))
                  (t (and time (org-date-ts day hour minute end-hour end-minute)))))
-      (when (and *org-date-calendar* (live-buffer-p *org-date-calendar*))
+      (when (org-date-calendar-live)
         (setf (tuatara.buffer:buffer-local *org-date-calendar* 'calendar-chosen) nil))
       ;; the window made for the calendar goes with the question
       (when (and window (member window (editor-windows *editor*)))
@@ -445,7 +449,7 @@ arguments for it, which are the second value."
                     (when (and n dayname)
                       (setf start (org-rule-next (make-org-rule :kind :float :arguments (list t dayname n nil)) today))
                       (and start (list (if (minusp n) "repeats=monthly-last" "repeats=monthly-nth")))))))))
-        (when (and kind (or (null time) (read-time-range time)))
+        (when kind
           (let* ((arguments (append (list (format nil "start=~a" (format-day "%F" start)))
                                     (and time
                                          (list (format nil "time=~a" (multiple-value-call #'time-range-text
@@ -486,24 +490,24 @@ goes where ORG-REPEAT-DATE-PLACE says, in place of what was typed after it,
 or after from, put at the end, when it says none. While the question is
 answered in the calendar (*ORG-DATE-CHOOSING*), the calendar's day alone moves."
   (cond
-    ((not (and *org-date-calendar* (live-buffer-p *org-date-calendar*)))
+    ((not (org-date-calendar-live))
      (message "Only while a date is asked for with the calendar"))
     (*org-date-choosing* (org-date-choose-move days months))
     (t
-      (let* ((from (or (calendar-date-at *org-date-calendar*) (org-today)))
-             (day (if (zerop months) (+ from days) (day-months-on from months)))
-             (text (editor-minibuffer-text *editor*))
-             (time (multiple-value-bind (start end) (find-time-range text) (and start (subseq text start end))))
-             (words (org-repeat-words-p text))
-             (place (and words (org-repeat-date-place text)))
-             (new (cond (place (format nil "~a~a~a" (subseq text 0 place)
-                                       (if (char= (char text (1- place)) #\Space) "" " ")
-                                       (format-day "%F" day)))
-                        (words (format nil "~a from ~a" (string-right-trim " " text) (format-day "%F" day)))
-                        (t (format nil "~a~@[ ~a~]" (format-day "%F" day) time)))))
-        (calendar-show-day *org-date-calendar* day)
-        (setf (editor-minibuffer-text *editor*) new
-              (editor-minibuffer-point *editor*) (length new))))))
+     (let* ((from (or (calendar-date-at *org-date-calendar*) (org-today)))
+            (day (if (zerop months) (+ from days) (day-months-on from months)))
+            (text (editor-minibuffer-text *editor*))
+            (time (multiple-value-bind (start end) (find-time-range text) (and start (subseq text start end))))
+            (words (org-repeat-words-p text))
+            (place (and words (org-repeat-date-place text)))
+            (new (cond (place (format nil "~a~a~a" (subseq text 0 place)
+                                      (if (char= (char text (1- place)) #\Space) "" " ")
+                                      (format-day "%F" day)))
+                       (words (format nil "~a from ~a" (string-right-trim " " text) (format-day "%F" day)))
+                       (t (format nil "~a~@[ ~a~]" (format-day "%F" day) time)))))
+       (calendar-show-day *org-date-calendar* day)
+       (setf (editor-minibuffer-text *editor*) new
+             (editor-minibuffer-point *editor*) (length new))))))
 
 (define-command org-calendar-forward-day ()
   "In Org's date prompt: the calendar's day a day on, written at the prompt."
@@ -548,7 +552,7 @@ typed is 1 March."
 
 (define-command org-calendar-goto-today ()
   "In Org's date prompt: the calendar on today, written at the prompt."
-  (when (and *org-date-calendar* (live-buffer-p *org-date-calendar*))
+  (when (org-date-calendar-live)
     (org-date-calendar-step (- (org-today) (or (calendar-date-at *org-date-calendar*) (org-today))) 0)))
 
 (defun org-planning-tokens (line)
@@ -694,16 +698,18 @@ inactive [...]; on a timestamp or just after it (ORG-TIMESTAMP-AROUND), put it
 in that one's place, its repeater and warning kept, and its time when none
 was typed. An active one may be several days chosen in the calendar, put in
 one after another (*ORG-READ-DATE-IN-CALENDAR*)."
-  (org-ask-date (if active "Date: " "Inactive date: ") (lambda (ts)
-    (cond
-      ((null ts) (org-no-date))
-      ((stringp ts)
-       (if active
-           (with-org-structure (parse buffer tree text position)
-             (org-replace-chars parse position position ts :point (+ position (length ts))))
-           (message "~a" (substitute-command-keys
-                          "A date by rule is an active timestamp only: \\[org-time-stamp] writes it"))))
-      (t
+  (org-ask-date
+   (if active "Date: " "Inactive date: ")
+   (lambda (ts)
+     (cond
+       ((null ts) (org-no-date))
+       ((stringp ts)
+        (if active
+            (with-org-structure (parse buffer tree text position)
+              (org-replace-chars parse position position ts :point (+ position (length ts))))
+            (message "~a" (substitute-command-keys
+                           "A date by rule is an active timestamp only: \\[org-time-stamp] writes it"))))
+       (t
         (with-org-structure (parse buffer tree text position)
           (multiple-value-bind (from to) (org-timestamp-around text position)
             (let* ((old (and from (org-read-ts (subseq text from to))))
@@ -715,7 +721,7 @@ one after another (*ORG-READ-DATE-IN-CALENDAR*)."
                                (org-ts-text (org-ts-keep-cycle ts old))))
                    (from (or from position)))
               (org-replace-chars parse from (or to position) new :point (+ from (length new)))))))))
-    :several active))
+   :several active))
 
 (define-command org-time-stamp ()
   "Put in a timestamp at point (\\`C-c .'), the date asked for as

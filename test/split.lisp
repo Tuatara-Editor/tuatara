@@ -832,3 +832,42 @@ end its lines with a carriage return and a newline."
       (is = 100 small-count)
       (is = 5000 large-count)
       (true (< (- large small) 20000) "~:d octets at 100 cursors, ~:d at 5,000" small large))))
+
+(define-modal-test (split cursors-held-to-what-is-done-at-once)
+  ;; what the cursors' selections hold together is read for the kill ring only up to what is done at once on
+  ;; the editor's thread; more is refused, nothing changed
+  (let ((three (format nil "abc~%abc~%abc"))
+        (tuatara.defaults::*rewrite-threshold* 4))
+    (multiple-value-bind (f editor) (run-keys "t t v l l d" :text three :width 100 :height 10)
+      (is string= three (session-text editor))
+      (true (tuatara.frontend.fake:fake-frame-showing f "Deleting at every cursor works on at most")))
+    (multiple-value-bind (f editor) (run-keys "t t v l l y" :text three :width 100 :height 10)
+      (declare (ignore editor))
+      (true (tuatara.frontend.fake:fake-frame-showing f "Copying at every cursor works on at most")))))
+
+(define-test (split cursors-selecting-looked-over-once)
+  ;; whether any cursor selects is looked over again only once one's selection comes or goes, not at each key
+  (let* ((buffer (tuatara.buffer:make-buffer "cursors-selecting"
+                                             :text (format nil "~{~a~%~}" (make-list 50 :initial-element "abc"))))
+         (split (tuatara.defaults::make-split buffer))
+         (places (coerce (loop for line below 50
+                               for at = (tuatara.buffer:buffer-goto-line buffer line)
+                               collect (let ((place (tuatara.defaults::%make-place
+                                                     (tuatara.text:make-anchor (tuatara.buffer:buffer-version buffer) at)
+                                                     (tuatara.text:make-anchor (tuatara.buffer:buffer-version buffer) at))))
+                                         place))
+                         'simple-vector))
+         (looked 0))
+    (setf (tuatara.defaults::split-places split) places)
+    (sb-int:encapsulate 'tuatara.defaults::cursor-selecting-p 'counted
+                        (lambda (function &rest arguments) (incf looked) (apply function arguments)))
+    (unwind-protect
+         (progn
+           (false (tuatara.defaults::cursors-selecting-p split))
+           (setf looked 0)
+           (false (tuatara.defaults::cursors-selecting-p split))
+           (is = 0 looked)
+           (tuatara.defaults::set-cursor buffer (aref places 3) 1 0 nil nil)
+           (true (tuatara.defaults::cursors-selecting-p split)))
+      (sb-int:unencapsulate 'tuatara.defaults::cursor-selecting-p 'counted)
+      (tuatara.buffer:kill-buffer buffer))))

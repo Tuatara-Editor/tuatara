@@ -131,20 +131,20 @@ Extensions (MIME) type TYPE with, is not found."
 
 (define-setting *open-externally-kinds*
   '(:png :jpeg :gif :webp :bmp :tiff :raw :ico :heif :avif :jp2 :j2k :jxl :xcf :psd :pdf
-    :mp4 :matroska :avi :mpeg :mp3 :ogg :flac :wav :aiff :midi
-    :docx :xlsx :pptx :odt :ods :odp)
+    :mp4 :matroska :avi :mpeg :mp3 :ogg :flac :wav :aiff :midi)
   "The kinds of file \\[open-externally] opens in the desktop's own program, as
 their first octets tell them.
-Pictures, PDFs, sound and video, and Office documents are the standard. Each is
-opened after asking, from a copy only you can read, never the file itself. An
-Office document can hold macros, which the program opening it may offer to run;
-answer no there. :svg is left out of the standard list: an SVG image is a
-document that can hold a program, which a web browser, the program many
-desktops open it in, runs. Office documents of before 2007 (:ole) are left out:
-the same kind is a mail item or an installer.
+Pictures, PDFs, sound and video are the standard. Each is opened after asking,
+from a copy only you can read, never the file itself. Office documents (:docx,
+:xlsx, :pptx, :odt, :ods, :odp) are left out of the standard list: they can
+hold macros, which the program opening one may offer to run. Add them to open
+them, and answer no there. :svg is left out too: an SVG image is a document
+that can hold a program, which a web browser, the program many desktops open
+it in, runs. Office documents of before 2007 (:ole) are best left out: the same
+kind is a mail item or an installer.
 - a list of keywords, as TUATARA.IO:OCTETS-KIND gives them: :png, :jpeg, :pdf,
   :docx and the like."
-  :values (list-of "a keyword naming a kind of file"))
+  :values (list-of keyword))
 
 (define-setting *open-externally-ask* t
   "Whether \\[open-externally] asks before opening a file in the desktop's own
@@ -181,6 +181,21 @@ you alone: opened/ in the cache directory."
 in OPENED-COPIES-DIRECTORY (NEW-PRIVATE-DIRECTORY), gone a day later, NAME taken as it is, so it
 must be a file's name alone. The directory is made; the copy is not."
   (tuatara.io:path-join (new-private-directory (opened-copies-directory) :hold nil) name))
+
+(defun attachment-file-name (name &optional (fallback "attachment"))
+  "NAME, as an attachment or an embedded file calls itself, made a file's name
+alone; what follows its last / or \\, control characters and those a name
+cannot hold on the drives other systems use (: * ? \" < > |) left out, spaces
+and full stops trimmed from its ends, cut to the most a name may take
+\(TUATARA.IO:FIT-NAME), its ending kept; FALLBACK for one with nothing left,
+or no NAME."
+  (let* ((name (or name ""))
+         (name (subseq name (1+ (or (position-if (lambda (c) (member c '(#\/ #\\))) name :from-end t) -1))))
+         (name (remove-if (lambda (c) (or (< (char-code c) 32) (= (char-code c) 127) (<= #xD800 (char-code c) #xDFFF)
+                                          (find c ":*?\"<>|")))
+                          name))
+         (name (string-trim " ." name)))
+    (if (zerop (length name)) fallback (tuatara.io:fit-name name))))
 
 (defun write-private-copy (name octets)
   "Write OCTETS as a new file called NAME (PRIVATE-COPY-PATH), readable by you
@@ -275,13 +290,6 @@ was looked at is not opened. True when the opening was started."
       (setf *openings* (remove opening *openings*))
       (message "~a" (cdr opening))))
   (and *openings* t))
-
-(defun shown-file (buffer)
-  "The file BUFFER shows: the PDF or picture in its view, the entry on the
-line in a list of a directory, or the file it visits; NIL for none."
-  (or (tuatara.buffer:buffer-local buffer :viewed-file)
-      (mode-file-name-at-point (buffer-major-mode buffer) buffer)
-      (tuatara.buffer:buffer-file buffer)))
 
 (defun shown-file-argument (prompt)
   "The file a command works on, its native name: the one the current buffer

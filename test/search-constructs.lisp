@@ -523,6 +523,32 @@ question as PATTERN/REPLACEMENT."
         (forget "dotted")
         (forget "keano")))))
 
+(define-test (search-constructs saved-pattern-forgotten-while-naming)
+  ;; a saved pattern forgotten with forget-named-pattern while the job naming the saved ones at start is on its
+  ;; way to it stays forgotten: the job, kept waiting meanwhile, names only those saved still
+  (let ((saved tuatara.defaults::*saved-patterns*)
+        (lock tuatara.defaults::**saved-patterns-lock**))
+    (tuatara.defaults::state-list-put saved (list (list "kakapo" :regex "kak[a-z]+" "")))
+    (sb-int:encapsulate 'tuatara.command:completing-read 'kakapo (lambda (read &rest arguments)
+                                                                  (declare (ignore read arguments))
+                                                                  "kakapo"))
+    (unwind-protect
+         (let ((job nil))
+           (sb-thread:with-recursive-lock (lock)
+             (setf job (tuatara.defaults::define-saved-patterns))
+             (true (tuatara.runtime:wait-until
+                    (lambda () (let ((thread (tuatara.runtime:job-thread job)))
+                                 (and thread (eq lock (sb-thread::thread-waiting-for thread)))))
+                    10))
+             (tuatara.defaults::forget-named-pattern))
+           (tuatara.runtime:wait-until (lambda () (not (tuatara.runtime:job-running-p job))) 10)
+           (false (tuatara.defaults::state-list-find saved "kakapo"))
+           (false (tuatara.syntax:named-pattern-p "kakapo")))
+      (sb-int:unencapsulate 'tuatara.command:completing-read 'kakapo)
+      (tuatara.defaults::state-list-drop saved (list "kakapo"))
+      (remhash "kakapo" tuatara.defaults::*names-of-saved-patterns*)
+      (tuatara.syntax:forget-own-named-pattern "kakapo"))))
+
 (define-test (search-constructs saved-patterns-leave-init-names)
   ;; a name the init file gives a pattern: not saved over, and forgetting a saved one of that name keeps it
   (let ((saved tuatara.defaults::*saved-patterns*))
@@ -539,6 +565,16 @@ question as PATTERN/REPLACEMENT."
       (tuatara.defaults::state-list-drop saved (list "initkea"))
       (remhash "initkea" tuatara.syntax::**own-named-patterns**)
       (tuatara.syntax::forget-compiled-regexes))))
+
+(define-test (search-constructs own-named-pattern-refused-as-such)
+  ;; a pattern of your own the searches cannot use is refused as any pattern is, named in the words
+  (unwind-protect
+       (let ((refused (handler-case (progn (tuatara-user:define-named-pattern "grouped" "g" "(a)b") nil)
+                        (tuatara.syntax::pattern-refused (e) (princ-to-string e)))))
+         (true refused)
+         (true (search "[[:grouped:]] is not defined" refused) "~a" refused)
+         (false (tuatara.syntax::named-pattern-p "grouped")))
+    (remhash "grouped" tuatara.syntax::**own-named-patterns**)))
 
 (define-test (search-constructs own-named-patterns-held-in-size)
   ;; patterns of your own naming others twice over: refused once they stand for too much, at once
@@ -619,3 +655,26 @@ question as PATTERN/REPLACEMENT."
                (both "[[:nzphone:]]" "021 123 4567, +64 21 123 4567, 0064 9 123 4567, +64 (0)21 123 4567, (09) 123 4567, 0800 123 456, not +61 2 1234 5678 or 2026-10-12")))
       (dolist (name '("kea9" "paid" "loopa" "loopb" "nzlocal" "nzphone"))
         (remhash name tuatara.syntax::**own-named-patterns**)))))
+
+(define-test (search-constructs saved-pattern-naming-itself-said-plainly)
+  ;; a pattern saved that would name itself through another saved one: said so in one sentence, nothing saved
+  (let ((saved tuatara.defaults::*saved-patterns*))
+    (flet ((forget (name)
+             (tuatara.defaults::state-list-drop saved (list name))
+             (remhash name tuatara.defaults::*names-of-saved-patterns*)
+             (remhash name tuatara.syntax::**own-named-patterns**)
+             (tuatara.syntax::forget-compiled-regexes)))
+      (unwind-protect
+           (progn
+             (dolist (entry (list (list "kp" :regex "x" "") (list "kq" :regex "[[:kp:]]y" "")))
+               (tuatara.defaults::define-saved-pattern entry)
+               (tuatara.defaults::state-list-put saved (list entry)))
+             (multiple-value-bind (f editor)
+                 (run-keys (list "M-x s a v e - n a m e d - p a t t e r n RET [ [ : k q : ] ] z RET"
+                                 "k p RET y") :width 120)
+               (declare (ignore editor))
+               (true (tuatara.frontend.fake:fake-frame-showing f "[[:kp:]] would name itself through [[:kq:]]: nothing saved")))
+             (is equal "x" (third (tuatara.defaults::state-list-find saved "kp")))
+             (true (sb-ext:hash-table-synchronized-p tuatara.defaults::*names-of-saved-patterns*)))
+        (forget "kq")
+        (forget "kp")))))

@@ -88,9 +88,9 @@ the text of the rules for selecting its functions, types, parameters and
 comments, with TEXTOBJECT-QUERY, those compiled when first needed. INJECTIONS is
 its rules for text in other languages, with INJECTION-QUERY. INJECTION-NAMES is
 a regular expression for the names other languages' rules call it by, with
-INJECTION-SCANNER, that expression compiled. LOCALS is
-its rules for local names, with LOCALS-QUERY. DEFINITIONS is the rules naming
-what \\[beginning-of-defun] and \\[end-of-defun] move between, with
+INJECTION-SCANNER, that expression compiled. LOCALS is its rules for local
+names, with LOCALS-QUERY. DEFINITIONS is the rules naming what
+\\[beginning-of-defun] and \\[end-of-defun] move between, with
 DEFINITIONS-QUERY. TAGS is the rules naming its definitions and headings for
 \\[buffer-outline], with TAGS-QUERY."
   (name nil :read-only t :documentation "The language's name, a symbol.")
@@ -176,7 +176,8 @@ its own. This keeps a package from replacing one by mistake; it is no guard
 against one meaning to, as a package runs Lisp with all the rights Tuatara has."
   (let ((old (find-language name)))
     (when (and old (own-language-p old) (not (own-language-name-p name)))
-      (message "~(~a~) is one of Tuatara's own languages: a package or an init file adds languages, it does not replace them (~(~a~) left as it is)"
+      (message "~(~a~) is one of Tuatara's own languages: a package or an init file adds languages, ~
+                it does not replace them (~(~a~) left as it is)"
                name name)
       (return-from register-language nil)))
   (let* ((injection-scanner
@@ -208,24 +209,24 @@ against one meaning to, as a package runs Lisp with all the rights Tuatara has."
 
 (defmacro define-language (name doc &key grammar modes (indent 4) more-textobjects injection-names definitions queries)
   "Define language NAME (of code or of text, such as Markdown), documented by
-DOC, parsed with the tree-sitter grammar GRAMMAR (the name of its file, rust
-for rust.so: Tuatara's own, or one you added to the directory of grammars you
-add, ~/.local/share/tuatara/grammars/, its rules beside it in rules/,
-indents/ and the rest) and edited in the major modes MODES. Its colouring rules are
-read from syntax/rules/GRAMMAR.scm, and its indentation rules, if it has
-them, from syntax/indents/GRAMMAR.scm, one level being INDENT columns. The rules for
+DOC, parsed with the tree-sitter grammar GRAMMAR (the name of its file, rust for
+rust.so: Tuatara's own, or one you added to the directory of grammars you add,
+~/.local/share/tuatara/grammars/, its rules beside it in rules/, indents/ and
+the rest) and edited in the major modes MODES. Its colouring rules are read from
+syntax/rules/GRAMMAR.scm, and its indentation rules, if it has them, from
+syntax/indents/GRAMMAR.scm, one level being INDENT columns. The rules for
 selecting its functions, types, parameters and comments are read from
-syntax/textobjects/GRAMMAR.scm, with the text MORE-TEXTOBJECTS added, and
-its rules for text in other languages from syntax/injections/GRAMMAR.scm;
+syntax/textobjects/GRAMMAR.scm, with the text MORE-TEXTOBJECTS added, and its
+rules for text in other languages from syntax/injections/GRAMMAR.scm;
 INJECTION-NAMES is a regular expression for the names other languages' rules
-call it by, besides its own name and its grammar's. DEFINITIONS is the text
-of the rules naming its definitions, what \\[beginning-of-defun] and
-\\[end-of-defun] move between, each captured as @definition, or :TEXTOBJECTS
-for its functions and types as its selection rules find them; without them a
-definition is a line that begins with an opening bracket, as in Lisp. The
-rules naming its definitions and headings, which \\[buffer-outline] lists, are
-read from syntax/tags/GRAMMAR.scm. QUERIES names the rules' files when they
-are not GRAMMAR's (a language with rules of its own for a grammar it shares)."
+call it by, besides its own name and its grammar's. DEFINITIONS is the text of
+the rules naming its definitions, what \\[beginning-of-defun] and
+\\[end-of-defun] move between, each captured as @definition, or :TEXTOBJECTS for
+its functions and types as its selection rules find them; without them a
+definition is a line that begins with an opening bracket, as in Lisp. The rules
+naming its definitions and headings, which \\[buffer-outline] lists, are read
+from syntax/tags/GRAMMAR.scm. QUERIES names the rules' files when they are not
+GRAMMAR's (a language with rules of its own for a grammar it shares)."
   (check-type doc string "a docstring saying what the language is")
   `(register-language ',name ,doc ,grammar ',modes :indent ,indent :more-textobjects ,more-textobjects
                       :injection-names ,injection-names :definitions ,definitions :queries ,queries))
@@ -253,6 +254,10 @@ inherits from that edits one, or NIL."
   (let ((table (mode-languages)))
     (loop for name in (mode-precedence mode)
           thereis (values (gethash name table)))))
+
+(defun buffer-language (buffer)
+  "The language of BUFFER's major mode (MODE-LANGUAGE), or NIL."
+  (mode-language (buffer-major-mode buffer)))
 
 (defvar *rules-quiet* nil
   "True in the thread compiling a language's rules in the background, where
@@ -286,10 +291,10 @@ a thread of the background (*RULES-QUIET*)."
     (:text-objects language-textobject-query language-textobjects "selection"
      "The selection rules of ~(~a~) do not work: ~a" disable-unused-patterns))
   "The kinds of a language's rules that are compiled when first needed, each
-\(KIND KEPT SOURCE LABEL FAILURE AFTER). KEPT reads the rules compiled (and, with
-SETF, keeps them). SOURCE reads their text. LABEL names them to the compiler.
-FAILURE says they do not work given the language's name and the error. AFTER,
-when given, is called with the rules once compiled.")
+\(KIND KEPT SOURCE LABEL FAILURE AFTER). KEPT reads the rules compiled (and,
+with SETF, keeps them). SOURCE reads their text. LABEL names them to the
+compiler. FAILURE says they do not work given the language's name and the error.
+AFTER, when given, is called with the rules once compiled.")
 
 (defvar *rules-unanswered* (make-hash-table :test 'eq :synchronized t)
   "For each language whose rules the program compiling them did not answer
@@ -351,14 +356,23 @@ for again a little later (NOTE-RULES-UNANSWERED), until it has not answered
 *RULES-UNANSWERED-MOST* times. On the editor's thread they are compiled in
 the background, waited for at most *RULES-EDITOR-WAIT*: NIL past it, the
 editor carrying on as for a language without such rules, and the rules
-kept once compiled."
+kept once compiled. Rules a key needs (all but those of colouring, which a
+later frame takes in) are waited for as a command's work is: the echo area
+says they are being made ready once the wait has gone on a moment, and \\`C-g'
+gives up waiting."
   (let ((known (funcall (second (assoc kind *language-queries*)) language)))
     (cond (known (and (tuatara.syntax:query-p known) known))
           ((not (on-editor-thread-p)) (compile-language-query language kind))
           ((rules-backing-off-p language) nil)
           (t (let ((thread (thread-once *compiling* (cons language kind)
                                         (lambda () (let ((*rules-quiet* t)) (compile-language-query language kind))))))
-               (sb-thread:join-thread thread :timeout *rules-editor-wait* :default nil)
+               (if (member kind '(:colouring :injection :locals))
+                   ;; rules a frame draws by: a later frame takes them in
+                   (sb-thread:join-thread thread :timeout *rules-editor-wait* :default nil)
+                   (wait-interruptibly thread :seconds *rules-editor-wait*
+                                              :message (format nil "The ~a rules of ~(~a~) are being made ready..."
+                                                               (fourth (assoc kind *language-queries*))
+                                                               (language-name language))))
                (let ((now (funcall (second (assoc kind *language-queries*)) language)))
                  (and (tuatara.syntax:query-p now) now)))))))
 
@@ -418,8 +432,11 @@ if it has one) is made from, or for every buffer; else rich, and level 3."
   (if (language-style language)
       (values (language-style language) (or (language-level language) 3))
       (multiple-value-bind (style level)
-          (colouring-rule (or mode (let ((first (first (language-modes language))))
-                                     (and first (make-instance first)))))
+          ;; the first mode's prototype answers for it: nothing is made on each call
+          (colouring-rule (or mode (let ((class (find-class (first (language-modes language)) nil)))
+                                     (when class
+                                       (unless (sb-mop:class-finalized-p class) (sb-mop:finalize-inheritance class))
+                                       (sb-mop:class-prototype class)))))
         (values (or style :rich) (or level 3)))))
 
 (defgeneric mode-own-colouring (mode)
@@ -461,7 +478,7 @@ none is. It is NIL for a name that is none of these."
 
 (defun tuatara-user:set-colouring (language style &key level)
   "Colour LANGUAGE (rust, bash, lisp), or the language of a major mode
-(rust-mode), in STYLE: :rich, the default, colours everything its rules name;
+\(rust-mode), in STYLE: :rich, the default, colours everything its rules name;
 :sparse colours only some kinds of thing, and LEVEL says how much: 1 comments
 and strings, 2 also keywords and functions, 3 (the default) also types and
 constants, 4 everything; :none colours nothing. Every mode of the language goes
@@ -475,8 +492,8 @@ the modes of languages are made from, as prog-mode or text-mode (Org too), for
 all of them, or T for every buffer. What is set for a language itself comes
 first, then what is set for the nearest mode its mode is made from, then what is
 set for every buffer. For example, in the init file: (set-colouring 'rust
-:sparse), (set-colouring 'csv-mode :sparse), (set-colouring 'prog-mode :sparse), (set-colouring
-'org-mode :sparse :level 2), (set-colouring t :sparse)."
+:sparse), (set-colouring 'csv-mode :sparse), (set-colouring 'prog-mode :sparse),
+\(set-colouring 'org-mode :sparse :level 2), (set-colouring t :sparse)."
   (let ((found (colouring-of language)))
     (cond ((null found)
            (refuse "No language or major mode called ~(~a~); the languages are csv, ~{~(~a~)~^, ~}."
@@ -561,7 +578,7 @@ that the colours left are the rich style's, but it shows no colour."
   "Forget what went wrong in BUFFER's text and parse it afresh in its mode's
 language, when it has one, grammars that went wrong on it tried again."
   (tuatara.syntax:forget-text-faults buffer)
-  (let ((language (mode-language (buffer-major-mode buffer))))
+  (let ((language (buffer-language buffer)))
     (when (and language (let ((syntax (tuatara.syntax:buffer-syntax buffer)))
                           (or (null syntax) (tuatara.syntax:syntax-broken syntax))))
       (tuatara.syntax:detach-syntax buffer)
@@ -698,11 +715,11 @@ editor has none."
   "A function of a language's name, as rules for text in other languages name
 it, returning the grammar, colouring query, faces in STYLE at LEVEL, injection
 rules and rules for local names of the language meant, and the function giving
-the face in STYLE at LEVEL of each kind of definition, or NIL. The rules of a language not yet
-compiled are compiled in the background, the function waiting for them at
-most *RULES-WAIT* from when it is made, for all the languages it is asked for
-together. NIL for a language whose grammar is off (GRAMMAR-ON-P): its text is
-left plain."
+the face in STYLE at LEVEL of each kind of definition, or NIL. The rules of a
+language not yet compiled are compiled in the background, the function waiting
+for them at most *RULES-WAIT* from when it is made, for all the languages it is
+asked for together. NIL for a language whose grammar is off (GRAMMAR-ON-P): its
+text is left plain."
   (let ((deadline (tuatara.runtime:deadline-in *rules-wait*)))
     (lambda (name)
       (let ((other (language-for-injection name)))
@@ -823,10 +840,13 @@ memory, or that memory ran short, and it was given up."
         (buffer (tuatara.buffer:buffer-name (tuatara.syntax:syntax-buffer syntax))))
     (case (tuatara.syntax:syntax-broken syntax)
       (:memory
-       (message "The ~a grammar went wrong reading ~a and was stopped (it took over ~:d MB): its colours are off in that buffer."
+       (message "The ~a grammar went wrong reading ~a and was stopped (it took over ~:d MB): ~
+                 its colours are off in that buffer."
                 grammar buffer (floor (tuatara.syntax:parse-memory-limit bytes) (* 1024 1024))))
       (:short
-       (message "Memory ran short while the ~a grammar read ~a: its colours are off there until memory is back and the text is edited.~:[~; Memory is low: parses stopped half way keep what they took until Tuatara starts again.~]"
+       (message "Memory ran short while the ~a grammar read ~a: its colours are off there until memory is ~
+                 back and the text is edited.~:[~; Memory is low: parses stopped half way keep what they ~
+                 took until Tuatara starts again.~]"
                 grammar buffer
                 (and (plusp (tuatara.syntax:parsers-let-go)) (not (shiftf *memory-low-said* t)))))
       (t
@@ -860,7 +880,10 @@ in a new one when it is next shown or edited."
 (defun report-no-sandbox-for-grammars (trusted)
   "Say that text is not parsed, so not coloured, because there is no sandbox
 to run the grammars in: TRUSTED when it is that of a project you trust."
-  (message "~:[Files outside the projects you trust are not~;No text is~] coloured or parsed: there is no sandbox (bwrap) to run the grammars in. Install bubblewrap~:[~;, or set *syntax-helper-unconfined* to run them for the projects you trust without it~]; M-x check-health says more."
+  (message "~:[Files outside the projects you trust are not~;No text is~] coloured or parsed: there is no ~
+            sandbox (bwrap) to run the grammars in. Install bubblewrap~:[~;, or set ~
+            *syntax-helper-unconfined* to run them for the projects you trust without it~]; ~
+            M-x check-health says more."
            trusted trusted))
 
 (defmethod tuatara.syntax:host-say-helper-refused ((host defaults-host) trusted)
@@ -882,11 +905,13 @@ save and restart."
                                   (tuatara.buffer:buffer-name (tuatara.syntax:syntax-buffer syntax))
                                   (and (typep fault 'condition) fault))
     (if fault
-        (message "The ~a grammar failed while reading ~a, as it did on other texts: its colours and syntax are off until Tuatara starts again.~:[ Save your work and restart.~;~]"
+        (message "The ~a grammar failed while reading ~a, as it did on other texts: its colours and syntax ~
+                  are off until Tuatara starts again.~:[ Save your work and restart.~;~]"
                  (tuatara.syntax:grammar-name grammar)
                  (tuatara.buffer:buffer-name (tuatara.syntax:syntax-buffer syntax))
                  clean)
-        (message "The ~a grammar failed while reading ~a: its colours and syntax are off in that buffer; other texts keep them."
+        (message "The ~a grammar failed while reading ~a: its colours and syntax are off in that buffer; ~
+                  other texts keep them."
                  (tuatara.syntax:grammar-name grammar)
                  (tuatara.buffer:buffer-name (tuatara.syntax:syntax-buffer syntax))))))
 

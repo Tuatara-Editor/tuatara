@@ -2,8 +2,8 @@
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; G in a rimu list shows, after each name, when the entry last changed in
-;;;; git's history and the first line of that commit's message, as Emacs's
-;;;; dired-git-info does; a directory's is the last commit of anything in it.
+;;;; git's history and the first line of that commit's message; a
+;;;; directory's is the last commit of anything in it.
 ;;;; One git log is read on a thread of its own, the newest commit first, until
 ;;;; every entry has its commit, and the column fills in when it is done.
 ;;;; C-x G (M-x git-rewind) in a list lists the directory as a commit left it, in a
@@ -81,7 +81,7 @@ RIMU-COLUMN-READY."
                 (and commit
                      (list (cons (column-text (first commit) widest :elide nil) :list-date)
                            (cons "  " nil)
-                           (cons (let ((subject (second commit)))
+                           (cons (let ((subject (escape-controls (second commit))))
                                    (if (> (length subject) 72) (subseq subject 0 72) subject))
                                  :list-note)))))
             names)))))
@@ -185,9 +185,7 @@ directory can have (., .. or one holding a /) is left out."
                 (destructuring-bind (mode type object &optional size)
                     (remove "" (uiop:split-string (subseq line 0 tab) :separator '(#\Space)) :test #'string=)
                   (let ((name (subseq line (1+ tab))))
-                    (when (and (plusp (length name))
-                               (not (member name '("." "..") :test #'string=))
-                               (not (find #\/ name)))
+                    (when (tuatara.io:entry-name-p name)
                       (push (list name (or (parse-integer mode :radix 8 :junk-allowed t) #o100644) type object
                                   (or (and size (parse-integer size :junk-allowed t)) 0))
                             rows))))))))
@@ -217,9 +215,8 @@ directory can have (., .. or one holding a /) is left out."
       (cond (too-large (refuse "~a is larger than ~a" (tuatara.io:native-file-name path)
                                (tuatara.io:octets-words *git-shown-limit*)))
             ((not ok) (refuse "~a could not be read from git" (tuatara.io:native-file-name path)))
-            (t (let ((fd (tuatara.io:memory-file (tuatara.io:native-file-name path) blob :kept nil)))
-                 (unwind-protect (funcall function fd path (length blob))
-                   (sb-posix:close fd))))))))
+            (t (tuatara.io:call-with-memory-file (tuatara.io:native-file-name path) blob
+                                                 (lambda (fd) (funcall function fd path (length blob)))))))))
 
 (defun rimu-rewind (list top)
   "Go through the history of the directory the rimu LIST lists, in the

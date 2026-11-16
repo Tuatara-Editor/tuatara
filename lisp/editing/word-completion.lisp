@@ -42,18 +42,17 @@ and of a word found.")
 prose and in Lisp or CSS names; NIL where it is an operator or a dash.")
   (:method (mode) "No hyphen in words where the mode does not say." (declare (ignore mode)) nil)
   (:method ((mode fundamental-mode)) "Prose joins words with hyphens (well-known)." t)
-  (:method ((mode prog-mode)) "In code a hyphen is an operator (a-b is a minus b)." nil)
-  (:method ((mode lisp-mode)) "Lisp names are joined by hyphens (buffer-name)." t)
-  (:method ((mode emacs-lisp-mode)) "Emacs Lisp names are joined by hyphens." t)
-  (:method ((mode clojure-mode)) "Clojure names are joined by hyphens." t)
-  (:method ((mode scheme-mode)) "Scheme names are joined by hyphens." t)
+  (:method ((mode prog-mode))
+    "In code a hyphen is an operator (a-b is a minus b), but hyphens join the
+names of Lisp (buffer-name) and its kin (LISP-FAMILY-MODE-P)."
+    (lisp-family-mode-p mode))
   (:method ((mode css-mode)) "CSS names are joined by hyphens (font-size)." t)
   (:method ((mode scss-mode)) "SCSS names are joined by hyphens (font-size)." t))
 
 (defun word-part-p (char)
   "True when CHAR can be part of a word: a letter, a mark joined to one, a
 digit, _ or the joiner of an emoji sequence."
-  (or (word-character-p char) (digit-char-p char) (char= char #\_) (char= char (code-char #x200D))))
+  (or (letter-or-mark-p char) (digit-char-p char) (char= char #\_) (char= char (code-char #x200D))))
 
 (defgeneric mode-name-char-p (mode char)
   (:documentation "True when CHAR is part of a name in buffers of MODE: the name at point a
@@ -75,8 +74,8 @@ major mode takes names (MODE-NAME-CHAR-P)."
 
 (defun word-completion-kind (buffer)
   "What kind of text BUFFER holds as to who may see it: :ENCRYPTED for the
-decrypted text of an encrypted file, :EVIDENCE for a file in an evidence directory,
-:SAFE for another file opened safely, NIL for any other text."
+decrypted text of an encrypted file, :EVIDENCE for a file in an evidence
+directory, :SAFE for another file opened safely, NIL for any other text."
   (cond ((encrypted-buffer-p buffer) :encrypted)
         ((buffer-evidence buffer) :evidence)
         ((tuatara.io:safe-visit-p buffer) :safe)))
@@ -264,10 +263,11 @@ first). Typed again straight after, it puts in the next nearest in its place;
 when the words are out the text as typed comes back, and one more press starts
 again. One undo takes all of them back. A word is a name as the major mode
 takes names: letters, digits and _, hyphens in prose, CSS and Lisp, and every
-character of a Lisp name (*print-base*) in Lisp. About 64 KiB around point are
-read here, less in other buffers; files opened safely, evidence and decrypted
-files give words only to buffers of the same kind. \\[complete-word] lists the
-words instead. With *WORD-COMPLETION-KEEP-CASE* the case typed is kept."
+character of a Lisp name (LISP-NAME-PART-P) in Lisp. About 64 KiB around point
+are read here, less in other buffers; files opened safely, evidence and
+decrypted files give words only to buffers of the same kind. \\[complete-word]
+lists the words instead. With *WORD-COMPLETION-KEEP-CASE* the case typed is
+kept."
   (let ((b (current-buffer)))
     (when (tuatara.display:hex-view-p b) (refuse "Nothing to expand in the hex view"))
     (check-writable b)
@@ -291,10 +291,9 @@ the cursor, the nearest first, each with the buffer it is in when that is not
 this one; \\[expand-word] puts them in one after another. A plain terminal sends
 this key as C-M-_, which is redo there; \\[completion-at-point] (C-M-i) lists
 the words as well where the major mode has no completion of its own. Typing
-narrows the list;
-\\<popup>\\[popup-next] and \\[popup-previous] choose, \\[popup-insert] or
-\\`TAB' put the chosen one in, \\[popup-quit] closes it. When one word alone
-fits, it goes in at once."
+narrows the list; \\<popup>\\[popup-next] and \\[popup-previous] choose,
+\\[popup-insert] or \\`TAB' put the chosen one in, \\[popup-quit] closes it.
+When one word alone fits, it goes in at once."
   (let ((b (current-buffer)))
     (when (tuatara.display:hex-view-p b) (refuse "Nothing to complete in the hex view"))
     (check-writable b)

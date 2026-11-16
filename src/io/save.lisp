@@ -211,9 +211,8 @@ directory when its own cannot hold files), flushed to disk. Returns the backup's
 descriptor and path, or NIL when CANCEL's car turned true first."
   (let* ((directory (parent-path target))
          (place (if (writable-p directory) directory (cache-directory)))
-         ;; the process and a counter: two saves at once, of files of one name, have a backup each
-         (path (format nil "~a/.~a.tuatara-backup-~d-~d" (string-right-trim "/" (native place))
-                       (native-file-name target) (sb-posix:getpid) (sb-ext:atomic-incf (car **scratch-counter**))))
+         ;; a random part: two saves at once, of files of one name, have a backup each
+         (path (scratch-name place (concatenate 'string "backup-" (fit-name (native-file-name target) :most 200))))
          ;; made anew, never through a link put there: one left by a crash taken away first
          (fd (flet ((make ()
                       (sb-posix:open path (logior sb-posix:o-rdwr sb-posix:o-creat sb-posix:o-excl +o-nofollow+
@@ -319,7 +318,7 @@ touched. Returns :DONE, or :STOPPED."
             ;; the file made here for this write, empty, is not left behind: that very file alone
             (unless existing
               (let ((there (path-stamp target :follow nil :failure nil)))
-                (when (and made there (= (stamp-dev made) (stamp-dev there)) (= (stamp-ino made) (stamp-ino there)))
+                (when (and made (same-stamped-file-p made there))
                   (tuatara.runtime:ignoring-errors-reported ("taking away ~a" target)
                     (sb-posix:unlink (native target))))))
             (error e))

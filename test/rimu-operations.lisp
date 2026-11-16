@@ -1079,6 +1079,53 @@ installed. Work in the background sees 7-Zip as installed either way."
                               (uiop:subdirectories "/tmp/"))
                "~a" program)))))
 
+(define-test (rimu-operations archive-of-a-link-in-the-home-directory)
+  ;; a link lying directly in the home directory, a place no program shut in is shown, is packed as the link,
+  ;; what it leads to not followed nor the home directory shown
+  (with-operations-tree (dir)
+    (let ((home (namestring (here dir "home/")))
+          (old (sb-posix:getenv "HOME")))
+      (ensure-directories-exist home)
+      (alexandria:write-string-into-file "secret" (here dir "home/private.txt"))
+      (sb-posix:symlink "private.txt" (namestring (here dir "home/ln")))
+      (sb-posix:setenv "HOME" home 1)
+      (unwind-protect
+           (progn
+             (false (tuatara.io:shown-place-p home))
+             (tuatara.defaults::write-archive (list (namestring (here dir "home/ln"))) (namestring (here dir "ln.tar")))
+             (let ((listing (tuatara.defaults::archive-listing (namestring (here dir "ln.tar")))))
+               (true (search "ln" listing) "~a" listing)
+               (false (search "private.txt" (subseq listing 0 (or (search "->" listing) 0))) "~a" listing))
+             (tuatara.defaults::extract-archive (namestring (here dir "ln.tar")) (namestring (here dir "out/")))
+             (is eq :symlink (tuatara.io:path-kind (namestring (here dir "out/ln")) :follow nil))
+             (is string= "private.txt" (tuatara.io:symlink-target (namestring (here dir "out/ln")))))
+        (sb-posix:setenv "HOME" old 1)))))
+
+(define-test (rimu-operations archive-of-a-link-keeps-its-own-time)
+  ;; a link in an ordinary directory is packed as it lies there, with its own time, not the time of packing
+  (with-operations-tree (dir)
+    (uiop:run-program (list "touch" "-h" "-d" "2001-02-03 04:05:06" (namestring (here dir "link"))))
+    (tuatara.defaults::write-archive (list (namestring (here dir "link"))) (namestring (here dir "link.tar")))
+    (let ((listing (uiop:run-program (list "tar" "-tvf" (namestring (here dir "link.tar"))) :output :string)))
+      (true (search "2001-02-03" listing) "~a" listing))))
+
+(define-test (rimu-operations archive-refuses-a-home-link-that-is-no-utf-8)
+  ;; a link in the home directory leads where the octets are no UTF-8: refused, naming it, and no archive is made
+  (with-operations-tree (dir)
+    (let ((home (namestring (here dir "home/")))
+          (old (sb-posix:getenv "HOME")))
+      (ensure-directories-exist home)
+      (uiop:run-program (list "sh" "-c" "ln -s \"$(printf 'a\\377')\" \"$1/bad\"" "sh" (string-right-trim "/" home)))
+      (sb-posix:setenv "HOME" home 1)
+      (unwind-protect
+           (let ((said (handler-case (progn (tuatara.defaults::write-archive (list (namestring (here dir "home/bad")))
+                                                                             (namestring (here dir "bad.tar")))
+                                            nil)
+                         (error (e) (princ-to-string e)))))
+             (true (and said (search "bad" said) (search "UTF-8" said)) "~a" said)
+             (false (tuatara.io:path-stamp (namestring (here dir "bad.tar")))))
+        (sb-posix:setenv "HOME" old 1)))))
+
 (define-test (rimu-operations archives-extracted-writable)
   ;; what is extracted can be moved and deleted, whatever modes the archive
   ;; gives its directories and files (an ISO image's are read only), by tar and
@@ -1221,9 +1268,12 @@ to the locked zipcrypt one.")
                                                      (here dir name)))
     (with-each-archive-program (program)
       (flet ((locked-p (name)
-               (let* ((path (namestring (here dir name)))
-                      (kind (tuatara.defaults::archive-kind path)))
-                 (tuatara.defaults::archive-locked-p path kind (tuatara.defaults::archive-program kind))))
+               (let ((path (namestring (here dir name))))
+                 (tuatara.defaults::call-with-archive-copy
+                  path
+                  (lambda (copy)
+                    (let ((kind (tuatara.defaults::archive-kind path copy)))
+                      (tuatara.defaults::archive-locked-p path kind (tuatara.defaults::archive-program kind) copy))))))
              (out (name) (here dir (format nil "~(~a~)-~a/" program name))))
         (true (locked-p "locked-aes256.zip") "~a" program)
         (true (locked-p "locked-zipcrypt.zip") "~a" program)
@@ -1769,9 +1819,9 @@ extra field of the AE-x kind (ID #x9901) saying strength 3."
       (false (probe-file (here dir "sub/x"))))
     ;; a plain name is one the directory can hold as it is: no /, no control character, not . nor ..
     (dolist (name '("notes.txt" ".hidden" "a b" "ü"))
-      (true (tuatara.defaults::plain-file-name-p name) "~s" name))
+      (true (tuatara.io:entry-name-p name :controls t) "~s" name))
     (dolist (name (list "" "." ".." "sub/x" "/" (format nil "a~cb" #\Tab) (format nil "a~c" (code-char 127))))
-      (false (tuatara.defaults::plain-file-name-p name) "~s" name))
+      (false (tuatara.io:entry-name-p name :controls t) "~s" name))
     ;; A: a formatted file, its header written and saved at once
     (let ((tuatara.defaults::*formatted-file-prompts* '(:title :keywords)))
       (ops-session dir "A M y SPC n o t e RET RET"))

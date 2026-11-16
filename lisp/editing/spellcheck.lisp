@@ -30,20 +30,20 @@ when one of them takes it. \\[spellcheck-languages] sets them for one buffer.
 checked: code, links, dates, tags, keywords. A face counts for those named
 after it with a dot (:markup.raw for :markup.raw.block).
 - a list of faces' names: those whose words are left out."
-  :values (list-of "a face's name"))
+  :values (list-of symbol))
 
 (define-setting *spellcheck-comment-faces* '(:comment)
   "In code, the faces of comments, whose words are checked (unless
 *SPELLCHECK-MODES* says :strings): those named after them with a dot too,
 as a language's documentation comments are.
 - a list of faces' names: :comment as standard."
-  :values (list-of "a face's name"))
+  :values (list-of symbol))
 
 (define-setting *spellcheck-string-faces* '(:string)
   "In code, the faces of strings, whose words are checked (unless
 *SPELLCHECK-MODES* says :comments): those named after them with a dot too.
 - a list of faces' names: :string as standard."
-  :values (list-of "a face's name"))
+  :values (list-of symbol))
 
 (defun spellcheck-never-p (buffer)
   "True when BUFFER is never checked: opened safely, or shown as octets."
@@ -86,8 +86,9 @@ en_NZ for en_NZ.UTF-8; NIL for C, POSIX or none."
         (and (cl-ppcre:scan "^[a-z]{2,3}(_[A-Z]{2})?$" name) name)))))
 
 (defun spellcheck-languages-of (buffer)
-  "The languages BUFFER's words are checked in: its own (\\[spellcheck-languages]),
-else *SPELLCHECK-LANGUAGES*, else the locale's, else en_US."
+  "The languages BUFFER's words are checked in: its own
+\(\\[spellcheck-languages]), else *SPELLCHECK-LANGUAGES*, else the locale's,
+else en_US."
   (or (tuatara.buffer:buffer-local buffer :spellcheck-languages)
       *spellcheck-languages*
       (list (or (locale-language) "en_US"))))
@@ -126,11 +127,6 @@ after one of them with a dot."
                            (char= (char name (length other)) #\.)))))
               faces))))
 
-(defun word-character-p (c)
-  "True for a character words are made of: a letter, or a mark joined to one
-(the accent of a decomposed é, the vowel signs of Devanagari)."
-  (or (alpha-char-p c) (member (sb-unicode:general-category c) '(:mn :mc :me))))
-
 (defparameter *unspaced-scripts* '(:han :hiragana :katakana :thai :lao :khmer :myanmar :tibetan)
   "The scripts written without spaces between words, whose runs of letters
 are no words to spell one by one.")
@@ -147,18 +143,17 @@ short (a line truncated at the window's edge or scrolled sideways).")
 (defun whole-words-segment (buffer start end)
   "START and END, octets of BUFFER, moved out to the blanks before and after,
 at most *SPELLING-REACH* octets: a word a row cuts short is spelt whole."
-  (flet ((blank-p (c) (member c '(#\Space #\Tab #\Newline #\Return))))
-    (let* ((rope (tuatara.buffer:buffer-text buffer))
-           (size (tuatara.buffer:buffer-size buffer))
-           (before (tuatara.buffer:buffer-string
-                    buffer :start (tuatara.text:rope-char-start rope (max 0 (- start *spelling-reach*))) :end start))
-           (after (tuatara.buffer:buffer-string
-                   buffer :start end :end (tuatara.text:rope-char-start rope (min size (+ end *spelling-reach*)))))
-           (back (let ((blank (position-if #'blank-p before :from-end t)))
-                   (if blank (subseq before (1+ blank)) "")))
-           (on (let ((blank (position-if #'blank-p after))) (if blank (subseq after 0 blank) ""))))
-      (values (- start (tuatara.text:string-octet-length back))
-              (+ end (tuatara.text:string-octet-length on))))))
+  (let* ((rope (tuatara.buffer:buffer-text buffer))
+         (size (tuatara.buffer:buffer-size buffer))
+         (before (tuatara.buffer:buffer-string
+                  buffer :start (tuatara.text:rope-char-start rope (max 0 (- start *spelling-reach*))) :end start))
+         (after (tuatara.buffer:buffer-string
+                 buffer :start end :end (tuatara.text:rope-char-start rope (min size (+ end *spelling-reach*)))))
+         (back (let ((blank (position-if #'blank-char-p before :from-end t)))
+                 (if blank (subseq before (1+ blank)) "")))
+         (on (let ((blank (position-if #'blank-char-p after))) (if blank (subseq after 0 blank) ""))))
+    (values (- start (tuatara.text:string-octet-length back))
+            (+ end (tuatara.text:string-octet-length on)))))
 
 (defun apostrophe-p (c)
   "True for an apostrophe, which a word may hold between its letters (don't, it’s)."
@@ -174,12 +169,10 @@ capital after its first letter (camelCase) is left too."
   (let ((words '()) (n (length text)) (i 0) (at offset))
     (flet ((octets (from to) (loop for k from from below to sum (tuatara.text:char-octet-length (char text k)))))
       (loop while (< i n)
-            do (if (member (char text i) '(#\Space #\Tab #\Newline #\Return))
+            do (if (blank-char-p (char text i))
                    (progn (incf at (tuatara.text:char-octet-length (char text i))) (incf i))
                    ;; a run of text up to the next blank
-                   (let* ((j (or (position-if (lambda (c) (member c '(#\Space #\Tab #\Newline #\Return)))
-                                              text :start i)
-                                 n))
+                   (let* ((j (or (position-if #'blank-char-p text :start i) n))
                           (run-at at)
                           (skip (or (search "://" text :start2 i :end2 j) (find #\@ text :start i :end j)
                                     (find #\_ text :start i :end j) (find #\\ text :start i :end j)
@@ -187,13 +180,13 @@ capital after its first letter (camelCase) is left too."
                      (unless skip
                        (let ((k i) (k-at run-at))
                          (loop while (< k j)
-                               do (if (not (word-character-p (char text k)))
+                               do (if (not (letter-or-mark-p (char text k)))
                                       (progn (incf k-at (tuatara.text:char-octet-length (char text k))) (incf k))
                                       (let ((e k))
                                         (loop while (and (< e j)
-                                                         (or (word-character-p (char text e))
+                                                         (or (letter-or-mark-p (char text e))
                                                              (and (apostrophe-p (char text e)) (< (1+ e) j)
-                                                                  (word-character-p (char text (1+ e))) (> e k))))
+                                                                  (letter-or-mark-p (char text (1+ e))) (> e k))))
                                               do (incf e))
                                         (let ((word (subseq text k e))
                                               (end-at (+ k-at (octets k e))))
@@ -229,9 +222,9 @@ touched them."
 
 (defun local-words (buffer)
   "The words BUFFER's own word list takes as right; those after
-\"LocalWords:\" on its lines near its end (*LOCAL-WORDS-REACH*), written
-as comments (# LocalWords: Aotearoa Ōtaki in Org, the same after ;; in Lisp), a table of strings; read again when
-the text near the end changes."
+\"LocalWords:\" on its lines near its end (*LOCAL-WORDS-REACH*), written as
+comments (# LocalWords: Aotearoa Ōtaki in Org, the same after ;; in Lisp), a
+table of strings; read again when the text near the end changes."
   (let ((version (tuatara.buffer:buffer-version buffer))
         (kept (tuatara.buffer:buffer-local buffer :local-words)))
     (cond ((and kept (eq (first kept) version)) (third kept))
@@ -259,13 +252,13 @@ the text near the end changes."
 end while that stays within the fill column, else on a new one at the end,
 written as a comment of the buffer's language (# in Org, ;; in Lisp), or as a
 line of its own in plain text. Nothing is added when the list has WORD
-already: :LISTED then, else T. Refused, with an error, where the language has
-no comments to hold the list in (CSV, Markdown), as a line there would be
-part of the data or show as text."
+already: :LISTED then, else T. Refused (REFUSE) where the language has no
+comments to hold the list in (CSV, Markdown), as a line there would be part of
+the data or show as text."
   (check-writable buffer)
   (let ((mode (buffer-major-mode buffer)))
     (unless (or (mode-comment-syntax mode) (member (type-of mode) '(text-mode fundamental-mode)))
-      (error (substitute-command-keys "~a has no comments to keep a word list in: \\[spellcheck-correct] keeps ~
+      (refuse (substitute-command-keys "~a has no comments to keep a word list in: \\[spellcheck-correct] keeps ~
                                        “~a” while the editor runs, or in a language's word list"
                                       :for-format t)
              (tuatara.modes:mode-lighter (type-of mode)) word)))
@@ -292,9 +285,9 @@ part of the data or show as text."
 
 (defun spelling-in-rows (buffer rows syntax)
   "The words of BUFFER that ROWS show, read as SYNTAX (the lists of ranges the
-text is coloured in, (START END FACE)) says they are to be spelt: as three values,
-those spelt wrong and those not yet answered, each (START END WORD) in order,
-and the languages they are spelt in."
+text is coloured in, (START END FACE)) says they are to be spelt: as three
+values, those spelt wrong and those not yet answered, each (START END WORD) in
+order, and the languages they are spelt in."
   (let* ((kind (spellcheck-kind buffer))
          (code-faces (and (eq kind :code) (spelling-faces-checked buffer)))
          (languages (spellcheck-languages-of buffer))
@@ -311,9 +304,9 @@ and the languages they are spelt in."
             (setf active (delete-if (lambda (r) (<= (second r) at)) active))
             (when (and (not (gethash (third word) local))
                        (if (eq kind :code)
-                      (or (eq code-faces :all)
-                          (some (lambda (r) (face-among-p (third r) code-faces)) active))
-                      (notany (lambda (r) (face-among-p (third r) *spellcheck-excluded-faces*)) active)))
+                           (or (eq code-faces :all)
+                               (some (lambda (r) (face-among-p (third r) code-faces)) active))
+                           (notany (lambda (r) (face-among-p (third r) *spellcheck-excluded-faces*)) active)))
               (case (spelling-known languages (third word))
                 (:wrong (push word wrong))
                 ((nil) (push word unknown))))))))

@@ -44,7 +44,7 @@ stops=() reports=() watches=() diffs=()
 
 # the manifest's rows NAME URL COMMIT, those named on the command line or all
 rows() {
-  grep -v '^#' "$root/syntax/grammars.tsv" | grep -v '^[[:space:]]*$' |
+  grammar_manifest |
     while IFS=$'\t' read -r name url commit license subpath; do
     [ "$name" = tree-sitter-cli ] && continue
     if [ $# -gt 0 ]; then
@@ -66,7 +66,10 @@ github() {
   if command -v gh >/dev/null; then
     gh api "$1" 2>/dev/null || true
   elif [ -n "${GITHUB_TOKEN:-}" ]; then
-    curl -sSf -H "Authorization: Bearer $GITHUB_TOKEN" "https://api.github.com/$1" 2>/dev/null || true
+    # the token goes to curl on its input, not on a command line other accounts can read
+    printf 'header = "Authorization: Bearer %s"\n' "$GITHUB_TOKEN" |
+      curl -sSf --config - "${https_only[@]}" "https://api.github.com/$1" 2>/dev/null ||
+      true
   fi
 }
 
@@ -92,9 +95,12 @@ except Exception:
     pass' "$2"
 }
 
+# the options that keep curl to HTTPS, redirects too, and to half a minute
+https_only=(--proto =https --proto-redir =https --max-time 30)
+
 # what curl fetches from $1 over HTTPS alone, redirects too, or nothing
 https_get() {
-  curl -sS --proto =https --proto-redir =https --max-time 30 "$1" 2>/dev/null || true
+  curl -sSf "${https_only[@]}" "$1" 2>/dev/null || true
 }
 
 # the DID document of the did:plc: DID $1 from the PLC directory, or nothing
@@ -191,7 +197,7 @@ tangled_where() {
     fi
   fi
   # where tangled.org sends git
-  sent=$(curl -s --proto =https --max-time 30 -o /dev/null -w '%{redirect_url}' "https://tangled.org/$owner/$name/info/refs?service=git-upload-pack" 2>/dev/null || true)
+  sent=$(curl -s "${https_only[@]}" -o /dev/null -w '%{redirect_url}' "https://tangled.org/$owner/$name/info/refs?service=git-upload-pack" 2>/dev/null || true)
   case "$sent" in
     "https://$knot/${repo_did:-$owner/$name}/"*) ;;
     *) echo "! ? tangled.org sends git to ${sent:-nowhere}, not to $knot, the server the records name"; return ;;
@@ -230,15 +236,15 @@ where_now() {
       answer=$(github "repos/$path")
       echo "$(gone_or "$(field "$answer" full_name)") $(field "$answer" archived)" ;;
     https://codeberg.org/*)
-      answer=$(curl -sSf "https://codeberg.org/api/v1/repos/$path" 2>/dev/null || true)
+      answer=$(https_get "https://codeberg.org/api/v1/repos/$path")
       echo "$(gone_or "$(field "$answer" full_name)") $(field "$answer" archived)" ;;
     https://gitlab.com/*)
-      answer=$(curl -sSf "https://gitlab.com/api/v4/projects/${path//\//%2F}" 2>/dev/null || true)
+      answer=$(https_get "https://gitlab.com/api/v4/projects/${path//\//%2F}")
       echo "$(gone_or "$(field "$answer" path_with_namespace)") $(field "$answer" archived)" ;;
     https://git.sr.ht/*)
       # no API without a token: a repository moved answers with a redirect
       local code target
-      read -r code target < <(curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' "$url" || echo "000 -")
+      read -r code target < <(curl -s "${https_only[@]}" -o /dev/null -w '%{http_code} %{redirect_url}\n' "$url" || echo "000 -")
       case "$code" in
         200) echo "$path ?" ;;
         30*) echo "${target#https://git.sr.ht/} ?" ;;

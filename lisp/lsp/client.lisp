@@ -16,9 +16,12 @@
 
 (in-package #:tuatara.lsp)
 
-(defvar *lsp-largest-message* (* 32 1024 1024)
+(define-setting *lsp-largest-message* (* 32 1024 1024)
   "The largest message read from a language server, in octets: a larger one
-is let go unread, said so.")
+is let go unread, said so. Raise it for a server that sends very large
+answers (the symbols of a whole project at once).
+- a whole number: that many octets, 32 MB (33554432) as standard."
+  :values (integer 1 *))
 
 (defvar *lsp-most-unsent* (* 64 1024 1024)
   "The most octets of messages waiting for a language server to read them: a
@@ -239,6 +242,16 @@ With SECONDS, a question not answered in that time is no longer wanted
   (when (remhash id (lsp-server-waiting server))
     (lsp-notify server "$/cancelRequest" (tuatara.text:json-object "id" id))))
 
+(defun call-waiting (server then result error doing)
+  "Call THEN, what waited for an answer of SERVER, with RESULT and ERROR as
+the answer. When it fails, that is noted in *Messages*, and in the debug log
+with DOING, a format control taking the server's name, saying what was being
+done; the caller goes on to the others."
+  (handler-case (reporting-errors (doing (lsp-server-name server))
+                  (funcall then result error))
+    (error (e)
+      (log-message (format nil "~a: what waited for an answer failed: ~a" (lsp-server-name server) e)))))
+
 (defun lsp-give-up-late ()
   "Give up each request of *LSP-DEADLINES* past its time, telling what waited
 for it :TIMEOUT, and let go of those answered; the seconds until the next is
@@ -252,10 +265,7 @@ due, or NIL when none waits."
                 ((minusp left)
                  (setf *lsp-deadlines* (remove entry *lsp-deadlines*))
                  (lsp-cancel server id)
-                 (handler-case (reporting-errors ("giving up waiting for ~a" (lsp-server-name server))
-                                 (funcall then nil :timeout))
-                   (error (e)
-                     (log-message (format nil "~a: what waited for an answer failed: ~a" (lsp-server-name server) e)))))
+                 (call-waiting server then nil :timeout "giving up waiting for ~a"))
                 (t (setf soonest (if soonest (min soonest left) left)))))))
     (and soonest (max 0.01 soonest))))
 
@@ -275,19 +285,13 @@ Failed to spawn rustfmt; \"it failed\" when they say nothing."
                                       (tuatara.io:native-file-name program))
                                     :simple-calls t))))
 
-(defun seconds-words (seconds)
-  "SECONDS as a person reads them: 1 second, 2 seconds, 0.5 seconds."
-  (let ((n (if (and (rationalp seconds) (not (integerp seconds))) (float seconds) seconds)))
-    (when (and (floatp n) (= n (round n))) (setf n (round n)))
-    (format nil "~a second~:[s~;~]" n (eql n 1))))
-
 (defun lsp-error-words (error &key (seconds *lsp-wait*) (setting '*lsp-wait*))
   "Why a question to a server came to nothing, in words short enough for the
 echo area: for ERROR :TIMEOUT, no answer within SECONDS (as SETTING says);
 for :STOPPED, that a key stopped the wait; for a server's answer saying it
 failed, its words made short (SHORT-FAILURE-WORDS)."
   (case error
-    (:timeout (format nil "no answer within ~a (~(~a~))" (seconds-words seconds) setting))
+    (:timeout (format nil "no answer within ~a (~(~a~))" (duration-words seconds) setting))
     (:stopped "a key stopped the wait")
     (t (short-failure-words (and (hash-table-p error) (tuatara.text:json-text error "message"))))))
 
@@ -724,7 +728,8 @@ directories are no longer watched for it."
       (break-promises server "the server stopped")
       (forget-file-diagnostics server)
       (dolist (then waiting)
-        (funcall then nil (tuatara.text:json-object "message" "the server stopped"))))))
+        (call-waiting server then nil (tuatara.text:json-object "message" "the server stopped")
+                      "telling what waited for ~a that it stopped")))))
 
 (defun lsp-server-ended (server why)
   "SERVER's program ended, or must (WHY, words): say so, with its last words, and stop it."

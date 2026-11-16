@@ -19,7 +19,10 @@
 # found.
 # Nothing is fetched or compiled while Tuatara runs.
 # Usage: tools/terminal-library.sh [TARGET]  (does nothing when it is up to date)
+#        tools/terminal-library.sh --stamp [TARGET]  (says what an up-to-date build records)
 set -euo pipefail
+say_stamp=""
+if [ "${1:-}" = --stamp ]; then say_stamp=1; shift; fi
 root="$(cd "$(dirname "$0")/.." && pwd)"
 . "$root/tools/fetch.sh"
 pin="$root/lisp/terminal/library.pin"
@@ -30,10 +33,15 @@ out="$root/build/terminal"
 [ "$target" = "x86_64-linux-gnu.2.28" ] || out="$root/build/terminal-$target"
 sources="$root/build/terminal-sources"
 stamp="$out/.built-from"
-wanted="$(cat "$pin" "$0" "$root/lisp/terminal/layout.c" "$root/lisp/terminal/shim.c" | sha256sum | cut -c1-16)-$target"
+# Raise it when the steps below change what is built; rewording this file does not call for a build.
+recipe=1
+wanted="$( (cat "$pin" "$root/lisp/terminal/layout.c" "$root/lisp/terminal/shim.c"; echo "recipe $recipe") |
+  sha256sum | cut -c1-16)-$target"
+if [ -n "$say_stamp" ]; then echo "$wanted"; exit 0; fi
 if [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$wanted" ] && [ -f "$out/libghostty-vt.so" ]; then exit 0; fi
 if ! command -v zig >/dev/null || [ "$(zig version)" != "$zig_wanted" ]; then
-  echo "tools/terminal-library.sh: Zig $zig_wanted is needed to build the terminal library (have: $(zig version 2>/dev/null || echo none)); HACKING.org says where to get it" >&2
+  echo "tools/terminal-library.sh: Zig $zig_wanted is needed to build the terminal library" \
+       "(have: $(zig version 2>/dev/null || echo none)); HACKING.org says where to get it" >&2
   exit 1
 fi
 if [ "$(git -C "$sources" rev-parse HEAD 2>/dev/null)" != "$commit" ]; then
@@ -43,7 +51,8 @@ if [ "$(git -C "$sources" rev-parse HEAD 2>/dev/null)" != "$commit" ]; then
   git -C "$sources" checkout -q FETCH_HEAD
 fi
 rm -rf "$out.new"
-(cd "$sources" && zig build -Demit-lib-vt -Dlib-version-string="$version" -Doptimize=ReleaseSafe -Dtarget="$target" --prefix "$out.new" >/dev/null)
+(cd "$sources" && zig build -Demit-lib-vt -Dlib-version-string="$version" -Doptimize=ReleaseSafe \
+  -Dtarget="$target" --prefix "$out.new" >/dev/null)
 # the licences of what the library compiles in, each in licenses/NAME/
 licences="$out.new/licenses"
 mkdir -p "$licences"
@@ -53,7 +62,9 @@ zig_lib="$(sed -n 's/^ *\.lib_dir = "\(.*\)",$/\1/p' <<<"$zig_env")"
 missing() { echo "tools/terminal-library.sh: no licence for $1 ($2): not built" >&2; exit 1; }
 # the hash Ghostty's build.zig.zon file $1 gives its dependency $2
 zon_hash() {
-  awk -v name=".$2 = .{" 'index($0, name) { found = 1 } found && /\.hash = "/ { sub(/.*\.hash = "/, ""); sub(/".*/, ""); print; exit }' "$sources/$1"
+  awk -v name=".$2 = .{" '
+    index($0, name) { found = 1 }
+    found && /\.hash = "/ { sub(/.*\.hash = "/, ""); sub(/".*/, ""); print; exit }' "$sources/$1"
 }
 # file $3 of the package of Zig's cache with the hash $2, as a licence of $1
 from_package() {
@@ -77,9 +88,10 @@ simdutf_version=9.0.0
 simdutf_h="$sources/pkg/simdutf/vendor/simdutf.h"
 grep -q "^#define SIMDUTF_VERSION \"$simdutf_version\"" "$simdutf_h" ||
   missing simdutf "simdutf.h is not version $simdutf_version"
-from_address simdutf LICENSE-MIT "https://raw.githubusercontent.com/simdutf/simdutf/v$simdutf_version/LICENSE-MIT" \
+simdutf_licences="https://raw.githubusercontent.com/simdutf/simdutf/v$simdutf_version"
+from_address simdutf LICENSE-MIT "$simdutf_licences/LICENSE-MIT" \
   fc8dbc04e03ad4efc08a647ffe7f995b811a95bc04c0e85a56d5277c6593fa5f
-from_address simdutf LICENSE-APACHE "https://raw.githubusercontent.com/simdutf/simdutf/v$simdutf_version/LICENSE-APACHE" \
+from_address simdutf LICENSE-APACHE "$simdutf_licences/LICENSE-APACHE" \
   3d34610fc6b5e1b0bfe4e2f36171c2d62c28ef05cb8d704f5a0073be41a43b3d
 awk '/begin file include\/simdutf\/internal\/isadetection.h/ { on = 1; next } on && /^\/\* From/ { keep = 1 }
      keep { print } keep && /\*\// { exit }' "$simdutf_h" > "$licences/simdutf/NOTICE-isadetection"
@@ -94,9 +106,10 @@ from_package uucode "$(zon_hash build.zig.zon uucode)" LICENSE.md
 uucode_commit=1fb73433bba5d93366c57f23ff2e9d7939746500
 grep -q "uucode-$uucode_commit\.tar\.gz" "$sources/build.zig.zon" ||
   missing uucode "build.zig.zon names no uucode $uucode_commit"
-from_address uucode LICENSE_unicode "https://raw.githubusercontent.com/jacobsandlund/uucode/$uucode_commit/licenses/LICENSE_unicode" \
+uucode_licences="https://raw.githubusercontent.com/jacobsandlund/uucode/$uucode_commit/licenses"
+from_address uucode LICENSE_unicode "$uucode_licences/LICENSE_unicode" \
   1eda5a3b026870c737b22e8bcd4954338612c790db688242e003f41a4fa95175
-from_address uucode LICENSE_Bjoern_Hoehrmann "https://raw.githubusercontent.com/jacobsandlund/uucode/$uucode_commit/licenses/LICENSE_Bjoern_Hoehrmann" \
+from_address uucode LICENSE_Bjoern_Hoehrmann "$uucode_licences/LICENSE_Bjoern_Hoehrmann" \
   de219cece932aad5a817bf763393d8d149d378a15d2ad5320e3331eac07626dd
 # Zig's own licence: beside its lib directory as ziglang.org gives it, or where a
 # distribution puts it

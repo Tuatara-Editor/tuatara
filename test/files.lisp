@@ -1066,7 +1066,8 @@ second value."
         (is = 3 (tuatara.io:stamp-size (fifth entry))))
       (is equal (list "sub/" "pipe" name)
           (map 'list #'tuatara.command::candidate-string
-               (tuatara.defaults::file-candidates (concatenate 'string (tuatara.io:native dir)))))
+               (tuatara.defaults::directory-candidates
+                (tuatara.defaults::input-directory-path (concatenate 'string (tuatara.io:native dir))) nil)))
       ;; nor in a directory's: one called [Gmail] is listed, walked, searched and completed in
       (let ((odd (concatenate 'string (tuatara.io:native dir) "sub/[Gmail] *?")))
         (sb-posix:mkdir odd #o700)
@@ -1085,7 +1086,8 @@ second value."
         (is equal '("inbox [1].txt")
             (map 'list
                  #'tuatara.command::candidate-string
-                 (tuatara.defaults::file-candidates (concatenate 'string odd "/"))))))))
+                 (tuatara.defaults::directory-candidates
+                  (tuatara.defaults::input-directory-path (concatenate 'string odd "/")) nil)))))))
 
 (define-test (visiting-and-saving default-directory)
   ;; a buffer with no file is in *default-directory*, ~/ unless set: a file

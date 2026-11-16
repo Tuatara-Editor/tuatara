@@ -228,6 +228,7 @@ every editor session applies the startup theme, so tests about faces start clean
 (define-test (themes true-colour-in-the-terminal)
   ;; a terminal that says it shows 24-bit colour gets the theme's colours exactly, whatever
   ;; TERM names: its own (kitty's, tmux's) or one not installed here; not the Linux console's 8
+  (tuatara.frontend.tui::load-ncurses)
   (flet ((direct (term colorterm term-colours &optional (wanted :auto))
            (tuatara.frontend.tui::direct-terminal-type :term term :colorterm colorterm :wanted wanted
                                                        :term-colours term-colours)))

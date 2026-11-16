@@ -57,17 +57,15 @@ parsed string and its compiled pattern."
   (failing nil :documentation "True when the last search found nothing.")
   (wrapped nil :documentation "True once the search continued from the other end.")
   (stopped nil :documentation "Where a search that gave way to the next key began, or NIL.")
-  (background nil :documentation "While the search goes on in the background, (RESULT CANCEL); else NIL.")
+  (background nil :documentation "While the search goes on in the background, the work searching; else NIL.")
   (exit-when-found nil :documentation "True when the search ends once its search in the background is done.")
   (slow nil
         :documentation "True when the pattern was found too slow on this text to search for on the editor's thread.")
   (refused nil :documentation "True when the search's question was not ended because its pattern cannot be used.")
   (history '() :documentation "Earlier states, gone back to as what was typed is taken back.")
   (filtering nil :documentation "For a search that narrows a list, that list (or where its filters are lit); else NIL.")
-  (count nil
-         :documentation "The matches counted, as (KEY TOTAL ANCHOR BEFORE): how many there are,
-and how many come before the match starting at ANCHOR; or NIL.")
-  (counting nil :documentation "While the matches are counted in the background, (KEY RESULT CANCEL); else NIL.")
+  (count nil :documentation "The matches counted, a SEARCH-COUNT, or NIL.")
+  (counting nil :documentation "While the matches are counted in the background, the work counting; else NIL.")
   (count-words nil :documentation "What the prompt last said of the count, kept while the matches are counted again.")
   (tally nil :documentation "For a replacement, its count of the matches it replaces (a PATTERN-COUNT), or NIL.")
   (parsed nil :documentation "Cache: (KEY . SEARCH-LINE) for the string last parsed.")
@@ -146,24 +144,17 @@ rate counts went so far (COUNT-TIMED), or of no more than
 
 (define-record (pattern-count (:constructor make-pattern-count ()) (:copier nil))
   "How many matches a pattern being typed has, counted in the background:
-KEY, what was counted for, and TOTAL, how many; JOB, while counting, (KEY
-RESULT CANCEL); WORDS, what was shown last; FILTER, the pattern last typed,
+KEY, what was counted for, and TOTAL, how many; JOB, while counting, its
+TUATARA.RUNTIME:BACKGROUND-WORK; WORDS, what was shown last; FILTER, the pattern last typed,
 what it was typed as and its filter, (TEXT REGEX FILTER), made once
 \(STRETCH-PATTERN-COUNT)."
   (key nil :documentation "What a PATTERN-COUNT counted for, or NIL.")
   (total nil :documentation "How many matches a PATTERN-COUNT found for its KEY, or NIL.")
-  (job nil :documentation "While a PATTERN-COUNT counts, (KEY RESULT CANCEL); else NIL.")
+  (job nil :documentation "While a PATTERN-COUNT counts, the work counting (its key what is counted); else NIL.")
   (words nil :documentation "What a PATTERN-COUNT showed last, kept while it counts again.")
   (filter nil :documentation "The pattern a PATTERN-COUNT last counted, as (TEXT REGEX FILTER)."))
 
 (setf (documentation 'make-pattern-count 'function) "Return a PATTERN-COUNT that has counted nothing yet.")
-
-(defun stop-pattern-count (counter)
-  "Stop COUNTER's count in the background, when one goes on."
-  (let ((job (pattern-count-job counter)))
-    (when job
-      (tuatara.runtime:stop-work (third job))
-      (setf (pattern-count-job counter) nil))))
 
 (defun pattern-count-update (counter key octets count)
   "Keep COUNTER's count for KEY up to date while a pattern is typed. KEY says
@@ -176,29 +167,30 @@ still to wait. The second is what to show before the prompt: such as \"12\",
 what it showed last until the new count comes, or \"\" before any or with
 nothing to count."
   (let* ((job (pattern-count-job counter))
-         (result (and job (car (second job)))))
+         (result (tuatara.runtime:background-work-value job)))
     (when result
       (setf (pattern-count-job counter) nil)
       (when (integerp (first result))
-        (setf (pattern-count-key counter) (first job) (pattern-count-total counter) (first result)))))
+        (setf (pattern-count-key counter) (tuatara.runtime:background-work-key job)
+              (pattern-count-total counter) (first result)))))
   (flet ((shown () (or (pattern-count-words counter) "")))
-    (cond ((null key) (stop-pattern-count counter) (values nil ""))
+    (cond ((null key) (tuatara.runtime:stop-background-work (pattern-count-job counter)) (values nil ""))
           ((and (equal key (pattern-count-key counter)) (pattern-count-total counter))
-           (stop-pattern-count counter)
+           (tuatara.runtime:stop-background-work (pattern-count-job counter))
            (values nil (setf (pattern-count-words counter) (format nil "~d" (pattern-count-total counter)))))
-          ((equal key (first (pattern-count-job counter))) (values t (shown)))
+          ((and (pattern-count-job counter)
+                (equal key (tuatara.runtime:background-work-key (pattern-count-job counter))))
+           (values t (shown)))
           ((typing-pause-left octets)
-           (stop-pattern-count counter)
+           (tuatara.runtime:stop-background-work (pattern-count-job counter))
            (values (typing-pause-left octets) (shown)))
-          (t (stop-pattern-count counter)
-             (let ((cancel (list nil)))
-               (setf (pattern-count-job counter)
-                     (list key
-                           (tuatara.runtime:start-background-result
-                            (lambda ()
-                              (list (count-timed octets cancel (lambda () (funcall count (lambda () (car cancel)))))))
-                            "tuatara pattern count" (editor-job-waker) cancel)
-                           cancel)))
+          (t (tuatara.runtime:stop-background-work (pattern-count-job counter))
+             (setf (pattern-count-job counter)
+                   (tuatara.runtime:start-background-work
+                    key
+                    (lambda (cancel)
+                      (list (count-timed octets cancel (lambda () (funcall count (lambda () (car cancel)))))))
+                    "tuatara pattern count" (editor-job-waker)))
              (values t (shown))))))
 
 (defun count-in-stretches (rope matcher stretches &key every stop)
@@ -410,11 +402,11 @@ and how many there are shows before it (SEARCH-COUNT-WORDS)."
                         (when (and (search-state-wrapped state) (not replacing)) '("wrapped"))
                         (list (pattern-kind-words (search-state-regex state)))
                         (if replacing
-                            (list (if (find #\n flags) "count" "replace") (nth-value 2 (search-scope state)))
+                            (list (if (counting-flags-p flags) "count" "replace") (nth-value 2 (search-scope state)))
                             (let ((scope (nth-value 2 (search-bounds state))))
                               (list* "search" (if (search-state-direction state) "forward" "backward")
                                      (and scope (list scope)))))))
-         (asking (and replacing (find #\c flags) (not (find #\n flags)))))
+         (asking (and replacing (asking-flags-p flags))))
     (when (search-state-filtering state)
       (setf words (list (pattern-kind-words (search-state-regex state)) "filter")))
     (format nil "~@(~{~a~^ ~}~)~:[~;, asking at each~]~@[ [~a]~]: "
@@ -472,11 +464,9 @@ other keys waiting till the play is over (QUIT-WHILE-PLAYING-P)."
 (defun cancel-background-search (state)
   "Stop STATE's search in the background, when one goes on; what it finds is
 not taken in."
-  (let ((background (search-state-background state)))
-    (when background
-      (tuatara.runtime:stop-work (second background))
-      (setf (search-state-background state) nil
-            (search-state-exit-when-found state) nil))))
+  (when (search-state-background state)
+    (tuatara.runtime:stop-background-work (search-state-background state))
+    (setf (search-state-exit-when-found state) nil)))
 
 (defun search-in-background (state find)
   "Go on with STATE's search on a thread of its own: FIND, a function of a
@@ -484,20 +474,18 @@ function to ask now and then whether to give way, gives the match as
 MATCHER-SEARCH does; the editor woken when it is done, and the match taken in
 by SEARCH-TAKE-IN. FIND reads only what does not change while it runs."
   (cancel-background-search state)
-  (let ((cancel (list nil)))
-    (setf (search-state-background state)
-          (list (tuatara.runtime:start-background-result
-                 (lambda ()
-                   (multiple-value-bind (start end) (funcall find (lambda () (car cancel)))
-                     (list :done start end)))
-                 "tuatara search" (editor-job-waker) cancel)
-                cancel))))
+  (setf (search-state-background state)
+        (tuatara.runtime:start-background-work
+         nil
+         (lambda (cancel)
+           (multiple-value-bind (start end) (funcall find (lambda () (car cancel)))
+             (list :done start end)))
+         "tuatara search" (editor-job-waker))))
 
 (defun search-take-in (state)
   "Take in what STATE's search in the background found, once it is done: the
 match, point moved to it, or the search failing. True when it was taken in."
-  (let* ((background (search-state-background state))
-         (found (and background (car (first background)))))
+  (let ((found (tuatara.runtime:background-work-value (search-state-background state))))
     (when found
       (setf (search-state-background state) nil)
       (destructuring-bind (kind start &optional end) found
@@ -507,18 +495,23 @@ match, point moved to it, or the search failing. True when it was taken in."
               (t (setf (search-state-failing state) t))))
       t)))
 
+(define-record (search-count (:constructor make-search-count (for total anchor before)) (:copier nil))
+  "The matches of a search counted FOR what SEARCH-COUNT-KEY gives: TOTAL, how
+many there are, and BEFORE, how many come before the match starting at ANCHOR."
+  (for nil :read-only t :documentation "What the matches of a SEARCH-COUNT were counted for (SEARCH-COUNT-KEY).")
+  (total 0 :read-only t :documentation "How many matches a SEARCH-COUNT found.")
+  (anchor nil :read-only t :documentation "Where the match a SEARCH-COUNT counts the matches before starts, or NIL.")
+  (before 0 :read-only t :documentation "How many matches come before a SEARCH-COUNT's ANCHOR."))
+
+(defun search-count-hidden (count)
+  "What of the text search filters hid when COUNT, a SEARCH-COUNT, was counted."
+  (third (search-count-for count)))
+
 (defun search-count-key (state)
   "What STATE's matches are counted for: the pattern as it is read, the text
 searched and what of it search filters hide."
   (list (search-key state) (multiple-value-list (search-bounds state))
         (tuatara.display:hidden-bounds (current-buffer))))
-
-(defun stop-search-count (state)
-  "Stop counting STATE's matches in the background, when that goes on."
-  (let ((counting (search-state-counting state)))
-    (when counting
-      (tuatara.runtime:stop-work (third counting))
-      (setf (search-state-counting state) nil))))
 
 (defvar *search-count-near* (* 256 1024)
   "Octets between the match last counted for and the current one within which
@@ -538,18 +531,19 @@ for moved by the matches counted between the two, while they stand within
 *SEARCH-COUNT-NEAR* of each other."
   (let ((count (search-state-count state))
         (start (car (search-state-match state))))
-    (when (equal (first count) (search-count-key state))
-      (destructuring-bind (total anchor before) (rest count)
-        (declare (ignore total))
+    (when (and count (equal (search-count-for count) (search-count-key state)))
+      (let ((anchor (search-count-anchor count)) (before (search-count-before count)))
         (cond ((null anchor) nil)
               ((= start anchor) (1+ before))
               ((<= (abs (- start anchor)) *search-count-near*)
                (let* ((rope (tuatara.buffer:buffer-text (current-buffer)))
                       (between (count-line-matches rope (search-matcher state) (min start anchor) (max start anchor)
                                                    :bound (nth-value 1 (search-bounds state))
-                                                   :hidden (third (first count))))
+                                                   :hidden (search-count-hidden count)))
                       (before (if (> start anchor) (+ before between) (- before between))))
-                 (setf (third (rest count)) before (second (rest count)) start)
+                 ;; a count of its own: an earlier state keeps the one it had
+                 (setf (search-state-count state)
+                       (make-search-count (search-count-for count) (search-count-total count) start before))
                  (1+ before))))))))
 
 (defun update-search-count (state)
@@ -564,54 +558,55 @@ pauses (*TYPING-PAUSE*). True while one goes on, or the seconds still to wait."
   (when (search-replacing-p state)
     (return-from update-search-count (update-replace-count state)))
   (let* ((counting (search-state-counting state))
-         (result (and counting (car (second counting)))))
+         (result (tuatara.runtime:background-work-value counting)))
     (when result
       (setf (search-state-counting state) nil)
       (unless (eq (first result) :error)
         (destructuring-bind (total anchor before) result
           (setf (search-state-count state)
-                (list (first (first counting)) (or total (second (search-state-count state))) anchor before))))))
+                (make-search-count (first (tuatara.runtime:background-work-key counting))
+                                   (or total (search-count-total (search-state-count state))) anchor before))))))
   (let ((match (search-state-match state))
         (failing (search-state-failing state)))
     (if (or (search-replacing-p state) (search-state-filtering state) (search-state-background state)
             (search-problem state) (and (null match) (not failing)))
-        (progn (stop-search-count state) nil)
+        (progn (tuatara.runtime:stop-background-work (search-state-counting state)) nil)
         (let* ((key (search-count-key state))
                (start (and (not failing) (car match)))
-               (known (equal key (first (search-state-count state)))))
+               (known (and (search-state-count state) (equal key (search-count-for (search-state-count state))))))
           (cond ((and known (or failing (search-count-place state))) nil)
-                ((equal (list key start) (first (search-state-counting state))) t)
+                ((and (search-state-counting state)
+                      (equal (list key start) (tuatara.runtime:background-work-key (search-state-counting state))))
+                 t)
                 ((and (not known) (search-pause-left state))
-                 (stop-search-count state)
+                 (tuatara.runtime:stop-background-work (search-state-counting state))
                  (search-pause-left state))
-                (t (stop-search-count state)
+                (t (tuatara.runtime:stop-background-work (search-state-counting state))
                    (let ((rope (tuatara.buffer:buffer-text (current-buffer)))
                          (matcher (search-matcher state))
-                         (hidden (third key))
-                         (cancel (list nil)))
+                         (hidden (third key)))
                      (multiple-value-bind (low high) (search-bounds state)
                        (setf (search-state-counting state)
-                             (list (list key start)
-                                   (tuatara.runtime:start-background-result
-                                    (lambda ()
-                                      (count-timed
-                                       (+ (if known 0 (- high low)) (if start (- start low) 0))
-                                       cancel
-                                       (lambda ()
-                                         (block counting
-                                           (flet ((count-to (to)
-                                                    ;; the matches of one scan from LOW to HIGH that start before TO
-                                                    (multiple-value-bind (count status)
-                                                        (count-line-matches rope matcher low to
-                                                                            :bound high :hidden hidden
-                                                                            :stop (lambda () (car cancel)))
-                                                      (if status (return-from counting (list :error status)) count))))
-                                             (if (null start)
-                                                 (list (count-to high) nil nil)
-                                                 ;; the total stands while only the match moved
-                                                 (list (and (not known) (count-to high)) start (count-to start))))))))
-                                    "tuatara search count" (editor-job-waker) cancel)
-                                   cancel))))
+                             (tuatara.runtime:start-background-work
+                              (list key start)
+                              (lambda (cancel)
+                                (count-timed
+                                 (+ (if known 0 (- high low)) (if start (- start low) 0))
+                                 cancel
+                                 (lambda ()
+                                   (block counting
+                                     (flet ((count-to (to)
+                                              ;; the matches of one scan from LOW to HIGH that start before TO
+                                              (multiple-value-bind (count status)
+                                                  (count-line-matches rope matcher low to
+                                                                      :bound high :hidden hidden
+                                                                      :stop (lambda () (car cancel)))
+                                                (if status (return-from counting (list :error status)) count))))
+                                       (if (null start)
+                                           (list (count-to high) nil nil)
+                                           ;; the total stands while only the match moved
+                                           (list (and (not known) (count-to high)) start (count-to start))))))))
+                              "tuatara search count" (editor-job-waker)))))
                    t))))))
 
 (defun update-replace-count (state)
@@ -625,7 +620,7 @@ or the seconds still to wait."
       (let* ((matcher (and (not (search-problem state))
                            (plusp (length (search-line-pattern (search-line-of state))))
                            (search-matcher state)))
-             (every (and (find #\g (search-flags state)) t))
+             (every (every-match-flags-p (search-flags state)))
              (stretches (or pieces (list (cons low high))))
              (rope (tuatara.buffer:buffer-text (current-buffer))))
         (multiple-value-bind (going words)
@@ -657,9 +652,11 @@ its place."
                     (cond ((search-problem state) "")
                           ((search-state-failing state)
                            ;; past the last match, or none at all: how many there are
-                           (if (equal (first count) (search-count-key state)) (format nil "0/~d" (second count)) ""))
+                           (if (and count (equal (search-count-for count) (search-count-key state)))
+                               (format nil "0/~d" (search-count-total count))
+                               ""))
                           ((null match) "")
-                          (place (format nil "~d/~d" place (second count)))
+                          (place (format nil "~d/~d" place (search-count-total count)))
                           (t (or (search-state-count-words state) "")))))))))
 
 (defun shown-match-search (hidden rope matcher from limit &rest keys &key (forward t) &allow-other-keys)
@@ -847,7 +844,7 @@ stretch then looked through from its line's start, not before LOW. As a
 second value :SLOW, the matches NIL, when the pattern is too slow on this text
 to find them in a moment. The one way the matches lit on screen and the
 replacements shown beside them are found."
-  (let ((per-line (and (search-replacing-p state) (not (find #\g (search-flags state))))))
+  (let ((per-line (and (search-replacing-p state) (not (every-match-flags-p (search-flags state))))))
     (multiple-value-bind (found cut)
         (tuatara.runtime:stoppable-work ((list nil) :slow tuatara.runtime:*slow-call-seconds*)
           (let ((out '()) (last -1))
@@ -940,7 +937,7 @@ quick enough here to show beside each match what takes its place
   "What STATE's replacement puts in place of each of its matches in BUFFER
 from START to END, shown beside the match as no text of the buffer: each
 (AT AT TEXT :REPLACE-COMING), AT the match's end, in order, as a
-replacements function gives them (TUATARA.DISPLAY:BUFFER-REPLACEMENTS-FUNCTION).
+replacements function gives them (TUATARA.DISPLAY:ADD-REPLACEMENTS).
 A line break in it shows as ⏎."
   (let* ((rope (tuatara.buffer:buffer-text buffer))
          (line (search-line-of state))
@@ -965,16 +962,12 @@ A line break in it shows as ⏎."
   "Have BUFFER's display show, while STATE's replacement is typed, what takes
 the place of each match beside it (REPLACE-PREVIEW-TEXTS), as well as what its
 mode shows otherwise; returns a function that puts the display back."
-  (let ((before (tuatara.display:buffer-replacements-function buffer)))
-    (setf (tuatara.display:buffer-replacements-function buffer)
-          (lambda (b start end)
-            (let ((own (and (eq *search* state) (replace-preview-p state)
-                            (replace-preview-texts state b start end)))
-                  (theirs (and before (funcall before b start end))))
-              (if (and own theirs)
-                  (merge 'list (copy-list theirs) own #'< :key #'car)
-                  (or own theirs)))))
-    (lambda () (setf (tuatara.display:buffer-replacements-function buffer) before))))
+  (let ((key (list :replace-preview)))
+    (tuatara.display:add-replacements buffer key
+                                      (lambda (b start end)
+                                        (and (eq *search* state) (replace-preview-p state)
+                                             (replace-preview-texts state b start end))))
+    (lambda () (tuatara.display:remove-replacements buffer key))))
 
 (defun search-push-history (state)
   "Remember the state before a change, to go back to as what was typed is taken back."
@@ -1227,8 +1220,9 @@ goes back to where it began; what was typed is kept in the history either way."
              (search-go-back state)
              (message "Quit")))
       (cancel-background-search state)
-      (stop-search-count state)
-      (when (search-state-tally state) (stop-pattern-count (search-state-tally state)))
+      (tuatara.runtime:stop-background-work (search-state-counting state))
+      (when (search-state-tally state)
+        (tuatara.runtime:stop-background-work (pattern-count-job (search-state-tally state))))
       (when unpreview (funcall unpreview))
       (keep-typed-pattern (search-state-string state))
       ;; however it ended, a filter still being typed goes
@@ -1248,14 +1242,30 @@ before it leave."
   (when (search-state-region state)
     (setf (tuatara.buffer:buffer-mark-active-p (current-buffer)) t)))
 
+(defparameter *symbol-search-reach* (* 64 1024)
+  "The most octets either side of point the symbol a search suggests is looked
+for over (SYMBOL-SEARCH-TEXT): one running further is not suggested, never cut.")
+
 (defun symbol-search-text (position regex &optional (parsed t))
   "The symbol at POSITION in the current buffer, written for the search's
 prompt (SEARCH-QUOTE), whole symbols only when REGEX; PARSED true when the
-prompt reads a pattern and a replacement. NIL when there is no symbol there."
-  (multiple-value-bind (start end) (symbol-at (tuatara.buffer:buffer-text (current-buffer)) position)
-    (when start
-      (search-quote (tuatara.buffer:buffer-string (current-buffer) :start start :end end) regex
-                    :whole t :parsed parsed))))
+prompt reads a pattern and a replacement. NIL when there is no symbol there.
+Looked for no further than *SYMBOL-SEARCH-REACH* octets either way
+\(WORD-BOUNDS-AT): one running further is never cut short, which would search
+for what is not there; NIL then, and said so."
+  (let* ((buffer (current-buffer))
+         (reach *symbol-search-reach*)
+         (size (tuatara.buffer:buffer-size buffer)))
+    (multiple-value-bind (start end)
+        (word-bounds-at buffer position (lambda (c) (symbol-char-p c buffer)) reach)
+      (cond ((>= start end) nil)
+            ;; the run reaches the edge of what was looked at, a character's octets aside: it goes on
+            ((or (and (> (- position reach) 0) (<= start (+ (- position reach) 4)))
+                 (and (< (+ position reach) size) (>= end (- (+ position reach) 4))))
+             (message "The symbol at point runs past ~a either way: not suggested" (octets-words reach))
+             nil)
+            (t (search-quote (tuatara.buffer:buffer-string buffer :start start :end end) regex
+                             :whole t :parsed parsed))))))
 
 (defun search-insert-symbol-text (state)
   "The symbol where STATE began, written for its prompt (SYMBOL-SEARCH-TEXT)."
@@ -1288,9 +1298,10 @@ that typing takes its place (SYMBOL-SEARCH-TEXT)."
         (search-loop (make-search-state (point) forward regex region preset filtering) offered))))
 
 (define-command regex-search-forward ()
-  "Search forward as you type for a regular expression (PCRE syntax); a pattern
-without upper-case letters ignores case, unless it names a case: [[:upper:]],
-[[:lower:]], \\p{Lu}, \\p{Ll} and \\p{Lt} heed it, as a capital letter does.
+  "Search forward as you type for a regular expression (Perl-compatible regular
+expression (PCRE) syntax); a pattern without upper-case letters ignores case,
+unless it names a case: [[:upper:]], [[:lower:]], \\p{Lu}, \\p{Ll} and \\p{Lt}
+heed it, as a capital letter does.
 \\xNN from 80 to FF finds the octet NN where it stands on its own, not inside
 a character (shown as \\xNN), and \\x{E9} the character of that code; where
 lines end with a carriage return and a newline, $ matches before the carriage

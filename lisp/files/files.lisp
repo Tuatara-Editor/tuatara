@@ -81,8 +81,8 @@ buffer opened safely keeps showing its text as it is. Then run
              (setf (tuatara.buffer:buffer-name buffer) (tuatara.buffer:unique-buffer-name name)))
            (saved-out-of-evidence buffer)
            (take-mode-of-name buffer)))
-       (message "Wrote ~a~:[~*~; (~a in ~,1f s)~]" (abbreviated-path (tuatara.io:save-job-target job))
-                (> seconds *save-wait*) (octets-words (tuatara.io:save-job-total job)) seconds)
+       (message "Wrote ~a~:[~*~; (~a in ~a)~]" (abbreviated-path (tuatara.io:save-job-target job))
+                (> seconds *save-wait*) (octets-words (tuatara.io:save-job-total job)) (duration-words seconds))
        (when (live-buffer-p buffer)
          (run-hook *after-save-functions* buffer)))
       ((:stopped :failed) (message "~a" (tuatara.runtime:job-ending-words job))))
@@ -527,17 +527,6 @@ with LINE). Refused, saying so, while the file is still arriving
   (unless (wait-interruptibly (tuatara.runtime:job-thread job) :message words)
     (keyboard-quit-signal)))
 
-(define-setting *safe-directories* '()
-  "Directories whose files always open safely, as \\[find-file-safely] opens a
-file.
-A file opens read-only, with no major mode, hooks or version control, and
-nothing is written beside it. This holds however it is opened:
-\\[find-file], the files visited lately, a drop on the window, the command
-line. \\[end-safe-visit] opens one as usual after all.
-- nil: no directory, as standard.
-- a list of directories' names, '(\"~/Evidence/\") for example."
-  :values (list-of directory))
-
 (define-setting *open-binary-files-safely* t
   "Whether a file that looks binary opens safely, as \\[find-file-safely] opens
 it.
@@ -547,7 +536,6 @@ executables, archives and disk images have and text has not.
 - t: such a file opens safely.
 - nil: it opens as any file."
   :values boolean)
-
 
 (defun paths-common-directory (paths)
   "The deepest directory all of PATHS (full native names) are in, ending in /."
@@ -579,12 +567,6 @@ your time zone, a list of (NAME VALUE): TZ as yours is set, or as the zone
   (let ((zone (or (tuatara.io:own-variable "TZ") (system-time-zone-name))))
     (and zone (plusp (length zone)) (list (list "TZ" zone)))))
 
-(defun safe-directories ()
-  "The directories of *SAFE-DIRECTORIES*, read as a list however it was set
-(SETTING-LIST): one directory's name given alone, or a list with a dotted
-tail, counts every directory it names."
-  (setting-list '*safe-directories* *safe-directories*))
-
 (defun safe-directory-of (path)
   "The directory of *SAFE-DIRECTORIES* that the file or directory at PATH is,
 or is in or below, by the names as given, by the file a link leads to, or by
@@ -593,7 +575,7 @@ where their links lead (PATH-WITHIN-P, REALLY-WITHIN-P), or NIL; T when
 Where a link leads is looked for only when there are directories."
   (handler-case
       (reporting-errors ("looking for ~a in the safe directories" path)
-        (let ((directories (safe-directories)))
+        (let ((directories *safe-directories*))
           (when directories
             (let* ((path (or (ignoring-errors-reported ("expanding ~a" path)
                                (tuatara.io:native (tuatara.io:expand-path path)))
@@ -641,15 +623,25 @@ what else there is to say of how it opened (why it is not shown as a picture)."
 whose buffers list files (a rimu list's entry on the current line), or NIL.")
   (:method (mode buffer) (declare (ignore mode buffer)) nil))
 
+(defun shown-file (buffer &key at-point)
+  "The file BUFFER shows, its native name: the PDF or picture in its view, the
+entry on the line in a list of a directory, with AT-POINT the path written at
+point, or the file it visits; NIL for none."
+  (let ((file (or (tuatara.buffer:buffer-local buffer :viewed-file)
+                  (mode-file-name-at-point (buffer-major-mode buffer) buffer)
+                  (and at-point
+                       (let ((text (path-around buffer (tuatara.buffer:buffer-point buffer))))
+                         (and text (find #\/ text) (path-directory text buffer))))
+                  (tuatara.buffer:buffer-file buffer))))
+    (and file (tuatara.io:native file))))
+
 (define-command show-file-name ()
   "Say the full name of the file the current buffer shows, its directory and
 name, in the echo area, where *Messages* keeps it too: in a rimu list, that of
 the entry on the current line; in a buffer with no file, the directory it
 stands in. With a prefix argument (\\[universal-argument]), put it at point as well."
   (let* ((buffer (current-buffer))
-         (file (tuatara.buffer:buffer-file buffer))
-         (name (or (mode-file-name-at-point (buffer-major-mode buffer) buffer)
-                   (and file (tuatara.io:native file)))))
+         (name (shown-file buffer)))
     (if name
         (message "~a" name)
         (message "~a has no file; it stands in ~a" (tuatara.buffer:buffer-name buffer) (buffer-directory buffer)))

@@ -429,7 +429,6 @@ twice over the rest."
          (member (aref octets 0) '(0 5))
          (progn (short-sha256 octets 21 sum)
                 (short-sha256 sum 32 sum)
-
                 (loop for i below 4 always (= (aref sum i) (aref octets (+ 21 i))))))))
 
 (defun bech32-step (check value)
@@ -1013,7 +1012,6 @@ Luhn check digit right (ISO/IEC 7812)."
          collect (list name
                        (format nil "a date~a~:[~;, a bound with an offset compared in UTC~], ~
                                     [[:~a<2026-07-01:]] and the like for a range"
-
                                (ecase format
                                  (:iso " as RFC 3339 and ISO 8601 write it, 2026-06-30 or 2026-06-30T14:05:00+02:00")
                                  (:dmy ", day, month, year, 30.06.2026, 30/06/2026 or 30-06-2026 14:05")

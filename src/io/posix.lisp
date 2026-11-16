@@ -194,15 +194,6 @@ every frame asks the file system nothing."
 
 ;;; Memory outside Lisp
 
-(declaim (inline null-pointer null-pointer-p))
-(defun null-pointer ()
-  "The null foreign pointer."
-  (sb-sys:int-sap 0))
-
-(defun null-pointer-p (pointer)
-  "True when POINTER, a foreign pointer, is null."
-  (zerop (sb-sys:sap-int pointer)))
-
 (defmacro with-foreign-memory ((sap size &key zero) &body body)
   "Run BODY with SAP pointing at SIZE octets of foreign memory of its own, all
 zero to begin with when ZERO is true, freed when BODY is left, however it is
@@ -242,80 +233,20 @@ garbage is made for them; BODY must not keep SAP."
                (,call ,block))
              (tuatara.text:with-octet-block (,block ,room) (,call ,block)))))))
 
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  (defun c-type (type)
-    "The alien type DEFINE-C-FUNCTION takes TYPE for: :pointer, :int, :uint,
-:short, :uint8, :uint32, :long, :ulong, :size, :double, :float, :void, :boolean (a
-truth value as an int, GLib's gboolean), :bool (a truth value of one octet,
-C's bool) and :string (text, in UTF-8); any other TYPE is taken as an alien
-type itself."
-    (case type
-      (:pointer 'sb-sys:system-area-pointer)
-      (:int 'sb-alien:int)
-      (:uint 'sb-alien:unsigned-int)
-      (:short 'sb-alien:short)
-      (:uint8 '(sb-alien:unsigned 8))
-      (:uint32 '(sb-alien:unsigned 32))
-      (:long 'sb-alien:long)
-      ((:ulong :size) 'sb-alien:unsigned-long)
-      (:double 'sb-alien:double)
-      (:float 'sb-alien:single-float)
-      (:void 'sb-alien:void)
-      (:boolean '(sb-alien:boolean 32))
-      (:bool '(sb-alien:boolean 8))
-      (:string '(sb-alien:c-string :external-format :utf-8))
-      (t type))))
-
-(defmacro define-c-function ((c-name name) result &body arguments)
-  "Define NAME, a function calling the C function C-NAME, which returns
-RESULT: ARGUMENTS, after an optional docstring, are each (ARGUMENT TYPE), the
-types C-TYPE knows. Declared inline before it is defined, a call of NAME
-costs what the bare call does and makes no garbage, as for the system calls
-the editor makes on every key. The library holding C-NAME is not loaded by
-NAME: its callers load it first (FOREIGN-LIBRARY-P, as LOAD-GTK-LIBRARIES and
-LOAD-NCURSES do). A :string argument may be any string, given as
-WITH-C-STRING gives it; a :string result is read as SAP-STRING reads it, NIL
-for a null pointer."
-  (let* ((names (mapcar #'first (remove-if #'stringp arguments)))
-         (documentation (list (if (stringp (first arguments))
-                                  (pop arguments)
-                                  (format nil "Call the C function ~a~@[ with ~{~(~a~)~^, ~}~] and return what it ~
-                                               returns." c-name names))))
-         (saps (loop for (argument type) in arguments
-                     collect (if (eq type :string) (gensym (symbol-name argument)) argument)))
-         (call `(sb-alien:alien-funcall
-                 (sb-alien:extern-alien ,c-name (function ,(c-type (if (eq result :string) :pointer result))
-                                                          ,@(loop for (nil type) in arguments
-                                                                  collect (c-type (if (eq type
-                                                                                          :string) :pointer type)))))
-                 ,@saps))
-         (body (if (eq result :string)
-                   (let ((pointer (gensym "POINTER")))
-                     `(let ((,pointer ,call))
-                        (unless (null-pointer-p ,pointer) (sap-string ,pointer))))
-                   call)))
-    ;; each string written for C around the call, the result read before they go
-    (loop for (argument type) in (reverse arguments)
-          for sap in (reverse saps)
-          when (eq type :string)
-            do (setf body `(with-c-string (,sap ,argument) ,body)))
-    `(defun ,name ,names
-       ,@documentation
-       ,body)))
-
 ;;; The system's C functions the editor calls itself
 
 (declaim (inline %accept4 %bind %closedir %connect %copy-file-range %execv %execve %fchmodat %fcntl %fdopendir
                  %fgetxattr %flistxattr %free %fsetxattr %fstatfs %fstatvfs %futimens %getgroups %getsockopt
                  %inotify-add-watch %inotify-init1 %inotify-rm-watch %ioctl %ioctl-with-int %lgetxattr %linkat
                  %linkat-named %listen %memfd-create %memset %mkdirat %openat %pidfd-open %pidfd-send-signal %pipe2
-                 %poll %posix-fadvise %pread %pwrite %read %readdir %readlinkat %realpath %recvmsg %renameat2
-                 %sendmsg %shutdown %socket %socketpair %statvfs %statx %strlen %symlinkat %sync-file-range %unlinkat
-                 %utimensat %write))
+                 %poll %pread %pwrite %read %readdir %readlinkat %realpath %realloc %recvmsg %renameat2
+                 %send %sendmsg %shutdown %socket %socketpair %statvfs %statx %strlen %symlinkat %sync-file-range
+                 %unlinkat %utimensat %write))
 
 (define-c-function ("memset" %memset) :pointer (sap :pointer) (octet :int) (count :size))
 (define-c-function ("strlen" %strlen) :size (sap :pointer))
 (define-c-function ("free" %free) :void (sap :pointer))
+(define-c-function ("realloc" %realloc) :pointer (sap :pointer) (size :size))
 (define-c-function ("realpath" %realpath) :pointer (path :pointer) (resolved :pointer))
 (define-c-function ("statx" %statx) :int (dirfd :int) (path :pointer) (flags :int) (mask :uint) (buffer :pointer))
 (define-c-function ("openat" %openat) :int (dirfd :int) (path :pointer) (flags :int) (mode :int))
@@ -347,8 +278,8 @@ for a null pointer."
 (define-c-function ("copy_file_range" %copy-file-range) :long
   (in :int) (in-offset :pointer) (out :int) (out-offset :pointer) (length :size) (flags :uint))
 (define-c-function ("sync_file_range" %sync-file-range) :int (fd :int) (offset :long) (length :long) (flags :uint))
-(define-c-function ("posix_fadvise" %posix-fadvise) :int (fd :int) (offset :long) (length :long) (advice :int))
 (define-c-function ("read" %read) :long (fd :int) (sap :pointer) (count :size))
+(define-c-function ("send" %send) :long (fd :int) (sap :pointer) (count :size) (flags :int))
 (define-c-function ("pread" %pread) :long (fd :int) (sap :pointer) (count :size) (offset :long))
 (define-c-function ("write" %write) :long (fd :int) (sap :pointer) (count :size))
 (define-c-function ("pwrite" %pwrite) :long (fd :int) (sap :pointer) (count :size) (offset :long))
@@ -432,16 +363,19 @@ changed, in nanoseconds."))
     (#o100000 :regular) (#o040000 :directory) (#o010000 :fifo) (#o020000 :character-device)
     (#o060000 :block-device) (#o140000 :socket) (#o120000 :symlink) (t :other)))
 
+(defun same-stamped-file-p (stamp other)
+  "True when the STAMP OTHER, a file's, names the same file as STAMP: the same device and inode."
+  (and stamp other (= (stamp-dev stamp) (stamp-dev other)) (= (stamp-ino stamp) (stamp-ino other))))
+
 (defun same-content-p (a b)
   "True when stamps A and B name the same file with the same content as far as
 the system tells: device, inode, size and modification time."
-  (and a b (= (stamp-dev a) (stamp-dev b)) (= (stamp-ino a) (stamp-ino b))
+  (and (same-stamped-file-p a b)
        (= (stamp-size a) (stamp-size b)) (= (stamp-mtime a) (stamp-mtime b))))
 
 (defconstant +at-fdcwd+ -100 "The directory a relative name is taken from: the current one.")
 (defconstant +o-directory+ #o200000 "open's O_DIRECTORY: only a directory is opened.")
 (defconstant +o-nofollow+ #o400000 "open's O_NOFOLLOW: a symbolic link is not followed, and not opened.")
-(defconstant +o-cloexec+ #o2000000 "open's O_CLOEXEC: the descriptor is not given to programs started.")
 (defconstant +o-path+ #o10000000
   "Linux's O_PATH, which sb-posix does not name: a descriptor that only names a
 file, so that it can be examined, nothing in it opened; a device or a named
@@ -615,6 +549,12 @@ file or it cannot be examined."
   (multiple-value-bind (stamp errno) (statx-stamp fd "" #x1000) ; AT_EMPTY_PATH
     (or stamp (fail "examine" path errno))))
 
+(defun fd-size (fd &optional default)
+  "The size in octets of the file open as file descriptor (FD), or DEFAULT
+when it cannot be examined."
+  (let ((stamp (statx-stamp fd "" #x1000))) ; AT_EMPTY_PATH
+    (if stamp (stamp-size stamp) default)))
+
 (defun fd-kind (fd)
   "What the file open as file descriptor (FD) is, as STAMP-KIND names it
 \(:REGULAR, :DIRECTORY and the rest), and its STAMP as a second value; NIL
@@ -690,11 +630,6 @@ cannot change through that mount."
 (defconstant +f-setlease+ 1024 "fcntl's F_SETLEASE.")
 (defconstant +f-getlease+ 1025 "fcntl's F_GETLEASE.")
 
-(defun fcntl-int (fd command argument)
-  "Fcntl(2) on file descriptor (FD) with COMMAND and an integer ARGUMENT; its
-result, -1 on failure."
-  (%fcntl fd command argument))
-
 (defvar *lease-break-pipe* nil
   "A wake pipe (MAKE-WAKE-PIPE) woken whenever the system says a program waits
 on a lease, so that a thread can wait on it rather than ask again and again;
@@ -713,17 +648,17 @@ leases."
     (sb-sys:enable-interrupt sb-unix:sigio (lambda (signal info context)
                                              (declare (ignore signal info context))
                                              (wake *lease-break-pipe*))))
-  (zerop (fcntl-int fd +f-setlease+ 0)))                ; F_RDLCK
+  (zerop (%fcntl fd +f-setlease+ 0)))                ; F_RDLCK
 
 (defun lease-breaking-p (fd)
   "True when a program waits to write the file open as file descriptor (FD)
 holds a read lease on."
-  (= (fcntl-int fd +f-getlease+ 0) 2))                  ; F_UNLCK: the lease is to go
+  (= (%fcntl fd +f-getlease+ 0) 2))                  ; F_UNLCK: the lease is to go
 
 (defun release-lease (fd)
   "Give up the lease on the file open as file descriptor (FD), letting a
 waiting writer go on."
-  (fcntl-int fd +f-setlease+ 2)
+  (%fcntl fd +f-setlease+ 2)
   nil)
 
 (defun statvfs-fields (path &rest offsets)
@@ -747,31 +682,6 @@ holding PATH, and as a second value how many it holds in all; NIL when the
 system does not say, or the file system keeps no such count (btrfs)."
   (destructuring-bind (&optional free total) (statvfs-fields path 56 40)   ; f_favail, f_files
     (and total (plusp total) (values free total))))
-
-(defun octets-words (n &key binary compact)
-  "N octets in words, to one decimal: 950 B, 12.3 MB, 11.5 GB; with BINARY in
-units of 1,024, as 950 B, 954.0 MiB, 1.2 TiB. With COMPACT, as narrow as a
-column of sizes wants it, in units of 1,024 with one letter for the unit:
-260, 4.1K, 24K, 1.0M; below 10 with one decimal, every figure rounded up."
-  (if compact
-      (if (< n 1024)
-          (princ-to-string n)
-          (loop for unit across "KMGTPEZY"
-                for scale = 1024 then (* scale 1024)
-                do (let ((value (/ n scale)))
-                     (if (< value 10)
-                         (let ((tenths (ceiling (* 10 value))))
-                           (return (if (< tenths 100)
-                                       (format nil "~d.~d~c" (floor tenths 10) (mod tenths 10) unit)
-                                       (format nil "10~c" unit))))
-                         (let ((whole (ceiling value)))
-                           (when (< whole 1024)
-                             (return (format nil "~d~c" whole unit))))))))
-      (let ((base (if binary 1024 1000)))
-        (loop for (unit . more) on (if binary '("B" "KiB" "MiB" "GiB" "TiB" "PiB") '("B" "kB" "MB" "GB" "TB"))
-              for scale = 1 then (* scale base)
-              when (or (< n (* scale base)) (null more))
-                return (if (= scale 1) (format nil "~d B" n) (format nil "~,1f ~a" (/ n scale) unit))))))
 
 ;;; Copies the file system or the kernel makes
 
@@ -1018,8 +928,7 @@ read."
 from OFFSET will be read soon, so that it starts reading them from the disk
 while the octets before are worked on. Changes nothing; a system that takes
 no advice is fine."
-  (%posix-fadvise fd offset length 3)  ; POSIX_FADV_WILLNEED
-  nil)
+  (tuatara.text:file-advise fd offset length 3))  ; POSIX_FADV_WILLNEED
 
 (defvar *write-out-window* (* 32 1024 1024)
   "Octets a save or a copy hands the system before it has them written out to
@@ -1082,7 +991,8 @@ far. True when done."
   "Copy as COPY-FD-CONTENTS does, the stretches read noted in PASS, a
 TUATARA.TEXT:FILE-READ-PASS or NIL, and written out as they go when PASS is
 one, waiting for the device when WAIT is true."
-  (let ((piece (* 64 1024 1024)) (done 0) (buffer nil)
+  ;; a piece small enough that a stop, and how far it has got, are looked at often on a slow disk
+  (let ((piece (* 16 1024 1024)) (done 0) (buffer nil)
         (out (and pass (make-write-out dest (sb-posix:lseek dest 0 sb-posix:seek-cur) :wait wait))))
     (loop while (< done length)
           do (when (and cancel (car cancel)) (return-from copy-fd-pieces nil))
@@ -1098,7 +1008,9 @@ one, waiting for the device when WAIT is true."
                             (error 'file-system-error :operation "copy" :path path
                                                       :reason "it ended early; it changed while being copied"))
                           (write-octets dest buffer :end got :path path)
-                          (incf at got)))
+                          (incf at got)
+                          (when (and cancel (car cancel)) (return-from copy-fd-pieces nil))
+                          (when progress (funcall progress at))))
                (incf done n)
                (when out (write-out-step out (sb-posix:lseek dest 0 sb-posix:seek-cur)))
                (when progress (funcall progress done))))
@@ -1126,9 +1038,9 @@ time ran out, or :INTERRUPTED when a signal came first (a terminal resized)."
               (t (fail "wait on" "open files")))))))
 
 (defun new-pipe (flags)
-  "A new pipe made with FLAGS (pipe2: O_CLOEXEC for both its ends closed in
-programs started, O_NONBLOCK for neither waiting): its reading and its
-writing descriptor, two values."
+  "Make a pipe with pipe2 and FLAGS (O_CLOEXEC to close both ends in programs
+started, O_NONBLOCK for neither end to wait). Returns its reading and its
+writing descriptor."
   (sb-alien:with-alien ((ends (array sb-alien:int 2)))
     (unless (zerop (%pipe2 (sb-alien:alien-sap ends) flags))
       (fail "make" "a pipe"))
@@ -1142,8 +1054,9 @@ both closed in programs the editor starts."
 
 (defun wake (pipe)
   "Wake the thread waiting on PIPE (MAKE-WAKE-PIPE). Any thread may call it;
-a pipe already full is awake enough."
+a pipe already full is awake enough. Nothing is made on the heap."
   (let ((octet (make-array 1 :element-type '(unsigned-byte 8) :initial-element 1)))
+    (declare (dynamic-extent octet))
     (with-octets-sap (sap octet)
       (%write (cdr pipe) sap 1)))
   nil)
@@ -1326,7 +1239,7 @@ not wait when it cannot be read or written at once."
     (unless (zerop (%socketpair 1 (logior 1 #x80000) 0 (sb-alien:alien-sap fds)))  ; AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC
       (fail "make" "a local socket"))
     (let ((mine (sb-alien:deref fds 0)))
-      (fcntl-int mine 4 #x800)                                     ; F_SETFL O_NONBLOCK
+      (%fcntl mine 4 #x800)                                     ; F_SETFL O_NONBLOCK
       (values mine (sb-alien:deref fds 1)))))
 
 (defun shut-socket (fd)
@@ -1522,19 +1435,23 @@ file's access time. Allowed only on your own files.")
   "Linux's O_TMPFILE, which sb-posix does not name: open a directory this way to
 get a new file with no name, freed when closed and unmapped, even after a crash.")
 
-(sb-ext:defglobal **scratch-counter** (list 0)
-  "Numbers the named scratch files made where a file system has no unnamed ones.")
+(define-c-function ("getrandom" %getrandom) :long (sap :pointer) (count :size) (flags :uint))
 
 (defun random-name ()
-  "A name no one can guess: 64 random bits written in base 36, at most 13
-letters and digits."
-  (format nil "~36r" (random (expt 2 64) (make-random-state t))))
+  "A name no one can guess: 64 random bits from the system written in base 36,
+at most 13 letters and digits. Never an error: where the system will not give
+them at once, they are drawn as a new random state draws them."
+  (let ((octets (make-array 8 :element-type '(unsigned-byte 8))))
+    (declare (dynamic-extent octets))
+    (format nil "~36r" (if (with-octets-sap (sap octets) (= 8 (%getrandom sap 8 0)))
+                           (octets-integer octets 0 8)
+                           (random (expt 2 64) (make-random-state t))))))
 
 (defun scratch-name (directory tag)
   "A name for a scratch file in DIRECTORY that nothing else uses: hidden, with
-TAG, the process and a counter."
-  (format nil "~a/.tuatara-~a-~d-~d" (string-right-trim "/" (native directory)) tag
-          (sb-posix:getpid) (sb-ext:atomic-incf (car **scratch-counter**))))
+TAG and a part no one can guess (RANDOM-NAME), short whatever the file it
+serves is called, and never one a session ended early left behind."
+  (format nil "~a/.tuatara-~a-~a" (string-right-trim "/" (native directory)) tag (random-name)))
 
 (defun call-with-directory (directory function operation)
   "Call FUNCTION with a descriptor of the directory DIRECTORY, open for making
@@ -1783,6 +1700,37 @@ since."
   (let ((entry (assoc setting *directories-in-memory*)))
     (and entry (eq (fourth entry) (symbol-value setting)))))
 
+(defun xdg-home (variable directory &optional home)
+  "The directory the environment variable VARIABLE names (XDG_DATA_HOME and
+the others of the XDG base directories), or else DIRECTORY (.local/share/) in
+HOME, your home directory unless given; a pathname ending in /."
+  (or (own-directory variable)
+      (merge-pathnames directory (if home
+                                     (uiop:ensure-directory-pathname (uiop:parse-native-namestring (native home)))
+                                     (user-homedir-pathname)))))
+
+(defun data-home (&optional home)
+  "Where your data lives: $XDG_DATA_HOME, or .local/share/ in HOME, your home
+directory unless given."
+  (xdg-home "XDG_DATA_HOME" ".local/share/" home))
+
+(defun config-home (&optional home)
+  "Where your settings live: $XDG_CONFIG_HOME, or .config/ in HOME, your home
+directory unless given."
+  (xdg-home "XDG_CONFIG_HOME" ".config/" home))
+
+(defun cache-home (&optional home)
+  "Where files made again when they are gone live: $XDG_CACHE_HOME, or .cache/
+in HOME, your home directory unless given."
+  (xdg-home "XDG_CACHE_HOME" ".cache/" home))
+
+(defun user-font-directories (&optional (home (home-directory)))
+  "Your own font directories, native names without a / at the end: fonts in the
+data home ($XDG_DATA_HOME, or .local/share in HOME), then .fonts in HOME;
+HOME is your home directory unless given."
+  (list (path-join (native (data-home home)) "fonts")
+        (format nil "~a/.fonts" (string-right-trim "/" (native home)))))
+
 (defun chosen-directory (setting standard)
   "The directory the setting SETTING (a symbol) names, as a pathname, when it
 names one, else STANDARD, made if needed, for you alone. A directory named must
@@ -1829,7 +1777,7 @@ not there (*DIRECTORIES-IN-MEMORY*), a sentence each; NIL when all are."
   "The editor's cache directory, made if needed, for you alone: for scratch
 files that cannot go beside the file they serve. Never /tmp, which may be
 memory. *CACHE-DIRECTORY* when set (CHOSEN-DIRECTORY)."
-  (chosen-directory '*cache-directory* (uiop:xdg-cache-home "tuatara/")))
+  (chosen-directory '*cache-directory* (merge-pathnames "tuatara/" (cache-home))))
 
 (defun sync-range (fd offset length &key wait)
   "Start writing the octets of the file open as file descriptor (FD) from
@@ -1875,7 +1823,7 @@ Take the standard directory's logs away when no other session writes them, and
 the directory when it is left empty. What the session wrote before its init file
 was read was only the line saying what it is. Called once the init file is
 read."
-  (let ((standard (native (uiop:xdg-cache-home "tuatara/stderr.log"))))
+  (let ((standard (native (merge-pathnames "tuatara/stderr.log" (cache-home)))))
     (when (and *cache-directory* *session-log-words*
                (equal (handler-case (sb-posix:readlink "/proc/self/fd/2") (sb-posix:syscall-error () nil)) standard))
       (let ((fd (session-log *session-log-words*)))
@@ -1886,7 +1834,7 @@ read."
             (dolist (n '("" ".1" ".2" ".3"))
               (handler-case (sb-posix:unlink (concatenate 'string standard n)) (sb-posix:syscall-error () nil)))
             ;; the directory too, when nothing else is in it
-            (handler-case (sb-posix:rmdir (native (uiop:xdg-cache-home "tuatara/")))
+            (handler-case (sb-posix:rmdir (native (merge-pathnames "tuatara/" (cache-home))))
               (sb-posix:syscall-error () nil))))))))
 
 (defun state-directory ()
@@ -1894,10 +1842,7 @@ read."
 between one session and the next, such as the files visited lately.
 *STATE-DIRECTORY* when set (CHOSEN-DIRECTORY), else $XDG_STATE_HOME/tuatara/,
 or ~/.local/state/tuatara/."
-  (let ((home (own-directory "XDG_STATE_HOME")))
-    (chosen-directory '*state-directory*
-                      (merge-pathnames "tuatara/"
-                                       (or home (merge-pathnames ".local/state/" (user-homedir-pathname)))))))
+  (chosen-directory '*state-directory* (merge-pathnames "tuatara/" (xdg-home "XDG_STATE_HOME" ".local/state/"))))
 
 (defun open-new-entry (dirfd name mode &key (access sb-posix:o-wronly))
   "A descriptor of a new file NAME (a string) made in the directory open as
@@ -1938,7 +1883,7 @@ which the new file is made and renamed."
     (call-with-parent
      name
      (lambda (dirfd own)
-       (let ((temporary (format nil "~a.~d.~a.new" (native-file-name name) (sb-posix:getpid) (random-name))))
+       (let ((temporary (native-file-name (scratch-name (parent-path name) "write"))))
          (call-with-new-entry
           dirfd temporary mode
           (lambda (fd)
@@ -1959,11 +1904,6 @@ begin with one of PREFIXES (\"GSK_RENDERER=\", \"TUATARA_\"), ADDED first:
 the environment for a program started with settings of its own."
   (append added (remove-if (lambda (setting) (some (lambda (prefix) (uiop:string-prefix-p prefix setting)) prefixes))
                            (sb-ext:posix-environ))))
-
-(defun duplicate-fd (fd &key (lowest 0))
-  "A new file descriptor (FD) for what FD is open on, the lowest free one from
-LOWEST, kept from the programs started (F_DUPFD_CLOEXEC)."
-  (sb-posix:fcntl fd 1030 lowest))
 
 (defun open-named-pipe (path)
   "Make a named pipe at PATH, for its owner alone, and open it both ways
@@ -2013,23 +1953,28 @@ in which the file is made."
      :writing "write")
     path))
 
+(defun fd-holes-p (fd stamp)
+  "True when the regular file open as file descriptor (FD), whose STAMP was
+just taken (FD-STAMP), has holes: parts of it that hold no data on the disk,
+read as zeros (lseek's SEEK_HOLE finds one before its end). NIL when it is no
+regular file or the system cannot tell. The offset of FD is moved: read it
+from where you mean to."
+  (and (eq (stamp-kind stamp) :regular)
+       (plusp (stamp-size stamp))
+       ;; SEEK_HOLE is 4: the first hole at or after 0, the file's end when it has none
+       (let ((hole (handler-case (sb-posix:lseek fd 0 4) (sb-posix:syscall-error () nil))))
+         (and hole (< hole (stamp-size stamp))))))
+
 (defun file-holes-p (path)
-  "True when the regular file at PATH, a link not followed, has holes: parts
-of it that hold no data on the disk, read as zeros (lseek's SEEK_HOLE finds
-one before its end). Opened only when it is a regular file, never waited
-on; NIL when it cannot be opened or the system cannot tell."
+  "True when the regular file at PATH, a link not followed, has holes
+\(FD-HOLES-P). Opened only when it is a regular file, never waited on; NIL
+when it cannot be opened or the system cannot tell."
   (let ((fd (tuatara.runtime:ignoring-errors-reported ("opening ~a to look for holes" path)
               (handler-case (sb-posix:open (native path)
                                            (logior sb-posix:o-rdonly sb-posix:o-nonblock +o-nofollow+ +o-cloexec+))
                 (sb-posix:syscall-error () nil)))))
     (when fd
-      (unwind-protect
-           (let ((stamp (fd-stamp fd path)))
-             (and (eq (stamp-kind stamp) :regular)
-                  (plusp (stamp-size stamp))
-                  ;; SEEK_HOLE is 4: the first hole at or after 0, the file's end when it has none
-                  (let ((hole (handler-case (sb-posix:lseek fd 0 4) (sb-posix:syscall-error () nil))))
-                    (and hole (< hole (stamp-size stamp))))))
+      (unwind-protect (fd-holes-p fd (fd-stamp fd path))
         (sb-posix:close fd)))))
 
 (defun open-lock-file (path &key (wait 0))
@@ -2091,9 +2036,11 @@ where nothing may be written, told by the directory opened."
   (let ((octets (if (stringp contents) (tuatara.text:string-octets contents) contents)))
     (call-with-parent (native path)
                       (lambda (dirfd own)
-                        (let ((fd (openat-octets dirfd own (logior sb-posix:o-wronly sb-posix:o-creat sb-posix:o-append
-                                                                   +o-nofollow+ +o-cloexec+)
-                                                 #o600)))
+                        (multiple-value-bind (fd errno)
+                            (openat-octets dirfd own (logior sb-posix:o-wronly sb-posix:o-creat sb-posix:o-append
+                                                             +o-nofollow+ +o-cloexec+)
+                                           #o600)
+                          (unless fd (fail "append to" path errno))
                           (unwind-protect (write-octets fd octets :path (native path))
                             (sb-posix:close fd))))
                       :writing "append to")))

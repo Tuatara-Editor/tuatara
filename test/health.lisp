@@ -75,7 +75,8 @@ a moment.")
              ;; no grammar: ✘ for it, its rules not checked
              (let ((line (health-line text "health-missing ")))
                (true (search "✘" line)))
-             (true (search "health-missing: no grammar no-such-grammar.so in" text))
+             (true (search "health-missing (no-such-grammar.so)" text))
+             (is = 1 (count-matches "No grammar in " text))
              (false (search "None found." text)))))
     (setf tuatara.defaults::*languages*
           (remove-if (lambda (l) (member (tuatara.defaults::language-name l) '(health-broken health-missing)))
@@ -332,12 +333,30 @@ a moment.")
     (false tuatara.packages:*package-needs*)))
 
 (define-test (health setting-outside-its-values)
-  ;; a setting holding a value it does not take is named among the problems with its value
-  ;; and what it takes, and keeps its value
-  (let ((tuatara-user:*package-check-signatures* "yes"))
-    (let ((problems (tuatara.defaults::health-problems '() '() '())))
-      (true (find "*package-check-signatures* is \"yes\", but it takes t, nil." problems :test #'string=)
+  ;; a setting holding a value it does not take, a list changed where it stands, is named among
+  ;; the problems with its value and what it takes, and keeps its value
+  (let ((tuatara-user:*gui-padding* (list 4 12)))
+    (setf (second tuatara-user:*gui-padding*) "wide")
+    (let ((problems (tuatara.defaults::health-problems (tuatara.defaults::make-health-check '() '()))))
+      (true (find-if (lambda (problem) (search "*gui-padding* is (4 \"wide\"), but it takes" problem)) problems)
             "~s" problems))
-    (is equal "yes" tuatara-user:*package-check-signatures*))
-  (false (find-if (lambda (problem) (search "*package-check-signatures*" problem))
-                  (tuatara.defaults::health-problems '() '() '()))))
+    (is equal '(4 "wide") tuatara-user:*gui-padding*))
+  (false (find-if (lambda (problem) (search "*gui-padding*" problem))
+                  (tuatara.defaults::health-problems (tuatara.defaults::make-health-check '() '())))))
+
+(define-test (health grammars-looked-for-on-the-check-thread)
+  ;; the report is written without looking for the grammars' program and directories again on the editor's
+  ;; thread, once for each language
+  (let* ((check (tuatara.defaults::start-health-check))
+         (here 0))
+    (sb-thread:join-thread (tuatara.runtime:job-thread check))
+    (tuatara.runtime:forget-job check)
+    (let ((thread sb-thread:*current-thread*))
+      (dolist (name '(tuatara.syntax:syntax-helper-program tuatara.syntax:grammar-directories))
+        (sb-int:encapsulate name 'counted (lambda (function &rest arguments)
+                                            (when (eq sb-thread:*current-thread* thread) (incf here))
+                                            (apply function arguments)))))
+    (unwind-protect (true (search "Problems" (tuatara.defaults::health-report check)))
+      (dolist (name '(tuatara.syntax:syntax-helper-program tuatara.syntax:grammar-directories))
+        (sb-int:unencapsulate name 'counted)))
+    (is = 0 here)))

@@ -12,16 +12,15 @@
   "A named set of display attributes. FG and BG are colours: a keyword such as
 :red or :bright-blue, an integer 0-255, a string \"#rrggbb\", or NIL for
 unspecified. BOLD, ITALIC, UNDERLINE, REVERSE and DIM are true or NIL
-(unspecified). EXTEND true carries the face on past the end of a line it
-covers the newline of, to the window's edge. FONT is the name of a font
-without its size (\"DejaVu Sans Mono\") that a window of its own paints
-the text in, at its own size; a terminal shows its own. HEIGHT, 2 or 3, has a
-window of its own draw a line beginning in the face that many rows tall, its
-letters as many times as wide (a headline drawn large); NIL, or 1, for one row.
-INHERIT names a face whose attributes fill in what this one leaves
-unspecified. DOC says what the face is
-used for. BASE is the attribute list its definition gave it, which a theme
-starts from."
+(unspecified). EXTEND true carries the face on past the end of a line it covers
+the newline of, to the window's edge. FONT is the name of a font without its
+size (\"DejaVu Sans Mono\") that a window of its own paints the text in, at its
+own size; a terminal shows its own. HEIGHT, 2 or 3, has a window of its own draw
+a line beginning in the face that many rows tall, its letters as many times as
+wide (a headline drawn large); NIL, or 1, for one row. INHERIT names a face
+whose attributes fill in what this one leaves unspecified. DOC says what the
+face is used for. BASE is the attribute list its definition gave it, which a
+theme starts from."
   (name nil :read-only t :documentation "The name of FACE, a keyword.")
   (doc "" :documentation "What FACE is used for.")
   (fg nil :documentation "The foreground colour of FACE, or NIL.")
@@ -144,17 +143,22 @@ that is not defined."
     (and name (or (find-theme name)
                   (error "Theme ~(~a~) takes its faces from ~(~a~), which is not a theme." (theme-name theme) name)))))
 
+(defun theme-chain (theme)
+  "THEME and the themes it takes its faces from, directly or through others,
+nearest first, as many as 16 (a circle goes no further)."
+  (loop repeat 16
+        while theme
+        collect theme
+        do (setf theme (theme-source theme))))
+
 (defun palette-entry (theme role)
   "What ROLE (a symbol, matched by name) stands for in the palette of THEME or,
 when THEME's leaves it out, of the theme it takes its faces from, and so on:
 two values, the colour or role and T, or NIL and NIL when no palette names it."
-  (loop repeat 16
-        while theme
-        do (let ((entry (find (symbol-name role) (theme-palette theme)
-                              :key (lambda (entry) (symbol-name (first entry))) :test #'string=)))
-             (when entry (return-from palette-entry (values (second entry) t)))
-             (setf theme (theme-source theme))))
-  (values nil nil))
+  (dolist (theme (theme-chain theme) (values nil nil))
+    (let ((entry (find (symbol-name role) (theme-palette theme)
+                       :key (lambda (entry) (symbol-name (first entry))) :test #'string=)))
+      (when entry (return (values (second entry) t))))))
 
 (defun theme-role-colour (theme role)
   "The colour ROLE stands for in THEME, following a role whose colour is
@@ -174,19 +178,17 @@ round in a circle."
 those of the theme it takes its faces from first, then its own, every role
 turned into its colour in THEME's palette. Only FACE's settings when FACE is
 given. Linear in the settings times the palette."
-  (labels ((settings (source depth)
-             (let ((from (and (< depth 16) (theme-source source))))
-               (append (and from (settings from (1+ depth)))
-                       (if face-p
-                           (remove face (theme-settings source) :key #'car :test-not #'eq)
-                           (theme-settings source))))))
+  (let ((settings (loop for source in (reverse (theme-chain theme))
+                        append (if face-p
+                                   (remove face (theme-settings source) :key #'car :test-not #'eq)
+                                   (theme-settings source)))))
     (mapcar (lambda (setting)
               (cons (car setting)
                     (loop for (key value) on (cdr setting) by #'cddr
                           collect key
                           collect (if (and (member key '(:fg :bg :underline-colour))
                                            (role-p value)) (theme-role-colour theme value) value))))
-            (settings theme 0))))
+            settings)))
 
 (defun reset-face (face)
   "Return FACE to the attributes its definition gave it."
@@ -218,10 +220,7 @@ face documents itself."
 
 (defun theme-takes-from-p (theme name)
   "True when THEME is the theme called NAME or takes its faces from it, directly or through others."
-  (loop repeat 16
-        while theme
-        thereis (eq (theme-name theme) name)
-        do (setf theme (and (theme-faces-from theme) (find-theme (theme-faces-from theme))))))
+  (and (member name (theme-chain theme) :key #'theme-name) t))
 
 (defun register-theme (name doc settings &key colourless palette faces-from)
   "Record theme NAME with DOC and SETTINGS, its PALETTE of roles, the theme
@@ -260,7 +259,7 @@ Options may come before the settings:
                (:palette (setf palette (pop body)))
                (:faces-from (setf faces-from (pop body)))))
     `(register-theme ',name ,doc
-                     ',(mapcar (lambda (spec) (cons (first spec) (rest spec))) body)
+                     ',body
                      :colourless ,colourless :palette ',palette :faces-from ',faces-from)))
 
 (defvar *user-face-settings* '()
@@ -393,12 +392,13 @@ RESOLVE-FACE-SPEC) that names one, or NIL for the window's own."
 ;;; Colours for terminals
 
 (defun parse-hex-colour (colour)
-  "The red, green and blue components (0-255) of COLOUR, a string \"#rrggbb\", as three values; NIL when it is not one."
-  (when (and (stringp colour) (= (length colour) 7) (char= (char colour 0) #\#))
-    (let ((r (parse-integer colour :start 1 :end 3 :radix 16 :junk-allowed t))
-          (g (parse-integer colour :start 3 :end 5 :radix 16 :junk-allowed t))
-          (b (parse-integer colour :start 5 :end 7 :radix 16 :junk-allowed t)))
-      (when (and r g b) (values r g b)))))
+  "The red, green and blue components (0-255) of COLOUR, a string \"#rrggbb\",
+as three values; NIL when it is not one."
+  (when (and (stringp colour) (= (length colour) 7) (char= (char colour 0) #\#)
+             (loop for i from 1 below 7 always (digit-char-p (char colour i) 16)))
+    (values (parse-integer colour :start 1 :end 3 :radix 16)
+            (parse-integer colour :start 3 :end 5 :radix 16)
+            (parse-integer colour :start 5 :end 7 :radix 16))))
 
 (defparameter *basic-palette*
   #((0 0 0) (205 0 0) (0 205 0) (205 205 0) (0 0 238) (205 0 205) (0 205 205) (229 229 229)

@@ -39,10 +39,9 @@ mkdir -p "$work"
 export TUATARA_CONTAINER="${FUZZ_CONTAINER:-tuatara-langs}"
 inside bash -euo pipefail -c '
   ts=$1; root=$2; out=$3
-  cc -g -O1 -fno-omit-frame-pointer -fsanitize=address,undefined -fno-sanitize-recover=undefined \
-     -std=c11 -D_POSIX_C_SOURCE=200112L -D_DEFAULT_SOURCE -I"$ts/lib/include" -I"$ts/lib/src" \
-     "$ts/lib/src/lib.c" "$root/syntax/syntax.c" "$root/syntax/helper.c" \
-     -rdynamic -lpthread -ldl -o "$out/tuatara-syntax-helper"
+  . "$root/tools/grammar-build.sh"
+  compile_helper "$root" "$ts" "$out/tuatara-syntax-helper" -g -O1 -fno-omit-frame-pointer \
+    -fsanitize=address,undefined -fno-sanitize-recover=undefined
 ' build "$ts" "$PWD" "$work"
 for connections in one two; do
   start=$(date +%s)

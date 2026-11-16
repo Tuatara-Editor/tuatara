@@ -24,15 +24,39 @@ paths from the .gitignore's directory rather than of names at any depth."
         (when (plusp (length text))
           (list text directories-only negated anchored))))))
 
+(defparameter *gitignore-most-octets* (* 1024 1024)
+  "The largest file of git's patterns (a .gitignore, an excludes file, a git
+configuration) read: a larger one, as a tree from elsewhere may hold, is taken
+as having no rules, said once.")
+
+(defparameter *gitignore-longest-line* 4096
+  "The longest line of a .gitignore whose pattern is kept: a longer one is
+passed over, for each pattern is tried on every name of a walk.")
+
+(defvar *gitignore-too-large-said* (make-hash-table :test 'equal :synchronized t)
+  "The files of git's patterns said to be too large to read (GITIGNORE-OCTETS),
+each said once.")
+
+(defun gitignore-octets (path)
+  "The octets of the file of git's patterns at PATH, read as text
+\(READ-TEXT-FILE); NIL when it cannot be read, or is larger than
+*GITIGNORE-MOST-OCTETS*, which is said once."
+  (multiple-value-bind (octets why) (read-text-file path :most *gitignore-most-octets*)
+    (when (and (eq why :too-large) (not (shiftf (gethash path *gitignore-too-large-said*) t)))
+      (message "~a is larger than ~a: its patterns are not read (*gitignore-most-octets*)"
+               (abbreviated-path path) (tuatara.io:octets-words *gitignore-most-octets*)))
+    octets))
+
 (defun gitignore-rules (path base)
   "The rules of the file of git's patterns at PATH (a .gitignore), for the
 paths under the directory BASE (a native name ending with a slash), each
-(RULE . BASE); NIL when it cannot be read."
-  (let ((octets (read-text-file path)))
+\(RULE . BASE), lines longer than *GITIGNORE-LONGEST-LINE* passed over; NIL
+when it cannot be read or is too large (GITIGNORE-OCTETS)."
+  (let ((octets (gitignore-octets path)))
     (when octets
       (loop for line in (uiop:split-string (tuatara.text:lenient-string octets)
                                            :separator '(#\Newline #\Return))
-            for rule = (gitignore-rule line)
+            for rule = (and (<= (length line) *gitignore-longest-line*) (gitignore-rule line))
             when rule collect (cons rule base)))))
 
 (defun gitignored-p (rules name path directory)
@@ -75,12 +99,11 @@ configuration is only read, never run: core.excludesFile of its [core] section,
     (cond ((null setting) nil)
           ((not (eq setting :git)) (tuatara.io:native (tuatara.io:expand-path setting)))
           (t
-           (let* ((xdg (let ((env (tuatara.io:own-variable "XDG_CONFIG_HOME")))
-                         (if (and env (plusp (length env))) (directory-name env) (directory-name "~/.config/"))))
+           (let* ((xdg (tuatara.io:slash-ended (tuatara.io:native (tuatara.io:config-home))))
                   (named nil))
              (dolist (file (list (concatenate 'string xdg "git/config")
                                  (concatenate 'string (directory-name "~/") ".gitconfig")))
-               (let ((octets (read-text-file file)))
+               (let ((octets (gitignore-octets file)))
                  (when octets
                    (setf named (or (git-config-value octets "core" "excludesfile") named)))))
              (tuatara.io:native (tuatara.io:expand-path (or named (concatenate 'string xdg "git/ignore")))))))))

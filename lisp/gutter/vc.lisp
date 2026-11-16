@@ -18,8 +18,12 @@
 
 (in-package #:tuatara.defaults)
 
-(defvar *vc-gutter-enabled* t
-  "True to show version-control marks in the gutter for files under git.")
+(define-setting *vc-gutter-enabled* t
+  "Whether the gutter beside the lines of a file under git marks what changed
+since the last commit: lines added, changed and deleted.
+- t: the marks are shown (the standard).
+- nil: they are not. \\[vc-gutter-mode] switches them for the session."
+  :values boolean)
 
 (defvar *vc-gutter-max-bytes* (* 200 1024 1024)
   "The most octets of a file, and of its text as git has it in HEAD, that are
@@ -302,11 +306,12 @@ edits marked as they are made."
 
 (define-command vc-gutter-mode ()
   "Switch the version-control gutter on or off for all buffers; with a count,
-on when it is positive, off when it is zero or less."
+on when it is positive, off when it is zero or less. Switched on, each buffer
+with a file has its marks worked out again once a window shows it."
   (setf *vc-gutter-enabled* (switched-by-count *vc-gutter-enabled*))
-  (unless *vc-gutter-enabled*
-    (dolist (b tuatara.buffer:*buffers*) (setf (tuatara.buffer:buffer-local b 'vc-tracked) nil)))
-  (when *vc-gutter-enabled* (vc-attach (current-buffer)))
+  (dolist (b tuatara.buffer:*buffers*)
+    (unless *vc-gutter-enabled* (setf (tuatara.buffer:buffer-local b 'vc-tracked) nil))
+    (setf (tuatara.buffer:buffer-local b 'vc-checked) nil))
   (message "Version-control gutter ~a" (if *vc-gutter-enabled* "on" "off")))
 
 (defun vc-after-save (buffer)

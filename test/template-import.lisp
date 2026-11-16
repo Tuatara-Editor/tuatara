@@ -432,7 +432,7 @@ columns with margins of its own, as Word writes sections."
         (is equal '(:upright :sideways :upright :sideways :sideways :sideways) orients "~s" orients)
         ;; no upright section left empty after the appendix: the document's last is the appendix's own
         (true (search "w:orient=\"landscape\"" all :start2 (search "<w:sectPr>" all :from-end t))))
-      (let ((latex (tuatara.defaults::org-latex-document
+      (let ((latex (org-latex-of
                     (cl-ppcre:regex-replace "#\\+template: sect"
                                             (alexandria:read-file-into-string note-path) "#+template: ./sect")
                     :file note-path :enhanced t)))

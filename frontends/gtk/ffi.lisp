@@ -17,7 +17,7 @@ window makes, loaded when a window is opened.")
            ;; glib and gobject
            #:g-signal-connect #:g-signal-handler-disconnect #:g-idle-add #:g-timeout-add #:g-main-context-iteration
            #:g-object-unref #:g-free
-           #:g-settings-string #:g-object-class-find-property
+           #:g-settings-of #:g-settings-get-string #:g-settings-string #:g-object-class-find-property
            ;; gtk and gdk
            #:gtk-init #:gtk-get-major-version #:gtk-get-minor-version #:gtk-widget-get-frame-clock
            #:g-bytes-new #:g-bytes-unref #:gdk-memory-texture-new
@@ -84,10 +84,14 @@ stop with a Lisp error."
 names it is looked for by, the first found taken.")
 
 (defun load-gtk-libraries ()
-  "Load GTK4 and the libraries under it, once; signals when one is missing."
+  "Load GTK4 and the libraries under it, once; signals when one is missing, or
+when GTK is older than 4.14, which the window's pictures need."
   (dolist (names *gtk-libraries*)
     (unless (some #'tuatara.runtime:foreign-library-p names)
-      (error "The library ~a is not installed" (first names)))))
+      (error "The library ~a is not installed" (first names))))
+  (let ((major (gtk-get-major-version)) (minor (gtk-get-minor-version)))
+    (when (or (< major 4) (and (= major 4) (< minor 14)))
+      (error "The window needs GTK 4.14 or newer; this is GTK ~d.~d" major minor))))
 
 (defvar *callback-cells* '()
   "A cell (POINTER NAME) for each place a callback's C function pointer is
@@ -175,22 +179,32 @@ found the first time this place asks, kept after, nothing made for it."
   "True when SCHEMA, a settings schema, has a setting KEY."
   (schema :pointer) (key :string))
 
-(defun g-settings-string (schema-id key)
-  "The string setting KEY of the desktop settings SCHEMA-ID, or NIL when there
-is no such schema or key (GSettings would end the program on an unknown one)."
+(defun g-settings-of (schema-id key)
+  "New desktop settings of the schema SCHEMA-ID, the caller's to let go of
+\(G-OBJECT-UNREF), when that schema is installed with a setting KEY; NIL when
+it is not (GSettings would end the program on an unknown one)."
   (let ((source (%g-settings-schema-source-get-default)))
     (unless (null-pointer-p source)
       (let ((schema (%g-settings-schema-source-lookup source schema-id t)))
         (unless (null-pointer-p schema)
           (unwind-protect
-               (when (%g-settings-schema-has-key schema key)
-                 (let ((settings (%g-settings-new schema-id)))
-                   (unwind-protect
-                        (let ((value (%g-settings-get-string settings key)))
-                          (unwind-protect (sap-string value)
-                            (g-free value)))
-                     (g-object-unref settings))))
+               (and (%g-settings-schema-has-key schema key) (%g-settings-new schema-id))
             (%g-settings-schema-unref schema)))))))
+
+(defun g-settings-get-string (settings key)
+  "The string setting KEY of SETTINGS, desktop settings made by G-SETTINGS-OF
+with that KEY."
+  (let ((value (%g-settings-get-string settings key)))
+    (unwind-protect (sap-string value)
+      (g-free value))))
+
+(defun g-settings-string (schema-id key)
+  "The string setting KEY of the desktop settings SCHEMA-ID, or NIL when there
+is no such schema or key."
+  (let ((settings (g-settings-of schema-id key)))
+    (when settings
+      (unwind-protect (g-settings-get-string settings key)
+        (g-object-unref settings)))))
 
 ;;; GTK and GDK
 

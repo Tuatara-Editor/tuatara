@@ -2365,3 +2365,53 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
     (false (member "--no-lazy-fetch" (tuatara.git::git-safety (list "log")) :test #'string=)))
   (let ((tuatara.git::*git-lazy-fetch-option* t))
     (true (member "--no-lazy-fetch" (tuatara.git::git-safety (list "log")) :test #'string=))))
+
+(define-test (git rimu-column-subject-escaped)
+  ;; a commit subject holding Escape is shown with it written out, as every other list shows one
+  (with-test-directory (dir)
+    (put-file (merge-pathnames "a.txt" dir) (format nil "a~%"))
+    (true (git-in dir "init" "-q"))
+    (true (git-in dir "add" "a.txt"))
+    (true (git-in dir "commit" "-q" "-m" (format nil "Plain~c[31m red" (code-char 27))))
+    (multiple-value-bind (f editor) (rimu-session dir "G")
+      (declare (ignore f))
+      (let ((line (find-if (lambda (l) (search "a.txt" l)) (rimu-lines editor))))
+        (true (and line (search "Plain^[[31m red" line)))
+        (false (and line (find (code-char 27) line)))))))
+
+(define-test (git rewind-keys-while-its-history-is-read)
+  ;; p, n and r in a history not read yet say so, and run nothing on what is not there
+  (with-test-directory (dir)
+    (scratch-repository dir)
+    (let ((tuatara.defaults::*modal-editing* t) (start 0))
+      (auto-save-session
+       (list (lambda ()
+               (setf start (tuatara.buffer:buffer-size (tuatara.command::messages-buffer)))
+               (tuatara.git::git-rewind-buffer (tuatara.io:native dir) "*git rewind: a.txt*"
+                                               'tuatara.modes:fundamental-mode))
+             "p n r" (list :wait 0.2)))
+      (let ((said (tuatara.buffer:buffer-string (tuatara.command::messages-buffer) :start start)))
+        (true (search "No commit shown yet: it is being read" said) "~a" said)
+        (false (search "error" said :test #'char-equal))))))
+
+(define-test (git lists-open-entries-one-way)
+  ;; a log, a blame and a list of references open their lines with the keys of every list:
+  ;; o shows the commit beside the log, which stays selected
+  (with-test-directory (dir)
+    (scratch-repository dir)
+    (put-file (merge-pathnames "a.txt" dir) (format nil "one~%two~%"))
+    (git-output dir "commit" "-q" "-am" "Second")
+    (flet ((log-text () (let ((b (tuatara.buffer:find-buffer "*git log*"))) (and b (tuatara.buffer:buffer-string b))))
+           (key (mode text) (tuatara.command:lookup-key (tuatara.modes:mode-keymap mode)
+                                                        (tuatara.frontend:parse-key-sequence text))))
+      (let ((here nil))
+        (git-session dir "a.txt"
+                     (list "L L" (list :until (lambda () (search "Second" (or (log-text) ""))))
+                           "M-< C-s S e c o n d RET o"
+                           (list :until (lambda () (git-buffer-named "*git commit ")))
+                           (lambda () (setf here (tuatara.buffer:buffer-name (tuatara.command:current-buffer))))))
+        (is equal "*git log*" here))
+      (dolist (mode '(tuatara.git::git-log-mode tuatara.git::git-blame-mode tuatara.git::git-refs-mode))
+        (is eq 'tuatara.defaults::list-visit (key mode "RET") "~a" mode)
+        (is eq 'tuatara.defaults::list-visit-other (key mode "o") "~a" mode)
+        (is eq 'tuatara.defaults::list-next-entry (key mode "n") "~a" mode)))))

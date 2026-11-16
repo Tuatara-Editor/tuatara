@@ -1,11 +1,11 @@
 ;;;; src/display/layout.lisp --- The layout engine: from a text snapshot to glyph rows.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; Layout is a pure function of a rope, a start byte and a size: it decodes only
-;;;; the text that lands in the window, so its cost is proportional to the visible
-;;;; area, never to the file.  Rows are what a painter
-;;;; draws: a string to print, and the byte offset behind every column so that
-;;;; point and the mouse can be mapped both ways.
+;;;; Layout is a pure function of a rope, a start byte and a size: it decodes
+;;;; only the text that lands in the window, so its cost is proportional to the
+;;;; visible area, never to the file. Rows are what a painter draws: a string
+;;;; to print, and the byte offset behind every column so that point and the
+;;;; mouse can be mapped both ways.
 
 (in-package #:tuatara.display)
 
@@ -60,11 +60,14 @@ shows: its newline, a wrap point, or where truncation began.")
   (mixed nil :type (member nil t :visual) :documentation "True when ROW's characters stand for offsets not in
 order: T in the hex view, :VISUAL where they are in the order right-to-left text
 is read.")
-  (end-column nil :type (or null fixnum) :documentation "The column where the end of ROW's line is shown
+  (end-column nil :type (or null fixnum)
+              :documentation "The column where the end of ROW's line is shown
 left of its text (a line written from right to left), or NIL: after it.")
-  (pad-from 0 :type fixnum :documentation "The first index of ROW's string of the blanks that
+  (pad-from 0 :type fixnum
+            :documentation "The first index of ROW's string of the blanks that
 set it against the right edge.")
-  (pad-to 0 :type fixnum :documentation "The index of ROW's string after the blanks that set it
+  (pad-to 0 :type fixnum
+          :documentation "The index of ROW's string after the blanks that set it
 against the right edge.")
   (extend nil :documentation "The face, or faces with the highest priority first,
 painted from the end of ROW's line to the window's edge: those of highlights
@@ -369,13 +372,13 @@ near its start is taken as written from left to right.")
 (defun scan-columns (rope from to tab-width &key (column 0) (limit most-positive-fixnum) crlf invisible)
   "Walk ROPE's characters from FROM, a character's start, counting the columns
 they take on the screen from COLUMN on, as ADVANCE-COLUMN does with TAB-WIDTH
-and INVISIBLE. Stops at
-the first character's start at or after TO, at the first where the count has
-reached LIMIT (past the marks and joined emoji of the cluster there), or
-before the line's end (a newline or a carriage return that ends the line,
-or with carriage return and line feed (CRLF) a carriage return just before a
-newline). Returns three values: where it stopped, the column there, and true
-when that is the line's end. Complexity: O(octets walked), read a block at a
+and INVISIBLE. Stops at the first character's start at or after TO, at the first
+where the count has reached LIMIT (past the marks and joined emoji of the
+cluster there), or before the line's end (a newline or a carriage return that
+ends the line, or with carriage return and line feed (CRLF) a carriage return
+just before a newline). Returns three values: where it stopped, the column
+there, and true when that is the line's end. Complexity: O(octets walked), read
+a block at a
 time, an ASCII octet looked at once."
   (declare (type fixnum from to tab-width column limit) (optimize speed))
   (let* ((total (tuatara.text:rope-octet-length rope))
@@ -457,13 +460,12 @@ characters are counted, O(COUNT) before."
 
 (defun skip-columns (rope line-start from column limit end &key (tab-width 8) crlf invisible)
   "Where a row of the line beginning at LINE-START that skips LIMIT columns
-starts showing, walking from FROM, which stands at COLUMN: the first
-character's start whose column is LIMIT or more, no further than END nor the
-line's end. Columns are counted exactly over the line's first
-*SCREEN-COLUMN-REACH* octets (with INVISIBLE, a character that draws nothing
-as its code shown) and a character each past them (FAR-COLUMNS). Returns that
-position and its column. Complexity: O(*SCREEN-COLUMN-REACH* +
-log n)."
+starts showing, walking from FROM, which stands at COLUMN: the first character's
+start whose column is LIMIT or more, no further than END nor the line's end.
+Columns are counted exactly over the line's first *SCREEN-COLUMN-REACH* octets
+(with INVISIBLE, a character that draws nothing as its code shown) and a
+character each past them (FAR-COLUMNS). Returns that position and its column.
+Complexity: O(*SCREEN-COLUMN-REACH* + log n)."
   (let ((edge (+ line-start *screen-column-reach*)))
     (multiple-value-bind (position at line-end)
         (scan-columns rope from (min end edge) tab-width :column column :limit limit :crlf crlf :invisible invisible)
@@ -479,9 +481,8 @@ INVISIBLE, a character that draws nothing as its code shown), a
 character each past them (FAR-COLUMNS), as the rows of a window scrolled
 sideways count it. Complexity: O(*SCREEN-COLUMN-REACH* + log n)."
   (multiple-value-bind (position column line-end)
-      (scan-columns rope line-start (min byte
-                                         (+ line-start
-                                            *screen-column-reach*)) tab-width :crlf crlf :invisible invisible)
+      (scan-columns rope line-start (min byte (+ line-start *screen-column-reach*)) tab-width
+                    :crlf crlf :invisible invisible)
     (if (and (< position byte) (not line-end))
         (+ column (far-columns rope position byte))
         column)))
@@ -750,9 +751,10 @@ written from right to left is set against the right edge unless scrolled
 sideways. A line with none of that text is laid out as with NIL. Under :AUTO
 a line's direction is its first letter's, looked for past the rows shown when
 they hold none, no further than *DIRECTION-REACH* octets into the line. A
-line longer than twice *WRAP-STRETCH* is worked out a stretch at a time. A stretch after an embedding, override or isolate on its
-line, or beginning more than *SCREEN-COLUMN-REACH* octets into it, is shown in
-the order stored, its right-to-left letters in :stored-order.
+line longer than twice *WRAP-STRETCH* is worked out a stretch at a time. A
+stretch after an embedding, override or isolate on its line, or beginning more
+than *SCREEN-COLUMN-REACH* octets into it, is shown in the order stored, its
+right-to-left letters in :stored-order.
 BIDI, a BIDI-CACHE, keeps what is worked out for right-to-left text from one
 layout to the next (a new one for this layout alone when not given).
 The rows are made anew, or taken from SPARES, a vector with a fill pointer of
@@ -903,8 +905,8 @@ O(WIDTH × HEIGHT), and for each row scrolled sideways O(*SCREEN-COLUMN-REACH*
                             (multiple-value-bind (string own shown)
                                 (char-display char (+ skipped (row-columns row)) tab-width invisible)
                               (multiple-value-bind (columns next)
-                                  (advance-column (char-code char) (+ skipped
-                                                                      (row-columns row)) before tab-width invisible)
+                                  (advance-column (char-code char) (+ skipped (row-columns row))
+                                                  before tab-width invisible)
                                 (declare (type fixnum columns))
                                 (setf before next)
                                 (when (and (= columns 1) (zerop own))

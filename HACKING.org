@@ -79,11 +79,16 @@ with the same sanitizers and sends it requests of every kind, well made and
 spoilt (=tools/fuzz-helper.py=); it fails on the first sanitizer report or
 the helper ending, the last requests sent in =build/fuzz/helper.log.last=;
 over one connection, then over two, the second using what the first uses.
-=tools/fuzz-pdf.sh [-n ROUNDS] [--seed SEED] [--deadline SECONDS]= spoils PDFs
-it makes itself (=tools/fuzz-pdf.lisp=) and reads each with every reader of
-=lisp/viewers/pdf-reader.lisp= and show-file-metadata's PDF part; it fails on an
-error escaping a reader, a reader running past the deadline on one file or
-too much memory kept, the file that did it kept in =build/fuzz/=.
+=tools/fuzz-lisp.sh pdf|remote|sftp [-n ROUNDS] [--seed SEED] [--deadline
+SECONDS]= spoils inputs the fuzzer of that kind makes itself
+(=tools/fuzz-KIND.lisp=, with what they share in =tools/fuzz-common.lisp=) and
+reads each as the editor would: PDFs with every reader of
+=lisp/viewers/pdf-reader.lisp= and show-file-metadata's PDF part, streams of
+messages as a remote frontend and its client read them, streams of answers as
+the SFTP client reads them. It fails on an error escaping a reader, a reader
+running past the deadline on one input or too much memory kept, what did it
+kept in =build/fuzz/=. The editor it runs never reads or writes your own
+files (=tools/fence.lisp=).
 
 * Building and running
 
@@ -102,8 +107,10 @@ names no directory of the machine it was built on (it refuses one that names the
 home directory or the account); =tools/appimage.sh= makes an AppImage of it (it
 takes its libraries from Ubuntu 24.04, in a podman container), and
 =tools/distro-packages.sh= Fedora, Ubuntu and Arch packages (each made by its
-system's own tools in a podman container; =--check= installs each in a new
-container and runs it: Tuatara colours code only where its sandbox runs, and
+system's own tools in a podman container, made by =TUATARA_PACKAGER=, a name
+and address as "Name <address>", or else the project's name; =--check= installs
+each in a new container and runs it: Tuatara colours code only where its
+sandbox runs, and
 bwrap cannot mount a =/proc= of its own under podman's masks over =/proc= or its
 SELinux label, so the check's container is made without those, =/sys= still
 masked and seccomp kept). The images are pinned by digest in
@@ -172,8 +179,9 @@ runs it with the layer on whatever the setting. Both runs are to be clean.
 One group or one test runs from a Lisp session with the tests loaded:
 =(ql:quickload :tuatara/tests)= then =(parachute:test 'tuatara.tests::terminal)=.
 However the tests run, they keep away from your own files: they have their own
-state, data and trash directories, see no drives mounted, and never read your
-init file (=test/fences.lisp=).
+state, data and trash directories, a cache home inside =tuatara-tests/= in your
+cache, see no drives mounted, and never read your init file
+(=test/fences.lisp=).
 
 Full compiler warnings fail the suite. Build once with an empty cache too
 (=XDG_CACHE_HOME= pointing at a new directory): a setting used before the file
@@ -269,6 +277,8 @@ checkout, next to the =commit-msg= hook (worktrees share the hooks directory):
 
 : cp tools/git-hooks/pre-commit "$(git rev-parse --git-common-dir)/hooks/"
 
+=tools/possible-copies.sh= runs =tools/possible-copies.py=, whose help says
+every way to ask it (=--where=, =--bodies=, =--pass-through= and the others).
 =tools/possible-copies.sh BASE [HEAD]= shows what a branch may repeat. For each
 function, macro, generic function and variable the changes from BASE to HEAD
 add (the working tree when HEAD is left out), it lists up to five entries of
@@ -321,9 +331,9 @@ Lisp, =M-x ielm= is a REPL, and =M-.= goes to the source of anything.
 
 C libraries (GTK, ncurses, tree-sitter, the terminal library) are called
 through SBCL's own foreign calls (=sb-alien=), loaded when first needed by
-=foreign-library-p=: a function by =define-c-function= or =foreign-call=,
-text given to C by =with-c-string= and read back by =sap-string=
-(=src/io/posix.lisp=, =src/runtime/resources.lisp=).
+=foreign-library-p=: a function by =define-c-function=
+(=src/runtime/resources.lisp=), text given to C by =with-c-string= and read
+back by =sap-string= (=src/io/posix.lisp=).
 Each function made by =define-c-function= is declared inline, so a call costs
 what the bare call does and makes no garbage, which matters for the system calls
 made on every key.
@@ -562,10 +572,10 @@ says what it is for.
   JPEG; ImageMagick's =jp2:reduce-factor= gives a crop of the reduced picture
   (7.1.2-32), so JPEG 2000 is decoded whole.
 - C is called through functions made with =define-c-function=
-  (=src/io/posix.lisp=), one for each C function, with the types =c-type=
-  knows; text goes to C and comes back in UTF-8 without garbage. Not a bare
-  =sb-alien:alien-funcall=, and not =foreign-call= in new code. The library is
-  loaded first with =foreign-library-p=.
+  (=src/runtime/resources.lisp=), one for each C function, with the types
+  =c-type= knows; text goes to C and comes back in UTF-8 without garbage. Not
+  a bare =sb-alien:alien-funcall=. The library is loaded first with
+  =foreign-library-p=.
 - A structure is written with =define-record= (=src/runtime/records.lisp=),
   never a bare =defstruct=: it takes the same name, options and docstring,
   and each slot is =(NAME INITIAL-VALUE :DOCUMENTATION "...")=, with =:type=

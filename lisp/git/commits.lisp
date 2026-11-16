@@ -1,7 +1,7 @@
 ;;;; lisp/git/commits.lisp --- Commits: written, amended, reworded, extended, fixed up, squashed.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; In a status c opens the commit menu, as Magit's does: c writes a commit
+;;;; In a status c opens the commit menu: c writes a commit
 ;;;; of what is staged in a buffer of its own (C-c C-c commits, C-c C-k gives
 ;;;; it up), a amends the last commit with what is staged and its message
 ;;;; written again, w rewords it alone, e extends it with what is staged as it

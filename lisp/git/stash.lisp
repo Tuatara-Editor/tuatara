@@ -1,7 +1,7 @@
 ;;;; lisp/git/stash.lisp --- Stashes: changes put aside, brought back, dropped, made a branch.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; In a status z opens the stash menu, as Magit's does: z puts every change
+;;;; In a status z opens the stash menu: z puts every change
 ;;;; aside (asking for a message), i only what is staged, x every change but
 ;;;; keeping what is staged in place; a applies a stash, p applies and drops
 ;;;; it, d drops it, b makes a branch of it, v shows it. A status lists the

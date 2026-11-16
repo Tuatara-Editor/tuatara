@@ -337,10 +337,12 @@ cat \"$2\" && echo \" $*\" && echo \"$4 is gone\" >&2 && exit 1
              (progn
                (age held)
                (tuatara.defaults::delete-private-directory (tuatara.defaults::new-private-directory directory))
+               (tuatara.defaults::forget-old-copies directory)
                (is eq :directory (tuatara.io:path-kind held :follow nil))
                (let ((loose (tuatara.defaults::new-private-directory directory :hold nil)))
                  (age loose)
                  (let ((another (tuatara.defaults::new-private-directory directory)))
+                   (tuatara.defaults::forget-old-copies directory)
                    (false (tuatara.io:path-kind loose :follow nil))
                    (tuatara.defaults::delete-private-directory another)
                    (false (tuatara.io:path-kind another :follow nil))

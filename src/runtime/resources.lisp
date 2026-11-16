@@ -31,7 +31,8 @@ was built in; it finds its own as it starts (FIND-SOURCE-TREE)."
 (defun find-source-tree ()
   "Set *SOURCE-TREE* for the saved program as it starts, from where it stands
 \(PROGRAM-SOURCE-TREE)."
-  (setf *source-tree* (and sb-ext:*runtime-pathname* (program-source-tree (pathname sb-ext:*runtime-pathname*)))))
+  (setf *source-tree* (and sb-ext:*runtime-pathname*
+                           (program-source-tree (sb-ext:parse-native-namestring sb-ext:*runtime-pathname*)))))
 
 (pushnew 'forget-source-tree sb-ext:*save-hooks*)
 (pushnew 'find-source-tree sb-ext:*init-hooks*)
@@ -43,7 +44,8 @@ release lays it out, then SOURCE in the source tree (*SOURCE-TREE*); with
 EXISTING, only those that exist."
   (let ((all (remove nil (list (and sb-ext:*runtime-pathname*
                                     (merge-pathnames beside
-                                                     (uiop:pathname-directory-pathname sb-ext:*runtime-pathname*)))
+                                                     (uiop:pathname-directory-pathname
+                                                      (sb-ext:parse-native-namestring sb-ext:*runtime-pathname*))))
                                (and *source-tree* (merge-pathnames source *source-tree*))))))
     (if existing (remove-if-not #'uiop:directory-exists-p all) all)))
 
@@ -111,13 +113,89 @@ the program loads them again when it next needs them."
 
 (pushnew 'forget-foreign-libraries sb-ext:*save-hooks*)
 
-(defmacro foreign-call (name result &rest arguments)
-  "Call the C function NAME of a library FOREIGN-LIBRARY-P has loaded, which
-returns RESULT (an alien type), with ARGUMENTS, each a list of an alien type
-and a value. Kept for the calls written with it: a new call to C is a function
-of its own, made with TUATARA.IO:DEFINE-C-FUNCTION."
-  `(sb-alien:alien-funcall (sb-alien:extern-alien ,name (function ,result ,@(mapcar #'first arguments)))
-                           ,@(mapcar #'second arguments)))
+(declaim (inline null-pointer null-pointer-p))
+(defun null-pointer ()
+  "The null foreign pointer."
+  (sb-sys:int-sap 0))
+
+(defun null-pointer-p (pointer)
+  "True when POINTER, a foreign pointer, is null."
+  (zerop (sb-sys:sap-int pointer)))
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defun c-type (type)
+    "The alien type DEFINE-C-FUNCTION takes TYPE for: :pointer, :int, :uint,
+:short, :uint8, :uint16, :uint32, :uint64, :long, :ulong, :size, :double, :float, :void, :boolean (a
+truth value as an int, GLib's gboolean), :bool (a truth value of one octet,
+C's bool) and :string (text, in UTF-8); any other TYPE is taken as an alien
+type itself."
+    (case type
+      (:pointer 'sb-sys:system-area-pointer)
+      (:int 'sb-alien:int)
+      (:uint 'sb-alien:unsigned-int)
+      (:short 'sb-alien:short)
+      (:uint8 '(sb-alien:unsigned 8))
+      (:uint16 '(sb-alien:unsigned 16))
+      (:uint32 '(sb-alien:unsigned 32))
+      (:uint64 '(sb-alien:unsigned 64))
+      (:long 'sb-alien:long)
+      ((:ulong :size) 'sb-alien:unsigned-long)
+      (:double 'sb-alien:double)
+      (:float 'sb-alien:single-float)
+      (:void 'sb-alien:void)
+      (:boolean '(sb-alien:boolean 32))
+      (:bool '(sb-alien:boolean 8))
+      (:string '(sb-alien:c-string :external-format :utf-8))
+      (t type))))
+
+(defmacro define-c-function ((c-name name) result &body arguments)
+  "Define NAME, a function calling the C function C-NAME, which returns
+RESULT: ARGUMENTS, after an optional docstring, are each (ARGUMENT TYPE), the
+types C-TYPE knows. Declared inline before it is defined, a call of NAME
+costs what the bare call does and makes no garbage, as for the system calls
+the editor makes on every key. The library holding C-NAME is not loaded by
+NAME: its callers load it first (FOREIGN-LIBRARY-P, as LOAD-GTK-LIBRARIES and
+LOAD-NCURSES do). A :string argument may be any string, given as
+WITH-C-STRING gives it; a :string result is read as SAP-STRING reads it, NIL
+for a null pointer. Those two are TUATARA.IO's, which reads and writes text:
+a function taking or giving a :string is defined once it is loaded."
+  (let* ((names (mapcar #'first (remove-if #'stringp arguments)))
+         (documentation (list (if (stringp (first arguments))
+                                  (pop arguments)
+                                  (format nil "Call the C function ~a~@[ with ~{~(~a~)~^, ~}~] and return what it ~
+                                               returns." c-name names))))
+         (saps (loop for (argument type) in arguments
+                     collect (if (eq type :string) (gensym (symbol-name argument)) argument)))
+         (call `(sb-alien:alien-funcall
+                 (sb-alien:extern-alien ,c-name (function ,(c-type (if (eq result :string) :pointer result))
+                                                          ,@(loop for (nil type) in arguments
+                                                                  collect (c-type (if (eq type
+                                                                                          :string) :pointer type)))))
+                 ,@saps))
+         (body (if (eq result :string)
+                   (let ((pointer (gensym "POINTER")))
+                     `(let ((,pointer ,call))
+                        (unless (null-pointer-p ,pointer) (sap-string ,pointer))))
+                   call)))
+    ;; each string written for C around the call, the result read before they go
+    (loop for (argument type) in (reverse arguments)
+          for sap in (reverse saps)
+          when (eq type :string)
+            do (setf body `(with-c-string (,sap ,argument) ,body)))
+    `(defun ,name ,names
+       ,@documentation
+       ,body)))
+
+;;; The system's C functions the runtime calls itself
+
+(declaim (inline %flock %sysconf))
+
+(define-c-function ("flock" %flock) :int (fd :int) (operation :int))
+(define-c-function ("sysconf" %sysconf) :long (name :int))
+(define-c-function ("gettid" %gettid) :int)
+(define-c-function ("getpriority" %getpriority) :int (which :int) (who :uint))
+(define-c-function ("setpriority" %setpriority) :int (which :int) (who :uint) (priority :int))
+(define-c-function ("sched_getaffinity" %sched-getaffinity) :int (pid :int) (size :size) (mask :pointer))
 
 ;;; Reading nested data from a file
 

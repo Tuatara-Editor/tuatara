@@ -124,7 +124,7 @@ APPLY-EDITS plus O(edits)."
 the new version, linked after VERSION, and its batch, whose SWAP maps
 positions with FORWARD and back with BACKWARD (functions of a byte position and
 a bias). Complexity: O(1)."
-  (advance-version version rope (%make-swap-batch (make-swap (version-rope version) rope forward backward)) "a swap"))
+  (advance-version version rope (swap-batch (version-rope version) rope forward backward) "a swap"))
 
 (defun version-adopt (version rope)
   "Make ROPE, the same octets as VERSION's text with more known of them (their
@@ -336,19 +336,40 @@ edits wrote, as offsets in the text after it."
         (vector-push-extend start touched)
         (vector-push-extend (+ start (edit-insert-length edit)) touched)))))
 
+(defun order-touched (touched)
+  "Put TOUCHED's stretches, pairs of offsets, in the order of their starts,
+each end raised to the furthest any stretch up to it reaches: what TOUCHED-P
+bisects. Complexity: O(n log n) in the stretches."
+  (let ((n (floor (fill-pointer touched) 2)))
+    (when (> n 1)
+      (let ((pairs (sort (loop for i from 0 below (* 2 n) by 2
+                               collect (cons (aref touched i) (aref touched (1+ i))))
+                         #'< :key #'car))
+            (furthest most-negative-fixnum))
+        (loop for (start . end) in pairs
+              for i from 0 by 2
+              do (setf furthest (max furthest end)
+                       (aref touched i) start
+                       (aref touched (1+ i)) furthest))))))
+
 (defun touched-p (touched start end)
-  "True when one of TOUCHED's stretches reaches from START to END, both
-included."
-  (loop for i from 0 below (fill-pointer touched) by 2
-          thereis (and (<= (aref touched i) end) (>= (aref touched (1+ i)) start))))
+  "True when one of TOUCHED's stretches, put in order by ORDER-TOUCHED,
+reaches from START to END, both included. Complexity: O(log n)."
+  (let ((low 0) (high (floor (fill-pointer touched) 2)))
+    ;; LOW ends as the count of stretches that start at END or before
+    (loop while (< low high)
+          do (let ((middle (floor (+ low high) 2)))
+               (if (<= (aref touched (* 2 middle)) end) (setf low (1+ middle)) (setf high middle))))
+    (and (plusp low) (>= (aref touched (1+ (* 2 (1- low)))) start))))
 
 (defun carried-windows (carried version)
   "Carry CARRIED to VERSION, the version it was last carried to or one after
 it: its CHANGE-WINDOWs, :LOST when the edits cannot be carried, from then on.
 The line ends of a window are counted again only when the edits since reached
 it, those of its old side only when it is new. Called on the editor's thread:
-CARRIED is changed in place. Complexity: O(edits since it was last carried +
-windows + the octets of the windows the edits reached)."
+CARRIED is changed in place. Complexity: O(e log e + w log e + the octets of
+the windows the edits reached), for e edits since it was last carried and w
+windows."
   (let ((link (version-link version)))
     (cond ((carried-tally-lost carried) :lost)
           ((eq (carried-tally-at carried) link) (carried-tally-windows carried))
@@ -367,6 +388,7 @@ windows + the octets of the windows the edits reached)."
                             (setf stretches (stretches-through stretches map))
                             (note-touched touched map)
                             (setf at next)))
+                 (order-touched touched)
                  (let ((old (carried-tally-rope carried)) (new (version-rope version))
                        (spare (carried-tally-windows carried)) (free '()) (windows '()) (size 0)
                        (from -1) (to 0) (new-from 0) (new-to 0))

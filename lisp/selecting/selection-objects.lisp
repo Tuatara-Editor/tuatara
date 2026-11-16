@@ -69,10 +69,6 @@ for the forward keys, :behind for the backward ones.")
 
 ;;; Characters
 
-(defun blank-char-p (char)
-  "True for spaces, tabs and line ends."
-  (member char '(#\Space #\Tab #\Newline #\Return)))
-
 ;;; Words
 
 (defun reach-object (position on ahead behind)
@@ -84,55 +80,68 @@ ON, it is on one."
         ((eq *selection-reach* :behind) (or (funcall behind) (funcall ahead)))
         (t (or (funcall ahead) (funcall behind)))))
 
-(defun reach-word (buffer position)
-  "The position of the word REACH-OBJECT takes from POSITION of BUFFER, words
-read by their octets; NIL when there is none within *TEXT-SCAN-LIMIT* either
-way."
-  (reach-object position (word-char-p (tuatara.buffer:buffer-char-at buffer position))
+(defun reach-run (buffer position on run-end run-start)
+  "The position of the run of characters REACH-OBJECT takes from POSITION of
+BUFFER, ON true when POSITION is on one; NIL when there is none within
+*TEXT-SCAN-LIMIT* either way. RUN-END and RUN-START find where a run ends
+going forward and back, as WORD-RUN-END and WORD-RUN-START do for words."
+  (reach-object position on
                 (lambda ()
                   (let* ((scan (min (tuatara.buffer:buffer-size buffer) (+ position *text-scan-limit*)))
-                         (p (word-run-end buffer position nil scan)))
+                         (p (funcall run-end buffer position nil scan)))
                     (and (< p scan) p)))
                 (lambda ()
                   (let* ((scan (max 0 (- position *text-scan-limit*)))
-                         (p (word-run-start buffer position nil scan)))
+                         (p (funcall run-start buffer position nil scan)))
                     (and (> p scan) (tuatara.buffer:buffer-forward-char buffer p -1))))))
+
+(defun run-start-at (buffer position run-start what)
+  "The start of the run POSITION of BUFFER is in, found back by RUN-START (as
+WORD-RUN-START finds a word's); refused past *TEXT-SCAN-LIMIT*, saying there
+is no start of WHAT (the word) within it."
+  (let* ((scan (max 0 (- position *text-scan-limit*)))
+         (p (funcall run-start buffer position t scan)))
+    (when (and (= p scan) (plusp scan)) (refuse "No start of the ~a within ~a" what (scan-limit-words)))
+    p))
+
+(defun passing-run-end (test)
+  "A function finding where a run of characters ends going forward, as
+WORD-RUN-END does for words, for the runs of characters passing TEST."
+  (lambda (buffer position inside limit)
+    (let ((p position))
+      (loop while (and (< p limit) (eq inside (and (funcall test (tuatara.buffer:buffer-char-at buffer p)) t)))
+            do (setf p (tuatara.buffer:buffer-forward-char buffer p)))
+      (min p limit))))
+
+(defun passing-run-start (test)
+  "A function finding where a run of characters starts going back, as
+WORD-RUN-START does for words, for the runs of characters passing TEST."
+  (lambda (buffer position inside limit)
+    (let ((p position))
+      (loop while (and (> p limit) (eq inside (and (funcall test (buffer-char-before buffer p)) t)))
+            do (setf p (tuatara.buffer:buffer-forward-char buffer p -1)))
+      (max p limit))))
+
+(defun reach-word (buffer position)
+  "The position of the word REACH-OBJECT takes from POSITION of BUFFER, words
+read by their octets (REACH-RUN)."
+  (reach-run buffer position (word-char-p (tuatara.buffer:buffer-char-at buffer position))
+             #'word-run-end #'word-run-start))
 
 (defun word-start-at (buffer position)
   "The start of the word POSITION of BUFFER is in; refused past *TEXT-SCAN-LIMIT*."
-  (let* ((scan (max 0 (- position *text-scan-limit*)))
-         (p (word-run-start buffer position t scan)))
-    (when (and (= p scan) (plusp scan)) (refuse "No start of the word within ~a" (scan-limit-words)))
-    p))
+  (run-start-at buffer position #'word-run-start "word"))
 
 (defun reach-symbol (buffer position test)
   "The position of the symbol, a run of characters passing TEST, REACH-OBJECT
-takes from POSITION of BUFFER; NIL when there is none within
-*TEXT-SCAN-LIMIT* either way."
-  (reach-object position (funcall test (tuatara.buffer:buffer-char-at buffer position))
-                (lambda ()
-                  (let ((scan (min (tuatara.buffer:buffer-size buffer) (+ position *text-scan-limit*)))
-                        (p position))
-                    (loop while (and (< p scan) (not (funcall test (tuatara.buffer:buffer-char-at buffer p))))
-                          do (setf p (tuatara.buffer:buffer-forward-char buffer p)))
-                    (and (< p scan) p)))
-                (lambda ()
-                  (let ((scan (max 0 (- position *text-scan-limit*)))
-                        (p position))
-                    (loop while (and (> p scan) (not (funcall test (buffer-char-before buffer p))))
-                          do (setf p (tuatara.buffer:buffer-forward-char buffer p -1)))
-                    (and (> p scan) (tuatara.buffer:buffer-forward-char buffer p -1))))))
+takes from POSITION of BUFFER (REACH-RUN)."
+  (reach-run buffer position (funcall test (tuatara.buffer:buffer-char-at buffer position))
+             (passing-run-end test) (passing-run-start test)))
 
 (defun symbol-start-at (buffer position test)
   "The start of the run of characters passing TEST that POSITION of BUFFER is
 in; refused past *TEXT-SCAN-LIMIT*."
-  (let ((scan (max 0 (- position *text-scan-limit*)))
-        (p position))
-    (loop while (and (> p scan) (funcall test (buffer-char-before buffer p)))
-          do (setf p (tuatara.buffer:buffer-forward-char buffer p -1)))
-    (when (and (<= p scan) (plusp p) (funcall test (buffer-char-before buffer p)))
-      (refuse "No start of the symbol within ~a" (scan-limit-words)))
-    p))
+  (run-start-at buffer position (passing-run-start test) "symbol"))
 
 (defun symbol-end-at (buffer position test)
   "The end of the run of characters passing TEST that POSITION of BUFFER is
@@ -339,7 +348,7 @@ when point is on a delimiter, else the one whose half is typed."
                           (char (tuatara.frontend:key-base key)))
                      (when (quit-key-p key) (keyboard-quit-signal))
                      (or (and (characterp char) (pair-open-for char))
-                         (refuse "Unsupported delimiter `~a'; see *pair-delimiters*"
+                         (refuse "Unsupported delimiter '~a'; see *pair-delimiters*"
                                  (tuatara.frontend:key-description (tuatara.frontend:key-spec key))))))))
     (list open (cdr (assoc open (pair-delimiters))) (and on-opener (eql here open)))))
 
@@ -439,18 +448,19 @@ opener, END after the closer; on an opener, that one's pair."
 each level the pair around the one before; for a delimiter that opens and
 closes alike, each level one more of it on either side."
   (let ((span (pair-around buffer position open close on-opener)))
-    (if (char= open close)
-        (loop repeat (1- levels)
-              do (let ((start (find-char buffer (car span) open :backward))
-                       (end (char-end-after buffer (cdr span) close)))
-                   (unless (and start end) (refuse "No enclosing `~a' beyond that level" open))
-                   (setf span (cons start end))))
-        (loop repeat (1- levels)
-              do (when (zerop (car span)) (refuse "No enclosing `~a' beyond that level" open))
-              (setf span (handler-case (pair-around buffer
-                                                    (tuatara.buffer:buffer-forward-char buffer (car span) -1)
-                                                    open close nil)
-                           (refusal () (refuse "No enclosing `~a' beyond that level" open))))))
+    (flet ((none-beyond () (refuse "No enclosing '~a' beyond that level" open)))
+      (if (char= open close)
+          (loop repeat (1- levels)
+                do (let ((start (find-char buffer (car span) open :backward))
+                         (end (char-end-after buffer (cdr span) close)))
+                     (unless (and start end) (none-beyond))
+                     (setf span (cons start end))))
+          (loop repeat (1- levels)
+                do (when (zerop (car span)) (none-beyond))
+                (setf span (handler-case (pair-around buffer
+                                                      (tuatara.buffer:buffer-forward-char buffer (car span) -1)
+                                                      open close nil)
+                             (refusal () (none-beyond)))))))
     span))
 
 (defun select-pair-around (inner)

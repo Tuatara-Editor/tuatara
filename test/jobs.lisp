@@ -99,17 +99,17 @@ the jobs and drops those marked.")
                                                       "No jobs in the background")))))
 
 (define-test (jobs reports-say-alike)
-  (is string= "in 1.5 s" (tuatara.defaults::job-done-words 1.5 0))
-  (is string= "in 2.0 s; 1,203 kept as you edited them" (tuatara.defaults::job-done-words 2 1203))
-  (is string= "in 2.0 s: 5 lines changed; 1 kept as you edited them"
+  (is string= "in 1.5 seconds" (tuatara.defaults::job-done-words 1.5 0))
+  (is string= "in 2 seconds; 1,203 kept as you edited them" (tuatara.defaults::job-done-words 2 1203))
+  (is string= "in 2 seconds: 5 lines changed; 1 kept as you edited them"
       (tuatara.defaults::job-done-words 2 1 "5 lines changed"))
   ;; each kind of job says it so
-  (is string= "Put the region in upper case in 2.0 s: 5 lines changed; 1 kept as you edited them"
+  (is string= "Put the region in upper case in 2 seconds: 5 lines changed; 1 kept as you edited them"
       (funcall (tuatara.defaults::case-report :up) nil :done 5 2 1))
-  (is string= "Commented 3 lines in 2.0 s" (funcall (tuatara.defaults::comment-job-report t) nil :done 3 2 0))
-  (is string= "Uncommented 1 line in 2.0 s; 2 kept as you edited them"
+  (is string= "Commented 3 lines in 2 seconds" (funcall (tuatara.defaults::comment-job-report t) nil :done 3 2 0))
+  (is string= "Uncommented 1 line in 2 seconds; 2 kept as you edited them"
       (funcall (tuatara.defaults::comment-job-report nil) nil :done 1 2 2))
-  (is string= "Joined the lines in 0.5 s" (funcall (tuatara.defaults::join-report) nil :done 9 0.5 0))
+  (is string= "Joined the lines in 0.5 seconds" (funcall (tuatara.defaults::join-report) nil :done 9 0.5 0))
   ;; counts of matches, a refused pattern, the lines a job is done to
   (is string= "1 match on 1 line" (tuatara.defaults::matches-on-lines-words 1 1))
   (is string= "12,345 matches on 2 lines" (tuatara.defaults::matches-on-lines-words 12345 2))

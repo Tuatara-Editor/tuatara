@@ -60,7 +60,6 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
         (false (tuatara.io:writing-refused-anywhere-p)))
       (dolist (setting (list (list (concatenate 'string root "cases/*/evidence/"))
                              (list (concatenate 'string root "**/evidence"))
-                             (concatenate 'string root "cases/*/evidence/") ; one entry alone
                              (list (list :name "evidence" :within (concatenate 'string root "cases/")))
                              (list (list :name "evidence"))
                              (list (list :regex

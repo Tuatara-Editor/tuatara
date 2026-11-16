@@ -222,11 +222,11 @@ and shows it from the same line as before. Returns BUFFER."
 
 (defun show-list-text (buffer text spans buttons &key (point :keep) (entries nil entries-p) (first-line 0)
                                                     (key nil key-p) refill redraw mark-key (capture t))
-  "Make TEXT, with its SPANS and BUTTONS as PIECES-TEXT gives them, the text
-of BUFFER, as RENDER-PIECES does with the rest of its arguments. A list
-narrowed by search filters shows only the entries they leave
-\(FILTER-LIST-TEXT), TEXT kept as the whole list to narrow again unless
-CAPTURE is NIL, when it is that whole list being narrowed again. Returns BUFFER."
+  "Make TEXT, with its SPANS and BUTTONS as PIECES-TEXT gives them, the text of
+BUFFER, as RENDER-PIECES does with the rest of its arguments. A list narrowed by
+search filters shows only the entries they leave (FILTER-LIST-TEXT), TEXT kept
+as the whole list to narrow again unless CAPTURE is NIL, when it is that whole
+list being narrowed again. Returns BUFFER."
   (when entries-p
     (multiple-value-setq (text spans buttons entries first-line)
       (filter-list-text buffer text spans buttons entries first-line capture))
@@ -487,12 +487,12 @@ filters hide (KEYS-HIDDEN-BY-FILTERS): 0 when it is not narrowed."
   (length (keys-hidden-by-filters list keys)))
 
 (defun act-on-list (list act noun &key deletion)
-  "Call ACT with LIST and the keys of what a command for its marked entries
-acts on: with DELETION, those marked for deletion (D); else those marked (>),
-or with none marked the entry on the current line (LIST-ACTED-ON); how many
-of them the list's search filters hide is *LIST-HIDDEN-COUNT* meanwhile. With
-none, say so, NOUN naming an entry (\"bookmark\"): no NOUNs marked for deletion, or
-no NOUN on this line."
+  "Call ACT with LIST and the keys of what a command for its marked entries acts
+on: with DELETION, those marked for deletion (D); else those marked (>), or with
+none marked the entry on the current line (LIST-ACTED-ON); how many of them the
+list's search filters hide is *LIST-HIDDEN-COUNT* meanwhile. With none, say so,
+NOUN naming an entry (\"bookmark\"): no NOUNs marked for deletion, or no NOUN on
+this line."
   (let* ((keys (if deletion (list-marked list :deletion) (list-acted-on list)))
          (*list-hidden-count* (list-hidden-count list keys)))
     (cond (keys (funcall act list keys))
@@ -608,9 +608,10 @@ the list of jobs drops those waiting and stops those running."
   (delete-list-entries (buffer-major-mode (current-buffer)) (current-buffer) :deletion))
 
 (define-command list-delete-marked ()
-  "Delete the marked entries of the list (>), or with none marked the one on
-the current line, after asking, as the list deletes, as \\[list-execute] does those
-marked for deletion; in rimu, with \\[universal-argument], for good rather than to the trash."
+  "Delete the marked entries of the list (>), or with none marked the one on the
+current line, after asking, as the list deletes, as \\[list-execute] does those
+marked for deletion; in rimu, with \\[universal-argument], for good rather than
+to the trash."
   (delete-list-entries (buffer-major-mode (current-buffer)) (current-buffer) :marked))
 
 (defgeneric visit-entry (mode list entry other)
@@ -671,12 +672,12 @@ section's heading, fold or unfold the section."
 ;;; Sections
 
 (define-major-mode sectioned-list-mode marked-list-mode
-  "A list whose entries are in sections, each under a heading saying how many
-it holds, as the buffer list (\\[buffers]) and the bookmark manager
+  "A list whose entries are in sections, each under a heading saying how many it
+holds, as the buffer list (\\[buffers]) and the bookmark manager
 \(\\[bookmark-manager]) are: ▾ before an open section's heading, ▸ before a
-folded one, its entries hidden. \\<sectioned-list-mode>\\[list-toggle-fold] folds or unfolds the
-section of the current line, \\[list-toggle-all-folds] all of them; the entries are marked as
-in any list of marked entries."
+folded one, its entries hidden. \\<sectioned-list-mode>\\[list-toggle-fold]
+folds or unfolds the section of the current line, \\[list-toggle-all-folds] all
+of them; the entries are marked as in any list of marked entries."
   :lighter "List" :interactive nil)
 
 (defun list-folded (list)
@@ -784,33 +785,31 @@ in, as MAP-SET-IN-PIECES sets them."
 
 (defun sectioned-pieces (list sections title row &key count after section-face section-note (margin 0))
   "The lines of LIST for SECTIONS, each (SECTION . MEMBERS), as two values:
-their entries, for RENDER-PIECES, and their pieces. A section may hold
-sections in place of members, (SECTION :SECTIONS . SECTIONS), each the same
-way; every section, held or not, has a key of its own (EQUAL). Each section
-has a heading: ▾, or ▸ when it is folded, its title (TITLE, a function of the
-section) and how many it holds in brackets, all in :heading, its entry
-\(:SECTION SECTION), or (:SECTION SECTION PARENT) for one held in PARENT, its
-heading set in two spaces for each section around it. A member's lines are
-set in MARGIN columns (0 unless given) and two more for each section around
-its section, as far as its heading is (MAP-SET-IN-PIECES): with MARGIN 2, as the
-tables of RENDER-TABLE-LIST have it, a line starts under the text of its
-heading at any depth. How many is the number
-of its members, those of the sections it holds for one that holds sections, or
-what COUNT, a function of the section and those members, gives, no brackets
-when that is NIL. Unless the section is folded, each member has a line under
-it, and each section it holds its heading and lines; a section folded hides
-those it holds, each of which keeps its own fold (all shown while search
+their entries, for RENDER-PIECES, and their pieces. A section may hold sections
+in place of members, (SECTION :SECTIONS . SECTIONS), each the same way; every
+section, held or not, has a key of its own (EQUAL). Each section has a heading:
+▾, or ▸ when it is folded, its title (TITLE, a function of the section) and how
+many it holds in brackets, all in :heading, its entry (:SECTION SECTION), or
+\(:SECTION SECTION PARENT) for one held in PARENT, its heading set in two spaces
+for each section around it. A member's lines are set in MARGIN columns (0 unless
+given) and two more for each section around its section, as far as its heading
+is (MAP-SET-IN-PIECES): with MARGIN 2, as the tables of RENDER-TABLE-LIST have
+it, a line starts under the text of its heading at any depth. How many is the
+number of its members, those of the sections it holds for one that holds
+sections, or what COUNT, a function of the section and those members, gives, no
+brackets when that is NIL. Unless the section is folded, each member has a line
+under it, and each section it holds its heading and lines; a section folded
+hides those it holds, each of which keeps its own fold (all shown while search
 filters narrow LIST, which then hide them). ROW (a function of the member and
-the section) gives its pieces, its entry (:MEMBER MEMBER SECTION). For a
-member shown on several lines, or on lines with entries of their own, ROW
-gives as a second value their entries, a sequence of one for each line.
-AFTER, a function of the section and its members, gives lines following the
-members of an open section the same way, their pieces and their entries (\"...
-3 more\"). An empty line follows each open section another comes after.
-SECTION-FACE, a function of a section, gives the face of its heading, :heading
-when it gives none. SECTION-NOTE, a function of a section, gives words shown
-after its heading in :warning, or NIL. The sections are kept for
-\\[list-toggle-all-folds]."
+the section) gives its pieces, its entry (:MEMBER MEMBER SECTION). For a member
+shown on several lines, or on lines with entries of their own, ROW gives as a
+second value their entries, a sequence of one for each line. AFTER, a function
+of the section and its members, gives lines following the members of an open
+section the same way, their pieces and their entries (\"... 3 more\"). An empty
+line follows each open section another comes after. SECTION-FACE, a function of
+a section, gives the face of its heading, :heading when it gives none.
+SECTION-NOTE, a function of a section, gives words shown after its heading in
+:warning, or NIL. The sections are kept for \\[list-toggle-all-folds]."
   (let ((folded (list-folded list)) (filtered (list-filters-on-p list))
         (keys '()) (parents '()) (entries '()) (pieces '()))
     (labels ((add (spaces &optional more-pieces more-entries)
@@ -906,11 +905,11 @@ or one of the lines under; NIL on another line."
       (:member (third entry))
       ((nil) nil)
       (t ;; a line with an entry of its own kind belongs to the heading above it
-       (let ((entries (coerce (tuatara.buffer:buffer-local list 'list-entries) 'vector)))
+       (let ((entries (tuatara.buffer:buffer-local list 'list-entries)))
          (loop for index downfrom (- (tuatara.buffer:buffer-line-number list (tuatara.buffer:buffer-point list))
                                      (tuatara.buffer:buffer-local list 'list-first-line 0))
                  to 0
-               for entry = (aref entries index)
+               for entry = (svref entries index)
                do (cond ((null entry) (return nil))
                         ((and (consp entry) (eq (first entry) :section)) (return (second entry)))
                         ((and (consp entry) (eq (first entry) :member)) (return (third entry))))))))))
@@ -968,19 +967,6 @@ folded; a section not in the list now keeps its fold for when it comes back."
 
 ;;; Columns
 
-(defun buffer-line-head (buffer position &optional (octets 512))
-  "The start of the line of BUFFER that octet POSITION is on, at most OCTETS
-of it (512 unless given) as a string, cut before a character the limit
-falls in: enough to tell what kind of line it is without reading a line of
-a million characters whole."
-  (let* ((start (tuatara.buffer:buffer-line-start buffer position))
-         (end (tuatara.buffer:buffer-line-end buffer position)))
-    (tuatara.buffer:buffer-string buffer :start start
-                                         :end (if (<= (- end start) octets)
-                                                  end
-                                                  (tuatara.text:rope-char-start (tuatara.buffer:buffer-text buffer)
-                                                                                (+ start octets))))))
-
 (defun hanging-columns (head &key cells)
   "The columns in where the text of the line beginning HEAD starts, once its
 indentation, its list bullet (-, + or *, a number and . or )) and its checkbox
@@ -996,12 +982,12 @@ rows do. At most 30, so that a narrow window keeps room for its text."
     (min 30 (tuatara.display:string-columns head :end (or second-cell end)))))
 
 (defun hanging-prefix (buffer line-start continuation)
-  "What a buffer shows before the rows a long line wraps into (\\[soft-wrap-mode]),
-its :line-prefix-function: as many spaces as its HANGING setting says, a
-number, more by as far as a row of a section held in others is set in
-\(ROW-INDENT), or for :CELLS where the text of the line beginning at LINE-START
-starts (HANGING-COLUMNS); nothing before a line's first row (CONTINUATION
-false). The rows then continue under their own text."
+  "What a buffer shows before the rows a long line wraps into
+\(\\[soft-wrap-mode]), its :line-prefix-function: as many spaces as its HANGING
+setting says, a number, more by as far as a row of a section held in others is
+set in (ROW-INDENT), or for :CELLS where the text of the line beginning at
+LINE-START starts (HANGING-COLUMNS); nothing before a line's first row
+\(CONTINUATION false). The rows then continue under their own text."
   (when continuation
     (let* ((hang (tuatara.buffer:buffer-local buffer 'hanging))
            (columns (cond ((integerp hang) (min 30 (+ hang (row-indent buffer line-start))))
@@ -1080,20 +1066,19 @@ are set in that many columns, as ROWS are by their maker (SET-IN-PIECES)."
                           &key (marked-by (lambda (item section) (declare (ignore section)) item))
                                sections section-title section-face section-note (keep-marks t)
                           &allow-other-keys)
-  "Fill LIST with a table (TABLE-HEADING-PIECES): the titles of COLUMNS over
-a row for each of ITEMS, its cells what CELLS, a function of the item, its
-mark (ENTRY-MARK) and its section, gives (TABLE-ROW-PIECES). With SECTIONS,
-ITEMS are sections, each (SECTION . MEMBERS), under headings that fold
-\(SECTIONED-PIECES, a section holding sections in place of members as it
-says; SECTION-TITLE naming each, SECTION-FACE giving the face of
-its heading, SECTION-NOTE words after it in the colour of warnings), the titles
-and the rows set in two columns, so that a row starts under the text of its
-heading. MARKED-BY, a function of an
-item and its section, gives what its mark is kept by; with KEEP-MARKS, the marks of
-items no longer listed are dropped. The other OPTIONS go to
-RENDER-MADE-TABLE-LIST: BEFORE and AFTER, pieces above the titles and below
-the rows, and those of RENDER-PIECES. Each row's cells are kept as text, so
-that \\[search-filter-show-records] can try a pattern on one column."
+  "Fill LIST with a table (TABLE-HEADING-PIECES): the titles of COLUMNS over a
+row for each of ITEMS, its cells what CELLS, a function of the item, its mark
+\(ENTRY-MARK) and its section, gives (TABLE-ROW-PIECES). With SECTIONS, ITEMS
+are sections, each (SECTION . MEMBERS), under headings that fold
+\(SECTIONED-PIECES, a section holding sections in place of members as it says;
+SECTION-TITLE naming each, SECTION-FACE giving the face of its heading,
+SECTION-NOTE words after it in the colour of warnings), the titles and the rows
+set in two columns, so that a row starts under the text of its heading.
+MARKED-BY, a function of an item and its section, gives what its mark is kept
+by; with KEEP-MARKS, the marks of items no longer listed are dropped. The other
+OPTIONS go to RENDER-MADE-TABLE-LIST: BEFORE and AFTER, pieces above the titles
+and below the rows, and those of RENDER-PIECES. Each row's cells are kept as
+text, so that \\[search-filter-show-records] can try a pattern on one column."
   (let ((texts (make-hash-table :test 'eq)) (first nil))
     (flet ((row (item section)
              (multiple-value-bind (pieces cell-texts)
@@ -1170,11 +1155,12 @@ LAST for a last column with no width, and a space between each two."
 
 (defun table-heading-pieces (columns)
   "The two lines over the rows of a table, as pieces for RENDER-PIECES: the
-titles of COLUMNS and dashes under them, both in :header-line. Each column is (TITLE
-&key WIDTH RIGHT ELIDE SHADE): TITLE heads it; its cells are WIDTH columns wide
-(the last may have no width, taking the rest of the line), RIGHT set to the
-right, cut with ... unless ELIDE is NIL; with SHADE a cell's face covers the
-spaces either side of it too (TABLE-ROW-PIECES). One space between columns."
+titles of COLUMNS and dashes under them, both in :header-line. Each column is
+\(TITLE &key WIDTH RIGHT ELIDE SHADE): TITLE heads it; its cells are WIDTH
+columns wide (the last may have no width, taking the rest of the line), RIGHT
+set to the right, cut with ... unless ELIDE is NIL; with SHADE a cell's face
+covers the spaces either side of it too (TABLE-ROW-PIECES). One space between
+columns."
   (let ((title (format nil "~{~a~^ ~}" (mapcar (lambda (column) (table-cell column (first column))) columns))))
     (list (cons title :header-line) (string #\Newline)
           (cons (substitute-if #\- (lambda (c) (char/= c #\Space)) title) :header-line) (string #\Newline))))
@@ -1359,13 +1345,18 @@ over the headings of its sections."
 of its first line, passing over the headings of its sections."
   (list-step-to-entry -1))
 
+(defun list-back-keys (keymap)
+  "Bind in KEYMAP, a list's, the keys that go back from it, \\`h' and \\`C-b'
+\(\\[quit-window]), as every list has them."
+  (define-keys keymap '(("h" quit-window) ("C-b" quit-window))))
+
 (defun entry-list-keys (mode where)
-  "Give the lists of major MODE, WHERE in words for those elsewhere, the keys
-of a list whose entries are opened: \\`RET', \\`l' and \\`C-f' open the entry on
-the line (\\[list-visit]), \\`o' in another window (\\[list-visit-other]), \\`h' and
-\\`C-b' go back (\\[quit-window]), \\`n' and \\`p' go to the next entry and the one
-before; the commands run there (COMMANDS-FOR-MODE)."
+  "Give the lists of major MODE, WHERE in words for those elsewhere, the keys of
+a list whose entries are opened: \\`RET', \\`l' and \\`C-f' open the entry on
+the line (\\[list-visit]), \\`o' in another window (\\[list-visit-other]), \\`h'
+and \\`C-b' go back (\\[quit-window]), \\`n' and \\`p' go to the next entry and
+the one before; the commands run there (COMMANDS-FOR-MODE)."
   (define-keys (mode-keymap mode) '(("RET" list-visit) ("l" list-visit) ("C-f" list-visit) ("o" list-visit-other)
-                                    ("h" quit-window) ("C-b" quit-window)
                                     ("n" list-next-entry) ("p" list-previous-entry)))
+  (list-back-keys (mode-keymap mode))
   (commands-for-mode mode where 'list-visit 'list-visit-other 'list-next-entry 'list-previous-entry))

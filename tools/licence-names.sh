@@ -40,14 +40,20 @@ names_in() {
     echo Apache-2.0
   fi
   if has "LLVM Exceptions to the Apache 2.0 License"; then echo LLVM-exception; fi
-  if has "distribute this software for any purpose with or without fee is hereby granted, provided that the above copyright notice"; then
+  if has "distribute this software for any purpose with or without fee is hereby granted, \
+provided that the above copyright notice"; then
     echo ISC
   fi
-  if has "distribute this software for any purpose with or without fee is hereby granted. THE SOFTWARE IS PROVIDED"; then
+  if has "distribute this software for any purpose with or without fee is hereby granted. \
+THE SOFTWARE IS PROVIDED"; then
     echo 0BSD
   fi
   if has "Redistribution and use in source and binary forms, with or without modification, are permitted"; then
-    if has "Neither the name" || has "names of its contributors may be used"; then echo BSD-3-Clause; else echo BSD-2-Clause; fi
+    if has "Neither the name" || has "names of its contributors may be used"; then
+      echo BSD-3-Clause
+    else
+      echo BSD-2-Clause
+    fi
   fi
   if has "This is free and unencumbered software released into the public domain"; then echo Unlicense; fi
   if has "CC0 1.0 Universal" || { has "Creative Commons Legal Code" && has "CC0"; }; then echo CC0-1.0; fi
@@ -78,7 +84,8 @@ names_in() {
     echo LGPL-3.0
   fi
   if heading "GNU LESSER GENERAL PUBLIC LICENSE Version 2.1" ||
-     named "the GNU Lesser General Public License as published by the Free Software Foundation; either version 2.1"; then
+     named "the GNU Lesser General Public License as published by the Free Software Foundation; \
+either version 2.1"; then
     echo LGPL-2.1
   fi
   # a file that names its licence by its SPDX identifier alone
@@ -118,7 +125,8 @@ if [ "${1:-}" = --agrees ]; then
   unnamed="$(comm -13 <(echo "$wanted") <(echo "$held") | grep -v '^$' || true)"
   missing="$(comm -23 <(echo "$wanted") <(echo "$every") | grep -v '^$' || true)"
   if [ -n "$unnamed" ] || [ -n "$missing" ]; then
-    echo "the label says $label, the licence files hold $(echo $every)${unnamed:+; not in the label: $(echo $unnamed)}${missing:+; in no file: $(echo $missing)}" >&2
+    detail="${unnamed:+; not in the label: $(echo $unnamed)}${missing:+; in no file: $(echo $missing)}"
+    echo "the label says $label, the licence files hold $(echo $every)$detail" >&2
     exit 1
   fi
   exit 0

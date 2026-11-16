@@ -728,7 +728,10 @@ and why.
 
 ~M-x gpg-encrypt-file~ encrypts the file shown, or the one on the line of a
 directory list, into =FILE.gpg=. It asks whom to encrypt to in the minibuffer:
-your keys, or a passphrase, with commas between several. It then offers to wipe
+your keys, or a passphrase, with commas between several. gpg lists the keys in
+the background first, so the question can come after a short wait, and the
+editor answers your keys meanwhile. Saving a new =.gpg= file asks the same way
+and saves once you have chosen. It then offers to wipe
 the original. Say no if you are not sure, since a wiped file cannot be recovered
 and a solid state disk may keep old copies anyway. ~M-x wipe-file~ does that
 wipe by itself. ~M-x gpg-decrypt-file~ writes a decrypted copy to a file you
@@ -809,8 +812,9 @@ The other program is not shut in as Tuatara's own readers are. It can read
 everything you can. So Tuatara asks first, unless you turn off
 =*open-externally-ask*=. It also looks at what the file is, not what its name
 says. A program named =holiday.jpg= is refused. Only the kinds of file in
-=*open-externally-kinds*= are handed over: pictures, PDFs, sound and video,
-and office documents.
+=*open-externally-kinds*= are handed over: pictures, PDFs, sound and video.
+Office documents can hold macros, so they are handed over only once you add
+their kinds (=:docx=, =:xlsx=, =:pptx=, =:odt=, =:ods=, =:odp=) to the setting.
 
 To use another program for a kind, set =*open-externally-programs*= to a list
 of a type and a program:

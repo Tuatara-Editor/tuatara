@@ -2,12 +2,12 @@
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; M-x buffers (C-x C-b) shows every live buffer in *Buffers*, a read-only
-;;;; support buffer with one line per buffer and its own keys; C-x b
-;;;; are the quick selector with completion. The list looks as Emacs's ibuffer
-;;;; does: the buffers used most recently first, in a section for each project
-;;;; and one for those in none, their marks, names, sizes, modes and files in
-;;;; columns under titles, a buffer's name in a face for what it is, a line
-;;;; summing them up at the end. C-x p k kills a project's buffers.
+;;;; support buffer with one line per buffer and its own keys; C-x b is the
+;;;; quick selector with completion. The list shows the buffers used most
+;;;; recently first, in a section for each project and one for those in none,
+;;;; their marks, names, sizes, modes and files in columns under titles, a
+;;;; buffer's name in a face for what it is, a line summing them up at the end.
+;;;; C-x p k kills a project's buffers.
 
 (in-package #:tuatara.defaults)
 
@@ -26,9 +26,10 @@ unmarked. \\[buffers-save] saves the marked buffers, \\[list-delete-marked]
 kills them after asking (on a heading, every buffer of that project or client's
 group), \\[list-execute] kills those marked for deletion.
 \\[buffers-keep-client] makes the client whose group the cursor is in the
-persistent one. \\[revert-buffer] lists them again, as the list does by itself while it is shown, marks kept. The
-modal keys that move, select and copy work as in any support buffer;
-\\<normal>\\[start-selection] and \\[select-lines] select."
+persistent one. \\[revert-buffer] lists them again, as the list does by itself
+while it is shown, marks kept. The modal keys that move, select and copy work
+as in any support buffer; \\<normal>\\[start-selection] and \\[select-lines]
+select."
   :lighter "Buffers" :interactive nil)
 
 (defvar *buffers-keymap* (mode-keymap 'buffers-mode)
@@ -234,9 +235,11 @@ buffer killed meanwhile is dropped."
                                           (format nil "~:d" (reduce #'+ buffers :key #'tuatara.buffer:buffer-size))
                                           ""
                                           (if (client-groups-p)
-                                              (format nil "~[No files~;1 file~:;~:*~d files~], ~[no groups~;1 group~:;~:*~d groups~]"
+                                              (format nil "~[No files~;1 file~:;~:*~d files~], ~
+                                                           ~[no groups~;1 group~:;~:*~d groups~]"
                                                       files (length sections))
-                                              (format nil "~[No files~;1 file~:;~:*~d files~], ~[no projects~;1 project~:;~:*~d projects~]"
+                                              (format nil "~[No files~;1 file~:;~:*~d files~], ~
+                                                           ~[no projects~;1 project~:;~:*~d projects~]"
                                                       files (count :none sections :key #'car :test-not #'eq))))))
      :point point :first-line *buffers-title-lines*
      :refill (lambda (list-buffer) (buffers-render list-buffer :keep)))))

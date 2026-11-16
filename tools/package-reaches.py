@@ -21,14 +21,14 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from repositories import package_roots
+
 OWN = re.compile(r"\(in-package\s+#?:?([^\s)]+)", re.I)
 REACH = re.compile(r"(?<![\w:.-])#?:?([A-Za-z][\w.-]*)::([^\s()'`,\"]+)")
-
-
-def package_roots():
-    """The package repositories that sit beside this checkout, in name order."""
-    beside = Path(__file__).resolve().parent.parent.parent / "tuatara-packages"
-    return sorted(p for p in beside.glob("tuatara-*") if (p / ".git").exists() and not p.name.endswith("-pc10"))
+# what Lisp text is made of, as far as telling code from the rest: a string, a line comment, a block comment
+# (not nested), a character such as #\" or #\;
+LEXEME = re.compile(r'"(?:[^"\\]|\\.)*"|;[^\n]*|#\|.*?\|#|#\\.', re.S)
 
 
 def lisp_files(root):
@@ -38,13 +38,18 @@ def lisp_files(root):
     return sorted(n for n in names if n and not n.startswith("test/") and n != "test.lisp")
 
 
+def code_only(text):
+    """TEXT with every string, comment and character blanked (line ends kept, so line numbers stay), leaving the code
+    alone, where a double colon is a reference."""
+    return LEXEME.sub(lambda match: re.sub(r"[^\n]", " ", match.group()), text)
+
+
 def reaches(text):
     """The (line number, reference) pairs in TEXT that name a package other than the file's own."""
     own = OWN.search(text)
     own = own.group(1).lower() if own else ""
     found = []
-    for number, line in enumerate(text.splitlines(), 1):
-        code = line.split(";", 1)[0]
+    for number, code in enumerate(code_only(text).splitlines(), 1):
         for match in REACH.finditer(code):
             if match.group(1).lower() != own:
                 found.append((number, f"{match.group(1)}::{match.group(2)}"))

@@ -766,3 +766,10 @@ file of text; their native names, as two values."
                                                          [core]~%excludesfile=~~/two~%"))))
     (is string= "~/two" (tuatara.defaults::git-config-value octets "core" "excludesfile"))
     (false (tuatara.defaults::git-config-value octets "alias" "excludesfile"))))
+
+(define-test (state-and-files paths-read-back-as-written)
+  ;; a path written in a list kept between sessions reads back as it was, and a backslash that
+  ;; escapes nothing, as a hand-edited line may hold, is kept as typed
+  (let ((path (format nil "/a\\b~c~c~cc" #\Tab #\Newline #\Return)))
+    (is string= path (tuatara.defaults::unescape-path (tuatara.defaults::escape-path path))))
+  (is string= "C:\\x" (tuatara.defaults::unescape-path "C:\\x")))

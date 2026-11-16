@@ -21,7 +21,7 @@
   (loop for child in (org-node-children node)
         when (eq (org-node-type child) 'plain-list)
           append (org-children-of child 'item)
-        when (member (org-node-type child) '(section))
+        when (eq (org-node-type child) 'section)
           append (org-child-items child)))
 
 (defun org-checkbox-state (item &optional states)
@@ -211,14 +211,13 @@ row (org-table-insert-hline); in a list, the next kind of bullet
 
 (defparameter *org-list-bullet-cycle* '("-" "+" "*" "1." "1)")
   "The bullets \\[org-cycle-list-bullet] goes through, in order: a * only for a
-list set in from the margin, where it
-cannot be a headline.")
+list set in from the margin, where it cannot be a headline.")
 
 (define-command org-cycle-list-bullet ()
   "Give the list point is in its next kind of bullet (\\`C-c -'): - to + to *
-to 1. to 1) and round, every item
-of the list at once, numbered items counted from 1; * is passed over for a
-list at the margin. Checkboxes and text are kept."
+to 1. to 1) and round, every item of the list at once, numbered items counted
+from 1; * is passed over for a list at the margin. Checkboxes and text are
+kept."
   (with-org-structure (parse buffer tree text position)
     (let* ((item (org-current-item tree text position))
            (list (and item (org-node-parent item))))
@@ -317,7 +316,7 @@ parse is behind its text."
                   ((org-src-block-at tree position) '("source block at point" "C-v" "C-c"))
                   ((org-current-item tree text position) '("list item at point" "C-c" "-"))
                   ((and (< line-start (length text)) (char= (char text line-start) #\*)
-                        (cl-ppcre:scan "^\\*+ " text :start line-start))
+                        (cl-ppcre:scan *org-headline-line-scanner* text :start line-start))
                    '("heading at point" "C-t" "C-q" "C-s" "C-d" "C-w" "C-z" "C-x")))))))))
 
 (define-setting *org-complete-checkboxes* t
@@ -391,14 +390,19 @@ its text as it is now is at hand, never waited for."
                                         (and at (< at to) (> (+ at 3) from))))
                                     (org-killed-checkbox-items (org-parse-tree parse) from to)))
              (states (mapcar (lambda (item) (cons item nil)) killed))
-             (edits '()))
-        ;; the counts made as if the items were gone; those under first, so that an item above counts the boxes
-        ;; below it as they will be
+             (counted (make-hash-table :test 'eq))
+             (edits (make-hash-table)))
+        ;; the counts made as if the items were gone, each list once; those under first, so that an item above
+        ;; counts the boxes below it as they will be
         (dolist (item (reverse killed))
-          (multiple-value-bind (found after) (org-statistics-edits text (org-node-parent item) :states states)
-            (setf states after)
-            (dolist (edit found)
-              (unless (and (< (first edit) to) (> (second edit) from))
-                (setf edits (cons edit (remove (first edit) edits :key #'first)))))))
-        (when edits
-          (lambda () (org-apply-edits parse edits)))))))
+          (let ((parent (org-node-parent item)))
+            (unless (gethash parent counted)
+              (setf (gethash parent counted) t)
+              (multiple-value-bind (found after) (org-statistics-edits text parent :states states)
+                (setf states after)
+                (dolist (edit found)
+                  (unless (and (< (first edit) to) (> (second edit) from))
+                    (setf (gethash (first edit) edits) edit)))))))
+        (when (plusp (hash-table-count edits))
+          (let ((edits (loop for edit being the hash-values of edits collect edit)))
+            (lambda () (org-apply-edits parse edits))))))))

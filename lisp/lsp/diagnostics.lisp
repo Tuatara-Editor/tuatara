@@ -141,17 +141,23 @@ them.")
 
 (defvar *diagnostics-changes* 0
   "How many times what the language servers found has changed: the list of
-\[lsp-diagnostics] is made again, at most once a tick, when it is not the
-count it was made at (KEEP-SHOWN-CURRENT).")
+\\[lsp-diagnostics] is made again when it is not the count it was made at,
+at most once a second (DIAGNOSTICS-LIST-KEY).")
+
+(defvar *diagnostics-listed* (cons 0 0)
+  "The count of changes (*DIAGNOSTICS-CHANGES*) the list of diagnostics was
+last made for, and when, in internal time units.")
 
 (defun keep-file-diagnostics (server uri items)
   "Keep ITEMS, what SERVER found wrong in the file uniform resource identifier
-(URI) names, not open, when the file is in its project; the list of them
-shown again."
+(URI) names, not open, when the file is in its project, the worst
+*LSP-MOST-DIAGNOSTICS* of them (WORST-DIAGNOSTICS); the list of them shown
+again."
   (let ((path (uri-path uri)))
     (when (and path (tuatara.io:really-within-p path (lsp-server-root server)))
-      (let ((others (remove server (gethash path *lsp-file-diagnostics*) :key #'car)))
-        (if (plusp (length (tuatara.text:json-items items)))
+      (let ((others (remove server (gethash path *lsp-file-diagnostics*) :key #'car))
+            (items (worst-diagnostics (tuatara.text:json-items items))))
+        (if (plusp (length items))
             (setf (gethash path *lsp-file-diagnostics*) (acons server items others))
             (if others (setf (gethash path *lsp-file-diagnostics*) others) (remhash path *lsp-file-diagnostics*))))
       (incf *diagnostics-changes*))))
@@ -168,15 +174,22 @@ shown again."
 
 (defun file-diagnostic-entries ()
   "What running servers found wrong in files not open, for the list: each
-\(PATH SERVER DIAGNOSTIC-JSON), by file."
-  (let ((entries '()))
+\(PATH SERVER DIAGNOSTIC-JSON), by file; *LSP-MOST-DIAGNOSTICS* at most, the
+worst kept. The count of all there are is the second value."
+  (let ((entries '()) (count 0))
     (maphash (lambda (path found)
                (unless (buffer-visiting path)
                  (loop for (server . items) in found
                        when (member server *lsp-servers*)
-                       do (loop for d across items do (push (list path server d) entries)))))
+                       do (loop for d across items do (push (list path server d) entries) (incf count)))))
              *lsp-file-diagnostics*)
-    (stable-sort (nreverse entries) #'string< :key #'first)))
+    (let ((entries (nreverse entries)))
+      (when (> count *lsp-most-diagnostics*)
+        (setf entries (subseq (stable-sort entries #'<
+                                           :key (lambda (entry)
+                                                  (or (tuatara.text:json-integer (third entry) "severity") 1)))
+                              0 *lsp-most-diagnostics*)))
+      (values (stable-sort entries #'string< :key #'first) count))))
 
 (define-lsp-notification "textDocument/publishDiagnostics" (server params)
   (let* ((uri (tuatara.text:json-text params "uri"))
@@ -198,15 +211,19 @@ shown again."
           (unless (tuatara.buffer:buffer-local buffer 'lsp-hints)
             (lsp-ask-hints doc)))))))
 
+(defun worst-diagnostics (items)
+  "ITEMS, a vector of Diagnostics a server sent, *LSP-MOST-DIAGNOSTICS* at
+most: the worst kept, in the order sent among those as bad."
+  (if (> (length items) *lsp-most-diagnostics*)
+      (subseq (stable-sort (copy-seq items) #'< :key (lambda (d) (or (tuatara.text:json-integer d "severity") 1)))
+              0 *lsp-most-diagnostics*)
+      items))
+
 (defun diagnostic-entries (doc server items)
   "ITEMS, a vector of the Diagnostics SERVER gave for DOC, as DIAGNOSTICs;
 any that says not where it is left out. *LSP-MOST-DIAGNOSTICS* at most, the
-worst kept."
-  (let ((items (if (> (length items) *lsp-most-diagnostics*)
-                   (subseq (stable-sort (copy-seq items) #'<
-                                        :key (lambda (d) (or (tuatara.text:json-integer d "severity") 1)))
-                           0 *lsp-most-diagnostics*)
-                   items)))
+worst kept (WORST-DIAGNOSTICS)."
+  (let ((items (worst-diagnostics items)))
     (loop for d across items
           for (start end) = (multiple-value-list (doc-range-bytes doc server (tuatara.text:json-get d "range")))
           when start
@@ -334,10 +351,11 @@ from LINES, as DIAGNOSTIC-GUTTER-PREPARE gives them for the frame, when given."
   (when (tuatara.buffer:buffer-local buffer 'lsp-diagnostics)
     (multiple-value-bind (placed reach errors warnings) (diagnostic-table buffer)
       (declare (ignore placed reach))
-      (when (plusp (+ errors warnings))
-        (list (format nil "~:[~*~;✘~d~]~:[~*~;~:*~:[~; ~]~*~]~:[~*~;⚠~d~]" (plusp errors) errors
-                      (plusp warnings) (and (plusp errors) (plusp warnings)) (plusp warnings) warnings)
-              (if (plusp errors) :error :warning))))))
+      (let ((errors (and (plusp errors) errors))
+            (warnings (and (plusp warnings) warnings)))
+        (when (or errors warnings)
+          (list (format nil "~@[✘~d~]~:[~; ~]~@[⚠~d~]" errors (and errors warnings) warnings)
+                (if errors :error :warning)))))))
 
 (defun diagnostic-words (diagnostic)
   "DIAGNOSTIC as a line of words: its kind, what found it, and what it says."
@@ -434,12 +452,10 @@ then (USE-PLACES)."
   "What the language servers found wrong in the open files and the files of
 their projects (\\[lsp-diagnostics]), a line each: where, how bad, what found it
 and what it says. \\<diagnostics-mode>\\[list-visit] goes there, in another
-window, \\[revert-buffer] lists them again (they are listed again while it is
-shown as servers find more); \\[quit-window] closes."
+window, \\[list-visit-other] with the list kept selected, \\[revert-buffer]
+lists them again (they are listed again while it is shown as servers find
+more); \\[quit-window] closes."
   :lighter "Diagnostics" :interactive nil)
-
-(defvar *diagnostics-keymap* (mode-keymap 'diagnostics-mode)
-  "Keys of the list of diagnostics (diagnostics-mode's keymap).")
 
 (defun file-diagnostic-piece (path server item)
   "The line of the list of diagnostics for ITEM, a Diagnostic SERVER sent of
@@ -460,19 +476,45 @@ the file at PATH, not open: where the server says, as it counts."
                   (1+ (- start (tuatara.text:line->byte rope line))) (diagnostic-words d))
           (diagnostic-mark-face (diagnostic-severity d)))))
 
+(defun diagnostics-list-key (list)
+  "The count of changes the list of diagnostics LIST shows
+\(*DIAGNOSTICS-CHANGES*), taken up at most once a second, so that a project
+checked a file at a time lists them again once a second, not for each file
+\(KEEP-SHOWN-CURRENT)."
+  (declare (ignore list))
+  (let ((listed *diagnostics-listed*))
+    (when (and (/= (car listed) *diagnostics-changes*) (>= (tuatara.runtime:seconds-since (cdr listed)) 1))
+      (setf *diagnostics-listed* (cons *diagnostics-changes* (get-internal-real-time))))
+    (car *diagnostics-listed*)))
+
+(defun diagnostics-list-tick (editor)
+  "Tick function: while the list of diagnostics is there and has changes to
+take up (DIAGNOSTICS-LIST-KEY), the seconds until it may; else NIL."
+  (declare (ignore editor))
+  (let ((listed *diagnostics-listed*))
+    (and (/= (car listed) *diagnostics-changes*)
+         (tuatara.buffer:find-buffer "*Diagnostics*")
+         (max 1/20 (- 1 (tuatara.runtime:seconds-since (cdr listed)))))))
+
 (defun diagnostics-show (buffer &optional (point 1))
-  "Fill BUFFER, the list of what the servers found, point on line POINT, or with :keep where it was."
-  (let ((entries (append (loop for b in tuatara.buffer:*buffers*
-                               append (loop for d in (buffer-diagnostics b) collect (cons b d)))
-                         (file-diagnostic-entries))))
-    (render-pieces buffer
-                   (cons (format nil "  Found by the language servers: ~d~%" (length entries))
-                         (loop for entry in entries
-                               collect (if (stringp (first entry))
-                                           (apply #'file-diagnostic-piece entry)
-                                           (buffer-diagnostic-piece (car entry) (cdr entry)))))
-                   :point point :entries (coerce entries 'vector) :first-line 1
-                   :refill (lambda (buffer) (diagnostics-show buffer :keep)))))
+  "Fill BUFFER, the list of what the servers found, point on line POINT, or
+with :keep where it was; of the files not open, the worst
+*LSP-MOST-DIAGNOSTICS* (FILE-DIAGNOSTIC-ENTRIES)."
+  (multiple-value-bind (files all-files) (file-diagnostic-entries)
+    (let ((entries (append (loop for b in tuatara.buffer:*buffers*
+                                 append (loop for d in (buffer-diagnostics b) collect (cons b d)))
+                           files)))
+      (render-pieces buffer
+                     (cons (format nil "  Found by the language servers: ~d~@[, the worst ~d in files not open ~
+                                        shown~]~%"
+                                   (+ (length entries) (- all-files (length files)))
+                                   (and (< (length files) all-files) (length files)))
+                           (loop for entry in entries
+                                 collect (if (stringp (first entry))
+                                             (apply #'file-diagnostic-piece entry)
+                                             (buffer-diagnostic-piece (car entry) (cdr entry)))))
+                     :point point :entries (coerce entries 'vector) :first-line 1
+                     :refill (lambda (buffer) (diagnostics-show buffer :keep))))))
 
 (define-command lsp-diagnostics ()
   "List what the language servers found wrong in the open files, a line each,
@@ -488,8 +530,13 @@ RET there goes to it, opening the file."
 
 (defmethod visit-entry ((mode diagnostics-mode) list entry other)
   "Go to the place ENTRY, a line of the list of diagnostics, names, in another
-window always."
-  (declare (ignore list other))
+window, with OTHER the list kept selected."
+  (declare (ignore list))
+  (keeping-list-selected other (lambda () (visit-diagnostic entry))))
+
+(defun visit-diagnostic (entry)
+  "Go to the place ENTRY, a line of the list of diagnostics, names, in another
+window, selected."
   (cond ((stringp (first entry))
          ;; a file not open: opened, and the place found as its server counts
          (destructuring-bind (path server d) entry
@@ -512,32 +559,6 @@ window always."
   (pushnew 'diagnostic-mode-line *mode-line-functions*)
   (add-gutter-provider :diagnostics 'diagnostic-gutter-width 'diagnostic-gutter-cell
                        :prepare 'diagnostic-gutter-prepare)
-  (keep-shown-current 'diagnostics-mode (lambda (list) (declare (ignore list)) *diagnostics-changes*))
-  (define-key *diagnostics-keymap* "RET" 'list-visit)
-  (commands-for-mode 'diagnostics-mode "the list of diagnostics (\\[lsp-diagnostics])" 'list-visit))
-
-(defun install-diagnostics-place ()
-  "Show the list of what the language servers found in a window across the
-bottom, 30% of the height, kept for it and selected."
-  (place-buffers 'diagnostics-mode :bottom :size 0.3 :keep t :select t))
-
-(defun install-lsp (editor)
-  "Have buffers formatted before they are saved, as *FORMAT-ON-SAVE* says;
-files opened in their projects' language servers, kept in step, what the
-servers find shown, and the servers ended as the editor stops; and what the
-servers know of where the cursor rests shown in EDITOR, with code's keys
-under \\`C-c'."
-  (install-format)
-  (pushnew 'lsp-tick *tick-functions*)
-  (setf tuatara.buffer:*find-file-functions*
-        (append (remove 'lsp-visit tuatara.buffer:*find-file-functions*) (list 'lsp-visit)))
-  (pushnew 'lsp-killed tuatara.buffer:*kill-buffer-functions*)
-  (pushnew 'lsp-saved *after-save-functions*)
-  (pushnew 'lsp-stop-all *exit-functions*)
-  (pushnew 'lsp-outside-work *outside-work-functions*)
-  (install-diagnostics)
-  (install-semantic-tokens)
-  (install-lsp-watching)
-  (pushnew 'lsp-selection-ranges *selection-ranges-functions*)
-  (install-org-blocks)
-  (install-lsp-features editor))
+  (keep-shown-current 'diagnostics-mode 'diagnostics-list-key)
+  (pushnew 'diagnostics-list-tick *tick-functions*)
+  (entry-list-keys 'diagnostics-mode "the list of diagnostics (\\[lsp-diagnostics])"))

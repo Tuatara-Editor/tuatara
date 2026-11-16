@@ -113,8 +113,8 @@ TUATARA.IO:*PROGRAM-SAID-LIMIT* octets of each, never to be shown raw."
 
 (defun openssh-version (program)
   "The version of OpenSSH whose ssh is PROGRAM, as a list of numbers, 10.2
-as (10 2) (TUATARA.IO:VERSION-NUMBERS); NIL when it does not say one."
-  (tuatara.io:version-numbers (nth-value 2 (run-bounded program '("-V") :seconds 10)) "OpenSSH_"))
+as (10 2) (TUATARA.IO:SOFTWARE-VERSION-NUMBERS); NIL when it does not say one."
+  (tuatara.io:software-version-numbers (nth-value 2 (run-bounded program '("-V") :seconds 10)) "OpenSSH_"))
 
 (defun ssh-settings (program host)
   "What ssh, PROGRAM, makes of its configuration for HOST (ssh -G), as a
@@ -324,7 +324,7 @@ There \\<servers-mode>\\[server-trust] trusts another, \\[server-toggle-agent], 
 it (build.example, me@build.example, or an alias of ~/.ssh/config): it goes
 on the list of trusted servers (\\[server-list]) with nothing given yet, each
 thing then turned on there by itself."
-  (let ((host (string-trim " " (read-string "Trust the server (as tuatara --client= names it): "))))
+  (let ((host (read-string "Trust the server (as tuatara --client= names it): " :trim t)))
     (cond ((host-refusal host) (message "~a" (host-refusal host)))
           ((state-list-find *trusted-servers* host) (message "~a is trusted already" host))
           (t (state-list-put *trusted-servers*
@@ -332,11 +332,11 @@ thing then turned on there by itself."
              (refill-open-list "*Servers*" 'servers-mode)
              (message "~a is trusted, with nothing given yet: \\[server-list] turns each thing on" host)))))
 
-(defun change-servers (noun ask change)
+(defun change-servers (noun change &key ask)
   "Change the servers marked in the list of trusted servers, or the one on
-the line: ASK, a function of a host and its entry, gives the question asked
-before the change, or NIL for none, and CHANGE, a function of the entry, the
-changed one; NOUN says what changed, for the message."
+the line: CHANGE, a function of the entry, gives the changed one, and ASK,
+when given, a function of a host and its entry, the question asked before the
+change, or NIL for none; NOUN says what changed, for the message."
   (act-on-list (current-buffer)
                (lambda (list hosts)
                  (unwind-protect
@@ -344,7 +344,7 @@ changed one; NOUN says what changed, for the message."
                         ;; every answer is given before any server is changed
                         (dolist (host hosts)
                           (let* ((entry (state-list-find *trusted-servers* host))
-                                 (question (and entry (funcall ask host entry))))
+                                 (question (and entry ask (funcall ask host entry))))
                             (when (and entry (or (null question) (y-or-n-p* question)))
                               (push (funcall change entry) changed))))
                         (state-list-replace *trusted-servers* (nreverse changed))
@@ -358,9 +358,9 @@ changed one; NOUN says what changed, for the message."
 the line's, on where it is off and off where it is on, asking before turning it
 on, GIVES saying what the server is then given (a format of the host)."
   (change-servers noun
-                  (lambda (host entry)
-                    (and (not (server-field entry field)) (format nil "~?: turn it on?" gives (list host))))
-                  (lambda (entry) (server-entry-with entry field (not (server-field entry field))))))
+                  (lambda (entry) (server-entry-with entry field (not (server-field entry field))))
+                  :ask (lambda (host entry)
+                         (and (not (server-field entry field)) (format nil "~?: turn it on?" gives (list host))))))
 
 (define-command server-toggle-agent ()
   "Forward your ssh agent to the server on the line, or those marked, or no
@@ -392,15 +392,13 @@ the line, or those marked, to a directory there, asked for (from the home
 directory there unless it begins with /), or no longer: on, a file dropped is
 copied there, its size checked first, and nothing of it run."
   (change-servers "dropped files"
-                  (lambda (host entry) (declare (ignore host entry)) nil)
                   (lambda (entry)
                     (server-entry-with
                      entry :files
                      (and (not (server-field entry :files))
-                          (let ((directory (string-trim " " (read-string
-                                                             (format nil "Files dropped go on ~a to the directory: "
-                                                                     (server-field entry :host))
-                                                             :initial "Dropped"))))
+                          (let ((directory (read-string (format nil "Files dropped go on ~a to the directory: "
+                                                                (server-field entry :host))
+                                                        :initial "Dropped" :trim t)))
                             (if (plain-path-p directory :relative t)
                                 directory
                                 (refuse "~a: a directory is letters, digits, /, ., _ and -, no part .. or ~
@@ -412,7 +410,6 @@ used for from the server on the line, or those marked, commas between
 them (github.com, me@git.example); none for any. Kept with OpenSSH 8.9 or
 later here, which refuses a key's use for any other machine."
   (change-servers "machines for the agent's keys"
-                  (lambda (host entry) (declare (ignore host entry)) nil)
                   (lambda (entry)
                     (let* ((typed (read-string (format nil "Keys used from ~a for (commas between, none for any): "
                                                        (server-field entry :host))
@@ -432,12 +429,10 @@ there: /opt/tuatara/bin/tuatara, or a name found on that PATH; empty for the
 one on that PATH. Letters, digits, /, ., _ and - only, as it goes to the
 shell on that machine."
   (change-servers "the tuatara run there"
-                  (lambda (host entry) (declare (ignore host entry)) nil)
                   (lambda (entry)
-                    (let ((program (string-trim " " (read-string
-                                                     (format nil "Tuatara to run on ~a (empty for its PATH's): "
-                                                             (server-field entry :host))
-                                                     :initial (or (server-field entry :program) "")))))
+                    (let ((program (read-string (format nil "Tuatara to run on ~a (empty for its PATH's): "
+                                                        (server-field entry :host))
+                                                :initial (or (server-field entry :program) "") :trim t)))
                       (unless (or (string= program "") (plain-path-p program :relative t))
                         (refuse "~a: a program is letters, digits, /, ., _ and -, no part .. or starting with -"
                                 program))
@@ -499,12 +494,13 @@ error output, reached nothing there within SECONDS, in words; NIL when it did."
   "Import the armoured public keys OCTETS into the keyring of gpg on HOST,
 through ssh with no question asked (BatchMode) and nothing forwarded: words
 saying what was done (IMPORT-WORDS), as gpg there said it."
-  (multiple-value-bind (code output complained)
-      (run-on-server host '("gpg" "--batch" "--status-fd" "1" "--import") :input octets)
-    (let ((statuses (loop for line in (uiop:split-string output :separator '(#\Newline))
-                          when (uiop:string-prefix-p "[GNUPG:] " line) collect (subseq line 9))))
-      (or (server-unreached-words host code complained 60)
-          (format nil "On ~a: ~a" host (import-words statuses (server-said-shown complained)))))))
+  (let ((seconds 60))
+    (multiple-value-bind (code output complained)
+        (run-on-server host '("gpg" "--batch" "--status-fd" "1" "--import") :input octets :seconds seconds)
+      (let ((statuses (loop for line in (uiop:split-string output :separator '(#\Newline))
+                            when (uiop:string-prefix-p "[GNUPG:] " line) collect (subseq line 9))))
+        (or (server-unreached-words host code complained seconds)
+            (format nil "On ~a: ~a" host (import-words statuses (server-said-shown complained))))))))
 
 (define-command server-copy-keys ()
   "Copy the public keys marked in the list of GnuPG keys (\\[gpg-list-keys]),

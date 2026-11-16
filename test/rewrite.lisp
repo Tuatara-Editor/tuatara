@@ -615,3 +615,26 @@ FACE)) in a job's face, as (ROW START END FACE)."
     (true (funcall asked lines))
     (true (funcall asked matches))
     (false (funcall asked count))))
+
+(define-test (rewrite shading-kept-while-the-view-stands)
+  ;; what a replacement running will change in the text shown is looked for once, and again only when the
+  ;; stretches shown or the text change, not at each frame its progress draws
+  (let* ((buffer (tuatara.buffer:make-buffer "shading kept" :text "kea kea kea"))
+         (job (tuatara.defaults::%make-match-rewrite :buffer buffer))
+         (looked 0))
+    (sb-int:encapsulate 'tuatara.defaults::match-shading-now 'counted
+                        (lambda (function &rest arguments)
+                          (declare (ignore function arguments))
+                          (incf looked)
+                          (values (list (list 0 3 :job-queued)) t)))
+    (unwind-protect
+         (progn
+           (dotimes (i 3) (tuatara.defaults::job-match-shading job (list (cons 0 11))))
+           (is = 1 looked)
+           (tuatara.defaults::job-match-shading job (list (cons 0 7)))
+           (is = 2 looked)
+           (tuatara.buffer:buffer-insert buffer 0 "x")
+           (tuatara.defaults::job-match-shading job (list (cons 0 7)))
+           (is = 3 looked))
+      (sb-int:unencapsulate 'tuatara.defaults::match-shading-now 'counted)
+      (tuatara.buffer:kill-buffer buffer))))

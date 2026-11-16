@@ -114,13 +114,23 @@ a paste) is given back once it is empty.")
   (when (> (length (outbox-octets box)) +roomy-box+)
     (setf (outbox-octets box) (tuatara.text:make-octets 65536))))
 
+(defun store-number (octets at value count)
+  "Write the integer VALUE in COUNT octets of OCTETS from AT, least significant
+first, a negative one as two's complement."
+  (dotimes (k count)
+    (setf (aref octets (+ at k)) (ldb (byte 8 (* 8 k)) value))))
+
+(defun fetch-number (octets at count)
+  "The unsigned integer in COUNT octets of OCTETS from AT, least significant
+first."
+  (loop for k below count sum (ash (aref octets (+ at k)) (* 8 k))))
+
 (defun put-number (box value count)
   "Put the integer VALUE in COUNT octets of BOX, least significant first, a
 negative one as two's complement."
   (declare (type outbox box) (type integer value) (type (integer 1 4) count))
-  (let* ((at (outbox-room box count)) (octets (outbox-octets box)))
-    (dotimes (k count)
-      (setf (aref octets (+ at k)) (ldb (byte 8 (* 8 k)) value)))))
+  (let ((at (outbox-room box count)))
+    (store-number (outbox-octets box) at value count)))
 
 (defun put-octets (box octets &optional (start 0) (end (length octets)))
   "Put OCTETS from START below END in BOX as they are."
@@ -134,9 +144,7 @@ more: a place on the screen or in a row, which the reading end holds to MOST."
 
 (defun patch-length (box at)
   "Write over the 4 octets of BOX at AT how many octets BOX holds after them."
-  (let ((length (- (outbox-fill box) at 4)) (octets (outbox-octets box)))
-    (dotimes (k 4)
-      (setf (aref octets (+ at k)) (ldb (byte 8 (* 8 k)) length)))))
+  (store-number (outbox-octets box) at (- (outbox-fill box) at 4) 4))
 
 (defun put-text (box string &optional most)
   "Put STRING in BOX as UTF-8 after its length in octets, in 4 octets; with
@@ -266,7 +274,7 @@ of an unknown kind, of a kind never sent this way, or longer than its kind
 may be, is malformed."
   (unless (fill-inbox inbox 5) (return-from read-message nil))
   (let* ((octets (inbox-octets inbox)) (start (inbox-start inbox))
-         (length (loop for k below 4 sum (ash (aref octets (+ start k)) (* 8 k))))
+         (length (fetch-number octets start 4))
          (code (aref octets (+ start 4)))
          (entry (find code *message-kinds* :key #'second))
          (most (and entry (if (eq (inbox-side inbox) :editor) (third entry) (fourth entry)))))
@@ -288,8 +296,7 @@ octets, taken; malformed when the message ends before them."
 (defun take-number (inbox count)
   "The unsigned integer in the next COUNT octets of the message being read
 from INBOX, least significant first."
-  (let ((at (take-place inbox count)) (octets (inbox-octets inbox)))
-    (loop for k below count sum (ash (aref octets (+ at k)) (* 8 k)))))
+  (fetch-number (inbox-octets inbox) (take-place inbox count) count))
 
 (defun take-signed (inbox count)
   "The signed integer in the next COUNT octets of the message being read from
@@ -376,6 +383,42 @@ them."
       (documentation 'copy-facts 'function) "A copy of FACTS, to be changed where the original is not."
       (documentation 'facts-p 'function) "True when OBJECT is FACTS.")
 
+(defconstant +most-path+ 4096 "The most octets of a path a client names.")
+(defconstant +most-font-steps+ 64 "The most steps a font is scaled up or down by, either way.")
+(defconstant +most-font-name+ 256 "The most octets of the name of a font or a font family.")
+(defconstant +most-description+ 1024 "The most octets of what a frontend says it is, or of a message's words.")
+(defconstant +most-health-lines+ 64 "The most lines of a frontend's health report.")
+(defconstant +most-health-text+ 4096 "The most octets of one line of a frontend's health report.")
+(defconstant +most-fonts+ 8192 "The most fonts or font families a frontend lists.")
+(defconstant +most-variants+ 256 "The most variants a font family lists.")
+(defconstant +most-variant-font+ 512 "The most octets of the name of a font variant's font.")
+(defconstant +most-files+ 4096 "The most files a client names to its editor.")
+(defconstant +most-variables+ 128 "The most environment variables a client passes to its editor.")
+(defconstant +most-variable-name+ 128 "The most octets of an environment variable's name.")
+(defconstant +most-notes+ 8 "The most notes a client sends with its request.")
+(defconstant +most-note+ 1024 "The most octets of one note.")
+(defconstant +most-frames+ 16 "The most frames a client asks for.")
+(defconstant +most-word+ 64 "The most characters of the word a window is asked for by.")
+(defconstant +most-dropped+ 1024 "The most files dropped on a window at once.")
+(defconstant +most-dropped-name+ 4096 "The most octets of the name of a file dropped.")
+
+(defparameter *request-flags* #(:wait :stop :safe :hex :standard-input :joins :far)
+  "The flags of a request, by the bit each has in a message: the bit of the
+flag at place N is 2 to the N.")
+
+(defparameter *key-flags* #(:ctrl :meta :shift :special :place)
+  "The flags of a key event, by the bit each has in a message, as the
+*REQUEST-FLAGS* have theirs.")
+
+(defparameter *facts-flags* #(:images :reorders)
+  "The flags of a frontend's facts, by the bit each has in a message, as the
+*REQUEST-FLAGS* have theirs.")
+
+(defmacro flag-bit (flags name)
+  "The bit the flag NAME has among FLAGS (*REQUEST-FLAGS* and the others), in
+a message."
+  `(load-time-value (ash 1 (position ,name ,flags))))
+
 (defparameter *styles* #(nil :dark :light)
   "The desktop's styles, by their numbers in a message.")
 
@@ -391,26 +434,29 @@ its health and its fonts too."
         (put-number box (max 0 (min (frontend-colour-count frontend) 16777216)) 4)
         (put-number box (if cell-width (min 65535 (max 1 (round cell-width))) 0) 2)
         (put-number box (if cell-height (min 65535 (max 1 (round cell-height))) 0) 2)
-        (put-number box (logior (if (frontend-images-p frontend) 1 0) (if (frontend-reorders-text-p frontend) 2 0)) 1)
+        (put-number box (logior (if (frontend-images-p frontend) (flag-bit *facts-flags* :images) 0)
+                                (if (frontend-reorders-text-p frontend) (flag-bit *facts-flags* :reorders) 0))
+                        1)
         (put-number box (or (position (frontend-desktop-style frontend) *styles*) 0) 1)
-        (put-number box (if steps (max -64 (min 64 steps)) 0) 2)
-        (put-text box (or (frontend-description frontend) "") 1024)
+        (put-number box (if steps (max (- +most-font-steps+) (min +most-font-steps+ steps)) 0) 2)
+        (put-text box (or (frontend-description frontend) "") +most-description+)
         (when whole
           (let ((health (frontend-health frontend)))
-            (put-number box (min 64 (length health)) 2)
-            (loop for (label . text) in health repeat 64
-                  do (put-text box (princ-to-string label) 1024) (put-text box (princ-to-string text) 4096)))
+            (put-number box (min +most-health-lines+ (length health)) 2)
+            (loop for (label . text) in health repeat +most-health-lines+
+                  do (put-text box (princ-to-string label) +most-description+)
+                     (put-text box (princ-to-string text) +most-health-text+)))
           (let ((fonts (frontend-fonts frontend)))
-            (put-number box (min 8192 (length fonts)) 4)
-            (loop for font in fonts repeat 8192 do (put-text box font 256)))
+            (put-number box (min +most-fonts+ (length fonts)) 4)
+            (loop for font in fonts repeat +most-fonts+ do (put-text box font +most-font-name+)))
           (let ((families (frontend-font-faces frontend)))
-            (put-number box (min 8192 (length families)) 4)
-            (loop for (family fixed variants) in families repeat 8192
-                  do (put-text box family 256)
+            (put-number box (min +most-fonts+ (length families)) 4)
+            (loop for (family fixed variants) in families repeat +most-fonts+
+                  do (put-text box family +most-font-name+)
                      (put-number box (if fixed 1 0) 1)
-                     (put-number box (min 256 (length variants)) 2)
-                     (loop for (name font) in variants repeat 256
-                           do (put-text box name 256) (put-text box font 512)))))))))
+                     (put-number box (min +most-variants+ (length variants)) 2)
+                     (loop for (name font) in variants repeat +most-variants+
+                           do (put-text box name +most-font-name+) (put-text box font +most-variant-font+)))))))))
 
 (defun take-facts (inbox &key whole)
   "Read FACTS from INBOX, as PUT-FACTS put them, WHOLE as given there."
@@ -422,25 +468,27 @@ its health and its fonts too."
     (let ((cell-width (take-number inbox 2)) (cell-height (take-number inbox 2)))
       (when (and (plusp cell-width) (plusp cell-height))
         (setf (facts-cell-width facts) cell-width (facts-cell-height facts) cell-height)))
-    (let ((flags (take-bounded inbox 1 0 3 "flags")))
-      (setf (facts-images facts) (logtest 1 flags) (facts-reorders facts) (logtest 2 flags)))
+    (let ((flags (take-bounded inbox 1 0 (1- (ash 1 (length *facts-flags*))) "flags")))
+      (setf (facts-images facts) (logtest (flag-bit *facts-flags* :images) flags)
+            (facts-reorders facts) (logtest (flag-bit *facts-flags* :reorders) flags)))
     (setf (facts-style facts) (svref *styles* (take-bounded inbox 1 0 (1- (length *styles*)) "a style")))
     (let ((steps (take-signed inbox 2)))
-      (unless (<= -64 steps 64) (malformed "font steps ~d" steps))
+      (unless (<= (- +most-font-steps+) steps +most-font-steps+) (malformed "font steps ~d" steps))
       (when (facts-window facts) (setf (facts-font-steps facts) steps)))
-    (let ((description (take-text inbox 1024)))
+    (let ((description (take-text inbox +most-description+)))
       (setf (facts-description facts) (and (plusp (length description)) description)))
     (when whole
       (setf (facts-health facts)
-            (loop repeat (take-count inbox 2 64 8)
-                  collect (cons (take-text inbox 1024) (take-text inbox 4096)))
+            (loop repeat (take-count inbox 2 +most-health-lines+ 8)
+                  collect (cons (take-text inbox +most-description+) (take-text inbox +most-health-text+)))
             (facts-fonts facts)
-            (loop repeat (take-count inbox 4 8192 4) collect (take-text inbox 256))
+            (loop repeat (take-count inbox 4 +most-fonts+ 4) collect (take-text inbox +most-font-name+))
             (facts-font-faces facts)
-            (loop repeat (take-count inbox 4 8192 7)
-                  collect (list (take-text inbox 256) (= 1 (take-bounded inbox 1 0 1 "a fixed width"))
-                                (loop repeat (take-count inbox 2 256 8)
-                                      collect (list (take-text inbox 256) (take-text inbox 512)))))))
+            (loop repeat (take-count inbox 4 +most-fonts+ 7)
+                  collect (list (take-text inbox +most-font-name+) (= 1 (take-bounded inbox 1 0 1 "a fixed width"))
+                                (loop repeat (take-count inbox 2 +most-variants+ 8)
+                                      collect (list (take-text inbox +most-font-name+)
+                                                    (take-text inbox +most-variant-font+)))))))
     facts))
 
 ;;; Settings: how the editor's init file has a client's screen shown
@@ -545,22 +593,34 @@ buffer; on the editor's side, its descriptor.")
 
 (setf (documentation 'make-request 'function) "A REQUEST of a client, as its keywords give it.")
 
-(defconstant +most-path+ 4096 "The most octets of a path a client names.")
+(defun refuse-unsendable-request (request)
+  "Refuse, in words, REQUEST when it names more files or variables than the
+editor takes, or a path longer than it takes: PUT-REQUEST would cut them."
+  (when (> (length (request-files request)) +most-files+)
+    (tuatara.runtime:refuse "At most ~:d files can be opened at once" +most-files+))
+  (when (> (length (request-environment request)) +most-variables+)
+    (tuatara.runtime:refuse "At most ~:d environment variables can be passed on" +most-variables+))
+  (dolist (path (append (mapcar #'first (request-files request)) (request-diff request) (request-merge request)))
+    (when (> (tuatara.text:string-octet-length path) +most-path+)
+      (tuatara.runtime:refuse "A path of more than ~:d octets cannot be opened" +most-path+))))
 
 (defun put-request (box request)
-  "Put REQUEST in BOX, as fields of a message: its files, paths and variables
-past their bounds are the client's to refuse before it is sent."
-  (put-number box (logior (if (request-wait request) 1 0) (if (request-stop request) 2 0)
-                          (if (request-safe request) 4 0) (if (request-hex request) 8 0)
-                          (if (request-standard-input request) 16 0) (if (request-joins request) 32 0)
-                          (if (request-far request) 64 0))
+  "Put REQUEST in BOX, as fields of a message; what is past the bounds the
+editor reads with is cut (REFUSE-UNSENDABLE-REQUEST says so before it is sent)."
+  (put-number box (logior (if (request-wait request) (flag-bit *request-flags* :wait) 0)
+                          (if (request-stop request) (flag-bit *request-flags* :stop) 0)
+                          (if (request-safe request) (flag-bit *request-flags* :safe) 0)
+                          (if (request-hex request) (flag-bit *request-flags* :hex) 0)
+                          (if (request-standard-input request) (flag-bit *request-flags* :standard-input) 0)
+                          (if (request-joins request) (flag-bit *request-flags* :joins) 0)
+                          (if (request-far request) (flag-bit *request-flags* :far) 0))
               2)
-  (put-number box (max 1 (min 16 (request-frames request))) 1)
+  (put-number box (max 1 (min +most-frames+ (request-frames request))) 1)
   (put-text box (or (request-directory request) "/") +most-path+)
   (put-text box (or (request-terminal request) "") 256)
   (put-number box (length (request-environment request)) 2)
   (loop for (name . value) in (request-environment request)
-        do (put-text box name 128) (put-text box value +most-path+))
+        do (put-text box name +most-variable-name+) (put-text box value +most-path+))
   (put-number box (length (request-files request)) 2)
   (loop for (path line column) in (request-files request)
         do (put-text box path +most-path+)
@@ -570,24 +630,24 @@ past their bounds are the client's to refuse before it is sent."
     (put-number box (length paths) 1)
     (dolist (path paths) (put-text box path +most-path+)))
   (when (request-joins request)
-    (put-text box (request-joins request) 64))
+    (put-text box (request-joins request) +most-word+))
   (put-text box (or (request-agent request) "") 256)
-  (let ((notes (subseq (request-notes request) 0 (min 8 (length (request-notes request))))))
+  (let ((notes (subseq (request-notes request) 0 (min +most-notes+ (length (request-notes request))))))
     (put-number box (length notes) 1)
-    (dolist (note notes) (put-text box note 1024))))
+    (dolist (note notes) (put-text box note +most-note+))))
 
 (defun put-no-window (box word words)
   "Put a message in BOX telling the editor the window asked for by WORD is not
 opened, why being WORDS."
   (let ((at (begin-message box :no-window)))
-    (put-text box word 64)
-    (put-text box words 1024)
+    (put-text box word +most-word+)
+    (put-text box words +most-description+)
     (end-message box at)))
 
 (defun window-word-p (word)
   "True when WORD may be the word a window asked for is known by: one to 64
 ASCII letters and digits."
-  (and (stringp word) (<= 1 (length word) 64) (every (lambda (c) (and (< (char-code c) 128) (alphanumericp c))) word)))
+  (and (stringp word) (<= 1 (length word) +most-word+) (every (lambda (c) (and (< (char-code c) 128) (alphanumericp c))) word)))
 
 (defun take-path (inbox what)
   "An absolute path read from INBOX, of at most +MOST-PATH+ octets with no
@@ -608,8 +668,8 @@ digits and underscores, not first a digit."
   "Read a REQUEST from INBOX, as PUT-REQUEST put it; malformed when a client
 on another machine (REQUEST-FAR) names a terminal or passes its standard
 input."
-  (let* ((flags (take-bounded inbox 2 0 127 "a request's flags"))
-         (frames (take-bounded inbox 1 1 16 "a count of frames"))
+  (let* ((flags (take-bounded inbox 2 0 (1- (ash 1 (length *request-flags*))) "a request's flags"))
+         (frames (take-bounded inbox 1 1 +most-frames+ "a count of frames"))
          (directory (take-path inbox "a directory"))
          (terminal (let ((device (take-text inbox 256)))
                      (cond ((zerop (length device)) nil)
@@ -617,12 +677,13 @@ input."
                                  (not (search "/.." device)))
                             device)
                            (t (malformed "a terminal that is no device")))))
-         (environment (loop repeat (take-count inbox 2 128 8)
-                            collect (let ((name (take-text inbox 128)) (value (take-text inbox +most-path+)))
+         (environment (loop repeat (take-count inbox 2 +most-variables+ 8)
+                            collect (let ((name (take-text inbox +most-variable-name+))
+                                          (value (take-text inbox +most-path+)))
                                       (unless (environment-name-p name) (malformed "a variable named ~s" name))
                                       (when (find (code-char 0) value) (malformed "a variable holding a NUL"))
                                       (cons name value))))
-         (files (loop repeat (take-count inbox 2 4096 13)
+         (files (loop repeat (take-count inbox 2 +most-files+ 13)
                       collect (let ((path (take-path inbox "a file")) (line (take-number inbox 4))
                                     (column (take-number inbox 4)))
                                 (list path (and (plusp line) line) (and (plusp column) (1- column))))))
@@ -630,32 +691,41 @@ input."
                      collect (take-path inbox "a file to compare")))
          (merge (loop repeat (take-bounded inbox 1 0 4 "a count of files to merge")
                       collect (take-path inbox "a file to merge")))
-         (joins (and (logtest 32 flags)
-                     (let ((word (take-text inbox 64)))
+         (joins (and (logtest (flag-bit *request-flags* :joins) flags)
+                     (let ((word (take-text inbox +most-word+)))
                        (unless (window-word-p word) (malformed "a window asked for by a word of other characters"))
                        word)))
          (agent (let ((path (take-text inbox 256)))
                   (cond ((zerop (length path)) nil)
                         ((and (uiop:string-prefix-p "/" path) (not (find (code-char 0) path))) path)
                         (t (malformed "an agent's socket not named from the root")))))
-         (notes (loop repeat (take-bounded inbox 1 0 8 "a count of notes") collect (take-text inbox 1024))))
+         (notes (loop repeat (take-bounded inbox 1 0 +most-notes+ "a count of notes")
+                      collect (take-text inbox +most-note+))))
     (unless (member (length diff) '(0 2)) (malformed "~d files to compare" (length diff)))
     (unless (member (length merge) '(0 4)) (malformed "~d files to merge" (length merge)))
     ;; nothing but octets crosses ssh, and a terminal there is no terminal here
-    (when (and (logtest 64 flags) (or terminal (logtest 16 flags)))
+    (when (and (logtest (flag-bit *request-flags* :far) flags)
+               (or terminal (logtest (flag-bit *request-flags* :standard-input) flags)))
       (malformed "a client on another machine passing a terminal or its standard input"))
-    (when (and agent (not (logtest 64 flags)))
+    (when (and agent (not (logtest (flag-bit *request-flags* :far) flags)))
       (malformed "a client on this machine naming an agent"))
     (make-request :directory directory :terminal terminal :environment environment :files files
-                  :safe (logtest 4 flags) :hex (logtest 8 flags) :standard-input (logtest 16 flags)
-                  :diff diff :merge merge :frames frames :wait (logtest 1 flags) :stop (logtest 2 flags)
-                  :joins joins :far (logtest 64 flags) :agent agent :notes notes)))
+                  :safe (logtest (flag-bit *request-flags* :safe) flags)
+                  :hex (logtest (flag-bit *request-flags* :hex) flags)
+                  :standard-input (logtest (flag-bit *request-flags* :standard-input) flags)
+                  :diff diff :merge merge :frames frames
+                  :wait (logtest (flag-bit *request-flags* :wait) flags)
+                  :stop (logtest (flag-bit *request-flags* :stop) flags)
+                  :joins joins :far (logtest (flag-bit *request-flags* :far) flags) :agent agent :notes notes)))
 
 ;;; Events, from a client
 
 (defparameter *special-keys*
-  (coerce (remove-duplicates (remove-if-not #'keywordp (mapcar #'cdr *key-names*)) :from-end t) 'simple-vector)
-  "The keys that are no character (KEY-BASE), by their numbers in a message.")
+  #(:enter :tab :backspace :escape :up :down :left :right :home :end :page-up :page-down :delete :insert
+    :f1 :f2 :f3 :f4 :f5 :f6 :f7 :f8 :f9 :f10 :f11 :f12 :wheel-up :wheel-down
+    :down-mouse-1 :drag-mouse-1 :up-mouse-1 :mouse-2 :double-mouse-1 :triple-mouse-1)
+  "The keys that are no character (KEY-BASE), by their numbers in a message.
+The order is the wire's: a key is only ever added at the end.")
 
 (defparameter *event-kinds* #(:key :resize :paste :drop :close :focus)
   "The kinds of event a client sends, by their numbers in a message.")
@@ -678,8 +748,11 @@ follows in the next."
     (ecase (event-kind event)
       (:key (let* ((key (event-key event)) (base (key-base key))
                    (column (key-column key)) (row (key-row key)) (place (and column row t)))
-              (put-number box (logior (if (key-ctrl key) 1 0) (if (key-meta key) 2 0) (if (key-shift key) 4 0)
-                                      (if (characterp base) 0 8) (if place 16 0))
+              (put-number box (logior (if (key-ctrl key) (flag-bit *key-flags* :ctrl) 0)
+                                      (if (key-meta key) (flag-bit *key-flags* :meta) 0)
+                                      (if (key-shift key) (flag-bit *key-flags* :shift) 0)
+                                      (if (characterp base) 0 (flag-bit *key-flags* :special))
+                                      (if place (flag-bit *key-flags* :place) 0))
                           1)
               (if (characterp base)
                   (put-number box (char-code base) 4)
@@ -696,10 +769,10 @@ follows in the next."
              ;; only names that can be opened, whole: the editor refuses any other
              (let ((names (loop for file in (event-files event)
                                 for name = (if (pathnamep file) (namestring file) file)
-                                when (and (dropped-name-p name) (<= (tuatara.text:string-octet-length name) 4096))
+                                when (and (dropped-name-p name) (<= (tuatara.text:string-octet-length name) +most-dropped-name+))
                                   collect name)))
-               (put-number box (min 1024 (length names)) 2)
-               (loop for name in names repeat 1024 do (put-text box name))))
+               (put-number box (min +most-dropped+ (length names)) 2)
+               (loop for name in names repeat +most-dropped+ do (put-text box name))))
       ((:close :focus)))
     (end-message box at)))
 
@@ -710,15 +783,18 @@ then made by the caller once it has all."
   (let ((kind (svref *event-kinds* (take-bounded inbox 1 0 (1- (length *event-kinds*)) "an event kind"))))
     (multiple-value-prog1
         (ecase kind
-          (:key (let* ((flags (take-bounded inbox 1 0 31 "a key's flags"))
-                       (base (if (logtest 8 flags)
+          (:key (let* ((flags (take-bounded inbox 1 0 (1- (ash 1 (length *key-flags*))) "a key's flags"))
+                       (place (logtest (flag-bit *key-flags* :place) flags))
+                       (base (if (logtest (flag-bit *key-flags* :special) flags)
                                  (svref *special-keys* (take-bounded inbox 1 0 (1- (length *special-keys*)) "a key"))
                                  (let ((code (take-bounded inbox 4 0 (1- char-code-limit) "a character")))
                                    (or (code-char code) (malformed "no character ~d" code)))))
-                       (column (and (logtest 16 flags) (take-number inbox 2)))
-                       (row (and (logtest 16 flags) (take-number inbox 2))))
-                  (make-event :key :key (make-key base :ctrl (logtest 1 flags) :meta (logtest 2 flags)
-                                                       :shift (logtest 4 flags) :column column :row row)
+                       (column (and place (take-number inbox 2)))
+                       (row (and place (take-number inbox 2))))
+                  (make-event :key :key (make-key base :ctrl (logtest (flag-bit *key-flags* :ctrl) flags)
+                                                       :meta (logtest (flag-bit *key-flags* :meta) flags)
+                                                       :shift (logtest (flag-bit *key-flags* :shift) flags)
+                                                       :column column :row row)
                                    :frame frame)))
           (:resize (make-event :resize :width (take-bounded inbox 2 1 +most-columns+ "a width")
                                        :height (take-bounded inbox 2 1 +most-rows+ "a height")
@@ -726,7 +802,8 @@ then made by the caller once it has all."
           (:paste (let ((more (= 1 (take-bounded inbox 1 0 1 "a paste's flag"))))
                     (values (take-text inbox +text-piece+) more)))
           (:drop (let* ((column (take-number inbox 2)) (row (take-number inbox 2))
-                        (files (loop repeat (take-count inbox 2 1024 4) collect (take-text inbox 4096))))
+                        (files (loop repeat (take-count inbox 2 +most-dropped+ 4)
+                                     collect (take-text inbox +most-dropped-name+))))
                    (unless (every #'dropped-name-p files)
                      (malformed "a file dropped whose name is empty or holds a control character"))
                    (make-event :drop :files files :column column :row row :frame frame)))
@@ -857,7 +934,7 @@ names as their NAMES numbers."
   (let ((basic (and (keywordp colour) (position colour tuatara.display:*basic-colour-names*))))
     (cond (basic (put-number box 1 1) (put-number box basic 1))
           ((and (integerp colour) (<= 0 colour 255)) (put-number box 2 1) (put-number box colour 1))
-          ((and (stringp colour) (<= (length colour) 64)) (put-number box 3 1) (put-text box colour))
+          ((tuatara.display:parse-hex-colour colour) (put-number box 3 1) (put-text box colour))
           (t (put-number box 0 1)))))
 
 (defun take-colour (inbox)
@@ -867,7 +944,9 @@ names as their NAMES numbers."
     (1 (svref tuatara.display:*basic-colour-names*
               (take-bounded inbox 1 0 (1- (length tuatara.display:*basic-colour-names*)) "a colour")))
     (2 (take-number inbox 1))
-    (3 (take-text inbox 256))))
+    (3 (let ((colour (take-text inbox 7)))
+         (unless (tuatara.display:parse-hex-colour colour) (malformed "a colour that is no #rrggbb"))
+         colour))))
 
 (defun put-proportion (box value most)
   "Put VALUE, a rational from 0 to MOST whose denominator is at most 65535 (a

@@ -240,18 +240,19 @@ setting holds that very list, so that a key typed parses nothing."
           (setf *key-specs-kept* (cons (cons keys specs) (subseq *key-specs-kept* 0 (min 3 (length *key-specs-kept*)))))
           specs))))
 
-(defun key-among-p (key keys)
-  "True when KEY is one of KEYS, each written as keys are written for
-bind-key (\"C-x\", \"S-<insert>\")."
-  (and (member (tuatara.frontend:key-spec key) (key-specs keys) :test #'equal) t))
+(defun key-among-p (spec keys)
+  "True when SPEC, a key as TUATARA.FRONTEND:KEY-SPEC gives it, is one of
+KEYS, each written as keys are written for bind-key (\"C-x\", \"S-<insert>\")."
+  (and (member spec (key-specs keys) :test #'equal) t))
 
-(defun terminal-editor-key-p (key emulator)
-  "True when KEY stays the editor's in EMULATOR's terminal: one of
-*TERMINAL-EDITOR-KEYS*, or Escape while *ESCAPE-QUITS* is on, unless
-*TERMINAL-SEND-ESCAPE* gives it to a program on the alternate screen."
-  (or (and tuatara-user:*escape-quits* (equal (tuatara.frontend:key-spec key) '(:escape))
+(defun terminal-editor-key-p (spec emulator)
+  "True when SPEC, a key as TUATARA.FRONTEND:KEY-SPEC gives it, stays the
+editor's in EMULATOR's terminal: one of *TERMINAL-EDITOR-KEYS*, or Escape
+while *ESCAPE-QUITS* is on, unless *TERMINAL-SEND-ESCAPE* gives it to a
+program on the alternate screen."
+  (or (and tuatara-user:*escape-quits* (equal spec '(:escape))
            (not (and tuatara-user:*terminal-send-escape* (emulator-alternate-screen-p emulator))))
-      (key-among-p key tuatara-user:*terminal-editor-keys*)))
+      (key-among-p spec tuatara-user:*terminal-editor-keys*)))
 
 (defun terminal-typing-p (buffer)
   "True while what is typed in BUFFER, a terminal, goes to its program: not in
@@ -272,14 +273,16 @@ state and typed into in INSERT state, as a modal layer has them."
       (modal-sync *editor*)
       (set-modal-state :insert buffer)))
 
-(defun terminal-paste-key-p (key)
-  "True when KEY pastes into a terminal while typing there (*TERMINAL-PASTE-KEYS*)."
-  (key-among-p key tuatara-user:*terminal-paste-keys*))
+(defun terminal-paste-key-p (spec)
+  "True when SPEC, a key as TUATARA.FRONTEND:KEY-SPEC gives it, pastes into a
+terminal while typing there (*TERMINAL-PASTE-KEYS*)."
+  (key-among-p spec tuatara-user:*terminal-paste-keys*))
 
-(defun terminal-stop-key-p (key)
-  "True when KEY, one the editor keeps in a terminal, stops typing there: C-g
-and C-\\, and Escape too while *ESCAPE-QUITS* is on."
-  (or (quit-key-p key) (equal (tuatara.frontend:key-spec key) '(:ctrl #\\))))
+(defun terminal-stop-key-p (key spec)
+  "True when KEY, one the editor keeps in a terminal, its SPEC as
+TUATARA.FRONTEND:KEY-SPEC gives it, stops typing there: C-g and C-\\, and
+Escape too while *ESCAPE-QUITS* is on."
+  (or (quit-key-p key) (equal spec '(:ctrl #\\))))
 
 (defun terminal-cell (buffer key)
   "The cell of BUFFER's terminal screen the mouse KEY happened on, as two
@@ -370,7 +373,6 @@ program wrote (OSC 8) first, else a web or file address written there; NIL."
             (loop for (start end) in (text-urls text)
                   when (and (<= start at) (< at end)) return (subseq text start end)))))))
 
-
 (defun open-terminal-link (address)
   "Open ADDRESS, a link in a terminal: a file of this computer (file://) in
 Tuatara, in another window than the terminal's, after asking, the file it
@@ -425,12 +427,13 @@ those stops typing there, as C-g does. True when it took KEY."
   (let* ((buffer (current-buffer))
          (emulator (tuatara.buffer:buffer-local buffer :emulator)))
     (when (and emulator (emulator-alive-p emulator) (terminal-typing-p buffer))
-      (cond ((terminal-mouse buffer emulator key))
-            ((terminal-paste-key-p key) (terminal-paste) t)
-            ((terminal-editor-key-p key emulator)
-             (cond ((terminal-stop-key-p key) (terminal-stop-typing) t)
-                   ((equal (tuatara.frontend:key-spec key) '(:ctrl #\s)) (terminal-search) t)))
-            (t (emulator-key emulator key))))))
+      (or (terminal-mouse buffer emulator key)
+          (let ((spec (tuatara.frontend:key-spec key)))
+            (cond ((terminal-paste-key-p spec) (terminal-paste) t)
+                  ((terminal-editor-key-p spec emulator)
+                   (cond ((terminal-stop-key-p key spec) (terminal-stop-typing) t)
+                         ((equal spec '(:ctrl #\s)) (terminal-search) t)))
+                  (t (emulator-key emulator key))))))))
 
 (defun terminal-cell-pixels ()
   "The width and height in whole pixels of a cell where the frontend shows
@@ -655,11 +658,15 @@ meanwhile kept by its emulator (BUFFER-HELD-BY-QUESTION-P)."
                      (unless typing
                        (setf (tuatara.buffer:buffer-local buffer :pictures) nil)
                        (install-terminal-history buffer)))
-                   (when (and (terminal-typing-p buffer)
-                              (or all (emulator-changed emulator)
-                                  (tuatara.buffer:buffer-local buffer 'terminal-owed-all)))
-                     (when (eq (terminal-refresh buffer emulator :all all) :busy)
-                       (again-in 1/20)))
+                   (when (terminal-typing-p buffer)
+                     (cond ((null window)
+                            ;; hidden: nothing drawn while its program writes, all of it once shown again
+                            (when (emulator-changed emulator)
+                              (setf (tuatara.buffer:buffer-local buffer 'terminal-owed-all) t)))
+                           ((or all (emulator-changed emulator)
+                                (tuatara.buffer:buffer-local buffer 'terminal-owed-all))
+                            (when (eq (terminal-refresh buffer emulator :all all) :busy)
+                              (again-in 1/20)))))
                    (when (terminal-typing-p buffer)
                      (let ((owed (follow-terminal-program buffer emulator)))
                        (when owed (again-in owed)))))
@@ -827,7 +834,7 @@ type into the terminal again; with nothing selected, type into it again."
   "Paste into the terminal's program the text copied last, in Tuatara or
 another program (as \\[yank] takes it), and type into the terminal: marked
 as pasted for a program that asks, so that a shell runs none of its lines
-until you press RET, and its control characters made spaces, so that pasted
+until you press RET, and its control characters taken out, so that pasted
 text cannot work the terminal. While you type there *TERMINAL-PASTE-KEYS*
 paste."
   (let* ((buffer (current-buffer))
@@ -924,16 +931,11 @@ own. To give it one that stays the editor's while you type, in your init file:
 (defun install-terminal ()
   "Bind the terminal's keys and have its screens kept up to date."
   ;; in the history view (typing, the key handler takes them first)
-  (define-key (mode-keymap 'terminal-mode) "C-\\" 'terminal-start-typing)
-  (define-key (mode-keymap 'terminal-mode) "RET" 'terminal-copy-and-type)
-  (define-key (mode-keymap 'terminal-mode) "C-q" 'terminal-send-key)
-  (define-key (mode-keymap 'terminal-mode) "C-y" 'terminal-paste)
-  (define-key (mode-keymap 'terminal-mode) "C-c C-o" 'terminal-open-link)
-  (define-key (mode-keymap 'terminal-mode) "<mouse-2>" 'terminal-paste-primary)
-  (define-key (mode-keymap 'terminal-mode) "C-<down-mouse-1>" 'terminal-open-link)
-  (define-key (mode-keymap 'terminal-mode) "p" 'terminal-paste)
-  (define-key (mode-keymap 'terminal-mode) "i" 'terminal-start-typing)
-  (define-key (mode-keymap 'terminal-mode) "a" 'terminal-start-typing)
+  (define-keys (mode-keymap 'terminal-mode)
+               '(("C-\\" terminal-start-typing) ("RET" terminal-copy-and-type) ("C-q" terminal-send-key)
+                 ("C-y" terminal-paste) ("C-c C-o" terminal-open-link) ("<mouse-2>" terminal-paste-primary)
+                 ("C-<down-mouse-1>" terminal-open-link) ("p" terminal-paste) ("i" terminal-start-typing)
+                 ("a" terminal-start-typing)))
   (pushnew 'forget-terminal tuatara.buffer:*kill-buffer-functions*)
   (pushnew 'terminal-mode-line-title *mode-line-functions*)
   (pushnew 'terminal-tick *tick-functions*))

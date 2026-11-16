@@ -274,7 +274,7 @@ made the same label with {{{label}}} for its value."
                  ;; the label's runs kept up to the colon, the value one place in the look of the run it began in
                  (with-output-to-string (out)
                    (write-string head out)
-                   (let ((seen 0) (placed nil) (value-props nil))
+                   (let ((seen 0) (value-props nil))
                      (dolist (item items)
                        (if (eq (first item) :other)
                            (write-string (second item) out)
@@ -290,7 +290,7 @@ made the same label with {{{label}}} for its value."
                                       (when (plusp (length (string-trim " " (subseq item-text (1+ (- colon start))))))
                                         (setf value-props (fourth item)))))
                                    (t (unless value-props (setf value-props (fourth item))))))))
-                     (unless placed (write-string (docx-import-place-run key value-props) out)))
+                     (write-string (docx-import-place-run key value-props) out))
                    (write-string tail out))))
               (t paragraph)))))))
 
@@ -443,18 +443,22 @@ the lines of tuatara.txt, its tables' style and its lists' numberings."
                                         ((member jc '("right" "end") :test #'equal) "right")
                                         (t "left"))))))
          (numbering (docx-reading-part "word/numbering.xml"))
+         (nums (and numbering (xml-find-all numbering "w:num")))
+         (seen (make-hash-table :test 'equal))
          (bullets nil) (numbers nil))
-    (cl-ppcre:do-register-groups (id) ("<w:numId w:val=\"(\\d+)\"" all)
-                                 (let* ((num (and numbering
-                                                  (find id (xml-find-all numbering "w:num")
-                                                        :key (lambda (n) (xml-attribute n "w:numId")) :test #'equal)))
-                                        (abstract (and num (xml-attribute (xml-child num "w:abstractNumId") "w:val"))))
-                                   (let ((kind (cdr (assoc 0 (gethash id (docx-reading-numbering *docx-reading*))))))
-                                     (when abstract
-                                       (cond ((and (equal kind "bullet") (null bullets)) (setf bullets abstract))
-                                             ((and kind (not (member kind '("bullet" "none") :test #'string=))
-                                                   (null numbers))
-                                              (setf numbers abstract)))))))
+    (block scan
+      (cl-ppcre:do-register-groups (id) ("<w:numId w:val=\"(\\d+)\"" all)
+        (when (and bullets numbers) (return-from scan))
+        (unless (gethash id seen)
+          (setf (gethash id seen) t)
+          (let* ((num (and numbering
+                           (find id nums :key (lambda (n) (xml-attribute n "w:numId")) :test #'equal)))
+                 (abstract (and num (xml-attribute (xml-child num "w:abstractNumId") "w:val")))
+                 (kind (cdr (assoc 0 (gethash id (docx-reading-numbering *docx-reading*))))))
+            (when abstract
+              (cond ((and (equal kind "bullet") (null bullets)) (setf bullets abstract))
+                    ((and kind (not (member kind '("bullet" "none") :test #'string=)) (null numbers))
+                     (setf numbers abstract))))))))
     (with-output-to-string (s)
       (format s "# How the note's text follows this template's design: made by export-template-from-docx.~%")
       (format s "table style: ~@[~a~]~%table position: ~@[~a~]~%bullets: ~@[~a~]~%numbers: ~@[~a~]~%" table-style
@@ -804,16 +808,20 @@ report written from the template opens, and whoever keeps them can see it
 was. Links clicked on are not noted; at most *OFFICE-MOST-LISTED* named."
   (let ((targets (make-hash-table :test 'equal)))
     (dolist (entry entries)
-      (cond ((string= entry "word/_rels/settings.xml.rels"))  ; its attached template, left out
-            ((uiop:string-suffix-p entry ".rels")
-             (cl-ppcre:do-matches-as-strings (relation "<Relationship [^>]*TargetMode=\"External\"[^>]*>"
-                                                       (docx-reading-text entry))
-               (unless (search "/hyperlink\"" relation)
-                 (cl-ppcre:register-groups-bind (target) ("Target=\"([^\"]*)\"" relation)
-                                                (setf (gethash (xml-text-value target) targets) t)))))
-            ((cl-ppcre:scan "^word/.*\\.xml$" entry)
+      (cond ((string-equal entry "word/_rels/settings.xml.rels"))  ; its attached template, left out
+            ((cl-ppcre:scan "(?i)\\.rels$" entry)
+             (cl-ppcre:do-matches-as-strings
+                 (relation #.(concatenate 'string "(?i)<Relationship\\s[^>]*\\sTargetMode\\s*=\\s*"
+                                          "[\"']External[\"'][^>]*>")
+                           (docx-reading-text entry))
+               ;; a link clicked on is not fetched: told by the relation's type alone
+               (unless (cl-ppcre:scan "(?i)\\sType\\s*=\\s*[\"'][^\"']*/hyperlink[\"']" relation)
+                 (cl-ppcre:register-groups-bind (double single)
+                     ("(?i)\\sTarget\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)')" relation)
+                   (setf (gethash (xml-text-value (or double single)) targets) t)))))
+            ((cl-ppcre:scan "(?i)^word/.*\\.xml$" entry)
              (cl-ppcre:do-register-groups (field)
-               ("(INCLUDE(?:PICTURE|TEXT)\\s+(?:\\\\[a-z]\\s+)*\"?[^\"<\\s]*)" (docx-reading-text entry))
+               ("(?i)(INCLUDE(?:PICTURE|TEXT)\\s+(?:\\\\[a-z]\\s+)*\"?[^\"<\\s]*)" (docx-reading-text entry))
                (setf (gethash field targets) t)))))
     (when (plusp (hash-table-count targets))
       (template-import-note
@@ -822,22 +830,24 @@ was. Links clicked on are not noted; at most *OFFICE-MOST-LISTED* named."
                (mapcar #'org-safe-line (office-listed targets)))))))
 
 (defparameter *docx-import-left-out-relations*
-  #.(concatenate 'string "<Relationship [^>]*Target=\"(?:comments|commentsExtended|commentsIds|commentsExtensible|"
-                 "people|vbaProject\\.bin|embeddings/|activeX/)[^\"]*\"[^>]*/>")
+  #.(concatenate 'string "(?i)<Relationship\\s[^>]*\\sTarget\\s*=\\s*[\"'](?:comments|commentsExtended|commentsIds|"
+                 "commentsExtensible|people|vbaProject\\.bin|embeddings/|activeX/)[^\"']*[\"'][^>]*/>")
   "The relations of a Word document's parts to what an import leaves out: its
 comments, macros, embedded objects and controls.")
 
 (defun docx-import-content-types (xml)
   "XML, the [Content_Types].xml of a Word document imported, without the types
 of what the import leaves out, its main part a document's, not one with macros."
-  (let* ((xml (cl-ppcre:regex-replace-all #.(concatenate 'string "<Override PartName=\"/word/(?:comments|"
-                                                         "commentsExtended|commentsIds|commentsExtensible|"
-                                                         "people|vbaProject|vbaData|embeddings/|"
-                                                         "activeX/)[^\"]*\"[^>]*/>") xml ""))
-         (xml (cl-ppcre:regex-replace-all #.(concatenate 'string "<Default Extension=\"bin\" "
-                                                         "ContentType=\"application/vnd.ms-office.vbaProject\"/>")
-                                          xml "")))
-    (cl-ppcre:regex-replace-all "application/vnd\\.ms-word\\.(document|template)\\.macroEnabled\\.main\\+xml" xml
+  (let* ((xml (cl-ppcre:regex-replace-all
+               #.(concatenate 'string "(?i)<Override\\s+PartName\\s*=\\s*[\"']/word/(?:comments|"
+                              "commentsExtended|commentsIds|commentsExtensible|people|vbaProject|vbaData|"
+                              "embeddings/|activeX/)[^\"']*[\"'][^>]*/>")
+               xml ""))
+         (xml (cl-ppcre:regex-replace-all
+               #.(concatenate 'string "(?i)<Default\\s+Extension\\s*=\\s*[\"']bin[\"']\\s+ContentType\\s*=\\s*"
+                              "[\"']application/vnd\\.ms-office\\.vbaProject[\"']\\s*/>")
+               xml "")))
+    (cl-ppcre:regex-replace-all "(?i)application/vnd\\.ms-word\\.(document|template)\\.macroEnabled\\.main\\+xml" xml
                                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml")))
 
 (defun docx-import-parts (entries document)
@@ -849,51 +859,71 @@ kept as it is but those the import changes or leaves out (macros, comments,
 footnotes' text, the attached template, tracking, protection, mail merge,
 embedded objects and controls, a part named as the template's design file),
 each left out noted (TEMPLATE-IMPORT-NOTE)."
-  (let ((parts '()))
+  (let ((parts '())
+        ;; a header or footer is told by its relation to the text, whatever its name
+        (headers (loop for relation in (docx-part-relations (docx-main-part))
+                       when (and (not (getf relation :outside))
+                                 (cl-ppcre:scan "(?i)/(header|footer)$" (getf relation :type)))
+                         collect (string-downcase (getf relation :target)))))
     (dolist (entry entries (nreverse parts))
       (tuatara.runtime:job-check-stop)
-      (cond
-        ((string= entry "word/document.xml")
-         (push (cons entry (docx-import-without-active (docx-import-without-changes document))) parts))
-        ((cl-ppcre:scan "(?i)vbaProject|vbaData|word/_rels/vbaProject" entry)
-         (template-import-note "its macros left out"))
-        ((cl-ppcre:scan "^word/comments|^word/people\\.xml" entry)
-         (template-import-note "its comments left out"))
-        ((cl-ppcre:scan "^word/(?:embeddings|activeX)/|^word/activeX/_rels/" entry)
-         (template-import-note "its embedded objects and controls left out"))
-        ((string= entry *docx-template-design-file*)
-         (template-import-note (format nil "its part ~a left out: the template's design file has that name"
-                                       *docx-template-design-file*)))
-        ((member entry '("word/footnotes.xml" "word/endnotes.xml") :test #'string=)
-         ;; the separators kept, the notes of the text left out
-         (let ((xml (docx-reading-text entry))
-               (element (if (search "footnotes" entry) "w:footnote" "w:endnote")))
-           (push (cons entry (xml-replace-elements xml element
-                                                   (lambda (note)
-                                                     (and (search "w:type=" note :end2 (position #\> note)) note))))
-                 parts)))
-        ((string= entry "word/settings.xml")
-         (let* ((xml (docx-reading-text entry))
-                (xml (cl-ppcre:regex-replace-all "<w:attachedTemplate [^>]*/>" xml ""))
-                (xml (cl-ppcre:regex-replace-all "<w:trackRevisions(?:\\s[^>]*)?/>" xml ""))
-                (xml (cl-ppcre:regex-replace-all "<w:documentProtection [^>]*/>" xml ""))
-                (xml (xml-replace-elements xml "w:mailMerge"
-                                           (lambda (element)
-                                             (declare (ignore element))
-                                             (template-import-note "its mail merge data source left out")
-                                             nil))))
-           (push (cons entry xml) parts)))
-        ((string= entry "word/_rels/settings.xml.rels")
-         (template-import-note "the link to its attached template left out"))
-        ((cl-ppcre:scan "^word/(header|footer)\\d*\\.xml$" entry)
-         (let ((filled (docx-import-fields-in (docx-reading-text entry))))
-           (push (cons entry (docx-import-without-active (docx-import-without-changes filled))) parts)))
-        ((cl-ppcre:scan "^word/_rels/.*\\.rels$" entry)
-         (push (cons entry (cl-ppcre:regex-replace-all *docx-import-left-out-relations* (docx-reading-text entry) ""))
-               parts))
-        ((string= entry "[Content_Types].xml")
-         (push (cons entry (docx-import-content-types (docx-reading-text entry))) parts))
-        (t (push (cons entry (docx-reading-octets-of entry)) parts))))))
+      ;; Word reads part names in any case: they are told apart, and written, in lower case
+      (let ((name (if (string-equal "word/" entry :end2 (min 5 (length entry))) (string-downcase entry) entry)))
+        (cond
+          ((string= name "word/document.xml")
+           (push (cons name (docx-import-without-active (docx-import-without-changes document))) parts))
+          ((cl-ppcre:scan "(?i)vbaProject|vbaData|word/_rels/vbaProject" entry)
+           (template-import-note "its macros left out"))
+          ((cl-ppcre:scan "^word/comments|^word/people\\.xml" name)
+           (template-import-note "its comments left out"))
+          ((cl-ppcre:scan "^word/(?:embeddings|activex)/" name)
+           (template-import-note "its embedded objects and controls left out"))
+          ((string-equal name *docx-template-design-file*)
+           (template-import-note (format nil "its part ~a left out: the template's design file has that name"
+                                         *docx-template-design-file*)))
+          ((member name '("word/footnotes.xml" "word/endnotes.xml") :test #'string=)
+           ;; the separators kept, the notes of the text left out
+           (let ((xml (docx-reading-text entry))
+                 (element (if (search "footnotes" name) "w:footnote" "w:endnote")))
+             (push (cons name (xml-replace-elements xml element
+                                                     (lambda (note)
+                                                       (and (search "w:type=" note :end2 (position #\> note)) note))))
+                   parts)))
+          ((string= name "word/settings.xml")
+           (let* ((xml (docx-reading-text entry))
+                  (xml (cl-ppcre:regex-replace-all "<w:attachedTemplate [^>]*/>" xml ""))
+                  (xml (cl-ppcre:regex-replace-all "<w:trackRevisions(?:\\s[^>]*)?/>" xml ""))
+                  (xml (cl-ppcre:regex-replace-all "<w:documentProtection [^>]*/>" xml ""))
+                  (xml (xml-replace-elements xml "w:mailMerge"
+                                             (lambda (element)
+                                               (declare (ignore element))
+                                               (template-import-note "its mail merge data source left out")
+                                               nil))))
+             (push (cons name xml) parts)))
+          ((string= name "word/_rels/settings.xml.rels")
+           (template-import-note "the link to its attached template left out"))
+          ((or (cl-ppcre:scan "^word/(header|footer)\\d*\\.xml$" name) (member name headers :test #'string=))
+           (let ((filled (docx-import-fields-in (docx-reading-text entry))))
+             (push (cons name (docx-import-without-active (docx-import-without-changes filled))) parts)))
+          ((cl-ppcre:scan "^word/_rels/.*\\.rels$" name)
+           (push (cons name (cl-ppcre:regex-replace-all *docx-import-left-out-relations* (docx-reading-text entry) ""))
+                 parts))
+          ((string-equal entry "[Content_Types].xml")
+           (push (cons entry (docx-import-content-types (docx-reading-text entry))) parts))
+          (t (push (cons name (docx-reading-octets-of entry)) parts)))))))
+
+(defun docx-import-refuse-case-twins (path)
+  "Refuse the Word document at PATH, being imported, when two of its parts
+have names that differ only in case: they are one part to Word, and which of
+them it reads is not known."
+  (let ((seen (make-hash-table :test 'equal)))
+    (dolist (entry (docx-reading-entries *docx-reading*))
+      (let* ((name (getf entry :name))
+             (other (gethash (string-downcase name) seen)))
+        (when other
+          (refuse "~a holds two parts named ~s and ~s, one part to Word: nothing made"
+                  (tuatara.io:native-file-name path) other name))
+        (setf (gethash (string-downcase name) seen) name)))))
 
 (defun docx-import (path name &key (directory (concatenate 'string (docx-templates-directory) name "/"))
                                 (tex (concatenate 'string (latex-templates-directory) name ".tex"))
@@ -924,6 +954,7 @@ an error when it cannot be read; writes over nothing that exists."
         (refuse "~a holds a part named ~s, outside the document: nothing made"
                 (tuatara.io:native-file-name path)
                 (getf unsafe :name))))
+    (docx-import-refuse-case-twins path)
     (unless (string-equal (docx-main-part) "word/document.xml")
       (refuse "~a keeps its text in ~a, not word/document.xml as a template's is: nothing made"
               (tuatara.io:native-file-name path) (docx-main-part)))

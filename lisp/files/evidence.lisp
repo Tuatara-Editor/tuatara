@@ -223,7 +223,7 @@ the thread keeping them (EVIDENCE-KEEPER) does it within a second."
   "VALUE, a value of *EVIDENCE-DIRECTORIES*, read as EVIDENCE-RULES, the links its
 entries match not looked for yet: quick, on whichever thread asks."
   (let ((entries '()) (problems '()))
-    (dolist (given (setting-list '*evidence-directories* value))
+    (dolist (given value)
       (handler-case (reporting-errors ("reading the evidence directory ~s" given)
                       (push (read-evidence-entry given) entries))
         (error (e) (push (cons given (princ-to-string e)) problems))))
@@ -306,7 +306,6 @@ other rules are in force, or none, or the setting names no directory."
            (unless (and *evidence-directories* (eq *evidence-rules* rules)) (return))
            (when (shiftf *mounts-changed* nil)
              (let ((fresh (read-evidence-rules (evidence-rules-setting rules))))
-               (setf (evidence-rules-setting fresh) (evidence-rules-setting rules))
                (link-evidence-rules fresh)
                (sb-thread:with-mutex (*evidence-lock*)
                  (unless (eq *evidence-rules* rules) (return))
@@ -970,17 +969,6 @@ that a file of evidence stays opened safely."
 
 ;;; Asking
 
-(defun thing-at-point-path (buffer)
-  "The file or directory the current line or point of BUFFER names, a native
-name, or NIL: a rimu list's entry on the line, the path written at point,
-or BUFFER's file."
-  (or (mode-file-name-at-point (buffer-major-mode buffer) buffer)
-      (let ((text (path-around buffer (tuatara.buffer:buffer-point buffer))))
-        (and text (find #\/ text)
-             (tuatara.io:native (path-directory text buffer))))
-      (let ((file (tuatara.buffer:buffer-file buffer)))
-        (and file (tuatara.io:native file)))))
-
 (define-command describe-evidence ()
   "Say whether the file or directory here is evidence, and by which entry of
 *EVIDENCE-DIRECTORIES*: a rimu list's entry on the line, a path written at
@@ -988,7 +976,7 @@ point, or the buffer's file; a link is evidence when what it leads to is.
 A file with more than one name, one of which may be in an evidence directory,
 is said to be one maybe. Evidence opens safely, and nothing is written where
 it is."
-  (let ((path (thing-at-point-path (current-buffer))))
+  (let ((path (shown-file (current-buffer) :at-point t)))
     (cond ((null path) (message "Nothing here names a file or directory"))
           ((null *evidence-directories*) (message "No: *evidence-directories* names no directory (off)"))
           (t (multiple-value-bind (directory entry) (evidence-path-p path :follow t)
@@ -1095,7 +1083,7 @@ rimu list, or the one on the line; else the file at point or BUFFER's
 \(THING-AT-POINT-PATH)."
   (if (rimu-list-p buffer)
       (rimu-chosen-paths buffer)
-      (let ((path (thing-at-point-path buffer)))
+      (let ((path (shown-file buffer :at-point t)))
         (and path (list path)))))
 
 (define-command copy-from-evidence ()
@@ -1108,22 +1096,25 @@ copies, copied-from-evidence-DATE-TIME.log, says of each what it was, where
 from, its size and both sums, and when. Nothing there is written over, and
 directories are not copied: their files are. Copied in the background."
   (let* ((buffer (current-buffer))
-         (paths (copy-from-evidence-paths buffer)))
+         (paths (copy-from-evidence-paths buffer))
+         (no-file (find-if-not (lambda (path) (eq :regular (tuatara.io:path-kind path))) paths))
+         (outside (and paths (not no-file) (find-if-not (lambda (path) (evidence-path-p path :follow t)) paths))))
     (cond ((null paths) (message "Nothing here to copy out of evidence"))
-          ((find-if-not (lambda (path) (eq :regular (tuatara.io:path-kind path))) paths)
+          (no-file
            (message "~a is not a file: only files are copied out (mark the files in a directory)"
-                    (abbreviated-path (find-if-not (lambda (path) (eq :regular (tuatara.io:path-kind path))) paths))))
-          ((find-if-not (lambda (path) (evidence-path-p path :follow t)) paths)
+                    (abbreviated-path no-file)))
+          (outside
            (message "~a is in no evidence directory (*evidence-directories*): nothing copied"
-                    (abbreviated-path (find-if-not (lambda (path) (evidence-path-p path :follow t)) paths))))
+                    (abbreviated-path outside)))
           (t
-           (let ((directory (read-native-path (format nil "Copy ~a out of evidence to directory: "
-                                                   (rimu-question nil paths))
-                                       :writing t)))
+           (let* ((directory (read-native-path (format nil "Copy ~a out of evidence to directory: "
+                                                    (rimu-question nil paths))
+                                        :writing t))
+                  (refusal (and directory (evidence-refusal "copy into" directory))))
              (cond ((null directory) (message "Nowhere given: nothing copied"))
                    ((not (eq :directory (tuatara.io:path-kind directory)))
                     (message "~a is no directory: nothing copied" (abbreviated-path directory)))
-                   ((evidence-refusal "copy into" directory) (message "~a" (evidence-refusal "copy into" directory)))
+                   (refusal (message "~a" refusal))
                    (t (let* ((directory (tuatara.io:slash-ended directory))
                              (pairs (mapcar (lambda (path)
                                               (cons path
@@ -1176,7 +1167,7 @@ or each entry with the directories it matches on disk, and those not read."
         (list "Evidence directories: none (off)")
         (append (list (format nil
                               "Evidence directories: ~:d entr~:@p (*evidence-directories*)"
-                              (length (setting-list '*evidence-directories* *evidence-directories*))))
+                              (length *evidence-directories*)))
                 (loop for entry in (evidence-rules-entries rules)
                       collect (multiple-value-bind (found whole) (entry-directories-found entry)
                                 (format nil "  ~s: ~:[matches nothing~;~:*~a~]~:[ (not all looked through)~;~]~@[; ~a~]"

@@ -820,7 +820,9 @@ groups, so you can mark one of each pair for deletion.
 
 The keys that start with ~:~ encrypt, decrypt and sign. ~: e~ and ~: d~
 encrypt a marked file into =FILE.gpg= and decrypt it back. ~: s~ signs a
-file and ~: v~ checks a signature.
+file and ~: v~ checks a signature. With several files marked, the questions
+are asked once at the start, then gpg works on one file after another in
+the background, saying each as it is done; stopping one stops the rest.
 
 *** Commands for finding, checking and encrypting
 

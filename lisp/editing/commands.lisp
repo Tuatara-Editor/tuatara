@@ -91,7 +91,10 @@ widened first, and that said, when BYTE is outside the part of it shown."
     (when fold (tuatara.display:unfold-region buffer (car fold) (cdr fold))))
   (setf (tuatara.buffer:buffer-point buffer) byte))
 
-(defun point () "Point of the current buffer." (tuatara.buffer:buffer-point (current-buffer)))
+(defun point ()
+  "Point of the current buffer."
+  (tuatara.buffer:buffer-point (current-buffer)))
+
 (defun goto (byte)
   "Move point of the current buffer to BYTE."
   (setf (tuatara.buffer:buffer-point (current-buffer)) byte))
@@ -925,6 +928,10 @@ Returns where the text killed was, START moved by what the mode changed."
           (tuatara.text:map-forward start before (tuatara.buffer:buffer-version buffer) :after))
         start)))
 
+(defun span-end (span)
+  "Where SPAN ends, a stretch written (START . END) or (START END ...)."
+  (if (consp (cdr span)) (cadr span) (cdr span)))
+
 (defun refuse-hidden-deletions (buffer spans)
   "Refuse a command that would delete the stretches SPANS of BUFFER (a list
 or vector, each (START . END) or (START END), in any order) when any of them
@@ -939,7 +946,7 @@ filters hide is refused outright, whole or not (REFUSE-HIDDEN-LINES)."
     (when folds
       (let ((merged (tuatara.text:merge-ranges
                      (map 'list (lambda (span)
-                                  (let ((s (car span)) (e (if (consp (cdr span)) (cadr span) (cdr span))))
+                                  (let ((s (car span)) (e (span-end span)))
                                     (cons (min s e) (max s e))))
                           spans)))
             (cut '()))
@@ -973,9 +980,10 @@ the newline it ends at."
       (refuse-hidden-lines))))
 
 (defun check-writable (buffer)
-  "Signal an error when BUFFER is read-only."
-  (when (buffer-read-only-p buffer)
-    (refuse "Buffer is read-only: ~a" (tuatara.buffer:buffer-name buffer))))
+  "Refuse, saying so, when BUFFER is read-only, as an edit to it would be
+\(TUATARA.BUFFER:CHECK-NOT-READ-ONLY): for a command to say so before it
+starts work that would end in that edit."
+  (tuatara.buffer:check-not-read-only buffer))
 
 (defun delete-spans (buffer spans &key replacements folds-checked before group)
   "Delete SPANS of BUFFER, each (START . END) or (START END ...), in order and
@@ -994,9 +1002,7 @@ but at the first span, make one splice that copies nothing for undo
 Returns the positions just after each span's new text, a vector; NIL when
 nothing changed. O(spans + octets put in), the folds looked at only in the
 spans."
-  (let* ((spans (map 'list (lambda (span)
-                             (cons (car span) (if (consp (cdr span)) (cadr span) (cdr span))))
-                     spans))
+  (let* ((spans (map 'list (lambda (span) (cons (car span) (span-end span))) spans))
          (first (first replacements)))
     (check-writable buffer)
     (unless folds-checked (refuse-hidden-deletions buffer spans))
@@ -1033,6 +1039,18 @@ spans."
                                                        'simple-vector)
                                         :group group))))))
 
+(defun delete-characters (buffer count)
+  "Delete COUNT characters of BUFFER after point (a negative COUNT, before
+point), as \\[delete-char] does: a letter with its accents or an emoji with its
+skin tone whole (CLUSTER-FORWARD), a carriage return and a newline both
+\(TUATARA.BUFFER:WHOLE-LINE-ENDS). Text a fold hides is not deleted unseen:
+the fold is shown instead."
+  (let* ((p (point)) (other (cluster-forward buffer p count)))
+    (multiple-value-bind (start end) (tuatara.buffer:whole-line-ends buffer (min p other) (max p other))
+      (when (< start end)
+        (refuse-hidden-deletion buffer start end)
+        (tuatara.buffer:buffer-delete buffer start end :group (typing-goes-on-p))))))
+
 (define-command delete-char ()
   "Delete the character after point (with a count, that many; a negative one,
 before point), a letter with its accents or an emoji with its skin tone
@@ -1040,32 +1058,33 @@ whole (CLUSTER-FORWARD), a carriage return and a newline both
 \(TUATARA.BUFFER:WHOLE-LINE-ENDS). Typing and deleting one after another undo together.
 Text a fold hides is not deleted unseen: the fold is shown instead, and the
 key pressed again deletes."
-  (let* ((b (current-buffer)) (p (point)) (other (cluster-forward b p (prefix))))
-    (multiple-value-bind (start end) (tuatara.buffer:whole-line-ends b (min p other) (max p other))
-    ;; with a negative count, the characters before point
-      (when (< start end)
-        (refuse-hidden-deletion b start end)
-        (tuatara.buffer:buffer-delete b start end :group (typing-goes-on-p))))))
+  (delete-characters (current-buffer) (prefix)))
 
 (define-command delete-backward-char ()
-  "Delete the character before point (with a count, that many): of a letter
-with accents, the last accent alone, of an emoji with a skin tone, the tone;
-of a carriage return and a newline, both, which end one line. Typing and
-deleting one after another undo together. Text a fold hides is not deleted
-unseen: the fold is shown instead, and the key pressed again deletes."
-  (let* ((b (current-buffer)) (p (point))
-         (start (tuatara.buffer:whole-line-ends b (tuatara.buffer:buffer-forward-char b p (- (prefix))) p)))
-    (unless (and (null (prefix-argument))
-                 (run-hook-until-done *delete-backward-functions* b))
-      (when (< start p)
-        (refuse-hidden-deletion b start p)
-        (tuatara.buffer:buffer-delete b start p :group (typing-goes-on-p)) (goto start)))))
+  "Delete the character before point (with a count, that many; a negative one,
+after point, as \\[delete-char] does): of a letter with accents, the last
+accent alone, of an emoji with a skin tone, the tone; of a carriage return and
+a newline, both, which end one line. Typing and deleting one after another
+undo together. Text a fold hides is not deleted unseen: the fold is shown
+instead, and the key pressed again deletes."
+  (let ((b (current-buffer)) (n (prefix)))
+    (cond ((minusp n) (delete-characters b (- n)))
+          ((and (null (prefix-argument)) (run-hook-until-done *delete-backward-functions* b)))
+          (t (let* ((p (point))
+                    (start (tuatara.buffer:whole-line-ends b (tuatara.buffer:buffer-forward-char b p (- n)) p)))
+               (when (< start p)
+                 (refuse-hidden-deletion b start p)
+                 (tuatara.buffer:buffer-delete b start p :group (typing-goes-on-p)) (goto start)))))))
 
 ;;; The kill ring
 
+(defvar *kill-commands* '(kill-line kill-region)
+  "The commands that add to the kill ring, so that kills one right after
+another join into one. A file that defines a kill command adds it here.")
+
 (defun kill-command-p (command)
   "True for commands that add to the kill ring, so consecutive kills append."
-  (member command '(kill-line kill-region kill-whole-line kill-sexp backward-kill-sexp zap-to-char zap-up-to-char)))
+  (member command *kill-commands*))
 
 (define-setting *clipboard-size-limit* (* 8 1024 1024)
   "The most characters a kill may have and still go on the system clipboard.
@@ -1106,12 +1125,18 @@ and the oldest past *KILL-RING-MAX-SIZE* together."
   "The text last put on the system clipboard or taken from it, to tell what
 another program copied from what is there already.")
 
+(defun clipboard-allowed-p (buffer size)
+  "True when text of BUFFER, SIZE long (in characters, or in octets for text
+not read yet), may go to the system clipboard or the desktop's primary
+selection: as *USE-SYSTEM-CLIPBOARD* says, SIZE no more than
+*CLIPBOARD-SIZE-LIMIT*, and none of an encrypted file's text, which
+\\[gpg-copy-to-clipboard] puts there on request."
+  (and *use-system-clipboard* (<= size *clipboard-size-limit*) (not (tuatara.io:buffer-plaintext-p buffer))))
+
 (defun send-to-clipboard (text)
-  "Put TEXT on the system clipboard, as *USE-SYSTEM-CLIPBOARD* says: a kill
-kept as a rope (too large for it) is not, nor one from an encrypted file's
-text, which \\[gpg-copy-to-clipboard] puts there on request."
-  (when (and *use-system-clipboard* *editor* (stringp text) (<= (length text) *clipboard-size-limit*)
-             (not (tuatara.io:buffer-plaintext-p (current-buffer)))
+  "Put TEXT on the system clipboard when CLIPBOARD-ALLOWED-P says it may go: a
+kill kept as a rope (too large for it) does not."
+  (when (and *editor* (stringp text) (clipboard-allowed-p (current-buffer) (length text))
              (tuatara.frontend:frontend-set-clipboard (editor-frontend *editor*) text))
     (setf *clipboard-sent* text)))
 

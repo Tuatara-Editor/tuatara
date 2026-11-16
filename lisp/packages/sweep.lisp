@@ -64,10 +64,6 @@ within DIRECTORY, deleted. Who signed their source is not forgotten."
                                     directory))
                          collect key)))
 
-(defun compiled-directory-of (directory)
-  "The directory the files of what is kept in DIRECTORY, of the packages directory, are compiled into."
-  (directory-namestring (package-fasl (concatenate 'string (tuatara.io:native directory) "x"))))
-
 (define-record (package-sweep (:include tuatara.runtime:job)
                              (:constructor make-package-sweep (phase directories &optional packages)) (:copier nil))
   "Package sources no longer named, or the directories of PACKAGES, the names of
@@ -271,8 +267,7 @@ to be decided on, or it is compiled and loaded in the background
   "The directories of the packages directory of the sources of the packages busy
 now (PACKAGE-BUSY-P)."
   (loop for (name source) in *declared-packages*
-        when (and source (package-busy-p name)
-                  (not (local-source-p (package-where source))))
+        when (and (fetched-source-p source) (package-busy-p name))
         collect (format nil "~a~a/" (tuatara.io:native (packages-directory))
                         (tuatara.io:path-file-name (package-where source)))))
 

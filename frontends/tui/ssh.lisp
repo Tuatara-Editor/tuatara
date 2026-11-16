@@ -321,7 +321,7 @@ it unlimited."
          (host (ssh-link-host link))
          (version (and destinations (tuatara.defaults:openssh-version program))))
     (cond ((null destinations) (values '() nil))
-          ((and version (tuatara.io:version-at-least-p version '(8 9)))
+          ((and version (tuatara.io:software-version-at-least-p version '(8 9)))
            (let* ((there (known-host-name program host))
                   (machine (subseq there (1+ (or (position #\@ there) -1)))))
              (values (list* "-h" there (loop for destination in destinations
@@ -347,7 +347,8 @@ as two values."
          (agent (tuatara.io:system-program *ssh-agent-program*))
          (add (tuatara.io:system-program *ssh-add-program*))
          (socket (ssh-link-agent-socket link))
-         (keys (and agent add (identity-files link))))
+         (keys (and agent add (identity-files link)))
+         (limits nil))
     (cond ((not (and agent add))
            (format nil "the ssh agent is not forwarded to ~a: ssh-agent and ssh-add are not installed in the ~
                         system's directories of programs" host))
@@ -355,7 +356,9 @@ as two values."
           ((null keys)
            (format nil "the ssh agent is not forwarded to ~a: none of the keys ssh -G ~a names (IdentityFile) is ~
                         there" host host))
-          ((nth-value 1 (agent-limits link (getf (ssh-link-permissions link) :destinations))))
+          ((multiple-value-bind (found refusal) (agent-limits link (getf (ssh-link-permissions link) :destinations))
+             (setf limits found)
+             refusal))
           ((handler-case (progn (setf (ssh-link-agent link)
                                       (tuatara.io:start-program (list agent "-D" "-a" socket) :with-editor t
                                                                 :environment (tuatara.defaults:ssh-environment)))
@@ -367,16 +370,15 @@ as two values."
                                               10)
                   (not (eq (tuatara.io:path-kind socket :follow nil) :socket)))
            (format nil "the ssh agent for ~a did not start" host))
-          (t (let ((limits (agent-limits link (getf (ssh-link-permissions link) :destinations))))
-               (multiple-value-bind (code said complained)
-                   (tuatara.defaults:run-bounded add (append (list "-c") limits (list "--") keys)
-                                                  :ask t :seconds *ssh-answer-seconds*
-                                                  :environment (tuatara.defaults:ssh-environment
-                                                                (format nil "SSH_AUTH_SOCK=~a" socket)))
-                 (declare (ignore said))
-                 (and (not (eql code 0))
-                      (values (format nil "ssh-add could not put your keys in the agent forwarded to ~a" host)
-                              complained))))))))
+          (t (multiple-value-bind (code said complained)
+                 (tuatara.defaults:run-bounded add (append (list "-c") limits (list "--") keys)
+                                               :ask t :seconds *ssh-answer-seconds*
+                                               :environment (tuatara.defaults:ssh-environment
+                                                             (format nil "SSH_AUTH_SOCK=~a" socket)))
+               (declare (ignore said))
+               (and (not (eql code 0))
+                    (values (format nil "ssh-add could not put your keys in the agent forwarded to ~a" host)
+                            complained)))))))
 
 (defun stop-link-agent (link)
   "End LINK's own ssh-agent, when it has one, and the keys it held with it."
@@ -473,7 +475,7 @@ said on the error output, when one is no file, larger than
                                 (tuatara.io:file-system-error (condition) (fail "~a" condition)))))
                       (with-open-stream (input (sb-sys:make-fd-stream fd :input t :element-type '(unsigned-byte 8)
                                                                          :auto-close t))
-                        (let ((size (sb-posix:stat-size (sb-posix:fstat fd))))
+                        (let ((size (or (tuatara.io:fd-size fd) (fail "~a cannot be examined" path))))
                           (when (> size *most-dropped-octets*)
                             (fail "~a is not sent to ~a: larger than ~:d octets" path host *most-dropped-octets*))
                           (multiple-value-bind (code said complained)
@@ -522,8 +524,8 @@ said on the error output."
            (name (subseq path (if slash (1+ slash) 0)))
            (within (if slash (subseq path 0 slash) ""))
            (directory (if (uiop:string-prefix-p "/" path)
-                       within
-                       (tuatara.io:path-join (tuatara.io:native (user-homedir-pathname)) within))))
+                          within
+                          (tuatara.io:path-join (tuatara.io:native (user-homedir-pathname)) within))))
       (unless (and (tuatara.defaults:plain-path-p path :relative t) (plusp (length name)) (char/= (char name 0) #\.)
                    (plusp (length directory)))
         (fail "~a cannot name a file dropped here: letters, digits, /, ., _ and -" path))
@@ -533,8 +535,8 @@ said on the error output."
           (progn
             (tuatara.io:ensure-private-directory directory)
             (let ((why (tuatara.defaults:directory-refusal (tuatara.io:native directory)
-                                                            "the directory of files dropped"
-                                                         (sb-posix:getuid) :private nil)))
+                                                           "the directory of files dropped"
+                                                           (sb-posix:getuid) :private nil)))
               (when why (fail "~a" why)))
             (multiple-value-bind (fd there)
                 (tuatara.io:create-free-file directory (lambda (n) (tuatara.io:numbered-name name n :dash)))

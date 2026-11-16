@@ -26,6 +26,16 @@ evaluates the top-level form around point."
 before point and puts what it printed and its value on the lines after it."
   :lighter "Lisp Interaction")
 
+(defparameter *lisp-family-modes*
+  '(lisp-mode emacs-lisp-mode clojure-mode scheme-mode racket-mode fennel-mode janet-mode hy-mode)
+  "The major modes of the languages of the Lisp family: hyphens join the words
+of their names, and their headings are comments of three semicolons or more
+and top-level forms.")
+
+(defun lisp-family-mode-p (mode)
+  "True when MODE, a major mode, is one of *LISP-FAMILY-MODES* or made from one."
+  (some (lambda (name) (typep mode name)) *lisp-family-modes*))
+
 ;;; Lisp text: where expressions begin and end
 
 (declaim (inline lisp-symbol-octet-p))
@@ -206,6 +216,10 @@ DEFUN, DEFVAR, DEFINE-COMMAND and the like (*DEFINITION-HEAD-NAMES*)."
   (or (member head *definition-head-names* :test #'string=)
       (and (> (length head) 7) (string= "DEFINE-" head :end2 7))))
 
+(defvar *evaluation-stoppable* nil
+  "True on an evaluation's thread while \\`C-g' may stop it there (RUN-EVALUATION):
+inside the forms evaluated, never as the thread ends.")
+
 (defvar *evaluated-definitions* (make-hash-table :test 'eq :synchronized t)
   "For each name a definition of was evaluated from a buffer
 (\\<lisp-mode>\\[eval-top-level-form], \\[eval-last-expression], eval-buffer), the
@@ -277,6 +291,59 @@ forms there were."
                   do (evaluate form)))))
     (values values count)))
 
+(define-record (evaluation (:copier nil))
+  "How Lisp evaluated for a buffer went (RUN-EVALUATION): KIND is :VALUES,
+:ERROR or :STOPPED; VALUES and COUNT the values of the last form and how many
+forms there were, CONDITION the error met; OUTPUT what was printed, WARNINGS
+how many warnings there were, PACKAGE the package in force at the end,
+BACKTRACE the calls under way at an error, when *DEBUG-ON-ERROR* is on, and
+PUT-BACK the settings it gave a value they do not take, put back."
+  (kind :stopped :documentation "How the evaluation ended: :VALUES, :ERROR or :STOPPED.")
+  (values nil :documentation "The values of the last form evaluated, a list.")
+  (count 0 :documentation "How many forms were evaluated.")
+  (condition nil :documentation "The error that ended the evaluation, or NIL.")
+  (output "" :documentation "What the evaluation printed.")
+  (warnings 0 :documentation "How many warnings the evaluation met.")
+  (package nil :documentation "The package in force when the evaluation ended.")
+  (backtrace nil :documentation "The calls under way at the error, when they were kept, else NIL.")
+  (put-back '() :documentation "The settings given a value they do not take and put back, in words each
+\(PUT-BACK-MISFIT-SETTINGS)."))
+
+(defun evaluation-error-words (evaluation)
+  "Why EVALUATION, which met an error, failed, in words."
+  (tuatara.runtime:failure-words (evaluation-condition evaluation) :said t))
+
+(defun show-evaluation-backtrace (evaluation)
+  "Show the calls under way at EVALUATION's error in *Backtrace*, when they
+were kept."
+  (when (evaluation-backtrace evaluation)
+    (show-backtrace (evaluation-condition evaluation) (evaluation-backtrace evaluation))))
+
+(defun evaluation-thread-ended (state editor)
+  "As the thread of an evaluation of EDITOR ends: mark the car of STATE :DONE,
+or when it is :ABANDONED, the evaluation given up on before its thread ended,
+put back the settings given since a value they do not take, from the
+snapshot the second of STATE holds, taken when it was given up on
+\(PUT-BACK-MISFIT-SETTINGS), and say so, on the editor's thread."
+  (unless (eq (sb-ext:compare-and-swap (car state) :running :done) :running)
+    (let ((*editor* editor) (settings (second state)))
+      (defer-action (lambda ()
+                      (dolist (words (put-back-misfit-settings settings))
+                        (message "~a" words)))
+                    :without-screen t))))
+
+(defun stop-evaluation-thread (thread state)
+  "Ask THREAD, an evaluation's (RUN-EVALUATION), to stop where it is: while it
+evaluates, it gives up the forms and ends as stopped; asked before it began
+them, it notes so in the third of STATE and gives them up as it begins; once
+they are done, as it ends, or when it has ended, nothing is done."
+  (setf (third state) t)
+  (handler-case
+      (sb-thread:interrupt-thread thread (lambda ()
+                                           (when *evaluation-stoppable*
+                                             (throw 'stop-evaluation :stopped))))
+    (sb-thread:interrupt-thread-error () nil)))
+
 (defun run-evaluation (text buffer &key typed current)
   "Evaluate the forms of TEXT (EVALUATE-FORMS), or the list of forms already
 read that TEXT may be instead, for BUFFER on a thread of its
@@ -284,71 +351,94 @@ own, while the editor waits: \\`C-g' stops it, and keys typed meanwhile wait the
 turn (WAIT-INTERRUPTIBLY). What it prints and warns is kept, and its reading
 finds an empty input: the terminal is never written to or read from. Every
 serious condition is caught, running out of stack included, as is a call to
-the debugger. Returns a plist: :OUTCOME, a list (:VALUES values count), (:ERROR
-condition) or :STOPPED; :OUTPUT, the text printed; :WARNINGS, how many;
-:PACKAGE, the package in force at the end; and :BACKTRACE, when
-*DEBUG-ON-ERROR* is on and it met an error, the calls under way then
-(CAPTURE-BACKTRACE). Unless TYPED (at \\[eval-expression]), TEXT is BUFFER's,
+the debugger. Returns an EVALUATION, its backtrace the calls under way at an
+error when *DEBUG-ON-ERROR* is on (CAPTURE-BACKTRACE). A setting it gives a
+value the setting does not take is put back as it was, and said in the
+EVALUATION (PUT-BACK-MISFIT-SETTINGS); when it was stopped and its thread
+had not ended, they are looked at again, and said, once it has. Unless TYPED (at \\[eval-expression]), TEXT is BUFFER's,
 and the definitions in it are remembered as BUFFER's, for \\[xref-find-definitions].
 The Lisp evaluated finds CURRENT the current buffer, when given, as IELM's
 working buffer; else the one shown in the selected window."
   (let* ((editor *editor*)
          (box (list (lisp-package buffer)))
          (result nil)
+         (settings (settings-snapshot))
+         ;; :running, then :done once the thread ends, or :abandoned when it was given up on first;
+         ;; then the settings as they were when it was given up on; then true once asked to stop
+         (state (list :running nil nil))
          (thread
            (sb-thread:make-thread
             (lambda ()
-              (let* ((*editor* editor)
-                     (*current-buffer* current) ; SET-BUFFER lasts until the evaluation ends
-                     (*evaluating-buffer* (unless typed buffer))
-                     (output (make-string-output-stream))
-                     (input (make-string-input-stream ""))
-                     (io (make-two-way-stream input output))
-                     (*standard-output* output) (*error-output* output) (*trace-output* output)
-                     (*standard-input* input) (*terminal-io* io) (*query-io* io) (*debug-io* io)
-                     (warnings 0)
-                     (trace nil)
-                     (outcome
-                       (flet ((note-trace ()
-                                ;; the calls under way, before they are unwound
-                                (when (or *debug-on-error* tuatara.runtime:*debug-on*)
-                                  (setf trace (capture-backtrace :stop 'evaluate-forms))))
-                              (give-up (condition hook)
-                                (declare (ignore hook))
-                                (throw 'stop-evaluation (list :error condition))))
-                         (catch 'stop-evaluation
-                           (let ((sb-ext:*invoke-debugger-hook* (lambda (condition hook)
-                                                                  (note-trace)
-                                                                  (give-up condition hook)))
-                                 (*debugger-hook* (lambda (condition hook)
-                                                    (note-trace)
-                                                    (give-up condition hook))))
-                             (handler-case
-                                 (handler-bind ((warning (lambda (w) (declare (ignore w)) (incf warnings)))
-                                                (error (lambda (e) (declare (ignore e)) (note-trace))))
-                                   (multiple-value-bind (values count) (evaluate-forms text (car box) box)
-                                     (list :values values count)))
-                               ;; the empty input run dry: say what that means here
-                               (end-of-file (e)
-                                 (list :error (if (member (stream-error-stream e) (list input io))
-                                                  (make-condition 'simple-error :format-control
-                                                                  "end of file: code evaluated in the editor has no input to read")
-                                                  e)))
-                               (serious-condition (e) (list :error e))))))))
-                (when (and (consp outcome) (eq (first outcome) :error))
-                  (tuatara.runtime:debug-report :error "evaluating Lisp: ~a~{~%    ~a~}" (second outcome) trace))
-                (setf result (list :outcome outcome :output (get-output-stream-string output)
-                                   :warnings warnings :package (car box)
-                                   :backtrace (and (consp outcome) (eq (first outcome) :error) trace)))))
+              (unwind-protect
+                  (let* ((*editor* editor)
+                         (*current-buffer* current) ; SET-BUFFER lasts until the evaluation ends
+                         (*evaluating-buffer* (unless typed buffer))
+                         (output (make-string-output-stream))
+                         (input (make-string-input-stream ""))
+                         (io (make-two-way-stream input output))
+                         (*standard-output* output) (*error-output* output) (*trace-output* output)
+                         (*standard-input* input) (*terminal-io* io) (*query-io* io) (*debug-io* io)
+                         (warnings 0)
+                         (trace nil)
+                         (outcome
+                           (flet ((note-trace ()
+                                    ;; the calls under way, before they are unwound
+                                    (when (or *debug-on-error* tuatara.runtime:*debug-on*)
+                                      (setf trace (capture-backtrace :stop 'evaluate-forms))))
+                                  (give-up (condition hook)
+                                    (declare (ignore hook))
+                                    (throw 'stop-evaluation (list :error condition))))
+                             (catch 'stop-evaluation
+                               (let ((*evaluation-stoppable* t)
+                                     (sb-ext:*invoke-debugger-hook* (lambda (condition hook)
+                                                                      (note-trace)
+                                                                      (give-up condition hook)))
+                                     (*debugger-hook* (lambda (condition hook)
+                                                        (note-trace)
+                                                        (give-up condition hook))))
+                                 ;; a stop asked before the forms began
+                                 (when (third state)
+                                   (throw 'stop-evaluation :stopped))
+                                 (handler-case
+                                     (handler-bind ((warning (lambda (w) (declare (ignore w)) (incf warnings)))
+                                                    (error (lambda (e) (declare (ignore e)) (note-trace))))
+                                       (multiple-value-bind (values count) (evaluate-forms text (car box) box)
+                                         (list :values values count)))
+                                   ;; the empty input run dry: say what that means here
+                                   (end-of-file (e)
+                                     (list :error (if (member (stream-error-stream e) (list input io))
+                                                      (make-condition
+                                                       'simple-error
+                                                       :format-control
+                                                       "end of file: code evaluated in the editor has no input to read")
+                                                      e)))
+                                   (serious-condition (e) (list :error e))))))))
+                    ;; OUTCOME: (:values values count), (:error condition) or :stopped
+                    (destructuring-bind (kind &optional got count) (if (consp outcome) outcome (list outcome))
+                      (when (eq kind :error)
+                        (tuatara.runtime:debug-report :error "evaluating Lisp: ~a~{~%    ~a~}" got trace))
+                      (setf result (make-evaluation :kind kind
+                                                    :values (and (eq kind :values) got)
+                                                    :count (or count 0)
+                                                    :condition (and (eq kind :error) got)
+                                                    :output (get-output-stream-string output)
+                                                    :warnings warnings :package (car box)
+                                                    :backtrace (and (eq kind :error) trace)))))
+                (evaluation-thread-ended state editor)))
             :name "tuatara evaluation")))
     (unless (wait-interruptibly thread :message "Evaluating..." :grace *evaluation-grace*
-                                       :stop (lambda (thread)
-                                               (handler-case
-                                                   (sb-thread:interrupt-thread
-                                                    thread (lambda () (throw 'stop-evaluation :stopped)))
-                                                 (sb-thread:interrupt-thread-error () nil))))
+                                       :stop (lambda (thread) (stop-evaluation-thread thread state)))
       (unless result
-        (setf result (list :outcome :stopped :output "" :warnings 0 :package (car box)))))
+        (setf result (make-evaluation :package (car box)))))
+    ;; a thread still running is left to look again when it ends, against the settings as they are
+    ;; now, each it holds a value it does not take for counted as it was before; one that ended
+    ;; meanwhile is looked at again here, against those of before it
+    (let ((now (settings-snapshot settings))
+          (put-back (put-back-misfit-settings settings)))
+      (setf (second state) now)
+      (unless (eq (sb-ext:compare-and-swap (car state) :running :abandoned) :running)
+        (setf put-back (append put-back (put-back-misfit-settings settings))))
+      (setf (evaluation-put-back result) put-back))
     result))
 
 (defun printed-value (value)
@@ -399,12 +489,12 @@ line by line, and the echo area says so and how many warnings there were. With
 PRINT-AT, what was printed and the values go on the lines after that place
 instead (WRITE-OUTPUT-AND-VALUES). The package in force at the end becomes BUFFER's.
 TYPED says TEXT was typed at \\[eval-expression], not taken from BUFFER. The
-value is said after what was evaluated, on one line: (setf x 1) => 1."
+value is said after what was evaluated, on one line: (setf x 1) => 1. A
+setting given a value it does not take is said last, kept as it was."
   (let* ((result (run-evaluation text buffer :typed typed))
-         (outcome (getf result :outcome))
-         (printing (and print-at (consp outcome) (eq (first outcome) :values)))
-         (lines (tuatara.text:split-words (getf result :output) '(#\Newline)))
-         (warnings (getf result :warnings))
+         (printing (and print-at (eq (evaluation-kind result) :values)))
+         (lines (tuatara.text:split-words (evaluation-output result) '(#\Newline)))
+         (warnings (evaluation-warnings result))
          (note (let ((parts (remove nil (list (and (plusp warnings) (format nil "~d warning~:p" warnings))
                                               (and lines (not printing)
                                                    (format nil "printed ~d line~:p" (length lines)))))))
@@ -414,31 +504,37 @@ value is said after what was evaluated, on one line: (setf x 1) => 1."
                                     parts)))))
     (unless printing
       (dolist (line lines) (log-message line)))
-    (setf (tuatara.buffer:buffer-local buffer :lisp-package) (package-name (getf result :package)))
-    (cond ((eq outcome :stopped) (message "Evaluation stopped~@[~a~]" note))
-          ((eq (first outcome) :error)
-           (message "Error: ~a~@[~a~]" (tuatara.runtime:failure-words (second outcome) :said t) note)
-           (when (getf result :backtrace)
-             (show-backtrace (second outcome) (getf result :backtrace))))
-          (t (destructuring-bind (values count) (rest outcome)
-               (let ((*package* (getf result :package)))
-                 (cond (printing
-                        (goto (tuatara.buffer:buffer-insert
-                               buffer print-at (with-output-to-string (out)
-                                                 (terpri out)
-                                                 (write-output-and-values out (getf result :output) values))))
-                        (when note (message "~a" (string-left-trim " " note))))
-                       (insert-at
-                        (goto (tuatara.buffer:buffer-insert buffer insert-at
-                                                            (format nil "~:[~; ~]~a" space (format-values values)))))
-                       (t (message "~@[~a ~]=> ~a~@[~a~]~@[  (~:d forms)~]~@[~a~]"
-                                   ;; what was evaluated, unless it reads as its value (65, "x")
-                                   (let ((summary (expression-summary text)))
-                                     (and (string/= summary (format-values values)) summary))
-                                   (format-values values)
-                                   ;; one expression's one value, an integer: its octal, hex and character
-                                   (and (= (length values) 1) (<= count 1) (integer-annotation (first values)))
-                                   (and (> count 1) count) note)))))))))
+    (setf (tuatara.buffer:buffer-local buffer :lisp-package) (package-name (evaluation-package result)))
+    (ecase (evaluation-kind result)
+      (:stopped (message "Evaluation stopped~@[~a~]" note))
+      (:error (message "Error: ~a~@[~a~]" (evaluation-error-words result) note)
+       (show-evaluation-backtrace result))
+      (:values
+       (let ((values (evaluation-values result)) (count (evaluation-count result)))
+         (let ((*package* (evaluation-package result)))
+           (cond (printing
+                  (goto (tuatara.buffer:buffer-insert
+                         buffer print-at (with-output-to-string (out)
+                                           (terpri out)
+                                           (write-output-and-values out (evaluation-output result) values))))
+                  (when note (message "~a" (string-left-trim " " note))))
+                 (insert-at
+                  (goto (tuatara.buffer:buffer-insert buffer insert-at
+                                                      (format nil "~:[~; ~]~a" space (format-values values)))))
+                 (t (message "~@[~a ~]=> ~a~@[~a~]~@[  (~:d forms)~]~@[~a~]"
+                             ;; what was evaluated, unless it reads as its value (65, "x")
+                             (let ((summary (expression-summary text)))
+                               (and (string/= summary (format-values values)) summary))
+                             (format-values values)
+                             ;; one expression's one value, an integer: its octal, hex and character
+                             (and (= (length values) 1) (<= count 1) (integer-annotation (first values)))
+                             (and (> count 1) count) note)))))))
+    (say-settings-put-back result)))
+
+(defun say-settings-put-back (evaluation)
+  "Say each setting EVALUATION gave a value it does not take, put back."
+  (dolist (words (evaluation-put-back evaluation))
+    (message "~a" words)))
 
 (define-command eval-print-last-expression ()
   "Evaluate the expression before point in the running editor and put what it
@@ -492,8 +588,8 @@ it is."
 selection nothing is evaluated, nor with one of more than *REWRITE-THRESHOLD*
 octets."
   (let ((b (current-buffer)))
-    (multiple-value-bind (start end) (and (tuatara.buffer:buffer-mark-active-p b) (tuatara.buffer:buffer-region b))
-      (cond ((not (and start (< start end))) (message "No selection: eval-region was not run"))
+    (multiple-value-bind (start end) (selected-region-or-say b 'eval-region)
+      (cond ((null start))
             ((too-large-here-p start end "Evaluating"))
             (t (evaluate-and-report b (tuatara.buffer:buffer-string b :start start :end end)))))))
 

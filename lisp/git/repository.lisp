@@ -2,7 +2,7 @@
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; In a status o opens the submodule menu, i the ignore menu, T the notes
-;;;; menu, O the subtree menu and > the sparse checkout menu, as Magit's do.
+;;;; menu, O the subtree menu and > the sparse checkout menu.
 ;;;; A status lists the submodules a repository has; RET on one shows its own
 ;;;; status. A file of patterns git ignores is written here only when it is a
 ;;;; file of its own, never through a link.

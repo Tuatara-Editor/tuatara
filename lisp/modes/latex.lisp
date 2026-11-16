@@ -54,7 +54,7 @@ there is given as open, and what follows it is not read."
             (cond ((and verbatim closing)
                    (setf at (+ closing (length name) 6)))
                   (t
-                   (incf octet (length (tuatara.text:string-octets (subseq text counted match-start))))
+                   (incf octet (tuatara.text:string-octet-length text :start counted :end match-start))
                    (setf counted match-start)
                    (push (list beginning octet name) marks)
                    (when verbatim (return))))))))
@@ -217,9 +217,14 @@ formulas: a formula never goes past one.")
 preamble, what is between its \\documentclass line and that, as two values;
 0 and NIL for a file without \\begin{document} (a part another file takes
 in), or one further than *LATEX-ENVIRONMENT-REACH* from the start. Kept
-while the text is unchanged."
+while the text up to the body is unchanged (UNCHANGED-BEFORE): typing in the
+body reads it no more."
   (let ((version (tuatara.buffer:buffer-version buffer))
         (kept (tuatara.buffer:buffer-local buffer 'latex-preamble)))
+    (when (and kept (not (eq (car kept) version))
+               (let ((low (unchanged-before (car kept) version)))
+                 (and low (>= low (if (plusp (second kept)) (second kept) *latex-environment-reach*)))))
+      (setf (car kept) version))
     (unless (and kept (eq (car kept) version))
       (let* ((text (tuatara.buffer:buffer-string buffer :end (min (tuatara.buffer:buffer-size buffer)
                                                                   *latex-environment-reach*)))

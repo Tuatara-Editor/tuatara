@@ -33,7 +33,9 @@ fail() { echo "tools/lisp-archives.sh: $*" >&2; exit 1; }
 
 quicklisp_dir() {  # the directory given, else where Quicklisp is installed
   if [ -n "${1:-}" ]; then echo "$1"; return; fi
-  dirname "$(quicklisp_setup)" || exit 1
+  local setup
+  setup="$(quicklisp_setup)" || exit 1
+  dirname "$setup"
 }
 
 entries() {  # the list's lines: hash, then archive name
@@ -59,7 +61,8 @@ check() {
       echo "tools/lisp-archives.sh: $archive is not in $archives: tools/lisp-archives.sh fetch downloads it" >&2
       bad=1
     elif ! echo "$sha256  $archives/$archive" | sha256sum -c --status; then
-      echo "tools/lisp-archives.sh: $archives/$archive is not the archive tools/lisp-archives.sha256 lists: not used" >&2
+      echo "tools/lisp-archives.sh: $archives/$archive is not the archive" \
+           "tools/lisp-archives.sha256 lists: not used" >&2
       bad=1
     fi
   done < <(entries)
@@ -70,7 +73,8 @@ index() {
   local dist="$1/dists/quicklisp" file
   mkdir -p "$dist/archives" "$1/config" "$1/local-projects"
   for file in distinfo.txt systems.txt releases.txt; do
-    curl -sSfL --retry 3 -o "$dist/$file" "$dist_url/$file" || fail "$dist_url/$file could not be downloaded"
+    https_curl --connect-timeout 30 --max-time 300 -o "$dist/$file" "$dist_url/$file" ||
+      fail "$dist_url/$file could not be downloaded"
   done
   touch "$dist/enabled.txt"
 }
@@ -109,8 +113,8 @@ add() {
   local name="$1" dir="$2" work line url archive sha256 md5 size
   [ -n "$name" ] || fail "add: which library? (a Quicklisp project name, as releases.txt has it)"
   work="$(mktemp -d)"
-  trap 'rm -rf "$work"' EXIT
-  curl -sSfL --retry 3 -o "$work/releases.txt" "$dist_url/releases.txt" ||
+  trap "rm -rf '$work'" EXIT
+  https_curl --connect-timeout 30 --max-time 300 -o "$work/releases.txt" "$dist_url/releases.txt" ||
     fail "$dist_url/releases.txt could not be downloaded"
   line=$(awk -v p="$name" '$1 == p { print; exit }' "$work/releases.txt")
   [ -n "$line" ] || fail "$name is not in the Quicklisp set $dist_url"
@@ -122,7 +126,7 @@ add() {
     echo "$archive is in the list already"
     return
   fi
-  curl -sSfL --retry 3 -o "$work/$archive" "$url" || fail "$url could not be downloaded"
+  https_curl --connect-timeout 30 --max-time 1200 -o "$work/$archive" "$url" || fail "$url could not be downloaded"
   [ "$(stat -c %s "$work/$archive")" = "$size" ] || fail "$archive is not the size the index gives"
   [ "$(md5sum "$work/$archive" | cut -d' ' -f1)" = "$md5" ] || fail "$archive is not the MD5 the index gives"
   sha256=$(sha256sum "$work/$archive" | cut -d' ' -f1)
@@ -137,7 +141,7 @@ add() {
 
 command="${1:-}"
 case "$command" in
-  check|fetch|index|lock|prepare) shift; "$command" "$(quicklisp_dir "${1:-}")" ;;
-  add) shift; add "${1:-}" "$(quicklisp_dir "${2:-}")" ;;
+  check|fetch|index|lock|prepare) shift; dir="$(quicklisp_dir "${1:-}")" || exit 1; "$command" "$dir" ;;
+  add) shift; dir="$(quicklisp_dir "${2:-}")" || exit 1; add "${1:-}" "$dir" ;;
   *) fail "usage: tools/lisp-archives.sh check|fetch|index|lock|prepare [QUICKLISP] | add LIBRARY [QUICKLISP]" ;;
 esac

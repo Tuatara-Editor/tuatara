@@ -217,9 +217,7 @@ left passed at once."
             ;; no carriage return: newlines alone, two words at a time while fewer than are left
             (progn
               (loop while (<= (+ i 16) end)
-                    do (let ((count (logcount (logior (word-octets-of (sb-sys:sap-ref-64 sap i) +newlines+)
-                                                      (ash (word-octets-of (sb-sys:sap-ref-64 sap (+ i 8)) +newlines+)
-                                                           -1)))))
+                    do (let ((count (word-pair-newlines (sb-sys:sap-ref-64 sap i) (sb-sys:sap-ref-64 sap (+ i 8)))))
                          (declare (type fixnum count))
                          (when (>= count remaining) (return))
                          (decf remaining count)
@@ -323,7 +321,10 @@ what makes snapshots free."
         :documentation "The root node of ROPE, a leaf, a span or a branch."))
 
 (declaim (inline rope-octet-length rope-indexed-p))
-(defun rope-octet-length (rope) "Number of octets in ROPE. O(1)." (node-bytes (rope-root rope)))
+(defun rope-octet-length (rope)
+  "Number of octets in ROPE. O(1)."
+  (node-bytes (rope-root rope)))
+
 (defun rope-indexed-p (rope)
   "True when ROPE's character, UTF-16 and line counts are known everywhere."
   (node-indexed-p (rope-root rope)))
@@ -373,7 +374,7 @@ spans rather than copying them, so that a slice of many gigabytes is made in
 the time it takes to list its spans. START and END are character boundaries.
 Refused (NOT-ARRIVED) when part of the range has not arrived from its file yet.
 Complexity: O(log n + leaves in the range)."
-  (let ((nodes (clean-junctions (remove-if (lambda (n) (zerop (node-bytes n))) (rope-pieces rope start end)))))
+  (let ((nodes (remove-if (lambda (n) (zerop (node-bytes n))) (rope-pieces rope start end))))
     (dolist (node nodes) (check-piece-arrived node 0 (node-bytes node)))
     (%make-rope (if nodes (build-tree (coerce nodes 'simple-vector)) (make-leaf (make-octets 0))))))
 
@@ -383,11 +384,12 @@ Complexity: O(log n + leaves in the range)."
 copied, so ropes over files of many gigabytes splice in the time it takes to
 list their spans; only the two leaves the cuts fall in are sliced. START and
 END are character boundaries of ROPE with START <= END."
-  (let ((nodes (append (rope-pieces rope 0 start)
-                       (loop for middle in middles
-                             append (let ((acc '())) (map-leaves (lambda (n) (push n acc)) middle) (nreverse acc)))
-                       (rope-pieces rope end (rope-octet-length rope)))))
-    (setf nodes (clean-junctions (remove-if (lambda (n) (zerop (node-bytes n))) nodes)))
+  (let ((nodes (clean-junctions (list* (rope-pieces rope 0 start)
+                                       (append (loop for middle in middles
+                                                     collect (let ((acc '()))
+                                                               (map-leaves (lambda (n) (push n acc)) middle)
+                                                               (nreverse acc)))
+                                               (list (rope-pieces rope end (rope-octet-length rope))))))))
     (%make-rope (if nodes (build-tree (coerce nodes 'simple-vector)) (make-leaf (make-octets 0))))))
 
 (defun clean-junction-p (left right)
@@ -414,21 +416,28 @@ it."
                    (piece-copy left (- (node-bytes left) k) (node-bytes left) tail 0)
                    (zerop (octets-pending tail 0 k))))))))
 
-(defun clean-junctions (nodes)
-  "NODES, a list of leaves and spans in order, with every pair whose junction
-would split a character (possible only around raw bytes) or part a carriage
-return from the newline after it remade as leaves cut where they may be
-\(CHUNK-OCTETS)."
+(defun clean-junctions (runs)
+  "RUNS, lists of leaves and spans in order, each list's neighbours as they
+stood in one rope, joined into one list, the empty ones left out. Only where
+one run meets the next is looked at: a pair whose junction there would split
+a character (possible only around raw bytes) or part a carriage return from
+the newline after it is remade as leaves cut where they may be
+\(CHUNK-OCTETS). Neighbours of one rope stay as they were, so that a splice
+reads no more of a large file than its seams."
   (let ((out '()))
-    (dolist (node nodes (nreverse out))
-      (let ((left (first out)))
-        (if (and left (not (clean-junction-p left node)))
-            (let* ((a (node-bytes left)) (b (node-bytes node)) (octets (make-octets (+ a b))))
-              (piece-copy left 0 a octets 0)
-              (piece-copy node 0 b octets a)
-              (pop out)
-              (loop for leaf across (chunk-octets octets 0 (+ a b)) do (push leaf out)))
-            (push node out))))))
+    (dolist (run runs (nreverse out))
+      (let ((seam t))
+        (dolist (node run)
+          (unless (zerop (node-bytes node))
+            (let ((left (first out)))
+              (if (and seam left (not (clean-junction-p left node)))
+                  (let* ((a (node-bytes left)) (b (node-bytes node)) (octets (make-octets (+ a b))))
+                    (piece-copy left 0 a octets 0)
+                    (piece-copy node 0 b octets a)
+                    (pop out)
+                    (loop for leaf across (chunk-octets octets 0 (+ a b)) do (push leaf out)))
+                  (push node out)))
+            (setf seam nil)))))))
 
 (defun unindexed-spans (mapping start end)
   "Return a simple-vector of spans of +SPAN-SIZE+ covering MAPPING from START
@@ -464,14 +473,20 @@ INDEX-ROPE first. Complexity: O(file size / +SPAN-SIZE+), nothing is read."
 
 (defun rope-chars (rope)
   "Number of characters in ROPE. O(1). Signals an error while ROPE is unindexed."
-  (check-indexed rope) (node-chars (rope-root rope)))
+  (check-indexed rope)
+  (node-chars (rope-root rope)))
+
 (defun rope-utf16 (rope)
   "Number of UTF-16 code units ROPE would occupy. O(1). Signals an error while unindexed."
-  (check-indexed rope) (node-utf16 (rope-root rope)))
+  (check-indexed rope)
+  (node-utf16 (rope-root rope)))
+
 (defun rope-invalid (rope)
   "Number of raw bytes in ROPE: octets that are not part of well-formed UTF-8.
 O(1). Signals an error while ROPE is unindexed."
-  (check-indexed rope) (node-invalid (rope-root rope)))
+  (check-indexed rope)
+  (node-invalid (rope-root rope)))
+
 (defun rope-holds-return-p (rope)
   "True when ROPE may hold a carriage return: it does, or its counts are not
 known yet. O(1)."
@@ -1095,9 +1110,11 @@ which offsets in ROPE are offsets in the file. Complexity: O(log n)."
     (and (span-p node) (zerop (span-offset node)) (= (rope-octet-length rope) (mapping-length (span-mapping node)))
          (mapping-holes (span-mapping node)))))
 
-(defun rope-hole-at (rope position)
-  "The stretch (START . END) of ROPE not arrived yet that holds POSITION, or NIL. Complexity: O(log n)."
-  (find-if (lambda (hole) (and (<= (car hole) position) (< position (cdr hole)))) (rope-holes rope)))
+(defun rope-hole-at (rope position &optional (holes (rope-holes rope)))
+  "The stretch (START . END) of ROPE not arrived yet that holds POSITION, or
+NIL; HOLES is ROPE's (ROPE-HOLES) when the caller has them already.
+Complexity: O(log n)."
+  (find-if (lambda (hole) (and (<= (car hole) position) (< position (cdr hole)))) holes))
 
 (defun read-ahead (rope start end)
   "Have the octets of ROPE about to be shown read in from the disk ahead of
@@ -1540,6 +1557,16 @@ none of it is garbage. BODY must not keep BLOCK, and leaves with RETURN-FROM."
                             (when (< ,size 65536)
                               (setf ,size (* 2 ,size)))))))))))
 
+(declaim (inline rope-hash))
+(defun rope-hash (rope start end &optional (hash +fnv-offset+))
+  "The 64-bit FNV-1a hash of ROPE's octets from START below END, carried on
+from HASH, as OCTETS-HASH gives it for the same octets: the same for the same
+text however the rope holds it. Nothing is copied to the heap."
+  (declare (type (unsigned-byte 64) hash))
+  (do-rope-windows (block low high) (rope start end)
+    (setf hash (octets-hash block :end (- high low) :hash hash)))
+  hash)
+
 (defun rope-escaped-p (rope position)
   "True when the octet at POSITION of ROPE follows an odd number of
 backslashes: escaped, since a backslash escapes the character after it.
@@ -1746,17 +1773,6 @@ of them, or BOUND (0). Complexity: O(log n + distance moved)."
 (defun blank-line-octet-p (octet)
   "True for an octet a blank line may hold (*BLANK-LINE-OCTETS*)."
   (= 1 (sbit (the simple-bit-vector **blank-line-octets**) octet)))
-
-(declaim (inline space-or-tab-char-p))
-(defun space-or-tab-char-p (char)
-  "True for a space or a tab: the characters between a line's fields, and those
-a blank line holds."
-  (or (char= char #\Space) (char= char #\Tab)))
-
-(defun blank-text-p (string &optional (start 0) end)
-  "True when STRING from START below END (its end when NIL) holds nothing but
-spaces and tabs, or nothing at all."
-  (not (position-if-not #'space-or-tab-char-p string :start start :end end)))
 
 (defun map-line-slices (function rope start end left right &key crlf octets width block (to-line-end t))
   "Call FUNCTION for each line of ROPE that starts at a byte offset in [START,
@@ -1984,7 +2000,7 @@ so that it is never read through."
   (declare (type fixnum byte))
   (check-byte-offset rope byte)
   (let* ((holes (rope-holes rope))
-         (inside (find-if (lambda (hole) (and (<= (car hole) byte) (< byte (cdr hole)))) holes))
+         (inside (rope-hole-at rope byte holes))
          (edge (cdr (find-if (lambda (hole) (<= (cdr hole) byte)) holes :from-end t)))
          (near (max 0 (- byte 65536) (or edge 0)))
          (newline (cond (inside (1- (car inside)))
@@ -2007,7 +2023,7 @@ of the file not arrived yet, so that it is never read through."
   (check-byte-offset rope byte)
   (let* ((total (rope-octet-length rope))
          (holes (rope-holes rope))
-         (inside (find-if (lambda (hole) (and (<= (car hole) byte) (< byte (cdr hole)))) holes))
+         (inside (rope-hole-at rope byte holes))
          (edge (car (find-if (lambda (hole) (> (car hole) byte)) holes)))
          (near (min total (+ byte 65536) (or edge total))))
     (declare (type fixnum total near))

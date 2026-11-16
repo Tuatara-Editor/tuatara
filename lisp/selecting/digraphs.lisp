@@ -132,7 +132,7 @@ a wrap know as a pair.~%~%"
                           ;; padded by the columns the character takes, two for a wide one
                           (format out "  ~11a~a~a~11a~a~%" keys shown
                                   (spaces (max 1 (- 8 (tuatara.display:char-columns (char shown 0)))))
-                                  (format nil "U+~4,'0X" (char-code char))
+                                  (code-point-label char)
                                   (unicode-name char))))))))
        (format out
                (substitute-command-keys "~%~a~%\\<help-mode>\\[quit-window]: quit  |  \\[regex-search-forward]: search"

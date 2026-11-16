@@ -6,9 +6,8 @@
 ;;;; person writing it down: the ways of starting it and the options (the table
 ;;;; --help is made from), the environment variables, the settings of the init
 ;;;; file with the first paragraph of each one's documentation, and the files
-;;;; that are kept
-;;;; (test/api/kept-files.sexp).  tools/build-image.lisp writes them to
-;;;; build/man/.
+;;;; that are kept (test/api/kept-files.sexp). tools/build-image.lisp writes
+;;;; them to build/man/.
 
 (in-package #:tuatara.terminal)
 
@@ -192,7 +191,7 @@ sub-heading, then each setting with the first paragraph of its documentation."
     ("packages" . "the packages fetched, with their source and version")
     ("packages-removed" . "the packages removed, not loaded though the init file names them")
     ("patterns" . "the search patterns you saved by name")
-    ("pdf-places" ."the page and zoom you left each PDF at")
+    ("pdf-places" . "the page and zoom you left each PDF at")
     ("places" . "where point was in the files you visited")
     ("recent-files" . "the files you visited lately")
     ("ssh-servers" . "the machines whose daemons you trusted with more than keys and the screen, and with what")
@@ -289,13 +288,13 @@ not there), over those there. The names of the files."
   `(("--frames" . ,(loop for n from 1 to tuatara.command:*most-frames* collect (princ-to-string n)))
     ("--dynamic-space-size" . :none))
   "The values bash offers for an option taking one where it is not a file: the
-choices, or :NONE when nothing can be suggested.  Every other value an option
+choices, or :NONE when nothing can be suggested. Every other value an option
 takes is a file name.")
 
 (defun completion-options ()
   "The options of *OPTION-HELP* that bash completes, each as a list of its
 name, the number of values that follow it and what they are (:FILES, :NONE or
-a list of choices).  An option written with an optional =NAME is a name only."
+a list of choices). An option written with an optional =NAME is a name only."
   (let (options)
     (dolist (entry *option-help*)
       (loop for (flag argument) in (getf entry :flags)
@@ -365,7 +364,7 @@ of an option that has them, and files after -- or for a plain argument."
 
 (defun write-bash-completion (directory)
   "Write the completion of tuatara's options for bash, the file tuatara, into
-DIRECTORY (made when it is not there), over the one there.  The name of the
+DIRECTORY (made when it is not there), over the one there. The name of the
 file."
   (ensure-directories-exist directory)
   (let ((file (merge-pathnames "tuatara" (uiop:ensure-directory-pathname directory))))

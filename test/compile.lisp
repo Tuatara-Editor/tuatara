@@ -228,7 +228,7 @@ force; *compile* killed afterwards."
                                                             (setf shown-while-running t))))
                                ;; keys answered while it runs
                                "M-> i n t SPC f o u r ;"
-                               "C-x o C-c C-k"
+                               "C-x o C-c C-k y"
                                (list :until #'compile-ended-p)
                                ;; the child that will not end is killed once the grace is over
                                (list :until (lambda () (let ((child (numbers-after "child" (compile-output))))
@@ -542,7 +542,7 @@ force; *compile* killed afterwards."
       (auto-save-session
        (compile-steps dir
                       (list :until (lambda () (setf child (numbers-after "child" (compile-output)))))
-                      "C-x o C-c C-k"
+                      "C-x o C-c C-k y"
                       (lambda () (setf began (get-internal-real-time)) (tuatara.compile::kill-compiles-at-exit nil))
                       (list :until (lambda () (when (not (pid-alive-p child)) (setf gone-at (get-internal-real-time)))))
                       (list :until #'compile-ended-p))
@@ -561,7 +561,7 @@ force; *compile* killed afterwards."
              (auto-save-session
               (compile-steps dir
                              (list :until (lambda () (setf odd (numbers-after "odd" (compile-output)))))
-                             "C-x o C-c C-k"
+                             "C-x o C-c C-k y"
                              (lambda () (setf stopped-at (get-internal-real-time)))
                              (list :until
                                    (lambda () (unless (pid-alive-p odd) (setf gone-at (get-internal-real-time)))))

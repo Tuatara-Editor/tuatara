@@ -33,13 +33,13 @@ A mode counts for the modes made from it, the nearest one listed deciding.
 - nil: no mode is named.
 - a list of (MODE . ON): ON true or nil, MODE a major mode's name, with or
   without -mode, for example ((org-mode . nil) (prog-mode . t))."
-  :values (list-of "(MODE . ON)"))
+  :values (list-of (cons symbol boolean)))
 
 (defun complete-paths-p (buffer)
   "True when typing a path in BUFFER lists its directory: as
 *COMPLETE-PATHS-MODES* says of its major mode or the nearest mode that mode
 is made from, else as *COMPLETE-PATHS* says."
-  (buffer-setting buffer :complete-paths (setting-list '*complete-paths-modes* *complete-paths-modes* :pairs t)
+  (buffer-setting buffer :complete-paths (setting-in-force '*complete-paths-modes*)
                   *complete-paths*))
 
 (defparameter *path-delimiters* "\"'`()[]{}<>,;|&="
@@ -49,7 +49,7 @@ stand around a path in a program or in prose.")
 (defun path-part-p (char)
   "True when CHAR can be part of a path being typed: not a blank, nor one of
 *PATH-DELIMITERS*."
-  (not (or (member char '(#\Space #\Tab #\Newline #\Return #\Page))
+  (not (or (blank-char-p char)
            (find char *path-delimiters*))))
 
 (defun path-name-part-p (char)
@@ -133,11 +133,8 @@ lately, then the others."
   (mapcar (lambda (c)
             (let ((directory (uiop:string-suffix-p (candidate-string c) "/"))
                   (rank (candidate-rank c)))
-              (make-candidate (candidate-string c) :annotation (candidate-annotation c) :value (candidate-value c)
-                                                   :group (candidate-group c) :columns (candidate-columns c)
-                                                   :suffix (candidate-suffix c)
-                                                   :rank (cond (directory (or rank 500000))
-                                                               (rank (+ 1000000 rank))))))
+              (candidate-ranked c (cond (directory (or rank 500000))
+                                        (rank (+ 1000000 rank))))))
           candidates))
 
 (defun path-completion-tick (editor)
@@ -193,15 +190,15 @@ nothing is there."
 \\(~/notes/todo.org, ./README.org, or a file: link's) in its buffer. A path not
 starting with / or ~ is taken from the directory the buffer stands in. With a
 prefix argument (\\[universal-argument] \\[open-path-at-point]), open it safely, as
-\\[find-file-safely] does. A path that names nothing is said, not made. The
-path is remembered as chosen lately (NOTE-VISITED-PATH) unless it opened
-safely or the buffer it is written in is open safely."
+\\[find-file-safely] does; a path written in a buffer opened safely is always
+opened safely. A path that names nothing is said, not made. The path is
+remembered as chosen lately (NOTE-VISITED-PATH) unless it opened safely."
   (let* ((b (current-buffer))
          (typed (path-around b (tuatara.buffer:buffer-point b)))
          (native (and typed (existing-path typed b))))
     (cond ((null typed) (message "No path at point"))
           ((null native) (message "No file or directory: ~a" typed))
-          (t (let ((buffer (visit-path native :safe (and (prefix-argument) t))))
+          (t (let ((buffer (visit-path native :safe (or (and (prefix-argument) t) (tuatara.io:safe-visit-p b)))))
                ;; a path written in a file opened safely is evidence too: not remembered
                (unless (tuatara.io:safe-visit-p b)
                  (note-visited-path native buffer
@@ -214,18 +211,3 @@ typed in a buffer (*COMPLETE-PATHS*, *COMPLETE-PATHS-MODES*), and bind
   (pushnew 'start-path-listing (editor-post-command-functions editor))
   (pushnew 'path-completion-tick *tick-functions*)
   (define-key *global-keymap* "C-x C-p" 'open-path-at-point))
-
-(defun attachment-file-name (name &optional (fallback "attachment"))
-  "NAME, as an attachment or an embedded file calls itself, made a file's name
-alone; what follows its last / or \\, control characters and those a name
-cannot hold on the drives other systems use (: * ? \" < > |) left out, spaces
-and full stops trimmed from its ends, cut to the most a name may take
-\(TUATARA.IO:FIT-NAME), its ending kept; FALLBACK for one with nothing left,
-or no NAME."
-  (let* ((name (or name ""))
-         (name (subseq name (1+ (or (position-if (lambda (c) (member c '(#\/ #\\))) name :from-end t) -1))))
-         (name (remove-if (lambda (c) (or (< (char-code c) 32) (= (char-code c) 127) (<= #xD800 (char-code c) #xDFFF)
-                                          (find c ":*?\"<>|")))
-                          name))
-         (name (string-trim " ." name)))
-    (if (zerop (length name)) fallback (tuatara.io:fit-name name))))

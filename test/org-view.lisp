@@ -509,7 +509,7 @@ window draws them with (set-face :org-level-1 :height 2)."
        (let ((buffer (session-buffer editor)))
          (false (tuatara.buffer:buffer-local buffer :line-scale-function))
          (false (tuatara.buffer:buffer-local buffer :line-prefix-function))
-         (false (tuatara.buffer:buffer-local buffer :display-replacements-function))
+         (false (tuatara.display:buffer-replacements-p buffer))
          (false (tuatara.buffer:buffer-local buffer :folds))
          (false (tuatara.buffer:buffer-local buffer 'tuatara.defaults::org-state))
          (false (aref (tuatara.frontend.fake:fake-row-scales f) 0))

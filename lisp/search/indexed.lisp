@@ -506,16 +506,15 @@ noted, and read once it is over."
              (note-sign-work :indexing editor)))
          :name "tuatara reading an indexed directory"))))
 
-(defun indexes-tick (editor)
-  "Tick function: keep an index of each of *INDEXED-DIRECTORIES*, read in the
-background, and put in place what was read. True while one is read."
-  (declare (ignore editor))
+(defun indexes-follow-setting ()
+  "Keep an index of each of *INDEXED-DIRECTORIES*: those no longer asked for
+go, their directories no longer watched, and those newly asked for are read
+in the background."
   (let ((wanted (remove-duplicates (mapcar (lambda (d)
                                               (ignoring-errors-reported ("reading the directory name ~s" d)
                                                 (directory-name d)))
-                                            (setting-list '*indexed-directories* *indexed-directories*))
+                                            *indexed-directories*)
                                    :test #'equal)))
-    ;; those no longer asked for go, their directories no longer watched; those newly asked for are read
     (let ((kept (remove-if-not (lambda (index) (member (directory-index-root index) wanted :test #'equal))
                                *directory-indexes*)))
       (unless (= (length kept) (length *directory-indexes*))
@@ -525,7 +524,21 @@ background, and put in place what was read. True while one is read."
       (unless (find root *directory-indexes* :key #'directory-index-root :test #'string=)
         (let ((index (make-directory-index root)))
           (push index *directory-indexes*)
-          (start-reading-index index)))))
+          (start-reading-index index))))))
+
+(defvar *indexes-made-for* (list :none)
+  "A list holding the value of *INDEXED-DIRECTORIES* the indexes were last
+made to follow (INDEXES-TICK), so that the directories' names are worked out
+again only once it changes.")
+
+(defun indexes-tick (editor)
+  "Tick function: keep an index of each of *INDEXED-DIRECTORIES*, read in the
+background, and put in place what was read. True while one is read. The
+directories asked for are looked at again only when the setting changes."
+  (declare (ignore editor))
+  (unless (eq *indexed-directories* (car *indexes-made-for*))
+    (setf *indexes-made-for* (list *indexed-directories*))
+    (indexes-follow-setting))
   (let ((working nil))
     (dolist (index *directory-indexes*)
       (let ((result (directory-index-result index)))
@@ -613,23 +626,9 @@ faint (MODE-LINE-SIGN)."
   (and *indexed-directories*
        (mode-line-sign *searching-indicator* (sign-lit-p :searching (plusp (car *index-searches*))))))
 
-(defun mode-line-signs (editor buffer)
-  "Mode line function, before [-]: the sign of work for BUFFER
-\(PROCESSING-MODE-LINE), then while directories are kept read the signs of
-their reading (INDEXING-MODE-LINE) and of their searching
-\(SEARCHING-MODE-LINE), and the sign of a daemon (DAEMON-MODE-LINE), side by
-side, PUSD; each NIL leaves its sign out."
-  (remove nil (list (processing-mode-line editor buffer)
-                    (indexing-mode-line editor buffer)
-                    (searching-mode-line editor buffer)
-                    (daemon-mode-line editor buffer))))
-
 (defun install-indexes ()
   "Keep the directories of *INDEXED-DIRECTORIES* read, and read again as they
 change on disk, the mode line showing *INDEXING-INDICATOR* meanwhile and
-*SEARCHING-INDICATOR* while they are searched, after the sign of work for
-the buffer (*PROCESSING-INDICATOR*)."
+*SEARCHING-INDICATOR* while they are searched (MODE-LINE-SIGNS)."
   (pushnew 'indexes-tick *tick-functions*)
-  (pushnew 'signs-tick *tick-functions*)
-  (pushnew 'mode-line-signs *mode-line-lead-functions*)
   (follow-directories-for 'indexed-directories-watched 'indexed-directories-changed :tells t))

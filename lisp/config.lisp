@@ -18,44 +18,12 @@
 configuration directory, ~/.config/tuatara/ (tuatara/ in XDG_CONFIG_HOME when it
 is set), as text: (config-path \"snippets/\"). Worked out when asked, so
 that it follows the environment the editor runs in."
-  (namestring (uiop:xdg-config-home (concatenate 'string "tuatara/" name))))
+  (namestring (merge-pathnames (concatenate 'string "tuatara/" name) (tuatara.io:config-home))))
 
 (defun config-file ()
   "The init file path: *CONFIG-FILE* or init.lisp in the configuration
 directory (CONFIG-PATH)."
   (or *config-file* (pathname (config-path "init.lisp"))))
-
-;;; Settings read as they were meant
-
-(defvar *settings-read-as* (make-hash-table :test 'eq :synchronized t)
-  "Each list setting whose value was read as other than it is, by name: (VALUE
-. READ-AS), the value last seen and how it was read, said once in *Messages*.")
-
-(defun setting-list (name value &key pairs)
-  "VALUE, the setting NAME holds, read as the list it is meant to be: a list as
-it is; a dotted list, (A B . C), with its tail as one more element, (A B C);
-any other value but NIL as a list of that one value. With PAIRS, for a
-setting made of pairs (A . B): a single pair whose A is not itself a pair, as
-(#\\( . #\\)), is a list of that one pair, and an element that is no pair is
-left out. The first time a value is read as other than it is, *Messages*
-says how it was read."
-  (flet ((proper-p (list) (and (listp list) (null (cdr (last list))))))
-    (if (and (proper-p value)
-             (or (not pairs)
-                 (every #'listp value)))
-        value
-        (let ((known (gethash name *settings-read-as*)))
-          (if (and known (eq (car known) value))
-              (cdr known)
-              (let* ((items (cond ((and pairs (consp value) (atom (car value)) (atom (cdr value))) (list value))
-                                  ((consp value) (append (loop for cell on value collect (car cell))
-                                                         (let ((tail (cdr (last value)))) (and tail (list tail)))))
-                                  (t (list value))))
-                     (read (if pairs (remove-if-not #'listp items) items)))
-                (setf (gethash name *settings-read-as*) (cons value read))
-                (let ((*print-pretty* nil))
-                  (message "~(~a~) is ~s, not a list~:[~; of pairs~]: read as ~s" name value pairs read))
-                read))))))
 
 (defun keymap-registry ()
   "The keymaps an init file can name, as an alist of (KEYWORD . KEYMAP)."
@@ -160,8 +128,7 @@ of any theme. Examples: (set-face :comment :fg :cyan), (set-face :spellcheck
   "Make theme NAME the one in force, for example (load-theme 'ao-light); the
 themes are listed by \\[load-theme]. Your own set-face settings stay on top.
 The desktop's light or dark style is not followed after it."
-  (setf *theme-chosen* t)
-  (tuatara.display:apply-theme name))
+  (choose-theme name))
 
 (defmacro tuatara-user:define-theme (name doc &body settings)
   "Define a theme called NAME, said by DOC, that \\[load-theme] lists and
@@ -226,11 +193,11 @@ editor starts."
   (message "Started with -Q: no init file, no packages, and what is kept between sessions kept apart"))
 
 (defparameter *renamed-settings*
-  '(("*EXPORT-TRUSTED-FOLDERS*" . tuatara-user::*export-trusted-directories*)
-    ("*EVIDENCE-FOLDERS*" . tuatara-user::*evidence-directories*)
-    ("*CODE-FILES-MAKE-FOLDERS*" . tuatara-user::*code-files-make-directories*)
-    ("*FOLDER-TREE-DEPTH-LIMIT*" . tuatara-user::*directory-tree-depth-limit*)
-    ("*LSP-TRUSTED-PROJECTS*" . tuatara-user::*trusted-projects*))
+  '(("*EXPORT-TRUSTED-FOLDERS*" . tuatara-user:*export-trusted-directories*)
+    ("*EVIDENCE-FOLDERS*" . tuatara-user:*evidence-directories*)
+    ("*CODE-FILES-MAKE-FOLDERS*" . tuatara-user:*code-files-make-directories*)
+    ("*FOLDER-TREE-DEPTH-LIMIT*" . tuatara-user:*directory-tree-depth-limit*)
+    ("*LSP-TRUSTED-PROJECTS*" . tuatara-user:*trusted-projects*))
   "Settings renamed before Tuatara 1.0, each (OLD-NAME . SETTING): an init file
 that still sets or changes one by its old name has its value given to the
 setting (LEND-RENAMED-SETTINGS, CARRY-RENAMED-SETTINGS).")
@@ -250,18 +217,23 @@ Each old name, its setting and the value lent, for CARRY-RENAMED-SETTINGS."
 (defun carry-renamed-settings (lent)
   "Give each setting the init file changed by its old name that value, and say
 which name to write there instead, LENT being what LEND-RENAMED-SETTINGS lent
-before the file was read; the old names are then let go."
-  (loop for (symbol new value) in lent
-        when (and (boundp symbol) (not (eq (symbol-value symbol) value)))
-          do (setf (symbol-value new) (symbol-value symbol))
-             (message "Your init file sets ~(~a~), now called ~(~a~): its value is used; rename it there"
-                      (symbol-name symbol) (symbol-name new))
-        do (makunbound symbol)))
+before the file was read; the old names are then let go. A value the setting
+does not take is put back, and said (PUT-BACK-MISFIT-SETTINGS)."
+  (let ((settings (settings-snapshot)))
+    (loop for (symbol new value) in lent
+          when (and (boundp symbol) (not (eq (symbol-value symbol) value)))
+            do (setf (symbol-value new) (symbol-value symbol))
+               (message "Your init file sets ~(~a~), now called ~(~a~): its value is used; rename it there"
+                        (symbol-name symbol) (symbol-name new))
+          do (makunbound symbol))
+    (dolist (words (put-back-misfit-settings settings))
+      (message "Your init file: ~a" words))))
 
 (defun load-user-config ()
   "Load the init file if it exists, in the TUATARA-USER package, form by form
 \(READ-INIT-FILE), the packages it loads said with their times
-\(CALL-WITH-START-PACKAGES); an error in it is said and the rest is read; a
+\(CALL-WITH-START-PACKAGES); an error in it is said and the rest is read, a
+setting given a value it does not take among them (READ-INIT-FILE); a
 setting set by its old name is carried over (LEND-RENAMED-SETTINGS). The
 first time the editor runs without an init file of its own (*CONFIG-FILE*
 NIL: not a test's), a starter is written there first (WRITE-STARTER-CONFIG)
@@ -286,14 +258,13 @@ and said."
 line ends, ; comments and #| |# comments."
   (loop with i = at
         while (< i (length text))
-        do (case (char text i)
-             ((#\Space #\Tab #\Newline #\Return #\Page) (incf i))
-             (#\; (setf i (or (position #\Newline text :start i) (length text))))
-             (#\# (if (and (< (1+ i) (length text)) (char= (char text (1+ i)) #\|))
-                      (setf i (nested-comment-end (lambda (j) (if (< j (length text)) (char-code (char text j)) 0))
-                                                  i (length text)))
-                      (return i)))
-             (t (return i)))
+        do (let ((c (char text i)))
+             (cond ((blank-char-p c) (incf i))
+                   ((char= c #\;) (setf i (or (position #\Newline text :start i) (length text))))
+                   ((and (char= c #\#) (< (1+ i) (length text)) (char= (char text (1+ i)) #\|))
+                    (setf i (nested-comment-end (lambda (j) (if (< j (length text)) (char-code (char text j)) 0))
+                                                i (length text))))
+                   (t (return i))))
         finally (return i)))
 
 (defun map-text-forms (text function)
@@ -319,7 +290,10 @@ from 1. NIL when the whole of TEXT was read; else where reading stopped, as
   "Read and evaluate the forms of the init file FILE one by one, in the package
 it is read in (MAP-TEXT-FORMS): one that fails is said, with its line and why,
 the first such kept in *INIT-FILE-OUTCOME*, and the forms after it are read
-all the same; text that cannot be read at all ends the reading, said so.
+all the same; text that cannot be read at all ends the reading, said so. A
+setting a form gives a value it does not take is put back and said the same
+way, on the form's line, the other settings it gives kept
+\(PUT-BACK-MISFIT-SETTINGS).
 The functions, commands and recorded keys its forms define are noted as
 defined in FILE (NOTE-INIT-FILE-DEFINITION), where help shows them."
   (let ((text (tuatara.io:file-text file))
@@ -332,8 +306,11 @@ defined in FILE (NOTE-INIT-FILE-DEFINITION), where help shows them."
              (message "Error in ~a, line ~d: ~a" (namestring file) line e)))
       (let* ((path (namestring (truename file)))
              (stopped (map-text-forms text (lambda (form line)
-                                             (handler-case (reporting-errors ("the init file's line ~d" line)
-                                                             (eval form)
-                                                             (note-init-file-definition form path line))
-                                               (error (e) (fail line e)))))))
+                                             (let ((settings (settings-snapshot)))
+                                               (handler-case (reporting-errors ("the init file's line ~d" line)
+                                                               (eval form)
+                                                               (note-init-file-definition form path line))
+                                                 (error (e) (fail line e)))
+                                               (dolist (words (put-back-misfit-settings settings))
+                                                 (fail line words)))))))
         (when stopped (fail (car stopped) (cdr stopped)))))))

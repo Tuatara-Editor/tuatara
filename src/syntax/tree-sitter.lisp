@@ -80,7 +80,8 @@ a buffer or a helper (FAULTED-NAMES)."
 
 (defun helper-gone-why (helper)
   "Why a parse in HELPER, which ended as it ran, gave nothing: :HUNG when it
-was too long answering, :STOPPED when the editor ended it (for room, or its
+was too long answering, :SLOW when work that may honestly take long took
+longer than allowed, :STOPPED when the editor ended it (for room, or its
 buffer gone), else :CRASHED."
   (case (and helper (helper-ended helper))
     (:hung :hung)
@@ -176,7 +177,6 @@ and nothing elsewhere."
   "The file NAME.so in the directory of grammars you add
 \(USER-GRAMMAR-DIRECTORY) when it is a grammar you added: a plain file there,
 not a link, and Tuatara has no grammar of that name; else NIL."
-
   (let ((path (merge-pathnames (format nil "~a.so" name) (user-grammar-directory))))
     (and (grammar-name-p name) (eq (tuatara.io:path-kind path :follow nil) :regular) (not (own-grammar-p name)) path)))
 
@@ -230,10 +230,6 @@ may be had."
        (not (helpers-refused-p :rules))
        (find-grammar-file (format nil "~a.so" name))
        t))
-
-(defun forget-grammars ()
-  "Forget the grammars looked for, so that they are looked for again when next needed."
-  (clrhash **grammars**))
 
 ;;; Parsers and trees
 
@@ -354,20 +350,17 @@ ends it."
               (setf (aref starts count) k)
               (values pairs starts))))))))
 
-(defun tree-has-error-p (tree)
-  "True when TREE's text has syntax errors."
-  (with-call (call (tree-helper tree) +op-has-error+)
-    (call-u32 call (tree-number tree))
-    (and (eql 0 (call-send call)) (= 1 (reply-u32 call 0)))))
-
 (defun edit-tree (tree records &key copy)
   "Tell TREE of the edits RECORDS, in order, each (START OLD-END NEW-END
 START-POINT OLD-END-POINT NEW-END-POINT): its octets from START below OLD-END
 became the octets from START below NEW-END, each point a cons of the row and
 the column (in octets) of the offset before it; all in one request. Two
 values: with COPY, a copy of TREE after them, as COPY-TREE-POINTER gives one,
-else NIL; and true when TREE was told, NIL when its helper refused or had
-ended (TREE then no longer matches its text)."
+else NIL; and true when TREE was told, NIL when its helper refused, had ended
+or did not answer within +QUICK-ANSWER-WAIT+, as it is told on the editor's
+thread with each edit (TREE then no longer matches its text). A helper late
+once, as under load, is not ended for it, the text parsed afresh; asked for
+COPY, its answer is read when it comes, and the copy it made let go."
   (with-call (call (tree-helper tree) +op-edits+)
     (call-u32 call (tree-number tree)) (call-u32 call (if copy 1 0)) (call-u32 call (length records))
     (loop for (start old-end new-end start-point old-end-point new-end-point) in records
@@ -375,9 +368,18 @@ ended (TREE then no longer matches its text)."
              (call-u32 call (car start-point)) (call-u32 call (cdr start-point))
              (call-u32 call (car old-end-point)) (call-u32 call (cdr old-end-point))
              (call-u32 call (car new-end-point)) (call-u32 call (cdr new-end-point)))
-    (when (eql 0 (call-send call))
+    (when (eql 0 (call-send call :seconds +quick-answer-wait+ :late (if copy #'delete-late-copy :drop)))
       (let ((number (reply-u32 call 0)))
         (values (and copy (/= number 0) (%make-tree (tree-helper tree) number)) t)))))
+
+(defun delete-late-copy (call)
+  "Let go, over CALL, of the copy of a tree that an edit answered late made
+\(EDIT-TREE), its number the reply CALL holds: 0 when no copy was made."
+  (let ((number (reply-u32 call 0)))
+    (unless (zerop number)
+      (call-begin call +op-tree-delete+)
+      (call-u32 call number)
+      (call-send call))))
 
 (define-record (tree-node (:constructor make-tree-node (start end name named children &optional broken symbol))
                          (:copier nil))
@@ -562,9 +564,14 @@ LONGEST octets ends the helper (REPLY-OVERRUN)."
 
 (defun compile-regex-for-query (string)
   "A scanner for the regular expression STRING of a #match? predicate; one that
-never matches when STRING is not a regular expression this editor reads."
+never matches when STRING is not a regular expression, or repeats without
+bound a part that repeats or holds a choice (NESTED-REPEAT-TREE-P), as a rule
+written in a file may. STRING is read once, and what is checked is what is
+scanned."
   (or (tuatara.runtime:ignoring-errors-reported ("reading the regular expression ~s" string)
-        (handler-case (cl-ppcre:create-scanner string)
+        (handler-case (let ((tree (cl-ppcre:parse-string string)))
+                        (and (not (nested-repeat-tree-p tree :alternations t))
+                             (cl-ppcre:create-scanner tree)))
           (cl-ppcre:ppcre-syntax-error () nil)))
       (constantly nil)))
 
@@ -608,7 +615,6 @@ regular expression here stands for, or one not ended."
                                               (cond ((null e) (return-from lua-pattern-regex nil))
                                                     ((and (class e) (upper-case-p e))
                                                      (return-from lua-pattern-regex nil))
-
                                                     ((class e) (write-string (class e) out))
                                                     (t (write-char #\\ out) (write-char e out)))
                                               (incf i 2)))
@@ -647,7 +653,6 @@ when none does, are the test :LOCAL (see *LOCAL-REFERENCES*)."
                        (let ((regex (lua-pattern-regex (first arguments))))
                          (if regex (compile-regex-for-query regex) (constantly nil)))
                        negated))
-
                 ((and (string= base "eq?") arguments)
                  ;; a text to compare with, as its octets; or another capture's number
                  (list :eq capture (if (stringp (first arguments))
@@ -857,7 +862,6 @@ for each 10,000 more.")
 let go of (FORGET-QUERIES), in a cons for atomic pushing.")
 
 (defun compile-query-text (grammar source)
-
   "The work of COMPILE-QUERY: compile SOURCE, a tree-sitter query, for GRAMMAR,
 in the helper compiling rules, which is never given any text to parse.
 Signals QUERY-NOT-ANSWERED when that helper ended or did not answer in
@@ -871,7 +875,6 @@ time (QUERY-COMPILE-WAIT): the rules may compile when asked again."
               (error 'query-not-answered :grammar grammar)
               (error 'query-error :grammar grammar :kind "Error" :line 0
                                   :text "the program that parses did not answer"))))
-
       (when (= 1 (reply-u32 call 0))
         (let* ((octets (sb-ext:string-to-octets source :external-format :utf-8))
                (offset (reply-u32 call 1)) (kind (reply-u32 call 2))
@@ -947,7 +950,6 @@ the query's text: HELPER is ended when they disagree (DISAGREEING-RULES)."
     (values captures at)))
 
 (defun forget-queries ()
-
   "Have every helper let go of the queries no longer used: done by the next
 query to be run, never on the thread the collector frees them on, which a
 slow helper would hold up."
@@ -968,7 +970,6 @@ slow helper would hold up."
 does. The queries no longer used are let go of first (FORGET-QUERIES)."
   (forget-queries)
   (or (gethash (query-number query) (helper-queries helper))
-
       (with-call (call helper +op-query+)
         (when (and (eql 0 (send-query call (query-number query) (query-grammar query) (query-source query)))
                    (= 0 (reply-u32 call 0)))
@@ -994,10 +995,6 @@ does. The queries no longer used are let go of first (FORGET-QUERIES)."
 (defconstant +most-captures+ 64
   "The most captures of one match looked at.")
 
-(defun capture-text (rope start end)
-  "The text of ROPE from octet START below END, raw bytes as their characters."
-  (tuatara.text:rope-string rope :start start :end end))
-
 (defconstant +short-capture+ 256
   "Octets of a captured node's text read on the stack to be tested (CALL-WITH-CAPTURE-TEXT).")
 
@@ -1009,7 +1006,7 @@ which FUNCTION must not keep."
   (declare (type fixnum start end) (type function function))
   (let ((n (- end start)))
     (if (> n +short-capture+)
-        (let ((text (capture-text rope start end))) (funcall function text (length text)))
+        (let ((text (tuatara.text:rope-string rope :start start :end end))) (funcall function text (length text)))
         (let ((octets (make-array +short-capture+ :element-type '(unsigned-byte 8)))
               (text (make-string +short-capture+)))
           (declare (dynamic-extent octets text))
@@ -1071,27 +1068,27 @@ reading text from ROPE; a capture the match lacks passes."
                                    (:any-of (if (<= n (car argument)) n 0)))))
                         (return nil))
                       (ecase kind
-                      (:match (flet ((scan (text length)
-                                       (and (cl-ppcre:scan argument text :end length) t)))
-                                (declare (dynamic-extent #'scan))
-                                (call-with-capture-text rope start end #'scan)))
-                      (:eq (if (vectorp argument)
-                               (tuatara.text:rope-octets-equal-p rope start end argument)
-                               ;; another capture: the same text is the same octets
-                               (let ((other (loop for j from 0 below count
-                                                  when (= argument (aref captures (* 4 j))) return j)))
-                                 (and other
-                                      (tuatara.text:rope-ranges-equal-p rope start end
-                                                                        (aref captures (+ 1 (* 4 other)))
-                                                                        (aref captures (+ 2 (* 4 other))))))))
-                      ;; a text longer than every one of them is none of them
-                      (:any-of (and (<= (- end start) (car argument))
-                                    (flet ((any-of (text length)
-                                             (loop for word in (cdr argument)
-                                                   thereis (string= word text :end2 length))))
-                                      (declare (dynamic-extent #'any-of))
-                                      (call-with-capture-text rope start end #'any-of))
-                                    t))))))
+                        (:match (flet ((scan (text length)
+                                         (and (tuatara.runtime:stoppable (cl-ppcre:scan argument text :end length)) t)))
+                                  (declare (dynamic-extent #'scan))
+                                  (call-with-capture-text rope start end #'scan)))
+                        (:eq (if (vectorp argument)
+                                 (tuatara.text:rope-octets-equal-p rope start end argument)
+                                 ;; another capture: the same text is the same octets
+                                 (let ((other (loop for j from 0 below count
+                                                    when (= argument (aref captures (* 4 j))) return j)))
+                                   (and other
+                                        (tuatara.text:rope-ranges-equal-p rope start end
+                                                                          (aref captures (+ 1 (* 4 other)))
+                                                                          (aref captures (+ 2 (* 4 other))))))))
+                        ;; a text longer than every one of them is none of them
+                        (:any-of (and (<= (- end start) (car argument))
+                                      (flet ((any-of (text length)
+                                               (loop for word in (cdr argument)
+                                                     thereis (string= word text :end2 length))))
+                                        (declare (dynamic-extent #'any-of))
+                                        (call-with-capture-text rope start end #'any-of))
+                                      t))))))
         (when (eq holds negated) (return nil))))))
 
 (defvar *prefetched* nil

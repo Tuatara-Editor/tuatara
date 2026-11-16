@@ -264,7 +264,8 @@ shown, or with CENTRE. The day point leaves is kept for \\<*tuatara-calendar-key
   "Show the calendar: the month of today and the months either side, below the
 window you are in, point on today. Its keys are calendar mode's
 \(\\[describe-bindings] there lists them): \\<calendar-mode>\\[calendar-forward-day] and
-\\[calendar-backward-day] a day, \\[calendar-forward-week] and \\[calendar-backward-week] a week, \\[calendar-goto-today] today, \\[quit-window] leaves."
+\\[calendar-backward-day] a day, \\[calendar-forward-week] and \\[calendar-backward-week] a week,
+\\[calendar-goto-today] today, \\[quit-window] leaves."
   (calendar-open (org-today)))
 
 (define-command calendar-here ()
@@ -338,16 +339,24 @@ the month, or the month's last when it has fewer."
   (calendar-move-months (* -12 (prefix))))
 
 (define-command calendar-beginning-of-week ()
-  "Move point to the start of the week it is in (*calendar-week-start-day*); on it, a week back."
-  (let* ((day (calendar-cursor-date))
-         (back (- day (week-start day *calendar-week-start-day*))))
-    (calendar-show-day (current-buffer) (- day (if (zerop back) (* 7 (1- (prefix))) (+ back (* 7 (1- (prefix)))))))))
+  "Move point to the start of the week it is in (*CALENDAR-WEEK-START-DAY*); on it, a week back.
+With a count N, to the Nth start of a week before point; with a negative
+count, to that many starts after it."
+  (let ((day (calendar-cursor-date)) (n (prefix)))
+    (calendar-show-day (current-buffer)
+                       (cond ((plusp n) (- (week-start (1- day) *calendar-week-start-day*) (* 7 (1- n))))
+                             ((minusp n) (- (week-start day *calendar-week-start-day*) (* 7 n)))
+                             (t day)))))
 
 (define-command calendar-end-of-week ()
-  "Move point to the end of the week it is in; on it, a week on."
-  (let* ((day (calendar-cursor-date))
-         (on (- (+ (week-start day *calendar-week-start-day*) 6) day)))
-    (calendar-show-day (current-buffer) (+ day on (* 7 (1- (prefix)))))))
+  "Move point to the end of the week it is in; on it, a week on.
+With a count N, to the Nth end of a week after point; with a negative count,
+to that many ends before it."
+  (let ((day (calendar-cursor-date)) (n (prefix)))
+    (calendar-show-day (current-buffer)
+                       (cond ((plusp n) (+ (week-start (1+ day) *calendar-week-start-day*) 6 (* 7 (1- n))))
+                             ((minusp n) (+ (week-start day *calendar-week-start-day*) 6 (* 7 n)))
+                             (t day)))))
 
 (define-command calendar-beginning-of-month ()
   "Move point to the first day of its month."
@@ -390,12 +399,12 @@ goes to today when today is, else to the first day of the middle month."
   (calendar-scroll (- (prefix))))
 
 (define-command calendar-scroll-left-three-months ()
-  "Show the months after those shown, as many as are shown (*calendar-months*,
+  "Show the months after those shown, as many as are shown (*CALENDAR-MONTHS*,
 three as standard); with a count, that many times as many."
   (calendar-scroll (* (tuatara.buffer:buffer-local (current-buffer) 'calendar-count 3) (prefix))))
 
 (define-command calendar-scroll-right-three-months ()
-  "Show the months before those shown, as many as are shown (*calendar-months*,
+  "Show the months before those shown, as many as are shown (*CALENDAR-MONTHS*,
 three as standard); with a count, that many times as many."
   (calendar-scroll (* (- (tuatara.buffer:buffer-local (current-buffer) 'calendar-count 3)) (prefix))))
 
@@ -585,7 +594,7 @@ others are worked out for it since, or marks were taken off meanwhile."
                          (pushnew face (gethash day table)))))))))))
 
 (define-command calendar-mark-days ()
-  "Mark the days with agenda entries in the calendar (as standard, with *calendar-mark-days*)."
+  "Mark the days with agenda entries in the calendar (as standard, with *CALENDAR-MARK-DAYS*)."
   (setf (tuatara.buffer:buffer-local (current-buffer) 'calendar-marking) t)
   (calendar-start-marks (current-buffer))
   (message "Marking the days with entries"))
@@ -658,6 +667,14 @@ CALENDAR-CHOSEN, a list of day numbers) and today."
   "The calendar marks the day at point itself (CALENDAR-POINT-HIGHLIGHTS)."
   t)
 
+(defvar *calendar-face-generation* nil
+  "The value of TUATARA.DISPLAY:*FACE-GENERATION* when CALENDAR-CURSOR-FACE last
+looked, and the cursor colour it saw, so that a paint that changes neither does
+no work.")
+
+(defvar *calendar-face-cursor* nil
+  "The cursor colour CALENDAR-CURSOR-FACE saw last (see *CALENDAR-FACE-GENERATION*).")
+
 (defun calendar-cursor-face (editor buffer)
   "Make :calendar-selected look as the cursor does in BUFFER, a calendar: its
 ground the cursor's colour (the text's, when the cursor has none of its own),
@@ -665,23 +682,26 @@ its digits the text's ground, as a block cursor shows its character, both
 given outright so that a marked day's colour does not show through. Changed
 only when those colours have. In a theme without colours (plain), or one that
 leaves them to the terminal, it is reverse video, bold and underlined instead."
-  (when (or (let ((theme (tuatara.display:find-theme tuatara.display:*current-theme*)))
-              (and theme (tuatara.display:theme-colourless theme)))
-            (null (tuatara.display:face-attribute :default :bg))
-            (null (or (let ((*current-buffer* buffer)) (nth-value 1 (cursor-look editor)))
-                      (tuatara.display:face-attribute :default :fg))))
-    (unless (and (tuatara.display:face-attribute :calendar-selected :reverse)
-                 (null (tuatara.display:face-attribute :calendar-selected :bg)))
-      (tuatara.display:set-face-attributes :calendar-selected :fg nil :bg nil :reverse t :bold t :underline t))
-    (return-from calendar-cursor-face nil))
-  (let* ((cursor (let ((*current-buffer* buffer)) (nth-value 1 (cursor-look editor))))
-         (colour (or cursor (tuatara.display:face-attribute :default :fg)))
-         (ground (tuatara.display:face-attribute :default :bg)))
-    (unless (and (equal (tuatara.display:face-attribute :calendar-selected :bg) colour)
-                 (equal (tuatara.display:face-attribute :calendar-selected :fg) ground)
-                 (not (tuatara.display:face-attribute :calendar-selected :reverse)))
-      (tuatara.display:set-face-attributes :calendar-selected :bg colour :fg ground :reverse nil :bold t
-                                           :underline nil))))
+  (let ((cursor (let ((*current-buffer* buffer)) (nth-value 1 (cursor-look editor)))))
+    (unless (and (eql *calendar-face-generation* tuatara.display:*face-generation*)
+                 (equal *calendar-face-cursor* cursor))
+      (let ((colour (or cursor (tuatara.display:face-attribute :default :fg)))
+            (ground (tuatara.display:face-attribute :default :bg)))
+        (if (or (let ((theme (tuatara.display:find-theme tuatara.display:*current-theme*)))
+                  (and theme (tuatara.display:theme-colourless theme)))
+                (null ground)
+                (null colour))
+            (unless (and (tuatara.display:face-attribute :calendar-selected :reverse)
+                         (null (tuatara.display:face-attribute :calendar-selected :bg)))
+              (tuatara.display:set-face-attributes :calendar-selected :fg nil :bg nil :reverse t :bold t
+                                                   :underline t))
+            (unless (and (equal (tuatara.display:face-attribute :calendar-selected :bg) colour)
+                         (equal (tuatara.display:face-attribute :calendar-selected :fg) ground)
+                         (not (tuatara.display:face-attribute :calendar-selected :reverse)))
+              (tuatara.display:set-face-attributes :calendar-selected :bg colour :fg ground :reverse nil :bold t
+                                                   :underline nil))))
+      (setf *calendar-face-generation* tuatara.display:*face-generation*
+            *calendar-face-cursor* cursor))))
 
 (defun calendar-point-highlights (editor window rows)
   "Highlight function: in a window showing the calendar, both digits of the day

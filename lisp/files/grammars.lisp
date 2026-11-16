@@ -131,7 +131,7 @@ languages or the answers change."
                        (dolist (key (list (string-downcase (string name)) grammar))
                          (unless (eq (gethash key table) :named)
                            (setf (gethash key table) value)))))))
-            (dolist (entry (setting-list '*grammars-on* setting))
+            (dolist (entry setting)
               (cond ((eq entry :common) (dolist (name *common-grammar-languages*) (turn-on name :common)))
                     ((or (symbolp entry) (stringp entry)) (turn-on entry :named))))
             (maphash (lambda (name answer) (when (eq answer :on) (turn-on name :answer))) answers))
@@ -299,8 +299,9 @@ thread loading it."
                                    (t :changed)))))
                   (gethash name *user-grammar-verdicts*) verdict)
             (when (member verdict '(:changed :gone))
-              (message "The ~a grammar you added has ~:[changed~;gone, or its copy kept~] since you turned it on: it stays off until you turn it on again (~a)"
-                       name (eq verdict :gone) (substitute-command-keys "\\[turn-on-grammar]")))))
+              (message "The ~a grammar you added has ~:[changed~;gone, or its copy kept~] since you turned it on: ~
+                        it stays off until you turn it on again (\\[turn-on-grammar])"
+                       name (eq verdict :gone)))))
         (eq verdict :trusted)))))
 
 (defmethod tuatara.syntax:host-user-grammar-allowed-p ((host defaults-host) name)
@@ -331,7 +332,7 @@ well; turned on, a grammar you added is kept as its file is now
 now, stop parsing that of those whose grammar is off now, and have text in
 other languages coloured again by the grammars on."
   (dolist (buffer tuatara.buffer:*buffers*)
-    (let ((language (mode-language (buffer-major-mode buffer))))
+    (let ((language (buffer-language buffer)))
       (when language
         (cond ((and (tuatara.buffer:buffer-local buffer :grammar-off) (grammar-on-p language))
                (start-parsing buffer language))
@@ -433,7 +434,7 @@ grammar of its own, or with modes of its own."
 (defun read-grammar-language (prompt on)
   "Ask with PROMPT for a language whose grammar is on (ON true) or off,
 offering the current buffer's when it is one; the language chosen, or NIL."
-  (let* ((own (mode-language (buffer-major-mode (current-buffer))))
+  (let* ((own (buffer-language (current-buffer)))
          (names (grammar-language-candidates on))
          (default (and own (eq (and on t) (grammar-on-p own))
                        (string-downcase (symbol-name (language-name own))))))

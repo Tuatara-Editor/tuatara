@@ -71,6 +71,11 @@ and the editor."
   (let ((buffer (tuatara.buffer:find-buffer "notes.txt")))
     (and buffer (tuatara.buffer:buffer-modified-p buffer))))
 
+(defun auto-saves-listed-p ()
+  "True once the list of auto-saved copies is filled, its copies looked at in the background."
+  (let ((list (tuatara.buffer:find-buffer "*Auto-saves*")))
+    (and list (search "Auto-saved changes in" (tuatara.buffer:buffer-string list)))))
+
 (defun copies-in (directory)
   "The names of the files in DIRECTORY."
   (mapcar #'file-namestring (uiop:directory-files directory)))
@@ -100,7 +105,8 @@ and the editor."
         ;; the editor started again says so; the list shows it, newer than its file
         ;; (counted in the background, said a moment after the start)
         (let ((f (auto-save-session (list (list :wait 0.3)
-                                          (format nil "M-x ~{~a~^ ~} RET" (map 'list #'string "list-auto-saves"))))))
+                                          (format nil "M-x ~{~a~^ ~} RET" (map 'list #'string "list-auto-saves"))
+                                          (list :until #'auto-saves-listed-p)))))
           (true (tuatara.frontend.fake:fake-frame-showing f "1 file has changes auto-saved and not saved"))
           (true (tuatara.frontend.fake:fake-frame-showing f "newer than the file"))
           (let ((list (tuatara.buffer:find-buffer "*Auto-saves*")))
@@ -128,6 +134,7 @@ and the editor."
           (when buffer (tuatara.buffer:kill-buffer buffer)))
         ;; an open list follows the copies as they are written
         (auto-save-session (list (format nil "M-x ~{~a~^ ~} RET" (map 'list #'string "list-auto-saves"))
+                                 (list :until #'auto-saves-listed-p)
                                  (format nil "C-x b ~a RET" (rimu-typed "*lisp-scratch*"))
                                  (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file))
                              "M-> SPC o w l"
@@ -148,14 +155,16 @@ and the editor."
                              "M-> SPC b i r d"
                              (list :until (lambda () (copy)))))
         (tuatara.buffer:kill-buffer (tuatara.buffer:find-buffer "notes.txt"))
-        (auto-save-session (list (format nil "M-x ~{~a~^ ~} RET" (map 'list #'string "list-auto-saves")) "RET y"))
+        (auto-save-session (list (format nil "M-x ~{~a~^ ~} RET" (map 'list #'string "list-auto-saves"))
+                                 (list :until #'auto-saves-listed-p) "RET y"))
         (let ((buffer (tuatara.buffer:find-buffer "notes.txt")))
           (true buffer)
           (when buffer
             (is string= "first line kea bird" (tuatara.buffer:buffer-string buffer))
             (setf (tuatara.buffer:buffer-saved-number buffer) (tuatara.buffer:buffer-content-number buffer))
             (tuatara.buffer:kill-buffer buffer)))
-        ;; a copy again, its buffer killed with the changes not saved
+        ;; a copy again, its buffer killed with the changes not saved; the list made afresh
+        (let ((list (tuatara.buffer:find-buffer "*Auto-saves*"))) (when list (tuatara.buffer:kill-buffer list)))
         (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file))
                              "M-> SPC o w l"
                              (list :until (lambda () (copy)))))
@@ -165,6 +174,7 @@ and the editor."
                                  (auto-save-session (list (format nil
                                                                   "M-x ~{~a~^ ~} RET"
                                                                   (map 'list #'string "list-auto-saves"))
+                                                          (list :until #'auto-saves-listed-p)
                                                           "d x y RET")))))
           (is string= "Deleted 1 auto-saved copy" (tuatara.command:editor-message editor)))
         (false (copy))

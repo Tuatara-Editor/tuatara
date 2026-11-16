@@ -731,7 +731,7 @@ directory, and those above it, are never a project's root.
 holding one of *PROJECT-ROOT-MARKERS* (MARKED-DIRECTORY, as REPOSITORY-TOP
 finds a repository), below the home directory (by any of its names); NIL when
 there is none."
-  (marked-directory directory (setting-list '*project-root-markers* *project-root-markers*) :below-home t))
+  (marked-directory directory *project-root-markers* :below-home t))
 
 (define-command search-in-files ()
   "Find text in the files of the project the current buffer's file is in (see
