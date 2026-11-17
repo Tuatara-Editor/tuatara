@@ -21,7 +21,7 @@ as \\[find-file] finds one, by the file and not the name it was opened by
 and the rest) start where you chose last.
 Either way the directories come first, then the files, each in order of name,
 numbers by their value (file2 before file10), case not counted. A path opened
-safely, or in one of *SAFE-DIRECTORIES*, is never remembered so.
+safely, or in one of *UNTRUSTED-DIRECTORIES*, is never remembered so.
 - t: they start in the directory of the path chosen last in any of them, and list
   first, in each directory, what was chosen there last (or something in it), TAB
   then going the way last gone; the others follow in order of name. As you
@@ -66,11 +66,11 @@ name ends in) just chosen in a question for one, as the latest: the next
 question starts in its directory and that directory's list offers it first; kept
 in the state directory, with what other sessions chose (STATE-LIST-PUT).
 Nothing is remembered of a path opened safely (SAFE, or a buffer showing it
-so: SHOWN-SAFELY-P) or in one of *SAFE-DIRECTORIES*; a later question
+so: SHOWN-SAFELY-P) or in one of *UNTRUSTED-DIRECTORIES*; a later question
 neither starts there nor offers it."
   (let ((native (ignoring-errors-reported ("expanding ~a" path) (tuatara.io:native (tuatara.io:expand-path path)))))
     (when (and native (plusp (length native)) (not safe)
-               (not (safe-directory-of native)) (not (shown-safely-p native)))
+               (not (untrusted-directory-of native)) (not (shown-safely-p native)))
       (state-list-put *chosen-paths*
                       (list (if directory (tuatara.io:slash-ended native) native))))))
 
@@ -80,31 +80,20 @@ shown), as NOTE-CHOSEN-PATH does, unless BUFFER shows it opened safely."
   (when buffer
     (note-chosen-path path :directory directory :safe (tuatara.io:safe-visit-p buffer))))
 
-(define-setting *safe-directories* '()
-  "Directories whose files always open safely, as \\[find-file-safely] opens a
-file.
-A file opens read-only, with no major mode, hooks or version control, and
-nothing is written beside it. This holds however it is opened:
-\\[find-file], the files visited lately, a drop on the window, the command
-line. \\[end-safe-visit] opens one as usual after all.
-- nil: no directory, as standard.
-- a list of directories' names, '(\"~/Evidence/\") for example."
-  :values (list-of directory))
-
 (defun named-safe-p (native)
-  "True when NATIVE, a path remembered, is in one of *SAFE-DIRECTORIES* by the
-names as written (PATH-WITHIN-P), or a buffer shows it opened safely; true
-for every path when *SAFE-DIRECTORIES* cannot be read. The disk is not asked."
+  "True when NATIVE, a path remembered, is in one of *UNTRUSTED-DIRECTORIES* by
+the names as written (PATH-WITHIN-P), or a buffer shows it opened safely; true
+for every path when *UNTRUSTED-DIRECTORIES* cannot be read. The disk is not
+asked."
   (or (shown-safely-p native)
-      (handler-case (reporting-errors ("looking for ~a in the safe directories" native)
-                      (some (lambda (directory)
-                              (tuatara.io:path-within-p native (tuatara.io:native (tuatara.io:expand-path directory))))
-                            *safe-directories*))
+      (handler-case (reporting-errors ("looking for ~a in the untrusted directories" native)
+                      (some (lambda (directory) (tuatara.io:path-within-p native directory))
+                            (untrusted-directory-names)))
         (error () t))))
 
 (defun writing-chosen-p (native)
   "True when NATIVE, a path remembered, is never offered first in a question
-whose answer is written to: in one of *SAFE-DIRECTORIES* (NAMED-SAFE-P), or
+whose answer is written to: in one of *UNTRUSTED-DIRECTORIES* (NAMED-SAFE-P), or
 in an evidence directory (EVIDENCE-PATH-P)."
   (or (named-safe-p native) (evidence-path-p native)))
 
@@ -161,7 +150,7 @@ INITIAL names a file."
   "How lately each entry of DIRECTORY (a native name ending in /) was chosen,
 or something in it, by CHOSEN, the paths chosen lately (CHOSEN-PATHS). The
 result is a table from its name, a directory's with a slash after it, to its
-place among them, 0 the latest. Those in one of *SAFE-DIRECTORIES* are left out
+place among them, 0 the latest. Those in one of *UNTRUSTED-DIRECTORIES* are left out
 \(SAFE-DIRECTORY-OF, which may ask the disk; called where the directory is read),
 and with WRITING, for a question whose answer is written to, those in an
 evidence directory (EVIDENCE-PATH-P): only the paths in DIRECTORY are asked."
@@ -171,8 +160,8 @@ evidence directory (EVIDENCE-PATH-P): only the paths in DIRECTORY are asked."
           when (and (> (length path) length) (string= directory path :end2 length))
             do (let* ((slash (position #\/ path :start length))
                       (name (if slash (subseq path length (1+ slash)) (subseq path length))))
-                 ;; what is in one of *safe-directories*, or evidence for a place to write, is offered first never
-                 (unless (or (safe-directory-of path) (and writing (evidence-path-p path)))
+                 ;; what is in one of *untrusted-directories*, or evidence for a place to write, is offered first never
+                 (unless (or (untrusted-directory-of path) (and writing (evidence-path-p path)))
                    (unless (gethash name ranks) (setf (gethash name ranks) place))
                    ;; a directory chosen itself, its name ending in / or not
                    (unless (or slash (gethash (concatenate 'string name "/") ranks))
@@ -793,14 +782,14 @@ show one (*FILE-VIEWS*): a directory's list is then opened safely too.")
 
 (defun visit-path-once (path safe show)
   "Visit the file at PATH as VISIT-PATH does, SAFE and SHOW as it takes them,
-its first octets read once meanwhile. A file in one of *SAFE-DIRECTORIES*, or
+its first octets read once meanwhile. A file in one of *UNTRUSTED-DIRECTORIES*, or
 of evidence (*EVIDENCE-DIRECTORIES*), is shown by no view (decrypted, read by a
 program), however it is opened; a
 directory is listed (\\[rimu]) however it is opened, its access time kept and
 nothing in it opened."
   (let ((*file-view-said* nil)
         (*visiting-safely* (and safe t)))
-    (unless (and (or safe (safe-directory-of path) (evidence-path-p path :follow t))
+    (unless (and (or safe (untrusted-path-p path))
                  (not (eq :directory (ignoring-errors-reported ("examining ~a" path)
                                        (tuatara.io:path-kind (tuatara.io:native (tuatara.io:expand-path path)))))))
       (let ((view (run-hook-until-done *file-views* path show)))

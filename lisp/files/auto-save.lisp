@@ -13,7 +13,7 @@
 ;;;; M-x recover-file takes into the buffer as one edit.
 ;;;;
 ;;;; Nothing opened safely is copied (a file from evidence, or in
-;;;; *SAFE-DIRECTORIES*), nor a buffer that cannot change, nor one larger than
+;;;; *UNTRUSTED-DIRECTORIES*), nor a buffer that cannot change, nor one larger than
 ;;;; *AUTO-SAVE-SIZE-LIMIT*, nor the made-up files of /proc. The copies belong to
 ;;;; the files, not to windows or frames.
 

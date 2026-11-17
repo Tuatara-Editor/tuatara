@@ -451,13 +451,13 @@ scratch file, given to the clipboard unasked, nor exported unasked. No core dump
           (true (< (length output) (* 2 1024 1024)))))))
 
 (define-test (encrypted safe-directories-never-decrypt)
-  ;; a .gpg file in one of *safe-directories*, opened however, shows its encrypted octets: nothing is decrypted
+  ;; a .gpg file in one of *untrusted-directories*, opened however, shows its encrypted octets: nothing is decrypted
   (if (null (tuatara.defaults::gpg-path))
       (skip "gpg is not installed here" (true nil))
       (with-test-directory (dir)
         (let ((file (gpg-test-file (merge-pathnames "evidence.txt.gpg" dir) "kept closed" :passphrase "e pass"))
               (tuatara.defaults::*modal-editing* nil)
-              (tuatara-user:*safe-directories* (list (namestring dir)))
+              (tuatara-user:*untrusted-directories* (list (namestring dir)))
               (tuatara-user:*gpg-passphrase-from* :minibuffer))
           (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file)) (list :wait 0.3)))
           (let ((buffer (tuatara.buffer:find-buffer "evidence.txt.gpg")))

@@ -687,7 +687,7 @@ web address, then ready, and reading what is typed."
 (define-test (terminal file-link-in-a-safe-directory-opened-safely)
   (with-test-directory (dir)
     (let ((file (namestring (merge-pathnames "other.txt" dir)))
-          (tuatara-user:*safe-directories* (list (namestring dir))))
+          (tuatara-user:*untrusted-directories* (list (namestring dir))))
       (with-open-file (out file :direction :output :if-exists :supersede) (write-line "other file" out))
       (multiple-value-bind (f editor)
           (terminal-session (list "M-x t e r m i n a l RET" (list :until (buffer-holding "ready"))
@@ -719,7 +719,7 @@ web address, then ready, and reading what is typed."
                    (true (tuatara.frontend.fake:fake-frame-showing f "home directory"))))))
         (started (list (list :do (lambda (buffer) (declare (ignore buffer)) (tuatara.defaults::visit-path file :safe t)))))
         ;; a buffer standing in a directory of *safe-directories*
-        (let ((tuatara-user:*safe-directories* (list (namestring dir)))
+        (let ((tuatara-user:*untrusted-directories* (list (namestring dir)))
               (place (tuatara.buffer:make-buffer "*in-the-evidence*")))
           (setf (tuatara.buffer:buffer-local place :directory) (namestring dir))
           (unwind-protect

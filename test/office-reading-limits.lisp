@@ -172,15 +172,29 @@
         (true (search "spy.example" notes) "~a" notes)))))
 
 (define-test (latex-export bibliography-outside-left-out)
-  ;; a bibliography named without .bib, outside the directories an export reads, is left out
+  ;; a bibliography named without .bib, outside the directories an untrusted note's export reads, is left
+  ;; out; a trusted note takes it, and it is shown to the programs reading bibliographies
   (with-test-directory (dir)
     (with-test-directory (away)
-      (let ((note (namestring (merge-pathnames "note.org" dir)))
-            (refs (namestring (merge-pathnames "refs" away))))
+      (let* ((note (namestring (merge-pathnames "note.org" dir)))
+             (refs (namestring (merge-pathnames "refs" away)))
+             (text (format nil "#+cite_export: natbib~%#+bibliography: ~a~%* One~%[cite:@kiwi]~%~%#+print_bibliography:~%"
+                           refs)))
         (alexandria:write-string-into-file "" (concatenate 'string refs ".bib"))
-        (let ((text (org-latex-of (format nil "#+cite_export: natbib~%#+bibliography: ~a~%* One~%[cite:@kiwi]~%~%#+print_bibliography:~%" refs)
-                                  :file note)))
-          (false (search refs text) "~a" text))))))
+        (let ((tuatara-user:*untrusted-directories* (list (namestring dir))))
+          (let ((latex (org-latex-of text :file note)))
+            (false (search refs latex) "~a" latex)))
+        (let ((tuatara-user:*untrusted-directories* '()))
+          (let ((parts (tuatara.defaults::org-latex-parts text :file note)))
+            (true (search refs (getf parts :latex)))
+            (is equal (list (concatenate 'string refs ".bib")) (getf parts :bibliographies))
+            (let ((job (tuatara.export::make-pdf-export nil (concatenate 'string (namestring dir) "note.tex")
+                                                        :org :file nil nil nil)))
+              (setf (tuatara.export::pdf-export-bibliographies job) (getf parts :bibliographies))
+              (let ((tuatara.runtime:*job* job))
+                (true (member (concatenate 'string refs ".bib")
+                              (tuatara.export::bibliography-directories "/nonexistent/xelatex")
+                              :test #'string=))))))))))
 
 (define-test (template-import docx-header-known-by-its-relation)
   ;; a header part of any name, known by its relation to the text, has its active fields made text

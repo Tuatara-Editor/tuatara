@@ -788,17 +788,33 @@ nowhere else, not the kill ring."
   (define-key keymap "C-j" 'minibuffer-submit-input)
   (define-key keymap "M-RET" 'minibuffer-submit-input))
 
+(defun read-typed-answer (prompt answers)
+  "Ask PROMPT in the minibuffer, an answer typed and ended with \\`RET', for
+a question whose answer cannot be had back (YES-OR-NO-P*). ANSWERS is a
+list of (KEY WORD), KEY a character and WORD the word it stands for, such as
+\((#\\y \"yes\") (#\\n \"no\") (#\\e \"execute\")). The prompt ends with the
+keys, (y, n or e, then RET). Returns the KEY of the answer typed, the key or
+its word, in any case and with spaces around; any other answer, none at all
+too, says which answers it takes and asks again; \\`C-g' signals QUIT. A
+question whose answer is easily undone is answered by one key instead
+\(READ-ANSWER-KEY)."
+  (let* ((keys (mapcar #'first answers))
+         (question (format nil "~a (~a, then ~a) " prompt (answer-keys-words keys)
+                           (substitute-command-keys "\\<minibuffer>\\[minibuffer-finish]"))))
+    (loop for asking = question then (format nil "Answer ~a. ~a" (answer-keys-words keys) question)
+          do (let* ((typed (read-string asking :trim t))
+                    (answer (find-if (lambda (answer)
+                                       (or (string-equal typed (string (first answer)))
+                                           (string-equal typed (second answer))))
+                                     answers)))
+               (when answer (return (first answer)))))))
+
 (defun yes-or-no-p* (prompt)
   "Ask PROMPT in the minibuffer, an answer typed and ended with \\`RET': for a
 question whose yes destroys or writes over what cannot be had back (a file
 deleted or written over, changes thrown away). The prompt ends with (y or n,
 then RET). True for the answer y or yes, false for n or no, in any case and
 with spaces around; any other answer, none at all too, says which answers it
-takes and asks again; \\`C-g' signals QUIT. A question whose answer is easily
-undone is answered by one key instead (Y-OR-N-P*)."
-  (let ((question (format nil "~a (y or n, then ~a) " prompt
-                          (substitute-command-keys "\\<minibuffer>\\[minibuffer-finish]"))))
-    (loop for asking = question then (format nil "Answer ~a. ~a" (answer-keys-words '(#\y #\n)) question)
-          do (let ((answer (read-string asking :trim t)))
-               (cond ((member answer '("y" "yes") :test #'string-equal) (return t))
-                     ((member answer '("n" "no") :test #'string-equal) (return nil)))))))
+takes and asks again; \\`C-g' signals QUIT (READ-TYPED-ANSWER). A question
+whose answer is easily undone is answered by one key instead (Y-OR-N-P*)."
+  (eql #\y (read-typed-answer prompt '((#\y "yes") (#\n "no")))))

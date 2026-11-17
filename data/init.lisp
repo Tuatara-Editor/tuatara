@@ -682,9 +682,6 @@
   ;; Files dropped on the window open safely, as C-u C-x C-f. Not set: nil.
   ;; (setf *open-dropped-files-safely* t)
 
-  ;; Files in these directories always open safely. Not set: none.
-  ;; (setf *safe-directories* '("~/Downloads/"))
-
   ;; Files with NUL octets (programs, pictures) open as usual. Not set: t:
   ;; safely.
   ;; (setf *open-binary-files-safely* nil)
@@ -1281,10 +1278,6 @@
   ;; '("R" "D" "redact").
   ;; (setf *latex-redaction-commands* '("R" "D" "anon"))
 
-  ;; Besides a note's own directory and your note templates' directory, where
-  ;; its export may take #+SETUPFILE files and pictures from. Not set: none.
-  ;; (setf *export-trusted-directories* '("~/notes/latex/" "~/notes/pictures/"))
-
   ;; The directory of the pictures your templates ask a note for: #+logo: a name
   ;; alone (logo.png) is the file of that name there, and a picture a template
   ;; asks for comes from it or the note's own directory, never from elsewhere.
@@ -1311,11 +1304,6 @@
   ;; (setf *compile-output-limit* (* 1024 1024 1024))
 
   ;;; Language servers and formatting (C-c in code lists their keys)
-
-  ;; Projects trusted to run their own code: their servers start by themselves,
-  ;; git runs their hooks and M-x compile their builds; others are asked once.
-  ;; Not set: none.
-  ;; (setf *trusted-projects* '("~/src/"))
 
   ;; Servers for these languages alone; '(:not markdown) all but these. Not set:
   ;; t: every one with a server.
@@ -1553,8 +1541,8 @@
   ;; ending in …. Not set: 2000.
   ;; (setf *office-value-length-limit* 10000)
 
-  ;; O opens pictures, PDFs, sound, video in the desktop's program at once. Not
-  ;; set: t: asks.
+  ;; O opens an untrusted picture, PDF, sound, video in the desktop's program
+  ;; at once. Not set: t: asks.
   ;; (setf *open-externally-ask* nil)
 
   ;; Only these kinds, by their contents. Not set: pictures, PDFs, sound, video.
@@ -1605,7 +1593,25 @@
   ;; the key IDs alone. Not set: :ask each time.
   ;; (setf *metadata-look-up-key-owners* t)
 
-  ;;; Evidence directories
+  ;;; Files from outside and evidence directories
+
+  ;; Directories whose files are not trusted: files you downloaded or were
+  ;; given, and projects others wrote. Your evidence directories are never
+  ;; trusted besides these. A file in one opens read-only in the safe visit:
+  ;; no mode, hooks or version control, nothing written beside it. O opens
+  ;; only a private copy of a picture, PDF, sound or video, and asks first:
+  ;; y, n, or e to trust that one file and run it. An Org note there takes
+  ;; setup files and pictures only from its own directory, and a project
+  ;; there runs none of its own programs (language servers, Git hooks and
+  ;; filters, build commands) until you trust it. Every other file is yours
+  ;; and trusted, so clone or download what others made into one of these.
+  ;; :downloads is your download directory, :removable-media where drives
+  ;; and disk images are mounted (/run/media/, /media/, /mnt/), :temporary
+  ;; /tmp/ and /var/tmp/. Tuatara's own copies of outside files, and a file
+  ;; a browser marked as downloaded, are untrusted wherever they are. "/"
+  ;; trusts nothing. Not set: '(:downloads :removable-media :temporary).
+  ;; (setf *untrusted-directories*
+  ;;       '(:downloads :removable-media :temporary "~/Clones/"))
 
   ;; Evidence directories: their files always open safely, and nothing is ever
   ;; written in them. * is any one directory, ** any directories; (:name ...) a

@@ -313,7 +313,7 @@ is not offered by M-x either; NIL when it runs there."
             (refusal-in file 'tuatara.export::export-latex-compile-pdf)))
       ;; a file opened safely: nothing run
       (let ((file (merge-pathnames "evidence.org" dir))
-            (tuatara-user:*safe-directories* (list (namestring dir))))
+            (tuatara-user:*untrusted-directories* (list (namestring dir))))
         (alexandria:write-string-into-file "* Evidence" file)
         (is equal "org-export-latex-pdf works in Org files only"
             (refusal-in file 'tuatara.export::org-export-latex-pdf))
@@ -1440,18 +1440,6 @@ its text's size in half points, when given."
                                      "n o RET")
                                :width (width-for dir))))
         (true (tuatara.frontend.fake:fake-frame-showing f "writes "))
-        (false (probe-file made))))
-    ;; in a directory of the note's that is one of your own (templates, logos, trusted): asked
-    (let* ((file (merge-pathnames "notes/mine.org" dir)) (made (merge-pathnames "notes/setup/mine.docx" dir))
-           (tuatara-user:*export-trusted-directories* (list (namestring (merge-pathnames "notes/setup/" dir)))))
-      (ensure-directories-exist made)
-      (alexandria:write-string-into-file (format nil "#+export_file_name: setup/mine~%Text.~%") file)
-      (let ((f (export-session file (list (export-command "org-export-docx") "n o RET")
-                               :width (width-for dir (+ 300 (length (namestring dir)))))))
-        (true (tuatara.frontend.fake:fake-frame-showing f "#+EXPORT_FILE_NAME writes "))
-        ;; the question's details are wrapped at the help column: where the path leads the break falls
-        (true (tuatara.frontend.fake:fake-frame-showing-across-rows f "logos or trusted directories."))
-        (true (tuatara.frontend.fake:fake-frame-showing f "Export to "))
         (false (probe-file made))))))
 
 (define-test (latex-export tables-in-columns)
@@ -1543,8 +1531,9 @@ its text's size in half points, when given."
     (true (search "A. Writer" latex))))
 
 (define-test (latex-export files-from-the-note-directory)
-  ;; setup files and pictures come from the note's directory and those in it, or from
-  ;; *export-trusted-directories*; one elsewhere, a link leading out too, is left out and said
+  ;; an untrusted note (*untrusted-directories*) takes setup files and pictures from its directory and
+  ;; those in it alone; one elsewhere, a link leading out too, is left out and said; a trusted note
+  ;; takes them from anywhere
   (with-test-directory (dir)
     (let ((note-directory (merge-pathnames "survey/" dir))
           (outside (merge-pathnames "private/" dir)))
@@ -1570,7 +1559,7 @@ its text's size in half points, when given."
         (false (tuatara.defaults::org-path-beside-p (concatenate 'string case "linked/not-there.org") case)))
       (let ((file (namestring (merge-pathnames "note.org" note-directory)))
             (text (format nil "#+setupfile: sub/setup.org~%#+setupfile: ../private/setup.org~%~%[[file:sub/pic.png]]~%~%[[file:../private/pic.png]]~%~%[[file:link.png]]~%")))
-        (let ((tuatara-user:*export-trusted-directories* '()))
+        (let ((tuatara-user:*untrusted-directories* (list (namestring note-directory))))
           (multiple-value-bind (latex named notes) (org-latex-of text :file file)
             (declare (ignore named))
             (true (search "insidemark" latex))
@@ -1586,27 +1575,61 @@ its text's size in half points, when given."
             (is = 1 (count-if (lambda (e) (search "media/" (getf e :name)))
                               (tuatara.defaults::zip-entries (coerce octets '(simple-array (unsigned-byte 8) (*))))))
             (is = 3 (count-if (lambda (n) (search "outside the note's directory" n)) notes) "~s" notes)))
-        ;; a directory trusted: taken in from there too
-        (let ((tuatara-user:*export-trusted-directories* (list (namestring outside))))
+        ;; a trusted note: taken in from elsewhere too
+        (let ((tuatara-user:*untrusted-directories* '()))
           (multiple-value-bind (latex named notes) (org-latex-of text :file file)
             (declare (ignore named))
             (true (search "outsidemark" latex))
             (true (search "private/pic.png}" latex))
             (false (find-if (lambda (n) (search "outside the note's directory" n)) notes))))))))
 
-(define-test (latex-export templates-from-the-note-directory)
-  ;; a template named by its path is taken from the note's directory, not from elsewhere
+(define-test (latex-export note-trusted-by-where-it-really-is)
+  ;; a note reached by a link from a trusted directory into an untrusted one is untrusted; a trusted note
+  ;; leaves out a picture in an evidence directory, and says so
   (with-test-directory (dir)
-    (let ((notes (namestring (merge-pathnames "notes/" dir)))
-          (inside (merge-pathnames "notes/mine.tex" dir))
-          (outside (merge-pathnames "elsewhere/theirs.tex" dir)))
+    (let* ((fetched (ensure-directories-exist (merge-pathnames "fetched/" dir)))
+           (notes (ensure-directories-exist (merge-pathnames "notes/" dir)))
+           (case (ensure-directories-exist (merge-pathnames "case/" dir)))
+           (private (ensure-directories-exist (merge-pathnames "private/" dir)))
+           (link (namestring (merge-pathnames "evil.org" notes)))
+           (text (format nil "[[file:~a]]~%" (namestring (merge-pathnames "pic.png" private))))
+           (tuatara-user:*untrusted-directories* (list (namestring fetched)))
+           (evidence tuatara-user:*evidence-directories*))
+      (dolist (directory (list private case))
+        (alexandria:write-byte-vector-into-file (coerce (png-octets 2 2) '(vector (unsigned-byte 8)))
+                                                (merge-pathnames "pic.png" directory)))
+      (alexandria:write-string-into-file text (merge-pathnames "evil.org" fetched))
+      (sb-posix:symlink (namestring (merge-pathnames "evil.org" fetched)) link)
+      (multiple-value-bind (latex named notes) (org-latex-of text :file link)
+        (declare (ignore named))
+        (false (search "private/pic.png}" latex))
+        (true (find-if (lambda (n) (search "outside the note's directory" n)) notes) "~s" notes))
+      (unwind-protect
+           (progn
+             (setf tuatara-user:*evidence-directories* (list (namestring case)))
+             (multiple-value-bind (latex named notes)
+                 (org-latex-of (format nil "[[file:~a]]~%" (namestring (merge-pathnames "pic.png" case)))
+                               :file (namestring (merge-pathnames "mine.org" notes)))
+               (declare (ignore named))
+               (false (search "case/pic.png}" latex))
+               (true (find-if (lambda (n) (search "in an evidence directory, so left out" n)) notes) "~s" notes)))
+        (setf tuatara-user:*evidence-directories* evidence)))))
+
+(define-test (latex-export templates-from-the-note-directory)
+  ;; a template named by its path is taken from an untrusted note's directory, not from elsewhere;
+  ;; a trusted note takes it from anywhere
+  (with-test-directory (dir)
+    (let* ((notes (namestring (merge-pathnames "notes/" dir)))
+           (tuatara-user:*untrusted-directories* (list notes))
+           (inside (merge-pathnames "notes/mine.tex" dir))
+           (outside (merge-pathnames "elsewhere/theirs.tex" dir)))
       (ensure-directories-exist inside)
       (ensure-directories-exist outside)
       (alexandria:write-string-into-file "inside template" inside)
       (alexandria:write-string-into-file "outside template" outside)
       (is string= "inside template" (tuatara.defaults::latex-template-for "./mine" notes))
       (fail (tuatara.defaults::latex-template-for "../elsewhere/theirs" notes))
-      (let ((tuatara-user:*export-trusted-directories* (list (namestring (merge-pathnames "elsewhere/" dir)))))
+      (let ((tuatara-user:*untrusted-directories* '()))
         (is string= "outside template" (tuatara.defaults::latex-template-for "../elsewhere/theirs" notes)))
       ;; your own templates' directory, named by its full path, and a link out of the note's directory
       (let ((own (concatenate 'string (tuatara.defaults::latex-templates-directory) "tuatara-test-own.tex")))
@@ -1761,18 +1784,19 @@ Shut in.
           (true (member logo directories :test #'string=))
           (false (member fake directories :test #'string=))
           (false (member (string-right-trim "/" (namestring elsewhere)) directories :test #'string=))))
-      ;; a LaTeX file exported as it is: its pictures from elsewhere only when it stands in one's own directories
+      ;; a LaTeX file exported as it is: its pictures from elsewhere only when it is trusted
       (let ((job (tuatara.export::make-pdf-export nil tex :latex :file nil nil nil)))
-        (destructuring-bind (&key directories &allow-other-keys)
-            (tuatara.export::latex-sandbox-places job tex (stand-in-latex dir "xelatex") "/build/")
-          (false (member logo directories :test #'string=)))
-        (let ((tuatara-user:*export-trusted-directories* (list (namestring directory))))
+        (let ((tuatara-user:*untrusted-directories* (list (namestring directory))))
+          (destructuring-bind (&key directories &allow-other-keys)
+              (tuatara.export::latex-sandbox-places job tex (stand-in-latex dir "xelatex") "/build/")
+            (false (member logo directories :test #'string=))))
+        (let ((tuatara-user:*untrusted-directories* '()))
           (destructuring-bind (&key directories &allow-other-keys)
               (tuatara.export::latex-sandbox-places job tex (stand-in-latex dir "xelatex") "/build/")
             (true (member logo directories :test #'string=)))))
       ;; made into a PDF by a LaTeX program shut in, where there is one
       (let ((tuatara-user:*latex-engines* '("lualatex"))
-            (tuatara-user:*export-trusted-directories* (list (namestring directory))))
+            (tuatara-user:*untrusted-directories* '()))
         (when (and (tuatara.export::latex-engines-found) (eq :ready (tuatara.io:sandbox-status)))
           (alexandria:write-string-into-file
            (format nil "\\documentclass{article}~%\\usepackage{graphicx}~%\\begin{document}~%\\includegraphics[width=1cm]{~a}~%\\end{document}~%" logo)
@@ -1782,19 +1806,16 @@ Shut in.
           (true (probe-file (merge-pathnames "report.pdf" directory))))))))
 
 (define-test (latex-export engine-shown-its-directories)
-  ;; what a LaTeX program shut in is shown: the document's directory, the trusted ones, TeX's own and
+  ;; what a LaTeX program shut in is shown: the document's directory, TeX's own and
   ;; your fonts, read only; its working directory to write in; TeX's own cache written apart
   (with-test-directory (dir)
     (let* ((directory (namestring (ensure-directories-exist (merge-pathnames "survey/" dir))))
            (engine (stand-in-latex dir "xelatex"))
            (tex (concatenate 'string directory "notes.tex"))
-           (job (tuatara.export::make-pdf-export nil tex :latex :file nil nil nil))
-           (tuatara-user:*export-trusted-directories* (list (namestring dir))))
+           (job (tuatara.export::make-pdf-export nil tex :latex :file nil nil nil)))
       (destructuring-bind (&key directories writable overlays)
           (tuatara.export::latex-sandbox-places job tex engine "/build/")
         (true (member directory directories :test #'string=))
-        (true (some (lambda (d)
-                      (string= (string-right-trim "/" d) (string-right-trim "/" (namestring dir)))) directories))
         (is equal '("/build/") writable)
         (is equal '() overlays)
         ;; the pictures an export draws are never shown as a directory

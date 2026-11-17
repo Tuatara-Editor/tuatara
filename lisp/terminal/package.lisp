@@ -17,7 +17,7 @@
                 #:picture-cell-pixels
                 #:pieces-text
                 #:regex-search-forward
-                #:safe-directory-of
+                #:untrusted-path-p
                 #:say-or-insert
                 #:set-made-text #:set-modal-state #:soft-wrap #:special-mode #:spellcheck #:take-in-clipboard
                 #:theme-terminal-colour #:uri-path #:visit-path #:display-fill-column)

@@ -214,10 +214,7 @@ ended)."
       (sb-posix:symlink "/" link)
       (false (tuatara.io:shown-place-p link))
       (fail (tuatara.io::check-shown-place link) tuatara.io:file-system-error))
-    (is equal '() (tuatara.io::mount-arguments (list "/") '() '()))
-    (let ((tuatara-user:*export-trusted-directories* (list "/" home (concatenate 'string home "/notes"))))
-      (is equal (list (concatenate 'string home "/notes"))
-          (tuatara.export::trusted-export-directories :whole t)))))
+    (is equal '() (tuatara.io::mount-arguments (list "/") '() '()))))
 
 (define-test (core-edges query-regexes-read-as-searches)
   ;; a rule's #match? that repeats a repeated part is refused, as a search from a file is

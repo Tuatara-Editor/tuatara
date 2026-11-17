@@ -292,7 +292,7 @@ was afterwards (unset when it was)."
         (is string= "~/" (path-question-shown "C-x C-f"))))))
 
 (define-test (picking path-question-remembers-nothing-safe)
-  ;; a path opened safely, or in one of *safe-directories*, is never the last path nor a
+  ;; a path opened safely, or in one of *untrusted-directories*, is never the last path nor a
   ;; directory's last choice: no later question starts in or offers a directory of evidence
   (with-test-home (home)
     (let ((root (tuatara.io:native home)))
@@ -300,7 +300,7 @@ was afterwards (unset when it was)."
       (put-file (merge-pathnames "evidence/disk.img" home) "x")
       (put-file (merge-pathnames "kept/mail.eml" home) "x")
       (let ((tuatara-user:*last-used-first* t)
-            (tuatara-user:*safe-directories* (list (concatenate 'string root "kept/")))
+            (tuatara-user:*untrusted-directories* (list (concatenate 'string root "kept/")))
             (work (concatenate 'string root "work/notes.txt")))
         (flet ((latest () (first (tuatara.defaults::chosen-paths))))
           (tuatara.defaults::note-chosen-path work)
@@ -310,7 +310,7 @@ was afterwards (unset when it was)."
                             (key-string (concatenate 'string root "evidence/disk.img")))
                     :width 200 :height 20)
           (is string= work (latest))
-          ;; a file in one of *safe-directories*, found as usual
+          ;; a file in one of *untrusted-directories*, found as usual
           (run-keys (format nil "C-x C-f C-a C-k ~a RET" (key-string (concatenate 'string root "kept/mail.eml")))
                     :width 200 :height 20)
           (is string= work (latest))
@@ -379,7 +379,7 @@ was afterwards (unset when it was)."
         (kill-safe-lists)))))
 
 (define-test (picking path-question-skips-evidence-remembered-before)
-  ;; paths remembered before a directory became one of *safe-directories* (or by an older
+  ;; paths remembered before a directory became one of *untrusted-directories* (or by an older
   ;; session) are passed over: the question starts at the latest other, and the directory's
   ;; list does not put them first
   (with-test-home (home)
@@ -392,14 +392,14 @@ was afterwards (unset when it was)."
         (tuatara.defaults::note-chosen-path (concatenate 'string kept "b.eml"))
         (is string= "~/kept/" (path-question-shown "C-x C-f"))
         ;; set for every thread: the directory is read on one of its own
-        (let ((before tuatara-user:*safe-directories*))
+        (let ((before tuatara-user:*untrusted-directories*))
           (unwind-protect
                (progn
-                 (setf tuatara-user:*safe-directories* (list kept))
+                 (setf tuatara-user:*untrusted-directories* (list kept))
                  (is string= "~/work/" (path-question-shown "C-x C-f"))
                  (is equal '("a.eml" "b.eml")
                      (nth-value 1 (path-question-shown (format nil "C-x C-f C-a C-k ~a" (key-string kept))))))
-            (setf tuatara-user:*safe-directories* before)))))))
+            (setf tuatara-user:*untrusted-directories* before)))))))
 
 (define-test (picking path-in-evidence-text-left-unremembered)
   ;; C-x C-p on a path written in a file opened safely: the file is evidence, nothing kept

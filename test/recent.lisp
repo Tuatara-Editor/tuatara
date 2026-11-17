@@ -180,12 +180,12 @@ directory removed afterwards."
                  (let ((tuatara-user:*open-binary-files-safely* nil))
                    (false (tuatara.io:safe-visit-p (nth-value 1 (open-it binary)))))
                  (kill-buffers-visiting dir)
-                 ;; a file in one of *safe-directories*, and one out of them
-                 (let ((tuatara-user:*safe-directories* (list (namestring evidence))))
+                 ;; a file in one of *untrusted-directories*, and one out of them
+                 (let ((tuatara-user:*untrusted-directories* (list (namestring evidence))))
                    (multiple-value-bind (f b) (open-it kept)
                      (true (tuatara.io:safe-visit-p b))
                      (true (tuatara.frontend.fake:fake-frame-showing f "note.txt opened safely: it is in"))
-                     (true (tuatara.frontend.fake:fake-frame-showing f "(*safe-directories*)")))
+                     (true (tuatara.frontend.fake:fake-frame-showing f "(*untrusted-directories*)")))
                    (kill-buffers-visiting dir)
                    (false (tuatara.io:safe-visit-p (nth-value 1 (open-it plain))))
                    (kill-buffers-visiting dir)
@@ -193,7 +193,7 @@ directory removed afterwards."
                    (dolist (name '("plain-link" "st*r" "q?" "br[1]"))
                      (let ((link (concatenate 'string (namestring dir) name)))
                        (sb-posix:symlink kept link)
-                       (true (tuatara.defaults::safe-directory-of link) "~a" name)
+                       (true (tuatara.defaults::untrusted-directory-of link) "~a" name)
                        (sb-posix:unlink link)))
                    ;; named on the command line too
                    (multiple-value-bind (f editor) (run-keys "" :file kept :width 150 :height 12)
@@ -213,14 +213,14 @@ directory removed afterwards."
              (progn
                (dolist (setting (list (list (namestring evidence))
                                       (list "/nowhere/at/all/" "/nor/here/" (namestring evidence))))
-                 (let ((tuatara-user:*safe-directories* setting))
+                 (let ((tuatara-user:*untrusted-directories* setting))
                    (true (tuatara.defaults::visit-safely-reason kept) "~s" setting)
                    (false (tuatara.defaults::visit-safely-reason plain) "~s" setting)))
                (dolist (setting (list (namestring evidence) (cons "/nowhere/at/all/" (namestring evidence))))
-                 (fail (tuatara.runtime:set-setting 'tuatara-user:*safe-directories* setting)
+                 (fail (tuatara.runtime:set-setting 'tuatara-user:*untrusted-directories* setting)
                      'tuatara.runtime:refusal))
                ;; opened by C-x C-f too
-               (let ((tuatara-user:*safe-directories* (list (namestring evidence))))
+               (let ((tuatara-user:*untrusted-directories* (list (namestring evidence))))
                  (multiple-value-bind (f editor)
                      (run-keys (format nil "C-x C-f C-a C-k ~a RET" (key-string kept)) :width 150 :height 12)
                    (true (tuatara.io:safe-visit-p (tuatara.display:window-buffer (tuatara.command:editor-window editor))))

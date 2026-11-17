@@ -205,7 +205,9 @@ selected in another program."
   (is = 16 (mouse-point "l" '(:down-mouse-1 3 1) ".")))
 
 (define-test (mouse dropping-files)
-  (let* ((directory (uiop:ensure-directory-pathname
+  ;; dropped from the temporary directory, which is untrusted as standard: these drops are of trusted files
+  (let* ((tuatara-user:*untrusted-directories* '())
+         (directory (uiop:ensure-directory-pathname
                      (format nil "~adrop-~d/" (namestring (uiop:temporary-directory)) (random 1000000))))
          (one (concatenate 'string (namestring directory) "one.txt"))
          (two (concatenate 'string (namestring directory) "two [2].txt")))
@@ -283,7 +285,7 @@ selected in another program."
                  (declare (ignore f))
                  (is string= "drop.bin" (tuatara.buffer:buffer-name (session-buffer editor)))
                  (true (tuatara.display:hex-view-p (session-buffer editor))))
-               (let ((tuatara-user:*safe-directories* (list (namestring dir))))
+               (let ((tuatara-user:*untrusted-directories* (list (namestring dir))))
                  (multiple-value-bind (f editor) (dropped text)
                    (true (tuatara.io:safe-visit-p (session-buffer editor)))
                    (true (tuatara.frontend.fake:fake-frame-showing f "drop.txt opened safely: it is in")))))

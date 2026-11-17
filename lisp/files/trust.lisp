@@ -1,12 +1,19 @@
-;;;; lisp/files/trust.lisp --- Projects you trust to run their own programs, and those only looked at.
+;;;; lisp/files/trust.lisp --- Files from outside, and projects trusted to run their own programs or looked at only.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
+;;;;
+;;;; A file is untrusted when it is in an evidence directory or in one of
+;;;; *UNTRUSTED-DIRECTORIES* (your downloads, as standard): it opens safely,
+;;;; the desktop's programs get a copy of it after asking, its export takes
+;;;; files from its own directory only, and its project runs nothing of its
+;;;; own until trusted when asked. UNTRUSTED-PATH-P alone decides it.
 ;;;;
 ;;;; A project's language servers run its code (a build script, a plugin, a
 ;;;; macro), git runs the programs a repository names for itself (hooks,
-;;;; filters), and a build (M-x compile) runs its own code. None happens by
-;;;; itself for a project you have not said you trust: once asked and kept
-;;;; between sessions, or in *TRUSTED-PROJECTS*. One question, the same
-;;;; words whatever asks, says all a yes allows, and offers a third answer,
+;;;; filters), and a build (M-x compile) runs its own code. That happens by
+;;;; itself for a project that is trusted (UNTRUSTED-PATH-P), and for an
+;;;; untrusted one you trusted when asked, kept between sessions. One
+;;;; question, the same words whatever asks, says all a yes allows, and
+;;;; offers a third answer,
 ;;;; look only: git reads the project, nothing of it runs, and it is not
 ;;;; asked again. A project that is, or holds, an evidence directory is looked
 ;;;; at only, never asked of. A project is known by where it really is,
@@ -15,15 +22,122 @@
 
 (in-package #:tuatara.defaults)
 
-(define-setting *trusted-projects* '()
-  "Directories whose projects you trust to run their own programs.
-Their language servers start by themselves as their files are opened, git runs
-the programs they name for themselves (hooks, filters), and \\[compile] runs
-their build commands without asking. These are besides the directories trusted when
-asked (kept between sessions).
-- nil: none, as standard.
-- a list of directories' names, ~ for your home directory."
-  :values (list-of directory))
+;;; Files from outside
+
+(define-setting *untrusted-directories* '(:downloads :removable-media :temporary)
+  "The directories whose files came from outside and are not trusted, besides
+the evidence directories (*EVIDENCE-DIRECTORIES*), whose files never are, and
+the copies of outside files Tuatara keeps in its cache (*UNTRUSTED-CACHE*). A
+file a web browser marked as downloaded (the extended attribute
+user.xdg.origin.url) is untrusted wherever it is. A file is in a directory
+when where it really is, links followed, is that directory or below it. An
+untrusted file:
+  opens safely however it is opened, as \\[find-file-safely] opens a file:
+  read-only, with no major mode, hooks or version control, nothing written
+  beside it (\\[end-safe-visit] opens one as usual after all);
+  is opened in the desktop's program (\\[open-externally]) only after asking,
+  from a copy (*OPEN-EXTERNALLY-KINDS*), or itself, answered e;
+  as a note, has its export take setup files, pictures and templates only from
+  its own directory and the directories in it, and your templates' directories;
+  in a project, runs none of the project's own programs (language servers,
+  git's hooks and filters, build commands) until it is trusted when asked
+  \(\\[trust-project]).
+Every other file is trusted: it opens as usual, is opened in the desktop's
+program where it is, its export takes files from anywhere, and its project
+runs its own programs by itself. Clone or download what others made into one
+of these directories.
+- (:downloads :removable-media :temporary), as standard: your download
+  directory (the one XDG_DOWNLOAD_DIR names in user-dirs.dirs, else
+  ~/Downloads/), the places drives and disk images are mounted (/run/media/,
+  /media/, /mnt/), and the temporary directories (/tmp/, /var/tmp/), where
+  browsers and mail programs put what they open.
+- a list of directories, ~ standing for your home directory, and those
+  keywords: '(:downloads :removable-media :temporary \"~/Clones/\").
+- '(\"/\"): every file untrusted.
+- nil: only the files in evidence directories, the cache's copies and those
+  marked as downloaded untrusted."
+  :values (list-of (or (member :downloads :removable-media :temporary) directory)))
+
+(defparameter *untrusted-places*
+  '((:removable-media "/run/media/" "/media/" "/mnt/") (:temporary "/tmp/" "/var/tmp/"))
+  "The directories each keyword of *UNTRUSTED-DIRECTORIES* but :downloads stands for.")
+
+(defparameter *untrusted-cache* '("opened/" "remote/" "sandbox-copies/")
+  "The directories of Tuatara's cache that hold copies of files from outside:
+those opened in the desktop's programs, read from other machines, and given
+to programs shut in. Their files are always untrusted (UNTRUSTED-PATH-P).")
+
+(defun untrusted-directory-names ()
+  "The directories of *UNTRUSTED-DIRECTORIES* as native names, ~ expanded and
+each keyword standing for its directories (*UNTRUSTED-PLACES*, :downloads for
+TUATARA.IO:DOWNLOAD-DIRECTORY), as written, links not followed."
+  (loop for directory in *untrusted-directories*
+        append (cond ((eq directory :downloads) (list (tuatara.io:download-directory)))
+                     ((keywordp directory) (rest (assoc directory *untrusted-places*)))
+                     (t (list (tuatara.io:native (tuatara.io:expand-path directory)))))))
+
+(defun untrusted-directory-of (path)
+  "The directory of *UNTRUSTED-DIRECTORIES* that the file or directory at PATH
+is, or is in or below, by the names as given, by the file a link leads to, or
+by where their links lead (PATH-WITHIN-P, REALLY-WITHIN-P), as a native name, or
+NIL; T when *UNTRUSTED-DIRECTORIES* cannot be read, every file then counting as
+in one. Where a link leads is looked for only when there are directories, and
+never for evidence (EVIDENCE-PATH-P, its last link followed with care), whose
+links are not read."
+  (handler-case
+      (reporting-errors ("looking for ~a in the untrusted directories" path)
+        (let ((directories (untrusted-directory-names)))
+          (when directories
+            (let* ((path (or (ignoring-errors-reported ("expanding ~a" path)
+                               (tuatara.io:native (tuatara.io:expand-path path)))
+                             path))
+                   (follow (not (evidence-path-p path :follow t)))
+                   (leads-to (or (and follow
+                                      (ignoring-errors-reported ("following the links of ~a" path)
+                                        (tuatara.io:real-path-so-far path)))
+                                 path)))
+              (find-if (lambda (directory)
+                         (or (tuatara.io:path-within-p path directory)
+                             (and follow
+                                  (or (tuatara.io:path-within-p leads-to directory)
+                                      (tuatara.io:really-within-p path directory)))))
+                       directories)))))
+    (error () t)))
+
+(defun untrusted-cache-p (path)
+  "True when the file at PATH, links followed, is in one of the directories of
+Tuatara's cache that hold copies of files from outside (*UNTRUSTED-CACHE*)."
+  (let ((cache (tuatara.io:native (tuatara.io:cache-directory))))
+    (some (lambda (name) (tuatara.io:really-within-p path (tuatara.io:path-join cache name)))
+          *untrusted-cache*)))
+
+(defun downloaded-mark-p (path)
+  "True when the file at PATH, where it really is, carries the mark a web
+browser leaves on what it downloads (the extended attribute
+user.xdg.origin.url). Read without changing its times; NIL for a file not
+there."
+  (let ((real (ignoring-errors-reported ("finding where ~a is" path) (tuatara.io:real-path path))))
+    (and real (ignoring-errors-reported ("reading the marks of ~a" real)
+                (tuatara.io:path-xattr-p real "user.xdg.origin.url")))))
+
+(defun untrusted-path-p (path)
+  "True when the file or directory at PATH came from outside and is not
+trusted: it is in an evidence directory (EVIDENCE-PATH-P, links followed), in
+one of *UNTRUSTED-DIRECTORIES* (UNTRUSTED-DIRECTORY-OF), in the cache's copies
+of outside files (UNTRUSTED-CACHE-P), or marked by a web browser as downloaded
+\(DOWNLOADED-MARK-P). What opens safely, what the desktop's programs get a
+copy of, where a note's export takes files from and which projects run their
+own programs are all told by it alone."
+  (let ((path (or (ignoring-errors-reported ("expanding ~a" path) (tuatara.io:native (tuatara.io:expand-path path)))
+                  path)))
+    ;; evidence first: what follows reads the links on the way, which would change their access times
+    (and (or (evidence-path-p path :follow t)
+             (untrusted-directory-of path)
+             (and (not (remote-name-p path))
+                  (or (untrusted-cache-p path) (downloaded-mark-p path))))
+         t)))
+
+;;; Projects
 
 (defvar *trusted-kept* 500
   "How many projects trusted when asked are remembered, and how many looked
@@ -51,30 +165,11 @@ ending in /; NIL when it is not there."
                 (tuatara.io:real-path (tuatara.io:native (tuatara.io:expand-path path))))))
     (and real (tuatara.io:slash-ended real))))
 
-(defvar *trusted-directories-seen* '()
-  "Where the directories of *TRUSTED-PROJECTS* really are, as the setting was
-last looked at: (DIRECTORIES . REAL), DIRECTORIES the setting's directories as written and
-REAL where each really is, NIL for one not there then.")
-
-(defun trusted-setting-directories ()
-  "Where the directories of *TRUSTED-PROJECTS* really are, those there: each
-looked up once while the setting stays the same, one not there looked for
-again each time."
-  (let ((directories *trusted-projects*)
-        (seen *trusted-directories-seen*))
-    (unless (equal directories (car seen))
-      (setf seen (cons (copy-list directories) (make-list (length directories)))
-            *trusted-directories-seen* seen))
-    (loop for directory in directories
-          for cell on (cdr seen)
-          for real = (or (car cell) (setf (car cell) (real-directory directory)))
-          when real collect real)))
-
 (defun project-trusted-p (root)
   "True when the project at ROOT may run its own programs. That holds when it,
-where it really is, was trusted when asked (kept by where it really was then),
-or is in one of *TRUSTED-PROJECTS* (where they really are). It never
-holds for one that is, is in or holds an evidence directory
+where it really is, is trusted (UNTRUSTED-PATH-P: in no evidence directory and
+none of *UNTRUSTED-DIRECTORIES*), or was trusted when asked (kept by where it
+really was then). It never holds for one that is, is in or holds an evidence directory
 \(DIRECTORY-HOLDS-EVIDENCE-P), whose programs could write there, nor for one
 within a directory answered look only (PROJECT-LOOK-ONLY-P). The answer that runs
 less wins. While the project is still being looked through for evidence
@@ -83,8 +178,7 @@ is to be asked again."
   (let ((real (real-directory root)))
     (and real
          (or (member real (state-list-entries *trusted*) :test #'equal)
-             (some (lambda (trusted) (tuatara.io:path-within-p real trusted))
-                   (trusted-setting-directories)))
+             (not (untrusted-path-p real)))
          (not (real-directory-look-only-p real))
          ;; asked only of a project trusted, and told from the setting, not by reading the project
          (not (evidence-path-p real))
@@ -94,10 +188,10 @@ is to be asked again."
 (defun trusted-project-key (file)
   "What an answer of BUFFER-IN-TRUSTED-PROJECT-P about FILE depends on, as it
 stands now: a vector of FILE, the generations of the projects trusted and of
-those looked at only (STATE-LIST-GENERATION), *TRUSTED-PROJECTS* and the
-generation of *EVIDENCE-DIRECTORIES*."
-  (vector file (state-list-generation *trusted*) (state-list-generation *look-only*) *trusted-projects*
-          (evidence-generation)))
+those looked at only (STATE-LIST-GENERATION), *UNTRUSTED-DIRECTORIES*, the
+generation of *EVIDENCE-DIRECTORIES* and the download directory as last read."
+  (vector file (state-list-generation *trusted*) (state-list-generation *look-only*) *untrusted-directories*
+          (evidence-generation) (tuatara.io:download-directory)))
 
 (defun trusted-project-key-current-p (key file)
   "True when KEY, made by TRUSTED-PROJECT-KEY, is what it would be now for
@@ -105,14 +199,15 @@ FILE, which allocates nothing."
   (and (equal (svref key 0) file)
        (eql (svref key 1) (state-list-generation *trusted*))
        (eql (svref key 2) (state-list-generation *look-only*))
-       (equal (svref key 3) *trusted-projects*)
-       (eql (svref key 4) (evidence-generation))))
+       (equal (svref key 3) *untrusted-directories*)
+       (eql (svref key 4) (evidence-generation))
+       (eq (svref key 5) (tuatara.io:known-download-directory))))
 
 (defun buffer-in-trusted-project-p (buffer)
   "True when BUFFER visits a file of a project you trust (PROJECT-TRUSTED-P):
 its text is then parsed by the program shared by such files, not one of its
 own. Looked up again only when the file, the projects trusted or looked at
-only when asked, *TRUSTED-PROJECTS* or *EVIDENCE-DIRECTORIES* change, or
+only when asked, *UNTRUSTED-DIRECTORIES* or *EVIDENCE-DIRECTORIES* change, or
 while the project is still being looked through for evidence directories."
   (let* ((file (tuatara.buffer:buffer-file buffer))
          (seen (tuatara.buffer:buffer-local buffer :trusted-project-seen)))
@@ -182,8 +277,8 @@ again."
   "Forget what was answered of the project at ROOT, trusted or looked at only,
 so that it is asked about again, and tell those who keep answers of it
 \(*TRUST-CHANGED-FUNCTIONS*): its language servers, git and M-x compile run
-nothing of it until it is trusted again. A directory of *TRUSTED-PROJECTS*
-stays trusted."
+nothing of it until it is trusted again. A project outside the untrusted
+directories (UNTRUSTED-PATH-P) stays trusted."
   (let ((real (or (real-directory root) root)))
     (state-list-drop *trusted* (list real))
     (state-list-drop *look-only* (list real))
@@ -236,8 +331,9 @@ git buffer shows), whatever was answered before. The key y trusts it to run
 its own programs (its language servers, the programs git runs for it, its
 build commands). The key l keeps it to looking only, git reading it and
 running nothing of it. The key n forgets the answer, to be asked again. A
-project in or holding an evidence directory cannot be trusted, and a directory of
-*TRUSTED-PROJECTS* stays trusted whatever is answered."
+project in or holding an evidence directory cannot be trusted, and a project
+outside the untrusted directories (*UNTRUSTED-DIRECTORIES*) stays trusted unless
+answered l."
   (let* ((buffer (current-buffer))
          (root (or (tuatara.buffer:buffer-local buffer :git-top)
                    (let ((directory (buffer-directory buffer)))
@@ -252,7 +348,7 @@ project in or holding an evidence directory cannot be trusted, and a directory o
           (message "~a ~a" (abbreviated-path root)
                    (cond (evidence (format nil "cannot be trusted: ~a" evidence))
                          ((eq answer :trusted) "is trusted")
-                         ((project-trusted-p root) "is trusted all the same: it is in *trusted-projects*")
+                         ((project-trusted-p root) "is trusted all the same: it is outside *untrusted-directories*")
                          ((and (eq answer :look-only)
                                (not (member (real-directory root) (state-list-entries *look-only*) :test #'equal)))
                           "is looked at only all the same: a directory holding it is")

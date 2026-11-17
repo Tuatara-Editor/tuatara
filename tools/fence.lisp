@@ -17,10 +17,11 @@
 
 (defparameter *fenced-variables*
   '(("HOME" . "home/") ("XDG_CONFIG_HOME" . "config/") ("XDG_STATE_HOME" . "state/") ("XDG_DATA_HOME" . "data/")
-    ("XDG_CACHE_HOME" . "cache/") ("GNUPGHOME" . "gnupg/") ("XDG_RUNTIME_DIR" . "runtime/") ("TMPDIR" . "tmp/"))
+    ("XDG_CACHE_HOME" . "cache/") ("GNUPGHOME" . "gnupg/") ("XDG_RUNTIME_DIR" . "runtime/") ("TMPDIR" . "tmp/")
+    ("XDG_DOWNLOAD_DIR" . "downloads/"))
   "Each environment variable that leads the editor or a program it runs to a person's own files (their home, their
-settings, state, data, caches and GnuPG keys, the sockets of their running daemons, their temporary files), with
-the directory of a fence it is set to.")
+settings, state, data, caches and GnuPG keys, the sockets of their running daemons, their temporary files, their
+downloads), with the directory of a fence it is set to.")
 
 (defparameter *closed-variables*
   '("SSH_AUTH_SOCK" "SSH_AGENT_PID" "GPG_AGENT_INFO" "DBUS_SESSION_BUS_ADDRESS" "AT_SPI_BUS_ADDRESS" "DISPLAY"

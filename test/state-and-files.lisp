@@ -456,10 +456,10 @@ file of text; their native names, as two values."
       (ensure-directories-exist (sb-ext:parse-native-namestring (concatenate 'string evidence "x")))
       (ensure-directories-exist (sb-ext:parse-native-namestring (concatenate 'string deep "x")))
       (put-file (sb-ext:parse-native-namestring (concatenate 'string project "app.sln")) "")
-      (let ((tuatara-user:*safe-directories* (list evidence)))
-        (true (tuatara.defaults::safe-directory-of evidence))
-        (true (tuatara.defaults::safe-directory-of (concatenate 'string evidence "inside.txt")))
-        (false (tuatara.defaults::safe-directory-of project)))
+      (let ((tuatara-user:*untrusted-directories* (list evidence)))
+        (true (tuatara.defaults::untrusted-directory-of evidence))
+        (true (tuatara.defaults::untrusted-directory-of (concatenate 'string evidence "inside.txt")))
+        (false (tuatara.defaults::untrusted-directory-of project)))
       (is string= project (tuatara.defaults::marked-directory deep '("*.sln")))
       (false (tuatara.defaults::marked-directory deep '("*.csproj") :below-home t))
       (let ((file (concatenate 'string project "app.sln")))
@@ -694,6 +694,7 @@ file of text; their native names, as two values."
              (buffer (tuatara.buffer:make-buffer "*trust asked*" :text ""))
              (stamps 0)
              (list tuatara.defaults::*trusted*)
+             (tuatara-user:*untrusted-directories* (list (namestring project)))
              (real (tuatara.defaults::real-directory (tuatara.defaults::project-root (namestring project)))))
         (unwind-protect
              (progn

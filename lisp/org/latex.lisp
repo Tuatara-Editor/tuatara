@@ -33,7 +33,8 @@ the template and the note's pictures use."
              :documentation "The fonts ORG-LATEX falls back to for a character the chosen fonts lack, each (FAMILY .
 COMMAND).")
   (paths '() :documentation "The files the template's {{{NAME:path}}} places of ORG-LATEX were filled with.")
-  (pictures '() :documentation "The files the note's own pictures of ORG-LATEX are drawn from (ORG-LATEX-IMAGE)."))
+  (pictures '() :documentation "The files the note's own pictures of ORG-LATEX are drawn from (ORG-LATEX-IMAGE).")
+  (bibliography-files '() :documentation "The bibliography files ORG-LATEX names (ORG-LATEX-BIBLIOGRAPHIES)."))
 
 (defvar *org-latex-template* ""
   "The text of the template the document being written is laid out by.")
@@ -1414,7 +1415,9 @@ lines name, a relative one taken from the note's directory (ORG-EXPORT-PATH), so
 that they are found wherever the LaTeX file is written. One named so that LaTeX
 cannot take it (LATEX-FILE-NAME-P), one not there (with .bib added when it
 names none, as BibTeX reads it), or one outside the directories an export may
-take files from (ORG-EXPORT-FILE-ALLOWED-P) is left out, which is said."
+take files from (ORG-EXPORT-FILE-ALLOWED-P) is left out, which is said. Those
+taken are kept in the note's BIBLIOGRAPHY-FILES, to be shown to the programs
+reading them."
   (loop for value in (org-export-keyword-all "BIBLIOGRAPHY")
         for name = (string-trim " \"" value)
         for full = (and (plusp (length name))
@@ -1426,7 +1429,9 @@ take files from (ORG-EXPORT-FILE-ALLOWED-P) is left out, which is said."
           do (export-note "~a: no such bibliography, so left out" name)
         when (and full (latex-file-name-p full) (tuatara.io:path-stamp read :failure nil)
                   (org-export-file-allowed-p read))
-          collect full))
+          do (when (org-latex-p *org-export*)
+               (pushnew read (org-latex-bibliography-files *org-export*) :test #'string=))
+          and collect full))
 
 (defun org-latex-citation-packages ()
   "The lines of the preamble the document's #+CITE_EXPORT: calls for: biblatex,
@@ -1755,6 +1760,7 @@ FILE, for the LaTeX program ENGINE, ENHANCED or not."
                            (list* template (append (org-latex-paths *org-export*) (org-export-trusted *org-export*)))
                            (org-export-trusted *org-export*))
               :pictures (reverse (org-latex-pictures *org-export*))
+              :bibliographies (reverse (org-latex-bibliography-files *org-export*))
               :language (let ((row (org-latex-language-row)))
                           (and row (not (latex-loads-language-p template)) (first row))))))))
 

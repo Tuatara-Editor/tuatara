@@ -531,6 +531,26 @@ is told by the names of the entries in it, not by words in their contents."
             ((has "META-INF/MANIFEST.MF") (values "Java archive" :jar))
             (t (values "ZIP archive" :zip))))))
 
+(defun desktop-entry-p (head)
+  "True when HEAD, the start of a file as text, is a desktop launcher's: its
+first line that is neither blank nor a # comment, a byte order mark (BOM)
+before it allowed, is [Desktop Entry], as programs that start launchers read
+them. HEAD has a character for each octet (Latin-1). Makes nothing."
+  (let ((at (if (and (>= (length head) 3) (char= (char head 0) (code-char #xEF))
+                     (char= (char head 1) (code-char #xBB)) (char= (char head 2) (code-char #xBF)))
+                3
+                0))
+        (end (length head)))
+    (loop
+      (setf at (or (position-if-not (lambda (c) (member c '(#\Space #\Tab #\Return #\Newline))) head :start at)
+                   end))
+      (cond ((>= at end) (return nil))
+            ((char= (char head at) #\#)
+             (setf at (or (position #\Newline head :start at) end)))
+            (t (let ((line-end (or (position #\Newline head :start at) end)))
+                 (return (string= "[Desktop Entry]"
+                                  (string-right-trim '(#\Space #\Tab #\Return) (subseq head at line-end))))))))))
+
 (defun text-words (o)
   "What a file of text is when its first octets tell: a script, a desktop
 launcher, a key or certificate, SVG, HTML or XML, PostScript or RTF; NIL for
@@ -542,7 +562,7 @@ plain text, and as a second value its kind."
            (values (format nil "script, run by ~a"
                            (string-trim " " (subseq head 2 (or (position #\Newline head) (length head)))))
                    :script))
-          ((octets-at-p o "[Desktop Entry]") (values "desktop launcher (a program to start)" :desktop))
+          ((desktop-entry-p head) (values "desktop launcher (a program to start)" :desktop))
           ((octets-at-p o "-----BEGIN ")
            (let ((end (search "-----" head :start2 11)))
              (values (format nil "PEM ~(~a~)" (subseq head 11 (or end 11))) :pem)))

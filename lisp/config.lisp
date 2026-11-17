@@ -193,14 +193,22 @@ editor starts."
   (message "Started with -Q: no init file, no packages, and what is kept between sessions kept apart"))
 
 (defparameter *renamed-settings*
-  '(("*EXPORT-TRUSTED-FOLDERS*" . tuatara-user:*export-trusted-directories*)
+  '(("*EXPORT-TRUSTED-FOLDERS*" . "*untrusted-directories* decides where a note's export takes files from")
+    ("*EXPORT-TRUSTED-DIRECTORIES*" . "*untrusted-directories* decides where a note's export takes files from")
+    ("*SAFE-DIRECTORIES*" :into tuatara-user:*untrusted-directories*)
     ("*EVIDENCE-FOLDERS*" . tuatara-user:*evidence-directories*)
     ("*CODE-FILES-MAKE-FOLDERS*" . tuatara-user:*code-files-make-directories*)
     ("*FOLDER-TREE-DEPTH-LIMIT*" . tuatara-user:*directory-tree-depth-limit*)
-    ("*LSP-TRUSTED-PROJECTS*" . tuatara-user:*trusted-projects*))
-  "Settings renamed before Tuatara 1.0, each (OLD-NAME . SETTING): an init file
-that still sets or changes one by its old name has its value given to the
-setting (LEND-RENAMED-SETTINGS, CARRY-RENAMED-SETTINGS).")
+    ("*TRUSTED-PROJECTS*" . "*untrusted-directories* decides which projects are trusted")
+    ("*LSP-TRUSTED-PROJECTS*" . "*untrusted-directories* decides which projects are trusted"))
+  "Settings renamed or taken away before Tuatara 1.0, each (OLD-NAME . SETTING)
+for one renamed, (OLD-NAME :INTO SETTING) for one taken away whose list is
+added to SETTING, or (OLD-NAME . WORDS) for one taken away, WORDS saying what
+decides instead: an init file that still sets or changes one by its old name
+has its value given to the setting, added to it, or is told the setting is
+gone, and is read on (LEND-RENAMED-SETTINGS, CARRY-RENAMED-SETTINGS). Only a
+setting whose values made Tuatara more careful is added to its successor;
+those that trusted more are let go.")
 
 ;; an init file setting an old name is compiled without a warning of an undefined variable
 (dolist (renamed *renamed-settings*)
@@ -208,23 +216,39 @@ setting (LEND-RENAMED-SETTINGS, CARRY-RENAMED-SETTINGS).")
 
 (defun lend-renamed-settings ()
   "Give each old name of *RENAMED-SETTINGS* its setting's value, so that an
-init file may read it or add to it by that name, as by (push ... OLD-NAME).
-Each old name, its setting and the value lent, for CARRY-RENAMED-SETTINGS."
+init file may read it or add to it by that name, as by (push ... OLD-NAME); a
+setting taken away, NIL. Each old name, what it became (its entry's rest)
+and the value lent, for CARRY-RENAMED-SETTINGS."
   (loop for (old . new) in *renamed-settings*
         for symbol = (intern old :tuatara-user)
-        collect (list symbol new (setf (symbol-value symbol) (symbol-value new)))))
+        collect (list symbol new (setf (symbol-value symbol) (and (symbolp new) (symbol-value new))))))
 
 (defun carry-renamed-settings (lent)
   "Give each setting the init file changed by its old name that value, and say
-which name to write there instead, LENT being what LEND-RENAMED-SETTINGS lent
-before the file was read; the old names are then let go. A value the setting
-does not take is put back, and said (PUT-BACK-MISFIT-SETTINGS)."
+which name to write there instead; add what it gave a setting taken away
+into its successor, and say so; or say that a setting it changed is gone and
+what decides instead. LENT is what LEND-RENAMED-SETTINGS lent before the file
+was read; the old names are then let go. A value the setting does not take
+is put back, and said (PUT-BACK-MISFIT-SETTINGS)."
   (let ((settings (settings-snapshot)))
     (loop for (symbol new value) in lent
+          for name = (string-downcase (symbol-name symbol))
           when (and (boundp symbol) (not (eq (symbol-value symbol) value)))
-            do (setf (symbol-value new) (symbol-value symbol))
-               (message "Your init file sets ~(~a~), now called ~(~a~): its value is used; rename it there"
-                        (symbol-name symbol) (symbol-name new))
+            do (cond ((symbolp new)
+                      (setf (symbol-value new) (symbol-value symbol))
+                      (message "Your init file sets ~a, now called ~(~a~): its value is used; rename it there"
+                               name (symbol-name new)))
+                     ((stringp new)
+                      (message "Your init file sets ~a, which is gone: ~a; take it out there" name new))
+                     (t
+                      (let ((into (second new)) (given (symbol-value symbol)))
+                        (setf (symbol-value into)
+                              (append (symbol-value into)
+                                      (remove-if (lambda (entry) (member entry (symbol-value into) :test #'equal))
+                                                 (if (listp given) given (list given)))))
+                        (message "Your init file sets ~a, which is gone: its directories are added to ~(~a~); ~
+                                  move them there"
+                                 name (symbol-name into)))))
           do (makunbound symbol))
     (dolist (words (put-back-misfit-settings settings))
       (message "Your init file: ~a" words))))

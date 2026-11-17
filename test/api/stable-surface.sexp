@@ -2,7 +2,7 @@
 ;; ARGUMENTS (REQUIRED OPTIONAL KEYS REST OTHER-KEYS); (:setting NAME); (:init NAME KIND ARGUMENTS), the init
 ;; file's functions and macros; (:keywords LOAD-PACKAGE KEYWORDS); (:flag OPTION), the command line's
 ;; options; (:command PACKAGE NAME).
-(:version "0.90.31")
+(:version "0.90.33")
 (:api "*BUFFERS-ASKED-ABOUT*" :variable)
 (:api "*BUILD*" :variable)
 (:api "*BUILT-AT*" :variable)
@@ -2007,7 +2007,6 @@
 (:setting "*ELECTRIC-PAIR-TYPING*")
 (:setting "*ESCAPE-QUITS*")
 (:setting "*EVIDENCE-DIRECTORIES*")
-(:setting "*EXPORT-TRUSTED-DIRECTORIES*")
 (:setting "*EXTRA-SENTENCE-ABBREVIATIONS*")
 (:setting "*FILE-LOCAL-VARIABLES*")
 (:setting "*FILL-ASK-COLUMN*")
@@ -2222,7 +2221,6 @@
 (:setting "*RIMU-PREVIEW-SIZE*")
 (:setting "*RIMU-REUSE-LISTS*")
 (:setting "*RIMU-SORT*")
-(:setting "*SAFE-DIRECTORIES*")
 (:setting "*SANDBOX*")
 (:setting "*SANDBOX-INPUT-LIMIT*")
 (:setting "*SANDBOX-MEMORY*")
@@ -2276,7 +2274,6 @@
 (:setting "*TERMINAL-WIDTH*")
 (:setting "*TEXT-DIRECTION-MODES*")
 (:setting "*TEXT-DIRECTION-WHEN-SAFE*")
-(:setting "*TRUSTED-PROJECTS*")
 (:setting "*TUATARA-INSERT-CURSOR-COLOUR*")
 (:setting "*TUATARA-INSERT-CURSOR-SHAPE*")
 (:setting "*TUATARA-NORMAL-CURSOR-COLOUR*")
@@ -2290,6 +2287,7 @@
 (:setting "*TUI-PICTURES*")
 (:setting "*TYPING-PAUSE*")
 (:setting "*UNDO-LIMIT*")
+(:setting "*UNTRUSTED-DIRECTORIES*")
 (:setting "*USE-SYSTEM-CLIPBOARD*")
 (:setting "*USER-FULL-NAME*")
 (:setting "*VC-GUTTER-ENABLED*")

@@ -24,6 +24,9 @@ export gathers on the way (labels, footnotes, notes to the person, settings)."
   (text nil :documentation "The note ORG-EXPORT exports, as parsed.")
   (directory nil :documentation "The directory of the file of ORG-EXPORT, or NIL for none.")
   (file nil :documentation "The name of the file of ORG-EXPORT, or NIL for none.")
+  (untrusted :unknown
+             :documentation "Whether the note of ORG-EXPORT is untrusted (ORG-EXPORT-UNTRUSTED-P), :UNKNOWN until
+asked.")
   (keywords '()
             :documentation "The keywords of the note of ORG-EXPORT and of its setup files, each (KEY . VALUE), in
 order.")
@@ -52,7 +55,7 @@ latest first.")
             :documentation "The nodes ORG-EXPORT has written already as part of another, such as a paragraph beside a
 picture.")
   (trusted '()
-           :documentation "The texts of the setup files ORG-EXPORT read from the person's own directories
+           :documentation "The texts of the setup files ORG-EXPORT read from trusted directories
 \(EXPORT-TRUSTED-PATH-P).")
   (refused '()
            :documentation "The names of the pictures the template of ORG-EXPORT asks for that the note names from
@@ -84,41 +87,46 @@ ARGUMENTS, once however often it comes; NIL."
 
 ;;; Keywords and options
 
-(define-setting *export-trusted-directories* '()
-  "More directories that exporting a note may take files from.
-A note's export (to PDF or to a Word document) takes the setup files its
-#+SETUPFILE lines name and the pictures its [[file:...]] links show from the
-note's own directory and the directories in it, and your note templates' directory
-(NOTE-TEMPLATES-DIRECTORY). A file anywhere else is left out of the export,
-and the export says so when it is done, so that a note given to you cannot
-have its export carry your other files into the PDF or document it makes.
-- a list of directories, ~ standing for your home directory: those too. A directory of
-  setup files shared by notes kept in directories of their own goes here:
-  '(\"~/notes/latex/\").
-- nil: no others."
-  :values (list-of directory))
-
 (defun org-export-path (name &optional (directory (and *org-export* (org-export-directory *org-export*))))
   "NAME, a file a note names, as a native path: ~ standing for your home
 directory, a relative name taken from DIRECTORY, the directory of the note being
 exported when not given, your home directory for a note with no file."
   (tuatara.io:native (tuatara.io:expand-path name :directory (or directory (tuatara.io:home-directory)))))
 
-(defun export-directory-p (path directory &optional directories)
+(defun org-export-untrusted-p (&optional (export *org-export*))
+  "True when the note EXPORT exports is untrusted (UNTRUSTED-PATH-P): its file,
+links followed, or for one read by its directory alone that directory; a note
+with neither, text of your own, is trusted. Decided once for each export."
+  (let ((known (org-export-untrusted export)))
+    (if (eq known :unknown)
+        (setf (org-export-untrusted export)
+              (let ((file (org-export-file export)) (directory (org-export-directory export)))
+                (cond (file (untrusted-path-p file))
+                      (directory (untrusted-path-p directory)))))
+        known)))
+
+(defun export-directory-p (path directory
+                           &optional directories (untrusted (and directory (untrusted-path-p directory))))
   "True when the file at PATH (native) stands where an export may take files
-from: DIRECTORY, the document's directory, or a directory in it, one of
-DIRECTORIES, or one of *EXPORT-TRUSTED-DIRECTORIES*, links followed
-\(TUATARA.IO:REALLY-WITHIN-P)."
+from. A trusted document (UNTRUSTED NIL, as standard when DIRECTORY, its
+directory, is trusted: UNTRUSTED-PATH-P) may take them from anywhere but an
+evidence directory (EVIDENCE-PATH-P), whose files are read only from within
+the document's own directory; an untrusted one only from DIRECTORY or a
+directory in it, or one of DIRECTORIES, links followed
+\(TUATARA.IO:REALLY-WITHIN-P), so that a note given to you cannot have its
+export carry your other files into what it makes."
   (or (and directory (tuatara.io:really-within-p path directory))
-      (tuatara.io:path-in-directories-p path (append directories *export-trusted-directories*))))
+      (tuatara.io:path-in-directories-p path directories)
+      (and (not untrusted) (not (evidence-path-p path :follow t)))))
 
 (defun org-export-directory-p (path)
   "True when PATH (native) stands where the export of the document *ORG-EXPORT*
-is writing may take files from: the document's directory or a directory in it,
-your note templates' directory (NOTE-TEMPLATES-DIRECTORY, where the pictures of
-a template made from a Word document are), or one of *EXPORT-TRUSTED-DIRECTORIES*,
-links followed (EXPORT-DIRECTORY-P)."
-  (export-directory-p path (and *org-export* (org-export-directory *org-export*)) (list (note-templates-directory))))
+is writing may take files from: anywhere for a trusted document; for an
+untrusted one, its directory or a directory in it, or your note templates'
+directory (NOTE-TEMPLATES-DIRECTORY, where the pictures of a template made from
+a Word document are), links followed (EXPORT-DIRECTORY-P)."
+  (export-directory-p path (and *org-export* (org-export-directory *org-export*)) (list (note-templates-directory))
+                      (and *org-export* (org-export-untrusted-p))))
 
 (defun org-export-file-allowed-p (path)
   "True when exporting the document *ORG-EXPORT* is writing may take in the
@@ -128,9 +136,11 @@ and NIL is returned; a file that does not exist may be named, there being
 nothing to take in."
   (or (null (tuatara.io:path-stamp path :failure nil)) ; nothing there to take in
       (org-export-directory-p path)
-      (export-note "~a: outside the note's directory, so left out of the export ~
-(*export-trusted-directories* names the directories it may also come from)"
-                   (abbreviated-path path))))
+      (if (and *org-export* (not (org-export-untrusted-p)))
+          (export-note "~a: in an evidence directory, so left out of the export" (abbreviated-path path))
+          (export-note "~a: outside the note's directory, so left out of the export ~
+(the note is untrusted: *untrusted-directories*)"
+                       (abbreviated-path path)))))
 
 (define-setting *logos-directory* nil
   "The directory of the pictures your templates ask a note for.
@@ -168,9 +178,9 @@ note given to you cannot have your template take in a picture of yours."
 
 (defun export-trusted-path-p (path)
   "True when the file at PATH (native) is your own to an export: in your
-LaTeX templates' directory or one of *EXPORT-TRUSTED-DIRECTORIES*, links followed;
-not merely beside the note, which may have come with it."
-  (tuatara.io:path-in-directories-p path (cons (latex-templates-directory) *export-trusted-directories*)))
+LaTeX templates' directory, links followed, or trusted (UNTRUSTED-PATH-P)."
+  (or (tuatara.io:path-in-directories-p path (list (latex-templates-directory)))
+      (not (untrusted-path-p path))))
 
 (defun org-export-read-setup (value directory)
   "The text of the setup file VALUE names, relative to DIRECTORY, with its

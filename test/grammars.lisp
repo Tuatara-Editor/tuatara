@@ -81,7 +81,7 @@ afterwards."
     (with-test-directory (directory)
       (let ((path (merge-pathnames "evidence.awk" directory)))
         (with-open-file (o path :direction :output) (format o "BEGIN { print 1 }~%"))
-        (let ((tuatara-user:*safe-directories* (list (namestring directory))))
+        (let ((tuatara-user:*untrusted-directories* (list (namestring directory))))
           (multiple-value-bind (f editor) (run-keys "" :file path :width 60)
             (unwind-protect
                  (let ((buffer (tuatara.display:window-buffer (tuatara.command:editor-window editor))))

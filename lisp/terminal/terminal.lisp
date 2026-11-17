@@ -377,7 +377,7 @@ program wrote (OSC 8) first, else a web or file address written there; NIL."
   "Open ADDRESS, a link in a terminal: a file of this computer (file://) in
 Tuatara, in another window than the terminal's, after asking, the file it
 leads to named (what a link shows may differ from where it leads), safely
-when it is in one of *SAFE-DIRECTORIES*; a web or mail address in the
+when it is untrusted (UNTRUSTED-PATH-P); a web or mail address in the
 desktop's program after asking (OPEN-ADDRESS)."
   (let ((scheme (address-scheme address)))
     (cond ((string= scheme "file")
@@ -386,7 +386,7 @@ desktop's program after asking (OPEN-ADDRESS)."
                     (message "~a is no file of this computer" (escape-controls address)))
                    ((not (y-or-n-p* (format nil "Open ~a in Tuatara?" (escape-controls path))))
                     (message "Not opened"))
-                   (t (visit-path path :safe (and (safe-directory-of path) t)
+                   (t (visit-path path :safe (untrusted-path-p path)
                                   :show (lambda (buffer)
                                           (let ((window (display-buffer buffer :other t)))
                                             (when window (select-window window)))))))))
@@ -735,7 +735,7 @@ says, as \\[terminal] opens one; quitting it brings back what the window showed.
   "Open a terminal in a buffer of its own, where *TERMINAL-PLACE* says or, with
 PLACE, in a new window there (SHOW-TERMINAL). It opens in the current buffer's
 directory. It opens in your home directory instead when that buffer was opened
-safely or its directory is in one of *SAFE-DIRECTORIES* or *EVIDENCE-DIRECTORIES*,
+safely or its directory is in one of *UNTRUSTED-DIRECTORIES* or *EVIDENCE-DIRECTORIES*,
 so that your shell's prompt and its helpers read nothing a directory of evidence
 holds, such as its .git or .envrc; the echo area says so. It runs your shell
 \(or *TERMINAL-PROGRAM*) on a screen as large as the window, which follows the
@@ -754,8 +754,8 @@ colours a program picks are the theme's (*TERMINAL-PALETTE-ROLES*)."
          (here (tuatara.io:native (buffer-directory (current-buffer))))
          (careful (cond ((tuatara.io:safe-visit-p (current-buffer))
                          (format nil "~a is opened safely" (tuatara.buffer:buffer-name (current-buffer))))
-                        ((safe-directory-of here) (format nil "~a is in *safe-directories*" here))
-                        ((evidence-path-p here) (evidence-visit-reason here))))
+                        ((evidence-path-p here) (evidence-visit-reason here))
+                        ((untrusted-path-p here) (format nil "~a is untrusted (*untrusted-directories*)" here))))
          (directory (if careful (tuatara.io:home-directory) here))
          (program (or tuatara-user:*terminal-program*
                       (list (tuatara.io:user-shell))))

@@ -271,10 +271,10 @@ Words.
         (true (search (format nil "# Doc ref~%#+doc_ref:~%") (alexandria:read-file-into-string made)))
         ;; nothing written beside the document given
         (is equal '("form.docx") (mapcar #'first (tuatara.io:directory-entries (namestring given))))
-        ;; offered for each new note, and its picture taken into an export of a note kept anywhere
+        ;; offered for each new note, and its picture taken into an export of a note kept anywhere (an untrusted
+        ;; note's leaving out of the document given is the latex-export tests')
         (true (find "form" (tuatara.defaults::formatted-templates) :key #'first :test #'equal))
-        (true (tuatara.defaults::org-export-file-allowed-p picture))
-        (false (tuatara.defaults::org-export-file-allowed-p source))))))
+        (true (tuatara.defaults::org-export-file-allowed-p picture))))))
 
 (defun wait-for-buffer (name &optional (tries 1000))
   "A turn waiting, without holding up the editor, until a buffer called NAME

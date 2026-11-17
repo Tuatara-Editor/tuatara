@@ -567,43 +567,20 @@ your time zone, a list of (NAME VALUE): TZ as yours is set, or as the zone
   (let ((zone (or (tuatara.io:own-variable "TZ") (system-time-zone-name))))
     (and zone (plusp (length zone)) (list (list "TZ" zone)))))
 
-(defun safe-directory-of (path)
-  "The directory of *SAFE-DIRECTORIES* that the file or directory at PATH is,
-or is in or below, by the names as given, by the file a link leads to, or by
-where their links lead (PATH-WITHIN-P, REALLY-WITHIN-P), or NIL; T when
-*SAFE-DIRECTORIES* cannot be read, every file then counting as in one.
-Where a link leads is looked for only when there are directories."
-  (handler-case
-      (reporting-errors ("looking for ~a in the safe directories" path)
-        (let ((directories *safe-directories*))
-          (when directories
-            (let* ((path (or (ignoring-errors-reported ("expanding ~a" path)
-                               (tuatara.io:native (tuatara.io:expand-path path)))
-                             path))
-                   (leads-to (or (ignoring-errors-reported ("following the links of ~a" path)
-                                   (tuatara.io:real-path-so-far path))
-                                 path)))
-              (find-if (lambda (directory)
-                         (let ((directory (tuatara.io:native (tuatara.io:expand-path directory))))
-                           (or (tuatara.io:path-within-p path directory)
-                               (tuatara.io:path-within-p leads-to directory)
-                               (tuatara.io:really-within-p path directory))))
-                       directories)))))
-    (error () t)))
-
 (defun visit-safely-reason (path &optional stamp)
   "Why the file at PATH opens safely although that was not asked for: it is
-evidence (*EVIDENCE-DIRECTORIES*), it is in one of *SAFE-DIRECTORIES*, or it looks
-binary while *OPEN-BINARY-FILES-SAFELY* is true, by its own name, by the
+evidence (*EVIDENCE-DIRECTORIES*), it is in one of *UNTRUSTED-DIRECTORIES*, or it
+looks binary while *OPEN-BINARY-FILES-SAFELY* is true, by its own name, by the
 file a link leads to, or, given its STAMP, by another name it has; NIL for none. When
-*SAFE-DIRECTORIES* cannot be read, every file opens safely, and the reason
+*UNTRUSTED-DIRECTORIES* cannot be read, every file opens safely, and the reason
 says so."
-  (let ((directory (safe-directory-of path)))
+  (let ((directory nil))
     (cond ((evidence-visit-reason path))
           ((and stamp (evidence-inode-p stamp))
            "it has more than one name, and one may be in an evidence directory (*evidence-directories*)")
-          ((eq directory t) "*safe-directories* could not be read")
-          (directory (format nil "it is in ~a (*safe-directories*)" directory))
+          ;; looked for after evidence: it reads the links on the way
+          ((eq (setf directory (untrusted-directory-of path)) t) "*untrusted-directories* could not be read")
+          (directory (format nil "it is in ~a (*untrusted-directories*)" directory))
           ((and *open-binary-files-safely* (tuatara.io:binary-head-p (tuatara.io:file-head path)))
            "it looks binary (*open-binary-files-safely*)"))))
 

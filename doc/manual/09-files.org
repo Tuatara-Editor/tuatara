@@ -809,12 +809,59 @@ Tuatara runs =xdg-open=, the command desktops provide for this, so the file
 opens in what you would get by double-clicking it.
 
 The other program is not shut in as Tuatara's own readers are. It can read
-everything you can. So Tuatara asks first, unless you turn off
-=*open-externally-ask*=. It also looks at what the file is, not what its name
-says. A program named =holiday.jpg= is refused. Only the kinds of file in
-=*open-externally-kinds*= are handed over: pictures, PDFs, sound and video.
-Office documents can hold macros, so they are handed over only once you add
-their kinds (=:docx=, =:xlsx=, =:pptx=, =:odt=, =:ods=, =:odp=) to the setting.
+everything you can, and some programs run what a file holds. So Tuatara tells
+your own files from files that came from outside.
+
+A file is untrusted when it is in an evidence directory or in one of
+=*untrusted-directories*=, which holds your download directory, removable
+drives and the temporary directories as standard, or when it is a copy
+Tuatara made of an outside file or a file a browser marked as downloaded
+(chapter 12). Links are followed first: a link in your notes that leads into
+your downloads is untrusted too. Tuatara asks before opening an untrusted file,
+and the answer is typed and ended with ~RET~:
+
+- =y= opens a copy of the file that only you can read and nobody can change.
+  Tuatara looks at what the file is, not what its name says, and only the kinds
+  in =*open-externally-kinds*= are opened so: pictures, PDFs, sound and video. A
+  program named =holiday.jpg= is refused. Office documents can hold macros, so
+  they are opened only once you add their kinds (=:docx=, =:xlsx=, =:pptx=,
+  =:odt=, =:ods=, =:odp=) to the setting.
+- =n= opens nothing.
+- =e= trusts that one file, once you have examined it and judged it safe. The
+  file itself is opened where it is, whatever its kind, so it may run what it
+  holds. A file in an evidence directory is opened from a private copy instead,
+  whatever its kind, so that the program writes nothing beside the evidence
+  (LibreOffice leaves a lock file beside what it opens). You are asked each
+  time, and the choice is written to the debug log, while debug mode is on,
+  with the file's path and its SHA-256 as read before it was opened; a file
+  that changes while it is summed is not opened.
+
+When the file is not of a kind a copy is opened of, only =n= and =e= are
+offered. With =*open-externally-ask*= turned off, an untrusted file of those
+kinds opens from its copy at once, and any other is refused.
+
+Every other file is trusted. It opens where it is, whatever its kind, without
+a question, so that a web page opens with the pictures and stylesheets beside
+it. One safeguard holds even then: a program, or a file that starts one (an
+ELF program, an AppImage, a desktop launcher, a script, a Windows shortcut or
+program, an Android package, any file with an execute bit set, or one named as
+a launcher or installer such as =.bat=, =.ps1=, =.msi=, =.desktop= or
+=.flatpakref=), is asked about as an untrusted file wherever it is, and only
+=e= starts it. A trusted file is looked at again just before it is opened: one
+that changed, or became untrusted or a program meanwhile, is not opened.
+
+To have every file taken as untrusted, as before Tuatara told them apart, set
+the list to the root directory (every file then opens safely too):
+
+#+begin_example
+(setf *untrusted-directories* '("/"))
+#+end_example
+
+=:downloads= in the list stands for your download directory, and other
+directories can be added beside it, such as ='(:downloads "~/mail/")=. With
+=nil=, only the files in evidence directories are untrusted. The same setting
+decides which files open safely and which notes' exports take files from
+elsewhere (chapter 12).
 
 To use another program for a kind, set =*open-externally-programs*= to a list
 of a type and a program:

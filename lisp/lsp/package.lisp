@@ -30,7 +30,7 @@
                 #:org-parse-tree #:org-part-at #:org-part-code-lines #:org-part-index #:org-part-start
                 #:org-parts-count #:org-property #:org-src-language #:path-uri #:places-buffer #:places-name
                 #:prog-mode #:project-root #:project-trusted-p #:push-xref-marker #:put-snippet #:put-text-by-lines
-                #:region-or-point #:render-pieces #:safe-directory-of #:save-buffer-with-care
+                #:region-or-point #:render-pieces #:untrusted-path-p #:save-buffer-with-care
                 #:say-places-end #:selected-region-or-say #:show-definitions #:show-help #:special-mode #:src-block
                 #:step-place #:trusted-when-asked-p #:uri-path #:use-places #:visit-entry #:visit-path
                 #:walk-directory #:word-bounds-at #:xref-find-definitions #:xref-go-back)

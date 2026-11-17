@@ -683,12 +683,13 @@ macros besides."
 (define-test (docx-view template-asks-for-a-picture)
   ;; a picture the Word template asks the note for ({{{logo:path}}} in its
   ;; header) comes from the logos directory (a name alone found there) or the
-  ;; note's own directory; one the note names from elsewhere is left out, said so;
+  ;; note's own directory; one an untrusted note names from elsewhere is left out, said so;
   ;; the PDF's template does the same, its condition on the logo empty then
   (with-test-directory (dir)
     (with-test-directory (logos)
       (with-test-directory (elsewhere)
         (let* ((tuatara-user:*logos-directory* (namestring logos))
+               (tuatara-user:*untrusted-directories* (list (namestring dir)))
                (source (write-docx-report (merge-pathnames "report.docx" dir)))
                (note-path (namestring (merge-pathnames "note.org" dir))))
           (dolist (directory (list logos elsewhere))

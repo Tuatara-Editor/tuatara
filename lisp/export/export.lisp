@@ -49,7 +49,7 @@ while its cross-references, contents and outline are still changing.")
 
 (defparameter *latex-carried-settings*
   (append tuatara.io:*sandbox-carried-settings*
-          '(*latex-engines* *latex-runs* *latex-error-lines* *export-trusted-directories*))
+          '(*latex-engines* *latex-runs* *latex-error-lines* *untrusted-directories*))
   "The settings an export reads as it works, carried to the thread it works on
 as they are on the editor's when it starts (TUATARA.RUNTIME:CARRY-SETTINGS):
 the sandbox's, and those of the export.")
@@ -230,8 +230,10 @@ no font here has, each (CHARACTER . LINE) by the LaTeX's line it is first on.
 NOTES, what else to say of it. PART, the words for a part exported alone (the
 subtree \"Findings\"), with ORIGINS, the line of the file each line of its text
 comes from, a vector, and LINES, the file's lines, for what is said of them.
-TRUSTED, the texts of its template and setup files that are your own, and
-PICTURES, the files its pictures are drawn from (ORG-LATEX-PARTS). AFTER,
+TRUSTED, the texts of its template and setup files that are your own,
+PICTURES, the files its pictures are drawn from, and BIBLIOGRAPHIES, the
+bibliography files it names (ORG-LATEX-PARTS). UNTRUSTED, whether its file
+is untrusted (EXPORT-JOB-UNTRUSTED-P). AFTER,
 a function of the job called once the PDF is made and THEN done, or NIL.
 LINE-STARTS, where each line of TEXT begins (TEXT-LINE-STARTS), once asked.
 ENGINES, the LaTeX programs found when it was asked for (LATEX-ENGINES-FOUND);
@@ -260,6 +262,10 @@ desktop's program) or :LATEX-ONLY.")
   (lines nil :documentation "The lines of the file, for what is said of them.")
   (trusted '() :documentation "The texts of the template and setup files that are your own.")
   (pictures '() :documentation "The files the pictures of PDF-EXPORT are drawn from (ORG-LATEX-PARTS).")
+  (bibliographies '() :documentation "The bibliography files the note of PDF-EXPORT names (ORG-LATEX-PARTS).")
+  (untrusted :unknown
+             :documentation "Whether the file PDF-EXPORT makes a PDF of is untrusted (EXPORT-JOB-UNTRUSTED-P),
+:UNKNOWN until asked.")
   (after nil :documentation "A function of the job called once the PDF is made and THEN done, or NIL.")
   (line-starts nil :documentation "Where each line of the text of PDF-EXPORT begins (TEXT-LINE-STARTS), once asked.")
   (engines '()
@@ -348,16 +354,6 @@ them taken apart."
         for path = (string-right-trim "/" (string-left-trim "!" (string-trim " " part)))
         when (and (plusp (length path)) (char= #\/ (char path 0)))
         collect path))
-
-(defun trusted-export-directories (&key whole)
-  "The directories *EXPORT-TRUSTED-DIRECTORIES* names, expanded, as native
-paths; with WHOLE, only those that may be shown whole (TUATARA.IO:SHOWN-PLACE-P). One
-that cannot be expanded is left out, and that reported."
-  (loop for directory in *export-trusted-directories*
-        for native = (ignoring-errors-reported ("expanding ~a" directory)
-                                               (tuatara.io:native (tuatara.io:expand-path directory)))
-        when (and native (or (not whole) (tuatara.io:shown-place-p native)))
-        collect native))
 
 (defun tex-settings-said (path)
   "What the kpsewhich beside the LaTeX program at PATH says TeX's directories
@@ -505,20 +501,19 @@ settings, read only; to write in, DIRECTORY alone, and TeX's own cache
   "What the LaTeX program at PATH, making a PDF of TEX for JOB in DIRECTORY,
 is shown, shut in, as a plist of SANDBOX-RUN's :DIRECTORIES, :WRITABLE and
 :OVERLAYS: what any TeX program is shown (TEX-PROGRAM-PLACES), and read only
-the directory of TEX and that of the file exported, and the directories
-*EXPORT-TRUSTED-DIRECTORIES* names, each when it may be shown whole
-\(TUATARA.IO:SHOWN-PLACE-P; else TEX alone). The files the note's pictures are drawn
+the directory of TEX and that of the file exported, each when it may be shown
+whole (TUATARA.IO:SHOWN-PLACE-P; else TEX alone). The files the note's pictures are drawn
 from (those an export draws in latex/pictures/ among them), the pictures
 your own template and setup files have TEX include from elsewhere
 \(LATEX-PICTURE-FILES), or a LaTeX file exported as it is when it stands in
-your own directories (EXPORT-TRUSTED-PATH-P), are shown too, each file
+a trusted directory (EXPORT-TRUSTED-PATH-P), are shown too, each file
 alone, read only."
   (let ((places (tex-program-places path directory)))
     (list :directories (append (let ((dirs (list (tuatara.io:parent-path tex)
                                                  (tuatara.io:parent-path (pdf-export-source job)))))
                                  (if (every #'tuatara.io:shown-place-p dirs) dirs (list tex)))
-                               (trusted-export-directories :whole t)
                                (pdf-export-pictures job)
+                               (pdf-export-bibliographies job)
                                (latex-picture-files tex (if (eq (pdf-export-kind job) :latex)
                                                             ;; a LaTeX file of your own, in your own directories
                                                             (let ((text (and (export-trusted-path-p tex)
@@ -677,7 +672,8 @@ file's full name."
             (pdf-export-missing job) (getf parts :missing)
             (pdf-export-notes job) (append (getf parts :notes) (and note (list note)))
             (pdf-export-trusted job) (getf parts :trusted)
-            (pdf-export-pictures job) (getf parts :pictures))
+            (pdf-export-pictures job) (getf parts :pictures)
+            (pdf-export-bibliographies job) (getf parts :bibliographies))
       (check-export-directory tex)
       (tuatara.runtime:job-check-stop)
       (tuatara.io:replace-file tex (getf parts :latex))
@@ -800,11 +796,23 @@ say it stopped (Emergency stop)."
 
 ;;; Bibliographies and indexes
 
+(defun export-job-untrusted-p (job)
+  "True when the file JOB, a PDF-EXPORT, makes a PDF of is untrusted
+\(UNTRUSTED-PATH-P), links followed: what the LaTeX file it writes names is
+then held to the directories of an untrusted note, wherever that LaTeX file
+is written. Decided once for each job."
+  (let ((known (pdf-export-untrusted job)))
+    (if (eq known :unknown)
+        (setf (pdf-export-untrusted job) (untrusted-path-p (pdf-export-source job)))
+        known)))
+
 (defun bibliography-directories (engine)
   "The directories the programs making a bibliography and index, of the TeX the
 LaTeX program at ENGINE belongs to, read shut in, besides the directory of the
-LaTeX file: those of *EXPORT-TRUSTED-DIRECTORIES* and TeX's own (TEX-TREES)."
-  (append (trusted-export-directories) (tex-trees engine)))
+LaTeX file: TeX's own (TEX-TREES), and each bibliography file the note being
+exported names (the job's BIBLIOGRAPHIES), shown alone."
+  (let ((job tuatara.runtime:*job*))
+    (append (tex-trees engine) (and (pdf-export-p job) (pdf-export-bibliographies job)))))
 
 (defun document-file (name base directories)
   "The full name of the file NAME, as a document or a program working for it
@@ -813,7 +821,12 @@ full name (ORG-EXPORT-PATH); NIL when no such file is there, or when it is
 outside BASE and DIRECTORIES (EXPORT-DIRECTORY-P): a file a program shut in
 for the document could not read is never read for it either."
   (let ((path (ignoring-errors-reported ("expanding ~a" name) (org-export-path name base))))
-    (and path (eq :regular (tuatara.io:path-kind path)) (export-directory-p path base directories) path)))
+    (and path (eq :regular (tuatara.io:path-kind path))
+         (export-directory-p path base directories (let ((job tuatara.runtime:*job*))
+                                                     (if (pdf-export-p job)
+                                                         (export-job-untrusted-p job)
+                                                         (untrusted-path-p base))))
+         path)))
 
 (defun tex-files-found (engine tex names format directory)
   "The full names of the files NAMES (with their types: refs.bib, plain.bst) as
@@ -1675,7 +1688,8 @@ again, at the same page. Where it shows is the rule for :exported buffers:
   "Make the Org file of the current buffer into a PDF beside it, as
 \\[org-export-latex-pdf] does, and open the PDF in the desktop's program for
 PDFs (xdg-open), or the one *open-externally-programs* gives
-\"application/pdf\", asking first unless *open-externally-ask* is NIL."
+\"application/pdf\", as \\[open-externally] opens a file: the PDF itself when
+it is trusted, else after asking (*untrusted-directories*)."
   (start-latex-export :outside))
 
 (define-command org-export-latex ()

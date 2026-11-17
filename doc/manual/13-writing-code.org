@@ -467,10 +467,13 @@ your =PATH=. Install one with your system's packages or the language's own
 tool, such as rust-analyzer for Rust or python3-lsp-server for Python, and open
 a file of that language again. ~M-x check-health~ says which are installed.
 
-A server runs the project's own code: build scripts, macros, plugins. For that
-reason nothing starts until you say you trust the project. ~C-c L~ (=lsp=)
-starts the servers for the buffer's language and asks, the first time, whether
-you trust the project. There are three answers.
+A server runs the project's own code: build scripts, macros, plugins. A project
+of your own, outside the untrusted directories (=*untrusted-directories*=,
+chapter 12), is trusted: its servers start by themselves. For a project in one
+of those directories, such as a repository you downloaded, nothing starts until
+you say you trust it. ~C-c L~ (=lsp=) starts the servers for the buffer's
+language and asks, the first time, whether you trust the project. There are
+three answers.
 
 - ~y~ trusts it. Its servers start by themselves whenever one of its files is
   opened, in later sessions too. Its build commands (=M-x compile=) run, and
@@ -482,9 +485,9 @@ you trust the project. There are three answers.
 ~M-x trust-project~ asks again for the project of the current buffer, whatever
 was said before. ~M-x lsp-forget-project~ takes all of the trust back: its
 servers end, git no longer runs the programs it names, and its build commands
-are asked about again. To trust a whole directory of your own projects without being asked,
-put it in =*trusted-projects*= in the init file, but never the directory
-where files others send you are kept.
+are asked about again. A project outside the untrusted directories stays
+trusted all the same; clone code you have not read into one of them, or add
+the directory you clone such code into to =*untrusted-directories*=.
 
 A /project/ is the directory that holds the language's own mark, such as
 =Cargo.toml= for Rust, or else the nearest directory above holding =.git= or
@@ -649,7 +652,7 @@ the steps still show what Tuatara says.
 
 *** Settings and faces
 
-#+table: settings *trusted-projects* *lsp-languages* *language-servers* *lsp-idle-delay* *lsp-signature-help* *lsp-hover-echo* *lsp-highlight-symbol* *lsp-diagnostics-display* *lsp-diagnostics-style* *lsp-inlay-hints* *lsp-semantic-tokens* *lsp-semantic-faces* *lsp-code-lenses* *lsp-outline* *lsp-wait* *lsp-largest-document* *lsp-largest-message* *lsp-watch-files* *lsp-watch-skipped* *language-formatters* *format-on-save* *format-in-sandbox* *format-seconds* *word-completion-keep-case*
+#+table: settings *lsp-languages* *language-servers* *lsp-idle-delay* *lsp-signature-help* *lsp-hover-echo* *lsp-highlight-symbol* *lsp-diagnostics-display* *lsp-diagnostics-style* *lsp-inlay-hints* *lsp-semantic-tokens* *lsp-semantic-faces* *lsp-code-lenses* *lsp-outline* *lsp-wait* *lsp-largest-document* *lsp-largest-message* *lsp-watch-files* *lsp-watch-skipped* *language-formatters* *format-on-save* *format-in-sandbox* *format-seconds* *word-completion-keep-case*
 
 #+table: faces :diagnostic-error :diagnostic-warning :diagnostic-info :diagnostic-hint :diagnostic-error-ground :diagnostic-warning-ground :diagnostic-info-ground :diagnostic-hint-ground :symbol-highlight :inlay-hint :code-lens :fold-ellipsis
 

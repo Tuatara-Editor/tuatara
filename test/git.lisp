@@ -26,13 +26,13 @@ forgets it: WITH-TEST-DIRECTORY)."
   (tuatara.defaults::state-list-put tuatara.defaults::*trusted*
                                     (list (tuatara.defaults::real-directory (namestring dir)))))
 
-(defmacro with-trusted-directories ((directories) &body body)
-  "Run BODY with *TRUSTED-PROJECTS* DIRECTORIES for every thread, the git
+(defmacro with-untrusted-directories ((directories) &body body)
+  "Run BODY with *UNTRUSTED-DIRECTORIES* DIRECTORIES for every thread, the git
 jobs' too, set back after."
   (let ((old (gensym)))
-    `(let ((,old tuatara-user:*trusted-projects*))
-       (unwind-protect (progn (setf tuatara-user:*trusted-projects* ,directories) ,@body)
-         (setf tuatara-user:*trusted-projects* ,old)))))
+    `(let ((,old tuatara-user:*untrusted-directories*))
+       (unwind-protect (progn (setf tuatara-user:*untrusted-directories* ,directories) ,@body)
+         (setf tuatara-user:*untrusted-directories* ,old)))))
 
 (defun git-output (dir &rest arguments)
   "What git prints with ARGUMENTS in DIR."
@@ -60,7 +60,7 @@ jobs' too, set back after."
     (alexandria:write-string-into-file (format nil "one~%two~%") (merge-pathnames "a.txt" dir) :if-exists :supersede)
     (alexandria:write-string-into-file (format nil "new~%") (merge-pathnames "b.txt" dir))
     (let ((tuatara.defaults::*modal-editing* nil)
-          (tuatara-user:*trusted-projects* (list (namestring dir)))
+          (tuatara-user:*untrusted-directories* '())
           (staged nil))
       (flet ((status () (find-if (lambda (b) (typep (tuatara.modes:buffer-major-mode b) 'tuatara.git::git-status-mode))
                                  tuatara.buffer:*buffers*)))
@@ -106,7 +106,7 @@ jobs' too, set back after."
   (with-test-directory (dir)
     (scratch-repository dir :trusted nil)
     (let ((tuatara.defaults::*modal-editing* nil)
-          (tuatara-user:*trusted-projects* '()))
+          (tuatara-user:*untrusted-directories* '("/")))
       (let ((f (auto-save-session (list (format nil
                                                 "C-x C-f C-a C-k ~a RET"
                                                 (rimu-typed (namestring (merge-pathnames "a.txt" dir))))
@@ -138,11 +138,11 @@ jobs' too, set back after."
     (is equal '(("plain.txt" "modified")) (tuatara.git::git-state-unstaged state))))
 
 (define-test (git trusted-where-it-really-is)
-  ;; a project is trusted by where it really is: a link from a trusted directory lends none,
-  ;; nor does .. out of one; one trusted when asked is kept by its real place
+  ;; a project is trusted by where it really is: a link from a trusted directory into an untrusted
+  ;; one lends none, nor does .. out of one
   (with-test-directory (trusted)
     (with-test-directory (elsewhere)
-      (let ((tuatara-user:*trusted-projects* (list (namestring trusted)))
+      (let ((tuatara-user:*untrusted-directories* (list (namestring elsewhere)))
             (inside (merge-pathnames "inside/" trusted))
             (link (concatenate 'string (string-right-trim "/" (namestring trusted)) "/link")))
         (ensure-directories-exist inside)
@@ -155,22 +155,6 @@ jobs' too, set back after."
                                                                  (car (last (pathname-directory elsewhere)))
                                                                  "/")))
         (false (tuatara.defaults::project-trusted-p (concatenate 'string (namestring trusted) "not-there/")))))))
-
-(define-test (git trust-looked-up-once)
-  ;; whether a project is trusted asks where it really is, and not again where each trusted directory is
-  (with-test-directory (dir)
-    (let* ((directories (loop for k below 50
-                          collect (namestring (ensure-directories-exist (merge-pathnames (format nil "t~d/" k) dir)))))
-           (tuatara-user:*trusted-projects* directories)
-           (calls 0))
-      (tuatara.defaults::project-trusted-p (first directories))
-      (sb-int:encapsulate 'tuatara.io:real-path 'count-calls
-                          (lambda (f path) (incf calls) (funcall f path)))
-      (unwind-protect
-           (progn (true (tuatara.defaults::project-trusted-p (car (last directories))))
-                  (false (tuatara.defaults::project-trusted-p (namestring dir))))
-        (sb-int:unencapsulate 'tuatara.io:real-path 'count-calls))
-      (is = 2 calls))))
 
 (defun native-in (dir name)
   "The native name of NAME in the directory DIR, NAME taken as it is (a * no pattern)."
@@ -238,7 +222,7 @@ jobs' too, set back after."
   "Run STEPS (as AUTO-SAVE-SESSION takes them) once FILE in the repository
 DIR is visited and its status read, the project trusted. Returns the frontend."
   (let ((tuatara.defaults::*modal-editing* nil)
-        (tuatara-user:*trusted-projects* (list (namestring dir))))
+        (tuatara-user:*untrusted-directories* '()))
     (values (auto-save-session (list* (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed (native-in dir file)))
                                       "C-x g" (list :until #'git-state-here)
                                       steps)
@@ -550,7 +534,7 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
     (git-output dir "commit" "-q" "-am" "Twenty")
     (put-file (merge-pathnames "a.txt" dir) (numbered-lines 20 2 15))
     (let ((tuatara.defaults::*modal-editing* nil)
-          (tuatara-user:*trusted-projects* (list (namestring dir))))
+          (tuatara-user:*untrusted-directories* '()))
       (let ((f (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed (native-in dir "a.txt")))
                                         "M-< C-s L 1 5 RET M-x g i t - s t a g e - h u n k RET"
                                         (list :until (lambda () (search "L15" (git-output dir "diff" "--cached"))))
@@ -567,7 +551,7 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
     (scratch-repository dir)
     (put-file (merge-pathnames "a.txt" dir) (numbered-lines 20 2 15))
     (let ((tuatara.defaults::*modal-editing* nil)
-          (tuatara-user:*trusted-projects* (list (namestring dir)))
+          (tuatara-user:*untrusted-directories* '())
           (waits 0)
           (staging nil))
       ;; the file's lines not counted yet, as for a large file just opened, while its hunk is staged
@@ -651,7 +635,7 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
       (git-output dir "commit" "-q" "-am" "Lone returns")
       (put-file (merge-pathnames "a.txt" dir) (text "H|h|h|h|h|h|h|h" "L12")))
     (let ((tuatara.defaults::*modal-editing* nil)
-          (tuatara-user:*trusted-projects* (list (namestring dir)))
+          (tuatara-user:*untrusted-directories* '())
           (visit (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed (native-in dir "a.txt")))))
       ;; l5, the editor's 12th line and git's 5th, is no change
       (let ((f (auto-save-session (list visit "M-< C-s l 5 RET M-x g i t - s t a g e - h u n k RET"
@@ -767,7 +751,7 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
           (tree (native-in dir "wt")))
       (ensure-directories-exist repo)
       (scratch-repository repo)
-      (with-trusted-directories ((list (namestring dir)))
+      (with-untrusted-directories ('())
       (let ((tuatara.defaults::*modal-editing* nil))
         (let ((f (auto-save-session
                   (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed (native-in repo "a.txt")))
@@ -864,7 +848,7 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
     (put-file (merge-pathnames "a.txt" dir) (format nil "one~%two~%"))
     (git-output dir "add" "a.txt")
     (let ((tuatara.defaults::*modal-editing* t)
-          (tuatara-user:*trusted-projects* (list (namestring dir)))
+          (tuatara-user:*untrusted-directories* '())
           (states '()))
       (flet ((commit-buffer ()
                (tuatara.git::git-buffer-of (tuatara.git:repository-top (namestring dir))
@@ -898,7 +882,7 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
     (scratch-repository dir)
     (put-file (merge-pathnames "a.txt" dir) (format nil "one~%two~%"))
     (let ((tuatara.defaults::*modal-editing* t)
-          (tuatara-user:*trusted-projects* (list (namestring dir)))
+          (tuatara-user:*untrusted-directories* '())
           (state nil))
       (flet ((file () (tuatara.buffer:find-buffer "a.txt")))
         (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed (native-in dir "a.txt")))
@@ -997,7 +981,7 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
       (git-output repo "commit" "-q" "-am" "Mine")
       (flet ((remote-subjects () (git-log-subjects remote)))
         (let ((tuatara.defaults::*modal-editing* nil)
-              (tuatara-user:*trusted-projects* (list (namestring dir))))
+              (tuatara-user:*untrusted-directories* '()))
           (let ((f (auto-save-session
                     (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed (native-in repo "a.txt")))
                           "C-x g" (list :until #'git-state-here)
@@ -1293,7 +1277,7 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
       (put-file (merge-pathnames "loose.log" repo) "x")
       (put-file (merge-pathnames "secret.txt" repo) "x")
       (let ((tuatara.defaults::*modal-editing* nil)
-            (tuatara-user:*trusted-projects* (list (namestring dir)))
+            (tuatara-user:*untrusted-directories* '())
             (global (sb-posix:getenv "GIT_CONFIG_GLOBAL")))
         (sb-posix:setenv "GIT_CONFIG_GLOBAL" (native-in dir "gitconfig") 1)
         (unwind-protect
@@ -1347,7 +1331,7 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
       (put-file (merge-pathnames "a.txt" repo) (format nil "one~%two~%"))
       (flet ((messages () (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*Messages*"))))
         (let ((tuatara.defaults::*modal-editing* nil)
-              (tuatara-user:*trusted-projects* (list (namestring dir)))
+              (tuatara-user:*untrusted-directories* '())
               (tuatara-user:*git-menus* :full))
           (let ((f (auto-save-session
                     (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed (native-in repo "a.txt")))
@@ -1532,7 +1516,7 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
   (with-test-directory (dir)
     (scratch-repository dir)
     (let ((tuatara.defaults::*modal-editing* t)
-          (tuatara-user:*trusted-projects* (list (namestring dir))))
+          (tuatara-user:*untrusted-directories* '()))
       (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed (native-in dir "a.txt")))
                                "C-x g" (list :until #'git-state-here)
                                "d c" (list :until (asking "Show commit")) "RET"
@@ -1972,7 +1956,7 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
       (git "commit" "-q" "-am" "Fourth")
       (put "b.txt" (format nil "one~%not committed~%"))
       (let ((tuatara.defaults::*modal-editing* t)
-            (tuatara-user:*trusted-projects* (list (namestring dir)))
+            (tuatara-user:*untrusted-directories* '())
             (fourth (string-trim '(#\Newline) (git "log" "-1" "--format=%h")))
             (seen '()))
         (multiple-value-bind (f editor)
@@ -2040,7 +2024,7 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
       (put "c.txt" (format nil "kept and changed~%"))
       (git "commit" "-q" "-am" "Delete a and sub")
       (let ((tuatara.defaults::*modal-editing* t)
-            (tuatara-user:*trusted-projects* (list (namestring dir)))
+            (tuatara-user:*untrusted-directories* '())
             (seen '()))
         (auto-save-session
          (list (format nil "C-x d C-a C-k ~a C-j" (rimu-typed (namestring dir)))
@@ -2166,7 +2150,7 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
     (alexandria:write-string-into-file (format nil "new~%") (merge-pathnames "new.txt" dir))
     (git-output dir "mv" "a.txt" "r ü.txt")
     (let ((tuatara.defaults::*modal-editing* nil)
-          (tuatara-user:*trusted-projects* (list (namestring dir)))
+          (tuatara-user:*untrusted-directories* '())
           (seen '()))
       (flet ((said () (or (tuatara.command:editor-message tuatara.command:*editor*) ""))
              (note () (push (list (tuatara.command:editor-message tuatara.command:*editor*)

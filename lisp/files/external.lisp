@@ -1,14 +1,16 @@
 ;;;; lisp/files/external.lisp --- A file opened in the desktop's own program, on asking.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; A picture, a PDF, a sound or a video can be handed to the program the
-;;;; desktop opens that kind of file with (xdg-open), for what the editor does
-;;;; not do: printing, forms, playing. That program is not shut in: it reads the
-;;;; file with all it can reach. So it is only done when asked, only for the
-;;;; kinds of file *OPEN-EXTERNALLY-KINDS* names, told by the file's first
-;;;; octets, and only when its name does not say it is something else (a
-;;;; program named .jpg is refused); and a question comes first, unless
-;;;; *OPEN-EXTERNALLY-ASK* is NIL. The program runs in a session of its own, so
+;;;; A file can be handed to the program the desktop opens that kind of file
+;;;; with (xdg-open), for what the editor does not do: printing, forms,
+;;;; playing. That program is not shut in: it reads the file with all it can
+;;;; reach. A trusted file is opened where it is, whatever its kind, unless
+;;;; it is a program. A file from outside (UNTRUSTED-PATH-P: an evidence
+;;;; directory, your downloads) is untrusted: only the kinds of file
+;;;; *OPEN-EXTERNALLY-KINDS* names, told by the file's first octets, and only
+;;;; when its name does not say it is something else (a program named .jpg is
+;;;; refused), opened from a private copy; and a question comes first, unless
+;;;; *OPEN-EXTERNALLY-ASK* is NIL, whose third answer trusts that one file. The program runs in a session of its own, so
 ;;;; that it stays when the editor or its terminal goes.
 ;;;; The program is chosen by the file's kind, never by its name alone.
 
@@ -132,8 +134,9 @@ Extensions (MIME) type TYPE with, is not found."
 (define-setting *open-externally-kinds*
   '(:png :jpeg :gif :webp :bmp :tiff :raw :ico :heif :avif :jp2 :j2k :jxl :xcf :psd :pdf
     :mp4 :matroska :avi :mpeg :mp3 :ogg :flac :wav :aiff :midi)
-  "The kinds of file \\[open-externally] opens in the desktop's own program, as
-their first octets tell them.
+  "The kinds of file \\[open-externally] opens in the desktop's own program when
+the file is untrusted (*UNTRUSTED-DIRECTORIES*), as their first octets tell
+them. A trusted file is opened whatever its kind, unless it is a program.
 Pictures, PDFs, sound and video are the standard. Each is opened after asking,
 from a copy only you can read, never the file itself. Office documents (:docx,
 :xlsx, :pptx, :odt, :ods, :odp) are left out of the standard list: they can
@@ -147,24 +150,66 @@ kind is a mail item or an installer.
   :values (list-of keyword))
 
 (define-setting *open-externally-ask* t
-  "Whether \\[open-externally] asks before opening a file in the desktop's own
-program, which reads it outside the sandbox.
-- t: it asks.
-- nil: it opens the file at once."
+  "Whether \\[open-externally] asks before opening an untrusted file
+\(*UNTRUSTED-DIRECTORIES*), or a program wherever it is, in the desktop's own
+program, which reads it outside the sandbox. A trusted file is opened without
+asking.
+- t: it asks; y opens a copy of the file, n opens nothing, and e trusts the
+  file this once and opens it itself, whatever its kind.
+- nil: it opens a copy of the file at once."
   :values boolean)
 
+(defparameter *program-kinds* '(:elf :pe :mach-o :script :desktop :jar :java-class :wasm :lnk :apk)
+  "The kinds of file, as TUATARA.IO:OCTETS-KIND tells them by their contents,
+that are programs or start one: \\[open-externally] asks before opening one
+wherever it is, as an untrusted file (an AppImage is an :elf).")
+
+(defparameter *program-names*
+  '("desktop" "bat" "cmd" "ps1" "vbs" "reg" "flatpakref" "appimage" "pyz" "msi" "exe" "lnk" "apk" "deb" "rpm")
+  "The endings of names that the desktop's programs start or install, whatever
+the file holds: \\[open-externally] asks before opening a file so named
+wherever it is, as an untrusted file. A name only adds caution here, never
+trust.")
+
+(defun program-file-p (native)
+  "True when the file at NATIVE, links followed, is a program or starts one: of
+one of *PROGRAM-KINDS* by its contents, named with one of *PROGRAM-NAMES*'
+endings, or a plain file anyone may run (an execute bit set)."
+  (let ((stamp (tuatara.io:path-stamp native :failure nil)))
+    (and stamp
+         (eq :regular (tuatara.io:stamp-kind stamp))
+         (or (logtest #o111 (tuatara.io:stamp-mode stamp))
+             (let ((ending (tuatara.io:native-file-type (tuatara.io:native-file-name native))))
+               (and ending (member ending *program-names* :test #'string-equal)))
+             (member (nth-value 1 (file-kind native)) *program-kinds*))
+         t)))
+
+(defun same-file-state-p (stamp other)
+  "True when the stamps STAMP and OTHER name the same file, its content and its
+mode unchanged as far as the system tells (TUATARA.IO:SAME-CONTENT-P and the
+time of its last change)."
+  (and (tuatara.io:same-content-p stamp other) (= (tuatara.io:stamp-ctime stamp) (tuatara.io:stamp-ctime other))))
+
 (defun open-externally-refusal (path &key also)
-  "Why the file at PATH is not opened in the desktop's program, as a sentence,
-or NIL when it may be, with its kind in words as a second value; ALSO, kinds
-opened this once besides *OPEN-EXTERNALLY-KINDS*."
+  "Why the file at PATH, untrusted, is not opened from a copy in the desktop's
+program, as a sentence, or NIL when it may be, with its kind in words and its
+keyword as second and third values, the words NIL when it cannot be read;
+ALSO, kinds opened this once besides *OPEN-EXTERNALLY-KINDS*."
   (let ((name (tuatara.io:native-file-name path)))
     (multiple-value-bind (words kind why) (file-kind path)
       (cond (why (format nil "~a cannot be read: ~a" name why))
-            ((null kind) (format nil "~a is not a picture, a PDF, a sound or a video by its contents: not opened outside Tuatara" name))
+            ((null kind)
+             (values (format nil "~a is not a picture, a PDF, a sound or a video by its contents: ~
+                                  not opened outside Tuatara" name)
+                     (or words "unknown")))
             ((not (or (member kind *open-externally-kinds*) (member kind also)))
-             (format nil "~a is ~a by its contents: not opened outside Tuatara (*open-externally-kinds*)" name words))
+             (values (format nil "~a is ~a by its contents: not opened outside Tuatara (*open-externally-kinds*)"
+                             name words)
+                     words kind))
             ((tuatara.io:kind-name-disagrees-p kind name)
-             (format nil "~a is ~a by its contents, not what its name says: not opened outside Tuatara" name words))
+             (values (format nil "~a is ~a by its contents, not what its name says: not opened outside Tuatara"
+                             name words)
+                     words kind))
             (t (values nil words kind))))))
 
 (defvar *openings* '()
@@ -216,12 +261,14 @@ Returns its process."
                                          :name (format nil "tuatara ~a" label))
     process))
 
-(defun open-copy-externally (native name kind words program &key arguments (label "the desktop's program"))
+(defun open-copy-externally (native name kind words program &key arguments (label "the desktop's program") execute)
   "What a thread does to open the file NATIVE, told to be KIND, in PROGRAM,
 given ARGUMENTS before its name: copy it where only you can read it
 (OPENED-COPIES-DIRECTORY), read only; check the copy is still KIND, so that a
-file changed after it was looked at is not opened; and open the copy. Returns
-what to say of it, LABEL naming the program."
+file changed after it was looked at is not opened; and open the copy. With
+EXECUTE, an evidence file trusted this once whatever its kind, the copy's
+SHA-256 is written to the debug log with the file's path. Returns what to say
+of it, LABEL naming the program."
   (handler-case
       (reporting-errors ("opening ~a outside Tuatara" native)
         (let* ((copy (private-copy-path name))
@@ -235,52 +282,156 @@ what to say of it, LABEL naming the program."
           (unless (eq kind (nth-value 1 (file-kind copy)))
             (ignoring-errors-reported ("deleting ~a" place) (tuatara.io:delete-tree place))
             (return-from open-copy-externally (format nil "~a changed after it was looked at: not opened" name)))
-          ;; a session of its own (setsid): the program stays when the editor or its terminal goes
-          (start-detached program (append arguments (list copy)) :label "opened file")
-          (tuatara.runtime:debug-report :file "opened outside Tuatara: ~a (~a) as its copy ~a, with ~a"
-                                        native words copy program)
-          (format nil "Opened ~a in ~a (a copy of it, read only)" name label)))
+          (let ((sum (and execute (file-sha256 copy))))
+            (when (and execute (null sum))
+              (return-from open-copy-externally (format nil "~a could not be read whole: not opened" name)))
+            ;; a session of its own (setsid): the program stays when the editor or its terminal goes
+            (start-detached program (append arguments (list copy)) :label "opened file")
+            (if execute
+                (tuatara.runtime:debug-report :file "trusted this once and opened outside Tuatara: ~a (~a) as its ~
+                                                     copy ~a, SHA-256 ~a, with ~a"
+                                              native (or words "of no kind told") copy sum program)
+                (tuatara.runtime:debug-report :file "opened outside Tuatara: ~a (~a) as its copy ~a, with ~a"
+                                              native words copy program))
+            (format nil "Opened ~a in ~a (a copy of it, read only~@[, SHA-256 ~a~])" name label sum))))
     (error (e) (format nil "~a not opened: ~a" name e))))
+
+(defun open-in-place-externally (native name kind words program
+                                 &key arguments (label "the desktop's program") execute stamp)
+  "What a thread does to open the file NATIVE itself, where it really is,
+told to be KIND (NIL when its contents do not say), in PROGRAM, given
+ARGUMENTS before its name, STAMP its stamp when that was decided. A file that
+is no longer the one looked at (SAME-FILE-STATE-P), or, for a trusted one, has
+become untrusted or a program meanwhile, is not opened. With EXECUTE, an
+untrusted file trusted this once, its SHA-256 is summed first and written to
+the debug log with its path, so that the choice can be shown later: the sum
+of the file as read before it was opened, which is not opened when it changed
+while being summed. The program opens the file again itself, after these
+checks; a change in between is not seen. Returns what to say of it, LABEL
+naming the program."
+  (handler-case
+      (reporting-errors ("opening ~a outside Tuatara" native)
+        (let* ((real (tuatara.io:real-path native))
+               (now (and real (tuatara.io:path-stamp real :failure nil))))
+          (flet ((refused (control)
+                   (return-from open-in-place-externally (format nil control name))))
+            (unless now (refused "~a is not there: not opened"))
+            (unless (or (null stamp) (same-file-state-p stamp now))
+              (refused "~a changed after it was looked at: not opened"))
+            (if execute
+                (let ((sum (file-sha256 real)))
+                  (unless sum (refused "~a could not be read whole: not opened"))
+                  (unless (same-file-state-p now (tuatara.io:path-stamp real :failure nil))
+                    (refused "~a changed while it was summed: not opened"))
+                  (tuatara.runtime:debug-report :file "trusted this once and opened outside Tuatara: ~a (~a), ~
+                                                       SHA-256 ~a as read before opening, with ~a"
+                                                real (or words "of no kind told") sum program)
+                  (start-detached program (append arguments (list real)) :label "opened file")
+                  (format nil "Opened ~a in ~a, trusted (SHA-256 ~a)" name label sum))
+                (progn
+                  (when (or (untrusted-path-p real) (program-file-p real))
+                    (refused "~a changed after it was looked at: not opened"))
+                  (tuatara.runtime:debug-report :file "opened outside Tuatara, trusted: ~a (~a), with ~a"
+                                                real (or words kind "of no kind told") program)
+                  (start-detached program (append arguments (list real)) :label "opened file")
+                  (format nil "Opened ~a in ~a" name label))))))
+    (error (e) (format nil "~a not opened: ~a" name e))))
+
+(defun start-opening (name label work)
+  "Run WORK, a function of no arguments giving what to say once the file NAME
+is opened in LABEL, the program, on a thread of its own, the editor told
+when it is over (OPENINGS-TICK), with *UNTRUSTED-DIRECTORIES* as it was when
+it was decided. True."
+  (let ((editor *editor*)
+        (opening (cons nil nil))
+        (untrusted *untrusted-directories*))
+    (setf (car opening)
+          (tuatara.runtime:make-guarded-thread
+           (lambda ()
+             (unwind-protect
+                  (setf (cdr opening)
+                        (handler-case (let ((*untrusted-directories* untrusted)) (funcall work))
+                          (serious-condition (e) (format nil "~a not opened: ~a" name e))))
+               ;; however it ends, the opening is over and said
+               (unless (cdr opening) (setf (cdr opening) (format nil "~a not opened" name)))
+               (wake-editor editor)))
+           :name "tuatara open outside"))
+    (push opening *openings*)
+    (message "Opening ~a in ~a..." name label)
+    t))
+
+(defun untrusted-answer (name words label refusal &key evidence)
+  "How to open the untrusted file NAME, of the kind WORDS, in LABEL, the
+program, as the character answered, asked unless *OPEN-EXTERNALLY-ASK* is
+NIL: y a private copy, n nothing, e the file itself, trusted this once, or for
+EVIDENCE a private copy whatever its kind, so that nothing is written beside
+it. When REFUSAL says why no copy may be opened, y is not offered, and with
+nothing asked the refusal is said and NIL returned."
+  (let ((e-words (if evidence
+                     "e a copy of this evidence whatever its kind, which may run what it holds"
+                     "e the file itself, which may run what it holds")))
+    (cond ((not *open-externally-ask*)
+           (if refusal (progn (message "~a" refusal) nil) #\y))
+          (refusal
+           (read-typed-answer (format nil "Untrusted ~a is ~a, of which no copy is opened. In ~a: ~a"
+                                      name words label e-words)
+                              '((#\n "no") (#\e "execute"))))
+          (t
+           (read-typed-answer (format nil "Open ~a (~a) in ~a, outside the sandbox? Untrusted: y a copy, ~a"
+                                      name words label e-words)
+                              '((#\y "yes") (#\n "no") (#\e "execute")))))))
 
 (defun open-externally-file (path &key also)
   "Open the file at PATH in the desktop's own program for its kind, or the one
-*OPEN-EXTERNALLY-PROGRAMS* gives its type, when it is one
+*OPEN-EXTERNALLY-PROGRAMS* gives its type, in the background. A trusted file
+\(UNTRUSTED-PATH-P) is opened itself, whatever its kind, without asking,
+unless it is a program (PROGRAM-FILE-P), which is taken as untrusted wherever
+it is. An untrusted file is opened after asking unless *OPEN-EXTERNALLY-ASK*
+is NIL, from a copy, read only and yours alone, when it is one
 *OPEN-EXTERNALLY-KINDS* names, or ALSO (a Word document Tuatara has just
-written, :docx), and its name agrees, after asking unless
-*OPEN-EXTERNALLY-ASK* is NIL; say why not otherwise. The program gets a copy
-of it, read only and yours alone, made in the background: it can change
-nothing of the file, not even when it was read, and a file changed after it
-was looked at is not opened. True when the opening was started."
+written, :docx), and its name agrees: the program can change nothing of the
+file, not even when it was read, and a file changed after it was looked at is
+not opened. Answered e, the untrusted file itself is opened whatever its
+kind, or for evidence a private copy of it, its path and SHA-256 written to
+the debug log. Why not is said otherwise. True when the opening was started."
   (let* ((native (tuatara.io:native (tuatara.io:expand-path path)))
-         (name (tuatara.io:native-file-name native)))
-    (multiple-value-bind (refusal words kind) (open-externally-refusal native :also also)
-      (if refusal
+         (name (tuatara.io:native-file-name native))
+         (untrusted (or (untrusted-path-p native) (program-file-p native)))
+         (evidence (and untrusted (evidence-path-p native :follow t) t))
+         (stamp (tuatara.io:path-stamp native :failure nil)))
+    (multiple-value-bind (refusal words kind)
+        (if untrusted
+            (open-externally-refusal native :also also)
+            (multiple-value-bind (words kind why) (file-kind native)
+              (values (and why (format nil "~a cannot be read: ~a" name why)) (or words (and (not why) "unknown"))
+                      kind)))
+      (if (and refusal (null words))
           (progn (message "~a" refusal) nil)
-          (let ((type (file-mime-type kind name)))
+          (let ((type (and kind (file-mime-type kind name))))
             (multiple-value-bind (program arguments given label) (external-opener type)
-              (cond ((null program) (message "~a" (opener-missing given type)) nil)
-                    ((and *open-externally-ask*
-                          (not (yes-or-no-p* (format nil "Open ~a (~a) in ~a, outside the sandbox?" name words label))))
-                     (message "Not opened")
-                     nil)
-                    (t
-                     (let ((editor *editor*)
-                           (opening (cons nil nil)))
-                       (setf (car opening)
-                             (tuatara.runtime:make-guarded-thread
-                              (lambda ()
-                                (unwind-protect
-                                     (setf (cdr opening)
-                                           (handler-case (open-copy-externally native name kind words program
-                                                                               :arguments arguments :label label)
-                                             (serious-condition (e) (format nil "~a not opened: ~a" name e))))
-                                  ;; however it ends, the opening is over and said
-                                  (unless (cdr opening) (setf (cdr opening) (format nil "~a not opened" name)))
-                                  (wake-editor editor)))
-                              :name "tuatara open outside"))
-                       (push opening *openings*)
-                       (message "Opening ~a in ~a..." name label)
-                       t)))))))))
+              (if (null program)
+                  (progn (message "~a" (opener-missing given type)) nil)
+                  (case (if untrusted (untrusted-answer name words label refusal :evidence evidence) :trusted)
+                    (#\y (start-opening name label
+                                        (lambda ()
+                                          (open-copy-externally native name kind words program
+                                                                :arguments arguments :label label))))
+                    (#\e (start-opening name label
+                                        (if evidence
+                                            (lambda ()
+                                              (open-copy-externally native name kind words program
+                                                                    :arguments arguments :label label :execute t))
+                                            (lambda ()
+                                              (open-in-place-externally native name kind words program
+                                                                        :arguments arguments :label label
+                                                                        :execute t :stamp stamp)))))
+                    (:trusted
+                     (start-opening name label
+                                    (lambda ()
+                                      (open-in-place-externally native name kind words program
+                                                                :arguments arguments :label label :stamp stamp))))
+                    (#\n (message "Not opened") nil)
+                    (t nil)))))))))
 
 (defun openings-tick (editor)
   "Tick function: say how the openings in the desktop's programs went; T while one is under way."
@@ -303,9 +454,14 @@ PROMPT."
 or the one *OPEN-EXTERNALLY-PROGRAMS* gives its Multipurpose Internet Mail
 Extensions (MIME) type, for what Tuatara does not do: printing, forms,
 playing. In a list of a directory, the entry on the line; in a PDF's view, the
-PDF. That program is not shut in the sandbox: only a picture, a PDF, a sound
-or a video (*OPEN-EXTERNALLY-KINDS*), by its contents and with a name that
-agrees, is opened, after asking (*OPEN-EXTERNALLY-ASK*)."
+PDF. That program is not shut in the sandbox. A trusted file is opened where it
+is, whatever its kind, without asking, unless it is a program. An untrusted
+file, in an evidence directory or one of *UNTRUSTED-DIRECTORIES* (your
+downloads), or a program, is opened after asking (*OPEN-EXTERNALLY-ASK*), from
+a copy, read only, and
+only a picture, a PDF, a sound or a video (*OPEN-EXTERNALLY-KINDS*), by its
+contents and with a name that agrees; answered e, the file itself, whatever
+its kind, which may run what it holds."
   (let ((path (shown-file (current-buffer))))
     (if (null path)
         (message "~a shows no file" (tuatara.buffer:buffer-name (current-buffer)))
@@ -317,7 +473,7 @@ agrees, is opened, after asking (*OPEN-EXTERNALLY-ASK*)."
     (format nil "~a~@[; ~{~a~^, ~} to programs of your choosing (*open-externally-programs*)~]"
             (program-health-words "outside Tuatara" program (format nil "~a not found: ~a" *open-externally-program*
                                                                      (outside-program-install-words :open))
-                                  :how "on asking (O in a list or a PDF), for pictures, PDFs, sound and video")
+                                  :how "on asking for untrusted files (O in a list or a PDF)")
             (mapcar #'car *open-externally-programs*))))
 
 (defun install-open-externally ()

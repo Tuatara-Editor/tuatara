@@ -20,6 +20,74 @@ rest of your computer. If you copy a program out of a directory and run it in a
 terminal, no safeguard of an editor helps you. Each section below says what it
 covers and what it leaves out.
 
+** Your files and files from outside
+
+Tuatara tells your own files from files that came from outside by where they
+are. A file is untrusted when it is in one of the directories of
+=*untrusted-directories*=, or in an evidence directory (below). Every other
+file is yours, and trusted. Links are followed first: a link in your notes that
+leads into your downloads is untrusted.
+
+As standard the list holds three places, written as keywords so that they are
+found where they are on the machine at hand:
+
+- =:downloads=, your download directory: the one your desktop's user
+  directories name (=XDG_DOWNLOAD_DIR= in =user-dirs.dirs=), else
+  =~/Downloads/=;
+- =:removable-media=, where drives and disk images are mounted: =/run/media/=,
+  =/media/= and =/mnt/=;
+- =:temporary=, the temporary directories =/tmp/= and =/var/tmp/=, where
+  browsers and mail programs put what they open.
+
+Two more kinds of file are untrusted wherever they are. The copies of outside
+files Tuatara keeps in its cache (those it hands to the desktop's programs,
+those read from other machines, those given to programs shut in) are untrusted.
+So is a file a web browser marked as downloaded: Firefox and Chromium give what
+they download the extended attribute =user.xdg.origin.url=, which stays with
+the file when you move it on the same drive. Tuatara reads it without changing
+the file's times.
+
+Clone or download what others made into one of these directories, or add the
+directory you keep such things in:
+
+#+begin_example
+(setf *untrusted-directories*
+      '(:downloads :removable-media :temporary "~/Clones/" "~/mail/attachments/"))
+#+end_example
+
+An untrusted file:
+
+- opens safely however you open it (the next section);
+- is handed to the desktop's programs only after a question, as a private copy
+  of a picture, a PDF, a sound or a video, or itself when you answer =e=
+  (chapter 9, "Opening a file with another program");
+- as an Org note, has its export take setup files, pictures and templates only
+  from its own directory and the directories in it (chapter 14);
+- as part of a project, runs none of the project's own programs (language
+  servers, git's hooks and filters, build commands) until you trust it (the
+  section on repositories below).
+
+A trusted file is free of all of these. It opens as usual, it opens where it is
+in the desktop's programs, its export takes files from anywhere, and its
+project runs its own programs. A repository cloned outside the untrusted
+directories therefore runs its own code when you open it: a build script
+through a language server (rust-analyzer runs =build.rs=), git's filters, its
+build commands.
+
+=nil= leaves only the evidence directories, the cache's copies and the files
+marked as downloaded untrusted. ='("/")= takes every file as untrusted, as
+these features did before this setting came: every file opens safely then, so
+keep that for a machine used for nothing else.
+
+Three settings of earlier releases are gone: =*safe-directories*=,
+=*export-trusted-directories*= and =*trusted-projects*= (once
+=*lsp-trusted-projects*=). An init file that still sets one keeps loading, and
+Tuatara says at start-up that it is gone. The directories an init file gives
+=*safe-directories*= are added to =*untrusted-directories*=, so that they stay
+protected; the other two only ever trusted more, and their values are let go.
+
+#+table: settings *untrusted-directories*
+
 ** Opening one file safely
 
 An ordinary open does some work for you. Tuatara guesses the kind of text
@@ -52,8 +120,9 @@ There are four ways to open a file safely.
 - ~tuatara --safe FILE~ from a terminal, or ~-R~ for short, opens every file
   named on the line that way. A file piped in with ~ls | tuatara -~ is a safe
   buffer too.
-- The setting =*safe-directories*= lists directories whose files always open
-  safely, however you open them. An example is ="~/Downloads/"=.
+- An untrusted file (the section before: your downloads, removable drives and
+  the temporary directories as standard, and evidence) always opens safely,
+  however you open it.
 - A file that looks like a program's data and not text opens safely by itself.
   The test is a null byte in its first 64 KB. Compiled programs, most archives
   and disk images have one, and so does text in UTF-16. A file with no null byte
@@ -130,7 +199,7 @@ read for them, safe or not.
 
 *** Settings and faces
 
-#+table: settings *safe-directories* *open-binary-files-safely* *open-dropped-files-safely* *invisible-characters-when-safe* *text-direction-when-safe* *file-local-variables*
+#+table: settings *open-binary-files-safely* *open-dropped-files-safely* *invisible-characters-when-safe* *text-direction-when-safe* *file-local-variables*
 
 #+table: faces :completion-safe
 
@@ -342,8 +411,10 @@ finds a room with nothing in it to steal and no way out to send it. Where it
 does not: it does not stop you from being misled by what the file says, and it
 does not protect a program you start yourself. Some commands leave the sandbox
 on purpose, such as ~M-x open-externally~, which hands the file to the desktop's
-own program. That command asks first, as long as =*open-externally-ask*= is
-true.
+own program. For a file in an evidence directory or in your downloads
+(=*untrusted-directories*=), and for any program, it asks
+first, as long as =*open-externally-ask*= is true, and hands over a private
+copy; your own files elsewhere open where they are (chapter 9).
 
 Several programs use the same room. Code formatters (chapter 13) run inside it
 with the project directory visible read-only, and no network. LaTeX that makes a
@@ -402,12 +473,13 @@ decoder of yours fails because of it.
 A git repository can run programs. Its hooks run when you commit. Its filters
 and helpers run when you check out or compare files. A language server for its
 code runs the project's build scripts. A repository you downloaded may have set
-these up for you. So Tuatara does not run any of it for a project you have not
-said you trust.
+these up for you. So Tuatara does not run any of it for a project in an
+untrusted directory (=*untrusted-directories*=) that you have not said you
+trust. A project anywhere else is yours and runs its own programs.
 
-The first time you open ~C-x g~ (the git status, chapter 15), start a language
-server with ~C-c L~, or compile in a project, Tuatara asks. The question says
-everything a yes would allow. There are three answers.
+For such a project, the first time you open ~C-x g~ (the git status, chapter
+15), start a language server with ~C-c L~, or compile, Tuatara asks. The
+question says everything a yes would allow. There are three answers.
 
 | Modal | Non-modal | What it does                                                          |
 |-------+-----------+-----------------------------------------------------------------------|
@@ -430,28 +502,26 @@ as in =--format=%h=; given alone, they are refused.
 
 ~M-x trust-project~ asks again, whatever you answered before. Use it to move a
 project from look-only to trusted once you have read what is in it, or the other
-way. A project can also be trusted in your init file. The setting
-=*trusted-projects*= lists directories whose projects run their own programs
-without asking. A link from a trusted directory to another does not give the
-other any trust: a project is known by where it really is. The setting was
-called =*lsp-trusted-projects*= before; an init file that still sets that name,
-or adds to it with =push=, keeps working for now, and Tuatara says to rename
-it. The projects you trusted when asked are kept in the file =trusted= of the
+way. A project outside the untrusted directories stays trusted whatever you
+answer, unless you answer ~l~. A link from a trusted directory into an untrusted
+one does not give the project any trust: a project is known by where it really
+is. The projects you trusted when asked are kept in the file =trusted= of the
 state directory, which an earlier release called =lsp-trusted=; that file is
 moved over the first time.
 
 A repository that is, is inside, or holds an evidence directory is never
 trusted, and it is never asked about. It is look-only for as long as the
-evidence is there, even if it is in =*trusted-projects*=.
+evidence is there.
 
 What this does not cover: it is a decision about Tuatara's own work. If you open
 a terminal inside the repository and run its build script, you have trusted it.
 
 #+begin_try Try it, with a repository you were sent
-1. In a terminal, make a small repository to stand for a stranger's:
-   =mkdir ~/sent && cd ~/sent && git init && printf 'hello\n' > note.txt &&
-   git add note.txt && git commit -m first=.
-2. In Tuatara, open =~/sent/note.txt= and press ~C-x g~. The question about
+1. In a terminal, make a small repository in your downloads to stand for a
+   stranger's: =mkdir ~/Downloads/sent && cd ~/Downloads/sent && git init &&
+   printf 'hello\n' > note.txt && git add note.txt && git commit -m first=.
+2. In Tuatara, open =~/Downloads/sent/note.txt=, which opens safely, and press
+   ~C-x g~. The question about
    trusting the project appears. Press ~l~.
 3. The status opens. The mode line says =Look only=, and the first line of the
    status says why and that git only reads.
@@ -459,10 +529,8 @@ a terminal inside the repository and run its build script, you have trusted it.
    take the answer back. The status is look-only until you decide.
 #+end_try
 
-*** Command, setting and faces
+*** Command and faces
 
 #+table: commands trust-project
-
-#+table: settings *trusted-projects*
 
 #+table: faces :mode-line-look-only :git-look-only

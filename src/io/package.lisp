@@ -76,7 +76,8 @@ elsewhere.")
    #:walk-directory #:tree-size
    #:trash-for #:home-trash #:scratch-directory #:buffer-scratch-directory #:kind-words #:size-words
    #:open-scratch-file #:open-unnamed-file #:name-unnamed-file #:cache-directory #:chosen-directory
-   #:directory-in-memory-p #:directories-in-memory-words #:data-home #:config-home #:cache-home #:read-line-bounded
+   #:directory-in-memory-p #:directories-in-memory-words #:data-home #:config-home #:cache-home #:download-directory
+   #:known-download-directory #:path-xattr-p #:read-line-bounded
    #:read-stream-octets
    #:session-log #:move-session-log #:state-directory #:write-private-file #:write-new-file #:replace-file
    #:open-lock-file #:lock-file-held-p #:call-with-state-lock

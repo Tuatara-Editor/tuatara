@@ -75,13 +75,13 @@ nearest directory up from its file holding one of LANGUAGE's root files
 
 (defun outside-program-refusal (buffer)
   "Why BUFFER's text is kept from other programs (a formatter, a language
-server), in words, or NIL: a file opened safely, or in one of
-*SAFE-DIRECTORIES*, the text of an encrypted file, and a file on another
+server), in words, or NIL: a file opened safely, or untrusted
+\(UNTRUSTED-PATH-P), the text of an encrypted file, and a file on another
 machine."
   (let ((file (tuatara.buffer:buffer-file buffer)))
     (cond ((tuatara.io:safe-visit-p buffer) "it is opened safely")
           ((tuatara.buffer:buffer-local buffer :remote-file) "it is a file on another machine")
-          ((and file (safe-directory-of (tuatara.io:native file))) "it is in one of *safe-directories*")
+          ((and file (untrusted-path-p (tuatara.io:native file))) "it is untrusted (*untrusted-directories*)")
           ((tuatara.io:buffer-plaintext-p buffer) "its text is kept from other programs (an encrypted file)"))))
 
 (defun formatter-output (program command input directory cancel)
@@ -245,7 +245,7 @@ or is still starting. A formatter or server that fails changes nothing,
 its name and its reason are said (rust-analyzer could not format main.rs:
 Failed to spawn rustfmt), as when a server gives no answer within
 *format-seconds*; one that finds nothing to change says it was laid out
-already. A file opened safely, in *safe-directories*, or the text of an
+already. A file opened safely, in *untrusted-directories*, or the text of an
 encrypted file is only indented, never given to another program. In a
 narrowed buffer only the part shown: indented, or laid out by a language
 server that lays out a part; a formatter of the whole file is not run,

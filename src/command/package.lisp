@@ -24,7 +24,7 @@ hooks, the minibuffer core, the modal state slot.")
            #:repeat-hint #:message #:say-with-command-messages #:*messages-kept* #:*exit-functions* #:*exit-code*
            #:cursor-look #:*cursor-colour-functions* #:echo #:*message-log-max* #:log-message #:add-to-log
            #:messages-buffer #:log-buffer #:host-messages-made #:read-string #:finish-minibuffer
-           #:minibuffer-previous-history
+           #:minibuffer-previous-history #:read-typed-answer
            #:minibuffer-next-history #:echo-question-p #:yes-or-no-p* #:y-or-n-p* #:read-password #:wipe-string
            #:*minibuffer-hidden* #:show-buffer #:run-editor #:visit-startup-files #:host-visit-file
            #:host-visit-standard-input #:command-loop #:redisplay #:redisplay-or-say

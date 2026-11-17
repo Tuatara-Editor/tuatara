@@ -86,7 +86,7 @@ force; *compile* killed afterwards."
   `(with-test-directory (,dir)
      (compile-project ,dir ,script)
      (let ((tuatara.defaults::*modal-editing* nil)
-           (tuatara-user:*trusted-projects* (if ,trusted (list (namestring ,dir)) '()))
+           (tuatara-user:*untrusted-directories* (if ,trusted '() (list (namestring ,dir))))
            (tuatara.compile::*compile-history* (list "sh out.sh"))
            (tuatara.defaults::*places-in-force* nil)
            (*places-reached* '()))

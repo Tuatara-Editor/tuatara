@@ -15,6 +15,7 @@
                 #:copy-chosen-own-file #:decode-pdf-page #:*decoding-carried-settings* #:decoding-job #:docx-import
                 #:docx-templates-directory #:drop-selection #:end-safe-visit-words #:entry-lines #:entry-list-keys
                 #:entry-place #:entry-places #:evidence-refusal #:export-directory-p #:export-language
+                #:untrusted-path-p
                 #:*export-languages* #:export-trusted-path-p #:file-kind #:file-sha256 #:find-pdf-decoder
                 #:forget-old-copies #:forget-pictures-past #:formatted-template-text #:formula #:formula-inline
                 #:formula-key #:formula-preamble #:formula-text #:*inline-picture-uses*

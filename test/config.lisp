@@ -533,38 +533,75 @@ commented inside another one commented (;;   ;; (setf ...) in a load-package's
   ;; a setting set by its name before a rename still takes effect, and the name to write instead is said
   (with-test-directory (dir)
     (let ((file (merge-pathnames "init.lisp" dir))
-          (tuatara-user:*export-trusted-directories* '()))
-      (alexandria:write-string-into-file (format nil "(setf *export-trusted-folders* '(\"~~/latex/\"))~%") file)
+          (tuatara-user:*directory-tree-depth-limit* 200))
+      (alexandria:write-string-into-file (format nil "(setf *folder-tree-depth-limit* 50)~%") file)
       (unwind-protect
            (let ((tuatara.defaults:*config-file* file)
                  (compiler (make-string-output-stream)))
              (with-messages-said (said)
                (let ((*error-output* compiler))
                  (run-keys "" :text ""))
-               (is equal '("~/latex/") tuatara-user:*export-trusted-directories*)
-               (true (search "*export-trusted-folders*, now called *export-trusted-directories*" (said)) "~a" (said))
+               (is = 50 tuatara-user:*directory-tree-depth-limit*)
+               (true (search "*folder-tree-depth-limit*, now called *directory-tree-depth-limit*" (said)) "~a" (said))
                ;; and without a warning of an undefined variable
                (let ((warned (get-output-stream-string compiler)))
                  (false (search "undefined variable" warned) "~a" warned))))
-        (let ((old (find-symbol "*EXPORT-TRUSTED-FOLDERS*" :tuatara-user)))
+        (let ((old (find-symbol "*FOLDER-TREE-DEPTH-LIMIT*" :tuatara-user)))
           (when old (makunbound old)))))))
+
+(define-test (config removed-setting-said)
+  ;; a setting taken away, set or added to by the init file: said to be gone, with what decides instead,
+  ;; and the rest of the file read; the directories of *safe-directories* added to *untrusted-directories*;
+  ;; a setting taken away reads as nil
+  (with-test-directory (dir)
+    (let ((file (merge-pathnames "init.lisp" dir))
+          (tuatara-user:*untrusted-directories* '(:downloads))
+          (tuatara-user:*directory-tree-depth-limit* 200))
+      (alexandria:write-string-into-file
+       (format nil "(setf *export-trusted-directories* '(\"~~/latex/\"))~%(push \"~~/Evidence/\" *safe-directories*)~%~
+                    (setf *trusted-projects* '(\"~~/src/\"))~%(push \"~~/code/\" *lsp-trusted-projects*)~%~
+                    (setf *directory-tree-depth-limit* 60)~%~
+                    (when *export-trusted-folders* (setf *directory-tree-depth-limit* 1))~%")
+       file)
+      (let ((tuatara.defaults:*config-file* file)
+            (compiler (make-string-output-stream)))
+        (with-messages-said (said)
+          (let ((*error-output* compiler))
+            (run-keys "" :text ""))
+          (true (search "*export-trusted-directories*, which is gone: *untrusted-directories* decides" (said))
+                "~a" (said))
+          (true (search "*safe-directories*, which is gone: its directories are added to *untrusted-directories*"
+                        (said))
+                "~a" (said))
+          (is equal '(:downloads "~/Evidence/") tuatara-user:*untrusted-directories*)
+          (true (search "*trusted-projects*, which is gone: *untrusted-directories* decides" (said)) "~a" (said))
+          (true (search "*lsp-trusted-projects*, which is gone: *untrusted-directories* decides" (said)) "~a" (said))
+          (is = 60 tuatara-user:*directory-tree-depth-limit*)
+          (let ((warned (get-output-stream-string compiler)))
+            (false (search "undefined variable" warned) "~a" warned))
+          (false (boundp (find-symbol "*SAFE-DIRECTORIES*" :tuatara-user))))))))
 
 (define-test (config renamed-setting-added-to)
   ;; a list setting added to by its name before a rename gets what was added, and the name to
   ;; write instead is said; a setting the init file left alone keeps its value
   (with-test-directory (dir)
     (let ((file (merge-pathnames "init.lisp" dir))
-          (tuatara-user:*trusted-projects* (list "/kept/"))
-          (tuatara-user:*evidence-directories* (list "/cases/")))
-      (alexandria:write-string-into-file (format nil "(push \"/srv/code/\" *lsp-trusted-projects*)~%") file)
-      (let ((tuatara.defaults:*config-file* file))
-        (with-messages-said (said)
-          (run-keys "" :text "")
-          (is equal '("/srv/code/" "/kept/") tuatara-user:*trusted-projects*)
-          (is equal '("/cases/") tuatara-user:*evidence-directories*)
-          (true (search "*lsp-trusted-projects*, now called *trusted-projects*" (said)) "~a" (said))
-          (false (search "*evidence-folders*" (said)) "~a" (said))
-          (false (boundp (find-symbol "*LSP-TRUSTED-PROJECTS*" :tuatara-user))))))))
+          (evidence tuatara-user:*evidence-directories*)
+          (tuatara-user:*directory-tree-depth-limit* 200))
+      (alexandria:write-string-into-file (format nil "(push \"/nonexistent/tuatara-test-case/\" *evidence-folders*)~%")
+                                         file)
+      (unwind-protect
+           (let ((tuatara.defaults:*config-file* file))
+             (setf tuatara-user:*evidence-directories* (list "/nonexistent/tuatara-test-kept/"))
+             (with-messages-said (said)
+               (run-keys "" :text "")
+               (is equal '("/nonexistent/tuatara-test-case/" "/nonexistent/tuatara-test-kept/")
+                   tuatara-user:*evidence-directories*)
+               (is = 200 tuatara-user:*directory-tree-depth-limit*)
+               (true (search "*evidence-folders*, now called *evidence-directories*" (said)) "~a" (said))
+               (false (search "*folder-tree-depth-limit*" (said)) "~a" (said))
+               (false (boundp (find-symbol "*EVIDENCE-FOLDERS*" :tuatara-user)))))
+        (setf tuatara-user:*evidence-directories* evidence)))))
 
 (define-test (config renamed-setting-not-taken)
   ;; a value given by a setting's old name that the setting does not take is put back, and said

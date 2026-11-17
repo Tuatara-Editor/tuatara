@@ -1778,10 +1778,9 @@ installed is mentioned once in the echo area when the PDF is written, and
 the bibliography or index is left out.
 
 They run as LaTeX does, shut in the sandbox (chapter 12): they read the
-document's directory, the TeX installation and the directories in
-=*export-trusted-directories*=, and write only in the export's own working
-directory. Keep the =.bib= file beside the note, or in one of those directories,
-so that they can read it. What they leave in that working directory is read
+document's directory and the TeX installation, and write only in the export's
+own working directory. Keep the =.bib= file beside the note, or name it from a
+trusted note by its path, so that they can read it. What they leave in that working directory is read
 back only when it is a file of its own: a symbolic link there, which a
 document could make to lead to any file of yours, is never followed.
 
@@ -1975,25 +1974,19 @@ text. The plain export refuses a note that asks for it.
 
 *** Notes from other people
 
-An exported note can pull in other files: pictures it shows and setup files
-it names. A note that someone sent you could name files of yours that way.
-So the export takes files only from the note's own directory and the directories
-in it, and says what it left out. =*export-trusted-directories*= names further
-directories you allow. Chapter 12 has more on files you do not trust.
+An exported note can pull in other files: pictures it shows, setup files and
+templates it names. A note that someone sent you could name files of yours that
+way. So a note in an untrusted directory (=*untrusted-directories*=: your
+downloads, as standard, and the evidence directories) takes files only from its
+own directory and the directories in it, and your note templates' directory,
+and the export says what it left out. A note anywhere else is yours, and takes
+them from anywhere: a note in =~/notes/work/= that says =#+SETUPFILE:
+~/notes/latex/house.org= is exported with that file. Chapter 12 has more on
+files you do not trust.
 
-The directory of your note templates is always allowed.
-=*export-trusted-directories*= is =nil= as standard, no other. Give it a list of
-directories, with =~= standing for your home directory, when setup files are
-shared by notes that are kept in directories of their own:
-
-#+begin_example
-(setf *export-trusted-directories* '("~/notes/latex/"))
-#+end_example
-
-A note in =~/notes/work/= that says =#+SETUPFILE: ~/notes/latex/house.org= is
-then exported with that file. Without the line the export leaves the file out
-and, when it is done, says =house.org= was left out. Allow only directories you
-wrote yourself, since whoever sends you a note can name any file in them.
+The setting =*export-trusted-directories*= of earlier releases is gone. An
+untrusted note that should take files from elsewhere can be moved out of the
+untrusted directory once you have read it.
 
 Each setup file is read once for an export, the first time it is named. A
 setup file named again, by the note or by another setup file, adds nothing the
@@ -2010,7 +2003,7 @@ for it.
 
 #+table: commands org-insert-export-drawer describe-export-settings describe-org-keyword-settings export-latex-template-copy export-template-from-docx export-template-from-latex insert-formatted-note-template org-macro-wrap org-macro-unwrap export-check-redactions
 
-#+table: settings *latex-engines* *latex-main-font* *latex-sans-font* *latex-mono-font* *logos-directory* *export-trusted-directories* *latex-redaction-commands*
+#+table: settings *latex-engines* *latex-main-font* *latex-sans-font* *latex-mono-font* *logos-directory* *latex-redaction-commands*
 
 #+table: faces :org-macro :org-macro-text
 
@@ -2143,7 +2136,7 @@ both, write Org's own forms.
 | Line                       | In Tuatara                              | In Emacs Org |
 |----------------------------+-----------------------------------------+--------------|
 | =#+options:=               | The options =-=, =<=, =^=, =\n=, =f=, =e=, =d=, =todo=, =pri=, =tags=, =num=, =toc=, =H=, =arch=, =author=, =date=, =title=, =redact= and =protect=; not every export reads every one. A value is one word, or a list in parentheses such as =d:(not "EXPORT" "LOGBOOK")= | Many more |
-| =#+setupfile:=             | Only from the note's directory, or a directory of =*export-trusted-directories*= | A file or a web address |
+| =#+setupfile:=             | From anywhere for a trusted note; only from the note's directory for an untrusted one (=*untrusted-directories*=) | A file or a web address |
 | =#+toc:=                   | =headlines= with a depth, =tables=, =figures= | Also =listings= and =local= |
 | =#+macro:=                 | Text with =$1= to =$9=. A value that begins =(eval= gives nothing | The same, and the value is run |
 | =#+startup:=               | =overview=, =fold=, =content=, =showall=, =nofold=, =hidedrawers=, =showdrawers=, =indent=, =noindent=, =literallinks=, =descriptivelinks=, =inlineimages=, =noinlineimages=, =latexpreview=, =nolatexpreview= | Many more |

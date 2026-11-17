@@ -12,12 +12,14 @@ written back as the files' own; an AppImage is told by its header.")
 
 (defmacro with-stand-in-opener ((record directory) &body body)
   "Run BODY with *OPEN-EXTERNALLY-PROGRAM* a script in DIRECTORY that writes
-the names it is given to the file RECORD, as xdg-open would open them."
+the names it is given to the file RECORD, as xdg-open would open them, and
+DIRECTORY untrusted (*UNTRUSTED-DIRECTORIES*)."
   (let ((script (gensym "SCRIPT")))
     `(let* ((,record (merge-pathnames "opened.txt" ,directory))
             (,script (merge-pathnames "stand-in-xdg-open" ,directory)))
        (put-program ,script (format nil "#!/bin/sh~%printf '%s\\n' \"$@\" >> '~a'~%" (namestring ,record)))
-       (let ((tuatara-user:*open-externally-program* (namestring ,script)))
+       (let ((tuatara-user:*open-externally-program* (namestring ,script))
+             (tuatara-user:*untrusted-directories* (list (namestring ,directory))))
          ,@body))))
 
 (defun opened-names (record)
@@ -36,7 +38,8 @@ the names it is given to the file RECORD, as xdg-open would open them."
       ;; asked, and yes: a copy of it opened, yours alone and read only, the file itself never given
       (let ((f (rimu-session dir "g f p h o t o . p n g RET O y RET" :width 200)))
         (true (tuatara.frontend.fake:fake-frame-showing f "Open photo.png (PNG image, 2 × 2"))
-        (true (tuatara.frontend.fake:fake-frame-showing f "outside the sandbox? (y or n, then RET)"))
+        (true (tuatara.frontend.fake:fake-frame-showing f "outside the sandbox? Untrusted: y a copy, e the file"))
+        (true (tuatara.frontend.fake:fake-frame-showing f "which may run what it holds (y, n or e, then RET)"))
         (true (tuatara.frontend.fake:fake-frame-showing f "Opening photo.png in the desktop's program..."))
         (let ((opened (first (opened-names record))))
           (true (uiop:string-prefix-p (tuatara.defaults::opened-copies-directory) opened))
@@ -60,6 +63,255 @@ the names it is given to the file RECORD, as xdg-open would open them."
         (rimu-session dir "g f p h o t o . p n g RET O")
         (true (opened-names record)))
       (delete-file (merge-pathnames "photo.png" dir)))))
+
+;; Untrusted files: those in an evidence directory or in *untrusted-directories*
+;; (the download directory as standard), links followed; every other file is trusted
+
+(defmacro with-untrusted-places ((dir record downloads) &body body)
+  "Run BODY in a new directory DIR with the stand-in opener writing to RECORD
+\(WITH-STAND-IN-OPENER), *UNTRUSTED-DIRECTORIES* as standard,
+DOWNLOADS, the directory downloads/ in DIR, the download directory
+\(XDG_DOWNLOAD_DIR), and no evidence directories."
+  `(with-rimu-tree (,dir)
+     (with-stand-in-opener (,record ,dir)
+       (let ((,downloads (merge-pathnames "downloads/" ,dir))
+             (tuatara-user:*untrusted-directories* '(:downloads))
+             (evidence tuatara-user:*evidence-directories*))
+         (ensure-directories-exist ,downloads)
+         (with-environment-variable ("XDG_DOWNLOAD_DIR" (namestring ,downloads))
+           (unwind-protect (progn (setf tuatara-user:*evidence-directories* '()) ,@body)
+             (setf tuatara-user:*evidence-directories* evidence)
+             (loop repeat 100 while tuatara.defaults::*openings* do (sleep 0.02))))))))
+
+(defun test-page (file)
+  "Write a web page to FILE, a kind of file only a trusted file is opened as."
+  (put-file file "<!DOCTYPE html><html><head><link rel=\"stylesheet\" href=\"page.css\"></head></html>"))
+
+(defun copy-opened-p (record)
+  "True when the stand-in opener was given a private copy (OPENED-COPIES-DIRECTORY)."
+  (let ((opened (first (opened-names record))))
+    (and opened (uiop:string-prefix-p (tuatara.defaults::opened-copies-directory) opened))))
+
+(define-test (external untrusted-asked-and-copied)
+  (with-untrusted-places (dir record downloads)
+    (alexandria:write-byte-vector-into-file *tiny-png* (merge-pathnames "photo.png" downloads))
+    ;; in the download directory: asked, then a copy opened
+    (let ((f (rimu-session downloads "g f p h o t o . p n g RET O y RET" :width 240)))
+      (true (tuatara.frontend.fake:fake-frame-showing f "(y, n or e, then RET)"))
+      (true (copy-opened-p record)))
+    (loop repeat 100 while tuatara.defaults::*openings* do (sleep 0.02))
+    (delete-file record)
+    ;; in an evidence directory: asked, then a copy opened
+    (let ((case (merge-pathnames "case/" dir)))
+      (ensure-directories-exist case)
+      (alexandria:write-byte-vector-into-file *tiny-png* (merge-pathnames "exhibit.png" case))
+      (setf tuatara-user:*evidence-directories* (list (namestring case)))
+      (let ((f (rimu-session case "g f e x h i b i t . p n g RET O y RET" :width 240)))
+        (true (tuatara.frontend.fake:fake-frame-showing f "(y, n or e, then RET)"))
+        (true (copy-opened-p record))))))
+
+(define-test (external untrusted-through-a-link)
+  ;; a link elsewhere leading into the download directory is untrusted: asked, a copy opened
+  (with-untrusted-places (dir record downloads)
+    (alexandria:write-byte-vector-into-file *tiny-png* (merge-pathnames "photo.png" downloads))
+    (sb-posix:symlink (namestring (merge-pathnames "photo.png" downloads))
+                      (namestring (merge-pathnames "link.png" dir)))
+    (let ((f (rimu-session dir "g f l i n k . p n g RET O y RET" :width 240)))
+      (true (tuatara.frontend.fake:fake-frame-showing f "(y, n or e, then RET)"))
+      (true (copy-opened-p record)))))
+
+(define-test (external trusted-opened-in-place)
+  (with-untrusted-places (dir record downloads)
+    (let ((page (merge-pathnames "page.html" dir)))
+      (test-page page)
+      ;; elsewhere: the file itself, a web page too, without asking
+      (let ((f (rimu-session dir "g f p a g e . h t m l RET O" :width 240)))
+        (false (tuatara.frontend.fake:fake-frame-showing f "then RET)"))
+        (is equal (list (tuatara.io:real-path (namestring page))) (opened-names record))))
+    (loop repeat 100 while tuatara.defaults::*openings* do (sleep 0.02))
+    (delete-file record)
+    ;; nil: the download directory trusted too
+    (let ((page (merge-pathnames "page.html" downloads))
+          (tuatara-user:*untrusted-directories* '()))
+      (test-page page)
+      (let ((f (rimu-session downloads "g f p a g e . h t m l RET O" :width 240)))
+        (false (tuatara.frontend.fake:fake-frame-showing f "then RET)"))
+        (is equal (list (tuatara.io:real-path (namestring page))) (opened-names record))))
+    (loop repeat 100 while tuatara.defaults::*openings* do (sleep 0.02))
+    (delete-file record)
+    ;; "/": every file untrusted, as O took them all before
+    (alexandria:write-byte-vector-into-file *tiny-png* (merge-pathnames "photo.png" dir) :if-exists :supersede)
+    (let ((tuatara-user:*untrusted-directories* '("/")))
+      (let ((f (rimu-session dir "g f p h o t o . p n g RET O y RET" :width 240)))
+        (true (tuatara.frontend.fake:fake-frame-showing f "(y, n or e, then RET)"))
+        (true (copy-opened-p record))))))
+
+(define-test (external untrusted-executed-on-e)
+  (with-untrusted-places (dir record downloads)
+    (let* ((page (merge-pathnames "page.html" downloads))
+           (real (progn (test-page page) (tuatara.io:real-path (namestring page))))
+           (sum (tuatara.defaults::file-sha256 real)))
+      ;; not a kind a copy is opened of: n or e asked, and n opens nothing
+      (let ((f (rimu-session downloads "g f p a g e . h t m l RET O n RET" :width 240)))
+        (true (tuatara.frontend.fake:fake-frame-showing f "may run what it holds (n or e, then RET)"))
+        (true (tuatara.frontend.fake:fake-frame-showing f "Not opened"))
+        (false (probe-file record)))
+      ;; e: the file itself
+      (rimu-session downloads "g f p a g e . h t m l RET O e RET" :width 240)
+      (is equal (list real) (opened-names record))
+      (loop repeat 100 while tuatara.defaults::*openings* do (sleep 0.02))
+      ;; its path and SHA-256 in the debug log
+      (loop while (sb-concurrency:dequeue tuatara.runtime:*debug-reports*))
+      (let ((tuatara.runtime:*debug-on* t))
+        (true (search "trusted (SHA-256"
+                      (tuatara.defaults::open-in-place-externally (namestring page) "page.html" nil "HTML document"
+                                                                  tuatara-user:*open-externally-program* :execute t))))
+      (let ((texts (loop for report = (sb-concurrency:dequeue tuatara.runtime:*debug-reports*)
+                         while report collect (princ-to-string (fourth report)))))
+        (true (find-if (lambda (text) (and (search "trusted this once" text) (search real text) (search sum text)))
+                       texts))))))
+
+;; What the security review of the one rule found, each pinned
+
+(defun mark-downloaded (file)
+  "Give FILE the mark a web browser leaves on what it downloads (user.xdg.origin.url)."
+  (is = 0 (sb-alien:alien-funcall
+           (sb-alien:extern-alien "setxattr" (function sb-alien:int sb-alien:c-string sb-alien:c-string
+                                                       sb-alien:c-string sb-alien:unsigned-long sb-alien:int))
+           (namestring file) "user.xdg.origin.url" "https://example.invalid/x" 25 0)))
+
+(define-test (external untrusted-by-the-standard-places)
+  ;; the cache's copies of outside files, removable media, the temporary directories and files marked
+  ;; as downloaded are untrusted; a file of your own is not
+  (with-untrusted-places (dir record downloads)
+    (let ((tuatara-user:*untrusted-directories* (tuatara.runtime:setting-standard-value
+                                                 'tuatara-user:*untrusted-directories*))
+          (copy (tuatara.io:path-join (tuatara.defaults::opened-copies-directory) "tuatara-test-copy/sheet.xlsm"))
+          (mine (merge-pathnames "mine.txt" dir)))
+      (put-file mine "words")
+      (ensure-directories-exist (sb-ext:parse-native-namestring copy))
+      (put-file (sb-ext:parse-native-namestring copy) "macros")
+      (unwind-protect
+           (progn
+             (true (tuatara.defaults::untrusted-path-p copy))
+             (true (tuatara.defaults::untrusted-path-p "/tmp/tuatara-test-nowhere/x.txt"))
+             (true (tuatara.defaults::untrusted-path-p "/var/tmp/x.txt"))
+             (true (tuatara.defaults::untrusted-path-p "/run/media/someone/STICK/repo/a.rs"))
+             (true (tuatara.defaults::untrusted-path-p "/mnt/image/a.rs"))
+             (false (tuatara.defaults::untrusted-path-p (namestring mine)))
+             (mark-downloaded mine)
+             (true (tuatara.defaults::untrusted-path-p (namestring mine)))
+             ;; a copy in the cache asked about, not opened in place
+             (let ((f (rimu-session (tuatara.io:parent-path copy) "g f s h e e t . x l s m RET O n RET" :width 240)))
+               (true (tuatara.frontend.fake:fake-frame-showing f "(n or e, then RET)"))
+               (false (probe-file record))))
+        (tuatara.io:delete-tree (tuatara.io:parent-path copy))))))
+
+(define-test (external evidence-executed-as-a-copy)
+  ;; e on evidence opens a private copy whatever its kind, never the file beside the evidence
+  (with-untrusted-places (dir record downloads)
+    (let ((case (merge-pathnames "case/" dir)))
+      (ensure-directories-exist case)
+      (test-page (merge-pathnames "exhibit.html" case))
+      (setf tuatara-user:*evidence-directories* (list (namestring case)))
+      (let ((f (rimu-session case "g f e x h i b i t . h t m l RET O e RET" :width 240)))
+        (true (tuatara.frontend.fake:fake-frame-showing f "a copy of this evidence whatever its kind"))
+        (true (copy-opened-p record))))))
+
+(define-test (external opened-in-place-only-as-looked-at)
+  ;; a file changed, become untrusted, or changed while summed after it was looked at is not opened
+  (with-untrusted-places (dir record downloads)
+    (let* ((page (merge-pathnames "page.html" dir))
+           (native (progn (test-page page) (namestring page)))
+           (stamp (tuatara.io:path-stamp native))
+           (program tuatara-user:*open-externally-program*))
+      (flet ((opened (&rest keys)
+               (apply #'tuatara.defaults::open-in-place-externally
+                      native "page.html" nil "HTML document" program keys)))
+        (put-file page "<html>changed meanwhile</html>")
+        (true (search "changed after it was looked at" (opened :stamp stamp)))
+        (let ((tuatara-user:*untrusted-directories* (list (namestring dir))))
+          (true (search "changed after it was looked at" (opened))))
+        (sb-int:encapsulate 'tuatara.defaults::file-sha256 'change-while-summed
+                            (lambda (f path &rest keys)
+                              (prog1 (apply f path keys) (put-file page "<html>changed while summed!</html>"))))
+        (unwind-protect (true (search "changed while it was summed" (opened :execute t)))
+          (sb-int:unencapsulate 'tuatara.defaults::file-sha256 'change-while-summed))
+        (false (probe-file record))))))
+
+(define-test (external programs-told-by-name-and-launchers)
+  ;; launchers the desktop starts, by their name or by a desktop entry after comments, are programs
+  (with-test-directory (dir)
+    (flet ((program-p (name text)
+             (let ((file (merge-pathnames name dir)))
+               (put-file file text)
+               (tuatara.defaults::program-file-p (namestring file)))))
+      (true (program-p "run.bat" "echo hello"))
+      (true (program-p "install.msi" "not really"))
+      (true (program-p "app.flatpakref" "[Flatpak Ref]"))
+      (true (program-p "notes.txt" (format nil "# a comment~%~%[Desktop Entry]~%Exec=true~%")))
+      (true (program-p "bom.txt" (format nil "~a[Desktop Entry]~%Exec=true~%" (code-char #xFEFF))))
+      (false (program-p "plain.txt" "just words")))))
+
+(define-test (external evidence-links-never-read-for-untrusted-places)
+  ;; a path whose link leads to a link in an evidence directory is not followed past the evidence
+  (with-untrusted-places (dir record downloads)
+    (let ((case (merge-pathnames "case/" dir)))
+      (ensure-directories-exist case)
+      (put-file (merge-pathnames "target.txt" downloads) "words")
+      (sb-posix:symlink (namestring (merge-pathnames "target.txt" downloads))
+                        (namestring (merge-pathnames "b" case)))
+      (sb-posix:symlink (namestring (merge-pathnames "b" case)) (namestring (merge-pathnames "a" dir)))
+      (setf tuatara-user:*evidence-directories* (list (namestring case)))
+      (false (tuatara.defaults::untrusted-directory-of (namestring (merge-pathnames "a" dir))))
+      (true (tuatara.defaults::untrusted-path-p (namestring (merge-pathnames "a" dir)))))))
+
+(define-test (external download-directory-read-as-the-shell-does)
+  ;; the last XDG_DOWNLOAD_DIR line, ${HOME} and spaces before it taken; the home itself is none;
+  ;; read again when the file changes
+  (with-test-directory (dir)
+    (let ((file (merge-pathnames "user-dirs.dirs" dir))
+          (home (string-right-trim "/" (sb-ext:native-namestring (user-homedir-pathname)))))
+      (with-environment-variable ("XDG_CONFIG_HOME" (string-right-trim "/" (namestring dir)))
+        (with-environment-variable ("XDG_DOWNLOAD_DIR" "/nonexistent/tuatara-test-downloads")
+          (put-file file (format nil "XDG_DOWNLOAD_DIR=\"/first/\"~%  XDG_DOWNLOAD_DIR=\"${HOME}/Fetched\"~%"))
+          (is string= (format nil "~a/Fetched/" home) (tuatara.io:download-directory))
+          (sleep 0.01)
+          (put-file file (format nil "XDG_DOWNLOAD_DIR=\"$HOME/\"~%"))
+          (is string= "/nonexistent/tuatara-test-downloads/" (tuatara.io:download-directory)))))))
+
+(define-test (external untrusted-open-safely)
+  ;; a file in the download directory, the standard untrusted directory, opens safely however it is opened;
+  ;; one elsewhere opens as usual
+  (with-untrusted-places (dir record downloads)
+    (let ((tuatara.defaults::*modal-editing* nil))
+      (flet ((opened-safely-p (file)
+               (put-file file "plain words")
+               (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed (namestring file)))))
+               (let ((buffer (tuatara.buffer:find-buffer (file-namestring file))))
+                 (prog1 (and buffer (tuatara.io:safe-visit-p buffer))
+                   (when buffer (tuatara.buffer:kill-buffer buffer))))))
+        (true (opened-safely-p (merge-pathnames "fetched.txt" downloads)))
+        (false (opened-safely-p (merge-pathnames "mine.txt" dir)))))))
+
+(define-test (external programs-asked-wherever)
+  ;; a program, by its contents or its execute bit, is asked about as an untrusted file even where files are trusted
+  (with-untrusted-places (dir record downloads)
+    (flet ((asked (name keys)
+             (let ((f (rimu-session dir (format nil "g f ~a RET O ~a" (rimu-typed name) keys) :width 240)))
+               (true (tuatara.frontend.fake:fake-frame-showing f "may run what it holds (n or e, then RET)")))))
+      (alexandria:write-byte-vector-into-file (kind-octets (list #x7F 69 76 70 2 1 1 0 0 0 0 0 0 0 0 0 2 0 62 0))
+                                              (merge-pathnames "tool" dir))
+      (asked "tool" "n RET")
+      (put-file (merge-pathnames "start.desktop" dir) (format nil "[Desktop Entry]~%Exec=true~%"))
+      (asked "start.desktop" "n RET")
+      (put-file (merge-pathnames "notes.txt" dir) "hello")
+      (sb-posix:chmod (namestring (merge-pathnames "notes.txt" dir)) #o755)
+      (asked "notes.txt" "n RET")
+      (false (probe-file record))
+      ;; e opens it in place
+      (asked "notes.txt" "e RET")
+      (is equal (list (tuatara.io:real-path (namestring (merge-pathnames "notes.txt" dir)))) (opened-names record)))))
 
 (define-test (external refused)
   (with-rimu-tree (dir)
@@ -115,7 +367,8 @@ the names it is given to the file RECORD, as xdg-open would open them."
   (with-test-directory (dir)
     (with-stand-in-opener (record dir)
       (let ((file (merge-pathnames "report.pdf" dir))
-            (tuatara-user:*open-externally-ask* nil))
+            (tuatara-user:*open-externally-ask* nil)
+            (tuatara-user:*untrusted-directories* '()))
         (alexandria:write-byte-vector-into-file (pdf-octets '("Hello")) file)
         (pdf-forget)
         ;; O in a PDF's view opens the PDF; no cursor over its page, the cursor back in its text

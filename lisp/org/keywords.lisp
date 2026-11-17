@@ -19,8 +19,8 @@
      Word document and web page say")
     ("#+EXPORT_FILE_NAME: name" nil "the name the export is written to, in place of the note's name")
     ("#+SETUPFILE: file" nil
-     "the lines of another file are read in this one's place; from the note's directory or one of
-      *EXPORT-TRUSTED-DIRECTORIES* only")
+     "the lines of another file are read in this one's place; for an untrusted note
+      (*UNTRUSTED-DIRECTORIES*), from the note's directory only")
     ("#+MACRO: name text" nil "defines {{{name}}}; $1 to $9 in the text stand for the arguments")
     ("#+OPTIONS: word:value ..." nil "see the options below")
     ("#+STARTUP: word ..." nil "see the words below; the last word of each kind wins")

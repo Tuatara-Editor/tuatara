@@ -1451,13 +1451,15 @@ by search filters, the file on the line among those they leave."
             (destructuring-bind (number name) entry
               (let* ((suggested (attachment-file-name name (format nil "attachment-~d" number)))
                      (shown (escape-controls name))
-                     ;; nothing written beside evidence: from a directory kept safe, your Downloads offered instead
-                     (directory (if (or (safe-directory-of (pdf-view-path view)) (evidence-path-p (pdf-view-path view)))
-                                 (let ((downloads (tuatara.io:native (tuatara.io:expand-path "~/Downloads/"))))
-                                   (if (tuatara.io:path-stamp downloads)
-                                       downloads
-                                       (tuatara.io:native (tuatara.io:expand-path "~/"))))
-                                 (buffer-directory list)))
+                     ;; nothing written beside an untrusted file: your download directory offered instead, made
+                     ;; when it is not there, so that what is saved stays untrusted
+                     (directory (if (untrusted-path-p (pdf-view-path view))
+                                    (let ((downloads (tuatara.io:download-directory)))
+                                      (if (ignoring-errors-reported ("making ~a" downloads)
+                                            (ensure-directories-exist (sb-ext:parse-native-namestring downloads)))
+                                          downloads
+                                          (opened-copies-directory)))
+                                    (buffer-directory list)))
                      (typed (read-native-path (format nil "Save ~a to: " suggested) :kind :any
                                               :initial (concatenate 'string (abbreviated-path directory) suggested)
                                               :writing t))

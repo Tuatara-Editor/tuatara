@@ -653,7 +653,7 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
 (define-test (evidence projects-holding-evidence-untrusted)
   ;; a project holding an evidence directory runs no program of its own, trusted or not
   (with-case-directory (root evidence work)
-    (let ((tuatara-user:*trusted-projects* (list root)))
+    (let ((tuatara-user:*untrusted-directories* '()))
       (with-evidence-directories ('())
         (true (tuatara.defaults::project-trusted-p root)))
       (with-evidence-directories (`(,(concatenate 'string root "cases/*/evidence/")))
@@ -677,7 +677,7 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
           (true (< (seconds (lambda () (setf answer (tuatara.defaults::directory-holds-evidence-p root)))) 1/2))
           (true (search "is an evidence directory" answer)))
         (false (tuatara.defaults::directory-holds-evidence-p (concatenate 'string root "src/")))
-        (let ((tuatara-user:*trusted-projects* (list root)))
+        (let ((tuatara-user:*untrusted-directories* '()))
           (true (< (seconds (lambda () (tuatara.defaults::project-trusted-p (concatenate 'string root "src/")))) 1/2)))
         (true (< (seconds (lambda () (tuatara.git:run-git root '("status" "--porcelain")))) 5)))
       (with-evidence-directories ('("/nowhere/*/evidence/"))
@@ -991,9 +991,9 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
   (with-test-directory (dir)
     (let ((file (put-file (merge-pathnames "p.txt" dir) "x"))
           (calls 0)
-          (old tuatara-user:*safe-directories*)
+          (old tuatara-user:*untrusted-directories*)
           (functions '(tuatara.io:real-path-so-far tuatara.io:real-path tuatara.io:resolve-links)))
-      (setf tuatara-user:*safe-directories* '())
+      (setf tuatara-user:*untrusted-directories* '())
       (dolist (function functions)
         (sb-int:encapsulate function 'counting (lambda (f &rest arguments) (incf calls) (apply f arguments))))
       (unwind-protect
@@ -1001,7 +1001,7 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
              (false (tuatara.defaults::visit-safely-reason (tuatara.io:native file)))
              (is = 0 calls))
         (dolist (function functions) (sb-int:unencapsulate function 'counting))
-        (setf tuatara-user:*safe-directories* old)))))
+        (setf tuatara-user:*untrusted-directories* old)))))
 
 (define-test (evidence hard-link-to-evidence)
   ;; another name outside the directory of an evidence file is evidence: opened safely, access time kept;

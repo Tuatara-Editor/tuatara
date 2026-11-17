@@ -1724,6 +1724,73 @@ directory unless given."
 in HOME, your home directory unless given."
   (xdg-home "XDG_CACHE_HOME" ".cache/" home))
 
+(defvar *download-directory-seen* nil
+  "The download directory as last read (DOWNLOAD-DIRECTORY): (KEY . DIRECTORY),
+KEY what it was read from, so that it is read again only when that changes.")
+
+(defun user-dirs-download-line (file)
+  "The value the last XDG_DOWNLOAD_DIR line of FILE, a user-dirs.dirs, gives, as
+the shell that reads it would take it: quotes taken away, spaces before the
+name allowed; NIL when it has none or cannot be read."
+  (ignore-errors
+   (with-open-file (in file :external-format :utf-8 :if-does-not-exist nil)
+     (and in (let ((value nil))
+               (loop for line = (read-line in nil)
+                     while line
+                     do (let ((line (string-left-trim '(#\Space #\Tab) line)))
+                          (when (uiop:string-prefix-p "XDG_DOWNLOAD_DIR=" line)
+                            (setf value (string-trim "\"" (string-trim '(#\Space #\Tab #\Return)
+                                                                       (subseq line (length "XDG_DOWNLOAD_DIR="))))))))
+               value)))))
+
+(defun download-directory ()
+  "Where files downloaded go, as the XDG user directories name it: the last
+XDG_DOWNLOAD_DIR line of user-dirs.dirs in the configuration home
+\(CONFIG-HOME), $HOME or ${HOME} at its start standing for your home
+directory, else the environment variable XDG_DOWNLOAD_DIR, else Downloads in
+your home directory; a native name ending in /. A line naming the home
+directory itself, which is how xdg-user-dirs turns the directory off, counts
+as none. The file is read again only when it, the variable or the home
+directory changes."
+  (let* ((home (string-right-trim "/" (sb-ext:native-namestring (user-homedir-pathname))))
+         (file (merge-pathnames "user-dirs.dirs" (config-home)))
+         (stamp (path-stamp (native file) :failure nil))
+         (variable (own-variable "XDG_DOWNLOAD_DIR"))
+         (key (list home variable (native file)
+                    (and stamp (list (stamp-dev stamp) (stamp-ino stamp) (stamp-size stamp) (stamp-mtime stamp)
+                                     (stamp-ctime stamp))))))
+    (if (equal key (car *download-directory-seen*))
+        (cdr *download-directory-seen*)
+        (flet ((absolute (name)
+                 (and name (plusp (length name)) (char= #\/ (char name 0))
+                      (string/= (string-right-trim "/" name) home)
+                      (slash-ended name))))
+          (let ((directory (or (let ((value (and stamp (user-dirs-download-line file))))
+                                 (and value
+                                      (absolute (cond ((uiop:string-prefix-p "${HOME}" value)
+                                                       (concatenate 'string home (subseq value (length "${HOME}"))))
+                                                      ((uiop:string-prefix-p "$HOME" value)
+                                                       (concatenate 'string home (subseq value (length "$HOME"))))
+                                                      (t value)))))
+                               (absolute variable)
+                               (concatenate 'string home "/Downloads/"))))
+            (setf *download-directory-seen* (cons key directory))
+            directory)))))
+
+(defun known-download-directory ()
+  "The download directory as DOWNLOAD-DIRECTORY last read it, nothing read
+again; NIL before it was first asked for. The same string while it stays the
+same, for a cheap EQ."
+  (cdr *download-directory-seen*))
+
+(defun path-xattr-p (path name)
+  "True when the file at PATH, a link itself and not what it leads to, has the
+extended attribute NAME. Reading it changes no time of the file."
+  (let ((key (sb-ext:string-to-octets name :external-format :latin-1 :null-terminate t)))
+    (with-c-string (sap (native path))
+      (with-octets-sap (key-sap key)
+        (>= (%lgetxattr sap key-sap (sb-sys:int-sap 0) 0) 0)))))
+
 (defun user-font-directories (&optional (home (home-directory)))
   "Your own font directories, native names without a / at the end: fonts in the
 data home ($XDG_DATA_HOME, or .local/share in HOME), then .fonts in HOME;

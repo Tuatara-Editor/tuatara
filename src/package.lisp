@@ -50,7 +50,7 @@ available unqualified, and the public API of TUATARA is used.")
            #:*state-directory* #:*packages-directory* #:*package-size-limit* #:*archive-seconds*
            #:*archive-free-reserve* #:*archive-listing-limit* #:*differences-limit* #:*gpg-loopback-warning*
            ;; language servers and formatters
-           #:*language-servers* #:*language-formatters* #:*trusted-projects* #:*lsp-languages*
+           #:*language-servers* #:*language-formatters* #:*lsp-languages*
            #:*lsp-signature-help* #:*lsp-inlay-hints*
            #:*lsp-wait* #:*lsp-largest-message* #:*lsp-largest-document* #:*lsp-watch-files* #:*lsp-watch-skipped*
            #:*lsp-idle-delay* #:*lsp-hover-echo* #:*lsp-highlight-symbol* #:*lsp-code-lenses* #:*lsp-outline*
@@ -117,8 +117,9 @@ available unqualified, and the public API of TUATARA is used.")
            #:*sandbox-total-memory*
            #:*sandbox-seccomp* #:*picture-memory* #:*pdf-view-dark-pages* #:*office-view-pages* #:*user-full-name*
            #:*open-externally-program* #:*open-externally-programs* #:*hex-view-binary-files* #:*open-externally-kinds*
-           #:*open-externally-ask* #:*rimu-delete-to-trash* #:*latex-engines* #:*latex-main-font* #:*latex-sans-font*
-           #:*latex-mono-font* #:*latex-redaction-commands* #:*export-trusted-directories* #:*logos-directory*
+           #:*open-externally-ask* #:*rimu-delete-to-trash* #:*latex-engines*
+           #:*latex-main-font* #:*latex-sans-font*
+           #:*latex-mono-font* #:*latex-redaction-commands* #:*logos-directory*
            ;; the cursor, and its look in each of the modal states
            #:*cursor-shape* #:*cursor-colour*
            #:*tuatara-normal-cursor-shape* #:*tuatara-normal-cursor-colour* #:*tuatara-insert-cursor-shape*
@@ -160,6 +161,6 @@ available unqualified, and the public API of TUATARA is used.")
            ;; the window frontend
            #:*gui-font* #:*gui-renderer* #:*gui-title* #:*gui-padding* #:*window-colours-from-desktop* #:*tui-padding*
            #:*tui-pictures* #:*tui-mouse* #:*tui-colours* #:*follow-desktop-style* #:*open-dropped-files-safely*
-           #:*safe-directories* #:*open-binary-files-safely* #:*evidence-directories*
+           #:*untrusted-directories* #:*open-binary-files-safely* #:*evidence-directories*
            ;; files on another machine
            #:*remote-seconds* #:*remote-preview-size-limit* #:*client-kept-without-buffers*))

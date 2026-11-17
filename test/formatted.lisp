@@ -1221,7 +1221,7 @@ file sets them."
     (unwind-protect
          (progn
            (put-file (merge-pathnames "a.txt" dir) (format nil "first line~%foo here~%"))
-           (let ((tuatara-user:*safe-directories* (list (namestring dir))))
+           (let ((tuatara-user:*untrusted-directories* (list (namestring dir))))
              (multiple-value-bind (f editor) (run-keys '("SPC d g" :wait "f o o" :wait "RET") :width 120 :height 20)
                (let ((buffer (session-buffer editor)))
                  (is string= "a.txt" (tuatara.buffer:buffer-name buffer))

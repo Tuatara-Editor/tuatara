@@ -308,7 +308,7 @@ not counted.")
 
 (defun location-file-rope (server path)
   "The text of the file at PATH, for the places SERVER names in it, as a
-rope: read when it is in SERVER's project, not in *SAFE-DIRECTORIES*, no
+rope: read when it is in SERVER's project, not untrusted (UNTRUSTED-PATH-P), no
 larger than *LSP-LOCATION-FILE-LARGEST* and than the octets left to read
 \(*LSP-LOCATION-FILES-TOTAL*); else NIL. Each file read once while
 *LOCATION-FILES* keeps them; its lines are found in the rope, never made
@@ -318,7 +318,7 @@ into strings but for the line shown."
         kept
         (let ((rope (and (or (null *location-octets-left*) (plusp *location-octets-left*))
                          (tuatara.io:really-within-p path (lsp-server-root server))
-                         (not (safe-directory-of path))
+                         (not (untrusted-path-p path))
                          (let ((octets (handler-case
                                            (tuatara.io:file-octets
                                             path :limit (min *lsp-location-file-largest*
@@ -708,7 +708,7 @@ no buffer has it: true when it changed, NIL when there was nothing to
 change; else words saying why not."
   (let ((path (uri-path uri)))
     (cond ((null path) (format nil "~a is no file here" uri))
-          ((safe-directory-of path) (format nil "~a is in one of *safe-directories*" (abbreviated-path path)))
+          ((untrusted-path-p path) (format nil "~a is untrusted (*untrusted-directories*)" (abbreviated-path path)))
           (t (multiple-value-bind (buffer doc) (uri-buffer uri :visit t)
                (cond ((null buffer) (format nil "~a is not there (no file is made)" (abbreviated-path path)))
                      ((or (buffer-read-only-p buffer) (tuatara.io:safe-visit-p buffer))
@@ -742,7 +742,7 @@ ASKED for of itself, or one that reaches outside its project."
 open opened first: each file's changes one change undo takes back whole,
 nothing saved. Asked first when it would change a file outside the server's
 project, or always when the server ASKED for it of itself. Never made: files
-to make, rename or delete, files not there, in *safe-directories*, read only
+to make, rename or delete, files not there, in *untrusted-directories*, read only
 or opened safely, and changes that say not where they go. Returns how many
 files changed, NIL when it was not made, and as a second value words saying
 what was left alone, or NIL."

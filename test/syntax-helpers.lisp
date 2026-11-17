@@ -123,7 +123,7 @@
   ;; the file it really is, outside it
   (with-test-directory (trusted)
     (with-test-directory (elsewhere)
-      (let ((tuatara-user:*trusted-projects* (list (namestring trusted)))
+      (let ((tuatara-user:*untrusted-directories* '())
             (inside (namestring (merge-pathnames "inside.rs" trusted)))
             (outside (namestring (merge-pathnames "evidence.rs" elsewhere)))
             (link (namestring (merge-pathnames "link.rs" trusted))))

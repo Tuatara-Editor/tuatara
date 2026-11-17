@@ -52,11 +52,12 @@ than a name: it holds a /, starts with ~ or ends with .tex."
 
 (defun template-path-allowed-p (path directory)
   "True when a note in DIRECTORY may name the template at PATH by its path:
-PATH stands in DIRECTORY or a directory in it, in your own templates'
-directory, or in one of *EXPORT-TRUSTED-DIRECTORIES*, links followed
-\(EXPORT-DIRECTORY-P), so that a note given to you cannot make its export take
-in a file of yours from elsewhere."
-  (export-directory-p path (or directory (tuatara.io:home-directory)) (list (latex-templates-directory))))
+anywhere for a trusted note; for an untrusted one (UNTRUSTED-PATH-P), PATH
+stands in DIRECTORY or a directory in it, or in your own templates' directory,
+links followed (EXPORT-DIRECTORY-P), so that a note given to you cannot make
+its export take in a file of yours from elsewhere."
+  (export-directory-p path (or directory (tuatara.io:home-directory)) (list (latex-templates-directory))
+                      (if *org-export* (org-export-untrusted-p) (and directory (untrusted-path-p directory)))))
 
 (defun latex-template-for (value directory)
   "The template VALUE names, what a note's #+template: says: a file's
@@ -75,7 +76,7 @@ Signals, saying what there is, when there is no such template."
                        *secret-at-hand* (abbreviated-path path)))
               ((not (template-path-allowed-p path directory))
                (refuse "The template ~:[~a~;#+template: names~*~] is outside the note's directory (#+template:); ~
-                        *export-trusted-directories* names the directories it may also come from"
+                        the note is untrusted (*untrusted-directories*)"
                        *secret-at-hand* (abbreviated-path path)))
               (t (values (tuatara.io:file-text path :limit *org-file-read-limit*) path))))
       (or (find-latex-template value)

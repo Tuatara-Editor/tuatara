@@ -2,10 +2,10 @@
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; A language server runs the project's code and reads its settings: a build
-;;;; script, a plugin, a macro. So it starts by itself only for a project you
-;;;; trust (trust.lisp: M-x lsp asks, once, and remembers;
-;;;; *TRUSTED-PROJECTS*), and never for a file opened safely, in
-;;;; *SAFE-DIRECTORIES*, the text of an encrypted file, or one not all UTF-8. A
+;;;; script, a plugin, a macro. So it starts by itself only for a project
+;;;; trusted (trust.lisp: outside *UNTRUSTED-DIRECTORIES*, or M-x lsp asks,
+;;;; once, and remembers), and never for a file opened safely, the text of an
+;;;; encrypted file, or one not all UTF-8. A
 ;;;; buffer of a project that has one is opened in it, and each change sent once
 ;;;; typing pauses (*TYPING-PAUSE*): only what changed, to a server that takes
 ;;;; changes so, else its whole text. What a server says of a place is moved
@@ -945,7 +945,7 @@ after asking whether you trust the project: a server runs the project's code
 \(build scripts, macros, plugins). Trusted, its servers start by themselves
 whenever one of its files is opened, in later sessions too; \\[lsp-forget-project]
 takes that back. In a note, those of its source blocks' languages. A file
-opened safely, in *safe-directories*, or the text of an encrypted file is
+opened safely, in *untrusted-directories*, or the text of an encrypted file is
 never given to a server, nor one that is not all UTF-8."
   (let* ((buffer (current-buffer))
          (installed (lsp-installed-servers buffer))
@@ -967,7 +967,7 @@ of it runs. Its language servers no longer start by themselves, git no longer
 runs the programs it names (hooks, filters) and its build commands (M-x
 compile) are asked about again (FORGET-PROJECT-TRUST). The project is the
 directory its language servers work in; a git repository trusted above it
-stays trusted, and so does a directory of *TRUSTED-PROJECTS*."
+stays trusted, and so does a project outside *UNTRUSTED-DIRECTORIES*."
   (let* ((buffer (current-buffer))
          (roots (and (tuatara.buffer:buffer-file buffer)
                      (remove-duplicates (mapcar (lambda (spec) (lsp-project-of buffer (first spec)))
@@ -979,7 +979,7 @@ stays trusted, and so does a directory of *TRUSTED-PROJECTS*."
           (forget-project-trust root)
           (dolist (server (copy-list *lsp-servers*))
             (when (string= (lsp-server-root server) root) (lsp-stop server)))
-          (message "~a is trusted no more~:[~;; it is in *trusted-projects*, which still trusts it~]"
+          (message "~a is trusted no more~:[~;; it is outside *untrusted-directories*, which still trusts it~]"
                    (abbreviated-path root) (project-trusted-p root))))))
 
 (define-command lsp-shutdown ()

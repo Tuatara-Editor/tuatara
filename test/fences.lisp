@@ -20,6 +20,9 @@
 ;; snippets: the capture and snippets tests bind their own.
 (setf tuatara-user:*capture-template-directories* (list "/nonexistent/tuatara-test-capture-templates/"))
 (setf tuatara-user:*snippet-directories* (list "/nonexistent/tuatara-test-snippets/"))
+;; The tests' own files lie in the temporary directory, which is untrusted as standard: none is, so they open as
+;; the developer's files do; the tests of trust bind their own.
+(setf tuatara-user:*untrusted-directories* '())
 ;; Nor write the developer's state (the list of recent files): a directory of
 ;; their own, removed when they are done.
 (defvar *test-state-directory*
@@ -112,9 +115,6 @@ process no longer running."
     (sweep *test-cache-directory* "test-data-")
     (sweep *test-cache-directory* "test-")))
 (remove-stale-test-directories)
-;; the tests' own report template, which notes in their test directories name by its path
-(push (namestring (asdf:system-relative-pathname :tuatara "test/latex-export/"))
-      tuatara-user:*export-trusted-directories*)
 
 ;; The tests take the leader keys the starter init file offers (commented out
 ;; there, SPC being yours), as one who takes them does: the tests that

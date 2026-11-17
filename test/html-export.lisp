@@ -277,8 +277,10 @@ next
   (true (uiop:string-prefix-p "file:///" (tuatara.defaults::org-html-file-address "/tmp/x.png"))))
 
 (define-test (html-export pictures-on-the-page)
+  ;; a note given to you (in an untrusted directory) shows only pictures from its own directory
   (with-test-directory (dir)
-    (let* ((directory (merge-pathnames "notes/" dir))
+    (let* ((tuatara-user:*untrusted-directories* (list (namestring dir)))
+           (directory (merge-pathnames "notes/" dir))
            (file (namestring (merge-pathnames "note.org" directory)))
            (near (merge-pathnames "pic.png" directory))
            (outside (merge-pathnames "outside.png" dir)))
