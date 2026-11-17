@@ -37,13 +37,13 @@ Moving over many lines quickly then reads none of them. A longer time reads
 fewer files as you move, which helps on a slow disk or a remote directory; a
 shorter one shows the preview at once and reads more.
 - a number of seconds: the time, 0.1 as standard."
-  :values (number 0 *))
+  :values (seconds 0 *))
 
 (define-setting *rimu-preview-size* (expt 2 20)
   "The most of a file rimu's preview shows, in octets from its start.
 The preview of a larger file shows its start, its name saying so.
 - a whole number of octets: the most, 1 MB as standard."
-  :values (integer 0 *))
+  :values (octets 0 *))
 
 (define-record (rimu-preview (:include side-preview) (:constructor make-rimu-preview (list-window)) (:copier nil))
   "The preview of a rimu list, a SIDE-PREVIEW whose SHOWN is the entry shown
@@ -335,12 +335,14 @@ where it shows none."
            (and width (list (* width (max 1 (ceiling (editor-width editor) 2)))
                             (* height (max 1 (editor-height editor)))))))))
 
-(defun rimu-preview-decode (job fd path size limit pixels)
+(defun rimu-preview-decode (job fd path size limit pixels untrusted)
   "On JOB's thread, read the start of the file open on FD, at PATH, SIZE
 octets, at most LIMIT of them, into JOB, with what it tells of the file's kind;
 then what the preview shows of it: an Office document's or a PDF's text and
 page, an image's picture PIXELS (RIMU-PREVIEW-PIXELS) at most, or the text a
-package gives for it (*PREVIEW-TEXT-FUNCTIONS*)."
+package gives for it (*PREVIEW-TEXT-FUNCTIONS*). A file from outside,
+UNTRUSTED (UNTRUSTED-PATH-P), is read only by programs shut in by the
+sandbox: an Office document's page alone, and no package's text."
   (let* ((cancel (rimu-preview-job-cancel job))
          (octets (tuatara.io:read-fd-start fd path size limit))
          (kind (multiple-value-list (octets-kind-of-file fd octets)))
@@ -353,7 +355,8 @@ package gives for it (*PREVIEW-TEXT-FUNCTIONS*)."
                    (rimu-preview-job-image job) image
                    (rimu-preview-job-notes job) notes)))
       (cond (office
-             (multiple-value-bind (text notes image) (office-preview fd path size office :pixels pixels :cancel cancel)
+             (multiple-value-bind (text notes image)
+                 (office-preview fd path size office :pixels pixels :cancel cancel :read (not untrusted))
                (shown text notes image)))
             ((eq (second kind) :pdf)
              (multiple-value-bind (text notes image) (decode-pdf fd :cancel cancel :limit limit :pixels pixels)
@@ -362,7 +365,7 @@ package gives for it (*PREVIEW-TEXT-FUNCTIONS*)."
              (multiple-value-bind (image notes)
                  (decode-image fd (second kind) (first pixels) (second pixels) :cancel cancel)
                (shown nil notes image)))
-            (t
+            ((not untrusted)
              (let ((text (run-hook-until-success *preview-text-functions* fd path size (second kind) octets)))
                (when text
                  (setf (rimu-preview-job-text job) text
@@ -373,9 +376,10 @@ package gives for it (*PREVIEW-TEXT-FUNCTIONS*)."
 it (RIMU-SOURCE, NIL for the disk), for the preview in EDITOR
 \(RIMU-PREVIEW-DECODE); however it ends, JOB is done and EDITOR woken. Returns
 JOB."
-  (let ((entry (rimu-preview-job-entry job))
-        (limit *rimu-preview-size*)
-        (pixels (rimu-preview-pixels editor)))
+  (let* ((entry (rimu-preview-job-entry job))
+         (limit *rimu-preview-size*)
+         (pixels (rimu-preview-pixels editor))
+         (untrusted (untrusted-path-p (rimu-path (rimu-preview-job-directory job) entry))))
     (setf (rimu-preview-job-thread job)
           (tuatara.runtime:make-guarded-thread
            (tuatara.runtime:carry-settings
@@ -387,7 +391,8 @@ JOB."
                          (rimu-source-call-with-entry source (rimu-preview-job-directory job)
                                                       (tuatara.io:listed-octets entry)
                                                       (lambda (fd path size)
-                                                        (rimu-preview-decode job fd path size limit pixels))
+                                                        (rimu-preview-decode job fd path size limit pixels
+                                                                             untrusted))
                                                       :cancel (rimu-preview-job-cancel job)))
                      (serious-condition (e) (setf (rimu-preview-job-reason job) (princ-to-string e))))
                 ;; however it ends, the preview is over and shown

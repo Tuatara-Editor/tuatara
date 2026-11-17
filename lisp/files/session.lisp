@@ -33,7 +33,7 @@ changed (*KEEP-SESSION*).
 It is what a crash can lose. Lower it to lose less; raise it where writing is
 slow, as on a drive that sleeps.
 - a number of seconds: the time between writings, 30 as standard."
-  :values (number 0 *))
+  :values (seconds 0 *))
 
 (defvar *session-name* "session"
   "The name of the file in the state directory the session is kept in: session,

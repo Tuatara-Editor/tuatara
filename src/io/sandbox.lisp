@@ -16,12 +16,20 @@
 ;;;; and that reach into the kernel's most exposed parts: mounting,
 ;;;; namespaces, kernel modules and keys, tracing other processes, io_uring,
 ;;;; BPF, sockets other than local ones, and pushing keys into a terminal; nor
-;;;; may it make a named pipe or a device.
+;;;; may it make a named pipe or a device. A program given a copy on the drive
+;;;; may not change any file's permissions or access list either.
 ;;;;
 ;;;; The file is not shown to it by name: it reads it on its standard input, a
-;;;; copy of it in memory that nothing can change, made from a descriptor opened
-;;;; here the way a safe visit opens a file, so its access time is not changed
-;;;; (on your own files) and nothing else in its directory can be reached.
+;;;; copy of it that nothing can change, made from a descriptor opened here the
+;;;; way a safe visit opens a file, so its access time is not changed (on your
+;;;; own files) and nothing else in its directory can be reached. The copy of
+;;;; a small file is in memory and sealed. That of a large one is a file with
+;;;; no name in the cache directory, which no other program can open by a
+;;;; name and which is gone once closed, even after a crash: it is read only
+;;;; to all, the program given a descriptor that only reads, and its stamp is
+;;;; looked at again before each program is given it and after each is done,
+;;;; so that a change by a program that wrote it all the same is found and the
+;;;; copy not used again.
 ;;;; The file's own descriptor never reaches the program: through it, the file
 ;;;; could be written, its permissions and times changed.
 ;;;;
@@ -62,7 +70,7 @@ true.")
 
 (defparameter *sandbox-carried-settings*
   '(*sandbox* *bwrap-name* *sandbox-seconds* *sandbox-memory* *sandbox-total-memory* *sandbox-input-limit*
-    *sandbox-seccomp* *program-output-limit*)
+    *sandbox-memory-copy-limit* *sandbox-seccomp* *program-output-limit*)
   "The settings a program run shut in (SANDBOX-RUN) is run by, for work in the
 background that runs one to carry to its thread as they are on the editor's
 when it starts (TUATARA.RUNTIME:CARRY-SETTINGS).")
@@ -79,7 +87,7 @@ Raise it for a file that takes long to decode, such as a large picture;
 lower it to end a program stuck on a damaged file sooner. A file whose
 program is ended is not shown.
 - a number, 1 or more: the seconds allowed; 10 as standard."
-  :values (number 1 *))
+  :values (seconds 1 *))
 
 (define-setting *sandbox-memory* (* 1024 1024 1024)
   "The memory a program decoding a file may take.
@@ -88,15 +96,34 @@ a damaged file cannot take memory from the rest. A program that needs more
 than this fails, and the file is not decoded.
 - a whole number, 1 or more: the octets allowed; 1 GB as standard.
 - nil: no limit."
-  :values (or (member nil) (integer 1 *)))
+  :values (or (member nil) (octets 1 *)))
 
-(define-setting *sandbox-input-limit* (* 1024 1024 1024)
+(define-setting *sandbox-input-limit* nil
   "The largest file a program decoding files is given.
-It gets a copy in memory, which a larger file, or one claiming a huge size
-with nothing in it, would fill. A larger one is not decoded, and why is said.
-- a whole number, 1 or more: the octets allowed; 1 GB as standard.
-- nil: no limit."
-  :values (or (member nil) (integer 1 *)))
+It gets a copy: in memory up to *SANDBOX-MEMORY-COPY-LIMIT*, else in the cache
+directory (*CACHE-DIRECTORY*), where the copy must leave 1 GB free, so a file
+too large for the room there, or one claiming a huge size with nothing in it,
+is not decoded either. A larger one is not decoded, and why is said.
+- a size, 1 octet or more: the largest, as a whole number of octets or in
+  words (\"20G\").
+- nil: no limit but the room for the copy (the standard)."
+  :values (or (member nil) (octets 1 *)))
+
+(define-setting *sandbox-memory-copy-limit* (* 256 1024 1024)
+  "The largest file whose copy for a program decoding it is kept in memory.
+A larger file is copied into the cache directory (*CACHE-DIRECTORY*) instead,
+so that a mailbox or PDF of many gigabytes needs room on the drive, not
+memory: a file with no name only the editor can reach, read only, gone once
+the programs are done with it, even after a crash. Set *CACHE-DIRECTORY* to
+a directory encrypted by the kernel (LUKS, fscrypt) to keep such copies
+there. Its file system must be ext4 (or ext2, ext3), XFS, btrfs, F2FS or
+bcachefs, which hold files with no name (O_TMPFILE): elsewhere (tmpfs, FUSE,
+SMB, NFS and the rest) a large file is not decoded, and that is said.
+- a size, 0 octets or more: the largest kept in memory, as a whole number of
+  octets or in words (\"512M\"); 256 MB as standard; 0 copies every file to
+  the drive.
+- nil: every copy in memory, whatever its size."
+  :values (or (member nil) (octets 0 *)))
 
 (define-setting *sandbox-total-memory* (* 2 1024 1024 1024)
   "The memory all the programs decoding one file may take together.
@@ -104,7 +131,7 @@ It holds where the system can hold them to it (systemd-run, a scope of the
 user's own); each program is still held to *SANDBOX-MEMORY*.
 - a whole number, 1 or more: the octets allowed; 2 GB as standard.
 - nil: no such limit."
-  :values (or (member nil) (integer 1 *)))
+  :values (or (member nil) (octets 1 *)))
 
 (defparameter *sandbox-path* "/usr/local/bin:/usr/bin:/bin"
   "Where a program in the sandbox is looked for: the system's own directories
@@ -217,6 +244,19 @@ MAJOR.MINOR or later, as it says it is."
   "For each processor the seccomp filter knows (a feature of the Lisp, then
 the kernel's AUDIT_ARCH number), the system calls refused, by number.")
 
+(defparameter *seccomp-guarding*
+  '((:x86-64
+     ;; chmod fchmod fchmodat fchmodat2 setxattr lsetxattr fsetxattr setxattrat
+     90 91 268 452 188 189 190 463)
+    (:arm64
+     ;; fchmod fchmodat fchmodat2 setxattr lsetxattr fsetxattr setxattrat
+     52 53 452 5 6 7 463))
+  "For each processor, the system calls also refused to a program given a copy
+on the drive (DISK-COPY), by number: those that change a file's permissions,
+directly or through its access list (system.posix_acl_access), and so could
+make the read-only copy writable to its owner, which the program runs as.
+Without them, opening it again to write is refused by its permissions.")
+
 (defun seccomp-cpu ()
   "The entry of *SECCOMP-REFUSED* for the processor the editor runs on, or NIL
 for one the seccomp filter does not know."
@@ -228,11 +268,12 @@ for one the seccomp filter does not know."
   "For each processor, the numbers of the system calls the seccomp filter
 looks into the arguments of.")
 
-(defun seccomp-program ()
+(defun seccomp-program (&key guarded)
   "The seccomp filter of the sandbox as the octets of a classic BPF program,
 as bwrap's --seccomp reads it, for the processor here. It is NIL on one it
 does not know. Another processor's calls (32-bit ones on x86-64) end the
-program. The calls of *SECCOMP-REFUSED* fail with EPERM. clone3 fails with
+program. The calls of *SECCOMP-REFUSED* fail with EPERM, and with GUARDED
+those of *SECCOMP-GUARDING* too. clone3 fails with
 ENOSYS (so that its flags, out of reach of the filter, are asked through
 clone). clone making a namespace fails too, and so do ioctl pushing input into
 a terminal (TIOCSTI, TIOCLINUX) and a socket that is not a local one
@@ -252,7 +293,7 @@ a terminal (TIOCSTI, TIOCLINUX) and a socket that is not a local one
           (when (eq (first cpu) :x86-64)                    ; x32 calls
             (op #x35 0 1 #x40000000)
             (ret eperm))
-          (dolist (number (cddr cpu))
+          (dolist (number (append (cddr cpu) (and guarded (rest (assoc (first cpu) *seccomp-guarding*)))))
             (op #x15 0 1 number)
             (ret eperm))
           (op #x15 0 1 (getf calls :clone3))
@@ -675,9 +716,12 @@ it, it waits for ever, and the kernel lets no signal but SIGKILL end it."
                    (signal-process-if pid (lambda () (sandbox-left-p pid)) sb-unix:sigkill))))
 
 (defun start-sandbox (bwrap program arguments stdin seconds memory
-                      &rest keys &key files (total *sandbox-total-memory*) (outputs :stream) started &allow-other-keys)
+                      &rest keys &key files (total *sandbox-total-memory*) (outputs :stream) started guarded
+                      &allow-other-keys)
   "Start bwrap at the path BWRAP on PROGRAM with ARGUMENTS, STDIN its input,
 shown FILES as SANDBOX-RUN has them, KEYS the rest of SANDBOX-ARGUMENTS's;
+with GUARDED, STDIN being a copy on the drive, under the seccomp filter that
+also keeps it from being made writable (SECCOMP-PROGRAM);
 the process, among the sandboxes running until it is ended (END-SANDBOX). In
 a scope whose memory is held to TOTAL (*SANDBOX-TOTAL-MEMORY* unless given)
 when systemd-run can make one. Its outputs are streams to read, or let go
@@ -686,18 +730,19 @@ as it is counted, before anything can stop this thread, to keep it where the
 caller ends it."
   (let ((seccomp nil) (data '()) (opened (list nil)))
     (unwind-protect
-         (let* ((program-octets (and *sandbox-seccomp* (seccomp-program)))
+         (let* ((program-octets (and *sandbox-seccomp* (seccomp-program :guarded guarded)))
                 (arguments (progn
                              (when program-octets (setf seccomp (memory-file "tuatara-seccomp" program-octets)))
                              (loop for (path . contents) in files
                                    do (push (cons path (if (stringp contents)
                                                            (memory-file "tuatara-sandbox-file"
                                                                         (tuatara.text:string-octets contents))
-                                                           (sealed-for-program contents)))
+                                                           ;; bwrap copies it into memory of its own
+                                                           (sealed-for-program contents :in-memory t)))
                                             data))
                              (apply #'sandbox-arguments program arguments seconds memory
                                     :seccomp seccomp :files (reverse data) :opened opened
-                                    (alexandria:remove-from-plist keys :files :total :outputs :started))))
+                                    (alexandria:remove-from-plist keys :files :total :outputs :started :guarded))))
                 (keep (remove nil (append (list seccomp) (mapcar #'cdr data) (car opened))))
                 (scope (and total **sandbox-scope**))
                 (unit (and scope (scope-name))))
@@ -859,24 +904,237 @@ first time: call it from a thread doing work in the background."
                   **sandbox-state**)))
     (values (first state) (second state) (third state))))
 
-(defun sandbox-input-refusal (size)
-  "Why a file of SIZE octets is not given to a program decoding it, in words,
-or NIL when it may be: it is larger than *SANDBOX-INPUT-LIMIT*."
-  (when (and *sandbox-input-limit* (> size *sandbox-input-limit*))
-    (format nil "it is ~:d octets, more than a decoder is given (*sandbox-input-limit*, ~:d)"
-            size *sandbox-input-limit*)))
+(defun memory-copy-p (size)
+  "True when the copy of a file of SIZE octets for a program decoding it is
+kept in memory (*SANDBOX-MEMORY-COPY-LIMIT*), not in the cache directory."
+  (or (null *sandbox-memory-copy-limit*) (<= size *sandbox-memory-copy-limit*)))
 
-(defun sealed-copy (fd &key kept)
-  "A copy in memory of the file open as file descriptor (FD), as a new
-descriptor at its start, sealed so that nothing, not even a program given
-it, can change it: not written, not made shorter or longer; with KEPT kept
-open in programs started (for bwrap to read). FD's own offset is left alone.
-A file larger than *SANDBOX-INPUT-LIMIT* is refused with a FILE-SYSTEM-ERROR."
-  (let* ((size (stamp-size (fd-stamp fd "a file")))
-         (refusal (sandbox-input-refusal size)))
+(sb-ext:defglobal **copies-pending** (list 0)
+  "A cons whose car is the octets of copies being made in the cache directory
+now (DISK-COPY), counted against its free room so that copies made at the same
+time do not each count the same room. Changed under **COPIES-PENDING-LOCK**.")
+
+(sb-ext:defglobal **copies-pending-lock** (sb-thread:make-mutex :name "copies pending")
+  "Held while the room for a copy is looked at and **COPIES-PENDING** changed.")
+
+(defun reserve-copy-room (size directory)
+  "Count SIZE octets as being copied into DIRECTORY, the cache directory, when
+it has room for them (COPY-ROOM-REFUSAL), the copies being made counted;
+signal a FILE-SYSTEM-ERROR saying why when it has not. RELEASE-COPY-ROOM
+gives the room back."
+  (sb-thread:with-mutex (**copies-pending-lock**)
+    (let ((refusal (copy-room-refusal size directory)))
+      (when refusal
+        (error 'file-system-error :operation "decode" :path "a file" :reason refusal))
+      (incf (car **copies-pending**) size))))
+
+(defun release-copy-room (size)
+  "Give back the room RESERVE-COPY-ROOM counted for a copy of SIZE octets."
+  (sb-thread:with-mutex (**copies-pending-lock**)
+    (decf (car **copies-pending**) size)))
+
+(defun copy-room-refusal (size directory)
+  "Why a copy of SIZE octets cannot be made in DIRECTORY, the cache directory,
+in words saying how much is needed, where, and the setting that moves it, or
+NIL when the drive has room for it, the copies being made
+\(**COPIES-PENDING**) and *SNAPSHOT-FREE-MARGIN* more, or does not say.
+While the directory *CACHE-DIRECTORY* names is not there and one in memory
+stands in for it (DIRECTORY-IN-MEMORY-P), no copy is made there: that is
+said, naming the directory missing."
+  (let* ((pending (car **copies-pending**))
+         (free (let ((free (free-octets directory))) (and free (max 0 (- free pending))))))
+    (cond
+      ((directory-in-memory-p '*cache-directory*)
+       (format nil "its copy for the decoder goes to ~a (*cache-directory*), which is not there, and is not put in ~
+                    memory in its place: mount its drive, or set *cache-directory* to a directory that is there"
+               (second (assoc '*cache-directory* *directories-in-memory*))))
+      ((and free (< free (+ size *snapshot-free-margin*)))
+      (format nil "its copy for the decoder needs ~a free in ~a (~a, and ~a to spare), which has ~a~a: make ~
+                   room there, or set *cache-directory* to a directory on a drive with room"
+              (octets-words (+ size *snapshot-free-margin*) :binary t) (native directory)
+              (octets-words size :binary t) (octets-words *snapshot-free-margin* :binary t)
+              (octets-words free :binary t)
+              (if (plusp pending) (format nil " besides ~a being copied" (octets-words pending :binary t)) ""))))))
+
+(defun sandbox-input-refusal (size &key in-memory)
+  "Why a file of SIZE octets is not given to a program decoding it, in words,
+with what to set to have it read, or NIL when it may be: it is larger than
+*SANDBOX-INPUT-LIMIT*, or its copy goes to the cache directory
+\(MEMORY-COPY-P), which has no room for it (COPY-ROOM-REFUSAL). With
+IN-MEMORY, for a copy that must be in memory whatever its size, or when every
+copy is kept in memory (*SANDBOX-MEMORY-COPY-LIMIT* NIL), a file larger than
+*SANDBOX-MEMORY*, or than the memory to be had (AVAILABLE-MEMORY) while that is
+NIL, or than *SANDBOX-MEMORY*'s standard value when the system does not say,
+is refused too."
+  (cond ((and *sandbox-input-limit* (> size *sandbox-input-limit*))
+         (format nil "it is ~a, more than the ~a a decoder is given: set *sandbox-input-limit* above its size, ~
+                      or to nil, to have it read"
+                 (octets-words size :binary t) (octets-words *sandbox-input-limit* :binary t)))
+        ((or in-memory (null *sandbox-memory-copy-limit*))
+         (let ((most (or *sandbox-memory* (available-memory)
+                         (tuatara.runtime:setting-standard-value '*sandbox-memory*))))
+           (and most (> size most)
+                (format nil "it is ~a, more than the ~a a program reading it is given in memory: set ~
+                             *sandbox-memory* above its size to have it read (it needs that much free memory)~
+                             ~:[~;, or *sandbox-memory-copy-limit* to a size, to have it copied to the drive~]"
+                        (octets-words size :binary t) (octets-words most :binary t) (not in-memory)))))
+        ((not (memory-copy-p size))
+         (copy-room-refusal size (cache-directory)))))
+
+(sb-ext:defglobal **disk-copies** (make-hash-table :synchronized t)
+  "The copies for decoders made in the cache directory (DISK-COPY): for each
+descriptor, a cons of the stamp the copy had once it was made read only, by
+which it is known again and checked (CHECK-DISK-COPY), and whether it was
+found changed since, never to be given again.")
+
+(defun copy-for-decoder (fd copy size)
+  "Copy the first SIZE octets of the file open as file descriptor (FD) into the
+file open as COPY, stopped when the job doing it is asked to stop."
+  (unless (copy-fd-contents fd copy size :path "a file"
+                            :cancel (and tuatara.runtime:*job* (tuatara.runtime:job-cancel tuatara.runtime:*job*)))
+    (tuatara.runtime:job-check-stop)
+    (error 'file-system-error :operation "copy" :path "a file" :reason "it was stopped")))
+
+(defparameter *copy-file-systems*
+  (list (cons #xef53 "ext4") (cons +xfs-magic+ "XFS") (cons +btrfs-magic+ "btrfs") (cons +f2fs-magic+ "F2FS")
+        (cons +bcachefs-magic+ "bcachefs"))
+  "The file systems, by magic number with a name, a copy for decoders is made
+on (DISK-COPY): local ones that hold files with no name and keep them only
+while open. ext2 and ext3 share ext4's number. Not tmpfs, which is memory, nor
+one another machine or a program serves.")
+
+(defparameter *file-system-names*
+  (list (cons #x01021994 "tmpfs") (cons #x858458f6 "ramfs") (cons #x6969 "NFS") (cons #x65735546 "FUSE")
+        (cons #xfe534d42 "SMB2") (cons #xff534d42 "CIFS") (cons +zfs-magic+ "ZFS") (cons #x4d44 "FAT")
+        (cons #x2011bab0 "exFAT") (cons #x5346544e "NTFS") (cons #x794c7630 "overlayfs"))
+  "Names of file systems a copy for decoders is not made on, by magic number,
+for saying which one the cache directory is on.")
+
+(defun unnamed-copy-refusal (directory why)
+  "Why no copy for decoders is made in DIRECTORY, the cache directory, WHY
+saying what its file system is or did, in words naming what to set."
+  (format nil "the file system of the cache directory, ~a, cannot hold a copy with no name (~a), as FUSE, SMB and ~
+               NFS cannot: set *cache-directory* to a local directory, or one encrypted by the kernel (LUKS, fscrypt)"
+          (native directory) why))
+
+(defun copy-file-system-refusal (magic directory)
+  "NIL when a copy for decoders may be made on the file system with MAGIC, the
+number statfs gives (f_type), one of *COPY-FILE-SYSTEMS*; else why not, in
+words (UNNAMED-COPY-REFUSAL) naming it, DIRECTORY being the cache directory."
+  (unless (and magic (assoc magic *copy-file-systems*))
+    (unnamed-copy-refusal directory
+                          (let ((name (and magic (cdr (assoc magic *file-system-names*)))))
+                            (cond (name (format nil "it is ~a" name))
+                                  (magic (format nil "it is of the kind numbered #x~(~x~)" magic))
+                                  (t "its kind cannot be told"))))))
+
+(defun disk-copy (fd size kept)
+  "A copy in the cache directory of the first SIZE octets of the file open as
+file descriptor (FD), as a new descriptor at its start that only reads, with
+KEPT kept open in programs started. The copy is a file with no name that can
+never be given one (OPEN-UNNAMED-AT, NEVER-NAMED), read only to all, gone once
+every descriptor of it is closed; the one it was written through is closed
+here. Refused with a FILE-SYSTEM-ERROR when the drive has no room for it
+\(RESERVE-COPY-ROOM), when its file system is not one of *COPY-FILE-SYSTEMS*
+\(COPY-FILE-SYSTEM-REFUSAL) or cannot hold a file with no name (there is no
+other way), or when the copy cannot be made read only."
+  (let ((directory (cache-directory)))
+    (reserve-copy-room size directory)
+    (unwind-protect
+         (multiple-value-bind (writer errno)
+             (call-with-directory directory
+                                  (lambda (dirfd)
+                                    (let ((refusal (copy-file-system-refusal (fd-file-system dirfd) directory)))
+                                      (when refusal
+                                        (error 'file-system-error :operation "decode" :path "a file" :reason refusal)))
+                                    (open-unnamed-at dirfd #o600 :never-named t))
+                                  "make a copy in")
+           (unless writer
+             (error 'file-system-error :operation "decode" :path "a file" :errno errno
+                                       :reason (unnamed-copy-refusal directory (errno-reason errno))))
+           (unwind-protect
+                (progn
+                  (copy-for-decoder fd writer size)
+                  (sb-posix:fchmod writer #o400)
+                  (let ((reader (handler-case (sb-posix:open (format nil "/proc/self/fd/~d" writer)
+                                                             (logior sb-posix:o-rdonly (if kept 0 +o-cloexec+)))
+                                  (sb-posix:syscall-error (e)
+                                    (fail "open again" "a copy in the cache directory" (sb-posix:syscall-errno e))))))
+                    (tuatara.runtime:with-fd-closed-on-error (reader "a copy in the cache directory")
+                      (let ((stamp (fd-stamp reader "a copy in the cache directory")))
+                        (unless (= #o400 (logand #o7777 (stamp-mode stamp)))
+                          (error 'file-system-error :operation "decode" :path "a file"
+                                                    :reason (format nil "its copy in ~a could not be made read only"
+                                                                    (native directory))))
+                        (setf (gethash reader **disk-copies**) (list stamp))))
+                    reader))
+             (sb-posix:close writer)))
+      (release-copy-room size))))
+
+(defun disk-copy-p (fd)
+  "True when file descriptor (FD) is a copy for decoders in the cache
+directory (DISK-COPY): one noted when made, the same file, open only to
+read."
+  (let ((made (car (gethash fd **disk-copies**))))
+    (when made
+      (let ((now (ignore-errors (fd-stamp fd "a copy in the cache directory"))))
+        (if (and now (same-stamped-file-p made now) (zerop (stamp-nlink now))
+                 (= sb-posix:o-rdonly (logand (%fcntl fd 3 0) 3)))      ; F_GETFL, O_ACCMODE
+            t
+            (progn (remhash fd **disk-copies**) nil))))))
+
+(defun check-disk-copy (fd)
+  "Signal a FILE-SYSTEM-ERROR when the copy in the cache directory open as file
+descriptor (FD) is not one made there (DISK-COPY-P), or not as it was made:
+written, made shorter or longer, or its permissions changed since, as by a
+program given it that found a way to write it. It is then marked, so that it
+is refused each time it is given again, never copied anew."
+  (let* ((entry (gethash fd **disk-copies**))
+         (made (car entry))
+         (now (and entry (fd-stamp fd "a copy in the cache directory"))))
+    (unless (and made (not (cdr entry))
+                 (= (stamp-size made) (stamp-size now)) (= (stamp-mtime made) (stamp-mtime now))
+                 (= (stamp-ctime made) (stamp-ctime now)) (= (stamp-mode made) (stamp-mode now)))
+      (when entry (setf (cdr entry) t))
+      (error 'file-system-error :operation "decode" :path "a file"
+                                :reason (if entry
+                                            (format nil "its copy in the cache directory was changed after it was ~
+                                                         made, by a program given it it may be: it is not used again")
+                                            "its copy in the cache directory is not the one given")))))
+
+(defun sealed-copy-intact-p (fd)
+  "True when the copy for decoders open as file descriptor (FD) may be given
+again: sealed in memory, or on the drive and as it was made (CHECK-DISK-COPY).
+NIL for one found changed, to be made again from the file, and for any other
+file."
+  (cond ((sealed-p fd) t)
+        ((disk-copy-p fd) (handler-case (progn (check-disk-copy fd) t) (file-system-error () nil)))))
+
+(defun sealed-copy (fd &key kept in-memory)
+  "A copy of the file open as file descriptor (FD) that nothing, not even a
+program given it, can change, as a new descriptor at its start, with KEPT
+kept open in programs started (for bwrap to read). FD's own offset is left
+alone. A file up to *SANDBOX-MEMORY-COPY-LIMIT*, or any with IN-MEMORY, is
+copied into memory and sealed: not written, not made shorter or longer. A
+larger one is copied into the cache directory (DISK-COPY), read only. The
+file must not change while it is copied. Refused with a FILE-SYSTEM-ERROR
+when the file is larger than a decoder is given or there is no room for its
+copy (SANDBOX-INPUT-REFUSAL), or it changed while it was copied. Takes as
+long as copying the file: call it from a thread working in the background,
+whose job's stop request (TUATARA.RUNTIME:*JOB*) stops it."
+  (let* ((stamp (fd-stamp fd "a file"))
+         (size (stamp-size stamp))
+         (refusal (sandbox-input-refusal size :in-memory in-memory)))
     (when refusal
       (error 'file-system-error :operation "decode" :path "a file" :reason refusal))
-    (sealed-memory-file "tuatara-decode" (lambda (copy) (copy-fd-contents fd copy size)) :kept kept)))
+    (let ((copy (if (or in-memory (memory-copy-p size))
+                    (sealed-memory-file "tuatara-decode" (lambda (copy) (copy-for-decoder fd copy size)) :kept kept)
+                    (disk-copy fd size kept))))
+      (tuatara.runtime:with-fd-closed-on-error (copy "the copy of a file")
+        (unless (and (same-content-p stamp (fd-stamp fd "a file")) (= size (fd-size copy -1)))
+          (error 'file-system-error :operation "decode" :path "a file"
+                                    :reason "it changed while it was copied for the decoder")))
+      copy)))
 
 (defun reopen-sealed (fd)
   "A descriptor of its own on the sealed copy open as file descriptor (FD), at
@@ -885,12 +1143,24 @@ place."
   (handler-case (sb-posix:open (format nil "/proc/self/fd/~d" fd) sb-posix:o-rdonly)
     (sb-posix:syscall-error (e) (fail "open again" "a copy in memory" (sb-posix:syscall-errno e)))))
 
-(defun sealed-for-program (fd)
+(defun sealed-for-program (fd &key in-memory)
   "A descriptor of a sealed copy of the file open as file descriptor (FD), at
-its start, kept open in programs started: a new copy (SEALED-COPY), or, FD
-being such a copy already, a descriptor of its own on it (REOPEN-SEALED), so
-that one copy serves many programs."
-  (if (sealed-p fd) (reopen-sealed fd) (sealed-copy fd :kept t)))
+its start, kept open in programs started: a new copy (SEALED-COPY, IN-MEMORY
+as it has it), or, FD being such a copy already, a descriptor of its own on
+it (REOPEN-SEALED), so that one copy serves many programs. A copy in the
+cache directory is checked first (CHECK-DISK-COPY). A second value is that
+copy in the cache directory, FD or the new one, which the caller checks again
+once the program is done; NIL for a copy in memory."
+  (cond ((sealed-p fd) (values (reopen-sealed fd) nil))
+        ((and (not in-memory) (disk-copy-p fd)) (check-disk-copy fd) (values (reopen-sealed fd) fd))
+        (t (let ((copy (sealed-copy fd :kept t :in-memory in-memory)))
+             (values copy (and (disk-copy-p copy) copy))))))
+
+(defun close-sealed-copy (fd)
+  "Close file descriptor (FD), a copy SEALED-COPY made, and forget it as a copy
+in the cache directory: the one way such a copy is closed."
+  (remhash fd **disk-copies**)
+  (sb-posix:close fd))
 
 (sb-ext:defglobal **sandbox-trial** (list nil)
   "A cons whose car is true while a trial of the sandbox started by
@@ -951,7 +1221,9 @@ the files it writes in its own /tmp are limited.
 It reads INPUT, an open descriptor, on its standard input from its start
 \(nothing when NIL). This is a sealed copy of it (SEALED-COPY), never INPUT
 itself. An INPUT that is such a copy already is read as it is, through a
-descriptor of its own (one copy can serve many runs, at once too). With
+descriptor of its own (one copy can serve many runs, at once too). A copy in
+the cache directory found changed once the program is done is refused with
+a FILE-SYSTEM-ERROR (CHECK-DISK-COPY), what the program printed not given. With
 SECRET, a string, in place of INPUT, it reads that on its standard input
 instead, through a pipe, followed by a new line (none for an empty one), and
 nothing after it. Asking again, it is answered at once that there is nothing
@@ -970,7 +1242,8 @@ given), :FAILED (it ended with an error, or ran out of memory), :TIMEOUT,
 is no sandbox.
 FILES are files it is shown at PATH, read only, each (PATH . TEXT) or
 \(PATH . FD): FD the descriptor of an open file it is shown a sealed copy of,
-as of INPUT, so that a program that must seek in a file (an archive) reads
+as of INPUT but always in memory, which bwrap copies again into memory of
+its own (SEALED-FOR-PROGRAM with IN-MEMORY), so that a program that must seek in a file (an archive) reads
 it without reaching the file itself or anything beside it. ENVIRONMENT is
 what it has in its environment besides PATH, HOME (/tmp) and LC_ALL, or in
 place of them, each (NAME VALUE).
@@ -995,22 +1268,24 @@ starts, with that time and the program's owner, and PATH and TEXT must be
 UTF-8. DIRECTORY is where it starts, /tmp unless given."
   (multiple-value-bind (status detail bwrap) (sandbox-status)
     (if (eq status :ready)
-        (multiple-value-bind (copy writer)
-            (cond (secret (secret-pipe secret))
-                  (input (sealed-for-program input)))
-          (unwind-protect
-               (let ((start (get-internal-real-time)))
-                 (multiple-value-bind (output outcome said)
-                     (%sandbox-run bwrap program arguments copy seconds memory output-limit cancel ended-well
-                                   output-kept :files files :environment environment :directories directories
-                                   :writable writable :overlays overlays :links links :directory directory
-                                   :file-limit file-limit)
-                   (tuatara.runtime:debug-report :job "sandbox: ~a ~{~a~^ ~}: ~(~a~) in ~,3f s, ~:d octets~@[: ~a~]"
-                                                 program arguments outcome (tuatara.runtime:seconds-since start)
-                                                 (length output) (and (plusp (length said)) said))
-                   (values output outcome said)))
-            (when copy (sb-posix:close copy))
-            (when writer (sb-posix:close writer))))
+        (multiple-value-bind (copy second) (cond (secret (secret-pipe secret)) (input (sealed-for-program input)))
+          ;; decided once: the pipe's writing end, or the copy on the drive to check once the program is done
+          (let ((writer (and secret second)) (watched (and (not secret) second)))
+            (unwind-protect
+                 (let ((start (get-internal-real-time)))
+                   (multiple-value-bind (output outcome said)
+                       (%sandbox-run bwrap program arguments copy seconds memory output-limit cancel ended-well
+                                     output-kept :files files :environment environment :directories directories
+                                     :writable writable :overlays overlays :links links :directory directory
+                                     :file-limit file-limit :guarded (and watched t))
+                     (tuatara.runtime:debug-report :job "sandbox: ~a ~{~a~^ ~}: ~(~a~) in ~,3f s, ~:d octets~@[: ~a~]"
+                                                   program arguments outcome (tuatara.runtime:seconds-since start)
+                                                   (length output) (and (plusp (length said)) said))
+                     ;; a copy on the drive the program found a way to write is not trusted, nor what it said
+                     (when watched (check-disk-copy watched))
+                     (values output outcome said)))
+              (when copy (close-sealed-copy copy))
+              (when writer (sb-posix:close writer)))))
         (values (make-array 0 :element-type '(unsigned-byte 8)) :unavailable detail))))
 
 (defun sandbox-run-on-file (path program arguments &rest keys)

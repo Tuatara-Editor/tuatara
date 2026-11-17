@@ -294,6 +294,163 @@ DOWNLOADS, the directory downloads/ in DIR, the download directory
         (true (opened-safely-p (merge-pathnames "fetched.txt" downloads)))
         (false (opened-safely-p (merge-pathnames "mine.txt" dir)))))))
 
+;; A file from outside shown by a view that reads it in the sandbox, as a mailbox by readpst
+
+(defun stand-in-mailbox-view (path show)
+  "Show the file at PATH, when its name ends in .pst and the sandbox may be
+given it, as \"its folders\" with SHOW, as the view of a mailbox read in the
+sandbox would; NIL for any other."
+  (let ((native (tuatara.defaults::file-view-path path)))
+    (when (and native (uiop:string-suffix-p native ".pst")
+               (tuatara.defaults::file-view-can-draw-p native t "readpst"))
+      (tuatara.defaults::file-view-show
+       native '() #'identity
+       (lambda ()
+         (tuatara.defaults::make-file-view-buffer native 'tuatara.defaults::special-mode "Folders" "its folders"))
+       show))))
+
+(defmacro with-stand-in-mailbox-view ((&key (sandboxed t)) &body body)
+  "Run BODY with STAND-IN-MAILBOX-VIEW first among the file views, and among
+those that read in the sandbox too when SANDBOXED."
+  `(let ((tuatara.defaults::*file-views* (cons 'stand-in-mailbox-view tuatara.defaults::*file-views*))
+         (tuatara.defaults::*sandboxed-file-views*
+           (if ,sandboxed
+               (cons 'stand-in-mailbox-view tuatara.defaults::*sandboxed-file-views*)
+               tuatara.defaults::*sandboxed-file-views*))
+         (tuatara.defaults::*modal-editing* nil))
+     ,@body))
+
+(defun visited-buffer (file &rest keys)
+  "The buffer showing FILE once C-x C-f, KEYS before it (C-u), opened it, and the frontend."
+  (multiple-value-bind (f editor)
+      (auto-save-session (list (format nil "~{~a ~}C-x C-f C-a C-k ~a RET" keys (rimu-typed (namestring file))))
+                         :width 200)
+    (values (tuatara.display:window-buffer (tuatara.command:editor-window editor)) f)))
+
+(defun mailbox-file (file)
+  "Write FILE as a stand-in mailbox: octets with a null among them; FILE."
+  (put-file file (format nil "!BDN~c~cfolders" (code-char 0) (code-char 1))))
+
+(define-test (external untrusted-shown-by-a-sandboxed-view)
+  ;; a mailbox in the download directory is shown by its view read in the sandbox, not as octets;
+  ;; a view not declared so leaves it to its octets, opened safely
+  (with-untrusted-places (dir record downloads)
+    (let ((file (mailbox-file (merge-pathnames "mail.pst" downloads))))
+      (with-stand-in-mailbox-view ()
+        (let ((b (visited-buffer file)))
+          (is equal "its folders" (tuatara.buffer:buffer-local b :viewed-as))
+          (false (tuatara.io:safe-visit-p b))
+          (true (tuatara.buffer:buffer-local b :viewed-untrusted))
+          (tuatara.buffer:kill-buffer b)))
+      (with-stand-in-mailbox-view (:sandboxed nil)
+        (let ((b (visited-buffer file)))
+          (false (tuatara.buffer:buffer-local b :viewed-as))
+          (true (tuatara.io:safe-visit-p b))
+          (tuatara.buffer:kill-buffer b))))))
+
+(define-test (external evidence-shown-by-no-view)
+  ;; in an evidence directory, or through a link from the download directory into one, the same mailbox
+  ;; opens safely as its octets: no view reads evidence in place
+  (with-untrusted-places (dir record downloads)
+    (let* ((case (ensure-directories-exist (merge-pathnames "case/" dir)))
+           (file (mailbox-file (merge-pathnames "exhibit.pst" case)))
+           (link (merge-pathnames "exhibit-link.pst" downloads)))
+      (sb-posix:symlink (namestring file) (namestring link))
+      (setf tuatara-user:*evidence-directories* (list (namestring case)))
+      (with-stand-in-mailbox-view ()
+        (dolist (name (list file link))
+          (let ((b (visited-buffer name)))
+            (false (tuatara.buffer:buffer-local b :viewed-as))
+            (true (tuatara.io:safe-visit-p b))
+            (true (tuatara.display:hex-view-p b))
+            (tuatara.buffer:kill-buffer b)))))))
+
+(define-test (external ending-a-safe-visit-shows-the-view)
+  ;; a mailbox opened safely on asking, then M-x end-safe-visit: its view in the buffer's place
+  (with-untrusted-places (dir record downloads)
+    (let ((file (mailbox-file (merge-pathnames "mail.pst" downloads))))
+      (with-stand-in-mailbox-view ()
+        (multiple-value-bind (f editor)
+            (auto-save-session (list (format nil "C-u C-x C-f C-a C-k ~a RET" (rimu-typed (namestring file)))
+                                     "M-x e n d - s a f e - v i s i t RET")
+                               :width 200)
+          (let ((b (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
+            (is equal "its folders" (tuatara.buffer:buffer-local b :viewed-as))
+            (true (tuatara.frontend.fake:fake-frame-showing f "mail.pst is open as usual now, shown as its folders"))
+            (is = 1 (count-if (lambda (buffer) (equal "mail.pst" (tuatara.buffer:buffer-name buffer)))
+                              tuatara.buffer:*buffers*))
+            (tuatara.buffer:kill-buffer b)))))))
+
+(define-test (external ending-a-safe-visit-carries-the-private-copy)
+  ;; the view taking the buffer's place holds its private copy, kept, as a file read from another machine has
+  (with-untrusted-places (dir record downloads)
+    (let ((file (mailbox-file (merge-pathnames "mail.pst" downloads)))
+          (copy (tuatara.defaults::new-private-directory (tuatara.defaults::private-cache-directory "remote/"))))
+      (unwind-protect
+           (with-stand-in-mailbox-view ()
+             (multiple-value-bind (f editor)
+                 (auto-save-session (list (format nil "C-u C-x C-f C-a C-k ~a RET" (rimu-typed (namestring file)))
+                                          (list :until (lambda ()
+                                                         (setf (tuatara.buffer:buffer-local
+                                                                (tuatara.buffer:find-buffer "mail.pst")
+                                                                'tuatara.defaults::private-directory)
+                                                               copy)))
+                                          "M-x e n d - s a f e - v i s i t RET")
+                                    :width 200)
+               (declare (ignore f))
+               (let ((b (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
+                 (is equal "its folders" (tuatara.buffer:buffer-local b :viewed-as))
+                 (is equal copy (tuatara.buffer:buffer-local b 'tuatara.defaults::private-directory))
+                 (true (tuatara.io:path-stamp copy :failure nil))
+                 (setf (tuatara.buffer:buffer-local b 'tuatara.defaults::private-directory) nil)
+                 (tuatara.buffer:kill-buffer b))))
+        (tuatara.defaults::delete-private-directory copy)))))
+
+(define-test (external view-refuses-a-file-put-in-its-place)
+  ;; a view of a file from outside keeps the stamp its visit judged; a file renamed into its place after
+  ;; is refused when read, the same file read
+  (with-untrusted-places (dir record downloads)
+    (let ((file (mailbox-file (merge-pathnames "mail.pst" downloads)))
+          (other (mailbox-file (merge-pathnames "other.pst" downloads))))
+      (with-stand-in-mailbox-view ()
+        (let* ((b (visited-buffer file))
+               (stamp (tuatara.buffer:buffer-local b :viewed-stamp))
+               (native (tuatara.io:native (namestring file))))
+          (true (tuatara.io:same-stamped-file-p stamp (tuatara.io:path-stamp native)))
+          (true (tuatara.io:call-with-file native (constantly t) :same-as stamp))
+          (rename-file other file)
+          (fail (tuatara.io:call-with-file native (constantly t) :same-as stamp) 'tuatara.io:file-system-error)
+          (tuatara.buffer:kill-buffer b))))))
+
+(define-test (external too-large-for-a-view-said-first)
+  ;; a mailbox larger than a decoder is given opens as octets: what to set to have it read is said first,
+  ;; sizes in plain units, and why it opened safely after
+  (with-untrusted-places (dir record downloads)
+    (let ((file (mailbox-file (merge-pathnames "mail.pst" dir)))
+          (tuatara-user:*sandbox-input-limit* 10))
+      (with-stand-in-mailbox-view ()
+        (let ((b (visited-buffer file))
+              (messages (tuatara.buffer:find-buffer "*Messages*")))
+          (true (tuatara.io:safe-visit-p b))
+          (true (and messages
+                     (search (concatenate 'string "mail.pst opens as octets: it is 13 B, more than the 10 B a "
+                                          "decoder is given: set *sandbox-input-limit* above its size, or to nil, "
+                                          "to have it read. It opened safely: it looks binary")
+                             (tuatara.buffer:buffer-string messages)))
+                "~a" (and messages (tuatara.buffer:buffer-string messages)))
+          (tuatara.buffer:kill-buffer b))))))
+
+(define-test (external downloaded-mark-opens-safely)
+  ;; a text file a browser marked as downloaded, outside the untrusted directories, opens safely, saying why
+  (with-untrusted-places (dir record downloads)
+    (let ((file (put-file (merge-pathnames "notes.txt" dir) "plain words")))
+      (mark-downloaded file)
+      (multiple-value-bind (b f) (visited-buffer file)
+        (true (tuatara.io:safe-visit-p b))
+        (true (tuatara.frontend.fake:fake-frame-showing
+               f "notes.txt opened safely: a web browser marked it as downloaded (user.xdg.origin.url)"))
+        (tuatara.buffer:kill-buffer b)))))
+
 (define-test (external programs-asked-wherever)
   ;; a program, by its contents or its execute bit, is asked about as an untrusted file even where files are trusted
   (with-untrusted-places (dir record downloads)

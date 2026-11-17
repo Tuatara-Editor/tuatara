@@ -21,7 +21,7 @@
 is let go unread, said so. Raise it for a server that sends very large
 answers (the symbols of a whole project at once).
 - a whole number: that many octets, 32 MB (33554432) as standard."
-  :values (integer 1 *))
+  :values (octets 1 *))
 
 (defvar *lsp-most-unsent* (* 64 1024 1024)
   "The most octets of messages waiting for a language server to read them: a
@@ -33,7 +33,7 @@ given up (a completion, a definition, a rename); work goes on meanwhile.
 Raise it for a slow server, one still indexing a large project; lower it to
 give up sooner on one that is slow.
 - a number: that many seconds, 2 as standard."
-  :values (number 0 *))
+  :values (seconds 0 *))
 
 (defvar *lsp-servers* '()
   "The language servers running, the most recently started first.")

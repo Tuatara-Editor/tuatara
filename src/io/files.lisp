@@ -404,15 +404,23 @@ never read: a FILE-SYSTEM-ERROR, as for a file that cannot be read."
              (sb-posix:close fd)))
       (sb-posix:close dirfd))))
 
-(defun call-with-file (path function &key (operation "open") (follow t))
+(defun call-with-file (path function &key (operation "open") (follow t) same-as)
   "Call FUNCTION with a descriptor open on the file at PATH, its name and its
 size, as CALL-WITH-ENTRY does: its access time left alone where the system
 allows, and what is not a regular file refused unopened (a FILE-SYSTEM-ERROR
 saying OPERATION, \"copy\" say, could not be done). With FOLLOW NIL a symbolic
 link at PATH itself is refused too, never followed: for a file a program shut
-in the sandbox wrote, which could have made it a link to any file of yours."
+in the sandbox wrote, which could have made it a link to any file of yours.
+With SAME-AS, a stamp, the file opened is refused unless it is the file that
+stamp was taken of (SAME-STAMPED-FILE-P): one put in its place meanwhile is
+not read."
   (let ((fd (open-for-reading path t :accept '(:regular) :operation operation :follow follow)))
-    (unwind-protect (funcall function fd path (stamp-size (fd-stamp fd path)))
+    (unwind-protect
+         (let ((stamp (fd-stamp fd path)))
+           (when (and same-as (not (same-stamped-file-p same-as stamp)))
+             (error 'file-system-error :operation operation :path path
+                                       :reason "it is another file now than the one looked at when it was opened"))
+           (funcall function fd path (stamp-size stamp)))
       (sb-posix:close fd))))
 
 (defun fd-octets (fd path size &optional limit too-large)

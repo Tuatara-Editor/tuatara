@@ -11,7 +11,7 @@ is shown as an age (5 min ago, 3 days ago); older ones show the date.
 - 0: every file shows its date.
 - a whole number above 0: files changed within that many seconds show an age.
   14 days (1209600) as standard."
-  :values (integer 0 *))
+  :values (seconds 0 * :whole))
 
 (defun age-words (mtime &optional (now (get-universal-time)))
   "When a file last changed, MTIME (a STAMP-MTIME, in nanoseconds), in words

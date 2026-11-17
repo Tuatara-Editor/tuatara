@@ -132,5 +132,6 @@ file's octets in its place, and why (FILE-VIEW-FALL-TO-OCTETS)."
   "Have image files visited shown as their pictures, and bind O there."
   (define-key *image-view-keymap* "O" 'open-externally)
   (pushnew 'image-view-visit *file-views*)
+  (pushnew 'image-view-visit *sandboxed-file-views*)
   (pushnew 'stop-decoding *keyboard-quit-functions*)
   (pushnew 'image-view-forget tuatara.buffer:*kill-buffer-functions*))

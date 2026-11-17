@@ -7,7 +7,9 @@
 ;;;; of one to use it, from every line of it when it runs over several, or put
 ;;;; it in front of one of those. Tuatara wrote this file once, the first time
 ;;;; it ran without one; it is yours now, and never written again. An error
-;;;; here is shown on the echo row, and the editor still starts.
+;;;; here is shown on the echo row, and the editor still starts. A size may be
+;;;; given in words, "512M" or "20G" (in 1024s), and a time too, "90s", "30m"
+;;;; or "2h", in place of a number.
 ;;;;
 ;;;; Settings are kept together by what they are for, each group in a
 ;;;; load-package with the settings and keys after its :config: "tuatara" for
@@ -415,7 +417,7 @@
   ;; (setf *removed-sentence-abbreviations* '("St." "No."))
 
   ;; Paragraphs of up to 8 MB filled. Not set: 1 MB.
-  ;; (setf *fill-paragraph-limit* (* 8 1024 1024))
+  ;; (setf *fill-paragraph-limit* "8M")
 
   ;; Filling at once, the column not asked. Not set: t.
   ;; (setf *fill-ask-column* nil)
@@ -452,7 +454,7 @@
   ;; Undo keeps at most 256 MB of changes a buffer; past it the oldest can no
   ;; longer be undone. Not set: nil, every change kept back to the file as
   ;; opened.
-  ;; (setf *undo-limit* (* 256 1024 1024))
+  ;; (setf *undo-limit* "256M")
 
   ;; Marks kept a buffer, for C-u C-SPC to go back through, and across
   ;; buffers, for C-x C-SPC. Not set: 16.
@@ -757,7 +759,7 @@
   ;; (setf *auto-save-interval* 30)
 
   ;; Buffers of up to 1 GB copied. Not set: 256 MB.
-  ;; (setf *auto-save-size-limit* (* 1024 1024 1024))
+  ;; (setf *auto-save-size-limit* "1G")
 
   ;; Large files on ext4 saved by writing only what changed, into the file
   ;; itself: one changed line of a 10 GB file in a few hundredths of a second,
@@ -768,7 +770,7 @@
 
   ;; C-x i (insert-formatted-note-template) reads other files of up to 64 MB.
   ;; Not set: 16 MB.
-  ;; (setf *insert-file-limit* (* 64 1024 1024))
+  ;; (setf *insert-file-limit* "64M")
 
   ;; Your name: an export's author without #+author:, %author% and $AUTHOR. Not
   ;; set: the system's.
@@ -849,7 +851,7 @@
 
   ;; Up to 4 GB of text in memory for searches and each index. Not set: 128 MB;
   ;; past it from disk.
-  ;; (setf *search-files-limit* (* 4 1024 1024 1024))
+  ;; (setf *search-files-limit* "4G")
 
   ;; Up to 5,000 matching lines listed. Not set: 2,000.
   ;; (setf *search-files-lines-limit* 5000)
@@ -1301,7 +1303,7 @@
   ;; The most of a command's output *compile* keeps; past it the output is
   ;; counted, not kept, and the end says how much was left out. Not set: 256 MB;
   ;; nil: all of it.
-  ;; (setf *compile-output-limit* (* 1024 1024 1024))
+  ;; (setf *compile-output-limit* "1G")
 
   ;;; Language servers and formatting (C-c in code lists their keys)
 
@@ -1348,10 +1350,10 @@
   ;; (setf *lsp-wait* 5)
 
   ;; Files of up to 32 MB are given to their language servers. Not set: 8 MB.
-  ;; (setf *lsp-largest-document* (* 32 1024 1024))
+  ;; (setf *lsp-largest-document* "32M")
 
   ;; Messages of up to 128 MB are read from a language server. Not set: 32 MB.
-  ;; (setf *lsp-largest-message* (* 128 1024 1024))
+  ;; (setf *lsp-largest-message* "128M")
 
   ;; No call's parameters in the echo area. Not set: t.
   ;; (setf *lsp-signature-help* nil)
@@ -1468,7 +1470,7 @@
 
   ;; Octets of pictures it keeps for kitty icat, yazi ... Not set: 64 MB; 0:
   ;; none.
-  ;; (setf *terminal-picture-memory* (* 256 1024 1024))
+  ;; (setf *terminal-picture-memory* "256M")
   )
 
 ;;;; ================================================================
@@ -1498,24 +1500,29 @@
   ;; (setf *sandbox-seconds* 30)
 
   ;; And take 2 GB of memory. Not set: 1 GB; nil: no limit.
-  ;; (setf *sandbox-memory* (* 2 1024 1024 1024))
+  ;; (setf *sandbox-memory* "2G")
 
   ;; A large picture (a PNG, TIFF or WebP of a hundred megapixels) may be given
   ;; up to 8 GB to be drawn, a JPEG 2000 or JPEG XL the time that size takes.
   ;; Not set: 4 GB; a JPEG needs little whatever its size.
-  ;; (setf *picture-memory* (* 8 1024 1024 1024))
+  ;; (setf *picture-memory* "8G")
 
   ;; All of one file's decoding together 4 GB. Not set: 2 GB, where systemd-run
   ;; holds it; nil: no limit.
-  ;; (setf *sandbox-total-memory* (* 4 1024 1024 1024))
+  ;; (setf *sandbox-total-memory* "4G")
 
-  ;; Files of up to 4 GB decoded, each copied into memory first. Not set: 1 GB;
-  ;; nil: no limit.
-  ;; (setf *sandbox-input-limit* (* 4 1024 1024 1024))
+  ;; Files of up to 20 GB decoded, larger ones opened as octets. Not set: nil,
+  ;; no limit but the room for the decoder's copy (*cache-directory*).
+  ;; (setf *sandbox-input-limit* "20G")
+
+  ;; The decoder's copy of a file of up to 512 MB kept in memory, of a larger
+  ;; one in the cache directory, a file with no name gone when done. Not set:
+  ;; 256 MB; 0: every copy on the drive; nil: every copy in memory.
+  ;; (setf *sandbox-memory-copy-limit* "512M")
 
   ;; A program's output (a decoder's, the clipboard's) taken up to 256 MB;
   ;; more, and the program is stopped, its output not taken. Not set: 64 MB.
-  ;; (setf *program-output-limit* (* 256 1024 1024))
+  ;; (setf *program-output-limit* "256M")
 
   ;; No file decoded: pictures and PDFs as octets and text. Not set: t,
   ;; decoders shut in by bubblewrap (bwrap).
@@ -1535,7 +1542,7 @@
   ;; A note read from an office file (Word, Excel, PowerPoint, OpenDocument)
   ;; holds up to 64 million characters, the rest left out and said so. Not
   ;; set: 16 million.
-  ;; (setf *office-note-size-limit* (* 64 1024 1024))
+  ;; (setf *office-note-size-limit* "64M")
 
   ;; And up to 10,000 columns of one value (a cell, a formula), cut there
   ;; ending in …. Not set: 2000.
@@ -1578,15 +1585,15 @@
 
   ;; Unpacking an archive (Z in rimu: tar, zip, 7z, rar, ISO 9660, cpio) stops
   ;; before the drive has less than 10 GB free. Not set: 1 GB.
-  ;; (setf *archive-free-reserve* (* 10 1024 1024 1024))
+  ;; (setf *archive-free-reserve* "10G")
 
   ;; What an archive holds (C-c e in rimu) is shown up to 16 MB of its list.
   ;; Not set: 64 MB.
-  ;; (setf *archive-listing-limit* (* 16 1024 1024))
+  ;; (setf *archive-listing-limit* "16M")
 
   ;; The differences of two files (= in rimu, M-x diff-files) are shown up to
   ;; 16 MB of them. Not set: 64 MB.
-  ;; (setf *differences-limit* (* 16 1024 1024))
+  ;; (setf *differences-limit* "16M")
 
   ;; M-x show-file-metadata names the owners of an encrypted file's keys from
   ;; your keyring (runs gpg --list-keys; the file is never given to it); nil:
@@ -1598,7 +1605,9 @@
   ;; Directories whose files are not trusted: files you downloaded or were
   ;; given, and projects others wrote. Your evidence directories are never
   ;; trusted besides these. A file in one opens read-only in the safe visit:
-  ;; no mode, hooks or version control, nothing written beside it. O opens
+  ;; no mode, hooks or version control, nothing written beside it. A PDF,
+  ;; picture, Office document or mailbox there is still shown as such, read
+  ;; in the sandbox; in an evidence directory it opens as octets. O opens
   ;; only a private copy of a picture, PDF, sound or video, and asks first:
   ;; y, n, or e to trust that one file and run it. An Org note there takes
   ;; setup files and pictures only from its own directory, and a project
@@ -1681,7 +1690,7 @@
   ;; (setf *rimu-preview-delay* 0.3)
 
   ;; The preview shows up to 4 MB of a file's start. Not set: 1 MB.
-  ;; (setf *rimu-preview-size* (* 4 1024 1024))
+  ;; (setf *rimu-preview-size* "4M")
 
   ;; Each entry's last commit after its name. Not set: nil; G in a list.
   ;; (setf *rimu-git-info* t)
@@ -1806,4 +1815,4 @@
 
 ;; A package fetched may take up to 2 GB on disk, its history and files
 ;; together; a larger fetch is ended and its files deleted. Not set: 512 MB.
-;; (setf *package-size-limit* (* 2 1024 1024 1024))
+;; (setf *package-size-limit* "2G")

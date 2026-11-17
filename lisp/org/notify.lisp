@@ -23,7 +23,7 @@ It is told when the time comes as well. An entry's NOTIFY_BEFORE property
 says otherwise for it.
 - a whole number: that many minutes before; 0 for only when the time comes.
 - nil: only when the time comes."
-  :values (or (member nil) (integer 0 *)))
+  :values (or (member nil) (minutes 0 * :whole)))
 
 (define-setting *org-notify-day-time* "08:00"
   "When an entry tagged :notify: with a date and no time of day is told.

@@ -20,7 +20,7 @@ after the others: memory stays at this, and a search of them takes longer,
 about a second for each 1.5 GB on a fast disk, against a quarter of that kept
 in memory. Raise it to keep more in memory, (* 4 1024 1024 1024) for 4 GB.
 - a whole number, 0 or more: the octets; 128 MB as standard."
-  :values (integer 0 *))
+  :values (octets 0 *))
 
 (define-setting *search-files-min-input* 3
   "How many characters search-in-files and search-in-formatted wait for before

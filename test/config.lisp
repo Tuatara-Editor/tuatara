@@ -692,6 +692,71 @@ commented inside another one commented (;;   ;; (setf ...) in a load-package's
         (makunbound name)
         (unintern name :tuatara-user)))))
 
+(define-test (config sizes-and-times-in-words)
+  ;; a setting holding octets or a time takes words for them, turned into its number where a value is
+  ;; looked at: the editor's own setting, a form of the init file, a value given before the setting was
+  ;; defined; words that give none it takes are refused and the setting keeps its value
+  (let ((g (expt 1024 3)) (m (expt 1024 2)))
+    (loop for (words octets) in `(("20G" ,(* 20 g)) ("512M" ,(* 512 m)) ("1.5G" ,(* 3/2 g)) ("20 GB" ,(* 20 g))
+                                  ("20GiB" ,(* 20 g)) (" 2t " ,(* 2 1024 g)) ("1.5k" 1536) ("300" 300) ("300B" 300)
+                                  (".5K" 512) ("20Q" nil) ("G" nil) ("" nil) ("1.2.3G" nil) ("-5G" nil) ("5 G B" nil))
+          do (is eql octets (tuatara.runtime::octets-in-words words) "~s" words)))
+  (loop for (words seconds) in '(("90s" 90) ("500ms" 1/2) ("1.5h" 5400) ("30m" 1800) ("2 h" 7200) ("14d" 1209600)
+                                 ("10" 10) ("90 minutes" nil) ("h" nil) ("1:30" nil))
+        do (is eql seconds (tuatara.runtime::seconds-in-words words) "~s" words))
+  (loop for (description words value) in '(((or (member nil) (octets 1 *)) "1.5G" 1610612736)
+                                           ((octets 1 *) "0" "0")
+                                           ((minutes 0 *) "90s" 1.5)
+                                           ((minutes 0 *) "5" 5)
+                                           ((minutes 0 * :whole) "90s" "90s")
+                                           ((minutes 0 * :whole) "2h" 120)
+                                           ((seconds 0 *) "500ms" 0.5)
+                                           ((seconds 1 * :whole) "1.5h" 5400)
+                                           ((integer 0 *) "20G" "20G")
+                                           ((octets 1 *) "8E" "8E")
+                                           ((seconds 0 *) "40000d" "40000d"))
+        do (is equalp value (tuatara.runtime::converted-setting-value description words) "~s ~s" description words))
+  (let ((limit tuatara-user:*sandbox-memory-copy-limit*) (seconds tuatara-user:*sandbox-seconds*))
+    (unwind-protect
+         (progn
+           (is = (* 512 1024 1024) (tuatara.runtime:set-setting 'tuatara-user:*sandbox-memory-copy-limit* "512M"))
+           (is = (* 512 1024 1024) tuatara-user:*sandbox-memory-copy-limit*)
+           (let ((words (handler-case (progn (tuatara.runtime:set-setting 'tuatara-user:*sandbox-memory-copy-limit*
+                                                                           "lots")
+                                             "")
+                          (tuatara.runtime:refusal (e) (princ-to-string e)))))
+             (true (search "*sandbox-memory-copy-limit* is \"lots\", but it takes" words) "~a" words)
+             (true (search "a size in words such as 512M, 1.5G or 20 GB" words) "~a" words))
+           (is = (* 512 1024 1024) tuatara-user:*sandbox-memory-copy-limit*)
+           (let ((snapshot (tuatara.runtime:settings-snapshot)))
+             (setf tuatara-user:*sandbox-memory-copy-limit* "1.5G" tuatara-user:*sandbox-seconds* "2m")
+             (is equal '() (tuatara.runtime:put-back-misfit-settings snapshot))
+             (is = (* 3/2 1024 1024 1024) tuatara-user:*sandbox-memory-copy-limit*)
+             (is = 120 tuatara-user:*sandbox-seconds*))
+           (let ((snapshot (tuatara.runtime:settings-snapshot)))
+             (setf tuatara-user:*sandbox-memory-copy-limit* "20Q")
+             (let ((said (tuatara.runtime:put-back-misfit-settings snapshot)))
+               (true (search "*sandbox-memory-copy-limit* is \"20Q\"" (first said)) "~s" said))
+             (is = (* 3/2 1024 1024 1024) tuatara-user:*sandbox-memory-copy-limit*))
+           ;; sizes and times past any sensible end are refused
+           (true (tuatara.runtime:setting-value-fault 'tuatara-user:*sandbox-memory* (expt 2 63)))
+           (false (tuatara.runtime:setting-value-fault 'tuatara-user:*sandbox-memory* (expt 2 40)))
+           (true (tuatara.runtime:setting-value-fault 'tuatara-user:*sandbox-seconds* (* 200 365 24 3600)))
+           ;; a string left in a setting, as a LET gives it, is a fault the health check names
+           (true (tuatara.runtime:setting-value-fault 'tuatara-user:*sandbox-seconds* "90s")))
+      (setf tuatara-user:*sandbox-memory-copy-limit* limit tuatara-user:*sandbox-seconds* seconds)))
+  (let ((name (intern (format nil "*KIWI-SIZE-~36r*" (random (expt 36 8))) :tuatara-user)))
+    (setf (symbol-value name) "2G")
+    (unwind-protect
+         (progn
+           (eval `(tuatara.runtime:define-setting ,name 1024 "How large a kiwi may be." :values (octets 1 *)))
+           (is = (* 2 1024 1024 1024) (symbol-value name)))
+      (let ((settings tuatara.runtime::*settings*))
+        (when (and (plusp (length settings)) (eq name (aref settings (1- (length settings)))))
+          (vector-pop settings))
+        (makunbound name)
+        (unintern name :tuatara-user)))))
+
 (define-test (config setting-checks-make-nothing)
   ;; a value is checked, and the settings looked at after a form, without garbage, so that the
   ;; checks after each form of the init file and each evaluation cost no more than looking

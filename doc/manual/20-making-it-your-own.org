@@ -196,6 +196,37 @@ A few settings are better said with a function than with =setf=, because
 they take a mode and a value. The starter file has these written out, for
 example =(set-tab-width 'c-mode 8)=. Keep to the form the starter file shows.
 
+*** Sizes and times in words
+
+A setting that holds a size in bytes, such as =*sandbox-memory*=, takes a
+whole number of bytes, or the size in words, in quotes:
+
+#+begin_src lisp
+(setf *sandbox-memory* "2G"
+      *sandbox-memory-copy-limit* "512M"
+      *auto-save-size-limit* "1.5G")
+#+end_src
+
+The unit is K, M, G, T, P or E, in either case, with or without a B or iB
+after it, and a space before it if you like: ="20G"=, ="20 GB"= and ="20GiB"=
+are the same. The units count in 1024s whichever you write: 1K is 1024 bytes
+and 1G is 1024 times 1024 times 1024. A number without a unit is bytes.
+
+A setting that holds seconds or minutes, such as =*sandbox-seconds*= or
+=*org-agenda-refresh-minutes*=, takes a number in its own unit, or a time in
+words: ="500ms"=, ="90s"=, ="30m"=, ="1.5h"= or ="14d"=, for milliseconds,
+seconds, minutes, hours and days. The words are turned into the setting's own
+unit: ="90s"= given to a setting in minutes is 1.5. A setting that takes only
+whole numbers refuses a time that is not a whole number of its unit, as ="90s"=
+for =*org-notify-before*=, which counts whole minutes. A number without a unit
+counts in the setting's own unit.
+
+The words are turned into the number where a value is looked at (see below), so
+~C-h v~ shows the number. Words that give no size or time, or one the setting
+does not take, are refused as any other value is. A setting that counts things,
+such as =*kill-ring-max*= or =*wipe-passes*=, takes a plain number. The help of
+each setting says which values it takes.
+
 *** A value a setting does not take
 
 Each setting says which values it takes, and Tuatara refuses any other where

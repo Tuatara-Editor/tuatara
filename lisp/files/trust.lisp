@@ -34,7 +34,9 @@ when where it really is, links followed, is that directory or below it. An
 untrusted file:
   opens safely however it is opened, as \\[find-file-safely] opens a file:
   read-only, with no major mode, hooks or version control, nothing written
-  beside it (\\[end-safe-visit] opens one as usual after all);
+  beside it (\\[end-safe-visit] opens one as usual after all); a PDF, a
+  picture, an Office document or a mailbox is still shown as such, read in
+  the sandbox (*SANDBOXED-FILE-VIEWS*), unless it is evidence;
   is opened in the desktop's program (\\[open-externally]) only after asking,
   from a copy (*OPEN-EXTERNALLY-KINDS*), or itself, answered e;
   as a note, has its export take setup files, pictures and templates only from
@@ -106,36 +108,53 @@ links are not read."
 
 (defun untrusted-cache-p (path)
   "True when the file at PATH, links followed, is in one of the directories of
-Tuatara's cache that hold copies of files from outside (*UNTRUSTED-CACHE*)."
-  (let ((cache (tuatara.io:native (tuatara.io:cache-directory))))
-    (some (lambda (name) (tuatara.io:really-within-p path (tuatara.io:path-join cache name)))
-          *untrusted-cache*)))
+Tuatara's cache that hold copies of files from outside (*UNTRUSTED-CACHE*),
+told by its name as given before any link is read."
+  (let ((directories (let ((cache (tuatara.io:native (tuatara.io:cache-directory))))
+                       (mapcar (lambda (name) (tuatara.io:path-join cache name)) *untrusted-cache*))))
+    ;; by the names as given first: the links on the way are read only when those do not tell
+    (or (some (lambda (directory) (tuatara.io:path-within-p path directory)) directories)
+        (some (lambda (directory) (tuatara.io:really-within-p path directory)) directories))))
 
 (defun downloaded-mark-p (path)
   "True when the file at PATH, where it really is, carries the mark a web
 browser leaves on what it downloads (the extended attribute
-user.xdg.origin.url). Read without changing its times; NIL for a file not
-there."
-  (let ((real (ignoring-errors-reported ("finding where ~a is" path) (tuatara.io:real-path path))))
+user.xdg.origin.url). Read without changing its times, and a link at PATH
+followed only when there is one; NIL for a file not there."
+  (let ((real (if (eq :symlink (ignoring-errors-reported ("examining ~a" path) (tuatara.io:path-kind path :follow nil)))
+                  (ignoring-errors-reported ("finding where ~a is" path) (tuatara.io:real-path path))
+                  path)))
     (and real (ignoring-errors-reported ("reading the marks of ~a" real)
                 (tuatara.io:path-xattr-p real "user.xdg.origin.url")))))
 
+(defun untrusted-reason (path &optional stamp)
+  "Why the file or directory at PATH came from outside and is not trusted, a
+phrase, or NIL when it is trusted: it is evidence (EVIDENCE-VISIT-REASON,
+links followed), or, given its STAMP, has another name that may be in an
+evidence directory (EVIDENCE-INODE-P); it is in one of *UNTRUSTED-DIRECTORIES*
+\(UNTRUSTED-DIRECTORY-OF), in the cache's copies of outside files
+\(UNTRUSTED-CACHE-P), or marked by a web browser as downloaded
+\(DOWNLOADED-MARK-P). When *UNTRUSTED-DIRECTORIES* cannot be read, every file
+is untrusted, and the reason says so."
+  (let* ((path (or (ignoring-errors-reported ("expanding ~a" path) (tuatara.io:native (tuatara.io:expand-path path)))
+                   path))
+         (directory nil)
+         (local (not (remote-name-p path))))
+    ;; evidence first: what follows reads the links on the way, which would change their access times
+    (cond ((evidence-visit-reason path))
+          ((and stamp (evidence-inode-p stamp))
+           "it has more than one name, and one may be in an evidence directory (*evidence-directories*)")
+          ((eq (setf directory (untrusted-directory-of path)) t) "*untrusted-directories* could not be read")
+          (directory (format nil "it is in ~a (*untrusted-directories*)" directory))
+          ((and local (untrusted-cache-p path)) "it is a copy of a file from outside, in Tuatara's cache")
+          ((and local (downloaded-mark-p path)) "a web browser marked it as downloaded (user.xdg.origin.url)"))))
+
 (defun untrusted-path-p (path)
   "True when the file or directory at PATH came from outside and is not
-trusted: it is in an evidence directory (EVIDENCE-PATH-P, links followed), in
-one of *UNTRUSTED-DIRECTORIES* (UNTRUSTED-DIRECTORY-OF), in the cache's copies
-of outside files (UNTRUSTED-CACHE-P), or marked by a web browser as downloaded
-\(DOWNLOADED-MARK-P). What opens safely, what the desktop's programs get a
-copy of, where a note's export takes files from and which projects run their
-own programs are all told by it alone."
-  (let ((path (or (ignoring-errors-reported ("expanding ~a" path) (tuatara.io:native (tuatara.io:expand-path path)))
-                  path)))
-    ;; evidence first: what follows reads the links on the way, which would change their access times
-    (and (or (evidence-path-p path :follow t)
-             (untrusted-directory-of path)
-             (and (not (remote-name-p path))
-                  (or (untrusted-cache-p path) (downloaded-mark-p path))))
-         t)))
+trusted (UNTRUSTED-REASON gives why). What opens safely, what the desktop's
+programs get a copy of, where a note's export takes files from and which
+projects run their own programs are all told by it alone."
+  (and (untrusted-reason path) t))
 
 ;;; Projects
 

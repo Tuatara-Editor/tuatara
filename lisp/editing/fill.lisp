@@ -69,7 +69,7 @@ characters are the language's comment marker."
 never holds the editor up for long. Set it larger in the init file to fill
 larger paragraphs.
 - a whole number, 0 or more: the most octets. 1048576 (1 MB) as standard."
-  :values (integer 0 *))
+  :values (octets 0 *))
 
 (defgeneric mode-unfilled-line-p (mode text)
   (:documentation "True when TEXT, a line of a buffer in major mode MODE, is no prose: it

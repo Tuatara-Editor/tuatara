@@ -676,6 +676,17 @@ or NIL when the system does not say."
   (let ((fields (statvfs-fields path 32 8)))            ; f_bavail, f_frsize
     (and fields (* (first fields) (second fields)))))
 
+(defun available-memory (&optional (meminfo "/proc/meminfo"))
+  "The octets of memory the system says can be had now without swapping
+\(MemAvailable in MEMINFO, /proc/meminfo unless given), or NIL when it does
+not say, or says it without a number."
+  (with-open-file (in meminfo :if-does-not-exist nil)
+    (and in (loop for line = (read-line in nil)
+                  while line
+                  when (uiop:string-prefix-p "MemAvailable:" line)
+                    return (let ((kibibytes (parse-integer line :start 13 :junk-allowed t)))
+                             (and kibibytes (* 1024 kibibytes)))))))
+
 (defun free-inodes (path)
   "How many more files an unprivileged user may make on the file system
 holding PATH, and as a second value how many it holds in all; NIL when the
@@ -1475,12 +1486,14 @@ True when it went; NIL, with the errno, when not."
         t
         (values nil (sb-alien:get-errno)))))
 
-(defun open-unnamed-at (dirfd mode)
+(defun open-unnamed-at (dirfd mode &key never-named)
   "A descriptor, open for reading and writing, for a new file with no name in
 the directory open as DIRFD, with permissions MODE (less the umask), gone when it
-is closed; NIL where the file system has no unnamed files or the directory may
-not be written."
-  (values (openat-octets dirfd (tuatara.text:string-octets ".") (logior +o-tmpfile+ sb-posix:o-rdwr +o-cloexec+) mode)))
+is closed; NIL, and the errno, where the file system has no unnamed files or the
+directory may not be written. With NEVER-NAMED (O_EXCL) it can never be given
+a name, by anyone."
+  (openat-octets dirfd (tuatara.text:string-octets ".")
+                 (logior +o-tmpfile+ sb-posix:o-rdwr +o-cloexec+ (if never-named sb-posix:o-excl 0)) mode))
 
 (defun open-scratch-file (directory)
   "A descriptor for a new file with no name in DIRECTORY, open for reading and

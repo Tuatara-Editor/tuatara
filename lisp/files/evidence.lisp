@@ -925,6 +925,14 @@ evidence does."
   (let ((stamp (tuatara.io:buffer-file-stamp buffer)))
     (and stamp (evidence-inode-p stamp))))
 
+(defun may-be-evidence-p (path)
+  "True when the file at PATH is evidence (EVIDENCE-PATH-P), the file a link
+leads to counting, or has another name that is or may be in an evidence
+directory (EVIDENCE-INODE-P): what no view of *FILE-VIEWS* reads in place."
+  (or (and (evidence-path-p path :follow t) t)
+      (let ((stamp (and (evidence-rules) (tuatara.io:path-stamp path :failure nil))))
+        (and stamp (evidence-inode-p stamp)))))
+
 (defun evidence-visit-reason (path)
   "Why the file at PATH opens safely when it is evidence (EVIDENCE-PATH-P), a
 phrase; NIL when it is not. A link counts when the file it leads to is

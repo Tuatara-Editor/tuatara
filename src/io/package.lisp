@@ -10,7 +10,8 @@
                 #:base64-octets #:base64-string #:octets-ascii #:octets-search #:octets-find
                 #:command-words #:software-version-numbers #:software-version-at-least-p #:octets-words #:drop-cached)
   (:import-from #:tuatara-user #:*default-directory* #:*cache-directory* #:*state-directory* #:*sandbox*
-                #:*sandbox-seconds* #:*sandbox-memory* #:*sandbox-input-limit* #:*sandbox-total-memory*
+                #:*sandbox-seconds* #:*sandbox-memory* #:*sandbox-input-limit* #:*sandbox-memory-copy-limit*
+                #:*sandbox-total-memory*
                 #:*sandbox-seccomp* #:*program-output-limit* #:*directory-tree-depth-limit*
                 #:*save-in-place*)
   (:documentation "Files: visiting them so that no other program can change the text shown,
@@ -61,7 +62,7 @@ elsewhere.")
    #:jxl-file-header #:jpeg-segments #:box-children #:box-find #:octet-at #:*compound-file-signature*
    #:kind-name-disagrees-p #:name-kinds
    #:sandbox-status #:sandbox-status-now #:sandbox-run #:sandbox-start #:end-sandbox #:*sandbox-carried-settings*
-   #:end-sandboxes #:sandbox-memory-scope-p #:shown-place-p #:real-place #:sealed-copy #:sandbox-input-refusal
+   #:end-sandboxes #:sandbox-memory-scope-p #:shown-place-p #:real-place #:sealed-copy #:sealed-copy-intact-p #:close-sealed-copy #:sandbox-input-refusal
    #:memory-file #:call-with-memory-file #:sealed-file-size #:sandbox-run-on-file #:sandbox-find-program
    #:system-program #:sandbox-filtered-p
    #:*sandbox-path* #:*sandbox-file-limit* #:find-program #:program-search-path #:*default-program-path*

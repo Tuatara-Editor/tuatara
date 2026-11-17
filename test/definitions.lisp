@@ -15,16 +15,23 @@
   "Every Lisp source file of the core: the directories src, lisp and frontends."
   (loop for top in '("src" "lisp" "frontends") append (source-files top)))
 
-(defun source-definitions ()
-  "Every (PACKAGE NAME FILE) the source files define with DEFUN, DEFMACRO,
-DEFGENERIC or DEFINE-COMMAND, the package read from each file's IN-PACKAGE."
-  (let ((found '()))
-    (dolist (file (core-source-files))
-      (let ((text (uiop:read-file-string file)) (package nil))
-        (cl-ppcre:do-register-groups (name) ("(?m)^\\(in-package #:([^)\\s]+)\\)" text)
-          (setf package name))
+(defun suite-source-files ()
+  "Every Lisp source file the test suite (the system tuatara/tests) loads."
+  (loop for component in (asdf:component-children (asdf:find-system "tuatara/tests"))
+        when (typep component 'asdf:cl-source-file)
+          collect (asdf:component-pathname component)))
+
+(defun source-definitions (&optional (files (core-source-files)))
+  "Every (PACKAGE NAME FILE) the source FILES, those of the core unless given,
+define with DEFUN, DEFMACRO, DEFGENERIC or DEFINE-COMMAND, the package read
+from each file's first IN-PACKAGE (a later one is in the text of a package a
+test makes) and FILE its name within the repository."
+  (let ((found '()) (top (asdf:system-source-directory "tuatara")))
+    (dolist (file files)
+      (let* ((text (uiop:read-file-string file))
+             (package (nth-value 1 (cl-ppcre:scan-to-strings "(?m)^\\(in-package #:([^)\\s]+)\\)" text))))
         (cl-ppcre:do-register-groups (name) ("(?m)^\\((?:defun|defmacro|defgeneric|define-command) ([^\\s()]+)" text)
-          (push (list package (string-downcase name) (file-namestring file)) found))))
+          (push (list (and package (aref package 0)) (string-downcase name) (enough-namestring file top)) found))))
     found))
 
 (defun tree-holds-error-p (tree)
@@ -34,7 +41,10 @@ DEFGENERIC or DEFINE-COMMAND, the package read from each file's IN-PACKAGE."
     (and (eql 0 (tuatara.syntax::call-send call)) (= 1 (tuatara.syntax::reply-u32 call 0)))))
 
 (define-test (definitions defined-once)
-  (let ((seen (make-hash-table :test 'equal)) (twice '()) (definitions (source-definitions)))
+  ;; the suite's own helpers too: one test file's helper replaced by another's of the same name
+  ;; breaks the tests of the file loaded first, and only when the whole suite is loaded
+  (let ((seen (make-hash-table :test 'equal)) (twice '())
+        (definitions (source-definitions (append (core-source-files) (suite-source-files)))))
     ;; the sources were found and read
     (true (> (length definitions) 1000))
     (true (find '("tuatara.defaults" "split-selection") definitions :test #'equal

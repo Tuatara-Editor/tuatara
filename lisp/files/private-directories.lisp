@@ -24,11 +24,11 @@ when it is not there; its native name, ending in /."
   (setf (gethash name *cache-directories-made*) (private-directory-in (tuatara.io:cache-directory) name)))
 
 (defun remote-copy-p (path)
-  "True when PATH is in the directory of the copies of files read from another
-machine, which last only as long as their buffers: a name not worth remembering.
-Told by name alone, the disk not asked."
+  "True when PATH, a pathname or a native name, is in the directory of the
+copies of files read from another machine, which last only as long as their
+buffers: a name not worth remembering. Told by name alone, the disk not asked."
   (let ((copies (gethash "remote/" *cache-directories-made*)))
-    (and copies (uiop:string-prefix-p copies path))))
+    (and copies (uiop:string-prefix-p copies (tuatara.io:native path)))))
 
 (defun private-state-directory (name)
   "The directory NAME (ending in /) in the state directory, which keeps what

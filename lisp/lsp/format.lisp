@@ -37,7 +37,7 @@ language server laying out code that has not answered by then is no longer
 waited for. Raise it for a formatter that is slow on a large file; lower it
 to give up sooner on one that hangs.
 - a number: that many seconds, 30 as standard."
-  :values (number 0 *))
+  :values (seconds 0 *))
 
 (define-record (format-job (:include tuatara.runtime:job)
                           (:constructor make-format-job (buffer version program then))

@@ -152,7 +152,7 @@ keeps of its history and its files together: a fetch that grows past it is
 ended and its files deleted. Raise it for a package with a long history;
 lower it to refuse large fetches, as on a metered link.
 - a whole number: that many octets, 512 MB as standard."
-  :values (integer 0 *))
+  :values (octets 0 *))
 
 (define-condition package-too-large (error)
   ((where :initarg :where :reader package-too-large-where))

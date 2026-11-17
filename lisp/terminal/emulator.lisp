@@ -1105,7 +1105,7 @@ so that it follows cd whatever the shell is and however it is set up."
 draw them.
 - a whole number: that many octets, 64 MB as standard.
 - 0: none; programs then draw with text."
-  :values (integer 0 *))
+  :values (octets 0 *))
 
 (defparameter *terminal-picture-largest* 4096
   "The most pixels across or down a PNG picture a terminal's program sends is
@@ -1561,7 +1561,7 @@ long history holds a fraction of the memory. Reading the history (its
 history view) undoes it as it goes, unseen.
 - a number: that many seconds, 10 as standard.
 - nil: it is never compressed."
-  :values (or (member nil) (number 0 *)))
+  :values (or (member nil) (seconds 0 *)))
 
 (defvar *compressor* nil
   "The thread that compresses quiet terminals' scrollback (COMPRESS-QUIET-TERMINALS),

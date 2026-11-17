@@ -184,7 +184,8 @@ takes). :ARGUMENTS is what its form says, as ORG-READ-RULE reads them. :HOUR,
     *file-local-setting-functions* *file-local-taken-functions* *file-views* *org-agenda-file-functions*
     tuatara.command:*tick-functions*
     ;; showing a file a way of its own
-    file-view-path file-view-show file-view-refuses file-view-can-draw-p reading-buffer show-reading-result
+    *sandboxed-file-views* file-view-stamp file-view-path file-view-show file-view-refuses file-view-can-draw-p
+    reading-buffer show-reading-result
     buffer-private-directory visit-path visit-path-as-text image-view-visit pdf-view-visit pdf-file-p office-view-visit
     view-made-text tuatara.io:safe-visit-p *file-changing-commands*
     ;; files and paths

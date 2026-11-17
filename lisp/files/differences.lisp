@@ -15,7 +15,7 @@ When there are more, none are shown, and that is said. Raise it to see larger
 differences, at the cost of the memory of all of them; lower it to refuse them
 sooner.
 - a whole number of octets: the limit, 64 MB as standard."
-  :values (integer 0 *))
+  :values (octets 0 *))
 
 (defun sandbox-shown-paths (paths)
   "What a program shut in the sandbox comparing or merging the files or

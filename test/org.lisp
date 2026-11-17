@@ -363,6 +363,28 @@ seconds; the editor draws after it as it does when woken."
   (is string= "PYTHON" (symbol-name (tuatara.defaults::language-name (tuatara.defaults::org-src-language "python"))))
   (false (tuatara.defaults::org-src-language "text")))
 
+(define-test (org source-blocks-colours-joined-leave-the-cache-whole)
+  ;; the colours of views joined with NCONC (as MODE-SYNTAX-HIGHLIGHTS does) never link the kept colours of
+  ;; code into another list: given twice, the cached list stays as it was and the joins end
+  (let* ((buffer (org-internals-buffer (format nil "* A~%#+begin_src sh~%echo~%#+end_src~%")))
+         (cached (list (list 0 1 :org-block) (list 2 3 :org-block)))
+         (kept (copy-tree cached)))
+    (unwind-protect
+         (let ((view (first (tuatara.defaults::org-views buffer 0 (tuatara.buffer:buffer-size buffer)))))
+           (true (tuatara.defaults::org-view-current view))
+           (with-functions-replaced ((tuatara.defaults::org-src-cached-highlights
+                                      (lambda (&rest arguments) (declare (ignore arguments)) cached)))
+             (let ((joined (handler-case
+                               (sb-ext:with-timeout 20
+                                 (loop repeat 3
+                                       nconc (tuatara.defaults::org-view-colours
+                                              buffer view 0 (tuatara.buffer:buffer-size buffer) nil)))
+                             (sb-ext:timeout () nil))))
+               (true (list-length joined))
+               (is equal kept cached)
+               (is = 3 (count-if (lambda (range) (eq (first range) 2)) joined)))))
+      (tuatara.buffer:kill-buffer buffer))))
+
 (define-test (org source-blocks-coloured-when-ready)
   ;; a language's rules not compiled yet when the note is first drawn: its block coloured once they
   ;; are, without moving into it; the rules compiled ahead for the note's languages, unasked

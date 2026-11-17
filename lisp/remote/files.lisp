@@ -505,10 +505,6 @@ rimu in its place."
              (unless other
                (setf (tuatara.buffer:buffer-name buffer) (tuatara.buffer:unique-buffer-name name))))))))
 
-(defparameter *remote-file-views* '(image-view-visit pdf-view-visit office-view-visit)
-  "The views of *FILE-VIEWS* that show a file read from another machine: those
-that only show it, as a view whose changes are saved would save them here.")
-
 (defun remote-octets-taken-over (buffer)
   "BUFFER, the octets of a file on another machine, has taken the place of the
 view that showed it (FILE-VIEW-FALL-TO-OCTETS): read again from there, as what

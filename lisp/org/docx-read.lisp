@@ -66,7 +66,7 @@ Office files are Word documents, Excel workbooks, PowerPoint presentations and
 OpenDocument files. Past the limit the rest of the text is left out, and the
 note says so, so that a file whose few octets stand for text copied many times
 cannot fill the memory."
-  :values (integer 1 *))
+  :values (octets 1 *))
 
 (define-setting *office-value-length-limit* 2000
   "The most characters of one value an office file's note shows.

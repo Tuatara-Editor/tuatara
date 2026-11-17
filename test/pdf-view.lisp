@@ -126,6 +126,23 @@ and zooms kept for the next time."
         (true (tuatara.frontend.fake:fake-images f)))
       (pdf-forget))))
 
+(define-test (pdf-view pages-from-a-copy-on-the-drive)
+  ;; a PDF copied to the drive for its decoders, not memory, is drawn and its text read as one in memory
+  ;; is, the decoders kept from changing permissions (the guarded seccomp filter)
+  (with-test-directory (dir)
+    (let ((file (merge-pathnames "report.pdf" dir))
+          (tuatara-user:*sandbox-memory-copy-limit* 0))
+      (alexandria:write-byte-vector-into-file (pdf-octets '("Hello from page one" "And page two")) file)
+      (pdf-forget)
+      (multiple-value-bind (f editor) (pdf-session file nil nil :cell-pixels '(10 20))
+        (true (tuatara.frontend.fake:fake-frame-showing f "Page 1 of 2"))
+        (true (first (last-images f)))
+        (let ((view (tuatara.defaults::pdf-view-of
+                     (tuatara.display:window-buffer (tuatara.command:editor-window editor)))))
+          (true (and view (tuatara.defaults::pdf-copy-p (tuatara.defaults::pdf-view-copy view))
+                     (tuatara.io::disk-copy-p (tuatara.defaults::pdf-copy-fd (tuatara.defaults::pdf-view-copy view)))))))
+      (pdf-forget))))
+
 (define-test (pdf-view pages-turned-from-another-buffer)
   ;; one command turns the pages: of the PDF in the current buffer, or else of the one another window
   ;; shows; in the text, l moves as in any text, <next> goes to where the next page begins
@@ -638,11 +655,14 @@ and zooms kept for the next time."
     (let ((file (merge-pathnames "report.pdf" dir)))
       (alexandria:write-byte-vector-into-file (pdf-octets '("Hello")) file)
       (pdf-forget)
-      (let ((tuatara-user:*sandbox-input-limit* 100))
+      (let ((tuatara-user:*sandbox-input-limit* 100)
+            (size (tuatara.text:octets-words (length (pdf-octets '("Hello"))) :binary t)))
         (multiple-value-bind (f editor) (pdf-session file nil nil :width 240)
           (true (tuatara.frontend.fake:fake-frame-showing f "report.pdf opens as octets: it is "))
           (true (tuatara.frontend.fake:fake-frame-showing
-                 f "more than a decoder is given (*sandbox-input-limit*, 100)"))
+                 f (format nil "it is ~a, more than the 100 B a decoder is given: set *sandbox-input-limit* above ~
+                                its size, or to nil, to have it read"
+                           size)))
           (let ((buffer (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
             (false (tuatara.defaults::pdf-view-of buffer))
             (tuatara.buffer:kill-buffer buffer))))
@@ -680,7 +700,10 @@ and zooms kept for the next time."
                    (text (tuatara.buffer:buffer-string buffer))
                    (messages (tuatara.buffer:find-buffer "*Messages*")))
               (true (search "report.pdf was not read: it is " text) text)
-              (true (search (format nil "more than a decoder is given (*sandbox-input-limit*, ~:d)" limit) text))
+              (true (search (format nil "more than the ~a a decoder is given: set *sandbox-input-limit* above its size"
+                                    (tuatara.text:octets-words limit :binary t))
+                            text)
+                    text)
               (false (search "has no text" text))
               (true (tuatara.frontend.fake:fake-frame-showing f "report.pdf was not read: it is "))
               (true (and messages (search "report.pdf was not read: it is "

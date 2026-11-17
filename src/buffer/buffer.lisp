@@ -460,7 +460,7 @@ always kept, however large. While work in the background (a large
 replacement, a sort) runs on a buffer, nothing of its history is let go
 until the work is done. The first time a buffer lets changes go, the editor
 says so once, naming the buffer."
-  :values (or (member nil) (integer 1 *)))
+  :values (or (member nil) (octets 1 *)))
 
 (defvar *undo-let-go-functions* '()
   "Functions called with a buffer the first time its oldest changes are let go

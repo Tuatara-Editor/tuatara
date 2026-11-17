@@ -229,7 +229,7 @@ more, closed when the last user is done."
 with VIEW's lock held."
   (when (and (pdf-copy-dropped copy) (zerop (pdf-copy-users copy)))
     (ignoring-errors-reported ("closing the copy of ~a" (pdf-view-path view))
-      (sb-posix:close (pdf-copy-fd copy)))))
+      (tuatara.io:close-sealed-copy (pdf-copy-fd copy)))))
 
 (defun pdf-copy-release (view copy)
   "One user of COPY, VIEW's, done with it: closed when it was dropped and no one reads it."
@@ -249,14 +249,16 @@ with VIEW's lock held."
 
 (defun pdf-copy-taken (view fd stamp make)
   "The copy of VIEW's PDF, open as FD with STAMP, a user of it counted: the one
-kept while the file is unchanged, else a new one MAKE makes of FD, kept in its
+kept while the file is unchanged and the copy as it was made
+\(TUATARA.IO:SEALED-COPY-INTACT-P), else a new one MAKE makes of FD, kept in its
 place, the old one closed once its users are done; for a view no longer
 needing one, a copy of its own, closed when done. A copy slow to make is never
 made while VIEW's lock is held, so that the editor's thread never waits on
 it."
   (loop
     (let* ((copy (sb-thread:with-mutex ((pdf-view-lock view)) (pdf-view-copy view)))
-           (made (and (not (and (pdf-copy-p copy) (tuatara.io:same-content-p stamp (pdf-copy-stamp copy))))
+           (made (and (not (and (pdf-copy-p copy) (tuatara.io:same-content-p stamp (pdf-copy-stamp copy))
+                                (tuatara.io:sealed-copy-intact-p (pdf-copy-fd copy))))
                       (funcall make fd))))
       (sb-thread:with-mutex ((pdf-view-lock view))
         (let ((now (pdf-view-copy view)))
@@ -276,10 +278,19 @@ it."
                 (t (incf (pdf-copy-users now))
                    (return now))))))))
 
-(defun call-with-pdf-copy (view function)
+(defun pdf-view-checked-stamp (view)
+  "The stamp of the file VIEW shows as it was when its visit judged it, which
+every read of it must find again (:VIEWED-STAMP of the buffer showing VIEW);
+NIL when there is none to find."
+  (let ((buffer (find view *pdf-views* :key #'pdf-view-of)))
+    (and buffer (tuatara.buffer:buffer-local buffer :viewed-stamp))))
+
+(defun call-with-pdf-copy (view function &key same-as)
   "Call FUNCTION with the descriptor of VIEW's PDF copied in memory, sealed:
 the copy made the first time, and again when the file changed since. The
-file is copied once for all the pages drawn, not for each."
+file is copied once for all the pages drawn, not for each. With SAME-AS, a
+stamp, a file put in its place since that stamp was taken is refused
+\(TUATARA.IO:CALL-WITH-FILE)."
   (let ((copy (tuatara.io:call-with-file
                (pdf-view-path view)
                (lambda (fd path size)
@@ -288,7 +299,8 @@ file is copied once for all the pages drawn, not for each."
                        (make (or (pdf-view-maker view) #'tuatara.io:sealed-copy)))
                    ;; a copy slow to make (a document made a PDF) made once, by one thread at a time
                    (sb-thread:with-mutex ((pdf-view-making view))
-                     (pdf-copy-taken view fd stamp make)))))))
+                     (pdf-copy-taken view fd stamp make))))
+               :same-as same-as)))
     (unwind-protect (funcall function (pdf-copy-fd copy))
       (pdf-copy-release view copy))))
 
@@ -302,6 +314,7 @@ started by the job runner: \\[list-jobs] lists it, \\[stop-job] and
 pages are not: many are drawn and given up as you turn them, and the mode
 line says the page."
   (let* ((editor *editor*)
+         (same-as (pdf-view-checked-stamp view))
          (run (tuatara.runtime:carry-settings
                *decoding-carried-settings*
                (lambda (&rest ignore)
@@ -309,7 +322,7 @@ line says the page."
                  (unwind-protect
                       (setf (pdf-view-job-result job)
                             (tuatara.runtime:ignoring-errors-reported ("drawing ~a" (pdf-view-path view))
-                              (handler-case (call-with-pdf-copy view work)
+                              (handler-case (call-with-pdf-copy view work :same-as same-as)
                                 (tuatara.io:file-system-error (e)
                                   (setf (pdf-view-job-refusal job) (tuatara.io:file-system-error-reason e))
                                   nil))))
@@ -356,13 +369,14 @@ killed.")
   "Run WORK, a function of the open PDF of VIEW, BUFFER's, in the background,
 a job doing WORDS (QUIET as a PDF-VIEW-TASK has it); FINISH, a function of
 its result, takes it in on the editor's thread, VIEW killed in between or not."
-  (tuatara.runtime:start-job-thread
-   (make-pdf-view-task buffer words finish quiet)
-   (tuatara.runtime:carry-settings
-    *decoding-carried-settings*
-    (lambda (job)
-      (setf (pdf-view-task-result job) (call-with-pdf-copy view work))))
-   :name "tuatara pdf view task"))
+  (let ((same-as (tuatara.buffer:buffer-local buffer :viewed-stamp)))
+    (tuatara.runtime:start-job-thread
+     (make-pdf-view-task buffer words finish quiet)
+     (tuatara.runtime:carry-settings
+      *decoding-carried-settings*
+      (lambda (job)
+        (setf (pdf-view-task-result job) (call-with-pdf-copy view work :same-as same-as))))
+     :name "tuatara pdf view task")))
 
 (defun pdf-view-start-text (view buffer)
   "Start taking VIEW's text out for BUFFER, with its pages' count and size."
@@ -579,11 +593,16 @@ the page of a place shown meanwhile begins (PDF-VIEW-SHOW-PLACE)."
                              do (incf at (length note)))))
             (static-header-line words spans))
           (tuatara.buffer:buffer-local buffer :header-line-over-hex) t)
-    ;; a document whose pages could not be made: read as text instead
-    (when (and (null (pdf-view-pages view)) (pdf-view-reading view) (not stopped))
-      (message "~a could not be drawn as pages (the debug log says why): read as text"
-               (tuatara.io:native-file-name (pdf-view-path view)))
-      (funcall (pdf-view-reading view) buffer))))
+    ;; a document whose pages could not be made: read as text instead, or its octets when that is withheld
+    (when (and (null (pdf-view-pages view)) (not stopped))
+      (cond ((pdf-view-reading view)
+             (message "~a could not be drawn as pages (the debug log says why): read as text"
+                      (tuatara.io:native-file-name (pdf-view-path view)))
+             (funcall (pdf-view-reading view) buffer))
+            ((tuatara.buffer:buffer-local buffer :reading-withheld)
+             (file-view-fall-to-octets
+              buffer (format nil "~a could not be drawn as pages, and is not read as text, being from outside"
+                             (tuatara.io:native-file-name (pdf-view-path view)))))))))
 
 (defun pdf-view-seen-p (buffer view width)
   "True when nothing VIEW, BUFFER's, is drawn and shown by has changed since
@@ -1143,7 +1162,7 @@ text, or as they are again; for every PDF while the editor runs
 copy; the text opens at the page shown, and the pages at the page point is on.
 A Word document, an Excel workbook or a PowerPoint presentation shown as its
 pages is switched to it read as text, as an Org note, and back with the same
-key."
+key; one from outside, opened safely, to the text of its pages instead."
   (let* ((buffer (current-buffer)) (view (pdf-view-of buffer)))
     (cond ((null view))
           ((pdf-view-reading view) (funcall (pdf-view-reading view) buffer))
@@ -1153,7 +1172,9 @@ key."
                    (text (not (tuatara.buffer:buffer-local buffer :image-hidden))))
                (setf (tuatara.buffer:buffer-local buffer :image-hidden) text)
                (pdf-view-go page)
-               (message "~:[Pages~;Text~], page ~d" text page))))))
+               (message "~:[Pages~;Text~], page ~d~:[~;; the text of its pages, the document not being read as ~
+                         text, being from outside~]"
+                        text page (and text (tuatara.buffer:buffer-local buffer :reading-withheld))))))))
 
 (define-pdf-view-command pdf-view-search "C-s"
   "Find text in the PDF and turn to its page: from the page shown on, asked
@@ -1525,6 +1546,7 @@ by search filters, the file on the line among those they leave."
                                           ("n" list-next-entry) ("p" list-previous-entry)))
   (commands-for-mode 'pdf-attachments-mode "*PDF embedded files*" 'list-next-entry 'list-previous-entry)
   (pushnew 'pdf-view-visit *file-views*)
+  (pushnew 'pdf-view-visit *sandboxed-file-views*)
   (pushnew 'stop-decoding *keyboard-quit-functions*)
   (pushnew 'pdf-view-quit *keyboard-quit-functions*)
   (pushnew 'pdf-view-mode-line *mode-line-functions*)

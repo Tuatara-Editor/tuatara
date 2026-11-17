@@ -59,25 +59,29 @@ or NIL."))
 reads carried to it (*DECODING-CARRIED-SETTINGS*): FUNCTION is called with
 the descriptor of JOB's file, opened there, and the cell that stops it
 \(the job's cancel), and what it returns is JOB's RESULT. When the file
-cannot be read, or memory runs short, the RESULT is NIL and FAILURE says why."
-  (tuatara.runtime:start-job-thread
-   job
-   (tuatara.runtime:carry-settings
-    *decoding-carried-settings*
-    (lambda (job)
-      (setf (drawing-job-result job)
-            (handler-case
-                (tuatara.io:call-with-file (drawing-job-path job)
-                                           (lambda (fd path size)
-                                             (declare (ignore path size))
-                                             (funcall function fd (tuatara.runtime:job-cancel job))))
-              (tuatara.io:file-system-error (e)
-                (setf (drawing-job-failure job) (tuatara.io:file-system-error-reason e))
-                nil)
-              (storage-condition ()
-                (setf (drawing-job-failure job) "there was not memory enough to draw it")
-                nil)))))
-   :name name))
+cannot be read, is another than the one JOB's buffer was made for
+\(:VIEWED-STAMP), or memory runs short, the RESULT is NIL and FAILURE says why."
+  (let ((same-as (let ((buffer (tuatara.runtime:job-buffer job)))
+                   (and buffer (tuatara.buffer:buffer-local buffer :viewed-stamp)))))
+    (tuatara.runtime:start-job-thread
+     job
+     (tuatara.runtime:carry-settings
+      *decoding-carried-settings*
+      (lambda (job)
+        (setf (drawing-job-result job)
+              (handler-case
+                  (tuatara.io:call-with-file (drawing-job-path job)
+                                             (lambda (fd path size)
+                                               (declare (ignore path size))
+                                               (funcall function fd (tuatara.runtime:job-cancel job)))
+                                             :same-as same-as)
+                (tuatara.io:file-system-error (e)
+                  (setf (drawing-job-failure job) (tuatara.io:file-system-error-reason e))
+                  nil)
+                (storage-condition ()
+                  (setf (drawing-job-failure job) "there was not memory enough to draw it")
+                  nil)))))
+     :name name)))
 
 (define-record (viewer-search-job (:include decoding-job)
                                  (:constructor make-viewer-search-job (buffer words search found))
@@ -470,7 +474,7 @@ JPEG XL picture is given time for its size (PICTURE-SECONDS), so this bounds
 that too.
 - a whole number of octets: the most, 4 GB as standard.
 - nil: no most; a picture is given what it needs."
-  :values (or (member nil) (integer 0 *)))
+  :values (or (member nil) (octets 0 *)))
 
 (defun picture-pixels (fd head)
   "How many pixels the picture open as file descriptor (FD), whose first

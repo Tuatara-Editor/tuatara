@@ -83,7 +83,7 @@ hundred megabytes in use and 1.6 s with 1.1 GB.
   standard. A shorter time collects sooner, in shorter pauses of thought; a
   longer time leaves more collections to fall between keys.
 - nil: every collection is left to come when it comes."
-  :values (or (member nil) (number 0 *)))
+  :values (or (member nil) (seconds 0 *)))
 
 (defvar *consed-at-gc* 0
   "The octets of data made in all (SB-EXT:GET-BYTES-CONSED) when garbage was

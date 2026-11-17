@@ -394,16 +394,18 @@ symbolic link. What is not a regular file is refused unopened (OPEN-EXAMINED)."
     (unwind-protect (copy-open-file in to-dirfd to-name path to-path :cancel cancel :progress progress)
       (sb-posix:close in))))
 
-(defun copy-regular-file (from to &key cancel progress)
+(defun copy-regular-file (from to &key cancel progress same-as)
   "Copy the file FROM, or the one it leads to when it is a symbolic link, to
 the new file TO, as COPY-OPEN-FILE does; FROM read without changing its
 access time where the system allows, TO never made through a link. True when
 all of it was copied; NIL when CANCEL, a cons, had a true car first (TO then
-holds part of it). What is not a regular file is refused unopened."
+holds part of it). What is not a regular file is refused unopened, and with
+SAME-AS, a stamp, so is a file other than the one it was taken of
+\(CALL-WITH-FILE)."
   (call-with-file from (lambda (in name size)
                          (declare (ignore name size))
                          (copy-open-file-to in from to :cancel cancel :progress progress))
-                  :operation "copy"))
+                  :operation "copy" :same-as same-as))
 
 (defun copy-open-file-to (in from to &key cancel progress)
   "Copy the regular file open as IN, FROM's (for messages), to the new file

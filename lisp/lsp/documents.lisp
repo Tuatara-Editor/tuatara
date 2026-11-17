@@ -19,7 +19,7 @@
 whole text, or the code of a note's source blocks of one language, however
 large the note. A larger one is shown without its servers.
 - a whole number: that many octets, 8 MB (8388608) as standard."
-  :values (integer 1 *))
+  :values (octets 1 *))
 
 (defun lsp-refusal (buffer)
   "Why BUFFER is never given to a language server, in words, or NIL: no file,

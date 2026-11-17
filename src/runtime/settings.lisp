@@ -9,6 +9,11 @@
 ;;;; :init or :config or an evaluation, is looked at once the form has run
 ;;;; and the setting put back (PUT-BACK-MISFIT-SETTINGS); one given before
 ;;;; the setting was defined is looked at when it is (NOTE-SETTING).
+;;;;
+;;;; A setting holding octets or a time may be given it in words, as "20G"
+;;;; or "90s": the same three places turn the words into the number the
+;;;; setting holds (CONVERTED-SETTING-VALUE), so that the code reading a
+;;;; setting only ever finds a number there.
 
 (in-package #:tuatara.runtime)
 
@@ -26,21 +31,27 @@ a description reads the same in any Lisp package."
 (defun check-values-description (description)
   "Signal an error unless DESCRIPTION is a description of a setting's values
 that VALUES-WORDS and VALUE-FITS understand: words (a string); BOOLEAN,
-NUMBER, INTEGER, STRING, CHARACTER, SYMBOL, KEYWORD, LIST, FILE, DIRECTORY or
-FUNCTION; (MEMBER VALUE ...); (INTEGER LOW HIGH) or (NUMBER LOW HIGH), either
-end a number or * for open; (STRING LENGTH); (CONS DESCRIPTION DESCRIPTION);
-\(LIST-OF DESCRIPTION); (OR DESCRIPTION ...)."
-  (flet ((bad () (error "~s describes no values a setting takes" description)))
+NUMBER, INTEGER, OCTETS, SECONDS, MINUTES, STRING, CHARACTER, SYMBOL, KEYWORD,
+LIST, FILE, DIRECTORY or FUNCTION; (MEMBER VALUE ...); (INTEGER LOW HIGH),
+\(NUMBER LOW HIGH) or (OCTETS LOW HIGH), either end a number or * for open;
+\(SECONDS LOW HIGH) or (MINUTES LOW HIGH), with :WHOLE after them for whole
+numbers alone; (STRING LENGTH); (CONS DESCRIPTION DESCRIPTION); (LIST-OF
+DESCRIPTION); (OR DESCRIPTION ...)."
+  (flet ((bad () (error "~s describes no values a setting takes" description))
+         (ends-p (ends) (every (lambda (end) (or (eq end '*) (realp end))) ends)))
     (let ((kind (values-kind description)))
       (if (atom description)
-          (unless (member kind '(:phrase :boolean :number :integer :string :character :symbol :keyword :list
-                                 :file :directory :function))
+          (unless (member kind '(:phrase :boolean :number :integer :octets :seconds :minutes :string :character
+                                 :symbol :keyword :list :file :directory :function))
             (bad))
           (case kind
             (:member (unless (rest description) (bad)))
-            ((:integer :number)
-             (unless (and (= (length description) 3)
-                          (every (lambda (end) (or (eq end '*) (realp end))) (rest description)))
+            ((:integer :number :octets)
+             (unless (and (= (length description) 3) (ends-p (rest description)))
+               (bad)))
+            ((:seconds :minutes)
+             (unless (and (<= 3 (length description) 4) (ends-p (subseq description 1 3))
+                          (or (= (length description) 3) (whole-time-p description)))
                (bad)))
             (:string (unless (and (= (length description) 2) (typep (second description) '(integer 1))) (bad)))
             (:cons (if (= (length description) 3) (mapc #'check-values-description (rest description)) (bad)))
@@ -65,6 +76,19 @@ were defined.")
   "The description of the values SETTING, a symbol, takes, as its
 DEFINE-SETTING gave it; NIL when it gave none."
   (get setting 'setting-values))
+
+(defparameter *largest-size* (expt 2 62)
+  "The most octets a setting holding a size takes (OCTETS), 4 EiB: more than
+any drive or memory holds, so that a size mistyped is refused.")
+
+(defparameter *longest-time* (* 100 365 24 60 60)
+  "The most seconds a setting holding a time takes (SECONDS, and the same in
+minutes for MINUTES), a hundred years, so that a time mistyped is refused.")
+
+(defun whole-time-p (description)
+  "True when DESCRIPTION, (SECONDS LOW HIGH :WHOLE) or (MINUTES LOW HIGH
+:WHOLE), takes whole numbers alone."
+  (and (consp description) (= (length description) 4) (string= (symbol-name (fourth description)) "WHOLE")))
 
 (defun range-words (noun low high)
   "NOUN, \"a whole number\" or \"a number\", from LOW to HIGH in words, each
@@ -96,6 +120,16 @@ end a number or * for none."
       (:member (format nil "~{~s~^, ~}" (rest description)))
       (:integer (if (atom description) "a whole number" (apply #'range-words "a whole number" (rest description))))
       (:number (if (atom description) "a number" (apply #'range-words "a number" (rest description))))
+      (:octets (format nil "~a, or a size in words such as 512M, 1.5G or 20 GB (in 1024s: 1K is 1024 octets), ~
+                            at most 4E"
+                       (if (atom description)
+                           "a whole number of octets"
+                           (range-words "a whole number of octets" (second description) (third description)))))
+      ((:seconds :minutes)
+       (let ((noun (format nil "~:[a number~;a whole number~] of ~(~a~)"
+                           (whole-time-p description) (values-kind description))))
+         (format nil "~a, or a time in words such as 500ms, 90s, 30m or 2h, at most a hundred years"
+                 (if (atom description) noun (range-words noun (second description) (third description))))))
       (:list-of (format nil "a list, each ~a" (values-words (second description))))
       (:or (format nil "~{~a~^, or ~}" (mapcar #'values-words (rest description)))))))
 
@@ -133,6 +167,12 @@ that a setting may be checked each time it is given a value."
                              (or (atom description) (in-range (second description) (third description))))))
       (:number (yes-if (and (realp value)
                             (or (atom description) (in-range (second description) (third description))))))
+      ((:seconds :minutes)
+       (yes-if (and (if (whole-time-p description) (integerp value) (realp value))
+                    (<= value (if (eq (values-kind description) :minutes) (/ *longest-time* 60) *longest-time*))
+                    (or (atom description) (in-range (second description) (third description))))))
+      (:octets (yes-if (and (integerp value) (<= value *largest-size*)
+                            (or (atom description) (in-range (second description) (third description))))))
       (:list-of (if (whole-list-p value)
                     (loop with fit = :yes
                           for element in value
@@ -148,6 +188,98 @@ that a setting may be checked each time it is given a value."
                  when (eq each-fit :unknown)
                    do (setf fit :unknown)
                  finally (return fit))))))
+
+(defparameter *size-units* "KMGTPE"
+  "The letters of the units a size in words may have after its number, each
+1024 times the one before it, K being 1024 octets.")
+
+(defun octets-in-words (words)
+  "The whole number of octets WORDS, a string, gives: a number, perhaps with
+a fraction, then perhaps a unit of *SIZE-UNITS*, with or without B or iB
+after it, any letter in either case and spaces around: \"20G\", \"1.5 GB\",
+\"512MiB\", \"300\". Units count in 1024s, whichever is written: 1 GB is
+1073741824 octets. A fraction of an octet left is rounded to the nearest. NIL
+when WORDS is not such a size."
+  (multiple-value-bind (match groups)
+      (cl-ppcre:scan-to-strings "^\\s*([0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)\\s*(?:([KMGTPEkmgtpe])(?:[iI]?[bB])?|[bB])?\\s*$"
+                                words)
+    (when match
+      (let ((unit (aref groups 1)))
+        (round (* (decimal-in-words (aref groups 0))
+                  (if unit (expt 1024 (1+ (position (char-upcase (char unit 0)) *size-units*))) 1)))))))
+
+(defun decimal-in-words (digits)
+  "The exact rational number DIGITS, a string of digits with perhaps one
+point among them (\"1.5\", \".25\", \"20\"), writes."
+  (let* ((point (position #\. digits))
+         (whole (subseq digits 0 point))
+         (fraction (if point (subseq digits (1+ point)) "")))
+    (+ (if (plusp (length whole)) (parse-integer whole) 0)
+       (if (plusp (length fraction)) (/ (parse-integer fraction) (expt 10 (length fraction))) 0))))
+
+(defparameter *time-units* '(("ms" . 1/1000) ("s" . 1) ("sec" . 1) ("m" . 60) ("min" . 60) ("h" . 3600)
+                             ("d" . 86400))
+  "The units a time in words may have after its number, each with the seconds
+it stands for: milliseconds, seconds, minutes, hours and days.")
+
+(defun seconds-in-words (words)
+  "The seconds WORDS, a string, gives, as an exact rational number: a number,
+perhaps with a fraction, then perhaps a unit of *TIME-UNITS*, in either case,
+spaces allowed around: \"500ms\", \"90s\", \"1.5h\", \"30 m\", \"14d\". A
+second value is true when WORDS has a unit. NIL when WORDS is not such a time."
+  (multiple-value-bind (match groups)
+      (cl-ppcre:scan-to-strings "^\\s*([0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)\\s*([A-Za-z]*)\\s*$" words)
+    (when match
+      (let* ((unit (aref groups 1))
+             (scale (if (zerop (length unit)) 1 (cdr (assoc unit *time-units* :test #'string-equal)))))
+        (and scale (values (* (decimal-in-words (aref groups 0)) scale) (plusp (length unit))))))))
+
+(defun plain-number (number)
+  "NUMBER, a rational, as a whole number when it is one, else as a float, as
+an init file would write it: 3/2 as 1.5."
+  (if (integerp number) number (float number 1.0)))
+
+(defun words-number (description value)
+  "The number VALUE, a size or a time in words, gives in the unit of
+DESCRIPTION, an OCTETS, SECONDS or MINUTES description or an OR of them
+\(CONVERTED-SETTING-VALUE), whether or not it fits it; VALUE itself when it
+gives none."
+  (case (values-kind description)
+    (:octets (or (octets-in-words value) value))
+    ((:seconds :minutes)
+     (multiple-value-bind (seconds unit) (seconds-in-words value)
+       (cond ((null seconds) value)
+             ((and (eq (values-kind description) :minutes) unit) (plain-number (/ seconds 60)))
+             (t (plain-number seconds)))))
+    (:or (loop for each in (rest description)
+               for converted = (converted-setting-value each value)
+               unless (eq converted value)
+                 return converted
+               finally (return value)))
+    (t value)))
+
+(defun converted-setting-value (description value)
+  "VALUE as a setting DESCRIPTION describes holds it: a string giving a size
+in words (OCTETS-IN-WORDS) for an OCTETS description, or a time in words
+\(SECONDS-IN-WORDS) for a SECONDS or MINUTES one, turned into the number of
+octets, seconds or minutes it gives, when that number is one DESCRIPTION
+takes; any other VALUE, and words giving none it takes, as they are, for the
+fault to name them. A number without a unit counts in the setting's own unit:
+\"5\" is 5 minutes for a MINUTES one. Makes nothing unless VALUE is a string."
+  (if (not (and (stringp value) description (not (stringp description))
+                (not (eq :yes (value-fits value description)))))
+      value
+      (let ((converted (words-number description value)))
+        (if (eq :yes (value-fits converted description)) converted value))))
+
+(defun convert-setting (setting)
+  "Give SETTING, a symbol, the number its value in words gives, when it holds
+words for a size or a time it takes (CONVERTED-SETTING-VALUE). Returns its
+value."
+  (let ((value (setting-value-now setting)))
+    (if (stringp value)
+        (setf (symbol-value setting) (converted-setting-value (setting-values setting) value))
+        value)))
 
 (defun setting-values-words (setting)
   "The values SETTING, a symbol, takes, in words for people (VALUES-WORDS);
@@ -192,8 +324,10 @@ the value fits. Complexity: O(size of the value)."
   "Give SETTING, a symbol, VALUE when it is one of the values its definition
 declares (SETTING-VALUE-FAULT); else refuse, saying what it takes, and keep
 the value it has. The way the editor's own commands set a setting. Returns
-VALUE."
-  (let ((fault (setting-value-fault setting value)))
+VALUE, or the number it gives when it is a size or a time in words
+\(CONVERTED-SETTING-VALUE)."
+  (let* ((value (converted-setting-value (setting-values setting) value))
+         (fault (setting-value-fault setting value)))
     (when fault
       (if (boundp setting)
           (refuse "~a: it keeps ~a" fault (shown-value (symbol-value setting)))
@@ -204,12 +338,14 @@ VALUE."
   "Count NAME among *SETTINGS*, once, STANDARD a function of no arguments
 giving its standard value (SETTING-STANDARD-VALUE). A value NAME was given
 before it was a setting, by an init file that names a package's setting
-before the package loads, is kept when it is one the setting takes; else
+before the package loads, is kept when it is one the setting takes, a size
+or a time in words turned into its number (CONVERT-SETTING); else
 the standard value is given in its place, and that said
 \(HOST-SAY-PROBLEM)."
   (setf (get name 'setting-standard) standard)
   (unless (get name 'setting-index)
     (setf (get name 'setting-index) (vector-push-extend name *settings*)))
+  (convert-setting name)
   (let ((fault (setting-value-fault name)))
     (when fault
       (setf (symbol-value name) (funcall standard))
@@ -234,6 +370,13 @@ descriptions:
   (member :a :b nil)     one of those
   (integer 0 *)          a whole number, 0 or more; * leaves an end open
   (number 0.5 10)        any number in that range; plain number for any
+  (octets 1 *)           a whole number of octets in that range, which may be
+                         given as a size in words, \"20G\", \"1.5 GB\", \"512MiB\",
+                         units in 1024s whichever is written
+  (seconds 0 *)          a number of seconds, which may be given as a time in
+                         words, \"500ms\", \"90s\", \"30m\", \"2h\", \"14d\"
+  (minutes 0 * :whole)   the same in minutes; :WHOLE takes whole numbers alone
+                         (\"90s\", 1.5 minutes, is then refused)
   string                 text
   (string 2)             text of exactly two characters
   (cons CAR CDR)         a pair, (CAR . CDR), each as its description says
@@ -304,7 +447,8 @@ last look. Complexity: O(settings)."
 SNAPSHOT (SETTINGS-SNAPSHOT) was made: to the value it had then, or for a
 setting defined since, its standard value. A list of what was put back, in
 words naming the setting, the value refused, what it takes and the value it
-keeps. Only the settings given another value are looked at closely, so that
+keeps. A size or a time given in words is first turned into the number it
+gives (CONVERT-SETTING). Only the settings given another value are looked at closely, so that
 it costs next to nothing when none was; a value is another when it is not
 the same object (EQ), so a list changed where it stands is not looked at.
 Complexity: O(settings)."
@@ -313,7 +457,7 @@ Complexity: O(settings)."
           for setting = (aref *settings* i)
           for value = (setting-value-now setting)
           unless (and (< i (length snapshot)) (eq value (svref snapshot i)))
-            do (let ((fault (setting-value-fault setting value)))
+            do (let ((fault (setting-value-fault setting (convert-setting setting))))
                  (when fault
                    (let ((was (if (< i (length snapshot)) (svref snapshot i) (setting-standard-value setting))))
                      (if (eq was **no-value**) (makunbound setting) (setf (symbol-value setting) was))

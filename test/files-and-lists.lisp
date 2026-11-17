@@ -23,14 +23,6 @@ for up to SECONDS; NIL when it is not called."
                 (tuatara.runtime:wait-until (lambda () thread) seconds))
       (sb-int:unencapsulate name 'thread-seen))))
 
-(defun calls-of (name thunk)
-  "How many times the function NAME is called while THUNK runs."
-  (let ((calls 0))
-    (sb-int:encapsulate name 'counted (lambda (function &rest arguments) (incf calls) (apply function arguments)))
-    (unwind-protect (funcall thunk)
-      (sb-int:unencapsulate name 'counted))
-    calls))
-
 ;;; Archives
 
 (define-test (files-and-lists archive-failure-carried-as-a-condition)

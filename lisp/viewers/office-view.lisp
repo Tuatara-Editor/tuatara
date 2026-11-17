@@ -166,18 +166,20 @@ drawing PDFs in it."
 
 ;;; In rimu's preview
 
-(defun office-preview (fd path size office &key pixels cancel)
+(defun office-preview (fd path size office &key pixels cancel (read t))
   "The preview of the Office document of the kind OFFICE (*OFFICE-FORMATS*) open as
 file descriptor (FD), PATH's, of SIZE octets, as three values: the document
-read as text by its kind's reader, or NIL for a kind shown only as its pages;
+read as text by its kind's reader, or NIL for a kind shown only as its pages
+or with READ NIL (for a file from outside: the reader works outside the sandbox);
 notes for the line over it, each (TEXT . FACE): how many pages, or why they
 were not drawn; and with PIXELS, the most width and height in pixels, its
 first page drawn as large as fits there by LibreOffice shut in by the sandbox,
 when it is installed and *OFFICE-VIEW-PAGES* is true, or NIL. CANCEL, a cons,
 stops it when its car turns true. Waits for the programs: call it from a
 thread working in the background."
-  (let ((text (let ((read (getf office :read)))
-                (and read (funcall read path :octets (fd-octets fd path size *docx-largest-file*) :cancel cancel))))
+  (let ((text (let ((reader (and read (getf office :read))))
+                (and reader
+                     (funcall reader path :octets (fd-octets fd path size *docx-largest-file*) :cancel cancel))))
         (notes '()) (image nil))
     (when (and pixels *office-view-pages* (not (car cancel))
                (tuatara.io:sandbox-find-program *office-page-program*) (find-pdf-decoder))
@@ -251,21 +253,32 @@ of the buffer. It is shown as its pages when they can be drawn
 \(OFFICE-PAGES-POSSIBLE-P). Else one Tuatara reads (a Word document, an Excel
 workbook, a PowerPoint presentation, an OpenDocument file) is read as text,
 saying why when that is for want of the sandbox, LibreOffice or a program for
-PDFs. Any other is left to be opened as any file, saying why. Returns the
-buffer, or NIL for a file this view does not show."
+PDFs; while it is visited safely (*VISITING-SAFELY*) it is never read as
+text, its pages or its octets shown instead, as any other's are, saying why.
+Returns the buffer, or NIL for a file this view does not show."
   (let* ((native (file-view-path path))
          (office (and native (office-file-format native))))
     (when office
       (cond ((office-pages-possible-p)
              (file-view-show native *pdf-views* (lambda (b) (let ((v (pdf-view-of b))) (and v (pdf-view-path v))))
                              (lambda ()
-                               (let ((ending (office-ending office (tuatara.io:native-file-name native))))
-                                 (pdf-view-make native :make (lambda (fd) (office-pdf-copy fd ending))
-                                                       :reading (and (getf office :read) #'office-show-reading)
-                                                       :words (format nil
-                                                                      "~a, its pages drawn by LibreOffice"
-                                                                      (getf office :words)))))
+                               (let* ((ending (office-ending office (tuatara.io:native-file-name native)))
+                                      (buffer (pdf-view-make native
+                                                             :make (lambda (fd) (office-pdf-copy fd ending))
+                                                             :reading (and (getf office :read) (not *visiting-safely*)
+                                                                           #'office-show-reading)
+                                                             :words (format nil "~a, its pages drawn by LibreOffice"
+                                                                            (getf office :words)))))
+                                 ;; its own reader works outside the sandbox: not for a file from outside
+                                 (when (and (getf office :read) *visiting-safely*)
+                                   (setf (tuatara.buffer:buffer-local buffer :reading-withheld) t))
+                                 buffer))
                              show))
+            ((and (getf office :read) *visiting-safely*)
+             (file-view-refuses "~a opens as octets: ~a, and its text is read outside the sandbox"
+                                (tuatara.io:native-file-name native)
+                                (or (office-no-pages-words) "its pages are not shown here (*office-view-pages*)"))
+             nil)
             ((getf office :read)
              ;; read as text for want of what draws pages, not by choice: said
              (let ((why (office-no-pages-words)))
@@ -278,4 +291,5 @@ buffer, or NIL for a file this view does not show."
 (defun install-office-view ()
   "Have Office documents visited shown as their pages or read as text, and bind \\`T' in their text."
   (define-key *office-reading-keymap* "T" 'office-view-pages)
-  (pushnew 'office-view-visit *file-views*))
+  (pushnew 'office-view-visit *file-views*)
+  (pushnew 'office-view-visit *sandboxed-file-views*))

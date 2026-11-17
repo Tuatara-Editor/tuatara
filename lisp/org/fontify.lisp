@@ -541,7 +541,9 @@ language's colours after them when the parse is of the text as it is now."
     (org-fontify (org-view-tree view))
     (let ((ranges (nreverse *org-ranges*)))
       (if (and *org-src-blocks* (not (eql style-level 0)) (org-view-current view))
-          (append ranges (org-src-cached-highlights buffer rope from to))
+          ;; the cached list is copied: the caller joins these lists destructively, and a cache entry
+          ;; linked into the next view's colours turns into a loop when it is given again
+          (nconc ranges (copy-list (org-src-cached-highlights buffer rope from to)))
           ranges))))
 
 (defmethod mode-syntax-highlights ((mode org-mode) buffer rows)

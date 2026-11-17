@@ -76,9 +76,12 @@ neither starts there nor offers it."
 
 (defun note-visited-path (path buffer &key directory)
   "Remember PATH, just chosen and shown in BUFFER (NIL when it could not be
-shown), as NOTE-CHOSEN-PATH does, unless BUFFER shows it opened safely."
+shown), as NOTE-CHOSEN-PATH does, unless BUFFER shows it opened safely or
+is a view of it as a file from outside (VISIT-PATH-ONCE)."
   (when buffer
-    (note-chosen-path path :directory directory :safe (tuatara.io:safe-visit-p buffer))))
+    (note-chosen-path path :directory directory
+                           :safe (or (tuatara.io:safe-visit-p buffer)
+                                     (tuatara.buffer:buffer-local buffer :viewed-untrusted)))))
 
 (defun named-safe-p (native)
   "True when NATIVE, a path remembered, is in one of *UNTRUSTED-DIRECTORIES* by
@@ -519,7 +522,38 @@ with KEYS; NIL, said, when nothing was typed or something is there already
   "Functions of a file's PATH and a function SHOW of a buffer that may show the
 file visited as something other than its text (a PDF as its pages): each
 returns the buffer it showed with SHOW, or NIL to leave the file to the next,
-and at last to its text. A safe visit shows the text always.")
+and at last to its text. A file asked to be opened safely shows its text
+always; one from outside (UNTRUSTED-PATH-P) is shown only by the views of
+*SANDBOXED-FILE-VIEWS*, and never when it is or may be evidence
+\(MAY-BE-EVIDENCE-P).")
+
+(defvar *sandboxed-file-views* '()
+  "The views of *FILE-VIEWS* that show a file from outside (UNTRUSTED-PATH-P),
+opened safely, when it is not evidence. A view named here promises, and
+nothing checks it, that the file itself is read only by programs shut in by
+the sandbox: never parsed by Lisp, run, decrypted or handed to a program
+outside it; what those programs write may be read in Lisp, within limits.
+It fetches nothing and writes nothing beside the file. Such a view is called
+with *VISITING-SAFELY* true and leaves the file to its octets rather than
+read it any other way. A package adds the name of its view here as well as
+to *FILE-VIEWS* only when it keeps this promise.")
+
+(defparameter *remote-file-views* '(image-view-visit pdf-view-visit office-view-visit)
+  "The views of *FILE-VIEWS* that show a file read from another machine: those
+that only show it, as a view whose changes are saved would save them here.")
+
+(defvar *file-view-stamp* nil
+  "While a view of *SANDBOXED-FILE-VIEWS* is asked to show a file from
+outside, the stamp of the file as its visit judged it (FILE-VIEW-STAMP).")
+
+(defun file-view-stamp ()
+  "While a view of *FILE-VIEWS* is asked to show a file from outside (one of
+*SANDBOXED-FILE-VIEWS*), the stamp of the file as its visit judged it; NIL
+otherwise. A view that reads the file later, on a thread of its own, takes it
+now and gives it as :SAME-AS to TUATARA.IO:CALL-WITH-FILE or
+TUATARA.IO:COPY-REGULAR-FILE, so that a file put in its place meanwhile is
+refused. The buffers MAKE-FILE-VIEW-BUFFER makes keep it (:VIEWED-STAMP)."
+  *file-view-stamp*)
 
 (defvar *file-view-said* :none
   "Why a view of *FILE-VIEWS* left the file being visited to its octets, while
@@ -585,6 +619,7 @@ the file's own octets (FILE-VIEW-HEX)."
           (tuatara.buffer:buffer-local buffer :picture-pending) t
           (tuatara.buffer:buffer-local buffer :viewed-file) native
           (tuatara.buffer:buffer-local buffer :viewed-as) what
+          (tuatara.buffer:buffer-local buffer :viewed-stamp) (file-view-stamp)
           (buffer-given-directory buffer) (tuatara.io:parent-path native))
     buffer))
 
@@ -706,22 +741,29 @@ octets, safely, in the hex view, in every window showing BUFFER, which goes,
 saying WORDS for why. A copy of a file on another machine stays as long as
 the octets do."
   (let ((native (tuatara.buffer:buffer-local buffer :viewed-file))
-        (windows (buffer-windows buffer))
-        (name (tuatara.buffer:buffer-name buffer)))
+        (windows (buffer-windows buffer)))
     (when native
-      (let ((octets (visit-path native :safe t
-                                       :show (lambda (octets)
-                                               (dolist (window windows)
-                                                 (tuatara.display:set-window-buffer window octets :remember nil))))))
+      (let ((octets (visit-path native :safe t :show #'identity)))
         (hex-view-on octets)
-        (dolist (kept '(private-directory :remote-file))
-          (setf (tuatara.buffer:buffer-local octets kept) (shiftf (tuatara.buffer:buffer-local buffer kept) nil)))
-        (setf (buffer-given-directory octets) (buffer-given-directory buffer))
+        (take-place-of octets buffer windows)
         (when (buffer-remote octets)
           (remote-octets-taken-over octets))
-        (tuatara.buffer:kill-buffer buffer)
-        (setf (tuatara.buffer:buffer-name octets) name)
         (message "~a: its octets, opened safely" words)))))
+
+(defun take-place-of (new old windows)
+  "Have the buffer NEW take the place of OLD, another showing the same file:
+shown in WINDOWS, those that showed OLD, holding OLD's private copy and file
+on another machine (kept as long as NEW is), its directory when it was given
+one, and its name; OLD killed."
+  (dolist (window windows)
+    (tuatara.display:set-window-buffer window new :remember nil))
+  (dolist (kept '(private-directory :remote-file))
+    (setf (tuatara.buffer:buffer-local new kept) (shiftf (tuatara.buffer:buffer-local old kept) nil)))
+  (when (buffer-given-directory old)
+    (setf (buffer-given-directory new) (buffer-given-directory old)))
+  (let ((name (tuatara.buffer:buffer-name old)))
+    (tuatara.buffer:kill-buffer old)
+    (setf (tuatara.buffer:buffer-name new) name)))
 
 (defun file-view-hex (buffer)
   "For \\[hex-mode] in BUFFER, a file shown as its pages or its picture
@@ -778,23 +820,36 @@ called.")
 
 (defvar *visiting-safely* nil
   "True while a file or directory is being visited safely, for the views that
-show one (*FILE-VIEWS*): a directory's list is then opened safely too.")
+show one (*FILE-VIEWS*): a directory's list is then opened safely too. True as
+well while a view of *SANDBOXED-FILE-VIEWS* is asked to show a file from
+outside.")
 
 (defun visit-path-once (path safe show)
   "Visit the file at PATH as VISIT-PATH does, SAFE and SHOW as it takes them,
-its first octets read once meanwhile. A file in one of *UNTRUSTED-DIRECTORIES*, or
-of evidence (*EVIDENCE-DIRECTORIES*), is shown by no view (decrypted, read by a
-program), however it is opened; a
-directory is listed (\\[rimu]) however it is opened, its access time kept and
-nothing in it opened."
-  (let ((*file-view-said* nil)
-        (*visiting-safely* (and safe t)))
-    (unless (and (or safe (untrusted-path-p path))
-                 (not (eq :directory (ignoring-errors-reported ("examining ~a" path)
-                                       (tuatara.io:path-kind (tuatara.io:native (tuatara.io:expand-path path)))))))
-      (let ((view (run-hook-until-done *file-views* path show)))
-        (when view (return-from visit-path-once view))))
-    (visit-path-as-text path safe show)))
+its first octets read once meanwhile. A file asked to be opened safely is
+shown by no view. One from outside (UNTRUSTED-PATH-P) is shown only by a view
+of *SANDBOXED-FILE-VIEWS*, which reads it in the sandbox, and by none when it
+is or may be evidence (MAY-BE-EVIDENCE-P); such a view is not noted as the
+path chosen last. A directory is listed (\\[rimu]) however it is opened, its
+access time kept and nothing in it opened."
+  (let* ((*file-view-said* nil)
+         (*visiting-safely* (and safe t))
+         (untrusted (and (not safe) (untrusted-path-p path)))
+         (native (ignoring-errors-reported ("expanding ~a" path) (tuatara.io:native (tuatara.io:expand-path path))))
+         (directory (and (or safe untrusted) native
+                         (eq :directory (ignoring-errors-reported ("examining ~a" path)
+                                          (tuatara.io:path-kind native)))))
+         (view (cond ((or directory (not (or safe untrusted))) (run-hook-until-done *file-views* path show))
+                     ((and untrusted native (not (may-be-evidence-p native)))
+                      (let ((*visiting-safely* t)
+                            (*file-view-stamp* (tuatara.io:path-stamp native :failure nil)))
+                        (run-hook-until-done (remove-if-not (lambda (view) (member view *sandboxed-file-views*))
+                                                            *file-views*)
+                                             path show))))))
+    (cond ((null view) (visit-path-as-text path safe show))
+          (t (when (and untrusted (not directory))
+               (setf (tuatara.buffer:buffer-local view :viewed-untrusted) t))
+             view))))
 
 (defun say-new-file-directory (buffer)
   "When BUFFER is a new file whose directory is not there yet: say so, and that
@@ -960,20 +1015,47 @@ is. The mode line no longer says Safe, and the buffer is editable when you
 may write the file. It gets what \\[find-file] gives a file: its major mode
 (or keeps the one chosen meanwhile, its colours now shown), version control,
 and a place among the files visited lately that opens it as usual. Point,
-changes not saved and undo stay as they are. It stays opened safely, and
-says why (SAFE-VISIT-KEPT-REASON), in these cases: the file is evidence
-\(*EVIDENCE-DIRECTORIES*) or was when it was opened, it has another name that may
-be evidence, or its name leads to another file now than the one read."
+changes not saved and undo stay as they are. A file one of *FILE-VIEWS*
+shows otherwise, a PDF or a mailbox, is shown so in its place instead, as
+\\[find-file] shows it, unless the buffer has changes not saved; one that
+view decrypts is said to be. It stays opened safely, and says why
+\(SAFE-VISIT-KEPT-REASON), in these cases: the file is evidence
+\(*EVIDENCE-DIRECTORIES*) or was when it was opened, it has another name that
+may be evidence, or its name leads to another file now than the one read."
   (let ((b (current-buffer)))
     (if (not (tuatara.io:safe-visit-p b))
         (message "~a is not open safely" (tuatara.buffer:buffer-name b))
         (let ((why (safe-visit-kept-reason b)))
           (if why
               (message "~a stays opened safely: ~a" (tuatara.buffer:buffer-name b) why)
-              (progn
-                (visit-as-usual b)
-                (message "~a is open as usual now~:[~;; read-only, since you may not write it~]"
-                         (tuatara.buffer:buffer-name b) (buffer-read-only-p b))))))))
+              (let ((view (and (not (tuatara.buffer:buffer-modified-p b)) (view-in-place-of b))))
+                (if view
+                    (message "~a is open as usual now, shown as ~a"
+                             (tuatara.buffer:buffer-name view)
+                             (cond ((tuatara.buffer:buffer-local view :viewed-as))
+                                   ((tuatara.buffer:buffer-local view :encrypted) "its text, decrypted by gpg")
+                                   (t "its view")))
+                    (progn
+                      (visit-as-usual b)
+                      (message "~a is open as usual now~:[~;; read-only, since you may not write it~]"
+                               (tuatara.buffer:buffer-name b) (buffer-read-only-p b))))))))))
+
+(defun view-in-place-of (b)
+  "The buffer of the view of *FILE-VIEWS* that shows B's file, which B visits
+safely, having taken B's place (TAKE-PLACE-OF), or shown in the selected
+window when B was shown in none; NIL, B left as it is, when no view shows
+the file. A copy of a file on another machine is shown only by the views of
+*REMOTE-FILE-VIEWS*, as when it is first read."
+  (let* ((windows (buffer-windows b))
+         (view (let ((*file-view-said* nil))
+                 (tuatara.io:call-with-file-heads
+                  (lambda ()
+                    (run-hook-until-done (if (buffer-remote b) *remote-file-views* *file-views*)
+                                         (tuatara.io:native (tuatara.buffer:buffer-file b))
+                                         (lambda (view) (unless windows (show-buffer view)))))))))
+    (when view
+      (take-place-of view b windows)
+      view)))
 
 (defun safe-visit-kept-reason (buffer)
   "Why BUFFER, visiting its file safely, stays so (\\[end-safe-visit]), a

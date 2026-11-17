@@ -45,7 +45,8 @@ those read from other machines, those given to programs shut in) are untrusted.
 So is a file a web browser marked as downloaded: Firefox and Chromium give what
 they download the extended attribute =user.xdg.origin.url=, which stays with
 the file when you move it on the same drive. Tuatara reads it without changing
-the file's times.
+the file's times. To trust such a file, take the mark away with
+=setfattr -x user.xdg.origin.url FILE=, or copy the file: a copy has no mark.
 
 Clone or download what others made into one of these directories, or add the
 directory you keep such things in:
@@ -57,7 +58,15 @@ directory you keep such things in:
 
 An untrusted file:
 
-- opens safely however you open it (the next section);
+- opens safely however you open it (the next section). A PDF, a picture, an
+  Office document or a mailbox is still shown as such, since the programs that
+  draw and read them run shut in by the sandbox and nothing of the file runs.
+  Its text, settings and hooks stay off, and it is not offered first in the
+  next question for a file. A file of evidence opens as its octets instead;
+  no view reads evidence where it is. An Office document is never read as
+  text by Tuatara itself: when LibreOffice makes no pages of it, its bytes
+  open. Its preview in rimu shows only what the sandbox drew, and no
+  package's text;
 - is handed to the desktop's programs only after a question, as a private copy
   of a picture, a PDF, a sound or a video, or itself when you answer =e=
   (chapter 9, "Opening a file with another program");
@@ -121,8 +130,10 @@ There are four ways to open a file safely.
   named on the line that way. A file piped in with ~ls | tuatara -~ is a safe
   buffer too.
 - An untrusted file (the section before: your downloads, removable drives and
-  the temporary directories as standard, and evidence) always opens safely,
-  however you open it.
+  the temporary directories as standard, files a browser marked as downloaded,
+  and evidence) always opens safely, however you open it. The echo area says
+  why. One shown by a view read in the sandbox, such as a PDF's pages or a
+  mailbox's list, is the exception: it is shown so, unless it is evidence.
 - A file that looks like a program's data and not text opens safely by itself.
   The test is a null byte in its first 64 KB. Compiled programs, most archives
   and disk images have one, and so does text in UTF-16. A file with no null byte
@@ -139,6 +150,9 @@ where you really do want to write in it. It is still never auto-saved.
 ~M-x end-safe-visit~ opens the file as usual: it gets its mode, its colours and
 version control, and it is editable if you may write the file. Your cursor
 position, your unsaved changes and your undo history stay as they are. A file
+with a view of its own, such as a PDF, a picture or an Outlook mailbox, is
+shown in that view instead, as ~C-x C-f~ would show it, and the echo area says
+so; a buffer with unsaved changes stays as it is. A file
 that is evidence (next section), or was when you opened it, refuses this, and
 says that it stays safe. So does a buffer whose file name now leads to another
 file than the one it read, as when a link was changed in the meantime.
@@ -442,9 +456,43 @@ still work, and say that LaTeX ran without a wall.
 The limits are settings. A decoder gets 10 seconds (=*sandbox-seconds*=) and 1
 GB of memory (=*sandbox-memory*=). All the decoders working on one file may use
 2 GB together (=*sandbox-total-memory*=), where your system can hold them to it.
-A file larger than 1 GB is not decoded (=*sandbox-input-limit*=). It opens as
-bytes, and the echo area says why. A PDF that grew past the limit after it was
-opened says so in its view when it is read again. =*sandbox-seccomp*= is the
+
+A decoder never reads your file itself, but a copy that nothing can change. The
+copy of a file up to 256 MB is kept in memory and sealed
+(=*sandbox-memory-copy-limit*=). A larger file, such as a mailbox or a PDF of
+many gigabytes, is copied into Tuatara's cache directory instead, so it needs
+room on the drive rather than memory. That copy has no name, so no other
+program can open it, and it is gone as soon as the decoders are done with it,
+even if Tuatara crashes. It is read-only, a decoder is given it only for
+reading, and a decoder given such a copy may not change the permissions of any
+file, so it cannot make the copy writable. Before each decoder is given the
+copy, and after each is done, Tuatara also checks that the copy is still as it
+was made. A copy that changed is not used again: a PDF's view makes a new one
+from the file. Set =*cache-directory*= to a directory encrypted by the kernel,
+on a LUKS drive or with fscrypt, to keep these copies there (chapter 20). The
+directory must be on ext4 (or ext2 or ext3), XFS, btrfs, F2FS or bcachefs,
+local file systems that can hold a file with no name. Elsewhere, on tmpfs
+(which is memory), FUSE, SMB, NFS, FAT and the rest, a large file is not
+decoded, and the echo area says why and what to set. While that drive is not mounted, large files are
+not decoded either, and the echo area names the missing directory: their
+copies are never put in memory in its place.
+
+The copy must leave 1 GB free on its drive. When it would not, the file is not
+decoded. It opens as bytes, and the echo area says how much room is needed,
+where, and that =*cache-directory*= moves the copies to another drive. A file
+that claims a huge size with almost nothing in it is caught in the same way.
+Copying a file of many gigabytes takes a while. It is done in the background,
+while you go on working, and a job listed by ~M-x list-jobs~ that is stopped
+stops its copy too.
+
+There is no largest file as standard. Set =*sandbox-input-limit*= to a size,
+such as ="20G"=, to have larger files open as bytes; the echo area then says
+how large the file is and that raising =*sandbox-input-limit*=, or setting it to
+=nil=, has it read. A PDF that grew past the limit after it was opened says so
+in its view when it is read again. An archive is the exception: its programs
+are given it in memory, so an archive larger than =*sandbox-memory*= is not
+opened.
+=*sandbox-seccomp*= is the
 kernel's refusal of unneeded calls, on x86-64 and AArch64. Keep it true unless a
 decoder of yours fails because of it.
 
@@ -466,7 +514,7 @@ decoder of yours fails because of it.
 
 #+table: commands check-health
 
-#+table: settings *sandbox* *sandbox-seconds* *sandbox-memory* *sandbox-total-memory* *sandbox-input-limit* *sandbox-seccomp* *format-in-sandbox* *syntax-helper-unconfined*
+#+table: settings *sandbox* *sandbox-seconds* *sandbox-memory* *sandbox-total-memory* *sandbox-input-limit* *sandbox-memory-copy-limit* *sandbox-seccomp* *format-in-sandbox* *syntax-helper-unconfined*
 
 ** Repositories you only look at
 

@@ -1141,7 +1141,7 @@ takes longer in a large repository.
 - a number: that many seconds, 2 as standard.
 - nil: a status never follows the repository; \\<git-status-mode>\\[revert-buffer]
   reads it again, and it is read only when asked."
-  :values (or (member nil) (number 0 *)))
+  :values (or (member nil) (seconds 0 *)))
 
 (defun git-statuses-shown ()
   "The statuses shown in the editor's windows, each once."

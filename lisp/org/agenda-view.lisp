@@ -97,7 +97,7 @@ true. It is drawn again just after midnight too, and whenever an agenda file
 changes, in a buffer or on disk.
 - a number: that many minutes.
 - nil: only at midnight and when a file changes."
-  :values (or (member nil) (number 0 *)))
+  :values (or (member nil) (minutes 0 *)))
 
 (define-setting *org-agenda-custom-commands*
   '(("u" "Untagged tasks" :tags-todo "-{.*}" :header "Untagged tasks"))

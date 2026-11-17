@@ -301,6 +301,16 @@ workbook, Impress for a presentation)."
               (let ((reading (tuatara.buffer:find-buffer (format nil "~a (text)" name))))
                 (when reading (tuatara.buffer:kill-buffer reading))))))))))
 
+(define-test (office-view office-pages-from-a-copy-on-the-drive)
+  ;; LibreOffice makes the pages of a document copied to the drive for it, not memory, though it is kept
+  ;; from changing permissions there (the guarded seccomp filter)
+  (with-test-directory (dir)
+    (let ((path (write-office-test-file (merge-pathnames "birds.xlsx" dir) *xlsx-test-parts*)))
+      (if (not (office-pages-made-p path))
+          (skip ("LibreOffice, the sandbox, or Calc missing here") (true nil))
+          (let ((tuatara-user:*sandbox-memory-copy-limit* 0))
+            (true (office-pages-made-p path)))))))
+
 (define-test (office-view office-why-not-pages)
   ;; without LibreOffice where pages could be shown: read as text, said why; an older one opened as its octets, said why
   (with-test-directory (dir)
@@ -345,6 +355,40 @@ workbook, Impress for a presentation)."
         (true (tuatara.frontend.fake:fake-frame-showing f "PowerPoint presentation (OOXML), 1 page"))
         (true (last-images f))))
     (rimu-forget)))
+
+(define-test (office-view untrusted-read-only-in-the-sandbox)
+  ;; a document from outside is never read by Tuatara's own reader: not in rimu's preview, which asks no
+  ;; package for its text either, and not by its view of pages, even when LibreOffice makes none
+  (with-rimu-tree (dir)
+    (let* ((xlsx (write-office-test-file (merge-pathnames "birds.xlsx" dir) *xlsx-test-parts*))
+           (called nil)
+           (tuatara-user:*untrusted-directories* (list (namestring dir)))
+           (package (lambda (&rest arguments) (declare (ignore arguments)) (setf called t) "Said by a package")))
+      (put-file (merge-pathnames "plain.dat" dir) "words")
+      (let ((f (rimu-session dir (format nil "g f ~a RET" (rimu-typed "birds.xlsx")) :preview t :width 250)))
+        (false (tuatara.frontend.fake:fake-frame-showing f "Sheet 1: Birds")))
+      ;; a hook the preview's thread sees: set, not bound
+      (push package tuatara.defaults::*preview-text-functions*)
+      (unwind-protect (rimu-session dir (format nil "g f ~a RET" (rimu-typed "plain.dat")) :preview t :width 250)
+        (setf tuatara.defaults::*preview-text-functions* (remove package tuatara.defaults::*preview-text-functions*)))
+      (false called)
+      (rimu-forget)
+      (when (and (eq :ready (tuatara.io:sandbox-status)) (tuatara.defaults::find-pdf-decoder)
+                 (tuatara.io:sandbox-find-program "false"))
+        (pdf-forget)
+        (let ((tuatara.defaults::*office-page-program* "false"))
+          (multiple-value-bind (f editor) (docx-session xlsx '() :cell-pixels '(10 20))
+            (declare (ignore f))
+            (let ((buffer (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
+              (false (tuatara.buffer:find-buffer "birds.xlsx (text)") "~a"
+                     (mapcar #'tuatara.buffer:buffer-name tuatara.buffer:*buffers*))
+              ;; shown as its pages, with no reader to fall back on or to switch to
+              (let ((view (tuatara.defaults::pdf-view-of buffer)))
+                (true view)
+                (false (and view (tuatara.defaults::pdf-view-reading view)))
+                (true (tuatara.buffer:buffer-local buffer :reading-withheld)))
+              (tuatara.buffer:kill-buffer buffer))))
+        (pdf-forget)))))
 
 (define-test (office-view office-older-pages)
   ;; a Word document of before 2007, test/office-view/survey.doc (saved by LibreOffice from the test's

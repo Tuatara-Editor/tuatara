@@ -1448,7 +1448,7 @@ entry file of a package of a source nothing names, kept in it."
 (define-command unloader-run () \"Run.\" nil)
 (define-keys (mode-keymap 'fundamental-mode) '((\"C-c + r\" unloader-run)))
 (label-keys (mode-keymap 'fundamental-mode) '((\"C-c +\" \"unloader\")))
-(defun unloader-tick () nil)
+(defun unloader-tick (editor) (declare (ignore editor)) nil)
 (pushnew 'unloader-tick *tick-functions*)
 (push (lambda (path show) (declare (ignore path show)) nil) *file-views*)
 (defstruct (unloader-job (:include job)))

@@ -569,31 +569,26 @@ your time zone, a list of (NAME VALUE): TZ as yours is set, or as the zone
 
 (defun visit-safely-reason (path &optional stamp)
   "Why the file at PATH opens safely although that was not asked for: it is
-evidence (*EVIDENCE-DIRECTORIES*), it is in one of *UNTRUSTED-DIRECTORIES*, or it
-looks binary while *OPEN-BINARY-FILES-SAFELY* is true, by its own name, by the
-file a link leads to, or, given its STAMP, by another name it has; NIL for none. When
-*UNTRUSTED-DIRECTORIES* cannot be read, every file opens safely, and the reason
-says so."
-  (let ((directory nil))
-    (cond ((evidence-visit-reason path))
-          ((and stamp (evidence-inode-p stamp))
-           "it has more than one name, and one may be in an evidence directory (*evidence-directories*)")
-          ;; looked for after evidence: it reads the links on the way
-          ((eq (setf directory (untrusted-directory-of path)) t) "*untrusted-directories* could not be read")
-          (directory (format nil "it is in ~a (*untrusted-directories*)" directory))
-          ((and *open-binary-files-safely* (tuatara.io:binary-head-p (tuatara.io:file-head path)))
-           "it looks binary (*open-binary-files-safely*)"))))
+untrusted (UNTRUSTED-REASON, which given its STAMP counts another name it has
+too), or it looks binary while *OPEN-BINARY-FILES-SAFELY* is true; NIL for
+none. The copy of a file read from another machine (REMOTE-COPY-P) is judged
+as that file is where it is read (VISIT-REMOTE), not as a copy."
+  (or (and (not (remote-copy-p path)) (untrusted-reason path stamp))
+      (and *open-binary-files-safely* (tuatara.io:binary-head-p (tuatara.io:file-head path))
+           "it looks binary (*open-binary-files-safely*)")))
 
 (defmethod tuatara.io:host-visit-safely-reason ((host defaults-host) path &optional stamp)
   "Why the file at PATH opens safely although not asked to (VISIT-SAFELY-REASON)."
   (visit-safely-reason path stamp))
 
 (defun say-why-safe (buffer &optional also)
-  "Say why BUFFER's file opened safely, when that was not asked for, and ALSO,
-what else there is to say of how it opened (why it is not shown as a picture)."
+  "Say why BUFFER's file opened safely, when that was not asked for, after
+ALSO, what else there is to say of how it opened (why it is not shown as a
+picture or a mailbox), which comes first when there is something."
   (let ((why (tuatara.io:safe-visit-reason buffer)))
     (when why
-      (message "~a opened safely: ~a~@[; ~a~]; ~a" (tuatara.buffer:buffer-name buffer) why also (end-safe-visit-words buffer)))))
+      (message "~:[~a~;~:*~a. It~*~] opened safely: ~a; ~a"
+               also (tuatara.buffer:buffer-name buffer) why (end-safe-visit-words buffer)))))
 
 (defgeneric mode-file-name-at-point (mode buffer)
   (:documentation "The full name of the file BUFFER's point is on, for a mode

@@ -453,6 +453,22 @@ shown, by an ordinary change of the buffer."
         (declare (ignorable f editor))
         (is string= (format nil "fig a~cmore fig~c~%last fig" #\Return #\Return) (file-text a))))))
 
+(define-test (search-results written-back-once-remote-copies-are-kept)
+  ;; once a file read from another machine has had its copy made in the cache, the files
+  ;; written back are still told apart from such copies by their names, links followed
+  (with-test-directory (dir)
+    (let ((a (put-file (merge-pathnames "a.txt" dir) (format nil "kiwi~%")))
+          (made tuatara.defaults::*cache-directories-made*))
+      (multiple-value-bind (old found) (gethash "remote/" made)
+        (setf (gethash "remote/" made) (tuatara.io:native (merge-pathnames "remote/" dir)))
+        (unwind-protect
+             (run-keys (append (list (list-found (found-candidate (tuatara.io:native a) 1 "kiwi"))
+                                     "C-x C-q" (change-found-line 0 "fig") "C-c C-c")
+                               (results-wait (lambda () (and (results-done-p) (file-says-p a "fig~%")))))
+                       :width 100)
+          (if found (setf (gethash "remote/" made) old) (remhash "remote/" made))))
+      (is string= (format nil "fig~%") (file-text a)))))
+
 (define-test (search-results saves-from-the-job-do-not-wait)
   (with-test-directory (dir)
     (let ((a (put-file (merge-pathnames "a.txt" dir) (format nil "kiwi~%")))

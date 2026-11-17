@@ -42,7 +42,7 @@ what a server found wrong there, the parameters of the call, what the thing
 is. A shorter rest shows it sooner and may ask the server more often as you
 move; a longer one asks less and shows later.
 - a number: that many seconds, 0.5 as standard."
-  :values (number 0 *))
+  :values (seconds 0 *))
 
 (defun lsp-feature-allowed-p (server feature)
   "True when SERVER may serve FEATURE (\"completion\") for its language: not

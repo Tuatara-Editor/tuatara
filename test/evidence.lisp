@@ -987,7 +987,8 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
             (tuatara.buffer:kill-buffer buffer)))))))
 
 (define-test (evidence links-looked-at-only-when-wanted)
-  ;; with no evidence directory and no safe directory a link is not followed to decide
+  ;; with no evidence directory and no untrusted directory no link is followed to decide, but by the
+  ;; check of the cache's copies of outside files, whose links are always followed (left out here)
   (with-test-directory (dir)
     (let ((file (put-file (merge-pathnames "p.txt" dir) "x"))
           (calls 0)
@@ -996,11 +997,14 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
       (setf tuatara-user:*untrusted-directories* '())
       (dolist (function functions)
         (sb-int:encapsulate function 'counting (lambda (f &rest arguments) (incf calls) (apply f arguments))))
+      (sb-int:encapsulate 'tuatara.defaults::untrusted-cache-p 'left-out
+                          (lambda (f &rest arguments) (declare (ignore f arguments)) nil))
       (unwind-protect
            (with-evidence-directories ('())
              (false (tuatara.defaults::visit-safely-reason (tuatara.io:native file)))
              (is = 0 calls))
         (dolist (function functions) (sb-int:unencapsulate function 'counting))
+        (sb-int:unencapsulate 'tuatara.defaults::untrusted-cache-p 'left-out)
         (setf tuatara-user:*untrusted-directories* old)))))
 
 (define-test (evidence hard-link-to-evidence)

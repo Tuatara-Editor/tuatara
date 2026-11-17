@@ -35,7 +35,7 @@ its end and counted, but what comes past the limit is left out, and the last
 line says how much.
 - a whole number: that many octets, 256 MB as standard.
 - nil: all of it is kept."
-  :values (or (member nil) (integer 0 *)))
+  :values (or (member nil) (octets 0 *)))
 
 (defvar *compile-history* '()
   "The commands typed for \\[compile] in this session, the latest first:

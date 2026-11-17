@@ -59,7 +59,7 @@ before it is ended.
 raise it only for an archive that takes more than a day.
 - a number of seconds: the time allowed, a day as standard, for the largest
   archives."
-  :values (number 0 *))
+  :values (seconds 0 *))
 
 (defparameter *archive-test-seconds* (* 60 60)
   "The seconds a password is tried on all of a locked archive before it is
@@ -71,7 +71,7 @@ Unpacking stops before the drive has less, so that an archive holding far more
 than it takes up cannot fill the drive.
 - a whole number of octets: the reserve, 1 GB as standard.
 - 0: no reserve is kept."
-  :values (integer 0 *))
+  :values (octets 0 *))
 
 (defun archive-made-p (kind)
   "True when archives of KIND, an entry of *ARCHIVE-KINDS*, are made as well
@@ -114,7 +114,7 @@ A longer list is not shown, and that is said. Raise it to see the list of a
 very large archive, at the cost of the memory of the whole list; lower it to
 refuse such a list sooner.
 - a whole number of octets: the limit, 64 MB as standard."
-  :values (integer 0 *))
+  :values (octets 0 *))
 
 (defun archive-environment ()
   "What the programs reading archives are given in their environment besides
@@ -262,13 +262,13 @@ the copy of it it is given (CALL-WITH-ARCHIVE-COPY).")
 \(TUATARA.IO:SEALED-COPY), for the programs reading it to be given in place
 of the file, and return what it returns. The file is read once, its access
 time left alone where the system allows. An archive larger than
-*SANDBOX-INPUT-LIMIT*, or that is not a regular file, is refused with a
-FILE-SYSTEM-ERROR."
+*SANDBOX-INPUT-LIMIT* or *SANDBOX-MEMORY*, or that is not a regular file, is
+refused with a FILE-SYSTEM-ERROR."
   (let ((copy (tuatara.io:call-with-file archive (lambda (fd name size)
                                                    (declare (ignore name size))
-                                                   (tuatara.io:sealed-copy fd)))))
+                                                   (tuatara.io:sealed-copy fd :in-memory t)))))
     (unwind-protect (funcall function copy)
-      (sb-posix:close copy))))
+      (tuatara.io:close-sealed-copy copy))))
 
 (define-condition archive-program-failed (refusal)
   ((outcome :initarg :outcome :reader archive-program-outcome

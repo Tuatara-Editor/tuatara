@@ -69,7 +69,7 @@ wrong, is stopped and its output not taken, so that it cannot fill memory.
 Raise it to take more through such a program, at the cost of that memory;
 lower it on a small machine.
 - a whole number, 1 or more: the octets allowed; 64 MB as standard."
-  :values (integer 1 *))
+  :values (octets 1 *))
 
 (defparameter *program-end-grace* 2
   "The seconds a program no longer wanted has to end once asked to (SIGTERM),

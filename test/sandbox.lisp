@@ -252,6 +252,252 @@ as text, how it went, and what it said on its error output."
         (true (typep error 'tuatara.io:file-system-error))
         (true (search "*sandbox-input-limit*" (princ-to-string error)))))))
 
+;;; Copies of large files made on the drive
+
+(defun plain-evidence-text (lines)
+  "LINES lines of made-up evidence, as one text of ASCII characters alone, so
+that its length is its length in octets."
+  (format nil "~{line ~d of the evidence~%~}" (loop for i below lines collect i)))
+
+(defun entries-in (directory)
+  "The files and directories in DIRECTORY, by name; NIL when it is empty."
+  (append (uiop:directory-files directory) (uiop:subdirectories directory)))
+
+(defmacro with-copies-on-the-drive ((cache path text) &body body)
+  "Run BODY with CACHE a new empty directory standing for the cache directory
+\(*CACHE-DIRECTORY*), PATH the name of a file beside it holding TEXT, 2000
+lines of evidence, and every file over 1024 octets copied to the drive for a
+decoder (*SANDBOX-MEMORY-COPY-LIMIT*)."
+  (let ((dir (gensym "DIR")))
+    `(with-test-directory (,dir)
+       (let* ((,cache (ensure-directories-exist (merge-pathnames "cache/" ,dir)))
+              (,path (namestring (merge-pathnames "mailbox.pst" ,dir)))
+              (,text (plain-evidence-text 2000))
+              (tuatara-user:*cache-directory* (namestring ,cache))
+              (tuatara-user:*sandbox-memory-copy-limit* 1024))
+         (alexandria:write-string-into-file ,text ,path)
+         ,@body))))
+
+(defun copy-of-file (path)
+  "A sealed copy for decoders of the file at PATH (TUATARA.IO:SEALED-COPY)."
+  (tuatara.io:call-with-file path (lambda (fd p size) (declare (ignore p size)) (tuatara.io:sealed-copy fd))))
+
+(define-test (sandbox large-file-copied-to-the-drive)
+  ;; a file over *sandbox-memory-copy-limit* is copied into the cache directory, not memory: a file with no
+  ;; name there, read only, given only to read; the decoder reads it whole and cannot write it; nothing is
+  ;; left once it is closed. A small file is still copied into memory.
+  (with-copies-on-the-drive (cache path text)
+    (let ((copy (copy-of-file path)))
+      (unwind-protect
+           (let ((stat (sb-posix:fstat copy)))
+             (false (tuatara.io::sealed-p copy))
+             (true (tuatara.io::disk-copy-p copy))
+             (is = #o400 (logand #o7777 (sb-posix:stat-mode stat)))
+             (is = 0 (sb-posix:stat-nlink stat))
+             (is = (length text) (sb-posix:stat-size stat))
+             (is = (sb-posix:stat-dev (sb-posix:stat (namestring cache))) (sb-posix:stat-dev stat))
+             (is = sb-posix:o-rdonly (logand 3 (sb-posix:fcntl copy sb-posix:f-getfl)))
+             (is equal '() (entries-in cache))
+             (is string= text (sandbox-text (tuatara.io:sandbox-run "cat" '() :input copy)))
+             (multiple-value-bind (out outcome said)
+                 (sandbox-shell (concatenate 'string "echo x >> /proc/self/fd/0 2>/dev/null && echo written; "
+                                             "echo x >&0 2>/dev/null && echo written; true")
+                                :input copy)
+               (is eq :done outcome "~a" said)
+               (false (search "written" out) "~a" out))
+             (is string= text (sandbox-text (tuatara.io:sandbox-run "cat" '() :input copy))))
+        (tuatara.io:close-sealed-copy copy)))
+    (is equal '() (entries-in cache))
+    (alexandria:write-string-into-file "small" path :if-exists :supersede)
+    (let ((copy (copy-of-file path)))
+      (unwind-protect (progn (true (tuatara.io::sealed-p copy))
+                             (false (tuatara.io::disk-copy-p copy)))
+        (tuatara.io:close-sealed-copy copy)))))
+
+(define-test (sandbox disk-copy-kept-from-its-decoder)
+  ;; a decoder given a copy on the drive cannot make it writable again: changing permissions is refused it
+  ;; (chmod, and access lists through setxattr), so it reads what was copied, and so does the next. A copy
+  ;; changed all the same, as here from outside, is never given to a program again. A program given no
+  ;; such copy, as one unpacking an archive, may still set the permissions of what it writes.
+  (with-copies-on-the-drive (cache path text)
+    (let ((copy (copy-of-file path)))
+      (unwind-protect
+           (multiple-value-bind (out outcome said)
+               (sandbox-shell (concatenate 'string "chmod 600 /proc/self/fd/0 2>/dev/null && echo made-writable; "
+                                           "chmod 600 /dev/stdin 2>/dev/null && echo made-writable; "
+                                           "echo changed >> /proc/self/fd/0 2>/dev/null && echo written; true")
+                              :input copy)
+             (is eq :done outcome "~a" said)
+             (false (search "made-writable" out) "~a" out)
+             (false (search "written" out) "~a" out)
+             (is = #o400 (logand #o7777 (sb-posix:stat-mode (sb-posix:fstat copy))))
+             (is string= text (sandbox-text (tuatara.io:sandbox-run "cat" '() :input copy))))
+        (tuatara.io:close-sealed-copy copy)))
+    (let ((copy (copy-of-file path)))
+      (unwind-protect
+           (progn
+             (sb-posix:fchmod copy #o600)
+             (false (tuatara.io:sealed-copy-intact-p copy))
+             (fail (tuatara.io:sandbox-run "cat" '() :input copy) 'tuatara.io:file-system-error)
+             (fail (tuatara.io:sandbox-run "cat" '() :input copy) 'tuatara.io:file-system-error))
+        (tuatara.io:close-sealed-copy copy)))
+    (is equal '() (entries-in cache))
+    (is string= (format nil "ok~%") (sandbox-shell "touch /tmp/a && chmod 600 /tmp/a && echo ok"))
+    (let ((guarded (tuatara.io::seccomp-program :guarded t)) (plain (tuatara.io::seccomp-program)))
+      (when plain
+        (true (> (length guarded) (length plain)))))))
+
+(define-test (sandbox pdf-copy-made-again-when-changed)
+  ;; a PDF view whose copy on the drive was found changed makes a new copy from the file, checked against
+  ;; it as every copy is, rather than refusing every page until the file changes
+  (with-copies-on-the-drive (cache path text)
+    (let ((view (tuatara.defaults::make-pdf-view path)))
+      (unwind-protect
+           (let* ((read (lambda (fd) (sandbox-text (tuatara.io:sandbox-run "cat" '() :input fd))))
+                  (first-text (tuatara.defaults::call-with-pdf-copy view read))
+                  (first (tuatara.defaults::pdf-view-copy view)))
+             (is string= text first-text)
+             (true (tuatara.io::disk-copy-p (tuatara.defaults::pdf-copy-fd first)))
+             (sb-posix:fchmod (tuatara.defaults::pdf-copy-fd first) #o600)
+             (is string= text (tuatara.defaults::call-with-pdf-copy view read))
+             (let ((second (tuatara.defaults::pdf-view-copy view)))
+               (isnt eq first second)
+               (true (tuatara.io:sealed-copy-intact-p (tuatara.defaults::pdf-copy-fd second))))
+             (is string= text (tuatara.defaults::call-with-pdf-copy view read)))
+        (tuatara.defaults::pdf-copy-drop view)))
+    (is equal '() (entries-in cache))))
+
+(define-test (sandbox disk-copy-never-in-memory-for-a-missing-drive)
+  ;; with *cache-directory* naming a directory that is not there, one in memory stands in for it; a copy
+  ;; for a decoder is then refused, naming the directory missing, never put in memory
+  (with-copies-on-the-drive (cache path text)
+    (let* ((missing (format nil "~adrive-not-mounted/" (namestring cache)))
+           (memory (ensure-directories-exist (merge-pathnames "runtime/" cache)))
+           (runtime (sb-posix:getenv "XDG_RUNTIME_DIR"))
+           (tuatara-user:*cache-directory* missing))
+      ;; the memory standing in is the test's own, never the session's
+      (sb-posix:chmod (namestring memory) #o700)
+      (sb-posix:setenv "XDG_RUNTIME_DIR" (string-right-trim "/" (namestring memory)) 1)
+      (unwind-protect
+           (let ((error (handler-case (progn (tuatara.io:close-sealed-copy (copy-of-file path)) nil)
+                          (tuatara.io:file-system-error (e) (princ-to-string e)))))
+             (true (tuatara.io::directory-in-memory-p 'tuatara-user:*cache-directory*))
+             (true (and error (search (format nil "~a (*cache-directory*), which is not there" missing) error))
+                   "~a" error)
+             (true (search "which is not there" (tuatara.io:sandbox-input-refusal (length text)))))
+        (if runtime (sb-posix:setenv "XDG_RUNTIME_DIR" runtime 1) (sb-posix:unsetenv "XDG_RUNTIME_DIR"))
+        (setf tuatara.io::*directories-in-memory*
+              (remove 'tuatara-user:*cache-directory* tuatara.io::*directories-in-memory* :key #'first))))))
+
+(define-test (sandbox disk-copy-leaves-nothing)
+  ;; a copy on the drive that fails part way, or is refused for want of room, leaves nothing in the cache
+  ;; directory and no descriptor open; the refusal says how much is needed, where, and which setting moves it
+  (with-copies-on-the-drive (cache path text)
+    (flet ((open-descriptors () (length (directory "/proc/self/fd/*" :resolve-symlinks nil))))
+      (let ((before (open-descriptors))
+            (unreadable (sb-posix:open path sb-posix:o-wronly)))
+        (unwind-protect (fail (tuatara.io:sealed-copy unreadable) 'tuatara.io:file-system-error)
+          (sb-posix:close unreadable))
+        (is = before (open-descriptors))
+        (is equal '() (entries-in cache))
+        (let* ((tuatara.io::*snapshot-free-margin* (expt 2 62))
+               (refusal (tuatara.io:sandbox-input-refusal (length text)))
+               (error (handler-case (progn (copy-of-file path) nil)
+                        (tuatara.io:file-system-error (e) (princ-to-string e)))))
+          (true (search "free in" refusal) "~a" refusal)
+          (true (search (string-right-trim "/" (namestring cache)) refusal) "~a" refusal)
+          (true (search "set *cache-directory* to a directory on a drive with room" refusal) "~a" refusal)
+          (true (and error (search refusal error)) "~a" error))
+        (is = before (open-descriptors))
+        (is equal '() (entries-in cache))))))
+
+(define-test (sandbox disk-copy-only-unnamed)
+  ;; a copy on the drive is a file with no name that can never be given one; where the cache directory
+  ;; cannot hold such a file, the copy is refused, saying what to set, never made with a name instead
+  (with-copies-on-the-drive (cache path text)
+    (let ((copy (copy-of-file path)))
+      (unwind-protect
+           (false (tuatara.io::call-with-directory
+                   (namestring cache)
+                   (lambda (dirfd) (tuatara.io::link-unnamed-at copy dirfd "named"))
+                   "name a file in"))
+        (tuatara.io:close-sealed-copy copy)))
+    (is equal '() (entries-in cache))
+    (sb-posix:chmod (namestring cache) #o500)
+    (unwind-protect
+         (let ((error (handler-case (progn (tuatara.io:close-sealed-copy (copy-of-file path)) nil)
+                        (tuatara.io:file-system-error (e) (princ-to-string e)))))
+           (true (and error (search "cannot hold a copy with no name" error)) "~a" error)
+           (true (and error (search "(LUKS, fscrypt)" error)) "~a" error))
+      (sb-posix:chmod (namestring cache) #o700))
+    (is equal '() (entries-in cache))))
+
+(define-test (sandbox disk-copy-checked-once-decided)
+  ;; whether a program was given a copy on the drive is decided once, before it runs: a copy no longer
+  ;; known as such once it is done is refused, not let by; a copy closed the one way is forgotten
+  (with-copies-on-the-drive (cache path text)
+    (let ((copy (copy-of-file path)))
+      (unwind-protect
+           (let ((forget (sb-thread:make-thread (lambda () (sleep 0.3) (remhash copy tuatara.io::**disk-copies**)))))
+             (fail (tuatara.io:sandbox-run "sh" '("-c" "sleep 1; cat") :input copy) 'tuatara.io:file-system-error)
+             (sb-thread:join-thread forget))
+        (tuatara.io:close-sealed-copy copy)))
+    (let ((copy (copy-of-file path)))
+      (true (gethash copy tuatara.io::**disk-copies**))
+      (tuatara.io:close-sealed-copy copy)
+      (false (gethash copy tuatara.io::**disk-copies**)))
+    (is equal '() (entries-in cache))))
+
+(define-test (sandbox copies-bounded-together)
+  ;; copies being made at once share the room: one reserved is counted against the next; a copy kept in
+  ;; memory whatever its size is still held to *sandbox-memory*
+  (with-copies-on-the-drive (cache path text)
+    (let* ((free (tuatara.io:free-octets (namestring cache)))
+           (taken (and free (- free tuatara.io::*snapshot-free-margin* 1000))))
+      (when (and taken (plusp taken))
+        (false (tuatara.io:sandbox-input-refusal 5000))
+        (tuatara.io::reserve-copy-room taken (namestring cache))
+        (unwind-protect
+             (let ((refusal (tuatara.io:sandbox-input-refusal 5000)))
+               (true (and refusal (search "being copied" refusal)) "~a" refusal))
+          (tuatara.io::release-copy-room taken))
+        (false (tuatara.io:sandbox-input-refusal 5000))))
+    (let ((tuatara-user:*sandbox-memory-copy-limit* nil)
+          (tuatara-user:*sandbox-input-limit* nil)
+          (tuatara-user:*sandbox-memory* 1000))
+      (let ((refusal (tuatara.io:sandbox-input-refusal 5000)))
+        (true (and refusal (search "*sandbox-memory*" refusal)) "~a" refusal))
+      (fail (copy-of-file path) 'tuatara.io:file-system-error))))
+
+(define-test (sandbox disk-copy-on-local-file-systems-only)
+  ;; a copy for decoders is made only on ext4, XFS, btrfs, F2FS or bcachefs; elsewhere, tmpfs (memory)
+  ;; among them, it is refused, naming the file system and what to set. When the system does not say how
+  ;; much memory there is, a copy kept in memory is held to *sandbox-memory*'s standard.
+  (dolist (magic (list #xef53 #x58465342 #x9123683e #xf2f52010 #xca451a4e))
+    (false (tuatara.io::copy-file-system-refusal magic "/cache/")))
+  (loop for (magic words) in '((#x01021994 "it is tmpfs") (#x6969 "it is NFS") (#x65735546 "it is FUSE")
+                               (#x12345678 "#x12345678") (nil "its kind cannot be told"))
+        for refusal = (tuatara.io::copy-file-system-refusal magic "/cache/")
+        do (true (and refusal (search words refusal) (search "(LUKS, fscrypt)" refusal)) "~a" refusal))
+  (uiop:with-temporary-file (:pathname meminfo)
+    (alexandria:write-string-into-file (format nil "MemTotal: 100 kB~%MemAvailable:       kB~%") meminfo
+                                       :if-exists :supersede)
+    (false (tuatara.io::available-memory (namestring meminfo)))
+    (alexandria:write-string-into-file (format nil "MemAvailable: 2048 kB~%") meminfo :if-exists :supersede)
+    (is = (* 2048 1024) (tuatara.io::available-memory (namestring meminfo))))
+  (sb-int:encapsulate 'tuatara.io::available-memory 'unknown (lambda (f &rest arguments)
+                                                               (declare (ignore f arguments))
+                                                               nil))
+  (unwind-protect
+       (let ((tuatara-user:*sandbox-memory-copy-limit* nil)
+             (tuatara-user:*sandbox-input-limit* nil)
+             (tuatara-user:*sandbox-memory* nil))
+         (let ((refusal (tuatara.io:sandbox-input-refusal (* 2 (tuatara.runtime:setting-standard-value
+                                                                  'tuatara-user:*sandbox-memory*)))))
+           (true (and refusal (search "*sandbox-memory*" refusal)) "~a" refusal))
+         (false (tuatara.io:sandbox-input-refusal 5000)))
+    (sb-int:unencapsulate 'tuatara.io::available-memory 'unknown)))
+
 (define-test (sandbox scratch-held)
   ;; the scratch /tmp, which is memory, held to the memory a program may take
   (when (tuatara.io::bwrap-version-at-least-p 0 10)

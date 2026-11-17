@@ -718,7 +718,7 @@ when there are two or more."
 no note template.
 A larger file is refused, and said so.
 - a whole number of octets: the limit, 16 MB as standard."
-  :values (integer 0 *))
+  :values (octets 0 *))
 
 (defun read-file-text (path)
   "The text of the file at PATH, read as UTF-8 (an octet that is none as ?),
