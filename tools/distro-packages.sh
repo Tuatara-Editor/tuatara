@@ -268,7 +268,7 @@ check_package() {
     completion=/usr/share/bash-completion/completions/tuatara
     [ -f $completion ] || { echo "the bash completion is not installed" >&2; exit 1; }
     bash -n $completion
-    cd /tmp
+    mkdir -p "$HOME/probe" && cd "$HOME/probe"
     printf "fn main() {}\n" > probe.rs
     TERM=xterm-256color timeout 10 script -qfc "stty rows 24 cols 80; tuatara probe.rs" screen >/dev/null 2>&1 || true
     grep -aq "probe.rs.*Rust" screen || { echo "Tuatara showed no mode line for probe.rs" >&2; exit 1; }
