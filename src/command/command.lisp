@@ -32,6 +32,21 @@ longer marked as made while the editor runs (INSTALL-COMMAND)."
           `(setf (gethash ',name *key-only-commands*) t))
      ',name))
 
+(defmacro define-renamed-command (old new)
+  "Keep OLD, the name a command had before it was renamed NEW, running that
+command until Tuatara 1.0. The first time OLD is run in a session it says
+which name to use instead. A command renamed is named here and in the release
+notes."
+  (let ((told (gensym "TOLD")))
+    `(let ((,told nil))
+       (define-command ,old ()
+         ,(format nil "The old name of ~(~a~), kept until Tuatara 1.0: runs it, saying so the first time."
+                  new)
+         (unless ,told
+           (setf ,told t)
+           (message "~(~a~) is now ~(~a~); use that name" ',old ',new))
+         (funcall ',new)))))
+
 (defun install-command (name function &optional documentation)
   "Make NAME a command that runs FUNCTION, as DEFINE-COMMAND makes one, for a
 command made while the editor runs (a name given to recorded keys, a key of an

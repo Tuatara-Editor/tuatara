@@ -45,7 +45,9 @@ reads what you type in a terminal.
 - =tuatara --client --start= does the same, but starts the daemon first if
   none is running. Many people use only this one.
 - =tuatara --client --gui= shows the daemon in a window of its own instead of
-  in the terminal.
+  in the terminal. The client draws that window itself, with the graphics card
+  as =*gui-renderer*= says, just as plain =tuatara --gui= does. ~M-x
+  check-health~ in it measures each way of drawing on the client's machine.
 - =tuatara --stop= stops the daemon. It asks about any change you have not
   saved, as described under "Stopping the daemon" below.
 

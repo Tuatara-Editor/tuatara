@@ -548,6 +548,10 @@ selected one."
   "True while the text a question offered is selected: what is typed takes its
 place, \\<minibuffer>\\[minibuffer-backward-delete-char] clears it, any other key leaves it as it is.")
 
+(defvar *minibuffer-deletion-mark* nil
+  "Where the minibuffer text the next deletion deletes starts, its text to the
+end coloured in :minibuffer-deletion-mark, or NIL (MARK-MINIBUFFER-DELETION).")
+
 (defun prompt-pieces (editor)
   "The minibuffer's prompt as the panel shows it, as two values: the rows
 holding its start over the minibuffer's row, when it is too wide to leave a
@@ -716,9 +720,10 @@ typed; the key hints under a pending prefix key; else the echo row."
 (defun minibuffer-prompt-row (editor completion prompt)
   "The panel row of EDITOR's minibuffer, as (STRING FACE SPANS): PROMPT, what
 of the prompt stays on it (PROMPT-PIECES), in :minibuffer-prompt, the text
-typed, the text a question offers selected in :region, the line typed in
-:completion-selected while it is selected over COMPLETION's candidates, and
-what a key said, in brackets."
+typed, the text a question offers selected in :region, what the next deletion
+deletes in :minibuffer-deletion-mark, the line typed in :completion-selected
+while it is selected over COMPLETION's candidates, and what a key said, in
+brackets."
   (multiple-value-bind (whole typed hidden) (minibuffer-row editor prompt)
     (let* ((prompt-start (max 0 (- (length (completion-count-prefix editor)) hidden)))
            (prompt-end (max 0 (- typed hidden)))
@@ -732,8 +737,13 @@ what a key said, in brackets."
              ;; the text a question offers, selected: typing takes its place
              (and *minibuffer-initial-selected* (< prompt-end (length row))
                   (list (list prompt-end (length row) :region)))
+             ;; what the next deletion deletes, its text coloured
+             (let ((start (and *minibuffer-deletion-mark*
+                               (max prompt-end (- (+ typed *minibuffer-deletion-mark*) hidden)))))
+               (and start (< start (length row))
+                    (list (list start (length row) :minibuffer-deletion-mark))))
              ;; the line typed selected, over candidates: what RET takes, painted as they are
-             (and completion (= (completion-index completion) -1)
+             (and completion (completion-paint-input completion) (= (completion-index completion) -1)
                   (plusp (length (completion-candidates completion)))
                   (< prompt-end (length row))
                   (list (list prompt-end (length row) :completion-selected)))

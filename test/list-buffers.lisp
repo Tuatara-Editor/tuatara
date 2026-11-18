@@ -31,14 +31,62 @@ is filled again only when the jobs have changed.")
     (is eq 'tuatara.defaults::revert-buffer (list-key-binding mode "r") "r in ~(~a~)" mode)
     (is eq 'tuatara.defaults::revert-buffer (list-key-binding mode "g r") "g r in ~(~a~)" mode)
     (is eq 'tuatara.defaults::quit-window (list-key-binding mode "q") "q in ~(~a~)" mode))
-  (is eq 'tuatara.defaults::quit-window (list-key-binding 'jobs-mode "h"))
-  ;; every list whose entries are opened goes back with h
-  (dolist (mode '(packages-mode face-list-mode latex-errors-mode redactions-mode))
-    (is eq 'tuatara.defaults::quit-window (list-key-binding mode "h") "h in ~(~a~)" mode))
   (dolist (gone '("BUFFERS-QUIT" "JOBS-QUIT" "HELP-QUIT" "ORG-AGENDA-QUIT" "CALENDAR-EXIT" "RIMU-QUIT"
                   "BUFFERS-REFRESH" "JOBS-REFRESH" "FONT-LIST-REFRESH" "RIMU-REFRESH" "RIMU-TRASH-REFRESH"
                   "ORG-AGENDA-REFRESH"))
     (false (tuatara.command:command-symbol gone) "~(~a~) is no command" gone)))
+
+(defun binding-or-nil (mode keys)
+  "What KEYS run in MODE's buffers, NIL when nothing."
+  (let ((binding (list-key-binding mode keys)))
+    (and (not (member binding '(nil :undefined))) binding)))
+
+(define-test (list-buffers every-list-has-a-kind)
+  ;; a list names its kind (declare-list-kind) and its keys follow; none binds h to quit by itself
+  (run-keys "" :text "")
+  (let ((modes (tuatara.modes:mode-names)))
+    (flet ((mode-named (name) (find name modes :key #'symbol-name :test #'string=)))
+      ;; the lists the owner named, and the kind each is
+      (dolist (entry '(("BUFFERS-MODE" :manager) ("CACHE-LIST-MODE" :manager) ("BOOKMARKS-MODE" :manager)
+                       ("RIMU-TRASH-MODE" :manager) ("GIT-REFS-MODE" :entries) ("PACKAGES-MODE" :manager)
+                       ("FACE-LIST-MODE" :entries) ("XREF-MODE" :entries) ("REGISTERS-MODE" :entries)
+                       ("REDACTIONS-MODE" :entries) ("LATEX-ERRORS-MODE" :entries) ("DIAGNOSTICS-MODE" :entries)
+                       ("GIT-BLAME-MODE" :entries) ("GIT-LOG-MODE" :drill-down) ("JOBS-MODE" :plain)
+                       ("GIT-STATUS-MODE" :plain) ("HELP-MODE" :text) ("MAN-MODE" :text) ("ABOUT-MODE" :text)))
+        (destructuring-bind (name kind) entry
+          (let ((mode (mode-named name)))
+            (is eq kind (tuatara.defaults::list-kind mode) "kind of ~a" name)
+            (is eq 'tuatara.defaults::quit-window (binding-or-nil mode "q") "q in ~a" name)
+            (let ((h (binding-or-nil mode "h")) (c (binding-or-nil mode "C-b")) (l (binding-or-nil mode "l")))
+              (ecase kind
+                (:manager (is eq 'tuatara.defaults::list-fold-heading h)
+                 (is eq 'tuatara.defaults::list-fold-heading c)
+                 (is eq 'tuatara.defaults::list-visit l))
+                (:entries (is eq nil h) (is eq nil c) (is eq 'tuatara.defaults::list-visit l))
+                (:drill-down (is eq 'tuatara.defaults::quit-window h) (is eq 'tuatara.defaults::quit-window c)
+                 (is eq 'tuatara.defaults::list-visit l))
+                (:plain (is eq nil h) (is eq nil c))
+                (:text (is eq nil h) (is eq nil c) (is eq nil l)))))))
+      ;; every list of marked entries declares a kind, and only a drill-down goes back by h
+      (dolist (mode modes)
+        (when (and (subtypep mode 'tuatara.defaults::marked-list-mode)
+                   (not (member (symbol-name mode) '("MARKED-LIST-MODE" "SECTIONED-LIST-MODE") :test #'string=)))
+          (true (tuatara.defaults::list-kind mode) "~(~a~) declares no kind" mode))
+        (when (eq (binding-or-nil mode "h") 'tuatara.defaults::quit-window)
+          (is eq :drill-down (tuatara.defaults::list-kind mode) "h quits in ~(~a~) without a kind saying so" mode)))
+      ;; the tutor is text too
+      (is eq nil (binding-or-nil (mode-named "TUATARA-TUTOR-MODE") "h")))))
+
+(define-test (list-buffers renamed-commands-keep-working)
+  ;; the managers' old names run the new commands, saying once which name to use
+  (run-keys "" :text "")
+  (dolist (pair '(("BUFFERS" "BUFFER-MANAGER") ("LIST-CACHE" "CACHE-MANAGER")))
+    (true (tuatara.command:command-symbol (first pair)) "~a still a command" (first pair))
+    (true (tuatara.command:command-symbol (second pair)) "~a is a command" (second pair)))
+  (multiple-value-bind (f editor) (fresh-list-session "M-x b u f f e r s RET" :width 80)
+    (declare (ignore editor))
+    (true (tuatara.frontend.fake:fake-frame-showing f "buffers is now buffer-manager"))
+    (true (tuatara.frontend.fake:fake-frame-showing f "*Buffers*"))))
 
 (define-test (list-buffers spans-found-by-halves)
   ;; the faces shown between two places are those a look at every span finds, overlapping ones too

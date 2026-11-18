@@ -107,10 +107,10 @@ back and C-M-, goes forward again.")
                           (mapcar (lambda (w) (tuatara.buffer:buffer-name (tuatara.display:window-buffer w)))
                                   (tuatara.command:editor-windows editor))
                           :test #'string=)))
-    ;; the keys of every list of entries: h goes back as q does
+    ;; an entry list: h only moves, the list stays
     (multiple-value-bind (f editor) (fresh-start (format nil "~a h" keys) :width 120 :height 20)
       (declare (ignore f))
-      (is string= "*lisp-scratch*" (current-name editor)))
+      (is string= "*xref*" (current-name editor)))
     ;; q closes it
     (multiple-value-bind (f editor) (fresh-start (format nil "~a q" keys) :width 120 :height 20)
       (declare (ignore f))

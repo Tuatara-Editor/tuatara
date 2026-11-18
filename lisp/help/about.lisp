@@ -52,6 +52,7 @@ source file a command's help names, say. In the colour of links."
 of buffers with buttons: \\`RET' and a click do what the button does, \\`TAB'
 and \\`S-TAB' go to the next and the one before; the commands run there, and
 in the other modes given them so (COMMANDS-FOR-MODE)."
+  (declare-list-kind mode :text)
   (define-keys (mode-keymap mode) '(("RET" push-button) ("TAB" forward-button) ("S-TAB" backward-button)
                                     ("<down-mouse-1>" push-button-at-click)))
   (commands-for-mode mode where 'push-button 'forward-button 'backward-button 'push-button-at-click))

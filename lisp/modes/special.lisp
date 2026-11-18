@@ -297,7 +297,7 @@ list being narrowed again. Returns BUFFER."
 
 (define-major-mode marked-list-mode special-mode
   "A list whose entries can be marked, for its commands to act on them
-together, as the buffer list (\\[buffers]) and the bookmark manager
+together, as the buffer list (\\[buffer-manager]) and the bookmark manager
 \(\\[bookmark-manager]) are. \\<marked-list-mode>\\[list-mark-entry] marks the
 entry on the line (>). \\[list-mark-for-deletion] marks it for deletion (D).
 \\[list-unmark-entry] takes its mark off. Each of these then moves down, a
@@ -673,7 +673,7 @@ section's heading, fold or unfold the section."
 
 (define-major-mode sectioned-list-mode marked-list-mode
   "A list whose entries are in sections, each under a heading saying how many it
-holds, as the buffer list (\\[buffers]) and the bookmark manager
+holds, as the buffer list (\\[buffer-manager]) and the bookmark manager
 \(\\[bookmark-manager]) are: ▾ before an open section's heading, ▸ before a
 folded one, its entries hidden. \\<sectioned-list-mode>\\[list-toggle-fold]
 folds or unfolds the section of the current line, \\[list-toggle-all-folds] all
@@ -954,6 +954,16 @@ acts on shows."
 showing, or unfold it when it is folded."
   (let ((section (list-section-at (current-buffer))))
     (when section (list-toggle-section (current-buffer) section))))
+
+(define-command list-fold-heading (:interactive nil)
+  "On a heading of the list, fold its section when it is open, as
+\\[list-visit] opens it again; on any other line nothing happens. Bound to
+\\`h' and \\`C-b', which move back, in a list in sections."
+  (let* ((list (current-buffer))
+         (section (list-section-at list)))
+    (when (and section (eq (first (list-entry-at list)) :section)
+               (not (member section (list-folded list) :test #'equal)))
+      (list-toggle-section list section))))
 
 (define-command list-toggle-all-folds ()
   "Fold every section of the list, or unfold them all when every one is
@@ -1272,11 +1282,11 @@ keys to fold them. Make the lists kept current again as what they show changes
                                                  ("u" list-unmark-entry) ("U" list-unmark-all) ("t" list-toggle-marks)
                                                  ("x" list-execute) ("D" list-delete-marked)))
   (free-list-keys (mode-keymap 'marked-list-mode))
-  (commands-for-mode 'marked-list-mode "a list whose entries are marked, as the buffer list (\\[buffers])"
+  (commands-for-mode 'marked-list-mode "a list whose entries are marked, as the buffer list (\\[buffer-manager])"
                      'list-mark-entry 'list-mark-for-deletion 'list-unmark-entry 'list-unmark-all 'list-toggle-marks
                      'list-execute 'list-delete-marked)
   (define-keys (mode-keymap 'sectioned-list-mode) '(("TAB" list-toggle-fold) ("S-TAB" list-toggle-all-folds)))
-  (commands-for-mode 'sectioned-list-mode "a list in sections, as the buffer list (\\[buffers])"
+  (commands-for-mode 'sectioned-list-mode "a list in sections, as the buffer list (\\[buffer-manager])"
                      'list-toggle-fold 'list-toggle-all-folds)
   (pushnew 'keep-shown-lists-current *tick-functions*))
 
@@ -1345,18 +1355,46 @@ over the headings of its sections."
 of its first line, passing over the headings of its sections."
   (list-step-to-entry -1))
 
-(defun list-back-keys (keymap)
-  "Bind in KEYMAP, a list's, the keys that go back from it, \\`h' and \\`C-b'
-\(\\[quit-window]), as every list has them."
-  (define-keys keymap '(("h" quit-window) ("C-b" quit-window))))
+(defvar *list-kinds* (make-hash-table :test 'eq)
+  "The kind (LIST-KIND) each major mode that makes a list declared, by its name.")
 
-(defun entry-list-keys (mode where)
-  "Give the lists of major MODE, WHERE in words for those elsewhere, the keys of
-a list whose entries are opened: \\`RET', \\`l' and \\`C-f' open the entry on
-the line (\\[list-visit]), \\`o' in another window (\\[list-visit-other]), \\`h'
-and \\`C-b' go back (\\[quit-window]), \\`n' and \\`p' go to the next entry and
-the one before; the commands run there (COMMANDS-FOR-MODE)."
-  (define-keys (mode-keymap mode) '(("RET" list-visit) ("l" list-visit) ("C-f" list-visit) ("o" list-visit-other)
-                                    ("n" list-next-entry) ("p" list-previous-entry)))
-  (list-back-keys (mode-keymap mode))
+(defun list-kind (mode)
+  "The kind of list the major mode named MODE declared (DECLARE-LIST-KIND), or
+NIL when it declared none."
+  (gethash mode *list-kinds*))
+
+(defun declare-list-kind (mode kind)
+  "Say that the buffers of major mode MODE, a symbol, are lists of KIND, and
+give them the keys of it. \\`q' leaves every kind. The kinds:
+:ENTRIES, a list whose entries are opened (\\`RET', \\`l' and \\`C-f'
+\(\\[list-visit]), \\`o' in another window (\\[list-visit-other]), \\`n' and
+\\`p' to the next entry and the one before); :MANAGER, the same for a
+list of things you keep and act on (buffers, bookmarks, packages, the cache),
+in sections as a rule, \\`h' and \\`C-b' folding the section of the heading
+\(\\[list-fold-heading]); :DRILL-DOWN, :ENTRIES for a list entered from
+another view, \\`h' and \\`C-b' going back to it (\\[quit-window]); :PLAIN,
+a list with no entries to open, and :TEXT, text to read, which add nothing:
+\\`h', \\`j', \\`k' and \\`l' only move there. A list never binds \\`h' by
+itself: it names its kind."
+  (check-type kind (member :manager :entries :drill-down :plain :text))
+  (setf (gethash mode *list-kinds*) kind)
+  (let ((keymap (mode-keymap mode)))
+    (unless (member kind '(:plain :text))
+      (define-keys keymap '(("RET" list-visit) ("l" list-visit) ("C-f" list-visit) ("o" list-visit-other)
+                            ("n" list-next-entry) ("p" list-previous-entry))))
+    (case kind
+      (:manager (define-keys keymap '(("h" list-fold-heading) ("C-b" list-fold-heading))))
+      (:drill-down (define-keys keymap '(("h" quit-window) ("C-b" quit-window)))))))
+
+(defun entry-list-keys (mode where &key back kind)
+  "Give the lists of major MODE, WHERE in words for those elsewhere, the keys
+of a list whose entries are opened (DECLARE-LIST-KIND): :MANAGER when MODE is
+made from SECTIONED-LIST-MODE, :DRILL-DOWN with BACK true for a list entered
+from another view, else :ENTRIES, or the KIND given; the commands run there
+\(COMMANDS-FOR-MODE).
+\\`h' and \\`C-b' only move unless the kind says more."
+  (declare-list-kind mode (cond (kind kind)
+                                ((subtypep mode 'sectioned-list-mode) :manager)
+                                (back :drill-down)
+                                (t :entries)))
   (commands-for-mode mode where 'list-visit 'list-visit-other 'list-next-entry 'list-previous-entry))

@@ -496,6 +496,6 @@ many have newer copies said as the editor starts; bind the keys of their list."
   (pushnew 'auto-save-visited tuatara.buffer:*find-file-functions*)
   (pushnew 'auto-save-killed tuatara.buffer:*kill-buffer-functions*)
   (when *auto-save* (pushnew 'auto-saves-startup-notice *tick-functions*))
-  (define-key *auto-saves-keymap* "RET" 'list-visit))
+  (entry-list-keys 'auto-saves-mode "the list of auto-saved copies"))
 
 (commands-for-mode 'auto-saves-mode "the list of auto-saved copies (\\[list-auto-saves])" 'list-visit)

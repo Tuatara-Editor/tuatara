@@ -98,7 +98,7 @@ text, its functions on Tuatara's lists of hooks and of work to do now and
 then, its settings and its work in the background, which is stopped. A buffer
 in one of its modes is put in the mode its file calls for, or in
 fundamental-mode, its text and any changes not saved kept as they are; kill
-it from the buffer list (\\[buffers]) when it is of no more use. The package's
+it from the buffer list (\\[buffer-manager]) when it is of no more use. The package's
 faces stay. Its code stays on disk, and its load-package in the init file, so
 it loads again at the next start, or now by \\[package-load]. In the package
 manager (\\[package-manager]) it unloads the packages marked (>), or the one on

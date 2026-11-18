@@ -16,7 +16,8 @@ hooks, the minibuffer core, the modal state slot.")
   (:export #:buffer-override-keymap #:buffer-given-directory #:buffer-mode-name #:buffer-kind)
   (:export #:keymap #:keymap-p #:make-keymap #:define-key #:define-keys #:label-keys #:lookup-key #:keymaps-lookup
            #:map-keymap-bindings #:keymap-parent #:keymap-entries #:keymap-name #:unbind-commands-if
-           #:define-command #:key-only-command-p #:find-command #:command-symbol #:command-names #:*commands*
+           #:define-command #:define-renamed-command #:key-only-command-p #:find-command #:command-symbol #:command-names
+           #:*commands*
            #:*keymaps-generation* #:forget-command #:install-command
            #:quit #:keyboard-quit-signal #:editor #:editor-p #:make-editor #:*editor* #:current-buffer
            #:selected-window-buffer
@@ -36,6 +37,7 @@ hooks, the minibuffer core, the modal state slot.")
            #:editor-prefix-argument #:prefix-argument #:editor-mode-line-function #:editor-cursor-shape-function
            #:editor-post-command-functions #:buffer-directory #:editor-minibuffer-active #:editor-pending
            #:editor-this-key #:editor-self-insert-command #:minibuffer-insert #:replace-minibuffer-text
+           #:mark-minibuffer-deletion #:delete-marked-minibuffer-text #:drop-offered-text
            #:*minibuffer-question-keymap* #:editor-collecting-prefix #:universal-argument
            #:editor-fallback-keymap #:*mode-line-functions* #:*mode-line-lead-functions* #:*mode-line-name-functions*
            #:host-startup-buffer #:*line-highlight-functions*

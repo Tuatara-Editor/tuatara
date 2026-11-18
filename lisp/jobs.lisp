@@ -542,7 +542,7 @@ it. \\[list-execute] drops the jobs marked for deletion that wait and stops
 those running, after asking. \\[list-delete-marked] does the same to the
 marked ones, or the one on the line. \\[revert-buffer] lists them again, as
 the list does by itself while it is shown, when they have changed.
-\\[quit-window] or \\`h' returns."
+\\[quit-window] returns."
   :lighter "Jobs" :interactive nil)
 
 (defparameter *jobs-title-lines* 2
@@ -621,7 +621,7 @@ marks the job on the line for deletion and \\[list-unmark-entry] unmarks it; \\[
 drops the jobs marked for deletion that wait, and stops those running, after
 asking, \\[list-delete-marked] the marked ones (\\[list-mark-entry]), or the one on the line.
 \\[revert-buffer] lists them again, as the list does by itself while it is
-shown, when they have changed; \\[quit-window] or \\`h' returns."
+shown, when they have changed; \\[quit-window] returns."
   (let ((list (buffer-in-mode "*Jobs*" 'jobs-mode)))
     (jobs-render list)
     (show-buffer list)))
@@ -661,4 +661,4 @@ asked about first (GUARD-JOB-EDITS). The mode line's sign of the work
   (pushnew 'settle-jobs tuatara.buffer:*kill-buffer-functions*)
   (pushnew 'jobs-quit-query *quit-query-functions*)
   (pushnew 'guard-job-edits tuatara.buffer:*before-edit-functions*)
-  (list-back-keys (mode-keymap 'jobs-mode)))
+  (declare-list-kind 'jobs-mode :plain))

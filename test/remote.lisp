@@ -537,6 +537,62 @@ anywhere: every copy of it passed was closed. IN is closed after."
         (tuatara.frontend:frontend-stop remote)
         (sb-posix:close theirs)))))
 
+(defclass measured-fake-frontend (queued-fake-frontend)
+  ((measured :initform '() :accessor fake-measured
+             :documentation "The ways of drawing asked to be measured, newest first."))
+  (:documentation "A client's window that can be drawn two ways and measures each in half a second."))
+
+(defmethod tuatara.frontend:frontend-renderers ((f measured-fake-frontend))
+  (values '(:gl :vulkan) :vulkan))
+
+(defmethod tuatara.frontend:frontend-measure-drawing ((f measured-fake-frontend) renderer)
+  (push renderer (fake-measured f))
+  (sleep 1/2)
+  (list :renderer (if (eq renderer :gl) "GskGLRenderer" "GskVulkanRenderer")
+        :keys 600 :frames 590 :median 4.25 :slowest 9.5))
+
+(define-test (remote drawing-measured-at-the-client)
+  ;; the health check of a daemon measures a client's window where the client is: the ways it
+  ;; draws, the one asked for, and each one's figures; other questions are answered meanwhile
+  (let ((local (make-instance 'measured-fake-frontend :width 30 :height 6 :font-steps 0)))
+    (multiple-value-bind (remote client runner) (connect-remote local)
+      (declare (ignore client))
+      (is equal '((:gl :vulkan) :vulkan) (multiple-value-list (tuatara.frontend:frontend-renderers remote)))
+      (let ((measurer (sb-thread:make-thread
+                       (lambda () (tuatara.frontend:frontend-measure-drawing remote :gl)))))
+        (loop repeat 200 until (fake-measured local) do (sleep 0.01))
+        (setf (tuatara.frontend.fake:fake-clipboard local) "meanwhile")
+        (is equal "meanwhile" (tuatara.frontend:frontend-clipboard remote))
+        (let ((figures (sb-thread:join-thread measurer :timeout 10 :default :late)))
+          (is equal "GskGLRenderer" (getf figures :renderer))
+          (is eql 600 (getf figures :keys))
+          (is eql 590 (getf figures :frames))
+          (is = 4.25 (getf figures :median))
+          (is = 9.5 (getf figures :slowest))))
+      (is equal '(:gl) (fake-measured local))
+      (tuatara.frontend:frontend-stop remote)
+      (is eql 0 (client-done runner))))
+  ;; a client in a terminal is drawn one way: nothing is asked or measured
+  (let ((local (make-instance 'measured-fake-frontend :width 30 :height 6)))
+    (multiple-value-bind (remote client runner) (connect-remote local)
+      (declare (ignore client))
+      (false (tuatara.frontend:frontend-renderers remote))
+      (false (tuatara.frontend:frontend-measure-drawing remote :gl))
+      (false (fake-measured local))
+      (tuatara.frontend:frontend-stop remote)
+      (client-done runner))))
+
+(define-test (remote drawing-figures-read-as-words)
+  ;; figures and ways of drawing come back as they were sent; anything else a client says is no figures
+  (let ((figures '(:renderer "GskGLRenderer" :keys 600 :frames 590 :median 4.25 :slowest 9.5)))
+    (is equal figures (tuatara.frontend::figures-from-text (tuatara.frontend::figures-text figures))))
+  (is equal '((:gl :vulkan) nil)
+      (multiple-value-list (tuatara.frontend::renderers-from-text
+                            (tuatara.frontend::renderers-text '(:gl :vulkan) nil))))
+  (dolist (text '("" "GL 1 2 3" "GL 1 2 3 x" "#.(boom) 1 2 3 4" "GL 1 2 3 4 5" "GL -1 2 3 4" "GL 1 2 3 1234567890"))
+    (false (tuatara.frontend::figures-from-text text) "~s" text))
+  (is equal '(:gl) (tuatara.frontend::renderers-from-text "gl metal BOOM / x")))
+
 (define-test (remote client-missing-an-answer-asked-once)
   ;; a client that gives no answer in time holds the editor up once; asked again at once, it is taken
   ;; to have none without waiting
@@ -807,8 +863,7 @@ cleanly or as malformed, else the error, in words."
                 ;; no one takes the events here: none is waited for, and a question awaits its answer
                 (setf (tuatara.frontend::remote-inbox remote) inbox
                       (tuatara.frontend::remote-closing remote) t
-                      (tuatara.frontend::remote-asked remote) 1
-                      (tuatara.frontend::remote-asked-question remote) :clipboard)
+                      (tuatara.frontend::remote-asked remote) (list (tuatara.frontend::make-asked 1 :clipboard)))
                 (loop for kind = (tuatara.frontend::read-message inbox)
                       while kind
                       do (case kind

@@ -12,22 +12,25 @@
 ;;;; *CACHE-KEEP* after its last use, the moment it stopped being in use. The
 ;;;; entries of the kinds, the pins and the times of last use are kept between
 ;;;; sessions in the state directory, in the list "cache"; nothing outside the
-;;;; cache directory is ever named there or cleared from it. M-x list-cache
+;;;; cache directory is ever named there or cleared from it. M-x cache-manager
 ;;;; lists what the cache holds.
 
 (in-package #:tuatara.defaults)
 
 (define-setting *cache-keep* (* 24 60 60)
   "How long after it was last used an entry of the cache is cleared: a copy of a
-file read from another machine, a mailbox read by readpst, or other work kept in
-the cache directory (\\[list-cache]). It is last used when it stops being in
-use, its buffer or list closed or the session ended; while in use it is never
-cleared, and one pinned in \\[list-cache] is never cleared by itself. A file on
-another machine whose copy was cleared is read from there again when next
-visited.
+file read from another machine, a mailbox read by readpst, the index of a
+directory kept read, or other work kept in the cache directory
+\(\\[cache-manager]). It is last used when it stops being in use, its buffer or
+list closed, its search or reading over, or the session ended; while in use it
+is never cleared, and one pinned in \\[cache-manager] is never cleared by
+itself. A file on another machine whose copy was cleared is read from there
+again when next visited.
 - a time, \"12h\", \"3d\", or a number of seconds: cleared that long after its
   last use. 1 day (86400) as standard.
-- 0: cleared as soon as it is no longer in use, looked at once a minute."
+- 0: cleared as soon as it is no longer in use, looked at once a minute; the
+  index of a directory kept read is then written again after each search
+  that finds it cleared, which for a large directory is much writing."
   :values (seconds 0 *))
 
 ;;; The entries kept between sessions
@@ -120,9 +123,26 @@ when made and last used, pinned or not and its facts, parted by tabs."
                        # \\r stand for \\, a newline and a return).~%")
   :path-of #'cache-entry-place :fields 8 :line-key (field-line-key 8 0))
 
+(defvar *cache-root-seen* nil
+  "The cache directory as CACHE-ROOT last worked it out: (KEY . ROOT), KEY
+what it was worked out from, so that it is worked out again only when that
+changes.")
+
 (defun cache-root ()
-  "The cache directory, a native name ending in /."
-  (tuatara.io:slash-ended (tuatara.io:native (tuatara.io:cache-directory))))
+  "The cache directory, a native name ending in /; worked out again only when
+*CACHE-DIRECTORY*, $XDG_CACHE_HOME, $HOME or $XDG_RUNTIME_DIR changes, or the
+directory stops or starts being kept in memory for want of its drive (looked
+at as the cache is looked through, CLEAR-OLD-CACHE), so that asking costs next
+to nothing."
+  (let ((key (list tuatara-user:*cache-directory* (tuatara.io:own-variable "XDG_CACHE_HOME")
+                   (tuatara.io:own-variable "HOME") (tuatara.io:own-variable "XDG_RUNTIME_DIR")
+                   (tuatara.io:directory-in-memory-p 'tuatara-user:*cache-directory*)))
+        (seen *cache-root-seen*))
+    (if (equal key (car seen))
+        (cdr seen)
+        (let ((root (tuatara.io:slash-ended (tuatara.io:native (tuatara.io:cache-directory)))))
+          (setf *cache-root-seen* (cons key root))
+          root))))
 
 (defun cache-place (path)
   "The place within the cache directory of PATH, a directory there (ending in
@@ -164,7 +184,7 @@ in /; NIL when PLACE could name something outside it."
 
 (define-record (cache-kind (:constructor make-cache-kind (name directory title open)) (:copier nil))
   "A kind of entry of the cache (DEFINE-CACHE-KIND): NAME, a string; DIRECTORY,
-where in the cache directory its entries are made; TITLE, what \\[list-cache]
+where in the cache directory its entries are made; TITLE, what \\[cache-manager]
 calls them; OPEN, a function of an entry's directory, key and facts opening it,
 or NIL."
   (name "" :type string :read-only t :documentation "The name of KIND.")
@@ -178,7 +198,7 @@ or NIL."
 (defun define-cache-kind (kind directory title &key open)
   "Make KIND, a string (\"mailbox\"), a kind of entry of the cache: its entries
 are made in DIRECTORY of the cache directory (\"mailboxes/\", ending in /), are
-listed by \\[list-cache] under TITLE (\"Mailboxes read by readpst\"), and are
+listed by \\[cache-manager] under TITLE (\"Mailboxes read by readpst\"), and are
 opened from there by OPEN, a function of the entry's directory, its key and
 the facts noted of it (NOTE-CACHE-ENTRY), when given. A package defines its
 kinds as it loads; defining a kind again replaces it."
@@ -209,31 +229,42 @@ not cleared, by any session, until USER is done with it
 \(STOP-USING-CACHE-DIRECTORY, called when a buffer is killed). True when it
 may be used; NIL when it is not there, is no longer kept, or another session is
 clearing it (CLEAR-CACHE-PATH): the lock it took is then let go."
-  (sb-ext:with-locked-hash-table (*cache-uses*)
-    (let ((use (gethash directory *cache-uses*)))
-      (cond (use (pushnew user (cdr use)) t)
-            ((not (eq :directory (tuatara.io:path-kind directory :follow nil))) nil)
-            (t (let* ((lock (tuatara.io:path-join directory "in-use.lock"))
-                      (fd (ignoring-errors-reported ("using ~a" directory)
-                            (tuatara.io:open-lock-file lock :shared t))))
-                 (cond ((null fd) nil)
-                       ;; a clearer moves the entry aside under its lock before deleting it
-                       ((and (lock-still-named-p fd lock) (cache-entry-at directory))
-                        (setf (gethash directory *cache-uses*) (list fd user))
-                        t)
-                       (t (tuatara.runtime:close-fd-quietly fd "~a" directory)
-                          nil))))))))
+  (flet ((take-up (fd)
+           ;; USER joins those using DIRECTORY already: :JOINED; else with FD, its lock, the first: :TAKEN
+           (sb-ext:with-locked-hash-table (*cache-uses*)
+             (let ((use (gethash directory *cache-uses*)))
+               (cond (use (pushnew user (cdr use)) :joined)
+                     (fd (setf (gethash directory *cache-uses*) (list fd user)) :taken))))))
+    (cond ((take-up nil) t)
+          ((not (eq :directory (tuatara.io:path-kind directory :follow nil))) nil)
+          (t
+           ;; the disk and the list of the cache read with the table free, so that no other thread waits on them
+           (let* ((lock (tuatara.io:path-join directory "in-use.lock"))
+                  (fd (ignoring-errors-reported ("using ~a" directory)
+                        (tuatara.io:open-lock-file lock :shared t))))
+             (cond ((null fd) nil)
+                   ;; a clearer moves the entry aside under its lock before deleting it
+                   ((and (lock-still-named-p fd lock) (cache-entry-at directory))
+                    ;; another thread took it up meanwhile: its lock serves, this one goes
+                    (when (eq (take-up fd) :joined)
+                      (tuatara.runtime:close-fd-quietly fd "~a" directory))
+                    t)
+                   (t (tuatara.runtime:close-fd-quietly fd "~a" directory)
+                      nil)))))))
 
-(defun note-cache-use (directory now)
-  "Note NOW, a universal time, as when DIRECTORY, an entry of the cache, was last used."
+(defun note-cache-use (directory now &optional (quiet 0))
+  "Note NOW, a universal time, as when DIRECTORY, an entry of the cache, was
+last used; left as it is when the last use kept is less than QUIET seconds
+before NOW."
   (let ((entry (cache-entry-at directory)))
-    (when entry
+    (when (and entry (or (zerop quiet) (>= (- now (cache-entry-used entry)) quiet)))
       (put-cache-entry (changed-cache-entry entry :used now)))))
 
-(defun stop-using-cache-directory (directory user &key (now (get-universal-time)))
+(defun stop-using-cache-directory (directory user &key (now (get-universal-time)) (quiet 0))
   "USER no longer uses DIRECTORY, an entry of the cache: once nothing of this
 session uses it, its lock is let go and NOW, a universal time, noted as its
-last use, from which *CACHE-KEEP* counts."
+last use, from which *CACHE-KEEP* counts, unless the last use kept is less
+than QUIET seconds before NOW."
   (let ((fd nil))
     (sb-ext:with-locked-hash-table (*cache-uses*)
       (let ((use (gethash directory *cache-uses*)))
@@ -244,7 +275,25 @@ last use, from which *CACHE-KEEP* counts."
             (remhash directory *cache-uses*)))))
     (when fd
       (tuatara.runtime:close-fd-quietly fd "~a" directory)
-      (note-cache-use directory now))))
+      (note-cache-use directory now quiet))))
+
+(defun call-with-cache-directory-used (directory function)
+  "Call FUNCTION, from any thread, with or without a buffer, while DIRECTORY,
+an entry of the cache, is held in use for it: no session clears it meanwhile
+\(CLEAR-CACHE-PATH). FUNCTION is given T then, or NIL when DIRECTORY could not
+be held (it is gone, no longer kept, or another session is clearing it), and
+must then not read it. Once FUNCTION returns, DIRECTORY is let go when nothing
+else of this session uses it, and noted as last used now, unless it was so
+noted less than a minute before, so that frequent use does not write the list
+of the cache each time. Returns what FUNCTION returns."
+  (let ((user (list :thread)) (used nil))
+    ;; no interrupt between taking the use and the cleanup that lets it go
+    (sb-sys:without-interrupts
+      (unwind-protect
+           (progn (setf used (use-cache-directory directory user))
+                  (sb-sys:with-local-interrupts (funcall function used)))
+        (when used
+          (stop-using-cache-directory directory user :quiet 60))))))
 
 (defun cache-directories-used-by (user)
   "The entries of the cache USER uses, their directories."
@@ -370,7 +419,7 @@ in use, else left to be cleared by its age, no longer found by KEY."
 
 (defun make-cache-entry (kind key name &key user)
   "A new entry of the cache of KIND, found again by KEY (FIND-CACHE-ENTRY) and
-called NAME in \\[list-cache]: its directory, new, empty, for you alone, made
+called NAME in \\[cache-manager]: its directory, new, empty, for you alone, made
 in the directory of KIND (DEFINE-CACHE-KIND), a native name ending in /. An
 entry KEY found before is cleared, or, while in use, found by KEY no more.
 With USER, a buffer as a rule, the entry is used by USER from then on, not
@@ -384,10 +433,24 @@ cleared until USER is killed, its last use then."
       (use-cache-directory directory user))
     directory))
 
+(defun keep-cache-directory (directory kind key name)
+  "Keep DIRECTORY, a directory of the cache directory made under a name of
+its own rather than by MAKE-CACHE-ENTRY, as an entry of KIND found by KEY and
+called NAME in \\[cache-manager], when it is not one already: from then on it
+can be held in use (USE-CACHE-DIRECTORY) and is cleared by the rule of the
+cache, *CACHE-KEEP* after its last use. True when it is an entry; NIL, nothing
+kept, for a directory outside the cache directory."
+  (let ((place (cache-place directory)))
+    (when place
+      (unless (state-list-find *cache-entries* place)
+        (let ((now (get-universal-time)))
+          (put-cache-entry (make-cache-entry-record place kind key name now now nil ""))))
+      t)))
+
 (defun note-cache-entry (directory &key facts name)
   "Note of DIRECTORY, an entry of the cache made by MAKE-CACHE-ENTRY, FACTS, a
 string its kind reads back from FIND-CACHE-ENTRY (\"listed\", the sizes of what
-was read), and NAME, what \\[list-cache] calls it, those given; kept between
+was read), and NAME, what \\[cache-manager] calls it, those given; kept between
 sessions."
   (let ((entry (cache-entry-at directory)))
     (when entry
@@ -470,7 +533,7 @@ a buffer visits is not deleted."
 
 (defun forget-old-copies (directory &key (now (get-universal-time)))
   "Delete what DIRECTORY holds that was last used more than *CACHE-KEEP*
-before NOW: each directory and file in it not pinned (\\[list-cache]), of the
+before NOW: each directory and file in it not pinned (\\[cache-manager]), of the
 directories one not in use (CACHE-DIRECTORY-IN-USE-P), its last use the later
 of its time and the one kept for it as an entry of the cache. In the cache
 directory, as CLEAR-CACHE-PATH clears; a directory elsewhere is deleted when
@@ -508,7 +571,10 @@ on whenever the cache is looked through (CLEAR-OLD-CACHE)."
   "Clear from the cache what was last used more than *CACHE-KEEP* before NOW:
 in the directories of private directories this session made some in
 \(FORGET-OLD-COPIES), and every entry kept between sessions that is neither
-pinned nor in use; an entry whose directory is gone is forgotten."
+pinned nor in use; an entry whose directory is gone is forgotten. The cache
+directory is looked for first, so that a drive lost or found meanwhile is
+noticed (CACHE-ROOT)."
+  (ignoring-errors-reported ("looking for the cache directory") (tuatara.io:cache-directory))
   (let ((directories '()))
     (maphash (lambda (directory when) (declare (ignore when)) (push directory directories)) *old-copies-swept*)
     (dolist (directory directories)
@@ -642,7 +708,7 @@ they are still wanted. Reads the disk: for a thread of its own."
     (mapcar #'cdr (stable-sort (sort sections #'string< :key #'second) #'< :key #'first))))
 
 (define-major-mode cache-list-mode sectioned-list-mode
-  "What the cache directory keeps to save time (\\[list-cache]), in sections by
+  "What the cache directory keeps to save time (\\[cache-manager]), in sections by
 kind: copies of files read from other machines, mailboxes read by readpst,
 search indexes and the rest, a line each: what it is, its size, when it was
 made and last used, whether it is pinned or when it is cleared
@@ -724,7 +790,7 @@ CACHE-LIST-SHOW says."
      :point point
      :refill (lambda (buffer) (cache-list-show buffer :keep)))))
 
-(define-command list-cache ()
+(define-command cache-manager ()
   "List what the cache directory keeps to save time, by kind: copies of files
 read from other machines, mailboxes read by readpst, search indexes, pictures
 of formulas and the rest (the logs and the compiled packages left out), with
@@ -735,6 +801,8 @@ unpins it, \\[list-mark-for-deletion] and \\[list-execute] delete."
   (let ((buffer (buffer-in-mode "*Cache*" 'cache-list-mode)))
     (cache-list-show buffer)
     (show-buffer buffer)))
+
+(define-renamed-command list-cache cache-manager)
 
 (defun cache-items-of (list keys)
   "The items of LIST, the list of the cache, known by KEYS, their paths."
@@ -808,8 +876,6 @@ stops, clear what is old now and then, and give the list of the cache its keys."
   (pushnew 'stop-using-cache tuatara.buffer:*kill-buffer-functions*)
   (pushnew 'cache-at-exit *exit-functions*)
   (pushnew 'clear-old-cache-tick *tick-functions*)
-  (define-keys (mode-keymap 'cache-list-mode) '(("RET" list-visit) ("l" list-visit) ("C-f" list-visit)
-                                                ("o" list-visit-other) ("p" cache-toggle-pin)))
-  (list-back-keys (mode-keymap 'cache-list-mode))
-  (commands-for-mode 'cache-list-mode "the list of the cache (\\[list-cache])"
-                     'list-visit 'list-visit-other 'cache-toggle-pin))
+  (entry-list-keys 'cache-list-mode "the list of the cache (\\[cache-manager])")
+  (define-key (mode-keymap 'cache-list-mode) "P" 'cache-toggle-pin)
+  (commands-for-mode 'cache-list-mode "the list of the cache (\\[cache-manager])" 'cache-toggle-pin))

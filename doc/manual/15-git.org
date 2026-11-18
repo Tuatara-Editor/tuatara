@@ -149,7 +149,7 @@ them.
 | none     | ~m~, ~R~      | Open the merge and rebase menus.                                |
 | none     | ~f~, ~F~, ~P~ | Open the fetch, pull and push menus.                            |
 | none     | ~r~           | Reads the repository again.                                     |
-| none     | ~q~, ~h~      | Closes the status.                                              |
+| none     | ~q~           | Closes the status.                                              |
 
 You seldom need ~r~. The status reads itself again when you save a file of the
 repository, and when git changes the repository from anywhere, a terminal
@@ -388,7 +388,7 @@ check it out or make a branch at it.
 
 The log takes the keys of every list: ~RET~, ~l~ or ~C-f~ shows the commit on
 the line, ~o~ shows it beside the log, which stays selected, and ~n~ and ~p~
-go to the next commit and the one before. ~h~ closes the log.
+go to the next commit and the one before. ~h~ and ~q~ close the log, going back to where it was opened.
 
 #+table: commands git-log-menu git-log git-log-other git-log-file git-log-branches git-log-all git-reflog git-log-show
 

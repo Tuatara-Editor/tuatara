@@ -14,13 +14,14 @@
                 #:call-answering-ssh #:call-with-details-shown #:check-not-saving #:column-text
                 #:*command-refusal-functions*
                 #:commands-for-mode #:conflict-look-through #:delete-private-directory #:diff-files #:diff-mode
-                #:directory-holds-evidence-p #:drop-selection #:entry-lines #:entry-list-keys #:entry-member
+                #:declare-list-kind #:directory-holds-evidence-p #:drop-selection #:entry-lines #:entry-list-keys
+                #:entry-member
                 #:*file-changing-commands*
                 #:directories-followed-changed #:follow-directories-for #:forget-abandoned-directories
                 #:fresh-made-buffer #:git-commit-mode
                 #:git-rebase-mode #:*global-keymap* #:goto-shown #:kill-text #:killed-job-buffer-p #:list-entry-at
                 #:list-entry-noun #:list-visit
-                #:list-back-keys #:list-folded #:list-section-at #:list-step-entry #:list-toggle-all-folds
+                #:list-folded #:list-section-at #:list-step-entry #:list-toggle-all-folds
                 #:list-toggle-fold
                 #:list-toggle-section #:*made-text-keymap* #:make-owned-directory #:make-rimu-listing
                 #:marked-directory #:new-private-directory #:open-externally #:paths-changed #:private-cache-directory

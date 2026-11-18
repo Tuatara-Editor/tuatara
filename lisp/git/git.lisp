@@ -832,7 +832,7 @@ everywhere."
   "A repository's commits (\\[git-log-menu]), a line each: its hash (with the
 graph when asked for), date, author, the branches and tags at it, and its
 subject. \\<git-log-mode>\\[list-visit] shows the commit on the line, \\[list-visit-other]
-with the log kept selected; \\[quit-window] closes."
+with the log kept selected; \\[quit-window] or \\`h' closes."
   :lighter "Git log" :interactive nil)
 
 (defmethod mode-wraps-p ((mode git-log-mode))
@@ -1950,7 +1950,7 @@ rimu's git column."
   (define-keys *git-status-keymap* '(("s" git-stage) ("u" git-unstage) ("x" git-reverse) ("TAB" git-toggle-diff)
                                      ("RET" git-visit) ("l" git-visit) ("C-f" git-visit)
                                      ("n" git-next-section) ("p" git-previous-section) ("S-TAB" list-toggle-all-folds)))
-  (list-back-keys *git-status-keymap*)
+  (declare-list-kind 'git-status-mode :plain)
   (pushnew 'git-after-save *after-save-functions*)
   (pushnew 'git-look-only-mode-line *mode-line-name-functions*)
   (pushnew 'git-look-only-refusal *command-refusal-functions*)

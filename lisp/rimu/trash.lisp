@@ -13,13 +13,13 @@
 (in-package #:tuatara.defaults)
 
 (define-major-mode rimu-trash-mode sectioned-list-mode
-  "What is in the trash (\\[rimu-trash]), as the buffer list (\\[buffers]) has
+  "What is in the trash (\\[rimu-trash]), as the buffer list (\\[buffer-manager]) has
 its buffers, a section for your own trash and one for each drive's, a line
 each thing: its mark, name, when it went there and where it was.
 \\<support>\\[next-line] and \\[previous-line] move.
 \\<rimu-trash-mode>\\[list-visit] or \\`RET' opens the thing on the line
 safely, to look at \(on a heading, folds or unfolds its section),
-\\[list-visit-other] in another window. \\[quit-window] or \\`h' returns.
+\\[list-visit-other] in another window. \\[quit-window] returns. \\`h' folds the section of a heading.
 \\[list-toggle-fold] folds or unfolds the section, \\[list-toggle-all-folds]
 all of them. \\[list-mark-entry] marks a thing (>), \\[list-mark-for-deletion]
 marks it for deletion (D), \\[list-unmark-entry] unmarks it,
@@ -276,7 +276,7 @@ could not be read."
                     (lambda (list window) (declare (ignore window)) (rimu-trash-read list)))
 
 (define-command rimu-trash ()
-  "List what is in the trash, as the buffer list (\\[buffers]) lists buffers: a
+  "List what is in the trash, as the buffer list (\\[buffer-manager]) lists buffers: a
 section for your own trash and one for each drive's, the last to go there
 first, each thing's name, when it went and where it was. There
 \\<rimu-trash-mode>\\[list-visit] opens one safely, \\[list-mark-entry] and
@@ -451,9 +451,8 @@ after asking twice, in the background."
 
 (defun install-rimu-trash ()
   "Bind the keys of the list of the trash."
-  (define-keys *rimu-trash-keymap* '(("RET" list-visit) ("l" list-visit) ("C-f" list-visit) ("o" list-visit-other)
-                                     ("R" rimu-trash-restore) ("X" rimu-trash-empty)))
-  (list-back-keys *rimu-trash-keymap*))
+  (declare-list-kind 'rimu-trash-mode :manager)
+  (define-keys *rimu-trash-keymap* '(("R" rimu-trash-restore) ("X" rimu-trash-empty))))
 
 (commands-for-mode 'rimu-trash-mode "the list of the trash (\\[rimu-trash])"
                    'list-visit 'list-visit-other 'rimu-trash-restore 'rimu-trash-empty)

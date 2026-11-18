@@ -30,6 +30,18 @@ client that connected meanwhile for its hello.")
   "The seconds the editor waits for a client to answer a question (the text
 of its clipboard) before taking it as having none.")
 
+(defparameter *measure-seconds* 150
+  "The seconds the editor waits for a client to measure how its window draws
+one way (FRONTEND-MEASURE-DRAWING), a copy of Tuatara opened there for it,
+before taking it as not measured.")
+
+(define-record (asked (:constructor make-asked (request question)) (:copier nil))
+  "A question put to a client (ASK-CLIENT) and what has come of its answer."
+  (request 0 :type integer :read-only t :documentation "The question's number, which its answer names.")
+  (question nil :read-only t :documentation "What it asks (*QUESTIONS*).")
+  (answer :none :documentation "The answer that came, or :NONE.")
+  (pieces '() :documentation "The pieces of a text answer come so far, as GATHER-TEXT keeps them."))
+
 (defparameter *window-seconds* 10
   "The seconds a client asked for another window has to open it and attach it,
 before it is no longer waited for.")
@@ -233,16 +245,10 @@ it, what the client sends is not read until the editor has taken some.")
                :documentation "The thread sending pictures to a client on another machine, once there is one.")
    (requests :initform 0 :accessor remote-requests
              :documentation "How many questions have been put to the client.")
-   (asked :initform nil :accessor remote-asked
-          :documentation "The number of the question awaiting its answer, or NIL.")
-   (asked-question :initform nil :accessor remote-asked-question
-                   :documentation "What the question awaiting its answer asks (*QUESTIONS*).")
-   (answer :initform :none :accessor remote-answer
-           :documentation "The answer that came, or :NONE.")
+   (asked :initform '() :accessor remote-asked
+          :documentation "The questions awaiting their answers, each an ASKED, under the lock: from any thread.")
    (missed :initform nil :accessor remote-missed
            :documentation "When the client last gave no answer in time, an internal real time, or NIL.")
-   (pieces :initform '() :accessor remote-pieces
-           :documentation "The pieces of a text answer come so far, as GATHER-TEXT keeps them.")
    (pasted :initform '() :accessor remote-pasted
            :documentation "The pieces of a paste come so far, as GATHER-TEXT keeps them, by the reading thread alone.")
    (stopping :accessor remote-stopping
@@ -414,7 +420,7 @@ sends what it should not, which ends the connection."
 
 (defun take-from-client (remote kind inbox)
   "Act on the message of KIND REMOTE's client sent, being read from INBOX:
-an event goes to the editor, an answer to the question awaiting it, what
+an event goes to the editor, an answer to the question it names, what
 the screen is now to REMOTE-FACTS. NIL when the client is going."
   (ecase kind
     (:event
@@ -450,19 +456,20 @@ the screen is now to REMOTE-FACTS. NIL when the client is going."
     (:answer
      (multiple-value-bind (request answer more) (take-answer inbox)
        (sb-thread:with-mutex ((remote-lock remote))
-         (when (eql request (remote-asked remote))
-           ;; the answer of the kind the question asks for, or none; a text's pieces all text
-           (unless (or (and (null answer) (not more) (null (remote-pieces remote)))
-                       (if (member (remote-asked-question remote) '(:font-steps :lend))
-                           (integerp answer)
-                           (stringp answer)))
-             (malformed "an answer of the wrong kind to a question of ~(~a~)" (remote-asked-question remote)))
-           (if (stringp answer)
-               (multiple-value-bind (gathered whole) (gather-text (remote-pieces remote) answer more)
-                 (setf (remote-pieces remote) gathered)
-                 (unless more (setf (remote-answer remote) (and (stringp whole) whole))))
-               (setf (remote-answer remote) answer))
-           (sb-thread:condition-broadcast (remote-moved remote)))))
+         (let ((asked (find request (remote-asked remote) :key #'asked-request)))
+           (when asked
+             ;; the answer of the kind the question asks for, or none; a text's pieces all text
+             (unless (or (and (null answer) (not more) (null (asked-pieces asked)))
+                         (if (member (asked-question asked) '(:font-steps :lend))
+                             (integerp answer)
+                             (stringp answer)))
+               (malformed "an answer of the wrong kind to a question of ~(~a~)" (asked-question asked)))
+             (if (stringp answer)
+                 (multiple-value-bind (gathered whole) (gather-text (asked-pieces asked) answer more)
+                   (setf (asked-pieces asked) gathered)
+                   (unless more (setf (asked-answer asked) (and (stringp whole) whole))))
+                 (setf (asked-answer asked) answer))
+             (sb-thread:condition-broadcast (remote-moved remote))))))
      t)
     (:no-window (let ((word (take-text inbox 64)) (words (take-text inbox 1024)))
                   (message-read inbox)
@@ -499,35 +506,38 @@ was put."
 
 (defun ask-client (remote question &optional argument (seconds *answer-seconds*))
   "Ask REMOTE's client QUESTION (*QUESTIONS*), with ARGUMENT, a font's name,
-font steps or words to show, and wait at most SECONDS (*ANSWER-SECONDS*) for
-its answer; NIL when it gives none. An answer read only after the client's
-events waiting to be handled (the most, +MOST-WAITING-EVENTS+, while the
-editor is busy) comes too late, and is NIL too. A client that gave no answer
-in time is not asked again for *MISSED-ANSWER-SECONDS*, the answer NIL at
-once, so that one that answers nothing holds the editor up once."
+font steps, words to show or a way of drawing, and wait at most SECONDS
+\(*ANSWER-SECONDS*) for its answer; NIL when it gives none. Questions may be
+asked from any thread, each waiting for its own answer. An answer read only
+after the client's events waiting to be handled (the most,
++MOST-WAITING-EVENTS+, while the editor is busy) comes too late, and is NIL
+too. A client that gave no answer in time is not asked again for
+*MISSED-ANSWER-SECONDS*, the answer NIL at once, so that one that answers
+nothing holds the editor up once."
   (sb-thread:with-mutex ((remote-lock remote))
     (unless (or (remote-ended remote) (remote-closing remote)
                 (let ((missed (remote-missed remote)))
                   (and missed (< (tuatara.runtime:seconds-since missed) *missed-answer-seconds*))))
-      (let ((box (remote-unsent remote)) (request (incf (remote-requests remote))))
-        (setf (remote-asked remote) request (remote-asked-question remote) question
-              (remote-answer remote) :none (remote-pieces remote) '())
+      (let* ((box (remote-unsent remote))
+             (asked (make-asked (incf (remote-requests remote)) question)))
+        (push asked (remote-asked remote))
         (let ((at (begin-message box :ask)))
-          (put-number box request 4)
+          (put-number box (asked-request asked) 4)
           (put-number box (position question *questions*) 1)
           (case question
             (:font (put-text box argument +most-font-name+))
             (:lend (put-text box argument +most-description+))
-            (:font-steps (put-number box (max (- +most-font-steps+) (min +most-font-steps+ argument)) 2)))
+            (:font-steps (put-number box (max (- +most-font-steps+) (min +most-font-steps+ argument)) 2))
+            (:measure-drawing (put-text box (renderer-word argument) +most-renderer-word+)))
           (end-message box at))
         (sb-thread:condition-broadcast (remote-moved remote))
         (loop with deadline = (tuatara.runtime:deadline-in seconds)
-              until (or (not (eq (remote-answer remote) :none)) (remote-ended remote)
+              until (or (not (eq (asked-answer asked) :none)) (remote-ended remote)
                         (tuatara.runtime:deadline-passed-p deadline))
               do (tuatara.runtime:wait-on (remote-moved remote) (remote-lock remote)
                                           (max 0.001 (tuatara.runtime:seconds-left deadline))))
-        (setf (remote-asked remote) nil)
-        (let ((answer (shiftf (remote-answer remote) :none)))
+        (setf (remote-asked remote) (delete asked (remote-asked remote)))
+        (let ((answer (asked-answer asked)))
           (setf (remote-missed remote) (and (eq answer :none) (get-internal-real-time)))
           (if (eq answer :none) nil answer))))))
 
@@ -629,6 +639,21 @@ while its client takes it, the client told to exit, and its socket closed."
 (defmethod frontend-health ((f remote-frontend))
   "What the client said of how its screen fares."
   (facts-health (remote-facts f)))
+
+(defmethod frontend-renderers ((f remote-frontend))
+  "The ways the client's window can be drawn, and as a second value the one
+its settings ask for, as the client says; NIL for a client in a terminal."
+  (when (facts-window (remote-facts f))
+    (let ((answer (ask-client f :renderers)))
+      (and answer (renderers-from-text answer)))))
+
+(defmethod frontend-measure-drawing ((f remote-frontend) renderer)
+  "How the client's window draws when drawn as RENDERER says, measured there,
+where its screen is: the figures it sends back, waited for at most
+*MEASURE-SECONDS*; NIL when it could not measure them."
+  (when (facts-window (remote-facts f))
+    (let ((answer (ask-client f :measure-drawing renderer *measure-seconds*)))
+      (and answer (figures-from-text answer)))))
 
 (defmethod frontend-images-p ((f remote-frontend))
   "True when the client's screen shows pictures."
@@ -1268,7 +1293,8 @@ window asked for and let go before is not.")
 the same: a plist of :CLIPBOARD and :DROP.")
   (held '()
         :documentation "The :TOGGLE and :RAISE items an editor on another machine sent
-while CLIENT's window lacked the keyboard, applied once it has it."))
+while CLIENT's window lacked the keyboard, applied once it has it.")
+  (measuring nil :documentation "True while CLIENT measures how its window draws, as its editor asked."))
 
 (setf (documentation '%make-remote-client 'function) "A REMOTE-CLIENT of the editor at FD painting on FRONTEND.")
 
@@ -1462,6 +1488,7 @@ done with it on the frontend's thread, as a list whose first is what it is
                                         (unless (font-name-p name) (malformed "a font named with a control character"))
                                         name))
                                (:lend (take-text inbox +most-description+))
+                               (:measure-drawing (word-renderer (take-text inbox +most-renderer-word+)))
                                (:font-steps (let ((steps (take-signed inbox 2)))
                                               (unless (<= (- +most-font-steps+) steps +most-font-steps+)
                                                 (malformed "font steps ~d" steps))
@@ -1661,25 +1688,58 @@ neither read what is copied elsewhere nor put something in its place."
        (not (and (getf (remote-client-allow client) :clipboard)
                  (frontend-focused-p (remote-client-frontend client))))))
 
+(defun send-answer (client request answer)
+  "Send CLIENT's editor ANSWER, a text, an integer or NIL, to its question
+numbered REQUEST; a text longer than +MOST-TEXT+ is sent as none."
+  (send-to-editor client
+                  (lambda (box)
+                    (if (and (stringp answer) (<= (tuatara.text:string-octet-length answer) +most-text+))
+                        (loop for (piece . more) on (text-pieces answer)
+                              do (put-answer box request piece :more more))
+                        (put-answer box request (and (integerp answer) answer))))))
+
+(defun measure-for-editor (client request renderer)
+  "Measure how CLIENT's window draws as RENDERER says, for its editor's
+question numbered REQUEST, on a thread of its own, the window painted
+meanwhile; the figures are sent from the thread painting CLIENT
+\(PAINT-ARRIVED). One measuring at a time: asked again meanwhile, or for a
+way of drawing not known, the answer is none at once."
+  (if (or (null renderer)
+          (sb-thread:with-mutex ((remote-client-lock client))
+            (shiftf (remote-client-measuring client) t)))
+      (send-answer client request nil)
+      (tuatara.runtime:make-guarded-thread
+       (lambda ()
+         (let ((figures nil))
+           (unwind-protect
+               (setf figures (figures-text (frontend-measure-drawing (remote-client-frontend client) renderer)))
+             (sb-thread:with-mutex ((remote-client-lock client))
+               (setf (remote-client-measuring client) nil)
+               (push (list :answer request figures) (remote-client-arrived client))
+               (sb-thread:condition-broadcast (remote-client-moved client)))
+             (frontend-wake (remote-client-frontend client)))))
+       :name "tuatara drawing measured")))
+
 (defun answer-editor (client request question argument)
   "Answer CLIENT's editor's question QUESTION, with ARGUMENT, numbered
 REQUEST, from CLIENT's frontend; an editor on another machine is given
 nothing of the clipboard unless it is shared with it and CLIENT's window
-has the keyboard (CLIPBOARD-CLOSED-P)."
-  (let* ((frontend (remote-client-frontend client))
-         (far (clipboard-closed-p client))
-         (answer (ecase question
-                   (:clipboard (and (not far) (frontend-clipboard frontend)))
-                   (:primary (and (not far) (frontend-primary-selection frontend)))
-                   (:font (frontend-set-font frontend argument))
-                   (:font-steps (setf (frontend-font-steps frontend) argument))
-                   (:lend nil))))
-    (send-to-editor client
-                    (lambda (box)
-                      (if (and (stringp answer) (<= (tuatara.text:string-octet-length answer) +most-text+))
-                          (loop for (piece . more) on (text-pieces answer)
-                                do (put-answer box request piece :more more))
-                          (put-answer box request (and (integerp answer) answer)))))))
+has the keyboard (CLIPBOARD-CLOSED-P). A measuring of the window is answered
+when it is done (MEASURE-FOR-EDITOR)."
+  (let ((frontend (remote-client-frontend client))
+        (far (clipboard-closed-p client)))
+    (if (eq question :measure-drawing)
+        (measure-for-editor client request argument)
+        (send-answer client request
+                     (ecase question
+                       (:clipboard (and (not far) (frontend-clipboard frontend)))
+                       (:primary (and (not far) (frontend-primary-selection frontend)))
+                       (:font (frontend-set-font frontend argument))
+                       (:font-steps (setf (frontend-font-steps frontend) argument))
+                       (:renderers (multiple-value-bind (renderers in-use) (frontend-renderers frontend)
+                                     (renderers-text (remove-if-not (lambda (r) (member r *renderers*)) renderers)
+                                                     (and (member in-use *renderers*) in-use))))
+                       (:lend nil))))))
 
 (defun frame-overtaken-p (later)
   "True when LATER, the items that arrived after a frame, hold another frame
@@ -1753,6 +1813,7 @@ terminal; the files sent it are named to it once there."
                                (send-to-editor client (lambda (box)
                                                         (put-no-window box (second item) "this client opens none"))))))
                (:decline (send-to-editor client (lambda (box) (put-no-window box (second item) (third item)))))
+               (:answer (send-answer client (second item) (third item)))
                ;; taken again where it was lent (LEND-TERMINAL), else nothing to take
                (:take-back)
                (:ask (if (and (eq (third item) :lend) (not far))

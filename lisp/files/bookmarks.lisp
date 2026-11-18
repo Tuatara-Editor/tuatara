@@ -181,12 +181,12 @@ visited, point where it was set, found again when the text above it changed."
 (define-major-mode bookmarks-mode sectioned-list-mode
   "The bookmark manager (\\[bookmark-manager]): a section for each category,
 then one for the bookmarks in none, a line each bookmark in it, the latest set
-or gone to first, as the buffer list (\\[buffers]) has its buffers.
+or gone to first, as the buffer list (\\[buffer-manager]) has its buffers.
 \\<support>\\[next-line] and \\[previous-line] move,
 \\<bookmarks-mode>\\[list-visit] or \\`RET' goes to the bookmark on the line (on
 a heading, folds or unfolds its section), \\[list-visit-other] in another
 window, \\[list-next-entry] and \\[list-previous-entry] go to the next bookmark and
-the one before, \\[quit-window] or \\`h' returns. \\[list-toggle-fold] folds or unfolds
+the one before, \\[quit-window] returns. \\[list-toggle-fold] folds or unfolds
 the section, \\[list-toggle-all-folds] all of them. \\[list-mark-entry] marks a
 bookmark (>), \\[list-mark-for-deletion] marks it for deletion (D),
 \\[list-unmark-entry] unmarks it, \\[list-unmark-all] unmarks them all,
@@ -316,7 +316,7 @@ another key means the list is out of date (KEEP-SHOWN-CURRENT)."
 (keep-shown-current 'bookmarks-mode 'bookmarks-key)
 
 (define-command bookmark-manager ()
-  "Manage the bookmarks in a list, as the buffer list (\\[buffers]) manages
+  "Manage the bookmarks in a list, as the buffer list (\\[buffer-manager]) manages
 buffers, in sections: one for each category (\\[bookmark-set] asks for them),
 its heading saying how many it holds, then one for the bookmarks in none; a
 bookmark in two categories is in both. Each line: its mark (> marked, D marked

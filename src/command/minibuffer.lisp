@@ -119,27 +119,51 @@ place. True when there was such text."
     (minibuffer-clear)
     t))
 
+(defun mark-minibuffer-deletion (start)
+  "Paint the minibuffer text from START to its end as what the next deletion
+deletes (*MINIBUFFER-DELETION-MARK*, DELETE-MARKED-MINIBUFFER-TEXT). Typing
+adds to the text as ever, and the mark goes with any key but the one that set
+it. Nothing is marked when START is at the end."
+  (let ((length (length (editor-minibuffer-text *editor*))))
+    (setf *minibuffer-deletion-mark* (and (< -1 start length) start))))
+
+(defun delete-marked-minibuffer-text ()
+  "Delete the minibuffer text marked by MARK-MINIBUFFER-DELETION, from its
+start to the end. True when there was such text."
+  (let ((start *minibuffer-deletion-mark*)
+        (length (length (editor-minibuffer-text *editor*))))
+    (when start
+      (setf *minibuffer-deletion-mark* nil)
+      (replace-minibuffer-text (min start length) length "")
+      t)))
+
 (defun handle-minibuffer-key (editor key)
   "Act on KEY, typed while EDITOR's minibuffer reads. A key that begins a
 sequence is kept for the next; the command a sequence is bound to (the
 question's own keys first) runs; a character bound to nothing is typed into
 the answer. The text offered stops being selected after any key but those
-that end the question."
+that end the question. A mark of what a deletion deletes goes with any key
+but the command that set it (MARK-MINIBUFFER-DELETION)."
   (let* ((specs (append (editor-pending editor) (list (tuatara.frontend:key-spec key))))
          (binding (resolve-keys editor specs)))
     (cond ((keymap-p binding) (setf (editor-pending editor) specs))
           (binding
            (setf (editor-pending editor) '())
-           (let ((command (find-command binding)))
+           (let ((command (find-command binding))
+                 (marked *minibuffer-deletion-mark*))
              (if command
                  (funcall command)
-                 (message "No command ~a" binding)))
-           (unless (member binding '(minibuffer-finish minibuffer-submit-input minibuffer-cancel))
-             (setf *minibuffer-initial-selected* nil)))
+                 (message "No command ~a" binding))
+             (unless (member binding '(minibuffer-finish minibuffer-submit-input minibuffer-cancel))
+               (setf *minibuffer-initial-selected* nil))
+             ;; a mark the command set stays for the next key
+             (when (eql *minibuffer-deletion-mark* marked)
+               (setf *minibuffer-deletion-mark* nil))))
           ((and (null (editor-pending editor))
                 (characterp (tuatara.frontend:key-base key))
                 (not (tuatara.frontend:key-ctrl key)) (not (tuatara.frontend:key-meta key)))
            (drop-offered-text)
+           (setf *minibuffer-deletion-mark* nil)
            (let ((typed (string (tuatara.frontend:key-base key))))
              (minibuffer-insert typed)
              (when *minibuffer-hidden* (wipe-string typed))))
@@ -213,6 +237,7 @@ With TRIM, the spaces and tabs at either end of the answer are left out."
         (answered nil)
         (working nil)
         (*minibuffer-initial-selected* (and select-initial (plusp (length initial))))
+        (*minibuffer-deletion-mark* nil)
         (*minibuffer-question-keymap* keymap)
         (*minibuffer-history* (and history (list history -1 nil))))
     (when (editor-minibuffer-active editor) (refuse "The minibuffer is already in use."))
@@ -515,7 +540,8 @@ writes over what cannot be had back asks for a typed answer instead
   (eql #\y (read-answer-key (concatenate 'string prompt " (y or n) ") '(#\y #\n) :fresh fresh)))
 
 (defun completing-read (prompt table &key annotate require-match history (initial "") (separator #\/) (filter t)
-                                         select reselect preview source default keep-order none taken keymap rewrite)
+                                         select reselect preview source default keep-order none taken keymap rewrite
+                                         (paint-input t))
   "Read with completion. PROMPT is shown (a string, or a function of no
 arguments giving it, for a question whose words change while it is open).
 TABLE is a list of candidates (CANDIDATE objects or strings) or a function of
@@ -550,7 +576,8 @@ stay in the order TABLE gives them, not sorted best first. With KEEP-ORDER
 TAKEN, a list of names not among the candidates, are taken when typed whole
 and \\[minibuffer-finish] is pressed with no candidate chosen by hand.
 KEYMAP holds the question's own keys, and REWRITE what is typed, as
-READ-STRING takes them.
+READ-STRING takes them. With PAINT-INPUT NIL, the line typed is not painted
+while it is selected, for a question where typing adds to it.
 Signals QUIT on abort."
   (let* ((normalise (lambda (items)
                       (if (every #'candidate-p items)
@@ -562,7 +589,7 @@ Signals QUIT on abort."
          (completion (make-completion table :annotate annotate :require-match require-match :history history
                                             :separator separator :filter filter :select select :reselect reselect
                                             :preview preview :source source :default default :keep-order keep-order
-                                            :none none :taken taken :prompt prompt)))
+                                            :none none :taken taken :prompt prompt :paint-input paint-input)))
     (unless source
       (setf (completion-listed completion) (and (listp table) (length table))))
     (read-string (shown-prompt completion) :initial initial :keymap keymap :rewrite rewrite :completion completion)))
@@ -722,13 +749,52 @@ answers (the patterns typed, the commands run by name)."
 minibuffer in place of the text typed; past the newest, what was typed."
   (minibuffer-history-step -1))
 
+(defun minibuffer-word-start (text p &optional (in-word #'tuatara.text:word-char-p))
+  "Where the word before position P of TEXT starts: back over the characters
+IN-WORD is false for, then over those it is true for (letters and digits)."
+  (loop while (and (plusp p) (not (funcall in-word (char text (1- p))))) do (decf p))
+  (loop while (and (plusp p) (funcall in-word (char text (1- p)))) do (decf p))
+  p)
+
+(defun minibuffer-word-end (text p)
+  "Where the word after position P of TEXT ends: on over what is not a letter
+or a digit, then over the letters and digits after it."
+  (let ((end (length text)))
+    (loop while (and (< p end) (not (tuatara.text:word-char-p (char text p)))) do (incf p))
+    (loop while (and (< p end) (tuatara.text:word-char-p (char text p))) do (incf p))
+    p))
+
 (define-command minibuffer-backward-kill-word (:interactive nil)
   "Delete the word before the minibuffer cursor: back over what is not a
-letter or a digit, then over the letters and digits before it."
-  (let* ((editor *editor*) (text (editor-minibuffer-text editor)) (p (editor-minibuffer-point editor)) (q p))
-    (loop while (and (plusp q) (not (tuatara.text:word-char-p (char text (1- q))))) do (decf q))
-    (loop while (and (plusp q) (tuatara.text:word-char-p (char text (1- q)))) do (decf q))
-    (replace-minibuffer-text q p "" editor)))
+letter or a digit, then over the letters and digits before it, so that in a
+path one name goes at a time."
+  (let ((p (editor-minibuffer-point *editor*)))
+    (replace-minibuffer-text (minibuffer-word-start (editor-minibuffer-text *editor*) p) p "")))
+
+(define-command minibuffer-backward-kill-to-space (:interactive nil)
+  "Delete back from the minibuffer cursor to the space before it, over any
+spaces first, as \\`C-w' does in a shell: a path goes whole."
+  (let ((p (editor-minibuffer-point *editor*)))
+    (replace-minibuffer-text (minibuffer-word-start (editor-minibuffer-text *editor*) p
+                                                    (lambda (c) (not (tuatara.text:space-or-tab-char-p c))))
+                             p "")))
+
+(define-command minibuffer-kill-word (:interactive nil)
+  "Delete the word after the minibuffer cursor: on over what is not a letter
+or a digit, then over the letters and digits after it."
+  (let ((p (editor-minibuffer-point *editor*)))
+    (replace-minibuffer-text p (minibuffer-word-end (editor-minibuffer-text *editor*) p) "")
+    (setf (editor-minibuffer-point *editor*) p)))
+
+(define-command minibuffer-backward-word (:interactive nil)
+  "Move the minibuffer cursor back to the start of the word before it."
+  (setf (editor-minibuffer-point *editor*)
+        (minibuffer-word-start (editor-minibuffer-text *editor*) (editor-minibuffer-point *editor*))))
+
+(define-command minibuffer-forward-word (:interactive nil)
+  "Move the minibuffer cursor on to the end of the word after it."
+  (setf (editor-minibuffer-point *editor*)
+        (minibuffer-word-end (editor-minibuffer-text *editor*) (editor-minibuffer-point *editor*))))
 
 (defun minibuffer-take-pasted (text)
   "Put TEXT at the minibuffer cursor, as pasted: in place of the text offered
@@ -775,6 +841,12 @@ nowhere else, not the kill ring."
   (define-key keymap "C-u" 'minibuffer-clear)
   (define-key keymap "C-<backspace>" 'minibuffer-backward-kill-word)
   (define-key keymap "M-DEL" 'minibuffer-backward-kill-word)
+  (define-key keymap "C-w" 'minibuffer-backward-kill-to-space)
+  (define-key keymap "M-d" 'minibuffer-kill-word)
+  (define-key keymap "M-b" 'minibuffer-backward-word)
+  (define-key keymap "C-<left>" 'minibuffer-backward-word)
+  (define-key keymap "M-f" 'minibuffer-forward-word)
+  (define-key keymap "C-<right>" 'minibuffer-forward-word)
   (define-key keymap *taller-panel-key* 'minibuffer-toggle-tall)
   (define-key keymap "C-n" 'minibuffer-next-candidate)
   (define-key keymap "<down>" 'minibuffer-next-candidate)

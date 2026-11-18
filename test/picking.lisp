@@ -466,6 +466,65 @@ was afterwards (unset when it was)."
       (is string= "~/" text)
       (is equal '("Documents/" "notes/" "todo.org") offered))))
 
+(defun path-question-states (&rest keys)
+  "Each state a question for a path is in after each of KEYS, typed in turn,
+as (TEXT PAINTED): the line, and what of the prompt row is coloured as what
+the next deletion deletes (:minibuffer-deletion-mark); the line typed is never
+painted as selected (:completion-selected) meanwhile."
+  (let ((states '()))
+    (run-keys (append (loop for key in keys
+                            collect key collect :wait
+                            collect (lambda ()
+                                      (let* ((editor tuatara.command:*editor*)
+                                             (row (tuatara.command::minibuffer-prompt-row
+                                                   editor (tuatara.command::editor-completion editor)
+                                                   (nth-value 1 (tuatara.command::prompt-pieces editor))))
+                                             (span (find :minibuffer-deletion-mark (third row) :key #'third)))
+                                        (push (list (copy-seq (tuatara.command:editor-minibuffer-text editor))
+                                                    (and span (subseq (first row) (first span) (second span))))
+                                              states)
+                                        (false (find :completion-selected (third row) :key #'third)))))
+                      (list "C-g"))
+              :width 200 :height 20)
+    (nreverse states)))
+
+(define-test (picking path-question-deletes-back-by-branches)
+  ;; the directory filled in is not painted, as typing adds to it; DEL after a whole name paints the end
+  ;; past where it branches from another entry, then deletes that and paints back to the branch before,
+  ;; until the directory alone is left; typing adds to the path, the paint gone (*PATH-DELETE-BY-BRANCHES*)
+  (with-test-home (home)
+    (dolist (sub '("Projects/public/" "Projects/pubman/" "Projects/notes/"))
+      (ensure-directories-exist (merge-pathnames sub home)))
+    (is equal '(("~/Projects/public/" nil)
+                ("~/Projects/public" "lic")
+                ("~/Projects/pub" "pub")
+                ("~/Projects/" nil)
+                ("~/Projects" "Projects"))
+        (path-question-states "C-x C-f C-a C-k ~ / P r o j e c t s / p u b l i c /" "DEL" "DEL" "DEL" "DEL"))
+    (is equal '(("~/Projects/public" "lic") ("~/Projects/publicx" nil))
+        (path-question-states "C-x C-f C-a C-k ~ / P r o j e c t s / p u b l i c / DEL" "x"))
+    ;; anywhere but after a whole name, one character; a key that moves takes the paint away
+    (is equal '(("~/Projects/pub" nil) ("~/Projects/pu" nil)
+                ("~/Projects/public" "lic") ("~/Projects/public" nil))
+        (path-question-states "C-x C-f C-a C-k ~ / P r o j e c t s / p u b" "DEL"
+                              "C-a C-k ~ / P r o j e c t s / p u b l i c / DEL" "C-a C-e"))
+    ;; a file's name typed whole is deleted back by its branches too; one still being typed by characters
+    (put-file (merge-pathnames "Projects/todo.org" home) "* one")
+    (put-file (merge-pathnames "Projects/todo.txt" home) "one")
+    (is equal '(("~/Projects/todo.org" "org") ("~/Projects/todo." "todo.") ("~/Projects/" nil))
+        (path-question-states "C-x C-f C-a C-k ~ / P r o j e c t s / t o d o . o r g DEL" "DEL" "DEL"))
+    (is equal '(("~/Projects/tod" nil))
+        (path-question-states "C-x C-f C-a C-k ~ / P r o j e c t s / t o d e DEL"))
+    ;; :directories keeps it to a directory's /; nil deletes a character everywhere
+    (let ((tuatara-user:*path-delete-by-branches* :directories))
+      (is equal '(("~/Projects/public" "lic") ("~/Projects/todo.or" nil))
+          (path-question-states "C-x C-f C-a C-k ~ / P r o j e c t s / p u b l i c / DEL"
+                                "C-a C-k ~ / P r o j e c t s / t o d o . o r g DEL")))
+    (let ((tuatara-user:*path-delete-by-branches* nil))
+      (is equal '(("~/Projects/public" nil) ("~/Projects/todo.or" nil))
+          (path-question-states "C-x C-f C-a C-k ~ / P r o j e c t s / p u b l i c / DEL"
+                                "C-a C-k ~ / P r o j e c t s / t o d o . o r g DEL")))))
+
 (define-test (picking path-question-last-chosen-then-by-name)
   (with-test-directory (dir)
     (let ((root (tuatara.io:native dir)))
@@ -484,3 +543,27 @@ was afterwards (unset when it was)."
       (let ((tuatara-user:*last-used-first* nil))
         (is equal '("sub9/" "sub10/" ".hidden" "file2" "File3" "file10")
             (nth-value 1 (path-question-shown (format nil "C-x C-f C-a C-k ~a" (key-string root)))))))))
+
+(define-test (picking minibuffer-word-keys)
+  ;; the shell's keys for words in a question's answer: M-b and M-f (C-<left>, C-<right>) move by words,
+  ;; M-d deletes the word after, M-DEL the word before (one name of a path), C-w back to a space
+  (flet ((after (keys)
+           (let ((seen nil))
+             (run-keys (list (format nil "C-x C-f C-a C-k ~a" keys)
+                             (lambda ()
+                               (let ((editor tuatara.command:*editor*))
+                                 (setf seen (list (copy-seq (tuatara.command:editor-minibuffer-text editor))
+                                                  (tuatara.command:editor-minibuffer-point editor)))))
+                             "C-g")
+                       :width 120 :height 12)
+             seen)))
+    (let ((typed (key-string "/tmp/one two/three")))
+      (is equal '("/tmp/one two/three" 13) (after (format nil "~a M-b" typed)))
+      (is equal '("/tmp/one two/three" 9) (after (format nil "~a M-b M-b" typed)))
+      (is equal '("/tmp/one two/three" 9) (after (format nil "~a C-<left> C-<left>" typed)))
+      (is equal '("/tmp/one two/three" 8) (after (format nil "~a C-a M-f M-f" typed)))
+      (is equal '("/tmp/one two/three" 12) (after (format nil "~a C-a C-<right> C-<right> C-<right>" typed)))
+      (is equal '("/tmp/one /three" 9) (after (format nil "~a M-b M-b M-d" typed)))
+      (is equal '("/tmp/one two/" 13) (after (format nil "~a M-DEL" typed)))
+      (is equal '("/tmp/one " 9) (after (format nil "~a C-w" typed)))
+      (is equal '("" 0) (after (format nil "~a C-w C-w" typed))))))

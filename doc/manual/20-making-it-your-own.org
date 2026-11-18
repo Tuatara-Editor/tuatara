@@ -91,7 +91,7 @@ that backs up or cleans your home directory already knows about them.
   again: previews, pages drawn from documents, copies of files opened
   safely, copies of files from servers, mailboxes read by readpst, compiled
   packages and the log of what happened. You can delete it at any time.
-  ~M-x list-cache~ shows what it keeps, and =*cache-keep*= says how long an
+  ~M-x cache-manager~ shows what it keeps, and =*cache-keep*= says how long an
   entry stays once unused (chapter 9).
 
 Fetched packages are kept in a fourth place, =~/.local/share/tuatara/=,

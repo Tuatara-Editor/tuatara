@@ -627,24 +627,29 @@ file of the line selected is shown meanwhile, at that line, opened safely
                             (sb-ext:atomic-incf (car *index-searches*))
                             (note-sign-work :searching editor))
                           (unwind-protect
-                              (let ((count 0))
-                                (loop for i from 0
-                                      for corpus = (piece i cancel)
-                                      while (and corpus (< count most))
-                                      do (multiple-value-bind (from to) (corpus-range corpus inside)
-                                           (when from
-                                             (let ((lines (corpus-lines corpus input :regex regex :start from :end to
-                                                                                     :most (- most count)
-                                                                                     :stop (lambda () (car cancel)))))
-                                               (incf count (length lines))
-                                               (dolist (candidate (line-candidates corpus lines inside))
-                                                 (funcall give candidate))))))
-                                ;; then the files too large to keep, from disk, once all is read
-                                (when (< count most)
-                                  (dolist (candidate (lines-on-disk-many (sb-thread:with-mutex (lock) (copy-list large))
-                                                                         root-name input :regex regex :cancel cancel
-                                                                         :most (- most count) :inside inside))
-                                    (funcall give candidate))))
+                              (call-searching-index
+                               index
+                               (lambda ()
+                                 (let ((count 0))
+                                   (loop for i from 0
+                                         for corpus = (piece i cancel)
+                                         while (and corpus (< count most))
+                                         do (multiple-value-bind (from to) (corpus-range corpus inside)
+                                              (when from
+                                                (let ((lines (corpus-lines corpus input
+                                                                           :regex regex :start from :end to
+                                                                           :most (- most count)
+                                                                           :stop (lambda () (car cancel)))))
+                                                  (incf count (length lines))
+                                                  (dolist (candidate (line-candidates corpus lines inside))
+                                                    (funcall give candidate))))))
+                                   ;; then the files too large to keep, from disk, once all is read
+                                   (when (< count most)
+                                     (dolist (candidate (lines-on-disk-many
+                                                         (sb-thread:with-mutex (lock) (copy-list large))
+                                                         root-name input :regex regex :cancel cancel
+                                                         :most (- most count) :inside inside))
+                                       (funcall give candidate))))))
                             (when index
                               (sb-ext:atomic-decf (car *index-searches*))
                               (note-sign-work :searching editor)))))))

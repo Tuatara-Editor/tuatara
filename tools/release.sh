@@ -142,7 +142,7 @@ cp -r data/icons "$out/icons"
 cp -r "$work/src/build/man" "$out/man"
 # the completion of the options for bash, made by the same program
 cp -r "$work/src/build/completion" "$out/completion"
-cp LICENSE README.org "$out/"
+cp LICENSE README.org TRADEMARKS.md "$out/"
 # nothing given to others names this machine, the program checked above
 named=0
 while IFS= read -r -d '' file; do

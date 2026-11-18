@@ -40,11 +40,11 @@ one is fetched, once all of them are done (SAY-PACKAGE-UPDATE-DONE)."
 
 (define-major-mode packages-mode marked-list-mode
   "The package manager (\\[package-manager]): a line each package the init file
-loads from a source, as the buffer list (\\[buffers]) has its buffers.
+loads from a source, as the buffer list (\\[buffer-manager]) has its buffers.
 \\<support>\\[next-line] and \\[previous-line] move.
 \\<packages-mode>\\[list-visit] or \\`RET' lists the directory of
 the package on the line in rimu, \\[list-visit-other] in another window.
-\\[quit-window] or \\`h' returns. \\[list-mark-entry] marks a package (>),
+\\[quit-window] returns. \\[list-mark-entry] marks a package (>),
 \\[list-mark-for-deletion] marks it for deletion (D), \\[list-unmark-entry]
 unmarks it, \\[list-unmark-all] unmarks them all, \\[list-toggle-marks] swaps
 marked and unmarked. \\[package-update-marked] fetches the marked ones again
@@ -172,7 +172,7 @@ of date (KEEP-SHOWN-CURRENT)."
 
 (define-command package-manager ()
   "Manage the packages the init file loads from a source (load-package with
-:source) in a list, as the buffer list (\\[buffers]) manages buffers. Each
+:source) in a list, as the buffer list (\\[buffer-manager]) manages buffers. Each
 line has its mark (> marked, D marked for deletion), name, the version kept
 \(its tag), its commit, and what is become of it (loaded; fetching; removed,
 not loaded though the init file names it; refused, using names this Tuatara
@@ -390,7 +390,7 @@ the package manager (PACKAGE-PREVIEW-BUFFER)."
 (defun install-packages ()
   "Bind the package manager's keys, \\`P' turning the README beside it off and
 on, \\`L', \\`K' and \\`R' loading, unloading and removing the packages marked."
-  (entry-list-keys 'packages-mode "the package manager (\\[package-manager])")
+  (entry-list-keys 'packages-mode "the package manager (\\[package-manager])" :kind :manager)
   (define-keys *packages-keymap* '(("f" package-update-marked) ("L" package-load) ("K" package-unload)
                                    ("R" package-remove)))
   (entry-preview-keys 'packages-mode "the package manager (\\[package-manager])"))

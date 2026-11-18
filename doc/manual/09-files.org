@@ -34,7 +34,20 @@ into it and the list shows what it holds. The question starts in the directory
 of the last file or directory you chose, so when you work on one project you
 seldom type more than the end of a name. ~S-TAB~ puts your home directory, =~/=,
 in place of what is typed, and lists it. Typing =~/= after a directory does the
-same, starting the path again from home.
+same, starting the path again from home. ~C-u~ clears the line.
+
+The directory filled in is not painted, because what you type is added to it.
+~DEL~ just after a =/= deletes back by the branches of the path. It takes the
+=/= away and colours the end of the name before it, the part past where that
+name begins as another entry of its directory does. With =public= and =pubman=
+in =~/Projects/=, ~DEL~ on =~/Projects/public/= paints =lic=. The next ~DEL~
+deletes it, leaving =pub=, which matches both, and paints =pub=. The one after
+leaves =~/Projects/= with all it holds listed. Typing adds to the path as ever,
+and any other key takes the paint away. The same goes for a file's name typed whole: with =todo.org= and
+=todo.txt= side by side, ~DEL~ after =todo.org= paints =org=. In a name you are
+still typing, ~DEL~ deletes one character. It is the reverse of ~TAB~.
+=*path-delete-by-branches*= set to =:directories= keeps this to directories,
+and =nil= has ~DEL~ delete one character everywhere.
 
 Beside each file the list shows its permissions, its size and when it last
 changed. Where a file is one you opened safely before, the list marks it, and
@@ -97,7 +110,7 @@ stand, which settings are taken and what is left alone.
 
 #+table: commands find-file find-file-other-window find-file-other-frame find-file-safely open-path-at-point open-dropped-files show-file-name describe-file-local-settings
 
-#+table: settings *last-used-first* *open-dropped-files-safely* *file-local-variables* *preview-files*
+#+table: settings *last-used-first* *path-delete-by-branches* *open-dropped-files-safely* *file-local-variables* *preview-files*
 
 #+table: faces :completion-modified :completion-safe :completion-mode-read :completion-mode-write :completion-mode-exec :completion-mode-none :completion-mode-other :list-date :list-size
 
@@ -712,11 +725,21 @@ is cleared =*cache-keep*= after its last use, one day as standard. So if you
 come back within a day, the copy is there, and the day counts again from when
 you close it. A pinned entry is never cleared by itself.
 
+The index of a directory kept read (chapter 6) is an entry too. It is in use
+while a search reads it or while Tuatara reads the directory again, and its
+last use is when the search or the reading ended. The index of a directory you
+no longer keep read is cleared by the same rule. If a session still keeps the
+directory read when its index is cleared, nothing is lost: its searches go on
+from what it holds in memory, and it writes the index to disk again without
+reading your files again. With =*cache-keep*= set to 0, that happens after
+nearly every search, as the index is cleared within a minute of each: for a
+large directory that is a lot of writing, so keep at least a few hours there.
+
 The cache is only a time saver. A copy of a file from a server, evidence
 included, is cleared by the same rule as any other: the file itself is still
 safe on the server, and if the copy has gone, it is fetched again.
 
-~M-x list-cache~ lists what the cache holds, in sections by kind: copies of
+~M-x cache-manager~ lists what the cache holds, in sections by kind: copies of
 files from servers with their names there, mailboxes read by readpst, search
 indexes, pictures of formulas and the other directories of the cache. The logs
 and the compiled packages are left out. Each line shows what the entry is, its
@@ -737,17 +760,17 @@ is followed through a link. A pin can keep only a directory in the cache.
 #+begin_try Try it, with a file on a server called pinetree
 1. Press ~C-x C-f~, type =/ssh:pinetree:notes.txt= and press ~RET~. Then press
    ~C-x k~ to close it.
-2. Run ~M-x list-cache~. Under =Copies of files on other machines= is
+2. Run ~M-x cache-manager~. Under =Copies of files on other machines= is
    =/ssh:pinetree:notes.txt=, with =until= and a time one day from now.
 3. Press ~p~. The line now says =pinned=. Press ~p~ again to unpin it.
 4. Press ~RET~. The file opens, and the echo area says =kept copy from=, the
    time, and =checked against the server=.
-5. Press ~C-x k~, then ~M-x list-cache~ again. Move to the line, press ~d~ and
+5. Press ~C-x k~, then ~M-x cache-manager~ again. Move to the line, press ~d~ and
    then ~x~, and answer =yes=. The copy is gone. The file on pinetree is not
    touched.
 #+end_try
 
-#+table: commands list-cache cache-toggle-pin
+#+table: commands cache-manager cache-toggle-pin
 
 #+table: settings *cache-keep*
 

@@ -395,8 +395,8 @@ text, which the edits would move."
 
 (defvar *question-variables*
   '(*key-question* *minibuffer-hidden* *minibuffer-question-keymap* *minibuffer-finish* *minibuffer-history*
-    *minibuffer-initial-selected* *read-key-replay* *keys-as-typed* *command-notes* *command-undo-since*
-    *this-command-keys* *current-buffer* *dropped* *pasted* tuatara.buffer:*narrowing-in-force*
+    *minibuffer-initial-selected* *minibuffer-deletion-mark* *read-key-replay* *keys-as-typed* *command-notes*
+    *command-undo-since* *this-command-keys* *current-buffer* *dropped* *pasted* tuatara.buffer:*narrowing-in-force*
     tuatara.runtime:*secret-at-hand* *background-work* *buffers-asked-about*)
   "The variables a command binds that belong to the question it asks, and so
 to the frame it asks in: what is done in another frame inside that question

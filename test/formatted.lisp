@@ -1117,6 +1117,84 @@ file sets them."
         (sb-int:unencapsulate 'tuatara.defaults::read-text-file 'count-reads)
         (uiop:delete-directory-tree (pathname cache) :validate t)))))
 
+(defun index-text (index)
+  "All the text INDEX keeps, its pieces one after another."
+  (format nil "~{~a~}" (map 'list
+                            (lambda (corpus) (tuatara.text:rope-string (tuatara.defaults::file-corpus-rope corpus)))
+                            (tuatara.defaults::directory-index-corpora index))))
+
+(defun overwrite-in-place (path text)
+  "Write TEXT over the start of the file at PATH, its inode and size kept."
+  (with-open-file (out path :direction :output :if-exists :overwrite :external-format :utf-8)
+    (write-string text out)))
+
+(define-test (formatted index-sees-a-time-set-back)
+  ;; a file written again at the same size and given its old time back is read again, in the session
+  ;; and in the next: its change time (ctime) moved, which no program can set back
+  (with-test-directory (dir)
+    (let* ((root (tuatara.defaults::directory-name dir))
+           (cache (tuatara.defaults::index-cache-directory root))
+           (path (namestring (merge-pathnames "n3.txt" dir))))
+      (dotimes (i 5) (put-file (merge-pathnames (format nil "n~d.txt" i) dir) (format nil "note ~d~%" i)))
+      (sb-posix:utime path 1700000000 1700000000)
+      (unwind-protect
+           (let ((index (tuatara.defaults::make-directory-index root)))
+             (index-now index (tuatara.defaults::read-directory-index index :all (* 1024 1024) 64 t))
+             (true (search "note 3" (index-text index)))
+             (sleep 0.01)
+             (overwrite-in-place path "nite 3")
+             (sb-posix:utime path 1700000000 1700000000)
+             (index-now index (tuatara.defaults::read-directory-index index (list root) (* 1024 1024) 64 t))
+             (true (search "nite 3" (index-text index)))
+             (false (search "note 3" (index-text index)))
+             ;; and once more, unseen by a session: the next one reads it again
+             (sleep 0.01)
+             (overwrite-in-place path "nate 3")
+             (sb-posix:utime path 1700000000 1700000000)
+             (let ((next (tuatara.defaults::make-directory-index root)))
+               (index-now next (tuatara.defaults::read-directory-index next :all (* 1024 1024) 64 t))
+               (true (search "nate 3" (index-text next)))
+               (false (search "nite 3" (index-text next)))))
+        (uiop:delete-directory-tree (pathname cache) :validate t)))))
+
+(define-test (formatted index-piece-changed-not-trusted)
+  ;; a piece of an index kept on disk that another program changed in place is not searched: the next
+  ;; session reads its files again, and the pieces left as they were are taken as they are
+  (with-test-directory (dir)
+    (let* ((root (tuatara.defaults::directory-name dir))
+           (cache (tuatara.defaults::index-cache-directory root))
+           (reads 0))
+      (dotimes (i 10) (put-file (merge-pathnames (format nil "n~d.txt" i) dir) (format nil "note ~d~%" i)))
+      (sb-int:encapsulate 'tuatara.defaults::read-text-file 'count-reads
+                          (lambda (f &rest arguments) (incf reads) (apply f arguments)))
+      (unwind-protect
+           (let ((index (tuatara.defaults::make-directory-index root)))
+             (index-now index (tuatara.defaults::read-directory-index index :all (* 1024 1024) 32 t))
+             (let ((pieces (remove-if-not (lambda (entry) (uiop:string-prefix-p "piece-" (first entry)))
+                                          (tuatara.io:directory-entries cache))))
+               (true (< 1 (length pieces)))
+               (sleep 0.01)
+               (overwrite-in-place (concatenate 'string cache (first (first pieces))) "FORGED"))
+             ;; in the session: the piece changed is not written again from its text as mapped
+             (setf reads 0)
+             (index-now index (tuatara.defaults::read-directory-index index '() (* 1024 1024) 32 t))
+             (true (plusp reads))
+             (false (search "FORGED" (index-text index)))
+             (is = 10 (length (index-texts index)))
+             ;; changed again, unseen: the next session leaves it out and reads its files alone
+             (let ((piece (find-if (lambda (entry) (uiop:string-prefix-p "piece-" (first entry)))
+                                   (tuatara.io:directory-entries cache))))
+               (sleep 0.01)
+               (overwrite-in-place (concatenate 'string cache (first piece)) "FORGED"))
+             (setf reads 0)
+             (let ((next (tuatara.defaults::make-directory-index root)))
+               (index-now next (tuatara.defaults::read-directory-index next :all (* 1024 1024) 32 t))
+               (false (search "FORGED" (index-text next)))
+               (is = 10 (length (index-texts next)))
+               (true (< 0 reads 10))))
+        (sb-int:unencapsulate 'tuatara.defaults::read-text-file 'count-reads)
+        (uiop:delete-directory-tree (pathname cache) :validate t)))))
+
 (define-test (formatted index-leaves-out-what-git-ignores)
   ;; what .gitignore leaves out is neither listed, walked nor watched: its files are not offered either
   (with-test-directory (dir)

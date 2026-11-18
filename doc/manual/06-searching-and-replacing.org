@@ -405,7 +405,10 @@ faint when idle (=*indexing-indicator*=, =*searching-indicator*=).
 
 By default what was read is also kept on disk between sessions
 (=*indexes-kept-on-disk*=), so that at the next start only the files that
-changed are read again. Set it to nil for a directory whose text must not be
+changed are read again. A file counts as changed when its size, time or
+change time (ctime) moved, so a file written again and given its old time back
+is read again too. Text kept on disk that another program changed is not
+searched: the files it came from are read again. Set it to nil for a directory whose text must not be
 copied anywhere. =*search-files-limit*= is the most text Tuatara keeps for
 one search or one kept directory, 128 MB as standard, and
 =*indexed-files-most*= the most files whose text it keeps, 100,000 as

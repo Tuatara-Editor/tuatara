@@ -1,7 +1,7 @@
 ;;;; lisp/buffers/buffers.lisp --- The buffer list: mark, kill, save, visit.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; M-x buffers (C-x C-b) shows every live buffer in *Buffers*, a read-only
+;;;; M-x buffer-manager (C-x C-b) shows every live buffer in *Buffers*, a read-only
 ;;;; support buffer with one line per buffer and its own keys; C-x b is the
 ;;;; quick selector with completion. The list shows the buffers used most
 ;;;; recently first, in a section for each project and one for those in none,
@@ -262,7 +262,7 @@ which of them ended or are kept; another key means the list is out of date
 
 (keep-shown-current 'buffers-mode 'buffers-key)
 
-(define-command buffers ()
+(define-command buffer-manager ()
   "List every live buffer in *Buffers*, those used most recently first, in a
 section for each project (a directory holding .git or .project,
 *PROJECT-ROOT-MARKERS*), the project of the buffer used last first, then one
@@ -283,6 +283,8 @@ with the number of buffers, their size and files summed up at the end.
       (setf (tuatara.buffer:buffer-local list 'list-folded)
             (remove (current-client) (remove-if-not #'client-remote (editor-clients *editor*)))))
     (buffers-render list (1+ *buffers-title-lines*))))
+
+(define-renamed-command buffers buffer-manager)
 
 (defmethod list-entry-noun ((mode buffers-mode))
   "A buffer."
@@ -350,15 +352,6 @@ anywhere."
 when one of them is modified, else after asking."
   (declare (ignore list))
   (kill-listed-buffers targets :modified-only (eq mark :deletion)))
-
-(define-command buffers-fold-heading (:interactive nil)
-  "On a heading of the buffer list, fold its section when it is open, as
-\\[list-visit] opens it again; on any other line nothing happens."
-  (let* ((list (current-buffer))
-         (section (list-section-at list)))
-    (when (and section (eq (first (list-entry-at list)) :section)
-               (not (member section (list-folded list) :test #'equal)))
-      (list-toggle-section list section))))
 
 (define-command buffers-keep-client ()
   "Make the client whose group the cursor is in, in the buffer list, the one
@@ -478,9 +471,8 @@ each has."
 
 (defun install-buffers ()
   "Bind the *Buffers* keys and the global entry points."
-  (entry-list-keys 'buffers-mode "the buffer list (\\[buffers])")
-  (define-keys *buffers-keymap* '(("s" buffers-save) ("K" buffers-keep-client) ("h" buffers-fold-heading)
-                                  ("C-b" buffers-fold-heading)))
-  (define-keys *global-keymap* '(("C-x C-b" buffers) ("C-x p k" kill-project-buffers))))
+  (entry-list-keys 'buffers-mode "the buffer list (\\[buffer-manager])")
+  (define-keys *buffers-keymap* '(("s" buffers-save) ("K" buffers-keep-client)))
+  (define-keys *global-keymap* '(("C-x C-b" buffer-manager) ("C-x p k" kill-project-buffers))))
 
-(commands-for-mode 'buffers-mode "the buffer list (\\[buffers])" 'buffers-save)
+(commands-for-mode 'buffers-mode "the buffer list (\\[buffer-manager])" 'buffers-save)

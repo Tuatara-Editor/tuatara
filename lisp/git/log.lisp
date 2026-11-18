@@ -246,4 +246,4 @@ its switches shape them. \\`C-h' there lists every action."
   "Bind the log menu to L and the diff menu to d in a status, and in a log
 the keys of a list whose entries are opened (ENTRY-LIST-KEYS)."
   (define-keys *git-status-keymap* '(("L" git-log-menu) ("d" git-diff-menu)))
-  (entry-list-keys 'git-log-mode "a repository's log (\\[git-log-menu] in a status)"))
+  (entry-list-keys 'git-log-mode "a repository's log (\\[git-log-menu] in a status)" :back t))

@@ -271,7 +271,7 @@ ended have: the frames shown, the one with no screen left out."
                            (false (tuatara.command:client-environment ended)))))))))))
 
 (define-test (daemon buffers-kept-by-client)
-  ;; each client is offered its own buffers; one that ended leaves its group in M-x buffers, to be taken up
+  ;; each client is offered its own buffers; one that ended leaves its group in M-x buffer-manager, to be taken up
   (with-test-directory (dir)
     (let ((alpha (namestring (put-file (merge-pathnames "alpha.txt" dir) "alpha text")))
           (beta (namestring (put-file (merge-pathnames "beta.txt" dir) "beta text"))))

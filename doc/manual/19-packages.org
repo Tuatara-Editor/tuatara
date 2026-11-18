@@ -194,7 +194,7 @@ The keys are those of the lists you already know, with a few of its own.
 | none  | ~R~                | Removes them: unloads them and keeps them from loading. |
 | none  | ~d~, then ~x~      | Marks for deletion, then deletes what is kept of them.  |
 | none  | ~D~                | Deletes what is kept of the marked ones.                |
-| none  | ~h~, ~q~           | Closes the list.                                        |
+| none  | ~q~                | Closes the list.                                        |
 
 With nothing marked, each of these acts on the package on the cursor's line.
 

@@ -441,8 +441,10 @@ was not reached by a link."
         (quit-window))))
 
 (defun install-man ()
-  "Bind the keys of manual pages: \\`l' or \\`C-f' follows the link at point, \\`h' or \\`C-b' goes
-back (\\[man-back]), \\`n' and \\`p' go to the next section and the one before."
-  (define-keys (mode-keymap 'man-mode) '(("l" push-button) ("C-f" push-button) ("h" man-back) ("C-b" man-back)
+  "Bind the keys of manual pages: \\`RET' follows the link at point, \\`B' goes back
+(\\[man-back]), \\`n' and \\`p' go to the next section and the one before. \\`h', \\`j', \\`k',
+\\`l' and the control keys move as in any text."
+  (declare-list-kind 'man-mode :text)
+  (define-keys (mode-keymap 'man-mode) '(("RET" push-button) ("B" man-back)
                                          ("n" man-next-section) ("p" man-previous-section)))
   (commands-for-mode 'man-mode "a manual page (\\[man])" 'man-back 'man-next-section 'man-previous-section))

@@ -175,7 +175,7 @@ that already holds a buffer is never split into pieces smaller than
 | none  | ~C-M-l~                | =select-window-right=           | Moves to the window on the right. |
 | none  | ~C-M-k~                | =select-window-above=           | Moves to the window above. |
 | none  | ~C-M-j~                | =select-window-below=           | Moves to the window below. |
-| none  | ~q~, ~h~               | =quit-window=                   | Closes a window that was opened for a help buffer, a list or a log, or shows the buffer it had before. ~h~ works in lists. |
+| none  | ~q~                    | =quit-window=                   | Closes a window that was opened for a help buffer, a list or a log, or shows the buffer it had before. ~h~ closes only a git log. |
 | none  | ~C-x 4 0~              | =kill-buffer-and-window=        | Kills this buffer, asking first if it has unsaved changes, and closes its window. |
 | none  | ~C-x 4 b~              | =switch-to-buffer-other-window= | Asks for a buffer and shows it in another window. |
 | none  | ~C-x 4 f~, ~C-x 4 C-f~ | =find-file-other-window=        | Opens a file in another window. |
@@ -233,7 +233,7 @@ drag a mode line up or down, or the line between two windows left or right.
 |-------+-----------+-----------------------+-------------------------------------|
 | none  | ~C-x b~   | =switch-to-buffer=    | Asks for a buffer. A name that does not exist makes a new buffer. ~RET~ alone goes back to the last one. |
 | none  | ~C-x x b~ | =switch-other-buffer= | Goes to the buffer used before this one. Press it again to come back. |
-| none  | ~C-x C-b~ | =buffers=             | Lists every buffer, grouped by project. |
+| none  | ~C-x C-b~ | =buffer-manager=      | Lists every buffer, grouped by project. |
 | none  | ~C-x k~   | =kill-buffer=         | Kills this buffer, asking first if it has unsaved changes. |
 | none  | ~C-x C-s~ | =save-buffer=         | Writes the buffer to its file.      |
 
@@ -585,22 +585,26 @@ cannot.
 You edit the answer with keys much like the ones in a text buffer. These keys
 work only while a question is open, so =M-x= does not list their commands.
 
-| Modal | Non-modal                  | Command                           | What it does           |
-|-------+----------------------------+-----------------------------------+------------------------|
-| none  | ~RET~                      | =minibuffer-finish=               | Gives the answer, taking the selected choice if there is one. |
-| none  | ~C-j~, ~M-RET~             | =minibuffer-submit-input=         | Gives the answer exactly as typed, whatever is selected. |
-| none  | ~C-g~, ~ESC~               | =minibuffer-cancel=               | Gives up the question. |
-| none  | ~DEL~, ~C-h~               | =minibuffer-backward-delete-char= | Deletes the character before the cursor. |
-| none  | ~C-b~, ~<left>~            | =minibuffer-backward-char=        | Moves the cursor left. |
-| none  | ~C-f~, ~<right>~           | =minibuffer-forward-char=         | Moves the cursor right. |
-| none  | ~C-a~, ~<home>~            | =minibuffer-beginning=            | Moves to the start of the answer. |
-| none  | ~C-e~, ~<end>~             | =minibuffer-end=                  | Moves to the end of the answer. |
-| none  | ~C-k~                      | =minibuffer-kill-line=            | Deletes the answer after the cursor. |
-| none  | ~C-u~                      | =minibuffer-clear=                | Clears the answer. The prompt stays. |
-| none  | ~C-<backspace>~, ~M-DEL~   | =minibuffer-backward-kill-word=   | Deletes the word before the cursor. |
-| none  | ~C-y~, ~C-V~, ~S-<insert>~ | =minibuffer-paste=                | Pastes the clipboard, or what you cut last. |
-| none  | ~M-p~                      | =minibuffer-previous-history=     | Brings back an earlier answer to this question. |
-| none  | ~M-n~                      | =minibuffer-next-history=         | Goes to a later answer. |
+| Modal | Non-modal                  | Command                             | What it does           |
+|-------+----------------------------+-------------------------------------+------------------------|
+| none  | ~RET~                      | =minibuffer-finish=                 | Gives the answer, taking the selected choice if there is one. |
+| none  | ~C-j~, ~M-RET~             | =minibuffer-submit-input=           | Gives the answer exactly as typed, whatever is selected. |
+| none  | ~C-g~, ~ESC~               | =minibuffer-cancel=                 | Gives up the question. |
+| none  | ~DEL~, ~C-h~               | =minibuffer-backward-delete-char=   | Deletes the character before the cursor. |
+| none  | ~C-b~, ~<left>~            | =minibuffer-backward-char=          | Moves the cursor left. |
+| none  | ~C-f~, ~<right>~           | =minibuffer-forward-char=           | Moves the cursor right. |
+| none  | ~C-a~, ~<home>~            | =minibuffer-beginning=              | Moves to the start of the answer. |
+| none  | ~C-e~, ~<end>~             | =minibuffer-end=                    | Moves to the end of the answer. |
+| none  | ~C-k~                      | =minibuffer-kill-line=              | Deletes the answer after the cursor. |
+| none  | ~C-u~                      | =minibuffer-clear=                  | Clears the answer. The prompt stays. |
+| none  | ~C-<backspace>~, ~M-DEL~   | =minibuffer-backward-kill-word=     | Deletes the word before the cursor. In a path, one name. |
+| none  | ~C-w~                      | =minibuffer-backward-kill-to-space= | Deletes back to the space before the cursor, as in a shell. A path goes whole. |
+| none  | ~M-d~                      | =minibuffer-kill-word=              | Deletes the word after the cursor. |
+| none  | ~M-b~, ~C-<left>~          | =minibuffer-backward-word=          | Moves back to the start of a word. |
+| none  | ~M-f~, ~C-<right>~         | =minibuffer-forward-word=           | Moves on to the end of a word. |
+| none  | ~C-y~, ~C-V~, ~S-<insert>~ | =minibuffer-paste=                  | Pastes the clipboard, or what you cut last. |
+| none  | ~M-p~                      | =minibuffer-previous-history=       | Brings back an earlier answer to this question. |
+| none  | ~M-n~                      | =minibuffer-next-history=           | Goes to a later answer. |
 
 A question the editor thinks is risky, such as deleting a file, needs the
 whole word yes or no and then ~RET~. A question whose answer is easy to undo
@@ -615,6 +619,7 @@ replaces it and ~RET~ takes it.
 |-----------------------------+---------+-----------------------------------------------------------------------------------------|
 | =*show-completion-count*=   | =t=     | Shows the place of the selected choice and how many there are before the prompt.        |
 | =*prompt-above-candidates*= | =t=     | Shows the prompt above the list of choices. =nil= puts it on the last row, under them.  |
+| =*path-delete-by-branches*= | =t=     | In questions for a file or directory, DEL deletes back by the branches of the path, the reverse of TAB. =:directories= does so after a directory's =/= only, =nil= never. |
 | =*last-used-first*=         | =t=     | Questions for a file or directory start where you chose last and list that entry first. |
 
 *** Faces
@@ -686,6 +691,7 @@ The settings for the prompt, =*prompt-above-candidates*= and
 | Face                         | Default  | What it paints             |
 |------------------------------+----------+----------------------------|
 | =:completion-selected=       | theme    | The selected choice. |
+| =:minibuffer-deletion-mark=  | theme    | The end of an answer the next ~DEL~ deletes, in a question for a path. |
 | =:completion-annotation=     | theme    | Notes beside choices. |
 | =:completion-group-title=    | theme    | The title of a group of choices. |
 | =:completion-group-line=     | theme    | The line beside a title. |

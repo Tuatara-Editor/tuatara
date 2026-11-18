@@ -262,7 +262,7 @@ message for the others, \\[list-visit-other] in another window).
 for deletion (D), \\[list-unmark-entry] and \\[list-unmark-all] unmark.
 \\[list-delete-marked] empties the marked registers (the one on the line when
 none is) after asking, \\[list-execute] those marked for deletion.
-\\[revert-buffer] lists them again, and \\[quit-window] or \\`h' returns."
+\\[revert-buffer] lists them again, and \\[quit-window] returns."
   :lighter "Registers" :interactive nil)
 
 (defparameter *registers-title-lines* 2
@@ -331,7 +331,7 @@ the object it keeps; another key means the list is out of date (KEEP-SHOWN-CURRE
 keeps (a place, text, a rectangle, a number) and a look at that.
 \\<registers-mode>\\[list-visit] or \\`RET' goes to the place on the line,
 \\[list-mark-entry] marks a register, \\[list-delete-marked] empties the marked ones (the one on the line
-when none is), \\[quit-window] or \\`h' returns."
+when none is), \\[quit-window] returns."
   (let ((list (buffer-in-mode "*Registers*" 'registers-mode)))
     (registers-render list)
     (show-buffer list)))

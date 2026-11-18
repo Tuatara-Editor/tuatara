@@ -415,10 +415,11 @@ The system's own manual pages, the ones that explain programs such as =ls= or
 =ls=, =ls(1)= or =1 ls=, and lists the names of the pages the system has as you
 type. The page opens read-only in a window of its own, laid out for the width of
 the window, with its headings, bold text and underlined text drawn in faces.
-Every mention of another page, such as =chmod(1)=, is a link. ~RET~ or ~l~
-follows it, ~TAB~ goes to the next link, and ~h~ comes back to the page you
-came from. ~n~ and ~p~ go to the next and the previous section, ~r~ lays the
-page out again if you changed the size of the window, and ~q~ closes it.
+Every mention of another page, such as =chmod(1)=, is a link. ~RET~
+follows it, ~TAB~ goes to the next link, and ~B~ comes back to the page you
+came from. ~h~, ~j~, ~k~ and ~l~ move the cursor as in any text. ~n~ and ~p~
+go to the next and the previous section, ~r~ lays the page out again if you
+changed the size of the window, and ~q~ closes it.
 
 If you open the source of a page, a file such as =tool.1=, ~M-x man~ offers
 that file first, so that you can see what you wrote as it will look.
@@ -465,7 +466,8 @@ feature needs, and is nothing to worry about. Further down, a table has a row
 for each language, with a tick when its colours, indentation and selections
 work, and then the major modes and the files they take. In a window, the
 report also measures how quickly each way of drawing is on your machine and
-which is faster.
+which is faster. In a window of a daemon's client it is measured where the
+client runs.
 
 In the report ~r~ checks again and ~q~ closes it. Run it first when something
 does not work, and send it with a report of a fault.

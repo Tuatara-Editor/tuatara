@@ -535,7 +535,7 @@ in last is at the top, and each line says when it was deleted and where it
 was. In the list, ~R~ puts the marked things back where they were, ~D~
 deletes them for good and ~x~ deletes those marked with =D=. ~X~ empties the
 whole trash and asks twice. ~RET~ opens a thing safely so that you can look
-at it before you decide. ~h~ or ~q~ returns to your directory.
+at it before you decide. ~q~ returns to your directory.
 
 A file that you trash on a USB stick goes to the stick's own trash and comes
 back to where it was. That is why the trash list has a section for each

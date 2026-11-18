@@ -456,6 +456,7 @@ shell on that machine."
   "Bind the keys of the list of trusted servers: \\`+' trusts another,
 \\`A', \\`H', \\`G', \\`C' and \\`F' change what the servers marked are given,
 \\`T' the tuatara run there."
+  (declare-list-kind 'servers-mode :plain)
   (define-keys *servers-keymap* '(("+" server-trust) ("A" server-toggle-agent) ("H" server-agent-destinations)
                                   ("G" server-toggle-gpg) ("C" server-toggle-clipboard) ("F" server-toggle-files)
                                   ("T" server-tuatara-program)))

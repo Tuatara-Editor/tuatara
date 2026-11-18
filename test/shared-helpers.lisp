@@ -132,16 +132,19 @@ to every part that asks.")
     (false (aref holders 1))))
 
 (define-test (shared-helpers list-keys-bound-one-way)
-  ;; every list goes back with h and C-b, and a list of entries to open has the same keys for them
+  ;; h and C-b do what the list's kind says: fold a heading in a manager, go back from a list entered from
+  ;; another view, nothing of their own elsewhere; a list of entries to open has the same keys for them
   (run-keys "")
   (flet ((key (mode text) (tuatara.command:lookup-key (tuatara.modes:mode-keymap mode)
                                                       (tuatara.frontend:parse-key-sequence text))))
-    (dolist (mode '(tuatara.defaults::jobs-mode tuatara.defaults::bookmarks-mode tuatara.git::git-blame-mode))
-      (is eq 'tuatara.defaults::quit-window (key mode "h") "~a" mode)
-      (is eq 'tuatara.defaults::quit-window (key mode "C-b") "~a" mode))
+    (dolist (text '("h" "C-b"))
+      (is eq 'tuatara.defaults::list-fold-heading (key 'tuatara.defaults::bookmarks-mode text))
+      (is eq 'tuatara.defaults::quit-window (key 'tuatara.git::git-log-mode text))
+      (false (key 'tuatara.defaults::jobs-mode text))
+      (false (key 'tuatara.git::git-blame-mode text)))
     (is eq 'tuatara.defaults::list-next-entry (key 'tuatara.defaults::bookmarks-mode "n"))
     (is eq 'tuatara.defaults::list-visit-other (key 'tuatara.defaults::bookmarks-mode "o"))
-    (true (fboundp 'tuatara.defaults::list-back-keys))))
+    (true (fboundp 'tuatara.defaults::declare-list-kind))))
 
 (define-test (shared-helpers quit-questions-asked-one-way)
   ;; the questions before quitting: asked in order until one says stay; what they give to call, called once

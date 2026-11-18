@@ -18,6 +18,8 @@ colours show until a theme sets them.")
 (define-face :mode-line-directory "The buffer's directory at the end of the mode line.")
 (define-face :minibuffer-prompt "The prompt of the minibuffer." :bold t)
 (define-face :completion-selected "The selected completion candidate." :reverse t)
+(define-face :minibuffer-deletion-mark "The end of a question's answer that the next deletion
+deletes, its text coloured: in a question for a path, back to where a name branches." :fg :blue :bold t)
 (define-face :completion-annotation "Annotations beside completion candidates:
 documentation, and what else has no face of its own." :dim t)
 (define-face :completion-group-title "The title of a group of completion
@@ -88,12 +90,12 @@ list (a master's M, RIMU-MARK-MASTER): the mark and the name." :fg :cyan :bold t
 (define-face :list-filters "The line above a list narrowed by search filters (\\[search-filter-regex]),
 saying by what and how many entries are left." :inherit :warning)
 (define-face :list-special "Something Tuatara made rather than a file of yours,
-in a list: the names in stars in the buffer list (\\[buffers]), *Messages* and
+in a list: the names in stars in the buffer list (\\[buffer-manager]), *Messages* and
 *scratch*." :fg :green)
 (define-face :list-read-only "Something that cannot be changed, in a list: the
-names of read-only buffers in the buffer list (\\[buffers])." :fg :blue)
+names of read-only buffers in the buffer list (\\[buffer-manager])." :fg :blue)
 (define-face :list-dim "What is of less interest in a list, set back: help
-buffers and the headings of clients that ended in the buffer list (\\[buffers]),
+buffers and the headings of clients that ended in the buffer list (\\[buffer-manager]),
 packages not loaded, bookmarks whose file is gone, files ignored in rimu and in
 a git status, a value missing in the health report (\\[check-health]), a line
 saying more are not shown." :fg :bright-black)
@@ -533,6 +535,7 @@ window paints where nothing else gives a colour."
   :palette ((text "#000000") (ground "#ffffff"))
   (:mode-line :reverse t) (:mode-line-inactive :reverse t :dim t) (:vertical-border :dim t)
   (:region :reverse t) (:banked-line :reverse t :dim t) (:completion-selected :reverse t)
+  (:minibuffer-deletion-mark :underline t :bold t)
   (:split-place :underline t) (:split-cursor :reverse t) (:split-cursor-insert :reverse t :underline t)
   (:cursor :reverse t)
   (:search-current :reverse t :bold t) (:search-other :underline t :bold nil) (:search-outside-scope :dim t)
@@ -610,6 +613,7 @@ steel-blue mode line. From the Ao theme by the same author."
   (:mode-line-look-only :reverse nil :bold t :fg ground :bg orange) (:git-look-only :bold t :fg orange)
   (:minibuffer-prompt :bold nil :fg blue-warmer)
   (:completion-selected :reverse nil :bold t :bg completion-ground)
+  (:minibuffer-deletion-mark :bold t :fg blue-cooler)
   (:completion-annotation :dim nil :fg text-dim)
   (:completion-group-title :bold t :fg blue) (:completion-group-line :dim nil :fg text-dim)
   (:completion-match-0 :fg blue-cooler) (:completion-match-1 :fg magenta)

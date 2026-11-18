@@ -194,7 +194,7 @@ gives up. Keeping again under the same character replaces what was there.
 | none  | ~M-x register-prepend~ | =register-prepend= | Puts the selected text before the text a register keeps. |
 | none  | ~C-x r i~              | =register-insert=  | Writes what a register keeps at the cursor. Text goes in as it was, with the mark before it. A block goes in as a block, each row as many times as the number you gave first. A number goes in as digits. |
 | none  | ~C-x r j~              | =register-jump=    | Goes to the place a register keeps.    |
-| none  | ~C-x r l~              | =register-list=    | Lists the registers in a buffer, one per line. ~RET~ on a place goes there, and ~q~ or ~h~ closes the list. |
+| none  | ~C-x r l~              | =register-list=    | Lists the registers in a buffer, one per line. ~RET~ on a place goes there, and ~q~ closes the list. |
 
 A register that keeps something that is not the right kind says what it
 keeps instead. A place worth keeping beyond this session is a bookmark rather

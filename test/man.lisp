@@ -133,7 +133,7 @@ faces, its references links; reading what man prints; asking for pages.")
                                       (lambda (asked &rest keys)
                                         (push asked opened)
                                         (and (getf keys :file) (apply original asked keys)))))
-             ;; n goes to the next section heading, p back; l follows the reference at point
+             ;; n goes to the next section heading, p back; RET follows the reference at point
              (let (point-after-n point-after-p)
                (run-keys (list "M-x m a n RET RET" #'man-test-wait :tick "n n n n"
                                (lambda ()
@@ -145,7 +145,7 @@ faces, its references links; reading what man prints; asking for pages.")
                                    (setf point-after-p (tuatara.buffer:buffer-point buffer))
                                    (setf (tuatara.buffer:buffer-point buffer)
                                          (+ 2 (search "frobnicate(1)" (tuatara.buffer:buffer-string buffer))))))
-                               "l")
+                               "RET")
                          :file path :width 70 :height 20)
                (let* ((buffer (tuatara.buffer:find-buffer "*Man keys.1*"))
                       (text (tuatara.buffer:buffer-string buffer)))

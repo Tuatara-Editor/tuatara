@@ -31,6 +31,21 @@ safely, or in one of *UNTRUSTED-DIRECTORIES*, is never remembered so.
   name alone."
   :values boolean)
 
+(define-setting *path-delete-by-branches* t
+  "What \\<path-question>\\[minibuffer-path-backward-delete] does in the questions
+that choose a file or a directory (\\[find-file] and the rest), as the reverse
+of \\`TAB'.
+- t: after a whole name, a directory's just after its / or a file's as it is
+  named, it paints the end of the name, past where it begins as another entry
+  of its directory does, and deletes that next; that leaves the start both
+  match by, and so back, branch by branch, to the directory alone. Typing adds
+  to the path as ever. Within a name still being typed it deletes a character
+  (the standard).
+- :directories: so after a directory's / alone; after a file's name it deletes
+  a character.
+- nil: it deletes the character before the cursor, as everywhere."
+  :values (member t :directories nil))
+
 (defvar *chosen-paths-kept* 1000
   "How many files and directories chosen in the questions for them are kept,
 to offer again first.")
@@ -302,7 +317,7 @@ directory; else the first of CANDIDATES."
 home directory.")
 
 (defvar *asking-for-path* nil
-  "True while a question for a path asks (READ-PATH).")
+  "The question for a path asking now (READ-PATH), a PATH-QUESTION, or NIL.")
 (pushnew '*asking-for-path* *question-variables*)
 
 (defun asking-for-path-p (buffer)
@@ -317,7 +332,72 @@ of the path typed, listing what is in it."
 
 (commands-for-mode 'asking-for-path-p "a question for a file or a directory" 'minibuffer-home-directory)
 
-(define-keys *path-question-keymap* '(("S-TAB" minibuffer-home-directory)))
+(defun shared-start (a b)
+  "How many characters the strings A and B begin with alike."
+  (or (mismatch a b) (length a)))
+
+(defun branch-point (name names)
+  "Where NAME, the last part of a path typed, last branches from the other
+entries of its directory, NAMES: the longest start it shares with one of them
+that does not begin with NAME whole, 0 when it shares none. Deleting the rest
+leaves the start that matches them too."
+  (let ((most 0))
+    (dolist (other names most)
+      (unless (uiop:string-prefix-p name other)
+        (setf most (max most (shared-start name other)))))))
+
+(defun path-question-names (text)
+  "The names of the entries listed so far of the directory of TEXT, the line
+of the question for a path asking now, a directory's without its /."
+  (let ((question *asking-for-path*))
+    (and question
+         (mapcar (lambda (c) (string-right-trim "/" (candidate-string c)))
+                 (path-question-entries question text)))))
+
+(defun mark-to-branch-point ()
+  "Mark for the next deletion the part of the last name of the path typed past
+where it branches from the other entries listed of its directory
+\(BRANCH-POINT), the whole name when it shares no start with one of them or
+none are listed yet."
+  (let* ((text (editor-minibuffer-text *editor*))
+         (start (input-name-start text))
+         (name (subseq text start)))
+    (when (plusp (length name))
+      (mark-minibuffer-deletion (+ start (branch-point name (path-question-names text)))))))
+
+(define-command minibuffer-path-backward-delete (:interactive nil)
+  "In a question for a file or a directory, delete back by the branches of the
+path, the reverse of \\`TAB', as *PATH-DELETE-BY-BRANCHES* says. After a whole name,
+just after a directory's / (which goes) or after a file's name as an entry is
+named, paint the end of the name past where it last shares a start with
+another entry of its directory; the next
+\\<path-question>\\[minibuffer-path-backward-delete] deletes what is painted
+and paints back to the branch before, until the directory alone is left, all
+its entries listed. Typing adds to the path as ever, and any other key takes
+the paint away. Within a name still being typed, or with the setting nil,
+delete the character before the cursor."
+  (let* ((text (editor-minibuffer-text *editor*))
+         (point (editor-minibuffer-point *editor*))
+         (by-branches (and tuatara-user:*path-delete-by-branches* (= point (length text))))
+         (files (eq t tuatara-user:*path-delete-by-branches*))
+         (start (input-name-start text)))
+    (cond ((delete-marked-minibuffer-text)
+           (when by-branches (mark-to-branch-point)))
+          ((drop-offered-text))
+          ((and by-branches (> point 1) (char= #\/ (char text (1- point))))
+           (replace-minibuffer-text (1- point) point "")
+           (mark-to-branch-point))
+          ((and files by-branches (< start point)
+                (member (subseq text start) (path-question-names text) :test #'string=))
+           (mark-to-branch-point))
+          ((plusp point)
+           (replace-minibuffer-text (1- point) point "")))))
+
+(commands-for-mode 'asking-for-path-p "a question for a file or a directory" 'minibuffer-path-backward-delete)
+
+(define-keys *path-question-keymap* '(("S-TAB" minibuffer-home-directory)
+                                      ("DEL" minibuffer-path-backward-delete)
+                                      ("C-h" minibuffer-path-backward-delete)))
 
 (define-record (path-question (:constructor make-path-question (&key writing keep)) (:copier nil))
   "A question for a path being asked (READ-PATH): WRITING and KEEP as it was
@@ -403,8 +483,10 @@ first, those chosen lately before others. A / or ~/ typed after it starts the
 path again (SUBSTITUTE-FILE-INPUT), the line holding just that
 \(REWRITE-FILE-INPUT), and
 \\<path-question>\\[minibuffer-home-directory] starts it from ~/. The line
-typed is selected while it names a directory (ends in /), else the first entry
-matching. A directory chosen is gone into, its entries offered in turn. With
+typed is selected while it names a directory (ends in /), unpainted, as typing
+adds to it, else the first entry matching.
+\\[minibuffer-path-backward-delete] deletes back by the branches of the path.
+A directory chosen is gone into, its entries offered in turn. With
 PREVIEW, a function as CALL-WITH-WINDOW-PREVIEW gives, the file selected is
 shown meanwhile. Returns the path, and as a second value true when it is the
 line typed, taken as it is (\\<minibuffer>\\[minibuffer-finish] on it, or
@@ -427,7 +509,7 @@ line typed, taken as it is (\\<minibuffer>\\[minibuffer-finish] on it, or
          (setf input dir)
          (let* ((question (make-path-question :writing writing :keep keep))
                 (chosen (unwind-protect
-                             (let ((*asking-for-path* t))
+                             (let ((*asking-for-path* question))
                                (completing-read prompt
                                                 (lambda (typed)
                                                   (setf input typed)
@@ -435,6 +517,7 @@ line typed, taken as it is (\\<minibuffer>\\[minibuffer-finish] on it, or
                                                 :initial dir
                                                 :keymap *path-question-keymap*
                                                 :keep-order :until-typed
+                                                :paint-input nil
                                                 :rewrite #'rewrite-file-input
                                                 :select #'input-when-directory
                                                 :reselect t

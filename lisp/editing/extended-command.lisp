@@ -18,7 +18,7 @@ a buffer (COMMANDS-FOR-MODE), and what to call its buffers.")
 (defun commands-for-mode (mode where &rest commands)
   "Let COMMANDS run in buffers of major mode MODE only, and of the other modes
 they are made for by calls of their own; elsewhere they say that they work in
-WHERE (\"the buffer list (\\[buffers])\") and do nothing, and
+WHERE (\"the buffer list (\\[buffer-manager])\") and do nothing, and
 \\[execute-extended-command] does not offer them."
   (dolist (command commands)
     (setf (gethash command *mode-commands*)

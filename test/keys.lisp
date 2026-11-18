@@ -136,7 +136,7 @@ the editor TUATARA.COMMAND:*EDITOR* is bound to."
     (let ((global (tuatara.command:editor-global-keymap editor)))
       (loop for (keys command) in '(("C-x b" switch-to-buffer)
                                     ("C-x x b" switch-other-buffer)
-                                    ("C-x C-b" buffers)
+                                    ("C-x C-b" buffer-manager)
                                     ("C-x C-r" find-recent-file)
                                     ("M-g o" buffer-outline)
                                     ("C-x C-j" rimu-jump)

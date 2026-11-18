@@ -443,7 +443,7 @@ With a server, you can also ask more of the project:
 
 In an =*xref*= list, ~n~ and ~p~ show the next and the previous place in the
 window you came from and leave the list where it is. ~RET~ or ~l~ goes to the
-place. ~o~ shows it in the other window, and ~h~ or ~q~ closes the list.
+place. ~o~ shows it in the other window, and ~q~ closes the list.
 
 For what no server knows, such as a word in a comment or a message in a string,
 ~M-s g~ (=search-in-files=) searches the text of every file in the project as

@@ -5,7 +5,7 @@
 
 (define-test cache
   :description "Entries of the cache are kept after use, found again by their keys, cleared *cache-keep* after
-their last use but never while in use or pinned, never outside the cache directory, and listed by M-x list-cache,
+their last use but never while in use or pinned, never outside the cache directory, and listed by M-x cache-manager,
 where they are opened, pinned and deleted.")
 
 (defmacro with-cache-kind ((kind directory) &body body)
@@ -104,7 +104,7 @@ entries and their directory gone after."
       (is string= "kept" (file-text (concatenate 'string target "file")) "what it led to left"))))
 
 (define-test (cache listed-pinned-and-deleted)
-  ;; M-x list-cache lists an entry under its kind's title; p pins it; d then x deletes it after a yes, pinned
+  ;; M-x cache-manager lists an entry under its kind's title; P pins it; d then x deletes it after a yes, pinned
   ;; or not, and one in use is not deleted
   (with-cache-kind ("test" "cache-test/")
     (let* ((tuatara-user:*modal-editing* nil)
@@ -122,9 +122,9 @@ entries and their directory gone after."
                      t)))))
         (unwind-protect
              (progn
-               (auto-save-session (list (format nil "M-x ~a RET" (typed-keys "list-cache"))
+               (auto-save-session (list (format nil "M-x ~a RET" (typed-keys "cache-manager"))
                                         (list :until (on "A free entry"))
-                                        "p"
+                                        "P"
                                         (list :until (lambda () (tuatara.defaults::cache-entry-pinned
                                                                  (tuatara.defaults::cache-entry-at free)))))
                                   :width 160)
@@ -188,3 +188,156 @@ entries and their directory gone after."
                (tuatara.defaults::keep-private-directories-fresh nil))
              (true (> (cache-entry-used-time directory) (- (get-universal-time) 60)) "touched"))
         (tuatara.defaults::stop-using-cache-directory directory :someone)))))
+
+(defmacro with-kept-index ((index kept root) &body body)
+  "Run BODY with a state directory of its own and INDEX, a directory index of
+ROOT, a new directory of five notes, read and kept on disk in KEPT, its
+directory of the cache, held in use by nothing; *CACHE-KEEP* 100 seconds and
+the entry's last use 1000 seconds before now. Its copy on disk gone after."
+  (let ((dir (gensym)))
+    `(with-fresh-state
+       (with-test-directory (,dir)
+         (let* ((tuatara-user:*cache-keep* 100)
+                (,root (tuatara.defaults::directory-name ,dir))
+                (,index (tuatara.defaults::make-directory-index ,root)))
+           (dotimes (i 5) (put-file (merge-pathnames (format nil "n~d.txt" i) ,dir) (format nil "note ~d~%" i)))
+           (index-now ,index (tuatara.defaults::read-directory-index ,index :all (* 1024 1024) 64 t))
+           (let ((,kept (tuatara.defaults::directory-index-kept-in ,index)))
+             (unwind-protect
+                  (progn
+                    (tuatara.defaults::put-cache-entry
+                     (tuatara.defaults::changed-cache-entry (tuatara.defaults::cache-entry-at ,kept)
+                                                            :used (- (get-universal-time) 1000)))
+                    ,@body)
+               (ignore-errors (tuatara.io:delete-tree ,kept)))))))))
+
+(define-test (cache index-held-while-searched)
+  ;; a search or a reading holds the index's entry in use: a clear meanwhile leaves it, however old; the
+  ;; search notes its last use, and *cache-keep* after that it is cleared like any other entry
+  (with-kept-index (index kept root)
+    (let ((now (get-universal-time)))
+      (true kept "the index kept in the cache, as an entry")
+      (is equal root (tuatara.defaults::cache-entry-key (tuatara.defaults::cache-entry-at kept)))
+      (tuatara.defaults::call-searching-index
+       index (lambda ()
+               (tuatara.defaults::clear-old-cache :now (+ now 1000))
+               (is eq :directory (tuatara.io:path-kind kept :follow nil) "kept while searched")))
+      (false (tuatara.defaults::directory-index-lost index))
+      (true (>= (cache-entry-used-time kept) now) "last used as the search ended")
+      (sb-int:encapsulate 'tuatara.defaults::save-index 'cleared-meanwhile
+                          (lambda (function &rest arguments)
+                            (tuatara.defaults::clear-old-cache :now (+ now 1000))
+                            (apply function arguments)))
+      (unwind-protect
+           (index-now index (tuatara.defaults::read-directory-index index :all (* 1024 1024) 64 t))
+        (sb-int:unencapsulate 'tuatara.defaults::save-index 'cleared-meanwhile))
+      (is eq :regular (tuatara.io:path-kind (concatenate 'string kept "index") :follow nil) "kept while read")
+      (tuatara.defaults::clear-old-cache :now (+ (cache-entry-used-time kept) 99))
+      (is eq :directory (tuatara.io:path-kind kept :follow nil) "kept a whole *cache-keep* from its last use")
+      (tuatara.defaults::clear-old-cache :now (+ (cache-entry-used-time kept) 101))
+      (false (tuatara.io:path-kind kept :follow nil) "cleared once unused for *cache-keep*"))))
+
+(define-test (cache index-cleared-first-written-again)
+  ;; cleared before a search takes it: the search reads the pieces mapped still, whole, and the copy on disk is
+  ;; written again from them at the next tick, no file read again, one the next session takes up
+  (with-kept-index (index kept root)
+    (tuatara.defaults::clear-old-cache :now (+ (get-universal-time) 1000))
+    (false (tuatara.io:path-kind kept :follow nil) "cleared, unused for long")
+    (let ((text (tuatara.defaults::call-searching-index
+                 index (lambda ()
+                         (format nil "~{~a~}" (map 'list (lambda (corpus)
+                                                           (tuatara.text:rope-string
+                                                            (tuatara.defaults::file-corpus-rope corpus)))
+                                                   (tuatara.defaults::directory-index-corpora index)))))))
+      (dotimes (i 5) (true (search (format nil "note ~d" i) text) "searched whole")))
+    (true (tuatara.defaults::directory-index-lost index))
+    (let ((reads 0)
+          (tuatara.defaults::*directory-indexes* (list index))
+          (tuatara.defaults::*indexes-made-for* (list tuatara-user:*indexed-directories*))
+          (tuatara-user:*indexes-kept-on-disk* t))
+      (sb-int:encapsulate 'tuatara.defaults::read-text-file 'count-reads
+                          (lambda (f &rest arguments) (incf reads) (apply f arguments)))
+      (unwind-protect
+           (progn
+             (tuatara.defaults::indexes-tick nil)
+             (true (wait-until (lambda () (tuatara.defaults::directory-index-result index)) 10))
+             (tuatara.defaults::indexes-tick nil))
+        (sb-int:unencapsulate 'tuatara.defaults::read-text-file 'count-reads))
+      (false (tuatara.defaults::directory-index-lost index))
+      (is = 0 reads "nothing read again")
+      (true (tuatara.defaults::cache-entry-at kept) "an entry again")
+      (let ((next (tuatara.defaults::make-directory-index root)))
+        (true (tuatara.defaults::load-index next kept))
+        (is = (length (tuatara.defaults::directory-index-pieces index))
+            (length (tuatara.defaults::directory-index-pieces next)))))))
+
+(define-test (cache index-held-at-little-cost)
+  ;; holding an index for a search looks nothing up again that only changes with the settings: the cache
+  ;; directory is not worked out anew, nor the list of the cache written, at each search
+  (with-kept-index (index kept root)
+    (tuatara.defaults::call-searching-index index (lambda () nil))
+    (let ((worked-out 0) (written 0))
+      (sb-int:encapsulate 'tuatara.io:cache-directory 'counted
+                          (lambda (function &rest arguments) (incf worked-out) (apply function arguments)))
+      (sb-int:encapsulate 'tuatara.defaults::put-cache-entry 'counted
+                          (lambda (function &rest arguments) (incf written) (apply function arguments)))
+      (unwind-protect
+           (dotimes (i 10) (tuatara.defaults::call-searching-index index (lambda () nil)))
+        (sb-int:unencapsulate 'tuatara.io:cache-directory 'counted)
+        (sb-int:unencapsulate 'tuatara.defaults::put-cache-entry 'counted))
+      (is = 0 worked-out "the cache directory known")
+      (is = 0 written "last use noted once a minute at most"))))
+
+(define-test (cache root-follows-its-setting)
+  ;; the cache directory, known between asks, is worked out again once *cache-directory* names another, and
+  ;; looked for each time the cache is looked through, so that a drive lost or found is noticed
+  (with-test-directory (dir)
+    (let ((before (tuatara.defaults::cache-root)) (looked 0))
+      (let ((tuatara-user:*cache-directory* (namestring dir)))
+        (is string= (tuatara.defaults::directory-name dir) (tuatara.defaults::cache-root)))
+      (is string= before (tuatara.defaults::cache-root))
+      (sb-int:encapsulate 'tuatara.io:cache-directory 'counted
+                          (lambda (function &rest arguments) (incf looked) (apply function arguments)))
+      (unwind-protect (with-fresh-state (tuatara.defaults::clear-old-cache))
+        (sb-int:unencapsulate 'tuatara.io:cache-directory 'counted))
+      (true (plusp looked) "looked for as the cache is looked through"))))
+
+(define-test (cache use-read-with-table-free)
+  ;; taking up an entry reads the disk and the list of the cache with the table of uses free: another thread,
+  ;; the editor's, never waits on it
+  (with-cache-kind ("test" "cache-test/")
+    (let ((directory (tuatara.defaults::make-cache-entry "test" "free" "Free")) (free :not-asked))
+      (sb-int:encapsulate 'tuatara.defaults::cache-entry-at 'table-free
+                          (lambda (function &rest arguments)
+                            (let ((other (sb-thread:make-thread
+                                          (lambda ()
+                                            (sb-ext:with-locked-hash-table (tuatara.defaults::*cache-uses*) t)))))
+                              (setf free (sb-thread:join-thread other :timeout 2 :default nil)))
+                            (apply function arguments)))
+      (unwind-protect (true (tuatara.defaults::use-cache-directory directory :someone))
+        (sb-int:unencapsulate 'tuatara.defaults::cache-entry-at 'table-free))
+      (is eq t free "the table taken by another thread meanwhile")
+      (tuatara.defaults::stop-using-cache-directory directory :someone))))
+
+(define-test (cache index-written-again-once-for-two)
+  ;; two sessions keeping the same directory read, its index cleared: the second to write it again takes the
+  ;; first one's pieces rather than writing its own and taking the first one's away, and so on by turns
+  (with-kept-index (index kept root)
+    (let ((other (tuatara.defaults::make-directory-index root)) (written 0))
+      (index-now other (tuatara.defaults::read-directory-index other :all (* 1024 1024) 64 t))
+      (tuatara.defaults::clear-old-cache :now (+ (get-universal-time) 1000))
+      (false (tuatara.io:path-kind kept :follow nil) "cleared")
+      (index-now index (tuatara.defaults::read-directory-index index '() (* 1024 1024) 64 t))
+      (index-now other (tuatara.defaults::read-directory-index other '() (* 1024 1024) 64 t))
+      (true (every (lambda (p) (tuatara.defaults::index-piece-kept-p p kept))
+                   (tuatara.defaults::directory-index-pieces index))
+            "the first one's pieces left")
+      (is equal (map 'list #'tuatara.defaults::index-piece-file (tuatara.defaults::directory-index-pieces index))
+          (map 'list #'tuatara.defaults::index-piece-file (tuatara.defaults::directory-index-pieces other))
+          "and taken by the second")
+      (sb-int:encapsulate 'tuatara.io:write-new-file 'counted
+                          (lambda (function &rest arguments) (incf written) (apply function arguments)))
+      (unwind-protect
+           (index-now index (tuatara.defaults::read-directory-index index '() (* 1024 1024) 64 t))
+        (sb-int:unencapsulate 'tuatara.io:write-new-file 'counted))
+      (is = 0 written "nothing written again by turns"))))

@@ -338,7 +338,7 @@ lone minus; NIL for none, or with no editor."
 (define-record (completion (:constructor make-completion
                                         (table &key annotate require-match history (separator #\/) (filter t)
                                                     select reselect preview source default keep-order none taken
-                                                    (prompt "")))
+                                                    (prompt "") (paint-input t)))
                           (:copier nil))
   "State of a completing read. TABLE is a list of CANDIDATE or a function of
 the input returning one. ANNOTATE is a function of a candidate returning an
@@ -393,6 +393,8 @@ function table matches and completes the input.")
 table's candidates as they come.")
   (select nil :read-only t :documentation "The function naming the candidate a COMPLETION
 selects at first, or NIL.")
+  (paint-input t :read-only t :documentation "True when the line typed is painted while a COMPLETION
+has it selected; NIL for a question where typing adds to it.")
   (reselect nil :read-only t :documentation "True when a COMPLETION's SELECT names the
 candidate selected after each change of the input too.")
   (preview nil :read-only t :documentation "The function a COMPLETION calls with the

@@ -78,7 +78,7 @@
   ;; its own under C-x, C-c or M-g (C-h f names it).
   ;; (bind-key "," 'switch-to-buffer :map :leader)
   ;; (bind-key "b" 'switch-other-buffer :map :leader)
-  ;; (bind-key "I" 'buffers :map :leader)
+  ;; (bind-key "I" 'buffer-manager :map :leader)
   ;; (bind-key "N" 'new-empty-buffer :map :leader)
   ;; (bind-key "c" 'calendar :map :leader)
   ;; (bind-key "C" 'calendar-here :map :leader)
@@ -489,6 +489,12 @@
   ;; name; nil: they start in the current buffer's directory, listed by name
   ;; alone. Not set: t.
   ;; (setf *last-used-first* nil)
+
+  ;; In path questions DEL after a whole name selects back to where it branches
+  ;; from another entry of its directory, and deletes that next, the reverse of
+  ;; TAB; :directories: after a directory's / alone; nil: DEL deletes one
+  ;; character. Not set: t.
+  ;; (setf *path-delete-by-branches* :directories)
 
   ;; Typing a slash in a path in the text (/etc/, ~/notes/, ./src/) lists
   ;; what that directory holds beside the cursor; TAB puts one in. Not set: t;
@@ -1495,7 +1501,7 @@
 
   ;; What the cache keeps for you to come back to (copies of files read from
   ;; other machines, mailboxes read by readpst) is cleared this long after
-  ;; you last used it, never while in use; M-x list-cache shows it, and p
+  ;; you last used it, never while in use; M-x cache-manager shows it, and P
   ;; there pins an entry, kept until you delete it. Not set: "1d".
   ;; (setf *cache-keep* "3d")
 

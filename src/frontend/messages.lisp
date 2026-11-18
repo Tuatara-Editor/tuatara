@@ -13,7 +13,7 @@
 
 ;;; Kinds and bounds
 
-(defconstant +protocol+ 6
+(defconstant +protocol+ 7
   "The number of the messages' format, said first both ways: a client and an
 editor of different numbers, or of different builds, do not talk.")
 
@@ -812,11 +812,70 @@ then made by the caller once it has all."
 
 ;;; Answers, from a client
 
-(defparameter *questions* #(:clipboard :primary :font :font-steps :lend)
+(defparameter *questions* #(:clipboard :primary :font :font-steps :lend :renderers :measure-drawing)
   "What the editor asks a client, by their numbers in a message: the text of
 its clipboard or primary selection, the font it chose given a name, the font
-steps it took given a number, and whether it gave its terminal back to be
-lent to a program, words to show there given (1 when it did).")
+steps it took given a number, whether it gave its terminal back to be lent
+to a program, words to show there given (1 when it did), the ways its window
+can be drawn (RENDERERS-TEXT), and how it draws one of them, measured
+\(FIGURES-TEXT).")
+
+;;; How a client's window draws, said in words
+
+(defparameter *renderers* '(:gl :vulkan :cairo)
+  "The ways a window can be drawn that a client and its editor name to each
+other, as *GUI-RENDERER* names them.")
+
+(defconstant +most-renderer-word+ 16 "The most octets of a way of drawing named in a message.")
+
+(defconstant +most-figures-text+ 256 "The most octets of the figures of a window measured.")
+
+(defun renderer-word (renderer)
+  "RENDERER, one of *RENDERERS* or NIL, as a message names it: \"gl\", or
+\"\" for NIL."
+  (if renderer (string-downcase (symbol-name renderer)) ""))
+
+(defun word-renderer (word)
+  "The way of drawing (*RENDERERS*) WORD names, as RENDERER-WORD wrote it, or
+NIL for any other word: none is made from what a message says."
+  (find word *renderers* :key #'renderer-word :test #'string=))
+
+(defun renderers-text (renderers in-use)
+  "RENDERERS, ways of drawing (*RENDERERS*), and IN-USE, the one asked for or
+NIL, as one line of words: \"gl vulkan / gl\"."
+  (format nil "~{~a~^ ~} / ~a" (mapcar #'renderer-word renderers) (renderer-word in-use)))
+
+(defun renderers-from-text (text)
+  "The ways of drawing and, as a second value, the one asked for that TEXT
+names, as RENDERERS-TEXT wrote them; words it does not know left out."
+  (let* ((slash (position #\/ text))
+         (words (tuatara.text:split-words (subseq text 0 (or slash (length text))))))
+    (values (remove nil (mapcar #'word-renderer words))
+            (and slash (word-renderer (string-trim " " (subseq text (1+ slash))))))))
+
+(defun figures-text (figures)
+  "FIGURES, how a window drew when measured (FRONTEND-MEASURE-DRAWING), as one
+line: what drew it, the keys, the frames, then the median and the slowest
+times in microseconds; NIL for none."
+  (when (and figures (realp (getf figures :median)) (realp (getf figures :slowest)))
+    (let ((name (remove-if-not #'alphanumericp (princ-to-string (or (getf figures :renderer) "")))))
+      (format nil "~a ~d ~d ~d ~d" (if (plusp (length name)) (subseq name 0 (min 64 (length name))) "-")
+              (getf figures :keys 0) (getf figures :frames 0)
+              (round (* 1000 (getf figures :median))) (round (* 1000 (getf figures :slowest)))))))
+
+(defun figures-from-text (text)
+  "The figures (FRONTEND-MEASURE-DRAWING) TEXT says, as FIGURES-TEXT wrote
+them, or NIL when it says something else: every number read as digits alone,
+the name as letters and digits alone."
+  (let ((words (tuatara.text:split-words text)))
+    (when (and (= 5 (length words))
+               (<= 1 (length (first words)) 64)
+               (or (string= (first words) "-") (every #'alphanumericp (first words)))
+               (every (lambda (word) (and (<= 1 (length word) 9) (every #'digit-char-p word))) (rest words)))
+      (destructuring-bind (name keys frames median slowest) words
+        (list :renderer (if (string= name "-") nil name)
+              :keys (parse-integer keys) :frames (parse-integer frames)
+              :median (/ (parse-integer median) 1000.0) :slowest (/ (parse-integer slowest) 1000.0))))))
 
 (defun put-answer (box request answer &key more)
   "Put the answer to request number REQUEST in BOX: ANSWER, NIL, a text (a

@@ -162,7 +162,8 @@ takes). :ARGUMENTS is what its form says, as ORG-READ-RULE reads them. :HOUR,
     refilter-search-filters marked-list-mode sectioned-list-mode
     sectioned-pieces entry-member entry-mark keep-list-marks list-acted-on list-mark-sign list-mark-face list-question
     list-toggle-section quit-window list-entries-of list-entry-noun delete-entries visit-entry list-visit
-    list-visit-other list-execute list-delete-marked entry-list-keys list-step-entry list-next-entry list-previous-entry
+    list-visit-other list-execute list-delete-marked entry-list-keys declare-list-kind list-step-entry list-next-entry
+    list-previous-entry
     preview-entry entry-preview-width entry-preview-keys list-toggle-preview side-preview-note
     ;; menus, help and switches
     tuatara.command:define-menu tuatara.command:menu-arguments tuatara.command:keep-menu-open show-help

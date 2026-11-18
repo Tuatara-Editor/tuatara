@@ -72,7 +72,7 @@ available unqualified, and the public API of TUATARA is used.")
            #:*rimu-reuse-lists* #:*rimu-preview* #:*rimu-preview-delay* #:*rimu-preview-size* #:*rimu-follow-changes*
            ;; the directory of a buffer with no file, and what makes a project
            #:*default-directory* #:*project-root-markers* #:*compile-command* #:*compile-output-limit*
-           #:*last-used-first* #:*complete-paths* #:*complete-paths-modes*
+           #:*last-used-first* #:*path-delete-by-branches* #:*complete-paths* #:*complete-paths-modes*
            ;; completing a word from the words in the buffers
            #:*word-completion-keep-case*
            ;; Org: notes, the agenda, capture, code files and dynamic blocks

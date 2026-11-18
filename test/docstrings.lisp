@@ -215,6 +215,6 @@ package's settings left out."
 (define-test (documentation key-references-written-whole)
   ;; a key and a command named in a docstring are written \\`KEY' and \\[COMMAND], so that help shows
   ;; the key: one backslash in the source reads as none, and help shows the bare text
-  (let ((doc (documentation 'tuatara.defaults::list-back-keys 'function)))
+  (let ((doc (documentation 'tuatara.defaults::declare-list-kind 'function)))
     (true (search "\\`h'" doc) "~a" doc)
     (true (search "\\[quit-window]" doc) "~a" doc)))

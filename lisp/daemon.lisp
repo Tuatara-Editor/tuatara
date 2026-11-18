@@ -558,7 +558,7 @@ does in a client: its frames close and it exits, the editor going on. Its
 encrypted buffers close with it; each with changes not saved is asked about
 first: s saves it, l closes it without saving, \\`C-g' keeps the client.
 Its other buffers stay, unsaved ones too, in a group of their own in
-\\[buffers], for another client to take up."
+\\[buffer-manager], for another client to take up."
   (let* ((editor *editor*)
          (client (current-client editor)))
     (dolist (buffer (client-encrypted-buffers client))

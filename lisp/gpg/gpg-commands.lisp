@@ -719,6 +719,7 @@ not, in words."
 
 (defun install-gpg-commands ()
   "Bind the keys of the list of GnuPG keys; its keys have no mark for deletion."
+  (declare-list-kind 'gpg-keys-mode :plain)
   (define-key (mode-keymap 'gpg-keys-mode) "d" :undefined)
   (define-keys *gpg-keys-keymap* '(("RET" gpg-keys-details) ("i" gpg-import-keys) ("x" gpg-keys-export)
                                    ("I" gpg-keys-insert) ("D" list-delete-marked))))

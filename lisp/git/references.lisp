@@ -239,5 +239,5 @@ section."
 to y in a status; give that list the keys of a list whose entries are
 opened (ENTRY-LIST-KEYS), TAB and S-TAB folding its sections."
   (define-keys *git-status-keymap* '(("t" git-tag-menu) ("M" git-remote-menu) ("y" git-show-refs)))
-  (entry-list-keys 'git-refs-mode "a repository's references (\\[git-show-refs])")
+  (entry-list-keys 'git-refs-mode "a repository's references (\\[git-show-refs])" :kind :entries)
   (define-keys (mode-keymap 'git-refs-mode) '(("TAB" list-toggle-fold) ("S-TAB" list-toggle-all-folds))))

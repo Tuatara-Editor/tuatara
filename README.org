@@ -292,7 +292,7 @@ redefine any of it.
 
 * Status
 
-Version 0.90.36, a pre-release: in daily use by its author, its parts tested
+Version 0.90.37, a pre-release: in daily use by its author, its parts tested
 (=tools/test.sh=, about 225,000 checks), its interfaces still changing until
 1.0.0, the first stable release.
 
@@ -302,6 +302,13 @@ settings of the init file and the names of the commands) changes in a way
 that breaks them only in a new major version (2.0.0), and only after a
 release before it has marked the name obsolete; a minor version (1.1.0) adds,
 a patch (1.0.1) fixes.
+
+* The name
+
+Tuatara™ is the name of this editor. You may hand on Tuatara as it is
+released, package it for a distribution and name it in your own work; a
+changed version you hand on to others takes a name of its own. The GNU GPL
+gives no rights in the name; =TRADEMARKS.md= says what may be done with it.
 
 * Credits
 
