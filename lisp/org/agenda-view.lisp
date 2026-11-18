@@ -95,7 +95,7 @@ said by *ORG-AGENDA-EVENT-KIND-TEXT*.
 Drawn again, the time now in its grid and the days left to deadlines stay
 true. It is drawn again just after midnight too, and whenever an agenda file
 changes, in a buffer or on disk.
-- a number: that many minutes.
+- a time: minutes, or words such as \"30m\" or \"1h\"; 10 as standard.
 - nil: only at midnight and when a file changes."
   :values (or (member nil) (minutes 0 *)))
 

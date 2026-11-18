@@ -14,7 +14,7 @@
 When there are more, none are shown, and that is said. Raise it to see larger
 differences, at the cost of the memory of all of them; lower it to refuse them
 sooner.
-- a whole number of octets: the limit, 64 MB as standard."
+- a size: a whole number of octets, or words such as \"128M\"; 64 MB as standard."
   :values (octets 0 *))
 
 (defun sandbox-shown-paths (paths)

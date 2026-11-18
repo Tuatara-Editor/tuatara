@@ -93,7 +93,7 @@ smaller text they come as each key is typed. How large is too large the
 editor finds out from the counts it made (COUNT-TIMED). A buffer's changes
 are sent to its language servers that long after typing in it stops, and what
 they find brought up to date then.
-- a number, 0 or more: the seconds; 1/2 as standard."
+- a time: seconds, or words such as \"500ms\" or \"2s\"; 1/2 as standard."
   :values (seconds 0 *))
 
 (defvar *count-at-once-seconds* 1/100

@@ -89,8 +89,10 @@ that backs up or cleans your home directory already knows about them.
   If you lose it nothing you wrote is gone, but Tuatara forgets its habits.
 - The cache directory, =~/.cache/tuatara/=, holds things Tuatara can make
   again: previews, pages drawn from documents, copies of files opened
-  safely, compiled packages and the log of what happened. You can delete it
-  at any time.
+  safely, copies of files from servers, mailboxes read by readpst, compiled
+  packages and the log of what happened. You can delete it at any time.
+  ~M-x list-cache~ shows what it keeps, and =*cache-keep*= says how long an
+  entry stays once unused (chapter 9).
 
 Fetched packages are kept in a fourth place, =~/.local/share/tuatara/=,
 described in chapter 19.
@@ -422,6 +424,13 @@ and puts the one you choose in force. There are four.
   whatever colours the terminal uses.
 - =plain= uses no colours at all, only bold, underline, reverse video and
   dim. It is for terminals that cannot show colour.
+
+While you move through the list, the whole screen is shown in the theme
+selected, so you see it before you choose. Holding a key down shows the theme
+the list stops at, not each one it passes. ~RET~ keeps the theme shown and
+~C-g~ puts back the one you had. This is always on: the settings for previews
+(=*preview-files*=, =*preview-buffers*= and the others) do not turn it off.
+Your =set-face= lines stay on top of each theme shown.
 
 The theme you choose with ~M-x load-theme~ lasts until you leave. To keep it,
 put it in the init file:

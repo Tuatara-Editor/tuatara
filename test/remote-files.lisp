@@ -284,7 +284,7 @@ with a failure and nothing after it, the other writes sent on unanswered.")
 
 (define-test (remote-files visited-saved-and-read-again)
   ;; C-x C-f reads the file into a private copy, the buffer named after it and standing in its directory there;
-  ;; a save writes it there; revert reads it from there; the copy goes with the buffer
+  ;; a save writes it there; revert reads it from there; the copy stays in the cache once the buffer is killed
   (if (null (sftp-server-program))
       (skip "no sftp-server here" (true nil))
       (with-stand-in-sftp (dir log)
@@ -313,7 +313,9 @@ with a failure and nothing after it, the other writes sent on unanswered.")
                                                   (string= "second text" (tuatara.buffer:buffer-string buffer)))))
                    (is string= "second text" (tuatara.buffer:buffer-string buffer))
                    (tuatara.buffer:kill-buffer buffer)
-                   (true (tuatara.runtime:wait-until (lambda () (not (probe-file copy))) 10) "the copy taken away")))
+                   (true (probe-file copy) "the copy kept in the cache")
+                   (false (tuatara.defaults::cache-directory-in-use-p (tuatara.io:parent-path copy))
+                          "no longer in use")))
             (kill-remote-buffers))))))
 
 (define-test (remote-files save-refused-when-changed-there)
@@ -508,7 +510,8 @@ with a failure and nothing after it, the other writes sent on unanswered.")
                      (auto-save-session (list (visit-keys picture) (list :until (lambda () (remote-buffer-of picture))))
                                         :width 120 :height 20 :cell-pixels '(10 20)))
                    (let* ((buffer (remote-buffer-of picture))
-                          (copy (tuatara.buffer:buffer-local buffer :viewed-file)))
+                          (copy (tuatara.buffer:buffer-local buffer :viewed-file))
+                          (used nil))
                      (true (tuatara.defaults::image-view-of buffer))
                      (true (tuatara.defaults::remote-copy-p copy))
                      (is string= "photo.png" (tuatara.buffer:buffer-name buffer))
@@ -525,11 +528,15 @@ with a failure and nothing after it, the other writes sent on unanswered.")
                                             tuatara.buffer:*buffers*)))
                        (true octets)
                        (tuatara.buffer:kill-buffer buffer)
-                       (true (tuatara.defaults::buffer-private-directory octets) "the directory is the octets' now")
+                       ;; the session that made the octets has ended, letting go of what it used: the
+                       ;; octets visiting the copy still keep its entry from being cleared
+                       (setf used (tuatara.io:parent-path (tuatara.io:native (tuatara.buffer:buffer-file octets))))
+                       (true (tuatara.defaults::cache-directory-in-use-p used) "the copy kept for the octets")
                        (true (probe-file copy))
                        (setf buffer octets))
                      (tuatara.buffer:kill-buffer buffer)
-                     (true (tuatara.runtime:wait-until (lambda () (not (probe-file copy))) 10) "the copy taken away"))))
+                     (true (probe-file copy) "the copy kept in the cache")
+                     (false (tuatara.defaults::cache-directory-in-use-p used) "no longer in use"))))
             (image-forget)
             (kill-remote-buffers))))))
 
@@ -1601,7 +1608,7 @@ killed after."
         (true (tuatara.buffer:buffer-read-only-p buffer))))))
 
 (define-test (remote-files killing-stops-the-arrival)
-  ;; the buffer killed: its job ends and the copy's directory is taken away
+  ;; the buffer killed: its job ends, and the copy stays in the cache with what came noted
   (with-arrival-held (dir name release)
     (let (copy)
       (remote-session (visit-keys name)
@@ -1611,12 +1618,16 @@ killed after."
                                                   (setf copy (tuatara.io:native (tuatara.buffer:buffer-file buffer)))
                                                   t))))
                       (list :until (lambda () (tuatara.buffer:kill-buffer (remote-buffer-of name)) t))
-                      (list :until (lambda () (not (probe-file copy))) 20)
                       (list :until (lambda ()
                                      (notany (lambda (job) (typep job 'tuatara.defaults::remote-read-job))
                                              tuatara.runtime:*jobs*))
                             20))
-      (false (probe-file copy) "the copy gone with its buffer"))))
+      (true (probe-file copy) "the copy kept")
+      (let ((arrived (getf (tuatara.defaults::read-remote-copy-facts
+                            (tuatara.defaults::cache-entry-facts
+                             (tuatara.defaults::cache-entry-at (tuatara.io:parent-path copy))))
+                           :arrived)))
+        (true (and (consp arrived) (plusp (cdr (first arrived)))) "what came noted, to go on from")))))
 
 (define-test (remote-files other-work-on-the-server-goes-on)
   ;; a long transfer leaves the connection to other work between its lots
@@ -1721,7 +1732,178 @@ killed after."
                                             (tuatara.defaults::buffer-remote (remote-buffer-of name)))))
                             60))
       (true stopped "the mode line says incomplete")
+      (true (search "Going on reading" (tuatara.buffer:buffer-string (tuatara.command::messages-buffer)))
+            "read again from where it stopped, the file there unchanged")
       (is string= (arrival-numbered-text 90000) (tuatara.buffer:buffer-string (remote-buffer-of name))))))
+
+(define-test (remote-files kept-copy-used-again)
+  ;; visited again once closed, the copy kept in the cache is used while the file there has the size, time, owner
+  ;; and permissions it had and the octets compared with it agree, and the echo area says when it was kept; put
+  ;; back with its old size and time but other contents, or changed, or being written by another session, it is
+  ;; read anew
+  (if (null (sftp-server-program))
+      (skip "no sftp-server here" (true nil))
+      (with-stand-in-sftp (dir log)
+        (let* ((file (concatenate 'string (namestring dir) "kept.txt"))
+               (name (concatenate 'string "/ssh:box:" file))
+               (copy nil) (inode nil) (said 0))
+          (alexandria:write-string-into-file "first" file)
+          (unwind-protect
+               (flet ((kept-said () (count-matches "checked against the server"
+                                                   (tuatara.buffer:buffer-string (tuatara.command::messages-buffer))))
+                      (visit () (remote-session (visit-keys name) (list :until (lambda () (remote-buffer-of name))))
+                        (remote-buffer-of name)))
+                 (remote-session (visit-keys name) (list :until (lambda () (remote-buffer-of name))))
+                 (setf copy (tuatara.io:native (tuatara.buffer:buffer-file (remote-buffer-of name)))
+                       inode (sb-posix:stat-ino (sb-posix:stat copy)))
+                 (tuatara.buffer:kill-buffer (remote-buffer-of name))
+                 (is string= name (tuatara.defaults::remote-copy-origin copy) "the copy told by where it came from")
+                 (setf said (kept-said))
+                 (remote-session (visit-keys name) (list :until (lambda () (remote-buffer-of name))))
+                 (let ((buffer (remote-buffer-of name)))
+                   (is string= copy (tuatara.io:native (tuatara.buffer:buffer-file buffer)) "the same copy")
+                   (is = inode (sb-posix:stat-ino (sb-posix:stat copy)) "not written again")
+                   (is = (1+ said) (kept-said) "said to be the copy kept")
+                   (is string= "first" (tuatara.buffer:buffer-string buffer))
+                   (true (search "kept copy from" (tuatara.buffer:buffer-string (tuatara.command::messages-buffer))))
+                   (tuatara.buffer:kill-buffer buffer))
+                 ;; the same size and time, other contents: told by the octets compared, read anew
+                 (let ((then (sb-posix:stat-mtime (sb-posix:stat file))))
+                   (alexandria:write-string-into-file "fixed" file :if-exists :supersede)
+                   (sb-posix:utimes file then then))
+                 (let ((buffer (visit)))
+                   (is string= "fixed" (tuatara.buffer:buffer-string buffer) "put back with its time: read anew")
+                   (is = (1+ said) (kept-said) "not said to be kept")
+                   (setf copy (tuatara.io:native (tuatara.buffer:buffer-file buffer)))
+                   (tuatara.buffer:kill-buffer buffer))
+                 ;; another session writing that copy: not used
+                 (let ((writing (tuatara.io:open-lock-file
+                                 (tuatara.io:path-join (tuatara.io:parent-path copy) "writing.lock"))))
+                   (unwind-protect
+                        (let ((buffer (visit)))
+                          (false (equal copy (tuatara.io:native (tuatara.buffer:buffer-file buffer)))
+                                 "a copy being written elsewhere not used")
+                          (tuatara.buffer:kill-buffer buffer))
+                     (sb-posix:close writing)))
+                 (alexandria:write-string-into-file "second text" file :if-exists :supersede)
+                 (remote-session (visit-keys name) (list :until (lambda () (remote-buffer-of name))))
+                 (let ((buffer (remote-buffer-of name)))
+                   (is string= "second text" (tuatara.buffer:buffer-string buffer) "changed there: read anew")
+                   (is = (1+ said) (kept-said) "not said again")))
+            (kill-remote-buffers))))))
+
+(define-test (remote-files kept-copy-compare-failure-reads-afresh)
+  ;; the server failing while the kept copy is compared with it: the copy is let go and the file read afresh
+  (if (null (sftp-server-program))
+      (skip "no sftp-server here" (true nil))
+      (with-stand-in-sftp (dir log)
+        (let* ((file (concatenate 'string (namestring dir) "flaky.txt"))
+               (name (concatenate 'string "/ssh:box:" file))
+               (copy nil))
+          (alexandria:write-string-into-file "kept" file)
+          (unwind-protect
+               (progn
+                 (remote-session (visit-keys name) (list :until (lambda () (remote-buffer-of name))))
+                 (setf copy (tuatara.io:native (tuatara.buffer:buffer-file (remote-buffer-of name))))
+                 (tuatara.buffer:kill-buffer (remote-buffer-of name))
+                 (sb-int:encapsulate 'tuatara.defaults::remote-read-stretches 'failing
+                                     (lambda (function host path stretches)
+                                       (declare (ignore function host stretches))
+                                       (error 'tuatara.io:file-system-error :operation "read" :path path
+                                                                            :reason "the server did not answer")))
+                 (unwind-protect
+                      (remote-session (visit-keys name) (list :until (lambda () (remote-buffer-of name))))
+                   (sb-int:unencapsulate 'tuatara.defaults::remote-read-stretches 'failing))
+                 (let ((buffer (remote-buffer-of name)))
+                   (is string= "kept" (tuatara.buffer:buffer-string buffer) "read afresh")
+                   (false (equal copy (tuatara.io:native (tuatara.buffer:buffer-file buffer))) "into a new copy")
+                   (false (tuatara.io:path-kind copy :follow nil) "the old copy let go and cleared")))
+            (kill-remote-buffers))))))
+
+(define-test (remote-files cut-off-read-goes-on)
+  ;; the connection lost part of the way and the buffer closed: what came is kept, and the next visit goes on
+  ;; from there while the file there is unchanged, the whole file then shown
+  (with-arrival-held (dir name release)
+    (let (copy)
+      (remote-session (visit-keys name)
+                      (list :until (lambda () (let ((buffer (remote-buffer-of name)))
+                                                (when (and buffer (tuatara.defaults::remote-file-arrival
+                                                                   (tuatara.defaults::buffer-remote buffer)))
+                                                  (setf copy (tuatara.io:native (tuatara.buffer:buffer-file buffer)))
+                                                  t))))
+                      (list :until (lambda ()
+                                     (sb-alien:alien-funcall
+                                      (sb-alien:extern-alien "shutdown"
+                                                             (function sb-alien:int sb-alien:int sb-alien:int))
+                                      (tuatara.defaults::sftp-link-fd (tuatara.defaults::sftp-link "box")) 2)
+                                     (release)
+                                     t))
+                      (list :until (lambda () (null (tuatara.runtime:jobs-of (remote-buffer-of name) :running t))))
+                      (list :until (lambda () (tuatara.buffer:kill-buffer (remote-buffer-of name)) t)))
+      (setf tuatara.defaults::*arrival-hook* nil)
+      (let ((arrived (getf (tuatara.defaults::read-remote-copy-facts
+                            (tuatara.defaults::cache-entry-facts
+                             (tuatara.defaults::cache-entry-at (tuatara.io:parent-path copy))))
+                           :arrived)))
+        (true (consp arrived) "what came noted"))
+      (remote-session (visit-keys name)
+                      (list :until (lambda ()
+                                     (let ((buffer (remote-buffer-of name)))
+                                       (and buffer (null (tuatara.defaults::remote-file-arrival
+                                                          (tuatara.defaults::buffer-remote buffer))))))
+                            60))
+      (true (search "going on from where the last read stopped"
+                    (tuatara.buffer:buffer-string (tuatara.command::messages-buffer))))
+      (is string= copy (tuatara.io:native (tuatara.buffer:buffer-file (remote-buffer-of name))) "into the same copy")
+      (is string= (arrival-numbered-text 90000) (tuatara.buffer:buffer-string (remote-buffer-of name))))))
+
+(define-test (remote-files cut-off-read-not-stitched)
+  ;; a read cut off, then the file there put back with its old size and time but other octets in what had come:
+  ;; the next visit reads it afresh, never joining the two
+  (with-arrival-held (dir name release)
+    (let ((file (subseq name (length "/ssh:box:"))))
+      (remote-session (visit-keys name)
+                      (list :until (lambda () (let ((buffer (remote-buffer-of name)))
+                                                (and buffer (tuatara.defaults::remote-file-arrival
+                                                             (tuatara.defaults::buffer-remote buffer))))))
+                      (list :until (lambda ()
+                                     (sb-alien:alien-funcall
+                                      (sb-alien:extern-alien "shutdown"
+                                                             (function sb-alien:int sb-alien:int sb-alien:int))
+                                      (tuatara.defaults::sftp-link-fd (tuatara.defaults::sftp-link "box")) 2)
+                                     (release)
+                                     t))
+                      (list :until (lambda () (null (tuatara.runtime:jobs-of (remote-buffer-of name) :running t))))
+                      (list :until (lambda () (tuatara.buffer:kill-buffer (remote-buffer-of name)) t)))
+      (setf tuatara.defaults::*arrival-hook* nil)
+      (let ((then (sb-posix:stat-mtime (sb-posix:stat file)))
+            (text (arrival-numbered-text 90000)))
+        (alexandria:write-string-into-file (concatenate 'string "LINE" (subseq text 4)) file :if-exists :supersede)
+        (sb-posix:utimes file then then))
+      (remote-session (visit-keys name)
+                      (list :until (lambda ()
+                                     (let ((buffer (remote-buffer-of name)))
+                                       (and buffer (null (tuatara.defaults::remote-file-arrival
+                                                          (tuatara.defaults::buffer-remote buffer))))))
+                            60))
+      (is string= "LINE" (subseq (tuatara.buffer:buffer-string (remote-buffer-of name)) 0 4) "read afresh")
+      (is = (length (arrival-numbered-text 90000)) (length (tuatara.buffer:buffer-string (remote-buffer-of name)))))))
+
+(define-test (remote-files kept-copy-told-by-change-time)
+  ;; a kept copy written here with its time set back is no longer the copy as read: its change time tells it
+  (let* ((name "/ssh:box:/cases/notes.txt")
+         (entry (tuatara.defaults::make-cache-entry "remote" name name))
+         (copy (namestring (merge-pathnames "notes.txt" entry))))
+    (unwind-protect
+         (progn
+           (alexandria:write-string-into-file "as read" copy)
+           (tuatara.defaults::note-cache-entry
+            entry :facts (tuatara.defaults::remote-copy-facts '(:size 7 :mtime 1795000000) copy :all))
+           (is string= name (tuatara.defaults::remote-copy-origin copy))
+           (sleep 0.01)
+           (sb-posix:chmod copy #o600)
+           (false (tuatara.defaults::remote-copy-origin copy) "changed here, its time as it was"))
+      (tuatara.defaults::clear-cache-path entry))))
 
 (define-test (remote-files reading-a-hole-refused)
   ;; zeros are never given as the file's contents: a copy across a hole, or a slice of one, is refused; around it, not

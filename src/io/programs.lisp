@@ -68,7 +68,8 @@ A program that writes more, a clipboard of a huge copy or a program gone
 wrong, is stopped and its output not taken, so that it cannot fill memory.
 Raise it to take more through such a program, at the cost of that memory;
 lower it on a small machine.
-- a whole number, 1 or more: the octets allowed; 64 MB as standard."
+- a size, 1 octet or more: a whole number of octets, or words such as \"128M\";
+  64 MB as standard."
   :values (octets 1 *))
 
 (defparameter *program-end-grace* 2
@@ -273,6 +274,10 @@ pipes."
   (flet ((close-handed ()
            (dolist (fd close-fds)
              (tuatara.runtime:close-fd-quietly fd "a descriptor handed to a program"))))
+    (when (member 3 preserve-fds)
+      (close-handed)
+      (error "Descriptor 3 cannot be handed to ~a: SBCL never hands it over (FD-FOR-PROGRAM)"
+             (native-file-name (first command))))
     (when with-editor
       (let ((tied (setpriv-command (first command) (rest command))))
         (unless tied

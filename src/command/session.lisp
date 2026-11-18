@@ -195,12 +195,6 @@ terminal, which hands it to the program in it), that function takes it."
 (defparameter *slow-frame* 30
   "The milliseconds drawing a frame may take before debug mode reports it.")
 
-(defparameter *frame-at-least-every* 100
-  "While keys wait to be handled (a key held down), the milliseconds the
-editor may go without drawing a frame: the keys are handled first, so that
-none is left over to act after the key is let go, and a frame drawn at least
-this often shows where they have got to.")
-
 (defun take-in-background (editor &key (woken t))
   "Take in, on EDITOR's thread, what work in the background has for it: what
 other threads said and handed on (TAKE-IN-THREAD-MESSAGES), then what the

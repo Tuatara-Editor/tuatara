@@ -4,7 +4,7 @@
 ;;;; A file on another machine is named /ssh:HOST:/path, HOST as ssh takes it.
 ;;;; Visiting one reads it in the background through SFTP (sftp.lisp) into a
 ;;;; copy of its own here, in a private directory of the cache, readable by you
-;;;; alone and deleted with its buffer; the buffer visits that copy, so that a
+;;;; alone; the buffer visits that copy, so that a
 ;;;; large file is read in pieces as a large file here is, and is named and
 ;;;; placed after the file there. Saving writes the copy, then sends it to a
 ;;;; new file beside the one there, given its owner, group and permissions,
@@ -25,6 +25,12 @@
 ;;;; start. A part not here yet shows as being on its way, and fills in when
 ;;;; it has come. While any of the file is missing its buffer is read-only and
 ;;;; not saved, its lines are not counted, and nothing reads the whole of it.
+;;;;
+;;;; The copy is an entry of the cache (cache.lisp), kept after its buffer is
+;;;; closed until it has been unused for *CACHE-KEEP*. Visiting the file again
+;;;; uses the copy when the file there still has the size and time it had as
+;;;; it was read, and the copy is as it was left; a read cut off keeps what
+;;;; came, and the next goes on from there, the file there unchanged.
 
 (in-package #:tuatara.defaults)
 
@@ -78,6 +84,11 @@ TUATARA.IO:STAMP, as a file here is described."
   (tuatara.io:make-stamp 0 0 (or (getf attributes :size) 0) (* (or (getf attributes :mtime) 0) 1000000000) 1
                          (or (getf attributes :permissions) 0) (or (getf attributes :uid) 0)
                          (or (getf attributes :gid) 0)))
+
+(define-cache-kind "remote" "remote/" "Copies of files on other machines"
+  :open (lambda (directory key facts)
+          (declare (ignore directory facts))
+          (visit-path key)))
 
 (defparameter *remote-candidates-seconds* 5
   "The seconds the candidates of a directory on another machine, read for a
@@ -133,7 +144,8 @@ it was not there). SUM is its SHA-256 sum then, when it was small enough
 none. EVIDENCE is why it is evidence, or NIL. TRUSTED is true when HOST is a
 trusted server. PARTLY is true while a save that failed half-way left the file
 there partly written. ARRIVAL is how the file stands as it comes: an ARRIVAL
-while part of it has not arrived, NIL once all of it is here."
+while part of it has not arrived, NIL once all of it is here. DIRECTORY is the
+entry of the cache holding the copy (MAKE-CACHE-ENTRY), or NIL."
   (host "" :type string :read-only t :documentation "The machine holding FILE, as ssh takes it.")
   (path "" :type string :read-only t :documentation "Where FILE is on its machine, from the root.")
   (attributes nil :documentation "FILE's attributes as last read or written, or NIL.")
@@ -142,7 +154,8 @@ while part of it has not arrived, NIL once all of it is here."
   (evidence nil :documentation "Why FILE is evidence, in words, or NIL.")
   (trusted nil :documentation "True when FILE's machine is a trusted server.")
   (partly nil :documentation "True while a failed save left FILE partly written there.")
-  (arrival nil :documentation "How FILE stands as it arrives, or NIL once all of it is here."))
+  (arrival nil :documentation "How FILE stands as it arrives, or NIL once all of it is here.")
+  (directory nil :documentation "The entry of the cache holding FILE's copy, a directory, or NIL."))
 
 (setf (documentation 'make-remote-file 'function) "A REMOTE-FILE for PATH on HOST.")
 
@@ -294,7 +307,13 @@ its copy here, and COPY, the copy's path; KIND, :FILE, :NEW for a file not
 there yet, or :DIRECTORY. AGAIN, true when it is read again for a buffer
 visiting it. ARRIVAL, an ARRIVAL, and FD, the open copy, for a file read in
 two parts (REMOTE-EARLY-P): the first read before it opens, by this job; the
-rest after it opened by another of these, whose REST is true."
+rest after it opened by another of these, whose REST is true. GOT, the ARRIVAL
+of whatever it reads, saying what came should it end early. KEPT, :ALL when a
+copy kept in the cache from an earlier read is used whole, :PART when the read
+goes on from what came then, else NIL; KEPT-FROM, when that copy was noted.
+RESUMED, true for a job going on with a
+buffer's file that stopped arriving (REMOTE-RESUME), and CHANGED, true once it
+found the file there changed since."
   (remote nil :documentation "The REMOTE-FILE REMOTE-READ-JOB reads, as asked for.")
   (safe nil :documentation "True when REMOTE-READ-JOB is a safe visit.")
   (path nil :documentation "The path of the file on the other machine, links followed.")
@@ -304,7 +323,12 @@ rest after it opened by another of these, whose REST is true."
   (again nil :documentation "True when the file is read again for a buffer visiting it.")
   (arrival nil :documentation "The ARRIVAL for a file read in two parts (REMOTE-EARLY-P).")
   (fd nil :documentation "The open copy (a file descriptor, FD) of a file read in two parts.")
-  (rest nil :documentation "True for the job reading the rest of a file read in two parts, after another opened it."))
+  (rest nil :documentation "True for the job reading the rest of a file read in two parts, after another opened it.")
+  (got nil :documentation "The ARRIVAL of whatever REMOTE-READ-JOB reads, or NIL.")
+  (kept nil :documentation ":ALL or :PART when a copy kept in the cache is used, whole or to go on with; else NIL.")
+  (resumed nil :documentation "True for a job going on with a buffer's file that stopped arriving.")
+  (changed nil :documentation "True once REMOTE-READ-JOB found the file there changed since it was read.")
+  (kept-from nil :documentation "When the kept copy REMOTE-READ-JOB uses was noted, in universal time, or NIL."))
 
 (tuatara.runtime:define-job-words remote-read-job
     :doing "Reading"
@@ -343,9 +367,11 @@ left with less than TUATARA.IO:*SNAPSHOT-FREE-MARGIN* free, WANTED octets more b
 (defun read-remote-rest (job)
   "The work of JOB, a REMOTE-READ-JOB for the REST of a file that has opened:
 read until all of it has arrived, a window's wanted piece first (ARRIVAL),
-each lot then no longer read as missing (TUATARA.TEXT:MAPPING-HOLES). Refused
-when the file there is not the one whose first part opened, before or after
-it is read, or ended sooner than it said, or room here runs short (REMOTE-CHECK-ROOM)."
+each lot then no longer read as missing (TUATARA.TEXT:MAPPING-HOLES), and the
+copy then noted in the cache as whole (NOTE-REMOTE-COPY). Refused when the file
+there is not the one whose first part opened, before (JOB then CHANGED) or
+after it is read, or ended sooner than it said, or room here runs short
+\(REMOTE-CHECK-ROOM)."
   (let* ((remote (remote-read-job-remote job))
          (host (remote-file-host remote))
          (path (remote-read-job-path job))
@@ -357,31 +383,232 @@ it is read, or ended sooner than it said, or room here runs short (REMOTE-CHECK-
     (flet ((check-unchanged (&key torn)
              (let ((now (remote-attributes host path)))
                (unless (and now (eql (getf now :size) (getf then :size)) (eql (getf now :mtime) (getf then :mtime)))
-                 (when torn (setf (tuatara.text:mapping-torn mapping) t))
+                 (if torn
+                     (setf (tuatara.text:mapping-torn mapping) t)
+                     (setf (remote-read-job-changed job) t))
                  (refuse "~a changed on the server as it was being read" (remote-name host path))))))
       (check-unchanged)
-      (remote-download host path (remote-read-job-fd job)
-                       :arrival arrival
-                       :on-piece (lambda ()
-                                   (setf (tuatara.text:mapping-holes mapping) (arrival-holes arrival))
-                                   (when (zerop (mod (incf lots) 256))
-                                     (remote-check-room (remote-read-job-copy job)
-                                                        (loop for (from . to) in (arrival-holes arrival)
-                                                              sum (- to from))))
-                                   (let ((wanted (arrival-wanted arrival)))
-                                     (when (and wanted (null (arrival-absent arrival (car wanted) (cdr wanted) nil)))
-                                       (setf (arrival-wanted arrival) nil)
-                                       (when wake (funcall wake))))
-                                   (when *arrival-hook* (funcall *arrival-hook*))))
+      ;; going on with a file that stopped arriving: what is here must still be what is there
+      (when (and (remote-read-job-resumed job)
+                 (not (remote-copy-matches-safely-p host path (remote-read-job-copy job) (arrival-arrived arrival))))
+        (setf (remote-read-job-changed job) t)
+        (refuse "~a changed on the server since it was read" (remote-name host path)))
+      (remote-writing-copy
+       (remote-read-job-directory job)
+       (lambda ()
+         (remote-download host path (remote-read-job-fd job)
+                          :arrival arrival
+                          :on-piece (lambda ()
+                                      (setf (tuatara.text:mapping-holes mapping) (arrival-holes arrival))
+                                      (when (zerop (mod (incf lots) 256))
+                                        (remote-check-room (remote-read-job-copy job)
+                                                           (loop for (from . to) in (arrival-holes arrival)
+                                                                 sum (- to from))))
+                                      (let ((wanted (arrival-wanted arrival)))
+                                        (when (and wanted (null (arrival-absent arrival (car wanted) (cdr wanted) nil)))
+                                          (setf (arrival-wanted arrival) nil)
+                                          (when wake (funcall wake))))
+                                      (when *arrival-hook* (funcall *arrival-hook*))))))
       (when (< (arrival-end arrival) (arrival-size arrival))
         (refuse "~a became shorter on the server as it was being read" (remote-name host path)))
-      (check-unchanged :torn t))))
+      (check-unchanged :torn t)
+      (note-remote-copy job :all))))
+
+(defun remote-copy-facts (attributes copy arrived)
+  "What the cache keeps of COPY, the copy here of a file on another machine
+\(NOTE-CACHE-ENTRY): the size, time, owner, group and permissions the file had
+there, as ATTRIBUTES give them; the inode, size, time and change time (ctime)
+of COPY as it is now; when this was noted; and what of it ARRIVED, :ALL or the
+stretches (START . END) here. \"\" when COPY is not there."
+  (let ((stamp (tuatara.io:path-stamp copy :follow nil :failure nil)))
+    (if (null stamp)
+        ""
+        (format nil "~{~d ~}~:[~{~d-~d~^,~}~;all~]"
+                (list (or (getf attributes :size) 0) (or (getf attributes :mtime) 0) (or (getf attributes :uid) 0)
+                      (or (getf attributes :gid) 0) (or (getf attributes :permissions) 0)
+                      (tuatara.io:stamp-ino stamp) (tuatara.io:stamp-size stamp) (tuatara.io:stamp-mtime stamp)
+                      (tuatara.io:stamp-ctime stamp) (get-universal-time))
+                (eq arrived :all)
+                (and (listp arrived) (loop for (start . end) in arrived collect start collect end))))))
+
+(defparameter *remote-copy-fact-names*
+  '(:size :mtime :uid :gid :permissions :ino :copy-size :copy-mtime :copy-ctime :noted)
+  "The numbers REMOTE-COPY-FACTS writes before what arrived, in order.")
+
+(defun read-remote-copy-facts (facts)
+  "What FACTS, written by REMOTE-COPY-FACTS, say: a plist of the numbers
+*REMOTE-COPY-FACT-NAMES* names and :ARRIVED, :ALL or the stretches here, in
+order, each within the size; NIL for words that say none of it, those an
+earlier release wrote among them."
+  (let* ((parts (uiop:split-string facts :separator " "))
+         (count (length *remote-copy-fact-names*)))
+    (when (and (= (length parts) (1+ count)) (every #'digits-word-p (subseq parts 0 count)))
+      (let* ((numbers (mapcar #'parse-integer (subseq parts 0 count)))
+             (size (first numbers))
+             (arrived (nth count parts))
+             (stretches (cond ((string= arrived "all") :all)
+                              ((string= arrived "") '())
+                              (t (loop for range in (uiop:split-string arrived :separator ",")
+                                       for dash = (position #\- range)
+                                       for start = (and dash (digits-word-p (subseq range 0 dash))
+                                                        (parse-integer range :end dash))
+                                       for end = (and start (digits-word-p (subseq range (1+ dash)))
+                                                      (parse-integer range :start (1+ dash)))
+                                       for before = 0 then last
+                                       for last = end
+                                       unless (and end (<= before start) (< start end) (<= end size))
+                                         do (return :none)
+                                       collect (cons start end))))))
+        (unless (eq stretches :none)
+          (append (loop for name in *remote-copy-fact-names* for number in numbers collect name collect number)
+                  (list :arrived stretches)))))))
+
+(defun remote-copy-intact-p (copy known)
+  "True when COPY, the copy here of a file on another machine, is a regular
+file, not a link, as KNOWN (READ-REMOTE-COPY-FACTS) says it was left: the same
+inode, size, time and change time, which no program can set back."
+  (let ((stamp (tuatara.io:path-stamp copy :follow nil :failure nil)))
+    (and stamp (eq (tuatara.io:stamp-kind stamp) :regular)
+         (eql (tuatara.io:stamp-ino stamp) (getf known :ino))
+         (eql (tuatara.io:stamp-size stamp) (getf known :copy-size))
+         (eql (tuatara.io:stamp-mtime stamp) (getf known :copy-mtime))
+         (eql (tuatara.io:stamp-ctime stamp) (getf known :copy-ctime)))))
+
+(defun remote-copy-origin (path)
+  "The name of the file on another machine, /ssh:HOST:/path, of which PATH, a
+native name, is the copy Tuatara read whole, kept for you alone in the cache
+directory, when it is as it was as the read ended, not changed since, here or
+by a save; else NIL. A program may then read the copy in place of a copy of
+its own, asking again once done, and name the file by where it came from."
+  (let* ((directory (tuatara.io:parent-path path))
+         (entry (cache-entry-at directory))
+         (known (and entry (string= "remote" (cache-entry-kind entry))
+                     (read-remote-copy-facts (cache-entry-facts entry)))))
+    (and known (eq :all (getf known :arrived))
+         (string= (tuatara.io:native-file-name path) (tuatara.io:native-file-name (cache-entry-key entry)))
+         (remote-copy-intact-p path known)
+         (cache-entry-key entry))))
+
+(defun note-remote-copy (job arrived)
+  "Note in the cache what of the copy JOB read has come, ARRIVED, :ALL or the
+stretches here, with the file's size and time there, so that it is used again
+when the file there is unchanged (REMOTE-KEPT-COPY); for a job reading it again,
+whose copy takes the old one's place later, nothing."
+  (let ((directory (remote-read-job-directory job)) (copy (remote-read-job-copy job)))
+    (when (and directory copy (not (remote-read-job-again job)))
+      (note-cache-entry directory :facts (remote-copy-facts (remote-file-attributes (remote-read-job-remote job))
+                                                            copy arrived)))))
+
+(defconstant +remote-sample-ends+ (* 1024 1024)
+  "The octets at the start and at the end of a kept copy compared with the file
+on its server before the copy is used again (REMOTE-SAMPLE-STRETCHES).")
+
+(defconstant +remote-sample-block+ (* 64 1024)
+  "The octets of each block taken at random from a kept copy and compared with
+the file on its server before the copy is used again.")
+
+(defparameter *remote-sample-blocks* 16
+  "How many blocks taken at random from a kept copy are compared with the file
+on its server before the copy is used again.")
+
+(defun remote-sample-stretches (size held)
+  "The stretches of a file of SIZE octets compared with its server before a
+kept copy of it is used again, each a cons of its start and end, in order: the first and the last
++REMOTE-SAMPLE-ENDS+ octets and *REMOTE-SAMPLE-BLOCKS* blocks at random, each
+cut to HELD, :ALL or the stretches of the copy that are here."
+  (let ((held (if (eq held :all) (list (cons 0 size)) held))
+        (picks '()))
+    (flet ((add (start end)
+             (loop for (from . to) in held
+                   do (let ((a (max start from)) (b (min end to)))
+                        (when (< a b) (push (cons a b) picks))))))
+      (add 0 (min size +remote-sample-ends+))
+      (add (max 0 (- size +remote-sample-ends+)) size)
+      (let ((total (loop for (from . to) in held sum (- to from))))
+        (when (plusp total)
+          (loop with state = (make-random-state t)
+                repeat *remote-sample-blocks*
+                do (let ((at (random total state)))
+                     (loop for (from . to) in held
+                           do (if (< at (- to from))
+                                  (return (add (+ from at) (+ from at +remote-sample-block+)))
+                                  (decf at (- to from))))))))
+      (tuatara.text:merge-ranges picks))))
+
+(defun remote-copy-matches-p (host path copy held)
+  "True when COPY, a kept copy of the file at PATH on HOST of which HELD (:ALL
+or the stretches here) has come, holds what the file there holds in the
+stretches REMOTE-SAMPLE-STRETCHES picks, read from the server: a file put back
+with its old size and time, or written again within a second, is told by its
+contents. For work in the background."
+  (let* ((size (tuatara.io:stamp-size (tuatara.io:path-stamp copy :follow nil)))
+         (stretches (remote-sample-stretches size held))
+         (there (remote-read-stretches host path stretches))
+         (fd (tuatara.io:open-for-reading copy t :accept '(:regular) :follow nil :arriving t)))
+    (unwind-protect
+         (loop for (start . end) in stretches
+               for theirs in there
+               always (let ((ours (make-array (- end start) :element-type '(unsigned-byte 8))))
+                        (and (= (tuatara.io:read-fd-at fd ours start :path copy) (- end start))
+                             (equalp ours theirs))))
+      (sb-posix:close fd))))
+
+(defun remote-copy-matches-safely-p (host path copy held)
+  "REMOTE-COPY-MATCHES-P of HOST, PATH, COPY and HELD, a failure to compare (the
+server not answering, the copy gone) taken as a difference: the file is then
+read afresh."
+  (handler-case (remote-copy-matches-p host path copy held)
+    ((or tuatara.io:file-system-error tuatara.runtime:refusal sb-posix:syscall-error) () nil)))
+
+(defun remote-copy-being-written-p (directory)
+  "True when a session is writing the kept copy in DIRECTORY (REMOTE-WRITING-COPY)."
+  (tuatara.io:lock-file-held-p (tuatara.io:path-join directory "writing.lock")))
+
+(defun remote-writing-copy (directory function)
+  "Call FUNCTION, of no arguments, holding the lock that says the copy in
+DIRECTORY, an entry of the cache, is being written, which no other session's
+reuse of it waits on (REMOTE-KEPT-COPY); refused when another holds it."
+  (let ((fd (tuatara.io:open-lock-file (tuatara.io:path-join directory "writing.lock"))))
+    (unless fd
+      (refuse "another session is writing ~a" directory))
+    (unwind-protect (funcall function)
+      (tuatara.runtime:close-fd-quietly fd "~a" directory))))
+
+(defun remote-kept-copy (job key path attributes)
+  "The copy of PATH, the file named KEY on another machine, kept in the cache
+from an earlier read, for JOB to go on with: its directory, the copy, what of
+it is here, :ALL or the stretches that came, and when it was noted, four
+values, the entry then used by JOB's buffer. NIL when none is kept, another
+session is writing it, the file there is not of the size, time, owner, group
+and permissions it had then (ATTRIBUTES give them now), the copy is not as it
+was left, or what it holds differs from the file there where they are compared
+\(REMOTE-COPY-MATCHES-P): it is then read afresh, never gone on with."
+  (let ((buffer (tuatara.runtime:job-buffer job)))
+    (multiple-value-bind (directory facts) (find-cache-entry "remote" key :user buffer)
+      (when directory
+        (let ((known (read-remote-copy-facts facts))
+              (copy (tuatara.io:path-join directory (tuatara.io:native-file-name path))))
+          (let ((same nil))
+            ;; let go of the entry unless it is used, however the comparing ends
+            (unwind-protect
+                 (setf same (and known
+                                 (every (lambda (name) (eql (getf known name) (getf attributes name)))
+                                        '(:size :mtime :uid :gid :permissions))
+                                 (not (remote-copy-being-written-p directory))
+                                 (remote-copy-intact-p copy known)
+                                 (remote-copy-matches-safely-p (remote-file-host (remote-read-job-remote job))
+                                                               path copy (getf known :arrived))))
+              (unless same
+                (stop-using-cache-directory directory buffer)))
+            (and same (values directory copy (getf known :arrived) (getf known :noted)))))))))
 
 (defun read-remote-copy (job)
   "The work of JOB, a REMOTE-READ-JOB: where the file is there found, and,
-for a file, read into a new copy here in its private directory, readable by you
-alone, its sum taken when it is small; a large one only as far as opening it
-needs (REMOTE-EARLY-P), the copy its whole size and left open for the rest."
+for a file, read into a copy here, readable by you alone, in an entry of the
+cache, its sum taken when it is small; a large one only as far as opening it
+needs (REMOTE-EARLY-P), the copy its whole size and left open for the rest. A
+copy kept from an earlier read is used when the file there is as it was then
+\(REMOTE-KEPT-COPY): whole, or gone on with from what came."
   (let* ((remote (remote-read-job-remote job))
          (host (remote-file-host remote))
          (asked (remote-file-path remote))
@@ -398,28 +625,53 @@ needs (REMOTE-EARLY-P), the copy its whole size and left open for the rest."
       (refuse "~a names no file" (remote-name host path)))
     (setf (remote-file-evidence remote) (remote-evidence-words host asked path))
     (when (eq :file (remote-read-job-kind job))
-      (let ((directory (or (remote-read-job-directory job)
-                           (new-private-directory (private-cache-directory "remote/")))))
-        (setf (remote-read-job-directory job) directory)
-        (multiple-value-bind (fd copy)
-            (tuatara.io:create-free-file directory
-                                         (lambda (n) (format nil "~a~:[.~d~;~*~]" (tuatara.io:native-file-name path)
-                                                             (= n 1) n)))
-          (setf (remote-read-job-copy job) copy)
-          (let ((size (or (getf attributes :size) 0)))
-            (if (remote-early-p size job)
-                (let ((arrival (make-arrival size :opening t)))
-                  (setf (remote-read-job-fd job) fd)
-                  (remote-check-room copy size)
-                  (sb-posix:ftruncate fd size)
-                  (setf (remote-read-job-arrival job) arrival
-                        (remote-file-attributes remote) (remote-download host path fd :arrival arrival))
-                  (when (< (arrival-end arrival) size)
-                    (refuse "~a became shorter on the server as it was being read" (remote-name host path))))
-                (unwind-protect (setf (remote-file-attributes remote) (remote-download host path fd))
-                  (sb-posix:close fd))))
-          (when (<= (or (getf (remote-file-attributes remote) :size) 0) +remote-hash-most+)
-            (setf (remote-file-sum remote) (file-sha256 copy))))))))
+      (let ((key (remote-name host path))
+            (size (or (getf attributes :size) 0)))
+        (multiple-value-bind (kept copy arrived noted)
+            (and (not (remote-read-job-again job)) (remote-kept-copy job key path attributes))
+          (let ((directory (or kept (remote-read-job-directory job)
+                               (make-cache-entry "remote" key key :user (tuatara.runtime:job-buffer job)))))
+            (setf (remote-read-job-directory job) directory
+                  (remote-read-job-kept job) (and kept (if (eq arrived :all) :all :part))
+                  (remote-read-job-kept-from job) noted
+                  (remote-file-attributes remote) attributes)
+            (if (eq arrived :all)
+                (setf (remote-read-job-copy job) copy)
+                (multiple-value-bind (fd copy)
+                    (if kept
+                        (values (tuatara.io:open-for-writing copy) copy)
+                        (tuatara.io:create-free-file
+                         directory
+                         (lambda (n) (format nil "~a~:[.~d~;~*~]" (tuatara.io:native-file-name path) (= n 1) n))))
+                  (setf (remote-read-job-copy job) copy)
+                  (let* ((early (remote-early-p size job))
+                         (arrival (make-arrival size :opening early :in-order (not early))))
+                    (setf (arrival-arrived arrival) (or arrived '())
+                          (remote-read-job-got job) arrival)
+                    (if early
+                        (progn (setf (remote-read-job-fd job) fd
+                                     (remote-read-job-arrival job) arrival)
+                               (remote-check-room copy (loop for (from . to) in (arrival-holes arrival)
+                                                             sum (- to from)))
+                               (sb-posix:ftruncate fd size)
+                               (remote-writing-copy
+                                directory
+                                (lambda ()
+                                  (setf (remote-file-attributes remote)
+                                        (remote-download host path fd :arrival arrival))))
+                               (when (< (arrival-end arrival) size)
+                                 (refuse "~a became shorter on the server as it was being read"
+                                         (remote-name host path))))
+                        (unwind-protect (remote-writing-copy
+                                         directory
+                                         (lambda ()
+                                           (setf (remote-file-attributes remote)
+                                                 (remote-download host path fd :arrival arrival))))
+                          (sb-posix:close fd))))))
+            (unless (remote-read-job-arrival job)
+              (note-remote-copy job :all))
+            (when (<= (or (getf (remote-file-attributes remote) :size) 0) +remote-hash-most+)
+              (setf (remote-file-sum remote) (file-sha256 (remote-read-job-copy job))))))))))
 
 (defun remote-reading-text (name)
   "What the buffer of the file NAME on another machine says while it is read."
@@ -459,20 +711,37 @@ visited the file already."
   "Show what JOB read in its buffer, or why it could not be read."
   (let* ((buffer (tuatara.runtime:job-buffer job))
          (remote (remote-read-job-remote job))
-         (directory (remote-read-job-directory job))
          (name (remote-name (remote-file-host remote) (or (remote-read-job-path job) (remote-file-path remote)))))
     (cond ((remote-read-job-rest job) (remote-rest-in buffer job name))
           ((not (live-buffer-p buffer))
            (close-remote-copy job)
-           (when (and directory (not (remote-read-job-again job))) (delete-private-directory directory)))
+           (remote-copy-left job))
           ((not (eq (tuatara.runtime:job-status job) :done))
            (close-remote-copy job)
-           (when (and directory (not (remote-read-job-again job))) (delete-private-directory directory))
+           (remote-copy-left job)
            (if (remote-read-job-again job)
                (message "~a was not read again: ~a" name (tuatara.runtime:job-ending-words job))
                (show-reading-result job name nil "~a could not be read: ~a~%")))
           ((remote-read-job-again job) (remote-read-again-in buffer job))
           (t (remote-copy-in buffer job)))))
+
+(defun remote-copy-left (job)
+  "What is kept of the copy JOB read once its buffer is gone or it ended
+before all of it came: a copy read whole, or kept whole from before, stays as
+noted; for a job reading a file again, its new copy goes; else what came is
+noted in the cache, to be gone on with when the file is next visited
+\(NOTE-REMOTE-COPY), and an entry to which nothing came is cleared."
+  (let ((directory (remote-read-job-directory job))
+        (copy (remote-read-job-copy job))
+        (got (remote-read-job-got job)))
+    (cond ((or (null directory) (eq (remote-read-job-kept job) :all)
+               (and (eq (tuatara.runtime:job-status job) :done) (not (remote-read-job-arrival job))
+                    (not (remote-read-job-again job)))))
+          ((remote-read-job-again job)
+           (when copy (ignoring-errors-reported ("deleting ~a" copy) (tuatara.io:remove-file-if-there copy))))
+          ((and copy got (arrival-arrived got)) (note-remote-copy job (arrival-arrived got)))
+          (t (stop-using-cache-directory directory (tuatara.runtime:job-buffer job))
+             (ignoring-errors-reported ("clearing ~a" directory) (clear-cache-path directory))))))
 
 (defun remote-copy-in (placeholder job)
   "Visit the copy JOB read in a buffer of its own, which takes the place of
@@ -482,8 +751,7 @@ rimu in its place."
   (let* ((remote (remote-read-job-remote job))
          (host (remote-file-host remote))
          (path (remote-read-job-path job))
-         (other (remote-buffer host path :except placeholder))
-         (directory (remote-read-job-directory job)))
+         (other (remote-buffer host path :except placeholder)))
     (cond ((eq :directory (remote-read-job-kind job))
            (let ((windows (buffer-windows placeholder)))
              (rimu-show-directory (remote-name host path) :safe (remote-read-job-safe job)
@@ -494,9 +762,7 @@ rimu in its place."
              (tuatara.buffer:kill-buffer placeholder)))
           (t
            (let ((buffer (if other
-                             (progn (close-remote-copy job)
-                                    (when directory (delete-private-directory directory))
-                                    other)
+                             (progn (close-remote-copy job) other)
                              (remote-visit-copy remote path job)))
                  (name (tuatara.buffer:buffer-name placeholder)))
              (dolist (window (buffer-windows placeholder))
@@ -519,12 +785,13 @@ safely when the visit is safe or the file is evidence. Else it is shown by one
 of *REMOTE-FILE-VIEWS* when one shows it and all of it has come. Else it is
 opened with only the find-file functions REMOTE-FIND-FILE-FUNCTIONS gives. One
 that looks binary is opened in the hex view (*HEX-VIEW-BINARY-FILES*). It is
-named and placed after the file there, its copy's directory deleted with it."
+named and placed after the file there, and uses its copy's entry of the cache,
+kept after it is closed (MAKE-CACHE-ENTRY)."
   (let* ((host (remote-file-host remote))
-         (directory (remote-read-job-directory job))
-         (copy (or (remote-read-job-copy job)
-                   (progn (setf directory (new-private-directory (private-cache-directory "remote/")))
-                          (tuatara.io:path-join directory (tuatara.io:native-file-name path)))))
+         (directory (or (remote-read-job-directory job)
+                        (make-cache-entry "remote" (remote-name host path) (remote-name host path)
+                                          :user (tuatara.runtime:job-buffer job))))
+         (copy (or (remote-read-job-copy job) (tuatara.io:path-join directory (tuatara.io:native-file-name path))))
          (final (make-remote-file host path))
          (safe (or (remote-read-job-safe job) (remote-file-evidence remote)))
          (arrival (remote-read-job-arrival job))
@@ -552,15 +819,21 @@ named and placed after the file there, its copy's directory deleted with it."
           (remote-file-evidence final) (remote-file-evidence remote)
           (remote-file-trusted final) (remote-file-trusted remote)
           (remote-file-sent final) (and (remote-file-attributes remote) (tuatara.buffer:buffer-content-number buffer))
+          (remote-file-directory final) directory
           (tuatara.buffer:buffer-local buffer :remote-file) final
-          (tuatara.buffer:buffer-local buffer 'private-directory) directory
           (tuatara.buffer:buffer-local buffer :reread) (and (not view) #'remote-read-again)
           (buffer-given-directory buffer) (remote-parent-directory-name host path))
+    (use-cache-directory directory buffer)
     (remember-file (remote-name host path) :safe safe)
     (when arrival (remote-rest-begin buffer job path))
     (message "~a~:[~*~; (~a)~]~@[: ~a~]" (remote-name host path) (remote-file-attributes remote)
              (octets-words (or (getf (remote-file-attributes remote) :size) 0))
              (cond ((remote-file-evidence remote) (format nil "opened safely; ~a" (remote-file-evidence remote)))
+                   ((eq (remote-read-job-kept job) :all)
+                    (format nil "kept copy from ~a, checked against the server"
+                            (short-time-words (remote-read-job-kept-from job))))
+                   ((and arrival (eq (remote-read-job-kept job) :part))
+                    "going on from where the last read stopped; its lines are counted when all of it is here")
                    (arrival "the rest is still arriving; its lines are counted when all of it is here")
                    ((null (remote-file-attributes remote)) "a new file, made there when saved")
                    (said)))
@@ -582,6 +855,9 @@ reading the rest."
          (rest (make-remote-read-job buffer remote (remote-read-job-safe job))))
     (setf (arrival-opening arrival) nil
           (remote-read-job-path rest) path
+          (remote-read-job-copy rest) (remote-read-job-copy job)
+          (remote-read-job-directory rest) (remote-read-job-directory job)
+          (remote-read-job-got rest) arrival
           (remote-read-job-arrival rest) arrival
           (remote-read-job-fd rest) (remote-read-job-fd job)
           (remote-read-job-rest rest) t
@@ -631,10 +907,17 @@ was arriving, shows as its mode has it, and watch its copy from now on."
   "The job JOB reading the rest of NAME, the file BUFFER shows, has ended.
 Once all has come the buffer becomes as a file read whole, its lines counted
 next; else it stays, saying what has arrived, marked incomplete and never
-written there until read again."
+written there until read again, what came noted in the cache to go on from
+\(NOTE-REMOTE-COPY). A job going on with it that found the file changed there
+has it read again whole (REMOTE-READ-WHOLE)."
   (close-remote-copy job)
+  (unless (eq (tuatara.runtime:job-status job) :done)
+    (note-remote-copy job (arrival-arrived (remote-read-job-arrival job))))
   (when (live-buffer-p buffer)
-    (cond ((eq (tuatara.runtime:job-status job) :done)
+    (cond ((and (remote-read-job-resumed job) (remote-read-job-changed job))
+           (message "~a changed on the server since it was read: reading it again whole" name)
+           (remote-read-whole buffer))
+          ((eq (tuatara.runtime:job-status job) :done)
            (setf (tuatara.text:mapping-holes (tuatara.buffer:buffer-mapping buffer)) '())
            (remote-arrival-over buffer)
            (parse-afresh buffer)
@@ -786,13 +1069,14 @@ sent there already."
 
 (defun remote-after-save (buffer)
   "After-save function: send the copy BUFFER visits of a file on another
-machine there, in the background; a buffer saved as a file here visits it
-from then on, the file there left. When the last save left the file there
-partly written, it is written over whole only after a yes."
+machine there, in the background, the copy noted in the cache as no longer as
+read until it is; a buffer saved as a file here visits it from then on, the
+file there left. When the last save left the file there partly written, it is
+written over whole only after a yes."
   (let ((remote (buffer-remote buffer)))
     (when remote
       (if (not (equal (tuatara.io:parent-path (tuatara.buffer:buffer-file buffer))
-                      (buffer-private-directory buffer)))
+                      (remote-file-directory remote)))
           (setf (tuatara.buffer:buffer-local buffer :remote-file) nil
                 (buffer-given-directory buffer) nil)
           (let ((job (make-remote-write-job buffer remote (tuatara.io:native (tuatara.buffer:buffer-file buffer))
@@ -804,6 +1088,7 @@ partly written, it is written over whole only after a yes."
                   (t (tuatara.buffer:buffer-mark-saved buffer (or (remote-file-sent remote) -1))
                      (message "~a is not written there: it is still partly written" (buffer-remote-name buffer))
                      (return-from remote-after-save nil)))
+            (note-cache-entry (remote-file-directory remote) :facts "")
             (tuatara.runtime:start-job-thread job #'send-remote-copy :name "tuatara remote write")
             (take-in-soon job *save-wait* (format nil "Sending ~a" (buffer-remote-name buffer))))))))
 
@@ -819,6 +1104,12 @@ it left the file there partly written."
                  (remote-file-sum remote) (remote-write-job-sum job)
                  (remote-file-sent remote) (remote-write-job-content job)
                  (remote-file-partly remote) nil)
+           ;; the copy is as the file there now, unless saved again meanwhile
+           (when (and (remote-file-directory remote) (live-buffer-p buffer)
+                      (eql (tuatara.buffer:buffer-saved-number buffer) (remote-write-job-content job)))
+             (note-cache-entry (remote-file-directory remote)
+                               :facts (remote-copy-facts (remote-write-job-attributes job)
+                                                         (remote-write-job-copy job) :all)))
            (message "Wrote ~a~@[ in place: ~a~]" name (remote-write-job-in-place job)))
           (t
            (when (remote-write-job-partly job)
@@ -834,15 +1125,43 @@ it left the file there partly written."
 
 (defun remote-read-again (buffer)
   "Read the file on another machine BUFFER visits a copy of again, in the
-background, into a new copy that takes the old one's place; then the buffer
-is read again from it, one step that undo takes back."
+background: one that stopped arriving goes on from where it stopped when the
+file there is unchanged (REMOTE-RESUME); else it is read again whole
+\(REMOTE-READ-WHOLE)."
   (when (remote-arrival-running-p buffer)
     (refuse "~a is still arriving: it can be read again once it has all come" (tuatara.buffer:buffer-name buffer)))
+  (let ((remote (buffer-remote buffer)))
+    (if (and (remote-file-arrival remote) (remote-file-attributes remote) (remote-file-directory remote))
+        (remote-resume buffer)
+        (remote-read-whole buffer))))
+
+(defun remote-resume (buffer)
+  "Go on reading in the background the parts of the file BUFFER visits a copy
+of that never arrived, into that copy, when the file there is as it was; when
+it has changed since, it is read again whole (REMOTE-REST-IN)."
+  (let* ((remote (buffer-remote buffer))
+         (copy (tuatara.io:native (tuatara.buffer:buffer-file buffer)))
+         (rest (make-remote-read-job buffer remote (tuatara.io:safe-visit-p buffer))))
+    (setf (remote-read-job-path rest) (remote-file-path remote)
+          (remote-read-job-arrival rest) (remote-file-arrival remote)
+          (remote-read-job-got rest) (remote-file-arrival remote)
+          (remote-read-job-copy rest) copy
+          (remote-read-job-directory rest) (remote-file-directory remote)
+          (remote-read-job-fd rest) (tuatara.io:open-for-writing copy)
+          (remote-read-job-rest rest) t
+          (remote-read-job-resumed rest) t)
+    (tuatara.runtime:start-job-thread rest #'read-remote-rest :name "tuatara remote read")
+    (message "Going on reading ~a from where it stopped" (buffer-remote-name buffer))))
+
+(defun remote-read-whole (buffer)
+  "Read the file on another machine BUFFER visits a copy of again, whole, in
+the background, into a new copy that takes the old one's place; then the
+buffer is read again from it, one step that undo takes back."
   (let* ((old (buffer-remote buffer))
          (remote (make-remote-file (remote-file-host old) (remote-file-path old)))
          (job (make-remote-read-job buffer remote (tuatara.io:safe-visit-p buffer))))
     (setf (remote-file-trusted remote) (remote-file-trusted old)
-          (remote-read-job-directory job) (buffer-private-directory buffer)
+          (remote-read-job-directory job) (remote-file-directory old)
           (remote-read-job-again job) t)
     (tuatara.runtime:start-job-thread job #'read-remote-copy :name "tuatara remote read")
     (take-in-soon job *save-wait* (format nil "Reading ~a again" (buffer-remote-name buffer)))))
@@ -866,6 +1185,11 @@ is read again from it, one step that undo takes back."
                (setf (remote-file-attributes remote) (remote-file-attributes new)
                      (remote-file-sum remote) (remote-file-sum new)
                      (remote-file-sent remote) (tuatara.buffer:buffer-content-number buffer))
+               (when (remote-file-directory remote)
+                 (note-cache-entry (remote-file-directory remote)
+                                   :facts (remote-copy-facts (remote-file-attributes new)
+                                                             (tuatara.io:native (tuatara.buffer:buffer-file buffer))
+                                                             :all)))
                (tuatara.buffer:buffer-mark-saved buffer)
                (parse-afresh buffer)
                (message "Read ~a again~@[; ~a~]" (buffer-remote-name buffer) said))))))

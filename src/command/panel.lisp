@@ -173,15 +173,31 @@ be selected as its candidates are."
   (let ((candidates (completion-candidates completion)) (index (completion-index completion)))
     (and (< -1 index (length candidates)) (aref candidates index))))
 
+(defparameter *frame-at-least-every* 100
+  "While keys wait to be handled (a key held down), the milliseconds the
+editor may go without drawing a frame: the keys are handled first, so that
+none is left over to act after the key is let go, and a frame drawn at least
+this often shows where they have got to. The preview of a question's selection
+(PREVIEW-SELECTION) is brought up to date as often.")
+
+(defvar *previewed-at* 0
+  "The internal real time at which a question's preview function was last called.")
+
 (defun preview-selection (editor)
   "Call the preview function of the completing read under way, when it has
 one, with the selected candidate (NIL when there is none) if that is not the
-one it was last called with."
+one it was last called with. While keys wait to be handled (a key held down)
+it is called at most every *FRAME-AT-LEAST-EVERY* milliseconds, so that
+moving through a long list shows the candidate it stops at, not each one it
+passes."
   (let ((completion (editor-completion editor)))
     (when (and completion (completion-preview completion))
       (let ((candidate (selected-candidate completion)))
-        (unless (eq candidate (completion-previewed completion))
-          (setf (completion-previewed completion) candidate)
+        (unless (or (eq candidate (completion-previewed completion))
+                    (and (tuatara.frontend:frontend-input-pending-p (editor-frontend editor))
+                         (< (tuatara.runtime:milliseconds-since *previewed-at*) *frame-at-least-every*)))
+          (setf (completion-previewed completion) candidate
+                *previewed-at* (get-internal-real-time))
           (funcall (completion-preview completion) candidate))))))
 
 (defun input-query (input &optional (separator #\/))

@@ -36,13 +36,13 @@ directory; what a named pipe, a socket or a device is, never opening it.
 Moving over many lines quickly then reads none of them. A longer time reads
 fewer files as you move, which helps on a slow disk or a remote directory; a
 shorter one shows the preview at once and reads more.
-- a number of seconds: the time, 0.1 as standard."
+- a time: seconds, or words such as \"200ms\" or \"1s\"; 0.1 as standard."
   :values (seconds 0 *))
 
 (define-setting *rimu-preview-size* (expt 2 20)
   "The most of a file rimu's preview shows, in octets from its start.
 The preview of a larger file shows its start, its name saying so.
-- a whole number of octets: the most, 1 MB as standard."
+- a size: a whole number of octets, or words such as \"2M\"; 1 MB as standard."
   :values (octets 0 *))
 
 (define-record (rimu-preview (:include side-preview) (:constructor make-rimu-preview (list-window)) (:copier nil))

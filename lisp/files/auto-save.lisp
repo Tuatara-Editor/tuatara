@@ -41,7 +41,7 @@ auto-saved (*AUTO-SAVE*).
 A shorter wait loses less when the editor or the machine stops, and writes more
 often; a longer one writes less while you type in bursts. Each auto-save writes
 the buffer whole, so a large buffer saved often costs disk time.
-- a number of seconds: the wait, 5 as standard."
+- a time: seconds, or words such as \"90s\" or \"2m\"; 5 as standard."
   :values (seconds 0 *))
 
 (define-setting *auto-save-interval* 60
@@ -50,7 +50,7 @@ without a pause (*AUTO-SAVE*).
 Without it, typing with no pause as long as the idle wait (*AUTO-SAVE-IDLE*)
 would never be saved. Lower it to lose less in a crash, at the cost of writing
 the buffer whole more often.
-- a number of seconds: the most, 60 as standard."
+- a time: seconds, or words such as \"90s\" or \"2m\"; 60 as standard."
   :values (seconds 0 *))
 
 (define-setting *auto-save-size-limit* (* 256 1024 1024)
@@ -59,7 +59,7 @@ A larger one is not copied (each copy would be written whole), so a crash loses
 its changes not saved. Raise it to protect a larger file, at the cost of
 writing it whole at each auto-save; lower it where the disk is slow or has
 little room.
-- a whole number of octets: the limit, 256 MB as standard."
+- a size: a whole number of octets, or words such as \"1G\"; 256 MB as standard."
   :values (octets 0 *))
 
 (defun auto-save-directory ()

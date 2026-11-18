@@ -20,7 +20,8 @@
   "The largest message read from a language server, in octets: a larger one
 is let go unread, said so. Raise it for a server that sends very large
 answers (the symbols of a whole project at once).
-- a whole number: that many octets, 32 MB (33554432) as standard."
+- a size: a whole number of octets, or words such as \"64M\"; 32 MB (33554432) as
+  standard."
   :values (octets 1 *))
 
 (defvar *lsp-most-unsent* (* 64 1024 1024)
@@ -32,7 +33,7 @@ server that leaves more unread has stopped reading, and is ended.")
 given up (a completion, a definition, a rename); work goes on meanwhile.
 Raise it for a slow server, one still indexing a large project; lower it to
 give up sooner on one that is slow.
-- a number: that many seconds, 2 as standard."
+- a time: seconds, or words such as \"500ms\" or \"5s\"; 2 as standard."
   :values (seconds 0 *))
 
 (defvar *lsp-servers* '()

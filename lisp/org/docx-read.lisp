@@ -65,7 +65,8 @@ held only to *ZIP-LARGEST-ENTRY*.")
 Office files are Word documents, Excel workbooks, PowerPoint presentations and
 OpenDocument files. Past the limit the rest of the text is left out, and the
 note says so, so that a file whose few octets stand for text copied many times
-cannot fill the memory."
+cannot fill the memory.
+- a size: a whole number of octets, or words such as \"32M\"; 16 MB as standard."
   :values (octets 1 *))
 
 (define-setting *office-value-length-limit* 2000

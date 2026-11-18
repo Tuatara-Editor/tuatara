@@ -422,3 +422,36 @@ it: in dynamic Huffman blocks, or stored when that would not be smaller."
       (if (>= (bit-writer-fill writer) (- end start))
           (deflate-stored octets start end)
           (subseq (bit-writer-octets writer) 0 (bit-writer-fill writer))))))
+
+(defun adler32 (octets start end)
+  "The Adler-32 sum (RFC 1950) of OCTETS from START below END."
+  (let ((a 1) (b 0))
+    (declare (type (unsigned-byte 32) a b))
+    (sb-kernel:with-array-data ((octets octets) (start start) (end end))
+      (declare (type (simple-array (unsigned-byte 8) (*)) octets) (optimize speed))
+      ;; the sums are taken modulo 65521 only every 5552 octets, the most before B could pass 32 bits
+      (loop with at of-type fixnum = start
+            while (< at end)
+            do (let ((stop (min end (+ at 5552))))
+                 (declare (type fixnum stop))
+                 (loop while (< at stop)
+                       do (incf a (aref octets at))
+                          (incf b a)
+                          (incf at))
+                 (setf a (mod a 65521) b (mod b 65521)))))
+    (logior (ash b 16) a)))
+
+(defun zlib-deflate (octets &key (start 0) (end (length octets)))
+  "OCTETS from START below END as zlib data (RFC 1950): the two-octet header,
+the data DEFLATE makes, and the Adler-32 sum of OCTETS. It is what a PDF
+stream with the filter /FlateDecode holds; ZLIB-OCTETS and any zlib reader
+take it back."
+  (let* ((octets (coerce octets 'tuatara.text:octets))
+         (packed (deflate octets :start start :end end))
+         (out (tuatara.text:make-octets (+ 2 (length packed) 4)))
+         (sum (adler32 octets start end)))
+    (setf (aref out 0) #x78 (aref out 1) #x9C)
+    (replace out packed :start1 2)
+    (loop for k from 0 below 4
+          do (setf (aref out (+ 2 (length packed) k)) (ldb (byte 8 (* 8 (- 3 k))) sum)))
+    out))

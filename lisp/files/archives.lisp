@@ -57,8 +57,8 @@ and unpacked as one.")
 before it is ended.
 \\[stop-job] ends it sooner. Lower it to end a program that hangs sooner;
 raise it only for an archive that takes more than a day.
-- a number of seconds: the time allowed, a day as standard, for the largest
-  archives."
+- a time: seconds, or words such as \"12h\" or \"2d\"; a day as standard, for the
+  largest archives."
   :values (seconds 0 *))
 
 (defparameter *archive-test-seconds* (* 60 60)
@@ -69,7 +69,7 @@ unpacked (EXTRACT-ARCHIVE) may take: an hour.")
   "The octets left free on the drive an archive is unpacked onto.
 Unpacking stops before the drive has less, so that an archive holding far more
 than it takes up cannot fill the drive.
-- a whole number of octets: the reserve, 1 GB as standard.
+- a size: a whole number of octets, or words such as \"2G\"; 1 GB as standard.
 - 0: no reserve is kept."
   :values (octets 0 *))
 
@@ -113,7 +113,7 @@ unpacked into by standard; with no ending to take away, the name and
 A longer list is not shown, and that is said. Raise it to see the list of a
 very large archive, at the cost of the memory of the whole list; lower it to
 refuse such a list sooner.
-- a whole number of octets: the limit, 64 MB as standard."
+- a size: a whole number of octets, or words such as \"128M\"; 64 MB as standard."
   :values (octets 0 *))
 
 (defun archive-environment ()

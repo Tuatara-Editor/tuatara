@@ -233,7 +233,7 @@ takes). :ARGUMENTS is what its form says, as ORG-READ-RULE reads them. :HOUR,
     ;; an Org file written to while it may be open: its buffer, its new text by lines, saved
     tuatara.io:visit-file put-text-by-lines save-buffer-with-care
     ;; text from elsewhere written into Org safely, and read back
-    org-safe-line org-safe-line-words org-escape-block org-unescape-block tuatara.io:inflate tuatara.text:xml-parse
+    org-safe-line org-safe-line-words org-escape-block org-unescape-block tuatara.io:inflate tuatara.io:zlib-deflate tuatara.text:xml-parse
     xmp-fields jpeg-metadata octets-metadata tuatara.io:jpeg-segments file-sha256 octets-sha256 octets-md5 shown-file
     ;; PDF objects, read from octets alone
     pdf-object-at pdf-date-words *pdf-item-limit* tuatara.io:pdf-header-at pdf-white-p pdf-get pdf-dictionary-p
@@ -252,6 +252,8 @@ takes). :ARGUMENTS is what its form says, as ORG-READ-RULE reads them. :HOUR,
     tuatara.io:read-stream-octets tuatara.io:sandbox-find-program run-on-copies copies-original-names
     run-on-copies-for-report sandbox-outcome-words sandbox-pdf program-health-words user-program-path
     start-detached open-externally-file new-private-directory private-cache-directory private-state-directory
+    ;; entries of the cache kept to be used again, and the copies of files read from other machines
+    define-cache-kind find-cache-entry make-cache-entry note-cache-entry remote-copy-origin
     tuatara.io:replace-file tuatara.io:memory-file tuatara.io:call-with-memory-file
     sandbox-font-directories pdf-view-make
     ;; pictures turned into pixels in the sandbox, and their pixels read

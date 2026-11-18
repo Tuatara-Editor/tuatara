@@ -350,6 +350,10 @@ to the debug log (*SECRET-AT-HAND*). It runs with an environment of its own
            (setf pipe (and passphrase (gpg-passphrase-pipe passphrase))
                  second (and (or second-input second-path) (multiple-value-list (sb-posix:pipe)))
                  status (multiple-value-list (sb-posix:pipe)))
+           ;; the ends gpg is given
+           (when pipe (setf (first pipe) (fd-for-program (first pipe))))
+           (when second (setf (first second) (fd-for-program (first second))))
+           (setf (second status) (fd-for-program (second status)))
            (tuatara.io:call-with-program
             (gpg-command program environment arguments asker :status (second status) :most most
                                                              :passphrase (first pipe) :second (first second))

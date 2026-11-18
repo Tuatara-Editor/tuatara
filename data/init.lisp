@@ -692,10 +692,10 @@
   ;; (setf *hex-view-binary-files* nil)
 
   ;; Files open at their top. Not set: t: where you left them.
-  ;; (setf *save-place-mode* nil)
+  ;; (setf *remember-places* nil)
 
   ;; How many files' places are kept. Not set: 400.
-  ;; (setf *save-place-limit* 1000)
+  ;; (setf *remembered-places-limit* 1000)
 
   ;; No list of the files visited. Not set: t; C-x C-r.
   ;; (setf *remember-recent-files* nil)
@@ -1492,6 +1492,12 @@
   ;; (setf *cache-directory* "/run/media/you/Data/tuatara/cache/"
   ;;       *state-directory* "/run/media/you/Data/tuatara/state/"
   ;;       *packages-directory* "/run/media/you/Data/tuatara/packages/")
+
+  ;; What the cache keeps for you to come back to (copies of files read from
+  ;; other machines, mailboxes read by readpst) is cleared this long after
+  ;; you last used it, never while in use; M-x list-cache shows it, and p
+  ;; there pins an entry, kept until you delete it. Not set: "1d".
+  ;; (setf *cache-keep* "3d")
 
   ;; The program decoding a file runs shut in by bubblewrap (bwrap), with no
   ;; network and no file but the one; M-x check-health says whether it works.

@@ -564,8 +564,10 @@ outlook opens Outlook items (=.msg=), saved mail (=.eml=) and mailboxes
 evidence: nothing in a message runs, and attachments open only when you ask,
 from private copies. In a message, ~P~ shows it as it looks, ~O~ opens an
 attachment in the desktop's own program after asking, and ~C-c o~ is the
-prefix for the same commands. In a mailbox, ~C~ copies messages out. It needs
-readpst and WeasyPrint.
+prefix for the same commands. In a mailbox, ~C~ copies messages out. What
+readpst wrote of a mailbox stays in Tuatara's cache (chapter 9, "The cache"),
+so the same mailbox opens again without readpst. It needs readpst and
+WeasyPrint.
 
 *** caldav
 

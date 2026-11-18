@@ -1263,3 +1263,41 @@ cat ~a/l.txt; echo; echo new > ~a/n.txt && cat ~a/n.txt; cat ~a/h.txt 2>/dev/nul
                                             (lambda (fd) (setf seen fd) (error "stop")))
           'error)
     (false (fd-open-p seen))))
+
+(defun call-with-descriptor-3-free (function)
+  "Call FUNCTION with file descriptor 3 closed, as in a Lisp that has nothing open
+but its standard input and outputs, and put back what was open there after."
+  (let ((saved (and (ignore-errors (sb-posix:fcntl 3 sb-posix:f-getfd)) (tuatara.runtime:duplicate-fd 3 :lowest 10))))
+    (when saved (sb-posix:close 3))
+    (unwind-protect (funcall function)
+      (when saved
+        (sb-posix:dup2 saved 3)
+        (sb-posix:close saved)))))
+
+(define-test (sandbox descriptor-3-handed-over)
+  ;; SBCL's run-program never hands a program descriptor 3, whatever it keeps: bwrap is given its system call
+  ;; filter, the files it shows and the places it binds though 3 is free
+  (with-test-directory (dir)
+    (let ((shown (namestring (merge-pathnames "shown.txt" dir))))
+      (alexandria:write-string-into-file "shown" shown)
+      (flet ((run (&rest keys)
+               (call-with-descriptor-3-free
+                (lambda () (apply #'sandbox-shell "cat /tmp/shown.txt; cat /etc/given.txt 2>/dev/null; true"
+                                  :directories (list (cons shown "/tmp/shown.txt")) keys)))))
+        (multiple-value-bind (text outcome said) (run :files '(("/etc/given.txt" . " given")))
+          (is eq :done outcome "~a" said)
+          (is string= "shown given" text))
+        (let ((tuatara.io::*sandbox-seccomp* nil))
+          (multiple-value-bind (text outcome said) (run :files '(("/etc/given.txt" . " given")))
+            (is eq :done outcome "~a" said)
+            (is string= "shown given" text))
+          (multiple-value-bind (text outcome said) (run)
+            (is eq :done outcome "~a" said)
+            (is string= "shown" text))))))
+  (call-with-descriptor-3-free
+   (lambda ()
+     (let ((fd (tuatara.runtime:fd-for-program (sb-posix:open "/dev/null" sb-posix:o-rdonly))))
+       (unwind-protect (progn (isnt = 3 fd) (false (fd-open-p 3)))
+         (sb-posix:close fd)))))
+  ;; a program told to keep descriptor 3 is refused before it starts
+  (fail (tuatara.io::start-program '("/bin/true") :preserve-fds '(3)) 'error))

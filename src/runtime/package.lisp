@@ -22,7 +22,7 @@ the reports of debug mode.")
            #:set-debug #:milliseconds-since #:seconds-since #:deadline-in #:deadline-passed-p #:seconds-left
            #:wait-until #:*debug-log-path* #:log-in-use-p #:debug-report-line #:backtrace-lines
            #:reporting-errors #:ignoring-errors-reported #:close-fd-quietly #:with-fd-closed-on-error
-           #:+o-cloexec+ #:duplicate-fd
+           #:+o-cloexec+ #:duplicate-fd #:fd-for-program
            ;; hooks
            #:quit #:quit-words #:run-hook #:run-hook-until-success #:run-hook-until-done #:call-hook-function
            #:hook-function-name

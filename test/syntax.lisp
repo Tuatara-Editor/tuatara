@@ -107,6 +107,17 @@ the parser. Release them with RELEASE-PARSE."
     (is = 2 (tuatara.syntax:query-error-line error))
     (is string= "Unknown node type" (tuatara.syntax:query-error-kind error))))
 
+(define-test (syntax rules-compiled-after-their-helper-was-killed)
+  ;; the program compiling rules killed while idle, as a test ended in the middle ends every program running:
+  ;; the next rules asked for compile in one started afresh, not "did not answer"
+  (let ((grammar (tuatara.syntax:find-grammar "rust")))
+    (true (tuatara.syntax:compile-query grammar "(identifier) @killed-before"))
+    (let ((process (tuatara.syntax::helper-process (tuatara.syntax:kept-helper :rules))))
+      (sb-ext:process-kill process 9)
+      (sb-ext:process-wait process))
+    (true (handler-case (tuatara.syntax:compile-query grammar "(identifier) @killed-after")
+            (tuatara.syntax:query-not-answered () nil)))))
+
 (define-test (syntax lisp-parses-cleanly)
   ;; loops with of-type, and strings with ~ that no format control reads, parse
   ;; without errors, the directives each one node

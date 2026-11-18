@@ -260,7 +260,7 @@ A number given to ~.~ replaces the one the command had. After ~C-u 3 d~, a plain
 
 | Setting        | Default  | What it changes                              |
 |----------------+----------+----------------------------------------------|
-| =*undo-limit*= | =nil=    | The most memory, in bytes, that one buffer's undo history may hold. =nil= keeps every change. With a limit, the oldest changes go first, down to about three quarters of it, and never the newest. |
+| =*undo-limit*= | =nil=    | The most memory, in bytes or words such as ="512M"=, that one buffer's undo history may hold. =nil= keeps every change. With a limit, the oldest changes go first, down to about three quarters of it, and never the newest. |
 
 ** Repeat counts
 
@@ -374,7 +374,7 @@ language.
 | =*tuatara-normal-tab-modes*=     | =(org-mode)= | The modes where ~TAB~ works in NORMAL state, and the modes made from them. |
 | =*fill-column*=                 | =80=       | The column filled lines end by. |
 | =*fill-ask-column*=              | =t=        | =nil= fills at once, without asking for the column. |
-| =*fill-paragraph-limit*=         | =1048576=  | The most bytes a paragraph may span to be filled. |
+| =*fill-paragraph-limit*=         | =1048576=  | The most bytes (or words such as ="2M"=) a paragraph may span to be filled. |
 | =*sentence-end-double-space*=    | =nil=      | =t= for two spaces between sentences: a sentence ends at a full stop followed by two spaces, and filling keeps two. |
 | =*extra-sentence-abbreviations*= | =()=       | Abbreviations of your own whose full stop ends no sentence, such as ='("Ph.D." "et al.")=. |
 | =*removed-sentence-abbreviations*= | =()=     | Abbreviations of Tuatara's own list that should end a sentence after all, such as ='("St.")=. |

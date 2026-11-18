@@ -231,22 +231,23 @@ reports not yet shown."
   (let ((was tuatara.runtime:*hang-report-seconds*)
         (out (make-string-output-stream)))
     (setf tuatara.runtime:*hang-report-seconds* 1)
-    (unwind-protect
-         (let ((busy (sb-thread:make-thread
-                      (lambda ()
-                        (let ((*error-output* out))
-                          (tuatara.runtime:note-editor-busy t)
-                          (let ((until (+ (get-internal-real-time) (* 3 internal-time-units-per-second))))
-                            (loop while (< (get-internal-real-time) until)))
-                          (tuatara.runtime:note-editor-busy nil)))
-                      :name "busy test")))
-           (let ((end-watch (tuatara.runtime:start-hang-watch busy)))
-             (sb-thread:join-thread busy)
-             (funcall end-watch))
-           (let ((said (get-output-stream-string out)))
-             (true (search "the editor has been busy for" said))
-             (is = 1 (count-matches "the editor has been busy" said))))
-      (setf tuatara.runtime:*hang-report-seconds* was))))
+    (waiting-on-purpose
+     (unwind-protect
+          (let ((busy (sb-thread:make-thread
+                       (lambda ()
+                         (let ((*error-output* out))
+                           (tuatara.runtime:note-editor-busy t)
+                           (let ((until (+ (get-internal-real-time) (* 3 internal-time-units-per-second))))
+                             (loop while (< (get-internal-real-time) until)))
+                           (tuatara.runtime:note-editor-busy nil)))
+                       :name "busy test")))
+            (let ((end-watch (tuatara.runtime:start-hang-watch busy)))
+              (sb-thread:join-thread busy)
+              (funcall end-watch))
+            (let ((said (get-output-stream-string out)))
+              (true (search "the editor has been busy for" said))
+              (is = 1 (count-matches "the editor has been busy" said))))
+       (setf tuatara.runtime:*hang-report-seconds* was)))))
 
 (define-test (debug-reports hang-watch-sleeps-at-rest)
   ;; with the editor at rest the hang watch does not wake each second: it waits

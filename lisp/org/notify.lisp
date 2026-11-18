@@ -21,7 +21,8 @@ The tag is a heading's own or one it takes from those above it.
   "How many minutes before its time an entry tagged :notify: is told.
 It is told when the time comes as well. An entry's NOTIFY_BEFORE property
 says otherwise for it.
-- a whole number: that many minutes before; 0 for only when the time comes.
+- a time: minutes, or words such as \"15m\" or \"1h\", before; 0 for only when the
+  time comes. 10 as standard.
 - nil: only when the time comes."
   :values (or (member nil) (minutes 0 * :whole)))
 

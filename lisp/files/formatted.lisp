@@ -717,7 +717,7 @@ when there are two or more."
   "The most octets \\[insert-formatted-note-template] reads from a file that is
 no note template.
 A larger file is refused, and said so.
-- a whole number of octets: the limit, 16 MB as standard."
+- a size: a whole number of octets, or words such as \"32M\"; 16 MB as standard."
   :values (octets 0 *))
 
 (defun read-file-text (path)

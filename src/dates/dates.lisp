@@ -300,9 +300,9 @@ NIL for none."
 
 (defun duration-words (seconds)
   "SECONDS, how long something took or may take, in words: 1 second, 0.25
-seconds, 2.4 seconds, 3 minutes 12 seconds, 2 hours 5 minutes. A whole number
-of seconds is said without a fraction, less than a second to two significant
-digits, any other to a tenth."
+seconds, 2.4 seconds, 3 minutes 12 seconds, 2 hours 5 minutes, 1 day 0 hours.
+A whole number of seconds is said without a fraction, less than a second to two
+significant digits, any other to a tenth."
   (let ((seconds (if (and (>= seconds 1) (< seconds 60)) (/ (round seconds 1/10) 10) seconds)))
     (multiple-value-bind (minutes rest) (floor seconds 60)
       (cond ((and (< seconds 60) (= seconds (round seconds)))
@@ -312,7 +312,8 @@ digits, any other to a tenth."
                (format nil "~a seconds" (string-right-trim "0" (format nil "~,vf" digits seconds)))))
             ((< seconds 60) (format nil "~,1f seconds" seconds))
             ((< minutes 60) (format nil "~d minute~:p ~d second~:p" minutes (floor rest)))
-            (t (format nil "~d hour~:p ~d minute~:p" (floor minutes 60) (mod minutes 60)))))))
+            ((< minutes (* 24 60)) (format nil "~d hour~:p ~d minute~:p" (floor minutes 60) (mod minutes 60)))
+            (t (format nil "~d day~:p ~d hour~:p" (floor minutes (* 24 60)) (mod (floor minutes 60) 24)))))))
 
 (defun short-time-words (time)
   "The universal TIME in local time, short, as a list shows it: 2026-10-07

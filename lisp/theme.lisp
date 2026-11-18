@@ -876,10 +876,37 @@ dark style is not followed after it."
                               :value name)))
           (tuatara.display:theme-names)))
 
+(defun call-with-theme-preview (function)
+  "Call FUNCTION with a preview function for COMPLETING-READ: called with the
+candidate selected (NIL for none, when what is shown stays), it puts in force
+the theme the candidate names, with your own face settings (set-face) on top.
+However FUNCTION ends, the theme in force when this began is back, and the
+desktop's style is not followed meanwhile. Nothing is chosen by name: that is
+for CHOOSE-THEME once FUNCTION has returned."
+  (let ((original tuatara.display:*current-theme*)
+        (shown nil)
+        (*theme-chosen* t))
+    (unwind-protect
+         (funcall function
+                  (lambda (candidate)
+                    (let ((theme (and candidate (candidate-result candidate))))
+                      (when (and theme (symbolp theme) (not (eq theme shown)))
+                        (ignoring-errors-reported ("showing a theme")
+                          (tuatara.display:apply-theme theme)
+                          (setf shown theme))))))
+      (when shown
+        (tuatara.display:apply-theme original)))))
+
 (define-command load-theme ()
-  "Choose a colour theme, with each theme's description beside it. Your own face
-settings (set-face in the init file) stay on top of any theme."
-  (let ((chosen (completing-read "Load theme: " (theme-candidates) :require-match t)))
+  "Choose a colour theme, with each theme's description beside it. Moving
+through the list shows the whole screen in the theme selected;
+\\<minibuffer>\\[keyboard-quit] puts back the theme in force before and
+\\<minibuffer>\\[minibuffer-finish] keeps the one shown. That does not depend on
+the settings for previews. Your own face settings (set-face in the init file)
+stay on top of any theme."
+  (let ((chosen (call-with-theme-preview
+                 (lambda (show)
+                   (completing-read "Load theme: " (theme-candidates) :require-match t :preview show)))))
     (when (symbolp chosen)
       (choose-theme chosen :say t))))
 

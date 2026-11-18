@@ -863,73 +863,87 @@ let go of (FORGET-QUERIES), in a cons for atomic pushing.")
 
 (defun compile-query-text (grammar source)
   "The work of COMPILE-QUERY: compile SOURCE, a tree-sitter query, for GRAMMAR,
-in the helper compiling rules, which is never given any text to parse.
-Signals QUERY-NOT-ANSWERED when that helper ended or did not answer in
-time (QUERY-COMPILE-WAIT): the rules may compile when asked again."
+in the helper compiling rules, which is never given any text to parse. A
+helper found ended when asked, killed while it waited, is started afresh and
+asked once more. Signals QUERY-NOT-ANSWERED when the helper asked ended or
+did not answer in time (QUERY-COMPILE-WAIT): the rules may compile when
+asked again."
   (let ((number (1+ (sb-ext:atomic-incf (car **query-numbers**))))
         (helper (kept-helper :rules)))
-    (with-call (call helper +op-query+)
-      (let ((status (send-query call number grammar source)))
-        (unless (eql 0 status)
-          (if (eq status :dead)
-              (error 'query-not-answered :grammar grammar)
-              (error 'query-error :grammar grammar :kind "Error" :line 0
-                                  :text "the program that parses did not answer"))))
-      (when (= 1 (reply-u32 call 0))
-        (let* ((octets (sb-ext:string-to-octets source :external-format :utf-8))
-               (offset (reply-u32 call 1)) (kind (reply-u32 call 2))
-               (at (min offset (length octets)))
-               (line-start (1+ (or (position 10 octets :end at :from-end t) -1)))
-               (line-end (or (position 10 octets :start at) (length octets))))
-          (error 'query-error :grammar grammar
-                              :kind (if (< kind (length *query-error-kinds*)) (aref *query-error-kinds* kind) "Error")
-                              :line (1+ (count 10 octets :end at))
-                              :text (tuatara.text:lenient-string octets :start line-start :end line-end))))
-      ;; the rules as the editor reads them, the helper's answer held to them,
-      ;; each count checked before anything is made of it
-      (multiple-value-bind (own-captures own-patterns)
-          (handler-case (read-query-source source)
-            ;; the helper read it: the editor's own reader is what fails, the helper left alone
-            (query-source-error ()
-              (error 'query-error :grammar grammar :kind "Error" :line 0
-                                  :text "the editor cannot read these rules, though tree-sitter can")))
-        (multiple-value-bind (captures at) (reply-captures call helper grammar own-captures)
-          (let* ((patterns (if (= (reply-count call at 12) (length own-patterns))
-                               (length own-patterns)
-                               (disagreeing-rules helper grammar)))
-                 (predicates (make-array patterns)) (starts (make-array patterns)) (properties (make-array patterns))
-                 (non-local '()))
-            (incf at 4)
-            (dotimes (i patterns)
-              (setf (aref starts i) (reply-u32-at call at))
-              (when (= 1 (reply-u32-at call (+ at 4))) (push i non-local))
-              (multiple-value-bind (steps after)
-                  (reply-predicate-steps call (+ at 12)
-                                         (let ((count (reply-count call (+ at 8) 8))
-                                               (own (cdr (elt own-patterns i))))
-                                           ;; each predicate its steps and an end
-                                           (if (= count (loop for predicate in own sum (1+ (length predicate))))
-                                               count
-                                               (disagreeing-rules helper grammar)))
-                                         ;; no string longer than the rules' text, in octets
-                                         (* 4 (length source)))
-                (let ((own (and (< i (length own-patterns)) (elt own-patterns i))))
-                  (unless (and own (= (car own) (aref starts i)) (equal (cdr own) steps))
-                    (disagreeing-rules helper grammar)))
-                (setf at after
-                      (aref predicates i) (remove nil (mapcar (lambda (step)
-                                                                (parse-predicate step (grammar-symbols grammar)))
-                                                              steps))
-                      (aref properties i) (loop for (key value) in (remove nil (mapcar #'parse-directive steps))
-                                                append (list key value)))))
-            (unless (= patterns (length own-patterns))
-              (disagreeing-rules helper grammar))
-            (setf (gethash number (helper-queries helper)) t)
-            (let ((query (%make-query :grammar grammar :number number :source source :captures captures
-                                      :predicates predicates :starts starts :properties properties
-                                      :non-local (nreverse non-local))))
-              (sb-ext:finalize query (lambda () (sb-ext:atomic-push number (car **queries-let-go**))) :dont-save t)
-              query)))))))
+    (handler-bind ((query-not-answered
+                     (lambda (condition)
+                       (declare (ignore condition))
+                       ;; asked again outside this handler: a second failure is the caller's
+                       (when (and helper (eq (helper-ended helper) :crashed))
+                         (return-from compile-query-text
+                           (compile-query-in (kept-helper :rules) number grammar source))))))
+      (compile-query-in helper number grammar source))))
+
+(defun compile-query-in (helper number grammar source)
+  "Compile SOURCE, a tree-sitter query, for GRAMMAR in HELPER, the helper
+compiling rules, as the query numbered NUMBER (COMPILE-QUERY-TEXT)."
+  (with-call (call helper +op-query+)
+    (let ((status (send-query call number grammar source)))
+      (unless (eql 0 status)
+        (if (eq status :dead)
+            (error 'query-not-answered :grammar grammar)
+            (error 'query-error :grammar grammar :kind "Error" :line 0
+                                :text "the program that parses did not answer"))))
+    (when (= 1 (reply-u32 call 0))
+      (let* ((octets (sb-ext:string-to-octets source :external-format :utf-8))
+             (offset (reply-u32 call 1)) (kind (reply-u32 call 2))
+             (at (min offset (length octets)))
+             (line-start (1+ (or (position 10 octets :end at :from-end t) -1)))
+             (line-end (or (position 10 octets :start at) (length octets))))
+        (error 'query-error :grammar grammar
+                            :kind (if (< kind (length *query-error-kinds*)) (aref *query-error-kinds* kind) "Error")
+                            :line (1+ (count 10 octets :end at))
+                            :text (tuatara.text:lenient-string octets :start line-start :end line-end))))
+    ;; the rules as the editor reads them, the helper's answer held to them,
+    ;; each count checked before anything is made of it
+    (multiple-value-bind (own-captures own-patterns)
+        (handler-case (read-query-source source)
+          ;; the helper read it: the editor's own reader is what fails, the helper left alone
+          (query-source-error ()
+            (error 'query-error :grammar grammar :kind "Error" :line 0
+                                :text "the editor cannot read these rules, though tree-sitter can")))
+      (multiple-value-bind (captures at) (reply-captures call helper grammar own-captures)
+        (let* ((patterns (if (= (reply-count call at 12) (length own-patterns))
+                             (length own-patterns)
+                             (disagreeing-rules helper grammar)))
+               (predicates (make-array patterns)) (starts (make-array patterns)) (properties (make-array patterns))
+               (non-local '()))
+          (incf at 4)
+          (dotimes (i patterns)
+            (setf (aref starts i) (reply-u32-at call at))
+            (when (= 1 (reply-u32-at call (+ at 4))) (push i non-local))
+            (multiple-value-bind (steps after)
+                (reply-predicate-steps call (+ at 12)
+                                       (let ((count (reply-count call (+ at 8) 8))
+                                             (own (cdr (elt own-patterns i))))
+                                         ;; each predicate its steps and an end
+                                         (if (= count (loop for predicate in own sum (1+ (length predicate))))
+                                             count
+                                             (disagreeing-rules helper grammar)))
+                                       ;; no string longer than the rules' text, in octets
+                                       (* 4 (length source)))
+              (let ((own (and (< i (length own-patterns)) (elt own-patterns i))))
+                (unless (and own (= (car own) (aref starts i)) (equal (cdr own) steps))
+                  (disagreeing-rules helper grammar)))
+              (setf at after
+                    (aref predicates i) (remove nil (mapcar (lambda (step)
+                                                              (parse-predicate step (grammar-symbols grammar)))
+                                                            steps))
+                    (aref properties i) (loop for (key value) in (remove nil (mapcar #'parse-directive steps))
+                                              append (list key value)))))
+          (unless (= patterns (length own-patterns))
+            (disagreeing-rules helper grammar))
+          (setf (gethash number (helper-queries helper)) t)
+          (let ((query (%make-query :grammar grammar :number number :source source :captures captures
+                                    :predicates predicates :starts starts :properties properties
+                                    :non-local (nreverse non-local))))
+            (sb-ext:finalize query (lambda () (sb-ext:atomic-push number (car **queries-let-go**))) :dont-save t)
+            query))))))
 
 (defun reply-captures (call helper grammar own)
   "The names of the captures in CALL's reply to a query compiled for GRAMMAR,

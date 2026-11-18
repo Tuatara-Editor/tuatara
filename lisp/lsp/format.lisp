@@ -36,7 +36,7 @@ settings, and some run code of the project's.
 language server laying out code that has not answered by then is no longer
 waited for. Raise it for a formatter that is slow on a large file; lower it
 to give up sooner on one that hangs.
-- a number: that many seconds, 30 as standard."
+- a time: seconds, or words such as \"90s\" or \"2m\"; 30 as standard."
   :values (seconds 0 *))
 
 (define-record (format-job (:include tuatara.runtime:job)

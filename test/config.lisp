@@ -603,6 +603,24 @@ commented inside another one commented (;;   ;; (setf ...) in a load-package's
                (false (boundp (find-symbol "*EVIDENCE-FOLDERS*" :tuatara-user)))))
         (setf tuatara-user:*evidence-directories* evidence)))))
 
+(define-test (config renamed-place-settings)
+  ;; an init file setting the old names of the places settings gives their values to the new ones,
+  ;; and is told the new names
+  (with-test-directory (dir)
+    (let ((file (merge-pathnames "init.lisp" dir))
+          (tuatara-user:*remember-places* t)
+          (tuatara-user:*remembered-places-limit* 400))
+      (alexandria:write-string-into-file
+       (format nil "(setf *save-place-mode* nil)~%(setf *save-place-limit* 12)~%") file)
+      (let ((tuatara.defaults:*config-file* file))
+        (with-messages-said (said)
+          (run-keys "" :text "")
+          (false tuatara-user:*remember-places*)
+          (is = 12 tuatara-user:*remembered-places-limit*)
+          (true (search "*save-place-mode*, now called *remember-places*" (said)) "~a" (said))
+          (true (search "*save-place-limit*, now called *remembered-places-limit*" (said)) "~a" (said))
+          (false (boundp (find-symbol "*SAVE-PLACE-MODE*" :tuatara-user))))))))
+
 (define-test (config renamed-setting-not-taken)
   ;; a value given by a setting's old name that the setting does not take is put back, and said
   (with-test-directory (dir)

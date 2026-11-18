@@ -5,7 +5,7 @@
   :description "Tuatara: an Emacs-shaped editor in Common Lisp."
   :author "Michael A Jones <yardquit@pm.me>"
   :license "GPL-3.0-or-later"
-  :version "0.90.34"
+  :version "0.90.35"
   :depends-on ("tuatara/core")
   :in-order-to ((test-op (test-op "tuatara/tests"))))
 
@@ -95,7 +95,7 @@ and the frontend interface. Depends on nothing under lisp/ or frontends/."
                (:module "files"   :serial t :components
                         ((:file "gathering") (:file "encrypted-names") (:file "visiting") (:file "standard-input")
                          (:file "files") (:file "trust") (:file "grammars") (:file "hash")
-                         (:file "private-directories") (:file "outside-programs") (:file "external")
+                         (:file "private-directories") (:file "cache") (:file "outside-programs") (:file "external")
                          (:file "own-programs") (:file "glob") (:file "gitignore") (:file "listing") (:file "walk")
                          (:file "evidence") (:file "formatted") (:file "paths-in-text") (:file "rename-formatted")
                          (:file "recent") (:file "auto-save") (:file "session") (:file "wipe") (:file "archives")
@@ -353,6 +353,7 @@ the program's entry point."
                (:file "daemon-over-ssh")
                (:file "ssh-servers")
                (:file "remote-files")
+               (:file "cache")
                (:file "language-servers-brought")
                (:file "tools")
                (:file "tool-fences")
@@ -391,6 +392,7 @@ the program's entry point."
                (:file "editing-regressions")
                (:file "core-edges")
                (:file "ended-tests")
+               (:file "kept-results")
                (:file "feature-packages")
                (:file "files-and-lists")
                (:file "package-runner")

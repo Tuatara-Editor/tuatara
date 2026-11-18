@@ -19,7 +19,7 @@ searched from disk at each search, a piece at a time, their lines coming
 after the others: memory stays at this, and a search of them takes longer,
 about a second for each 1.5 GB on a fast disk, against a quarter of that kept
 in memory. Raise it to keep more in memory, (* 4 1024 1024 1024) for 4 GB.
-- a whole number, 0 or more: the octets; 128 MB as standard."
+- a size: a whole number of octets, or words such as \"4G\"; 128 MB as standard."
   :values (octets 0 *))
 
 (define-setting *search-files-min-input* 3

@@ -41,7 +41,7 @@ finds in the file, are shown in :symbol-highlight.
 what a server found wrong there, the parameters of the call, what the thing
 is. A shorter rest shows it sooner and may ask the server more often as you
 move; a longer one asks less and shows later.
-- a number: that many seconds, 0.5 as standard."
+- a time: seconds, or words such as \"500ms\" or \"1s\"; 0.5 as standard."
   :values (seconds 0 *))
 
 (defun lsp-feature-allowed-p (server feature)

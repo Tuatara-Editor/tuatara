@@ -200,7 +200,9 @@ editor starts."
     ("*CODE-FILES-MAKE-FOLDERS*" . tuatara-user:*code-files-make-directories*)
     ("*FOLDER-TREE-DEPTH-LIMIT*" . tuatara-user:*directory-tree-depth-limit*)
     ("*TRUSTED-PROJECTS*" . "*untrusted-directories* decides which projects are trusted")
-    ("*LSP-TRUSTED-PROJECTS*" . "*untrusted-directories* decides which projects are trusted"))
+    ("*LSP-TRUSTED-PROJECTS*" . "*untrusted-directories* decides which projects are trusted")
+    ("*SAVE-PLACE-MODE*" . tuatara-user:*remember-places*)
+    ("*SAVE-PLACE-LIMIT*" . tuatara-user:*remembered-places-limit*))
   "Settings renamed or taken away before Tuatara 1.0, each (OLD-NAME . SETTING)
 for one renamed, (OLD-NAME :INTO SETTING) for one taken away whose list is
 added to SETTING, or (OLD-NAME . WORDS) for one taken away, WORDS saying what

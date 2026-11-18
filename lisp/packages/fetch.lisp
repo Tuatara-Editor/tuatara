@@ -151,7 +151,7 @@ an error for any other directory."
 keeps of its history and its files together: a fetch that grows past it is
 ended and its files deleted. Raise it for a package with a long history;
 lower it to refuse large fetches, as on a metered link.
-- a whole number: that many octets, 512 MB as standard."
+- a size: a whole number of octets, or words such as \"1G\"; 512 MB as standard."
   :values (octets 0 *))
 
 (define-condition package-too-large (error)

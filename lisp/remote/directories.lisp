@@ -124,7 +124,7 @@ REMOTE-RIMU-SOURCE, is told when the directory is evidence."
 of its list (\\<rimu-mode>\\[list-toggle-preview]).
 All of it has to come from the server first. The preview of a larger one says
 so. Raise it on a fast link to preview larger files; lower it on a slow one.
-- a whole number of octets: the limit, 20 MB as standard."
+- a size: a whole number of octets, or words such as \"50M\"; 20 MB as standard."
   :values (octets 0 *))
 
 (defmethod rimu-source-listing ((source remote-rimu-source) directory)

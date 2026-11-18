@@ -5,7 +5,7 @@
   (:use #:cl #:alexandria)
   (:import-from #:tuatara.runtime #:define-record #:refuse #:define-setting #:own-variable
                 #:define-c-function #:c-type #:null-pointer #:null-pointer-p #:with-c-string #:sap-string
-                #:+o-cloexec+ #:duplicate-fd)
+                #:+o-cloexec+ #:duplicate-fd #:fd-for-program)
   (:import-from #:tuatara.text #:octet-at #:octets-integer #:octets-signed #:octets-put-integer #:octets-at-p
                 #:base64-octets #:base64-string #:octets-ascii #:octets-search #:octets-find
                 #:command-words #:software-version-numbers #:software-version-at-least-p #:octets-words #:drop-cached)
@@ -90,16 +90,16 @@ elsewhere.")
    ;; new names, and what a program shut in came to
    #:random-name #:numbered-name #:create-free-file #:copy-to-free-name #:call-with-free-file #:append-to-file
    ;; files read whole, zip archives
-   #:fd-octets #:crc32 #:zip-octets #:zip-entries #:zip-entry-octets #:zip-locked-p #:inflate #:deflate #:zip-error
+   #:fd-octets #:crc32 #:zip-octets #:zip-entries #:zip-entry-octets #:zip-locked-p #:inflate #:deflate #:zlib-deflate #:zip-error
    #:*zip-largest-entry* #:*zip-largest-ratio*
    ;; memory outside Lisp
    #:with-octets-sap #:with-foreign-memory #:sap-octets #:null-pointer #:null-pointer-p
    #:sap-string #:with-c-string #:c-type #:define-c-function #:%read #:%free #:%send #:%realloc
    ;; visiting, checking, saving, reverting
    #:*memory-read-limit* #:*lease-large-files* #:*clone-large-files* #:*snapshot-large-files* #:*snapshot-free-margin*
-   #:open-for-reading #:open-file-text #:visit-file #:buffer-for-file #:copy-descriptor-to-scratch #:scratch-file-text
-   #:safe-visit-p #:end-safe-visit #:safe-visit-reason #:host-visit-safely-reason #:binary-head-p #:+binary-sample+
-   #:file-head #:call-with-file-heads #:open-examined
+   #:open-for-reading #:open-for-writing #:open-file-text #:visit-file #:buffer-for-file #:copy-descriptor-to-scratch
+   #:scratch-file-text #:safe-visit-p #:end-safe-visit #:safe-visit-reason #:host-visit-safely-reason #:binary-head-p
+   #:+binary-sample+ #:file-head #:call-with-file-heads #:open-examined
    #:buffer-arriving-p #:refuse-arriving-file #:note-disk-status #:*index-job-hook* #:index-job-of #:index-job-status
    #:index-progress #:start-indexing #:finish-indexing #:stop-indexing
    #:counted-line-number #:buffer-known-line-number #:counted-line-start #:counted-lines #:file-isolation #:file-status

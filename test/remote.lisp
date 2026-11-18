@@ -1340,6 +1340,29 @@ what it sets is undone after."
         (true (<= (length (tuatara.io:deflate noise)) (+ (length noise) 32))))
       (true (< (length (tuatara.io:deflate (tuatara.text:make-octets 100000))) 200)))))
 
+(define-test (remote zlib-deflate-makes-valid-zlib-data)
+  ;; empty, small, a few megabytes of pattern and of noise: the header, the Adler-32 sum and the data read back
+  (let ((*random-state* (sb-ext:seed-random-state 11)))
+    (flet ((same (octets what)
+             (let ((packed (tuatara.io:zlib-deflate octets)))
+               (is = #x78 (aref packed 0) what)
+               (is = 0 (mod (+ (* 256 (aref packed 0)) (aref packed 1)) 31) what)
+               (is equalp octets (tuatara.defaults::zlib-octets packed 0 (length packed) :limit (max 1 (length octets)) :errors t)
+                   what)
+               (let ((n (length packed)))
+                 (is = (tuatara.io::adler32 octets 0 (length octets))
+                     (logior (ash (aref packed (- n 4)) 24) (ash (aref packed (- n 3)) 16)
+                             (ash (aref packed (- n 2)) 8) (aref packed (- n 1)))
+                     what)))))
+      (same (tuatara.text:make-octets 0) "empty")
+      (same (coerce #(1 2 3) 'tuatara.text:octets) "small")
+      (is = 1 (tuatara.io::adler32 (tuatara.text:make-octets 0) 0 0))
+      (is = #x11E60398 (tuatara.io::adler32 (map 'tuatara.text:octets #'char-code "Wikipedia") 0 9))
+      (let ((pattern (tuatara.text:make-octets 3000000)) (noise (tuatara.text:make-octets 3000000)))
+        (dotimes (i (length pattern)) (setf (aref pattern i) (mod (* i i) 13) (aref noise i) (random 256)))
+        (same pattern "large")
+        (same noise "incompressible")))))
+
 (defun far-remote (local)
   "An editor's remote frontend and a client on another machine painting on the
 fake frontend LOCAL, over a socket: the remote frontend and the client, not yet running."

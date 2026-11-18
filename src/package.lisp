@@ -47,7 +47,7 @@ available unqualified, and the public API of TUATARA is used.")
            #:*keep-session-interval* #:*save-in-place*
            ;; encryption, and wiping files
            #:*gpg-program* #:*gpg-passphrase-from* #:*metadata-look-up-key-owners* #:*wipe-passes* #:*cache-directory*
-           #:*state-directory* #:*packages-directory* #:*package-size-limit* #:*archive-seconds*
+           #:*cache-keep* #:*state-directory* #:*packages-directory* #:*package-size-limit* #:*archive-seconds*
            #:*archive-free-reserve* #:*archive-listing-limit* #:*differences-limit* #:*gpg-loopback-warning*
            ;; language servers and formatters
            #:*language-servers* #:*language-formatters* #:*lsp-languages*
@@ -108,8 +108,8 @@ available unqualified, and the public API of TUATARA is used.")
            #:*terminal-compress-after* #:*terminal-picture-memory* #:*terminal-place* #:*terminal-size*
            #:*terminal-width* #:*terminal-program* #:*terminal-scrollback*
            ;; marks, places kept, input methods, help windows and Escape
-           #:*help-window-select* #:*insert-file-limit* #:*escape-quits* #:*save-place-mode*
-           #:*save-place-limit* #:*default-input-method* #:*input-method-keys* #:*mark-ring-max*
+           #:*help-window-select* #:*insert-file-limit* #:*escape-quits* #:*remember-places*
+           #:*remembered-places-limit* #:*default-input-method* #:*input-method-keys* #:*mark-ring-max*
            #:*set-mark-command-repeat-pop*
            ;; the sandbox programs decoding files run in
            #:*sandbox* #:*sandbox-seconds* #:*sandbox-memory* #:*sandbox-input-limit* #:*sandbox-memory-copy-limit*

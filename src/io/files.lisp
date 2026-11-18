@@ -101,15 +101,17 @@ the system allows (your own files). PATH names it in messages."
       (sb-posix:close handle))))
 
 (defun open-for-reading (path safe &key (accept '(:regular :directory)) (operation "open") (wanted "a file")
-                                        (follow t))
+                                        (follow t) arriving)
   "A descriptor for reading the file at PATH, a symbolic link followed (but
 for one at PATH itself without FOLLOW, which is then refused as no file),
 when it is of a kind ACCEPT lists (a file or a directory as standard):
 anything else, a named pipe or a device, is refused without being opened, a
 FILE-SYSTEM-ERROR saying for OPERATION it is not WANTED (OPEN-EXAMINED).
 With SAFE, its access time is left alone where the system allows (your
-own files). Refused for a file still arriving (REFUSE-ARRIVING-FILE)."
-  (refuse-arriving-file path)
+own files). Refused for a file still arriving (REFUSE-ARRIVING-FILE), unless
+ARRIVING, for a caller that reads only the parts that have come."
+  (unless arriving
+    (refuse-arriving-file path))
   (open-examined +at-fdcwd+ (tuatara.text:string-octets (native path))
                  (logior sb-posix:o-rdonly sb-posix:o-nonblock (if follow 0 +o-nofollow+))
                  path :accept accept :safe safe :operation operation :wanted wanted))

@@ -68,7 +68,8 @@ characters are the language's comment marker."
 (\\[fill-region]). A larger one is not filled, and says so, so that filling
 never holds the editor up for long. Set it larger in the init file to fill
 larger paragraphs.
-- a whole number, 0 or more: the most octets. 1048576 (1 MB) as standard."
+- a size: a whole number of octets, or words such as \"2M\"; 1048576 (1 MB) as
+  standard."
   :values (octets 0 *))
 
 (defgeneric mode-unfilled-line-p (mode text)

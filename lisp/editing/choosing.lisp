@@ -9,8 +9,8 @@
   "Seconds within which the last change of a file among completion candidates
 is shown as an age (5 min ago, 3 days ago); older ones show the date.
 - 0: every file shows its date.
-- a whole number above 0: files changed within that many seconds show an age.
-  14 days (1209600) as standard."
+- a time above 0: seconds, or words such as \"3d\" or \"12h\"; files changed within
+  it show an age. 14 days (1209600) as standard."
   :values (seconds 0 * :whole))
 
 (defun age-words (mtime &optional (now (get-universal-time)))

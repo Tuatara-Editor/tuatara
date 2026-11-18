@@ -33,7 +33,7 @@ else /bin/sh) from the root of the project the buffer's file is in
 command printing more (one that never ends, a loop gone wrong) is read on to
 its end and counted, but what comes past the limit is left out, and the last
 line says how much.
-- a whole number: that many octets, 256 MB as standard.
+- a size: a whole number of octets, or words such as \"20M\"; 256 MB as standard.
 - nil: all of it is kept."
   :values (or (member nil) (octets 0 *)))
 

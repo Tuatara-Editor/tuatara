@@ -753,12 +753,13 @@ the octets do."
 (defun take-place-of (new old windows)
   "Have the buffer NEW take the place of OLD, another showing the same file:
 shown in WINDOWS, those that showed OLD, holding OLD's private copy and file
-on another machine (kept as long as NEW is), its directory when it was given
-one, and its name; OLD killed."
+on another machine (kept as long as NEW is), using the entries of the cache it
+used, its directory when it was given one, and its name; OLD killed."
   (dolist (window windows)
     (tuatara.display:set-window-buffer window new :remember nil))
   (dolist (kept '(private-directory :remote-file))
     (setf (tuatara.buffer:buffer-local new kept) (shiftf (tuatara.buffer:buffer-local old kept) nil)))
+  (pass-cache-uses old new)
   (when (buffer-given-directory old)
     (setf (buffer-given-directory new) (buffer-given-directory old)))
   (let ((name (tuatara.buffer:buffer-name old)))

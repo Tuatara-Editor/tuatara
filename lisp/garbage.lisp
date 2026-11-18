@@ -79,9 +79,10 @@ collection is collected, so the pause comes while you think, not between two
 keys. It collects only when that garbage is at least half of what makes one
 \(*NURSERY-OCTETS*). A collection stands still for about 0.1 s with a few
 hundred megabytes in use and 1.6 s with 1.1 GB.
-- a number: the seconds without a key typed after which it collects, 0.3 as
-  standard. A shorter time collects sooner, in shorter pauses of thought; a
-  longer time leaves more collections to fall between keys.
+- a time: seconds, or words such as \"500ms\" or \"2s\"; the time without a key
+  typed after which it collects, 0.3 as standard. A shorter time collects
+  sooner, in shorter pauses of thought; a longer time leaves more collections
+  to fall between keys.
 - nil: every collection is left to come when it comes."
   :values (or (member nil) (seconds 0 *)))
 

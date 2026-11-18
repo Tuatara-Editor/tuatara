@@ -429,7 +429,7 @@ that size, save with ~C-x C-s~ when you have made changes you want to keep.
 The undo history remembers every change so that ~u~ can take it back. A
 change to all of a large file is remembered in a compact way, but a long day
 of such changes adds up. As standard there is no limit. If memory runs
-short, =*undo-limit*= sets the most memory, in octets, that one buffer's
+short, =*undo-limit*= sets the most memory, in octets or words such as ="512M"=, that one buffer's
 history may hold.
 
 *** Collecting garbage
@@ -493,10 +493,13 @@ are counted, you can change it, and ~C-x C-s~ writes it back to the server.
 can be read. The mode line then says =incomplete=, and the missing parts are
 shown as not arrived. The same happens if the connection is lost. An
 incomplete buffer is never written back to the server, so a half file cannot
-replace a whole one. ~M-x revert-buffer~ fetches the file again from the
-start.
+replace a whole one. ~M-x revert-buffer~ goes on with the transfer from where it
+stopped, if the file on the server has not changed. If it has changed, the file
+is fetched again from the start.
 
-Killing the buffer ends the transfer and deletes the copy on your computer.
+Killing the buffer ends the transfer. What came stays in the cache (chapter 9,
+"The cache"), and opening the file again goes on from where it stopped, if the
+file on the server has not changed.
 
 Each request to the server has =*remote-seconds*= to be answered, 30 as
 standard. A server that stays silent longer than that ends the transfer, and
@@ -515,7 +518,8 @@ your own names.
    arrived. Press ~C-g~.
 5. Wait for the message that all of it has arrived, or press ~C-x J~ and
    answer =y= to stop. After stopping, the mode line says =incomplete=.
-6. Press ~C-x k~. The copy on your computer is deleted with the buffer.
+6. Press ~C-x k~. Then open the file again as in step 1. If you stopped the
+   transfer, the echo area says it goes on from where the last read stopped.
 #+end_try
 
 #+table: settings *remote-seconds*

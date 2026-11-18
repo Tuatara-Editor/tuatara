@@ -438,7 +438,7 @@ bounds it was given."
 (define-setting *undo-limit* nil
   "The most memory, in octets, the undo history of one buffer may hold.
 - nil: no limit (the default).
-- a whole number, 1 or more: that many octets.
+- a size, 1 octet or more: a whole number of octets, or words such as \"512M\".
 
 With nil every change is kept, so that each can be undone, back to the text
 as it was when the buffer was opened. Nothing is let go unless you ask for

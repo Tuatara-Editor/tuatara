@@ -278,6 +278,7 @@ indexes and sorting."
   (tuatara.packages:install-packages)
   (install-servers)
   (install-remote-files)
+  (install-cache)
   (install-file-local-variables)
   (install-snippets editor)
   (install-paths-in-text editor)

@@ -1138,7 +1138,7 @@ changes."
 changes its repository, from a terminal too (GIT-WATCH-TICK). A shorter time
 shows changes made elsewhere sooner and reads the status more often, which
 takes longer in a large repository.
-- a number: that many seconds, 2 as standard.
+- a time: seconds, or words such as \"500ms\" or \"5s\"; 2 as standard.
 - nil: a status never follows the repository; \\<git-status-mode>\\[revert-buffer]
   reads it again, and it is read only when asked."
   :values (or (member nil) (seconds 0 *)))

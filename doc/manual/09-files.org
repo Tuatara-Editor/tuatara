@@ -568,12 +568,14 @@ asks whether to write it over, whatever the file now holds. Answer =yes=
 to write it whole.
 
 Tuatara keeps the file you work on as a copy under =~/.cache/tuatara/remote/=,
-which only you can read. The copy is deleted when you kill the buffer. A file on
-another machine has no git marks, no language server, no auto-saved copy and no
-build, since those would read what is around the file, and what is around it is
-not here. A file's own settings are taken only from a machine you trust, listed
-by =M-x server-list=, chapter 18. Each request has =*remote-seconds*= to be
-answered, 30 as standard. Past that, the work in hand fails and says so.
+which only you can read. The copy stays in the cache when you kill the buffer,
+so that opening the file again need not fetch it again (see "The cache" below).
+A file on another machine has no git marks, no language server, no auto-saved
+copy and no build, since those would read what is around the file, and what is
+around it is not here. A file's own settings are taken only from a machine you
+trust, listed by =M-x server-list=, chapter 18. Each request has
+=*remote-seconds*= to be answered, 30 as standard. Past that, the work in hand
+fails and says so.
 
 *** The first time you meet a machine
 
@@ -663,13 +665,83 @@ These steps need a machine you can reach with ssh. Use your own name for
 5. Run ~M-x revert-buffer~. The line =Gate fixed= is there.
 6. Press ~C-x d~ and type =/ssh:pinetree:=, then ~RET~. Your home directory opens
    as a list. Move to =notes.txt= and press ~P~ to see it beside the list.
-7. If you wish, press ~C-x k~ on the buffer. The private copy on your computer
-   is deleted, and the file on pinetree is as you saved it.
+7. If you wish, press ~C-x k~ on the buffer. The file on pinetree is as you
+   saved it. The private copy stays in the cache, and opening the file again
+   uses it while the file on pinetree is unchanged.
 #+end_try
 
 #+table: commands list-toggle-preview
 
 #+table: settings *remote-seconds* *remote-preview-size-limit*
+
+*** The cache
+
+Some work takes long to do and is worth keeping: a large file fetched from a
+server, or a mailbox that readpst has taken apart (chapter 19). Tuatara keeps
+such work in its cache directory after you close the buffer, as an entry of
+the cache, so that you can go on with it later without doing it again. Each
+entry is a directory of its own that only you can read.
+
+A file from a server is fetched again only when it has changed there. When you
+open it again, Tuatara asks the server for the file's size and the time it was
+last changed, its owner and its permissions. If all are as they were when the
+copy was made, and the copy is as it was left, Tuatara also reads a few small
+parts of the file from the server, its first and last megabyte and sixteen
+blocks at random, about 3 MB however large the file, and compares them with the
+copy. Only if they agree is the copy used, and the echo area says =kept copy
+from TIME, checked against the server=. If anything differs, the file is
+fetched again from the start. A file put back with its old size and time but
+other contents is told this way. A transfer that was cut off, by a lost
+connection or by closing the buffer, keeps what came. The next time you open
+the file, the transfer goes on from where it stopped, after the same checks of
+what has come; if any differs, the file is fetched again whole, never joined
+from two versions. Copies of evidence are checked the same way.
+
+An entry in use is never cleared. It is in use while a buffer or list shows
+it, in any of your sessions. Its last use is the moment it stops being in use:
+the buffer or list is closed, or the session ends. An entry that is not in use
+is cleared =*cache-keep*= after its last use, one day as standard. So if you
+come back within a day, the copy is there, and the day counts again from when
+you close it. A pinned entry is never cleared by itself.
+
+The cache is only a time saver. A copy of a file from a server, evidence
+included, is cleared by the same rule as any other: the file itself is still
+safe on the server, and if the copy has gone, it is fetched again.
+
+~M-x list-cache~ lists what the cache holds, in sections by kind: copies of
+files from servers with their names there, mailboxes read by readpst, search
+indexes, pictures of formulas and the other directories of the cache. The logs
+and the compiled packages are left out. Each line shows what the entry is, its
+size, when it was made and last used, whether it is pinned or when it will be
+cleared, and whether it is in use. Sizes are worked out in the background, so
+the list may take a moment to fill. In the list:
+
+- ~RET~ opens the entry: a copy of a file by opening the file on its server, so
+  the copy is used if the file is unchanged, and a mailbox by listing it again.
+- ~p~ pins the entry on the line, or the marked ones, or unpins them.
+- ~d~ marks an entry for deletion, and ~x~ deletes those marked, after asking.
+  An entry in use is never deleted, and the question says how many are left.
+- ~r~ lists the cache again, and ~q~ closes the list.
+
+Nothing outside the cache directory is ever deleted from the list, and nothing
+is followed through a link. A pin can keep only a directory in the cache.
+
+#+begin_try Try it, with a file on a server called pinetree
+1. Press ~C-x C-f~, type =/ssh:pinetree:notes.txt= and press ~RET~. Then press
+   ~C-x k~ to close it.
+2. Run ~M-x list-cache~. Under =Copies of files on other machines= is
+   =/ssh:pinetree:notes.txt=, with =until= and a time one day from now.
+3. Press ~p~. The line now says =pinned=. Press ~p~ again to unpin it.
+4. Press ~RET~. The file opens, and the echo area says =kept copy from=, the
+   time, and =checked against the server=.
+5. Press ~C-x k~, then ~M-x list-cache~ again. Move to the line, press ~d~ and
+   then ~x~, and answer =yes=. The copy is gone. The file on pinetree is not
+   touched.
+#+end_try
+
+#+table: commands list-cache cache-toggle-pin
+
+#+table: settings *cache-keep*
 
 ** Encrypted files
 

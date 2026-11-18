@@ -1103,7 +1103,7 @@ so that it follows cd whatever the shell is and however it is set up."
 (define-setting tuatara-user:*terminal-picture-memory* (* 64 1024 1024)
   "The most octets of pictures a terminal keeps for the programs in it that
 draw them.
-- a whole number: that many octets, 64 MB as standard.
+- a size: a whole number of octets, or words such as \"128M\"; 64 MB as standard.
 - 0: none; programs then draw with text."
   :values (octets 0 *))
 
@@ -1559,7 +1559,7 @@ cells it leaves empty clear."
 compressed, in the background, a little at a time, so that a terminal with a
 long history holds a fraction of the memory. Reading the history (its
 history view) undoes it as it goes, unseen.
-- a number: that many seconds, 10 as standard.
+- a time: seconds, or words such as \"90s\" or \"2m\"; 10 as standard.
 - nil: it is never compressed."
   :values (or (member nil) (seconds 0 *)))
 

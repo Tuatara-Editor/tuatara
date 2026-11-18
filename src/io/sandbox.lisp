@@ -86,7 +86,8 @@ processor time it may take.
 Raise it for a file that takes long to decode, such as a large picture;
 lower it to end a program stuck on a damaged file sooner. A file whose
 program is ended is not shown.
-- a number, 1 or more: the seconds allowed; 10 as standard."
+- a time, 1 second or more: seconds, or words such as \"90s\" or \"2m\"; 10 as
+  standard."
   :values (seconds 1 *))
 
 (define-setting *sandbox-memory* (* 1024 1024 1024)
@@ -94,7 +95,8 @@ program is ended is not shown.
 Raise it for a decoder that needs more; lower it on a small machine, so that
 a damaged file cannot take memory from the rest. A program that needs more
 than this fails, and the file is not decoded.
-- a whole number, 1 or more: the octets allowed; 1 GB as standard.
+- a size, 1 octet or more: a whole number of octets, or words such as \"2G\"; 1 GB
+  as standard.
 - nil: no limit."
   :values (or (member nil) (octets 1 *)))
 
@@ -129,7 +131,8 @@ SMB, NFS and the rest) a large file is not decoded, and that is said.
   "The memory all the programs decoding one file may take together.
 It holds where the system can hold them to it (systemd-run, a scope of the
 user's own); each program is still held to *SANDBOX-MEMORY*.
-- a whole number, 1 or more: the octets allowed; 2 GB as standard.
+- a size, 1 octet or more: a whole number of octets, or words such as \"4G\"; 2 GB
+  as standard.
 - nil: no such limit."
   :values (or (member nil) (octets 1 *)))
 
@@ -353,7 +356,7 @@ error signalled, when it cannot be made, filled or sealed."
       (when (minusp (%fcntl fd 1033 +all-seals+))  ; F_ADD_SEALS
         (fail "seal" "a file in memory"))
       (sb-posix:lseek fd 0 sb-posix:seek-set)
-      fd)))
+      (if kept (fd-for-program fd) fd))))
 
 (defun memory-file (name octets &key (kept t))
   "A descriptor of a new file in memory holding OCTETS, at its start, sealed
@@ -486,7 +489,7 @@ that nothing swapped in after the check is shown: NIL when nothing is there
 \(a bind of what may be missing is then left out). A FILE-SYSTEM-ERROR when a
 link stands at SOURCE now, or the descriptor names another place than
 SOURCE, a part of its path swapped for a link meanwhile."
-  (let ((fd (handler-case (sb-posix:open source (logior +o-path+ +o-nofollow+))
+  (let ((fd (handler-case (fd-for-program (sb-posix:open source (logior +o-path+ +o-nofollow+)))
               (sb-posix:syscall-error (condition)
                 (if (= (sb-posix:syscall-errno condition) sb-posix:enoent)
                     (return-from open-shown-place nil)
@@ -637,7 +640,8 @@ is waited for here, or, unless WAIT, on a thread of its own. Ended while
 systemd-run was still having its scope made, before it became bwrap, that
 scope is stopped then: the service manager would otherwise keep it, empty,
 for good. Any other program started is ended the same way, with what it
-started."
+started. The function given as ENDED to SANDBOX-START is called once, after
+PROCESS is signalled, whoever ends it."
   (let ((unit (getf (sb-ext:process-plist process) :scope))
         (starting nil))
     (when (process-unreaped-p process)
@@ -647,8 +651,12 @@ started."
           (signal-process-if child (lambda () (eql pid (process-parent child))) sb-unix:sigkill))
         (tuatara.runtime:ignoring-errors-reported ("ending ~a" process)
           (sb-ext:process-kill process sb-unix:sigkill :process-group))))
-    (sb-thread:with-mutex (**sandboxes-lock**)
-      (setf **sandboxes** (remove process **sandboxes** :key #'car)))
+    (let ((ended (sb-thread:with-mutex (**sandboxes-lock**)
+                   (setf **sandboxes** (remove process **sandboxes** :key #'car))
+                   (prog1 (getf (sb-ext:process-plist process) :ended)
+                     (remf (sb-ext:process-plist process) :ended)))))
+      (when ended
+        (tuatara.runtime:ignoring-errors-reported ("saying ~a was ended" process) (funcall ended))))
     (flet ((reap ()
              (tuatara.runtime:ignoring-errors-reported ("waiting for ~a to end" process) (sb-ext:process-wait process))
              (tuatara.runtime:ignoring-errors-reported ("closing ~a" process) (sb-ext:process-close process))
@@ -770,7 +778,8 @@ caller ends it."
       (dolist (file data) (tuatara.runtime:close-fd-quietly (cdr file) "~a" (car file)))
       (dolist (fd (car opened)) (tuatara.runtime:close-fd-quietly fd "a place shown to a program shut in")))))
 
-(defun sandbox-start (program arguments stdin &key memory directories (processes *sandbox-process-limit*) descriptors)
+(defun sandbox-start (program arguments stdin
+                      &key memory directories (processes *sandbox-process-limit*) descriptors ended)
   "Start PROGRAM (a full path to one it is shown) with ARGUMENTS shut in as
 SANDBOX-RUN shuts in a program, left running, with no limit on the processor
 time it takes, no /tmp, no file it may write into (writing one ends it) and
@@ -779,13 +788,18 @@ may take MEMORY octets (NIL: no limit), held to them together with all it
 starts where systemd-run can, have PROCESSES processes and threads and
 DESCRIPTORS files open (NIL: as it is); DIRECTORIES are directories it is
 shown, read only, as SANDBOX-RUN has them. The process, or NIL when there is
-no sandbox here (SANDBOX-STATUS). Ending it ends all it started."
+no sandbox here (SANDBOX-STATUS). Ending it ends all it started. ENDED, a
+function of no arguments, is called once when it is ended (END-SANDBOX), by
+its caller or by another, as the thread that started it ends
+\(END-SANDBOXES), so that what stands for it there is let go too."
   (multiple-value-bind (status detail bwrap) (sandbox-status)
     (declare (ignore detail))
     (when (eq status :ready)
       (start-sandbox bwrap program arguments stdin nil memory
                      :total memory :outputs nil :directories directories :processes processes
-                     :descriptors descriptors :scratch nil :directory "/" :file-limit 0))))
+                     :descriptors descriptors :scratch nil :directory "/" :file-limit 0
+                     :started (and ended
+                                   (lambda (process) (setf (getf (sb-ext:process-plist process) :ended) ended)))))))
 
 (defun sandbox-memory-scope-p ()
   "True when what is started shut in is held, with all it starts, to its
@@ -1056,8 +1070,10 @@ other way), or when the copy cannot be made read only."
                 (progn
                   (copy-for-decoder fd writer size)
                   (sb-posix:fchmod writer #o400)
-                  (let ((reader (handler-case (sb-posix:open (format nil "/proc/self/fd/~d" writer)
-                                                             (logior sb-posix:o-rdonly (if kept 0 +o-cloexec+)))
+                  (let ((reader (handler-case (let ((fd (sb-posix:open (format nil "/proc/self/fd/~d" writer)
+                                                                       (logior sb-posix:o-rdonly
+                                                                               (if kept 0 +o-cloexec+)))))
+                                                (if kept (fd-for-program fd) fd))
                                   (sb-posix:syscall-error (e)
                                     (fail "open again" "a copy in the cache directory" (sb-posix:syscall-errno e))))))
                     (tuatara.runtime:with-fd-closed-on-error (reader "a copy in the cache directory")
@@ -1140,7 +1156,7 @@ whose job's stop request (TUATARA.RUNTIME:*JOB*) stops it."
   "A descriptor of its own on the sealed copy open as file descriptor (FD), at
 its start, read only: programs reading it at once each read from their own
 place."
-  (handler-case (sb-posix:open (format nil "/proc/self/fd/~d" fd) sb-posix:o-rdonly)
+  (handler-case (fd-for-program (sb-posix:open (format nil "/proc/self/fd/~d" fd) sb-posix:o-rdonly))
     (sb-posix:syscall-error (e) (fail "open again" "a copy in memory" (sb-posix:syscall-errno e)))))
 
 (defun sealed-for-program (fd &key in-memory)

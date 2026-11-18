@@ -108,6 +108,17 @@ whatever handles it. For a descriptor that BODY hands on when it succeeds."
                            (close-fd-quietly ,fd ,@(when control `(,control ,@arguments))))))
      ,@body))
 
+(defun fd-for-program (fd)
+  "File descriptor (FD) FD to be handed to a program started (PRESERVE-FDS of
+START-PROGRAM), or, when it is 3, a new one for what it is open on, the lowest
+free one from 4, kept open in programs started, FD closed: SBCL's RUN-PROGRAM
+never hands a program descriptor 3, whatever it is told to keep. Make every
+descriptor a program is given through it as soon as it is opened."
+  (if (/= fd 3)
+      fd
+      (prog1 (with-fd-closed-on-error (fd) (sb-posix:fcntl fd sb-posix:f-dupfd 4))
+        (close-fd-quietly fd))))
+
 (defun open-debug-log ()
   "Open the debug log for writing at its end (OPEN-ROTATED-LOG), for you
 alone; the first time in a session, when no other session is writing to it,

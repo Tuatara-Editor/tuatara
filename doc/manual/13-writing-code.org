@@ -612,7 +612,7 @@ turns off the sandbox for a formatter that cannot work shut in.
 
 =*lsp-languages*= lists the languages whose servers are used.
 =*language-servers*= names a server of your own choice for a language in place
-of the usual one. =*lsp-wait*= is the seconds Tuatara waits for a server's
+of the usual one. =*lsp-wait*= is the time (seconds, or words such as ="500ms"=) Tuatara waits for a server's
 answer before it gives the question up. You can keep working meanwhile: a
 completion, a definition or a larger selection is used when it comes, unless
 you have moved or changed the text since. A file larger than

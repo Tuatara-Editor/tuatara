@@ -18,7 +18,8 @@
   "The largest document, in octets, given to a language server: a file's
 whole text, or the code of a note's source blocks of one language, however
 large the note. A larger one is shown without its servers.
-- a whole number: that many octets, 8 MB (8388608) as standard."
+- a size: a whole number of octets, or words such as \"16M\"; 8 MB (8388608) as
+  standard."
   :values (octets 1 *))
 
 (defun lsp-refusal (buffer)

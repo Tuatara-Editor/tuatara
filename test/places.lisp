@@ -16,7 +16,7 @@ then; every file buffer killed after, as leaving does."
 
 (define-modal-test (places put-back)
   (with-test-directory (dir)
-    (let ((tuatara-user:*save-place-mode* t)
+    (let ((tuatara-user:*remember-places* t)
           (path (merge-pathnames "notes.txt" dir)))
       (alexandria:write-string-into-file (format nil "one~%two~%three~%") path)
       ;; left on the second line's third character, back there next time, and the time after
@@ -34,13 +34,13 @@ then; every file buffer killed after, as leaving does."
       ;; off: files open at their top
       (alexandria:write-string-into-file (format nil "one~%two~%three~%") path :if-exists :supersede)
       (place-after path "j j")
-      (let ((tuatara-user:*save-place-mode* nil))
+      (let ((tuatara-user:*remember-places* nil))
         (is = 0 (place-after path ""))))))
 
 (define-test (places git-messages-at-their-top)
   ;; a commit's message is written afresh each time: its next one opens at the top, where it is typed
   (with-test-directory (dir)
-    (let ((tuatara-user:*save-place-mode* t)
+    (let ((tuatara-user:*remember-places* t)
           (path (merge-pathnames "COMMIT_EDITMSG" dir)))
       (alexandria:write-string-into-file (format nil "~%# Please enter the commit message.~%# On branch main~%") path)
       (place-after path "j j l l")
@@ -49,7 +49,7 @@ then; every file buffer killed after, as leaving does."
 
 (define-test (places characters-and-folds)
   (with-test-directory (dir)
-    (let ((tuatara-user:*save-place-mode* t))
+    (let ((tuatara-user:*remember-places* t))
       ;; a place inside a character that changed: the character's start
       (let ((path (merge-pathnames "words.txt" dir)))
         (alexandria:write-string-into-file "abcdef" path)
@@ -72,8 +72,8 @@ then; every file buffer killed after, as leaving does."
 
 (define-test (places kept-few)
   (with-test-directory (dir)
-    (let ((tuatara-user:*save-place-mode* t)
-          (tuatara-user:*save-place-limit* 2))
+    (let ((tuatara-user:*remember-places* t)
+          (tuatara-user:*remembered-places-limit* 2))
       (dolist (name '("a.txt" "b.txt" "c.txt"))
         (alexandria:write-string-into-file (format nil "x~%y~%") (merge-pathnames name dir))
         (place-after (merge-pathnames name dir) "j"))

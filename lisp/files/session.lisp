@@ -32,7 +32,7 @@ and opened again as it was when it starts without files.
 changed (*KEEP-SESSION*).
 It is what a crash can lose. Lower it to lose less; raise it where writing is
 slow, as on a drive that sleeps.
-- a number of seconds: the time between writings, 30 as standard."
+- a time: seconds, or words such as \"90s\" or \"2m\"; 30 as standard."
   :values (seconds 0 *))
 
 (defvar *session-name* "session"

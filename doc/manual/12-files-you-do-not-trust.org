@@ -295,6 +295,15 @@ A terminal that you open from a file of evidence starts in your home directory.
 Then the shell's prompt and helpers do not read what the directory holds, such
 as a =.git= directory or an =.envrc= file.
 
+A file of evidence on a server is opened from a private copy on your computer,
+which only you can read. No decoder ever writes to that copy. Like any copy of
+a file from a server, it stays in Tuatara's cache after you close the buffer,
+so that opening the file again need not fetch it again, and it is cleared by
+the same rule as every other entry of the cache (chapter 9, "The cache"). The
+evidence itself is still on the server, untouched. When a mailbox from a
+server is read by readpst, readpst reads that copy, checked before and after
+to be as it was fetched, and no second copy is made.
+
 *** Asking, and copying out
 
 ~M-x describe-evidence~ tells you whether the file or directory here is

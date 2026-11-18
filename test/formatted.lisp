@@ -704,7 +704,7 @@ file sets them."
   (with-formatted-directory (dir)
     (unwind-protect
          (let ((note (merge-pathnames "20250101T100000--older-note__project.org" dir))
-               (tuatara-user:*save-place-mode* t))
+               (tuatara-user:*remember-places* t))
            (put-file note (format nil "the text of the older note~%"))
            ;; no place of it kept from an earlier run (test directories are named alike in each)
            (tuatara.defaults::state-list-drop tuatara.defaults::*saved-places* (list (tuatara.io:native note)))

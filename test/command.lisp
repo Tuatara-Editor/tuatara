@@ -11,7 +11,7 @@
 (setf tuatara-user:*global-hl-line-mode* nil)
 ;; Files open at their top in the tests, wherever an earlier test left them;
 ;; the places test (test/places.lisp) turns remembering on for itself.
-(setf tuatara-user:*save-place-mode* nil)
+(setf tuatara-user:*remember-places* nil)
 ;; Notes logged right under a task's planning line, as the tests were written (on for users: into
 ;; :LOGBOOK:); the tests of drawers bind it for themselves.
 (setf tuatara-user:*org-log-into-drawer* nil)
@@ -217,13 +217,18 @@ second value."
 
 (defmacro with-functions-replaced ((&rest bindings) &body body)
   "Run BODY with each (NAME FUNCTION) of BINDINGS standing in for the global
-function NAME, which is put back afterwards."
-  (let ((saved (loop repeat (length bindings) collect (gensym "SAVED"))))
-    `(let ,(loop for (name) in bindings for s in saved collect `(,s (fdefinition ',name)))
-       (unwind-protect
-            (progn ,@(loop for (name function) in bindings collect `(setf (fdefinition ',name) ,function))
-                   ,@body)
-         ,@(loop for (name) in bindings for s in saved collect `(setf (fdefinition ',name) ,s))))))
+function NAME, which is put back afterwards. The stand-in is laid over NAME
+as an encapsulation, so that the wrappers the tests keep on NAME (the checks
+of kept lists) are there again afterwards."
+  `(unwind-protect
+        (progn ,@(loop for (name function) in bindings
+                       collect `(let ((function ,function))
+                                  (sb-int:encapsulate ',name 'replaced-for-a-test
+                                                      (lambda (original &rest arguments)
+                                                        (declare (ignore original))
+                                                        (apply function arguments)))))
+               ,@body)
+     ,@(loop for (name) in bindings collect `(sb-int:unencapsulate ',name 'replaced-for-a-test))))
 
 (defclass answering-host (tuatara.defaults::defaults-host)
   ((answers :initarg :answers :reader answering-host-answers))

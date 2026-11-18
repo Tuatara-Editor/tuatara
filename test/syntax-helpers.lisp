@@ -420,6 +420,18 @@
            (false (tuatara.buffer:buffer-local buffer :syntax-helper)))
       (tuatara.buffer:kill-buffer buffer))))
 
+(define-test (syntax helper-ended-with-its-starting-thread)
+  ;; the thread programs are started from ending ends the helpers it started, as the editor
+  ;; ends: they are known to be ended, and the next parser is made in one started afresh
+  (let ((helper (tuatara.syntax:kept-helper :shared)))
+    (true helper)
+    (tuatara.io::end-starters)
+    (false (tuatara.syntax:helper-alive helper))
+    (let ((parser (tuatara.syntax:make-parser (tuatara.syntax:find-grammar "c")
+                                              (tuatara.syntax:kept-helper :shared))))
+      (true parser)
+      (tuatara.syntax:delete-parser parser))))
+
 (define-test (syntax helper-connections-closed-when-ending-fails)
   ;; ending a helper's process failing (no thread to be had to wait for its end): the helper is
   ;; ended and its connection closed all the same

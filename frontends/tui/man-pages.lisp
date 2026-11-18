@@ -184,6 +184,7 @@ sub-heading, then each setting with the first paragraph of its documentation."
 
 (defparameter *kept-file-descriptions*
   '(("bookmarks" . "the bookmarks you set")
+    ("cache" . "what the cache keeps: pinned entries and when each was last used")
     ("chosen-paths" . "the files and directories you chose in questions, offered again first")
     ("grammars" . "your answers about which grammars may run")
     ("look-only" . "the projects you looked at only, never trusted to run their own programs")

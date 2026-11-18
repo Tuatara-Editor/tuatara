@@ -52,6 +52,10 @@ state, data or cache; PATH within it, a directory's ending in /; CLASS :KEPT,
      ("/papers/one.pdf" 12 :width 1.25) ("/papers/two three.pdf" 1 :page 1.0))
     (tuatara.defaults::*chosen-paths*
      "/notes/report.org" "/notes/")
+    (tuatara.defaults::*cache-entries*
+     ("remote/aB3dE9/" "remote" "/ssh:box:/srv/case/mail.pst" "/ssh:box:/srv/case/mail.pst" 3972000000 3972003600 t
+      "1048576 1794990000 4242 1048576 1794999999000000000 all")
+     ("indexes/notes/" "" "" "" 0 3972000000 t ""))
     (tuatara.defaults::*bookmarks*
      ("Findings" "/cases/report.org" 120 "* Findings" ("work" "court") t)
      ("Unmapped" "/mnt/server-not-mapped/evidence/disk.img" 0 "" () t)

@@ -2057,30 +2057,39 @@ when it cannot be opened or the system cannot tell."
       (unwind-protect (fd-holes-p fd (fd-stamp fd path))
         (sb-posix:close fd)))))
 
-(defun open-lock-file (path &key (wait 0))
+(defun open-lock-file (path &key (wait 0) shared)
   "Open the lock file at PATH, made readable and writable by you alone when it
-is not there, never through a link, and take its lock, held alone: the open
-file descriptor (FD), to close when the lock is to go, or NIL, nothing left
-open, when another holds it for more than WAIT seconds. What is written
-through FD once it is had is read by no one in the meantime who takes the
-lock. Signals FILE-SYSTEM-ERROR when it cannot be opened."
+is not there, never through a link, and take its lock, held alone, or with
+SHARED shared with others that take it shared: the open file descriptor (FD),
+to close when the lock is to go, or NIL, nothing left open, when another holds
+it against this one for more than WAIT seconds. What is written through FD once
+a lock held alone is had is read by no one in the meantime who takes the lock.
+Signals FILE-SYSTEM-ERROR when it cannot be opened."
   (let ((fd (handler-case (sb-posix:open (native path)
                                          (logior sb-posix:o-rdwr sb-posix:o-creat +o-nofollow+ +o-cloexec+) #o600)
               (sb-posix:syscall-error (e) (fail "open" path (sb-posix:syscall-errno e))))))
-    (if (tuatara.runtime:lock-fd fd :wait wait)
+    (if (tuatara.runtime:lock-fd fd :wait wait :shared shared)
         fd
         (progn (sb-posix:close fd) nil))))
 
-(defun lock-file-held-p (path)
+(defun open-for-writing (path)
+  "A descriptor for reading and writing the file at PATH, a regular file there
+already: a symbolic link at PATH is refused as no file, and anything else that
+is not a regular file is refused without being opened (OPEN-EXAMINED), a
+FILE-SYSTEM-ERROR. Nothing is made, nor cut short."
+  (open-examined +at-fdcwd+ (tuatara.text:string-octets (native path)) (logior sb-posix:o-rdwr +o-nofollow+)
+                 path :accept '(:regular) :operation "open for writing"))
+
+(defun lock-file-held-p (path &key shared)
   "True when the lock of the lock file at PATH (OPEN-LOCK-FILE) is held now,
-by another process or this one; NIL when it is free or there is no such
-file. Only a plain file counts: a link is not followed, and a named pipe or
+by another process or this one, alone, or with SHARED shared as well; NIL when
+it is free or there is no such file. Only a plain file counts: a link is not followed, and a named pipe or
 a device there is never waited on."
   (let ((fd (handler-case (sb-posix:open (native path) (logior sb-posix:o-rdonly sb-posix:o-nonblock
                                                                +o-nofollow+ +o-cloexec+))
               (sb-posix:syscall-error () nil))))
     (and fd (unwind-protect (and (sb-posix:s-isreg (sb-posix:stat-mode (sb-posix:fstat fd)))
-                                 (not (tuatara.runtime:lock-fd fd :shared t)))
+                                 (not (tuatara.runtime:lock-fd fd :shared (not shared))))
               (sb-posix:close fd)))))
 
 (defun call-with-state-lock (path function &key (wait 0.1))

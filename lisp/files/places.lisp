@@ -10,7 +10,7 @@
 
 (in-package #:tuatara.defaults)
 
-(define-setting *save-place-mode* t
+(define-setting *remember-places* t
   "Whether point's place in each file you visit is remembered and put back when
 you visit the file again, in this session or a later one.
 The places are the file places in $XDG_STATE_HOME/tuatara/
@@ -19,7 +19,7 @@ The places are the file places in $XDG_STATE_HOME/tuatara/
 - nil: files open at their top."
   :values boolean)
 
-(define-setting *save-place-limit* 400
+(define-setting *remembered-places-limit* 400
   "How many files' places are kept, the latest first.
 Raise it to come back to the place in more files; lower it to forget sooner.
 - a whole number: the count, 400 as standard."
@@ -38,7 +38,7 @@ sense."
   "The line of the places for ENTRY, (PATH . OFFSET)."
   (format nil "~d ~a" (cdr entry) (escape-path (car entry))))
 
-(define-state-list *saved-places* "places" 'parse-saved-place-line 'saved-place-line '*save-place-limit*
+(define-state-list *saved-places* "places" 'parse-saved-place-line 'saved-place-line '*remembered-places-limit*
   :header (format nil "# Where point was in the files Tuatara visited, the latest first: the octet,~%~
                        # then the file's path (\\\\, \\n and \\r stand for \\, a newline and a return).~%")
   :path-of #'car :line-key (spaced-line-key 1 #'digits-word-p))
@@ -59,9 +59,9 @@ one whose mode keeps no place (MODE-KEEPS-PLACE-P)."
 
 (defun save-places (buffers)
   "Put where point is in the files of BUFFERS first among the places, when
-*SAVE-PLACE-MODE* is true: written in the background, with what sessions side
+*REMEMBER-PLACES* is true: written in the background, with what sessions side
 by side put there meanwhile (STATE-LIST-PUT)."
-  (when *save-place-mode*
+  (when *remember-places*
     (state-list-put *saved-places* (remove nil (mapcar #'buffer-file-place buffers)))))
 
 (defun save-place-of (buffer)
@@ -75,11 +75,11 @@ by side put there meanwhile (STATE-LIST-PUT)."
 
 (defun restore-place (buffer)
   "Put point in BUFFER, a file just visited, where it was when the file was
-last left, when *SAVE-PLACE-MODE* is true, its mode keeps places
+last left, when *REMEMBER-PLACES* is true, its mode keeps places
 \(MODE-KEEPS-PLACE-P) and nothing has moved it yet: at that octet or the
 file's end when it has shrunk, on the start of the character there, a fold
 around it opened."
-  (when (and *save-place-mode* (zerop (tuatara.buffer:buffer-point buffer))
+  (when (and *remember-places* (zerop (tuatara.buffer:buffer-point buffer))
              (mode-keeps-place-p (buffer-major-mode buffer)))
     (let* ((path (tuatara.io:native (tuatara.buffer:buffer-file buffer)))
            (entry (and path (state-list-find *saved-places* path))))

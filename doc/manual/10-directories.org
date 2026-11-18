@@ -784,7 +784,7 @@ to refuse a huge list sooner:
 =*archive-seconds*= is how long the program that lists, packs or unpacks one
 archive may run before Tuatara ends it. It is a day as standard, for the
 largest archives. Lower it to end a program that hangs sooner; ~C-x J~
-(=stop-job=) ends one at once. The number is in seconds:
+(=stop-job=) ends one at once. A number is in seconds, or give words such as ="12h"=:
 
 #+begin_example
 (setf *archive-seconds* (* 60 60))

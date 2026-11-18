@@ -23,7 +23,7 @@ Past them the connection is closed and the work in hand fails, saying so. The
 work itself runs in the background, so that the editor never waits on a server.
 Raise it for a slow link or a busy server, at the price of waiting that long
 before a dead connection is noticed; lower it to learn of one sooner.
-- a number of seconds: the time allowed, 30 as standard."
+- a time: seconds, or words such as \"90s\" or \"2m\"; 30 as standard."
   :values (seconds 0 *))
 
 (defparameter *sftp-types*
@@ -880,6 +880,36 @@ them."
               (when (remote-cancelled-p) (error 'tuatara.runtime:job-stopped))
               (tuatara.runtime:job-check-stop)))
           attributes))))))
+
+(defun remote-read-stretches (host path stretches)
+  "The octets of the file at PATH on HOST in each of STRETCHES, read through
+one handle a piece (+SFTP-PIECE+ octets) at a time: a list of octet vectors,
+one for each stretch, a cons of its start and end, in order. Refused, as a read is,
+when the file there ends before a stretch does."
+  (call-with-sftp
+   host path "read"
+   (lambda (link)
+     (sftp-with-handle
+      link :open (list path 1 '(:attributes ())) path "read"
+      (lambda (handle)
+        (loop for (start . end) in stretches
+              collect (let ((octets (make-array (- end start) :element-type '(unsigned-byte 8)))
+                            (at start))
+                        (loop while (< at end)
+                              do (let ((asked (min +sftp-piece+ (- end at))))
+                                   (multiple-value-bind (answer data)
+                                       (sftp-ask link :read (list handle (list :u64 at) asked) path "read")
+                                     (unless (eq answer :data)
+                                       (sftp-fail link "read" path "it ends before ~d" end))
+                                     (let ((got (- (cdr data) (car data))))
+                                       (unless (<= 1 got asked)
+                                         (tuatara.frontend:malformed "~d octets where at most ~d were asked for"
+                                                                     got asked))
+                                       (replace octets (tuatara.frontend:inbox-octets (sftp-link-inbox link))
+                                                :start1 (- at start) :start2 (car data) :end2 (cdr data))
+                                       (incf at got))))
+                                 (tuatara.runtime:job-check-stop))
+                        octets)))))))
 
 (defvar *sftp-octets-sent* nil
   "A cons whose car SFTP-SEND-OCTETS sets to the octets sent so far, for the

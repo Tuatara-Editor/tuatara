@@ -14,7 +14,7 @@
                 #:*zip-largest-entry* #:*zip-largest-ratio*)
   (:import-from #:tuatara.buffer #:buffer-read-only-p #:buffer-char-before #:next-line-start #:buffer-line-head)
   (:import-from #:tuatara.buffer #:buffer-crlf-p #:lf-newlines #:crlf-newlines #:cr-newlines #:text-for-buffer)
-  (:import-from #:tuatara.runtime #:define-record #:foreign-library-p #:jobs-of #:close-fd-quietly
+  (:import-from #:tuatara.runtime #:define-record #:foreign-library-p #:jobs-of #:close-fd-quietly #:fd-for-program
                 #:with-fd-closed-on-error
                 #:reporting-errors #:ignoring-errors-reported #:refusal #:refuse #:*secret-at-hand*
                 #:run-hook #:run-hook-until-success #:run-hook-until-done #:call-hook-function

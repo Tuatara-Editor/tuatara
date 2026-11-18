@@ -20,7 +20,7 @@ a moment.")
            (uiop:split-string text :separator '(#\Newline))))
 
 (define-test (health languages-and-modes)
-  (let ((tuatara.defaults::*health-wait* 60))
+  (with-health-waited
     (multiple-value-bind (f editor) (run-keys "M-x c h e c k - h e a l t h RET" :width 120 :height 50)
       (declare (ignore editor))
       (true (tuatara.frontend.fake:fake-frame-showing f "Tuatara health"))
@@ -117,7 +117,7 @@ a moment.")
     (let ((report (tuatara.buffer:find-buffer "*Health*"))) (when report (tuatara.buffer:kill-buffer report)))))
 
 (define-test (health report-keys)
-  (let ((tuatara.defaults::*health-wait* 60))
+  (with-health-waited
     ;; q in the report closes its window; r checks again
     (multiple-value-bind (f editor) (run-keys "M-x c h e c k - h e a l t h RET C-x o r q" :width 120 :height 40)
       (is string= "*scratch*" (current-name editor))
@@ -288,7 +288,7 @@ a moment.")
                               (progn (incf refused) nil)
                               (funcall function name))))
     (unwind-protect
-         (let ((tuatara.defaults::*health-wait* 60))
+         (with-health-waited
            (run-keys "M-x c h e c k - h e a l t h RET" :width 120 :height 50)
            (is = 1 refused)
            (let ((line (health-line (health-text) "ada ")))

@@ -472,7 +472,7 @@ octets a pixel, a hundred-megapixel PNG some 3.9 GB), never less than
 needs little whatever its size, decoded at a fraction of it. A JPEG 2000 or
 JPEG XL picture is given time for its size (PICTURE-SECONDS), so this bounds
 that too.
-- a whole number of octets: the most, 4 GB as standard.
+- a size: a whole number of octets, or words such as \"8G\"; 4 GB as standard.
 - nil: no most; a picture is given what it needs."
   :values (or (member nil) (octets 0 *)))
 

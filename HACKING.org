@@ -188,6 +188,14 @@ Full compiler warnings fail the suite. Build once with an empty cache too
 that defines it is loaded warns only then. A test that changes a file works on
 files it made itself, in a directory of its own.
 
+A test fails, besides on its own checks, when it runs past its time limit
+(=test/time-bound.lisp=, 300 seconds unless it gives its own), when the hang
+watch writes that the editor was busy too long while it ran, and when a list a
+cache keeps and gives again was changed in place by those it was given to
+(=test/kept-results.lisp=). The caches watched are listed in
+=*watched-caches*=: a new cache that hands out lists is added there. A test
+that keeps the editor busy on purpose runs that part in =waiting-on-purpose=.
+
 =tools/bidi-conformance.sh= runs the order right-to-left text is shown in
 (=src/display/bidi.lisp=) against Unicode's own conformance files for the
 version of the character data SBCL carries: =BidiTest.txt=,
@@ -300,6 +308,12 @@ cached, so a run after the first embeds only what changed. A pair read and
 judged distinct goes into =test/api/kept-apart.txt= (=NAME-A NAME-B reason=,
 one to a line) and does not come back. =tools/code-health.sh= adds the list as
 its last section when the model is there.
+
+=tools/code-health.sh= also lists each place that joins with =NCONC=, sorts,
+reverses or deletes from in place a list a cache keeps and gives again (those
+of =*watched-caches*=, the functions documented to lend their lists, and those
+named with "cached"); the test =kept-results no-kept-list-changed-in-place=
+holds the list empty.
 
 * Working in a running editor
 
@@ -439,6 +453,16 @@ package most often needs:
   "NAME/")=, and =buffer-private-directory= names it. It lies in Tuatara's
   private cache, readable by you alone, and is deleted when the buffer is
   killed, once the buffer's background jobs have ended.
+- Work kept to save time :: what takes long to make and is worth having
+  again (readpst's messages of a mailbox) is an entry of the cache:
+  =define-cache-kind= names the kind, its directory in the cache and how
+  =M-x list-cache= opens one; =make-cache-entry= makes one, found again by
+  a key with =find-cache-entry=, each used by a buffer until it is killed;
+  =note-cache-entry= keeps a few words about it between sessions (whether
+  it was finished). Tuatara clears it =*cache-keep*= after its last use,
+  never while in use or pinned. =remote-copy-origin= says whether a file is
+  Tuatara's whole, unchanged copy of a file on another machine, which a
+  program may read in place of a copy of its own.
 - Files kept :: a file written for keeping (a report, a copy taken out) is
   made with =write-new-file=: read-only (0400) from the moment it is
   created, never written over a file or a link already there.

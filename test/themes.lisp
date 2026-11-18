@@ -489,3 +489,86 @@ its own colours, flags, inheritance, font and height, and what it resolves to."
     ;; M-x describe-face asks for the face and shows it in *Help*
     (let ((f (run-keys "M-x d e s c r i b e - f a c e RET : l i s t - s i z e RET" :text "" :width 100 :height 20)))
       (true (tuatara.frontend.fake:fake-frame-showing f ":list-size is a face.")))))
+
+(defun theme-seen ()
+  "The theme in force, the default background, a face your own settings colour, a colour of the
+terminal's palette and the desktop-style flag, as one list."
+  (list tuatara.display:*current-theme*
+        (tuatara.display:face-attribute :default :bg)
+        (tuatara.display:face-attribute :keyword :fg)
+        (tuatara.defaults::theme-terminal-colour 1)
+        tuatara.defaults::*theme-chosen*))
+
+(defun load-theme-session (keys &key held)
+  "Type KEYS (a string) in a session on a scratch buffer, the keys from \"M-x load-theme RET\" on
+being what is done in its list. Returns what THEME-SEEN gave once the keys were typed, as a
+second value the theme the list had selected then and, as a third, how many times a theme
+was put in force. With HELD, a key waits to be handled while another is queued next to it, as a held key's do."
+  (let* ((f (tuatara.frontend.fake:make-fake-frontend :width 80 :height 12))
+         (seen nil) (selected nil) (calls 0))
+    (let ((scratch (tuatara.buffer:find-buffer "*scratch*")))
+      (when scratch (tuatara.buffer:kill-buffer scratch)))
+    (tuatara.buffer:make-buffer "*scratch*" :text "")
+    (when held
+      (setf (tuatara.frontend.fake:fake-pending f)
+            (lambda (f) (let ((next (first (tuatara.frontend.fake::fake-events f)))) (and next (not (functionp next)))))))
+    (tuatara.frontend.fake:fake-queue-keys f (format nil "M-x l o a d - t h e m e RET ~a" keys))
+    (tuatara.frontend.fake:fake-queue-action
+     f (lambda ()
+         (setf seen (theme-seen)
+               selected (let ((c (tuatara.command::selected-candidate
+                                  (tuatara.command:editor-completion tuatara.command:*editor*))))
+                          (and c (tuatara.command:candidate-result c))))))
+    (tuatara.frontend.fake:fake-queue-keys f "C-g")
+    (let ((counted (nth-value 1 (counting-calls (tuatara.display:apply-theme)
+                                  (without-grammar-questions
+                                    (tuatara.command:run-editor f :setup #'tuatara.defaults:install-defaults
+                                                                  :buffer (tuatara.buffer:find-buffer "*scratch*")))))))
+      (setf calls counted))
+    (values seen selected calls (theme-seen))))
+
+(define-test (themes load-theme-previews-and-restores)
+  (with-theme-restored
+    (tuatara.display:set-user-face :keyword :fg :green)
+    (tuatara.display:apply-theme 'ao-dark)
+    (let ((before (theme-seen)))
+      (multiple-value-bind (shown selected calls after) (load-theme-session "a o - l i g h t")
+        (declare (ignore selected calls))
+        ;; the list shows the theme selected whole, your colour still on top, the desktop's style not followed
+        (is eq 'tuatara.defaults::ao-light (first shown))
+        (is equal "#ffffff" (second shown))
+        (is eq :green (third shown))
+        (isnt equal (fourth before) (fourth shown))
+        (true (fifth shown))
+        ;; C-g puts everything back as it was, nothing recorded as chosen
+        (is equal before after)
+        (false (fifth after))))))
+
+(define-test (themes load-theme-keeps-the-theme-shown)
+  (with-theme-restored
+    (tuatara.display:set-user-face :keyword :fg :green)
+    (tuatara.display:apply-theme 'ao-dark)
+    (run-keys "M-x l o a d - t h e m e RET a o - l i g h t RET")
+    (is eq 'tuatara.defaults::ao-light tuatara.display:*current-theme*)
+    (is eq :green (tuatara.display:face-attribute :keyword :fg))
+    (true tuatara.defaults::*theme-chosen*)))
+
+(define-test (themes load-theme-preview-ignores-preview-settings)
+  (with-theme-restored
+    (let ((tuatara-user:*preview-files* nil) (tuatara-user:*preview-buffers* nil)
+          (tuatara-user:*preview-formatted-files* nil) (tuatara-user:*preview-formatted-search* nil)
+          (tuatara-user:*preview-file-search* nil))
+      (is eq 'tuatara.defaults::ao-light (first (load-theme-session "a o - l i g h t"))))))
+
+(define-test (themes load-theme-preview-waits-while-keys-are-held)
+  (with-theme-restored
+    (tuatara.display:apply-theme 'ao-dark)
+    (let ((moves "C-n C-n C-n C-n C-n C-n"))
+      (multiple-value-bind (shown selected free-calls) (load-theme-session moves)
+        (is eq selected (first shown))
+        (multiple-value-bind (held-shown held-selected held-calls after) (load-theme-session moves :held t)
+          ;; the theme the list stopped at, after a few at most of those it passed
+          (is eq held-selected (first held-shown))
+          (true (<= held-calls 4))
+          (true (< held-calls free-calls))
+          (is eq 'tuatara.defaults::ao-dark (first after)))))))

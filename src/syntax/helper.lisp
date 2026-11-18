@@ -766,7 +766,9 @@ holds already."
                (processes *syntax-helper-processes*)
                (descriptors *syntax-helper-descriptors*)
                (unconfined (and *syntax-helper-unconfined* (not (eq kind :own))))
-               (how nil))
+               (how nil)
+               ;; the helper once made, for its sandbox ended by another to end it
+               (made (list nil)))
           (multiple-value-bind (process error)
               (tuatara.io:in-starter
                ;; the helper's end of the socket is this work's own, closed by
@@ -778,7 +780,10 @@ holds already."
                             (progn (setf how :shut-in)
                                    (tuatara.io:sandbox-start (shut-in-helper-program program) places stream
                                                              :memory memory :directories places
-                                                             :processes processes :descriptors descriptors))
+                                                             :processes processes :descriptors descriptors
+                                                             :ended (lambda ()
+                                                                      (let ((helper (car made)))
+                                                                        (when helper (end-helper helper :stopped))))))
                             (when unconfined
                               (setf how :unconfined)
                               (tuatara.io:start-program (cons (uiop:native-namestring program) places)
@@ -792,6 +797,7 @@ holds already."
                    :busy)
                   (process
                    (let ((helper (%make-helper process mine directories kind)))
+                     (setf (car made) helper)
                      (sb-thread:with-mutex (**helpers-lock**) (push helper **helpers**))
                      (tuatara.runtime:debug-report
                       :parse "syntax helper (~(~a~)) started, ~

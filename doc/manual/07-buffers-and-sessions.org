@@ -232,7 +232,7 @@ list at all, set =*remember-recent-files*= to =nil=.
 
 Tuatara also remembers where the cursor was in each file you leave. When you
 open the file again, the cursor is back at that line, even in a later session.
-That is the setting =*save-place-mode*=, and =*save-place-limit*= sets how
+That is the setting =*remember-places*=, and =*remembered-places-limit*= sets how
 many files it remembers. It is useful for a long document you read a little
 at a time.
 
@@ -249,7 +249,7 @@ at a time.
 
 #+table: commands find-recent-file
 
-#+table: settings *remember-recent-files* *recent-files-limit* *recent-files-auto-cleanup* *save-place-mode* *save-place-limit*
+#+table: settings *remember-recent-files* *recent-files-limit* *recent-files-auto-cleanup* *remember-places* *remembered-places-limit*
 
 ** Bookmarks
 

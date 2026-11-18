@@ -73,6 +73,8 @@ to every part that asks.")
   (is string= "1 minute 0 seconds" (tuatara.dates:duration-words 59.96))
   (is string= "3 minutes 12 seconds" (tuatara.dates:duration-words 192.4))
   (is string= "2 hours 5 minutes" (tuatara.dates:duration-words 7500))
+  (is string= "1 day 0 hours" (tuatara.dates:duration-words 86400))
+  (is string= "3 days 12 hours" (tuatara.dates:duration-words (* 84 3600)))
   (is string= "in 0.5 seconds" (tuatara.defaults::job-done-words 0.5 0))
   (is string= "no answer within 2 seconds (*lsp-wait*)" (tuatara.lsp::lsp-error-words :timeout :seconds 2)))
 

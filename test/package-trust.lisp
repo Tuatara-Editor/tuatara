@@ -836,7 +836,7 @@ the tests' own keyring lacks: the directory and the key's fingerprint."
           (false (third (verdict signature))))
         (false (tuatara.packages::kept-version-check-needed-p "https://example.org/x.git"
                                                               (list nil nil nil nil nil nil nil)))
-        (let ((tuatara.defaults::*health-wait* 60))
+        (with-health-waited
           (true (tuatara.frontend.fake:fake-frame-showing
                  (run-keys "M-x c h e c k - h e a l t h RET" :width 130 :height 50) "signatures are not checked")))))
     (true (tuatara.packages::kept-version-check-needed-p "https://example.org/x.git" (list nil nil nil nil nil nil nil)))))
