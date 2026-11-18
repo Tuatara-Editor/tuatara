@@ -460,6 +460,21 @@ for rimu's operations to finish. Returns the frontend and the editor."
     (true (uiop:string-prefix-p "#+title: New title two"
                                 (alexandria:read-file-into-string (here dir "20260101T101010--new-title-two__alpha.org"))))))
 
+(define-modal-test (rimu-operations new-keywords-in-renames)
+  ;; renaming takes a keyword not offered as typed, though it matches one
+  ;; offered inside it; one begun takes the keyword offered
+  (with-operations-tree (dir)
+    (let ((tuatara-user:*formatted-file-directory* (namestring dir))
+          (tuatara-user:*formatted-file-keywords* '("garden" "project")))
+      (alexandria:write-string-into-file (format nil "#+title: Old~%#+filetags: :old:~%~%Body.~%")
+                                         (here dir "20260101T101010--old__old.org"))
+      (ops-session dir "g f 2 0 2 6 0 1 0 1 RET SPC d r RET j e t RET g a r RET RET")
+      (true (probe-file (here dir "20260101T101010--old__garden_jet.org")))
+      (ops-session dir "g f 2 0 2 6 0 1 0 1 RET SPC d k d e n RET p r o RET RET")
+      (true (probe-file (here dir "20260101T101010--old__den_project.org")))
+      (true (search "#+filetags: :den:project:"
+                    (alexandria:read-file-into-string (here dir "20260101T101010--old__den_project.org")))))))
+
 (define-test (rimu-operations formatted-rename-waits-for-a-save)
   ;; a file whose buffer is being saved keeps its name: what the save writes
   ;; would land at the old one

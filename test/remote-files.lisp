@@ -1460,10 +1460,10 @@ Are you sure you want to continue connecting (yes/no/[fingerprint])? "))
   (with-output-to-string (out)
     (dotimes (i lines) (format out "line ~6,'0d of the numbered text~%" i))))
 
-(defmacro with-arrival-held ((dir name release &key (lines 90000)) &body body)
-  "Run BODY with the file NAME, /ssh:box:DIR/a.log of LINES numbered lines (more
-than *MEMORY-READ-LIMIT*, here 1 MB, so it opens before it has all come), to be
-visited. A transfer is held after each lot (*ARRIVAL-HOOK*) until RELEASE, a
+(defmacro with-arrival-held ((dir name release &key (lines 90000) (file "a.log") (lead "")) &body body)
+  "Run BODY with the file NAME, /ssh:box:DIR/FILE, LEAD, a string, followed by
+LINES numbered lines (more than *MEMORY-READ-LIMIT*, here 1 MB, so it opens
+before it has all come), to be visited. A transfer is held after each lot (*ARRIVAL-HOOK*) until RELEASE, a
 function of no arguments, is called, which lets the transfer run to its end
 \(a number given to it lets through that many lots). Every remote buffer is
 killed after."
@@ -1474,13 +1474,13 @@ killed after."
            (let* ((,gate (sb-thread:make-semaphore))
                   (,open nil)
                   (,old-limit tuatara.io:*memory-read-limit*)
-                  (file (concatenate 'string (namestring ,dir) "a.log"))
+                  (file (concatenate 'string (namestring ,dir) ,file))
                   (,name (concatenate 'string "/ssh:box:" file)))
              (flet ((,release (&optional ,count)
                       (if ,count
                           (sb-thread:signal-semaphore ,gate ,count)
                           (progn (setf ,open t) (sb-thread:signal-semaphore ,gate 1000)))))
-               (alexandria:write-string-into-file (arrival-numbered-text ,lines) file)
+               (alexandria:write-string-into-file (concatenate 'string ,lead (arrival-numbered-text ,lines)) file)
                (unwind-protect
                     (progn
                       (setf tuatara.io:*memory-read-limit* (* 1024 1024)
@@ -2173,3 +2173,175 @@ killed after."
              (handler-case (progn (funcall function) :none) (error (condition) (princ-to-string condition)))))
       (true (search "plain path" (failure (lambda () (tuatara.defaults::manifest-path)))))
       (true (search "plain path" (failure (lambda () (tuatara.defaults::brought-path "x"))))))))
+
+(defvar *stand-in-view-seen* '()
+  "What the stand-in view was asked to show, each (OCTETS SAFELY) newest first:
+the octets of the file then, and whether it was asked as a file from outside.")
+
+(defun stand-in-view (path show)
+  "A view of files whose names end in .box, for the tests: it shows one as a
+buffer of its own, with SHOW, noting what it was asked (*STAND-IN-VIEW-SEEN*)."
+  (when (uiop:string-suffix-p (namestring path) ".box")
+    (push (list (alexandria:read-file-into-byte-vector path) tuatara.defaults::*visiting-safely*)
+          *stand-in-view-seen*)
+    (let ((buffer (tuatara.buffer:make-buffer (tuatara.buffer:unique-buffer-name "stand-in view"))))
+      (setf (tuatara.buffer:buffer-local buffer :viewed-file) (namestring path))
+      (funcall show buffer)
+      buffer)))
+
+(defmacro with-stand-in-view (() &body body)
+  "Run BODY with STAND-IN-VIEW among the views, as one shut in by the sandbox,
+nothing seen by it yet; the views set back after."
+  `(let ((*stand-in-view-seen* '()))
+     (push 'stand-in-view tuatara.defaults::*file-views*)
+     (push 'stand-in-view tuatara.defaults::*sandboxed-file-views*)
+     (unwind-protect (progn ,@body)
+       (setf tuatara.defaults::*file-views* (remove 'stand-in-view tuatara.defaults::*file-views*)
+             tuatara.defaults::*sandboxed-file-views*
+             (remove 'stand-in-view tuatara.defaults::*sandboxed-file-views*)))))
+
+(defun stand-in-view-buffer ()
+  "The live buffer the stand-in view made, or NIL."
+  (find-if (lambda (b) (tuatara.buffer:buffer-local b :viewed-file)) tuatara.buffer:*buffers*))
+
+(define-test (remote-files sandboxed-views-show-copies)
+  ;; a package's view shut in by the sandbox shows a copy from there as it shows a file from outside here
+  (if (null (sftp-server-program))
+      (skip "no sftp-server here" (true nil))
+      (with-stand-in-sftp (dir log)
+        (with-stand-in-view ()
+          (let* ((file (concatenate 'string (namestring dir) "small.box"))
+                 (name (concatenate 'string "/ssh:box:" file)))
+            (alexandria:write-byte-vector-into-file (coerce #(1 0 2 0 3) '(vector (unsigned-byte 8))) file)
+            (unwind-protect
+                 (progn
+                   (remote-session (visit-keys name) (list :until #'stand-in-view-buffer))
+                   (is = 1 (length *stand-in-view-seen*))
+                   (true (second (first *stand-in-view-seen*)) "asked as a file from outside")
+                   (is string= "small.box" (tuatara.buffer:buffer-name (stand-in-view-buffer)))
+                   (true (tuatara.buffer:buffer-local (stand-in-view-buffer) :viewed-untrusted)
+                         "marked as a view of a file from outside")
+                   (false (find-if (lambda (path) (search "/remote/" path))
+                                   (append (tuatara.defaults::chosen-paths)
+                                           (mapcar #'car (tuatara.defaults::state-list-entries
+                                                          tuatara.defaults::*recent-files*))))
+                          "no copy in the cache remembered"))
+              (let ((view (stand-in-view-buffer))) (when view (tuatara.buffer:kill-buffer view)))
+              (kill-remote-buffers)))))))
+
+(define-test (remote-files binary-file-waits-till-it-has-all-come)
+  ;; a large file that is not text says how much has come, never shown in part as octets; asked to open as
+  ;; usual meanwhile it says it is arriving; whole, it opens by itself in the view of its kind
+  (with-stand-in-view ()
+    (with-arrival-held (dir name release :file "mail.box" :lead (coerce '(#\Nul #\Nul) 'string))
+      (let (said-meanwhile placeholder)
+        (remote-session (visit-keys name)
+                        (list :until (lambda ()
+                                       (tuatara.frontend.fake:fake-frame-showing
+                                        (arrival-frontend) "mail.box is still arriving from box")))
+                        (list :until (lambda ()
+                                       (setf placeholder (find "mail.box" tuatara.buffer:*buffers*
+                                                               :key #'tuatara.buffer:buffer-name :test #'string=))
+                                       (true placeholder)
+                                       (false (tuatara.display:hex-view-p placeholder) "not in the hex view")
+                                       (false (tuatara.io:buffer-arriving-p placeholder))
+                                       (false (stand-in-view-buffer) "no view of a part")
+                                       t))
+                        (format nil "M-x ~a RET" (typed-keys "end-safe-visit"))
+                        (list :until (lambda ()
+                                       (setf said-meanwhile (messages-since-step))
+                                       (release)
+                                       t))
+                        (list :until #'stand-in-view-buffer 120))
+        (true (search "still arriving" said-meanwhile) "end-safe-visit says it is arriving")
+        (false (search "failed" said-meanwhile))
+        (is = 1 (length *stand-in-view-seen*) "the view asked once")
+        (is = (+ 2 (length (arrival-numbered-text 90000))) (length (first (first *stand-in-view-seen*)))
+            "asked once all of it had come")
+        (is string= "mail.box" (tuatara.buffer:buffer-name (stand-in-view-buffer)) "in the place of the waiting one")
+        (false (tuatara.buffer:live-buffer-p placeholder))
+        (tuatara.buffer:kill-buffer (stand-in-view-buffer))))))
+
+(define-test (remote-files one-buffer-name-per-open)
+  ;; the rest of a large file is read in the buffer that shows it, under its own name, never another's
+  (let ((started '()))
+    (sb-int:encapsulate 'tuatara.runtime::report-job 'names
+                        (lambda (function job event &optional details)
+                          (when (and (typep job 'tuatara.defaults::remote-read-job) (string= event "started"))
+                            (push (list (tuatara.runtime::job-buffer-name job) (tuatara.runtime:job-description job))
+                                  started))
+                          (funcall function job event details)))
+    (unwind-protect
+         (with-arrival-held (dir name release)
+           (remote-session (visit-keys name)
+                           (list :until (lambda () (= 2 (length started))))
+                           (list :until (lambda () (release) t))))
+      (sb-int:unencapsulate 'tuatara.runtime::report-job 'names))
+    (is equal '("a.log" "a.log") (mapcar #'first started) "both jobs in the one buffer's name")
+    (true (search "the rest of" (second (first started))))))
+
+(define-test (remote-files pdf-there-shown-as-its-pages)
+  ;; a PDF opened from the list of a directory there is shown as its pages, as one here is
+  (if (not (and (sftp-server-program) (eq (tuatara.io:sandbox-status) :ready) (tuatara.defaults::find-pdf-decoder)))
+      (skip "no sftp-server, sandbox or program for PDFs here" (true nil))
+      (with-stand-in-sftp (dir log)
+        (let ((there (namestring dir)))
+          (alexandria:write-byte-vector-into-file (pdf-octets '("A page there")) (concatenate 'string there "zz.pdf"))
+          (flet ((view ()
+                   (find-if (lambda (b) (tuatara.defaults::pdf-view-of b)) tuatara.buffer:*buffers*)))
+            (unwind-protect
+                 (progn
+                   (remote-session (format nil "C-x C-f C-a C-k ~a C-j"
+                                           (typed-keys (concatenate 'string "/ssh:box:" (string-right-trim "/" there))))
+                                   (list :until #'remote-list-read)
+                                   ;; the last entry, after the stand-in's own files
+                                   "M-> RET"
+                                   (list :until #'view 30))
+                   (is string= "zz.pdf" (tuatara.buffer:buffer-name (view)))
+                   (false (find-if #'tuatara.display:hex-view-p tuatara.buffer:*buffers*) "nothing in the hex view"))
+              (let ((view (view))) (when view (tuatara.buffer:kill-buffer view)))
+              (kill-remote-buffers)
+              (kill-remote-lists)))))))
+
+(define-test (remote-files stopped-arrival-shown-by-no-view)
+  ;; a copy opened safely whose transfer stopped part-way is never given to a view: its missing parts would be read
+  ;; as zeros; ending the safe visit says what has not arrived and how to get the rest
+  (with-stand-in-view ()
+    (with-arrival-held (dir name release :file "mail.box" :lead (coerce '(#\Nul #\Nul) 'string))
+      (let (said)
+        (remote-session (format nil "C-u ~a" (visit-keys name))
+                        (list :until (lambda () (let ((buffer (remote-buffer-of name)))
+                                                  (and buffer (tuatara.defaults::remote-file-arrival
+                                                               (tuatara.defaults::buffer-remote buffer))))))
+                        (list :until (lambda ()
+                                       (sb-alien:alien-funcall
+                                        (sb-alien:extern-alien "shutdown"
+                                                               (function sb-alien:int sb-alien:int sb-alien:int))
+                                        (tuatara.defaults::sftp-link-fd (tuatara.defaults::sftp-link "box")) 2)
+                                       (release)
+                                       t))
+                        (list :until (lambda () (null (tuatara.runtime:jobs-of (remote-buffer-of name) :running t))))
+                        (format nil "M-x ~a RET" (typed-keys "end-safe-visit"))
+                        (list :until (lambda ()
+                                       (setf said (messages-since-step)
+                                             tuatara.defaults::*arrival-hook* nil)
+                                       t)))
+        (is = 0 (length *stand-in-view-seen*) "no view asked")
+        (true (search "has not all arrived" said))
+        (true (tuatara.io:safe-visit-p (remote-buffer-of name)) "still open safely")))))
+
+(define-test (remote-files evidence-not-told-stays-safe)
+  ;; a copy of a file that could not be told not to be evidence stays opened safely, whatever its reason's words
+  (with-test-directory (dir)
+    (let* ((file (namestring (merge-pathnames "copy.box" dir)))
+           (buffer (progn (alexandria:write-string-into-file "text" file)
+                          (tuatara.io:visit-file file :safe t)))
+           (remote (tuatara.defaults::make-remote-file "box" "/srv/copy.box")))
+      (unwind-protect
+           (progn
+             (setf (tuatara.defaults::remote-file-evidence remote)
+                   (concatenate 'string "it could not be told whether /ssh:box:/srv/copy.box is evidence "
+                                "(no answer), so nothing is written there")
+                   (tuatara.buffer:buffer-local buffer :remote-file) remote)
+             (true (tuatara.defaults::safe-visit-kept-reason buffer)))
+        (tuatara.buffer:kill-buffer buffer)))))

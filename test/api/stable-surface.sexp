@@ -2,7 +2,7 @@
 ;; ARGUMENTS (REQUIRED OPTIONAL KEYS REST OTHER-KEYS); (:setting NAME); (:init NAME KIND ARGUMENTS), the init
 ;; file's functions and macros; (:keywords LOAD-PACKAGE KEYWORDS); (:flag OPTION), the command line's
 ;; options; (:command PACKAGE NAME).
-(:version "0.90.35")
+(:version "0.90.36")
 (:api "*BUFFERS-ASKED-ABOUT*" :variable)
 (:api "*BUILD*" :variable)
 (:api "*BUILT-AT*" :variable)
@@ -367,7 +367,7 @@
 (:api "READ-NEW-NATIVE-PATH" :function (1 nil nil t nil))
 (:api "READ-PASSWORD" :function (1 nil ("CONFIRM" "FRESH" "UPDATE") nil nil))
 (:api "READ-PATH" :function (1 nil ("INITIAL" "KEEP" "PREVIEW" "WRITING") nil nil))
-(:api "READ-SEVERAL" :function (2 nil ("INITIAL" "MORE" "NONE" "SOURCE") nil nil))
+(:api "READ-SEVERAL" :function (2 nil ("INITIAL" "MORE" "NONE" "REQUIRE-MATCH" "SOURCE") nil nil))
 (:api "READ-STREAM-OCTETS" :function (1 nil ("CANCEL" "DRAIN" "LIMIT" "WIPE") nil nil))
 (:api "READ-STRING" :function (1 nil ("CHANGED" "COMPLETE" "COMPLETION" "FRESH" "HISTORY" "INITIAL" "KEYMAP" "REWRITE" "SELECT-INITIAL" "TRIM" "UPDATE") t nil))
 (:api "READ-WHOLE-NUMBER" :function (2 nil ("REFUSAL" "VALID") nil nil))

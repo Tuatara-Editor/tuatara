@@ -520,8 +520,11 @@ when started before; what this question takes of it is kept in its first,
 for the next question, and the caller stops it; else it is started and
 stopped here). \\<minibuffer>\\[minibuffer-finish] takes the
 selected one, \\[minibuffer-complete] puts it in, \\[minibuffer-submit-input]
-takes what is typed. While no keyword is begun, an empty line comes first,
-selected: no keywords, or no more. Returns a list of strings."
+takes what is typed. A keyword typed whole, or the start of one, selects it;
+any other word selects the line typed, a new keyword that
+\\[minibuffer-finish] takes as typed (READ-SEVERAL). While no keyword is
+begun, an empty line comes first, selected: no keywords, or no more. Returns a
+list of strings."
   (let ((offered '()) (seen (make-hash-table :test 'equal)))
     (flet ((offer (keywords)
              (dolist (keyword keywords)

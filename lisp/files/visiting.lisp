@@ -538,10 +538,6 @@ with *VISITING-SAFELY* true and leaves the file to its octets rather than
 read it any other way. A package adds the name of its view here as well as
 to *FILE-VIEWS* only when it keeps this promise.")
 
-(defparameter *remote-file-views* '(image-view-visit pdf-view-visit office-view-visit)
-  "The views of *FILE-VIEWS* that show a file read from another machine: those
-that only show it, as a view whose changes are saved would save them here.")
-
 (defvar *file-view-stamp* nil
   "While a view of *SANDBOXED-FILE-VIEWS* is asked to show a file from
 outside, the stamp of the file as its visit judged it (FILE-VIEW-STAMP).")
@@ -825,6 +821,27 @@ show one (*FILE-VIEWS*): a directory's list is then opened safely too. True as
 well while a view of *SANDBOXED-FILE-VIEWS* is asked to show a file from
 outside.")
 
+(defun run-remote-file-views (copy show missing)
+  "Ask the views of *FILE-VIEWS* that are of *SANDBOXED-FILE-VIEWS* in turn to
+show COPY, the copy here of a file read from another machine, as such a view
+shows a file from outside: the first that does returns its buffer, shown with
+SHOW, a function of the buffer, and marked as a view of a file from outside
+\(:VIEWED-UNTRUSTED); NIL when none does. Only these show such a copy, for
+they only show it, and read it shut in by the sandbox. MISSING, words saying
+that part of the file has not arrived, or NIL: given, no view is asked, as a
+decoder would read what is missing as zeros, and why is said
+\(FILE-VIEW-REFUSES)."
+  (if missing
+      (progn (file-view-refuses "~a" missing) nil)
+      (let ((view (let ((*visiting-safely* t)
+                        (*file-view-stamp* (tuatara.io:path-stamp copy :failure nil)))
+                    (run-hook-until-done (remove-if-not (lambda (view) (member view *sandboxed-file-views*))
+                                                        *file-views*)
+                                         copy show))))
+        (when view
+          (setf (tuatara.buffer:buffer-local view :viewed-untrusted) t))
+        view)))
+
 (defun visit-path-once (path safe show)
   "Visit the file at PATH as VISIT-PATH does, SAFE and SHOW as it takes them,
 its first octets read once meanwhile. A file asked to be opened safely is
@@ -1022,38 +1039,47 @@ shows otherwise, a PDF or a mailbox, is shown so in its place instead, as
 view decrypts is said to be. It stays opened safely, and says why
 \(SAFE-VISIT-KEPT-REASON), in these cases: the file is evidence
 \(*EVIDENCE-DIRECTORIES*) or was when it was opened, it has another name that
-may be evidence, or its name leads to another file now than the one read."
-  (let ((b (current-buffer)))
-    (if (not (tuatara.io:safe-visit-p b))
-        (message "~a is not open safely" (tuatara.buffer:buffer-name b))
-        (let ((why (safe-visit-kept-reason b)))
-          (if why
-              (message "~a stays opened safely: ~a" (tuatara.buffer:buffer-name b) why)
-              (let ((view (and (not (tuatara.buffer:buffer-modified-p b)) (view-in-place-of b))))
-                (if view
-                    (message "~a is open as usual now, shown as ~a"
-                             (tuatara.buffer:buffer-name view)
-                             (cond ((tuatara.buffer:buffer-local view :viewed-as))
-                                   ((tuatara.buffer:buffer-local view :encrypted) "its text, decrypted by gpg")
-                                   (t "its view")))
-                    (progn
-                      (visit-as-usual b)
-                      (message "~a is open as usual now~:[~;; read-only, since you may not write it~]"
-                               (tuatara.buffer:buffer-name b) (buffer-read-only-p b))))))))))
+may be evidence, or its name leads to another file now than the one read.
+A file from another machine still arriving, or stopped before all of it
+came, is left as it is till all of it is here, how much has come said."
+  (let* ((b (current-buffer))
+         (arriving (remote-missing-words b)))
+    (cond
+      (arriving (message "~a; it can be opened as usual once all of it is here" arriving))
+      ((not (tuatara.io:safe-visit-p b))
+       (message "~a is not open safely" (tuatara.buffer:buffer-name b)))
+      (t
+       (let ((why (safe-visit-kept-reason b)))
+         (if why
+             (message "~a stays opened safely: ~a" (tuatara.buffer:buffer-name b) why)
+             (let ((view (and (not (tuatara.buffer:buffer-modified-p b)) (view-in-place-of b))))
+               (if view
+                   (message "~a is open as usual now, shown as ~a"
+                            (tuatara.buffer:buffer-name view)
+                            (cond ((tuatara.buffer:buffer-local view :viewed-as))
+                                  ((tuatara.buffer:buffer-local view :encrypted) "its text, decrypted by gpg")
+                                  (t "its view")))
+                   (progn
+                     (visit-as-usual b)
+                     (message "~a is open as usual now~:[~;; read-only, since you may not write it~]"
+                              (tuatara.buffer:buffer-name b) (buffer-read-only-p b)))))))))))
 
 (defun view-in-place-of (b)
   "The buffer of the view of *FILE-VIEWS* that shows B's file, which B visits
 safely, having taken B's place (TAKE-PLACE-OF), or shown in the selected
 window when B was shown in none; NIL, B left as it is, when no view shows
 the file. A copy of a file on another machine is shown only by the views of
-*REMOTE-FILE-VIEWS*, as when it is first read."
+*SANDBOXED-FILE-VIEWS*, as when it is first read, and by none while part of
+it has not arrived (RUN-REMOTE-FILE-VIEWS)."
   (let* ((windows (buffer-windows b))
          (view (let ((*file-view-said* nil))
                  (tuatara.io:call-with-file-heads
                   (lambda ()
-                    (run-hook-until-done (if (buffer-remote b) *remote-file-views* *file-views*)
-                                         (tuatara.io:native (tuatara.buffer:buffer-file b))
-                                         (lambda (view) (unless windows (show-buffer view)))))))))
+                    (let ((native (tuatara.io:native (tuatara.buffer:buffer-file b)))
+                          (show (lambda (view) (unless windows (show-buffer view)))))
+                      (if (buffer-remote b)
+                          (run-remote-file-views native show (remote-missing-words b))
+                          (run-hook-until-done *file-views* native show))))))))
     (when view
       (take-place-of view b windows)
       view)))
@@ -1065,12 +1091,16 @@ name that may be (its reason, TUATARA.IO:SAFE-VISIT-REASON, names
 *EVIDENCE-DIRECTORIES*). It also stays safe when its name no longer leads to the
 file it read, as a link changed meanwhile, when the file there is evidence
 now, or when it has another name that may be in an evidence directory. Each is
-asked anew, nothing kept used."
+asked anew, nothing kept used. The copy of a file from another machine stays
+safe while that file is evidence, or could not be told not to be, as its
+read found (REMOTE-FILE-EVIDENCE), whatever the reason's words."
   (let* ((file (tuatara.buffer:buffer-file buffer))
          (path (and file (tuatara.io:native file)))
          (why (tuatara.io:safe-visit-reason buffer))
-         (read (tuatara.io:buffer-file-stamp buffer)))
-    (cond ((and why (search "*evidence-directories*" why)) why)
+         (read (tuatara.io:buffer-file-stamp buffer))
+         (remote (buffer-remote buffer)))
+    (cond ((and remote (remote-file-evidence remote)))
+          ((and (not remote) why (search "*evidence-directories*" why)) why)
           ((and read path (not (tuatara.io:same-stamped-file-p read (tuatara.io:path-stamp path :failure nil))))
            "its name no longer leads to the file it read")
           ((and path (evidence-visit-reason path)))

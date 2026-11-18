@@ -487,17 +487,37 @@ When the last part has come, the echo area says =All of access.log has
 arrived=. From then on the file behaves like any other large file: its lines
 are counted, you can change it, and ~C-x C-s~ writes it back to the server.
 
+*** A large file that is not text
+
+A picture, a PDF, a mailbox or any other file that is not text cannot be
+shown in part, so it waits until all of it has come. Its buffer says so, with
+how much is here, and the figures go up as the transfer goes on. P is lit
+meanwhile. When the last part has come, the file opens in that buffer's
+place as it would have opened whole: a mailbox as its list, a PDF as its
+pages, anything else as octets in the hex view. ~M-x end-safe-visit~ and the
+like say that the file is still arriving.
+
+#+begin_example
+big.pst is still arriving from akaroa: 1.2 GB of 21.3 GB here.
+#+end_example
+
+A file opened safely (~C-u C-x C-f~) is shown as octets anyway, so it opens
+at once in the hex view, the parts not here shown as not arrived.
+
 *** Stopping the transfer, or losing the connection
 
 ~C-x J~ stops the transfer, after asking. What came stays on the screen and
 can be read. The mode line then says =incomplete=, and the missing parts are
 shown as not arrived. The same happens if the connection is lost. An
 incomplete buffer is never written back to the server, so a half file cannot
-replace a whole one. ~M-x revert-buffer~ goes on with the transfer from where it
-stopped, if the file on the server has not changed. If it has changed, the file
+replace a whole one, and it is never shown in a view of its kind: ~M-x
+end-safe-visit~ says that part of it has not arrived. ~M-x revert-buffer~ goes
+on with the transfer from where it stopped, if the file on the server has not
+changed. If it has changed, the file
 is fetched again from the start.
 
-Killing the buffer ends the transfer. What came stays in the cache (chapter 9,
+Killing the buffer ends the transfer, also for a file still waiting to open.
+What came stays in the cache (chapter 9,
 "The cache"), and opening the file again goes on from where it stopped, if the
 file on the server has not changed.
 

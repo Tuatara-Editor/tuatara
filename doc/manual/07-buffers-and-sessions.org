@@ -262,8 +262,10 @@ finds the place again even when you have added text above it.
 ~C-x m m~ sets a bookmark where the cursor is. It asks for a name, and
 offers the file's name. It then asks which categories the bookmark is in. A
 category is a word of your own, such as =letters= or =house=; you may type
-several, apart by commas, and the ones you used before are offered. ~C-x m b~
-asks for a name and goes to the place. ~C-x m d~ forgets a bookmark.
+several, apart by commas, and the ones you used before are offered. A word
+that is not the start of one offered is a new category, and ~RET~ adds it as
+typed. ~C-x m b~ asks for a name and goes to the place. ~C-x m d~ forgets a
+bookmark.
 
 ~C-x m l~ opens the bookmark manager, a list that works like the buffer list.
 It has a section for each category, with a heading saying how many bookmarks

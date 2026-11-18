@@ -408,6 +408,13 @@ date, the keywords and the identifier. Nothing is written until you save with
 ~C-x C-s~. The date and identifier are those of the moment you asked, not of the
 moment you saved.
 
+Keywords are asked for one at a time, with commas between them. A keyword you
+type whole, or the start of one offered, picks that keyword: =gar= and ~RET~
+gives =garden=. Any other word is a new keyword and ~RET~ adds it as you typed
+it, even when it matches a keyword offered somewhere inside it. To pick that
+one instead, press ~C-n~ to move to it first. ~C-j~ always adds what you typed.
+The same holds when you rename a file with ~C-x n r~ or ~C-x n k~.
+
 ~C-x n o~ opens one of your files by any part of its name. The list is grouped
 by kind, newest first, and shows each name as its date, its title and its
 keywords, with the size and when it changed on the right. You type a few
@@ -547,9 +554,10 @@ machine. Here Tuatara runs on your computer, and only the files are elsewhere.
 
 Typing =/ssh:pinetree:/etc/= offers the names in that directory, as for a
 directory on your own computer. =/ssh:pinetree:= alone is your home directory
-there. A file from a server opens as a local file does: a picture is drawn, and
-a PDF shows its pages. Any other file that is not text opens as octets, in the
-hex view.
+there. A file from a server opens as a local file from outside does: a
+picture is drawn, a PDF shows its pages, and a mailbox is listed when the
+outlook package is loaded, each read in the sandbox. Any other file that is
+not text opens as octets, in the hex view.
 
 *** Saving
 

@@ -869,7 +869,7 @@ chosen."
                                     (format nil "Encrypt ~a to (keys, a passphrase; commas between): " what)
                                     (lambda () (mapcar #'encryption-choice entries))
                                     :initial (format nil "~{~a, ~}" initial)
-                                    :none "nothing: no encryption" :more "these, no more")
+                                    :none "nothing: no encryption" :more "these, no more" :require-match t)
                        for entry = (cdr (assoc text choices :test #'string=))
                        when entry collect entry)))
     (and chosen

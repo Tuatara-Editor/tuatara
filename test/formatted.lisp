@@ -199,6 +199,27 @@ file sets them."
                           (string= "--typed.org" (subseq name 15))) "~a" name))))
       (kill-buffers-visiting dir))))
 
+(define-modal-test (formatted new-keywords-as-typed)
+  ;; a keyword not offered is taken as typed, though it matches one offered
+  ;; inside it; one typed whole or begun takes the keyword offered
+  (with-formatted-directory (dir)
+    (unwind-protect
+         (flet ((made (keywords)
+                  (multiple-value-bind (f editor)
+                      (run-keys (format nil "SPC f ~a RET RET ~a RET"
+                                        (key-string (namestring (merge-pathnames "jet note.org" dir)))
+                                        keywords)
+                                :width 120 :height 20)
+                    (declare (ignore f))
+                    (let ((buffer (tuatara.display:window-buffer (tuatara.command:editor-window editor))))
+                      (prog1 (subseq (tuatara.buffer:buffer-name buffer) 15)
+                        (tuatara.buffer:kill-buffer buffer))))))
+           (is string= "--jet-note__jet.org" (made "j e t RET"))
+           (is string= "--jet-note__den_jet.org" (made "j e t RET d e n RET"))
+           (is string= "--jet-note__garden_jet.org" (made "j e t RET g a r RET"))
+           (is string= "--jet-note__garden_project.org" (made "g a r d e n RET p r o RET")))
+      (kill-buffers-visiting dir))))
+
 (defun fake-frame-showing* (frontend text)
   "True when some frame FRONTEND painted had TEXT on a row."
   (tuatara.frontend.fake:fake-frame-showing frontend text))
@@ -422,9 +443,11 @@ file sets them."
                                    "C-x C-f ~a RET M-s g b e t a RET"
                                    (key-string (concatenate 'string root "proj/src/a.txt")))
                            :width 100 :height 20)
-               ;; the prompt names the project's root; a long path may put it on a row of its own
-               (true (tuatara.frontend.fake:fake-frame-showing f "Regex search files in"))
-               (true (tuatara.frontend.fake:fake-frame-showing f "proj/:"))
+               ;; the prompt names the project's root; a long path may put it on a row of its own,
+               ;; and while the files are still listed, how many so far follow it
+               (true (tuatara.frontend.fake:fake-frame-showing-across-rows
+                      f (format nil "Regex search files in ~a"
+                                (tuatara.command:abbreviated-path (concatenate 'string root "proj/")))))
                (is string= "b.txt" (tuatara.buffer:buffer-name (tuatara.display:window-buffer (tuatara.command:editor-window editor))))))
         (kill-buffers-visiting dir)))))
 
@@ -1518,7 +1541,8 @@ file sets them."
         (true (search "Bigger" (alexandria:read-file-into-string path)))))))
 
 (define-test (formatted identifier-time-of-any-text)
-  ;; an identifier that says no time is NIL, never an error, and nothing for the debug log
+  ;; an identifier that says no time is NIL, never an error, and nothing for the debug log;
+  ;; work left in the background by the tests before may report meanwhile, from threads of its own
   (drain-debug-reports)
   (tuatara.runtime:set-debug t)
   (unwind-protect
@@ -1527,7 +1551,9 @@ file sets them."
          (dolist (text '("2026x927T213446" "20260230T000000" "20260927T253446" "20260927T21" "2026" ""
                          "20260927T21344x"))
            (false (tuatara.defaults::identifier-time text) "~s" text))
-         (true (sb-concurrency:queue-empty-p tuatara.runtime:*debug-reports*)))
+         (false (find (sb-thread:thread-name sb-thread:*current-thread*)
+                      (sb-concurrency:list-queue-contents tuatara.runtime:*debug-reports*)
+                      :key #'second :test #'equal)))
     (drain-debug-reports)))
 
 (define-test (formatted header-saved-as-saving-does)

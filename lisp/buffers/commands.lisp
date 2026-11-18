@@ -48,26 +48,45 @@ the history that puts them first among the candidates, so that
   (remove "" (mapcar (lambda (k) (string-trim " " k)) (uiop:split-string text :separator ","))
           :test #'string=))
 
-(defun read-several (prompt offered &key (initial "") source (none "none") (more "no more"))
+(defun read-several (prompt offered &key (initial "") source (none "none") (more "no more") require-match)
   "Ask with PROMPT for several of the choices OFFERED gives, separated by
 commas, completing each in turn: OFFERED, a function of no arguments, gives
 them as they are now, each a string or (STRING . ANNOTATION), none chosen
-twice. \\<minibuffer>\\[minibuffer-finish] adds the selected one and asks for the
-next, \\[minibuffer-complete] puts it in, \\[minibuffer-submit-input] adds what
-is typed. While no choice is begun, an empty line comes first, selected,
-saying NONE (nothing chosen yet) or MORE: \\[minibuffer-finish] there ends the
-question. INITIAL is the text it begins with; SOURCE, for choices found in
-the background meanwhile, as COMPLETING-READ takes it. Returns the strings
-chosen, in order."
+twice. \\<minibuffer>\\[minibuffer-finish] adds the selected one and asks for
+the next, \\[minibuffer-complete] puts it in, \\[minibuffer-submit-input] adds
+what is typed. A choice typed whole, or the start of one, selects the choice
+offered; anything else typed selects the line typed, so that
+\\[minibuffer-finish] adds a new choice as it is typed, though it matches one
+offered inside it (\\[minibuffer-next-candidate] selects that one). With
+REQUIRE-MATCH, \\[minibuffer-finish] adds only the choices offered, the best
+match selected as you type. While no choice is begun, an empty line comes
+first, selected, saying NONE (nothing chosen yet) or MORE:
+\\[minibuffer-finish] there ends the question. INITIAL is the text it begins
+with; SOURCE, for choices found in the background meanwhile, as
+COMPLETING-READ takes it. Returns the strings chosen, in order, each once."
   (let ((text initial))
     (loop
-      (let ((got (read-several-once prompt offered text source none more)))
+      (let ((got (read-several-once prompt offered text source none more require-match)))
         ;; the empty line taken, or nothing added: the question ends
         (when (equal (split-choices got) (split-choices text))
           (return (split-choices got)))
-        (setf text (format nil "~{~a, ~}" (split-choices got)))))))
+        (setf text (format nil "~{~a, ~}" (remove-duplicates (split-choices got) :test #'string= :from-end t)))))))
 
-(defun read-several-once (prompt offered initial source none more)
+(defun several-choices-selection (candidates input)
+  "The selection of READ-SEVERAL as INPUT changes: the empty line while no
+choice is begun after the last comma, else the first of CANDIDATES that the
+choice typed is the whole or the start of, else the line typed."
+  (let ((typed (string-trim " " (subseq input (let ((comma (position #\, input :from-end t)))
+                                                (if comma (1+ comma) 0))))))
+    (cond ((zerop (length typed)) 0)
+          ((position-if (lambda (candidate)
+                          (let ((string (candidate-string candidate)))
+                            (and (<= (length typed) (length string))
+                                 (string-equal typed string :end2 (length typed)))))
+                        candidates))
+          (t :input))))
+
+(defun read-several-once (prompt offered initial source none more require-match)
   "One round of READ-SEVERAL: the line as it is when one choice is taken or the question ends."
   (completing-read prompt
                     (lambda (input)
@@ -82,7 +101,8 @@ chosen, in order."
                                unless (member string taken :test #'string=)
                                  collect (make-candidate string :value (concatenate 'string before string)
                                                                 :annotation (and (consp choice) (cdr choice)))))))
-                    :separator #\, :initial initial :source source))
+                    :separator #\, :initial initial :source source :require-match require-match
+                    :select (and (not require-match) #'several-choices-selection) :reselect (not require-match)))
 
 (defun read-buffer (prompt &key require-match)
   "Ask PROMPT for a buffer, completing on the live buffers other than the
