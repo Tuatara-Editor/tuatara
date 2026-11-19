@@ -192,7 +192,8 @@ takes). :ARGUMENTS is what its form says, as ORG-READ-RULE reads them. :HOUR,
     ;; files and paths
     tuatara.io:native tuatara.io:native-file-name tuatara.io:native-file-stem tuatara.io:native-file-type
     tuatara.io:expand-path tuatara.io:parent-path tuatara.io:slash-ended tuatara.io:path-within-p
-    tuatara.io:real-path-or-parent tuatara.io:path-join tuatara.io:path-kind tuatara.io:path-stamp tuatara.io:stamp-size
+    tuatara.io:real-path-or-parent tuatara.io:path-join tuatara.io:path-kind tuatara.io:path-stamp tuatara.io:fd-stamp
+    tuatara.io:stamp-size
     tuatara.io:free-octets tuatara.io:directory-entries walk-directory tuatara.io:call-with-file tuatara.io:file-head
     tuatara.io:binary-head-p tuatara.io:read-fd-start tuatara.io:read-fd-octets tuatara.io:write-octets
     tuatara.io:file-system-error tuatara.io:copy-regular-file tuatara.io:write-new-file tuatara.io:make-directory
@@ -235,7 +236,8 @@ takes). :ARGUMENTS is what its form says, as ORG-READ-RULE reads them. :HOUR,
     tuatara.io:visit-file put-text-by-lines save-buffer-with-care
     ;; text from elsewhere written into Org safely, and read back
     org-safe-line org-safe-line-words org-escape-block org-unescape-block tuatara.io:inflate tuatara.io:zlib-deflate tuatara.text:xml-parse
-    xmp-fields jpeg-metadata octets-metadata tuatara.io:jpeg-segments file-sha256 octets-sha256 octets-md5 shown-file
+    xmp-fields jpeg-metadata octets-metadata tuatara.io:jpeg-segments file-sha256 fd-sha256 octets-sha256 octets-md5
+    shown-file
     ;; PDF objects, read from octets alone
     pdf-object-at pdf-date-words *pdf-item-limit* tuatara.io:pdf-header-at pdf-white-p pdf-get pdf-dictionary-p
     pdf-ref-p pdf-array-items map-pdf-dictionary pdf-indirect-object-at pdf-indirect-get map-pdf-written-objects
@@ -248,6 +250,9 @@ takes). :ARGUMENTS is what its form says, as ORG-READ-RULE reads them. :HOUR,
     ;; programs from outside, shut in
     tuatara.io:find-program tuatara.io:program-missing tuatara.io:program-output tuatara.io:sandbox-run
     tuatara.io:program-variable tuatara.io:own-variable tuatara.io:own-directory
+    ;; a function of the package run on files from outside, in a Tuatara of its own shut in
+    tuatara.packages:sandbox-call tuatara.packages:sandbox-call-report
+    tuatara.packages:sandbox-call-heap
     ;; a program of your own run on what a job gives it through a pipe, its arguments split as a shell would
     tuatara.io:call-with-program tuatara.io:filter-through-program tuatara.io:command-words
     tuatara.io:read-stream-octets tuatara.io:sandbox-find-program run-on-copies copies-original-names

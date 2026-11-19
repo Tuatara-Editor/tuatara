@@ -451,6 +451,21 @@ Language grammars run in it too, where a sandbox exists. Without a sandbox, the
 setting =*syntax-helper-unconfined*= decides whether the grammars of projects
 you trust run on their own without one.
 
+A package that reads a kind of file itself, as outlook reads mailboxes, does not
+read it in the editor either. Tuatara starts a second Tuatara inside the room,
+which loads only that package, as it was compiled when you loaded it, and none
+of your settings. It sees the file where it is, read only, so that reading it
+changes not even its access time, and one directory it writes its results in. It
+sees nothing else of yours, and no network, and its time and memory are limited
+as a decoder's are. The file it reads is opened once by the editor and given to
+it open, so that it reads the very file the package checked and summed, whatever
+is put at its path meanwhile; one that changes while it is read spoils the
+reading, and the package says so. The editor reads only the files it wrote, and
+first takes away any link it left among them, however deep; the files and
+directories themselves stay as written. Stopping the job, with ~C-g~ in its
+buffer or from ~C-x j~, ends that Tuatara at once; one that fails or runs out of
+time or memory says so. Without a sandbox, such a package reads nothing.
+
 Press ~M-x check-health~ to see whether =bwrap= was found and which version.
 Tuatara looks for it on the PATH, so a =bwrap= installed somewhere of your own
 is found when its directory is on the PATH. If it was not found, or if you set

@@ -517,9 +517,24 @@ is a directory to write in that is, or holds, a place nothing may be written
 in (CHECK-TREE-WRITING). With OPENED, a cons, each directory or file shown is
 given to bwrap as a descriptor opened where it was checked (OPEN-SHOWN-PLACE),
 pushed on OPENED's car for the caller to hand over and close; overlays are
-given by name."
+given by name. An entry of DIRECTORIES (FD . TARGET), FD a descriptor open on
+a file or directory, shows that very file at TARGET, by a copy of FD pushed
+on OPENED's car, checked where it really is (FD-REAL-PATH)."
   (let ((mounts '()) (written '()))
-    (flet ((add (entry how)
+    (flet ((add-open (fd target)
+             (let ((source (or (fd-real-path fd)
+                               (error 'file-system-error :operation "show to a program shut in" :path target
+                                                         :reason "it has no name any more")))
+                   (place (real-place target)))
+               (check-shown-place source)
+               (unless opened
+                 (error 'file-system-error :operation "show to a program shut in" :path target
+                                           :reason "a file given open is shown only by its descriptor"))
+               (let ((given (fd-for-program (sb-posix:dup fd))))
+                 (push given (car opened))
+                 (push target written)
+                 (push (cons place (list "--ro-bind-fd" (princ-to-string given) place)) mounts))))
+           (add (entry how)
              (multiple-value-bind (as-written target) (sandbox-place entry)
                ;; bwrap follows the links in what it shows, under /tmp too: checked and shown where it really is
                (let ((source (real-path-so-far as-written)))
@@ -543,7 +558,10 @@ given by name."
                                            (:read (list "--ro-bind-try" source place))
                                            (:write (list "--bind-try" source place))))
                              mounts)))))))
-      (dolist (entry directories) (add entry :read))
+      (dolist (entry directories)
+        (if (and (consp entry) (integerp (car entry)))
+            (add-open (car entry) (cdr entry))
+            (add entry :read)))
       (dolist (entry writable) (add entry :write))
       (loop for (source upper work) in overlays
             do (multiple-value-bind (as-written target) (sandbox-place source)
@@ -807,12 +825,15 @@ memory in a scope of its own (systemd-run); without one, each process is
 held only to its own address space."
   (and (eq :ready (sandbox-status)) **sandbox-scope** t))
 
-(defun %sandbox-run (bwrap program arguments input seconds memory output-limit cancel ended-well kept &rest keys)
+(defun %sandbox-run (bwrap program arguments input seconds memory output-limit cancel ended-well kept
+                     &rest keys &key on-output watch &allow-other-keys)
   "Run PROGRAM with ARGUMENTS in the sandbox bwrap at the path BWRAP makes,
 KEYS those of SANDBOX-ARGUMENTS but SECCOMP, FILES as SANDBOX-RUN has them; it
 ends well with an exit code among ENDED-WELL; what it prints is KEPT, or only
-counted. See SANDBOX-RUN."
-  (let ((stdin (and input (sb-sys:make-fd-stream input :input t :element-type '(unsigned-byte 8)
+counted, each piece given to ON-OUTPUT as it comes; WATCH may end it. See
+SANDBOX-RUN."
+  (let ((keys (alexandria:remove-from-plist keys :on-output :watch))
+        (stdin (and input (sb-sys:make-fd-stream input :input t :element-type '(unsigned-byte 8)
                                                         :buffering :none :auto-close nil)))
         (process nil) (outcome nil) (output nil) (said nil)
         (deadline (tuatara.runtime:deadline-in seconds)))
@@ -820,21 +841,25 @@ counted. See SANDBOX-RUN."
          (let ((started (apply #'start-sandbox bwrap program arguments stdin seconds memory
                                :started (lambda (started) (setf process started)) keys)))
            ;; what it prints, until both its outputs end
-           (multiple-value-bind (outputs over late cancelled)
+           (multiple-value-bind (outputs over late cancelled watched)
                (read-outputs (list (sb-sys:fd-stream-fd (sb-ext:process-output started))
                                    (sb-sys:fd-stream-fd (sb-ext:process-error started)))
                              (list output-limit *sandbox-said-limit*) (list nil t)
                              :kept (list (and output-limit kept) t) :deadline deadline :cancel cancel
-                             :too-much (lambda () (setf outcome :too-much) :stop))
+                             :too-much (lambda () (setf outcome :too-much) :stop) :watch watch
+                             :each (and on-output (lambda (index octets count)
+                                                    (when (zerop index) (funcall on-output octets count)))))
              (declare (ignore over))
              (setf output (first outputs) said (second outputs))
              (cond (outcome)
+                   (watched (setf outcome watched))
                    (cancelled (setf outcome :cancelled))
                    (late (setf outcome :timeout))))
            ;; its end: it may have shut its outputs and gone on
            (loop while (and (null outcome) (sb-ext:process-alive-p started))
                  do (cond ((and cancel (car cancel)) (setf outcome :cancelled))
                           ((tuatara.runtime:deadline-passed-p deadline) (setf outcome :timeout))
+                          ((and watch (setf outcome (funcall watch))))
                           (t (sleep 0.005))))
            (unless outcome
              (setf outcome (if (and (eq (sb-ext:process-status started) :exited)
@@ -1228,7 +1253,7 @@ with a FILE-SYSTEM-ERROR, never left to block."
                                            (output-limit (* 256 1024 1024)) (output-kept t) cancel files
                                            environment directories
                                            writable overlays links (directory "/tmp") (file-limit *sandbox-file-limit*)
-                                           (ended-well '(0)))
+                                           (ended-well '(0)) on-output watch)
   "Run PROGRAM (a name looked for on the sandbox's PATH, /usr/bin:/bin, or a
 full path to one it is shown) with ARGUMENTS (strings, never through a shell)
 shut in. It sees the system's programs and libraries, read only, and nothing
@@ -1250,12 +1275,18 @@ after SECONDS, when it prints more than OUTPUT-LIMIT octets (NIL: what it
 prints is let go, never kept; with OUTPUT-KEPT NIL, counted against it but
 not kept), or when CANCEL, a cons, has a true car. It may take MEMORY octets
 \(NIL: no limit), and write files of FILE-LIMIT octets at most (NIL: no limit).
+ON-OUTPUT, when given, is called with each piece of what it prints as it
+prints it: a vector of octets and how many of them are the piece (the vector
+is filled again after the call), for a program telling how far it has got.
+WATCH, when given, is a function of no arguments called at least once a
+second while it runs: when it returns a keyword, the program is ended and
+that keyword is how it went.
 Returns three values. The first is the octets it printed. The second is how it
 went: :DONE (it ended well, with an exit code among ENDED-WELL, 0 alone unless
 given), :FAILED (it ended with an error, or ran out of memory), :TIMEOUT,
-:TOO-MUCH, :CANCELLED, or :UNAVAILABLE when there is no sandbox here
-\(SANDBOX-STATUS). The third is what it said on its error output, or why there
-is no sandbox.
+:TOO-MUCH, :CANCELLED, WATCH's keyword, or :UNAVAILABLE when there is no
+sandbox here \(SANDBOX-STATUS). The third is what it said on its error output,
+or why there is no sandbox.
 FILES are files it is shown at PATH, read only, each (PATH . TEXT) or
 \(PATH . FD): FD the descriptor of an open file it is shown a sealed copy of,
 as of INPUT but always in memory, which bwrap copies again into memory of
@@ -1270,7 +1301,9 @@ in it followed, a link at the root as /home kept as it is here). An entry may
 be a single file, shown alone. WRITABLE is the same, for directories it may
 write in. /tmp and the sandbox's other own directories, and the directory of
 your programs' sockets, are refused with a FILE-SYSTEM-ERROR
-\(CHECK-SHOWN-PLACE).
+\(CHECK-SHOWN-PLACE). An entry of DIRECTORIES may be (FD . TARGET), FD a
+descriptor open on a file or a directory: that very file is shown at
+TARGET, whatever is at its path now, as long as it has a name.
 OVERLAYS are directories it sees where they are and may seem to write in, each
 \(SOURCE UPPER WORK). What it writes goes to UPPER, a directory of the editor's
 own, SOURCE never changed. WORK is an empty directory beside UPPER that the
@@ -1293,7 +1326,8 @@ UTF-8. DIRECTORY is where it starts, /tmp unless given."
                        (%sandbox-run bwrap program arguments copy seconds memory output-limit cancel ended-well
                                      output-kept :files files :environment environment :directories directories
                                      :writable writable :overlays overlays :links links :directory directory
-                                     :file-limit file-limit :guarded (and watched t))
+                                     :file-limit file-limit :guarded (and watched t) :on-output on-output
+                                     :watch watch)
                      (tuatara.runtime:debug-report :job "sandbox: ~a ~{~a~^ ~}: ~(~a~) in ~,3f s, ~:d octets~@[: ~a~]"
                                                    program arguments outcome (tuatara.runtime:seconds-since start)
                                                    (length output) (and (plusp (length said)) said))

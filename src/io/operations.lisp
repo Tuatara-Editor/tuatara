@@ -564,6 +564,51 @@ deleting goes on: only what is in PATH is deleted."
   (call-with-parent path (lambda (dirfd name) (delete-entry-at dirfd name (native path) cancel)) :writing "delete")
   t)
 
+(defun remove-special-entries (directory &key cancel limit)
+  "Take away from DIRECTORY, and from every directory under it, everything
+that is neither a plain file nor a directory: a symbolic link (not where it
+leads), a socket, a named pipe, a device. Plain files and directories stay,
+however deep they lie. It is gone through by descriptors, one directory open
+at a time, never by paths, so that a path longer than the system allows is no
+hindrance; nothing in it may change meanwhile, as in a directory a program
+shut in wrote before it ended. Two values: how many entries were taken away,
+and true when every entry was looked at, NIL when CANCEL, a cons, turned
+true, more than LIMIT entries were found, or a directory could not be read."
+  (let ((removed 0) (seen 0) (fd nil) (levels '()))
+    (flet ((names (fd)
+             (let ((names '()))
+               (map-directory-fd (lambda (octets)
+                                   (unless (dot-entry-name-p octets)
+                                     (when (and limit (> (incf seen) limit))
+                                       (return-from remove-special-entries (values removed nil)))
+                                     (push octets names)))
+                                 fd directory)
+               names))
+           (enter (name)
+             (let ((next (open-directory-entry fd name directory)))
+               (sb-posix:close fd)
+               (setf fd next))))
+      (handler-case
+          (unwind-protect
+               (progn
+                 (setf fd (call-with-parent directory
+                                            (lambda (dirfd name) (open-directory-entry dirfd name directory))))
+                 (push (names fd) levels)
+                 (loop
+                   (when (and cancel (car cancel))
+                     (return (values removed nil)))
+                   (if (first levels)
+                       (let ((name (pop (first levels))))
+                         (case (stamp-kind (entry-stamp fd name directory))
+                           (:regular)
+                           (:directory (enter name) (push (names fd) levels))
+                           (t (remove-entry-at fd name directory nil) (incf removed))))
+                       (progn (pop levels)
+                              (unless levels (return (values removed t)))
+                              (enter (tuatara.text:string-octets ".."))))))
+            (when fd (sb-posix:close fd)))
+        (file-system-error () (values removed nil))))))
+
 (defun walk-directory (root function &key list breadth-first max-depth same-device follow-links cancel limit)
   "Go through the directory ROOT (a native name ending in /) and the directories under
 it, ROOT first, calling FUNCTION with three arguments. On entering a directory,

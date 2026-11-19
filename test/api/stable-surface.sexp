@@ -2,7 +2,7 @@
 ;; ARGUMENTS (REQUIRED OPTIONAL KEYS REST OTHER-KEYS); (:setting NAME); (:init NAME KIND ARGUMENTS), the init
 ;; file's functions and macros; (:keywords LOAD-PACKAGE KEYWORDS); (:flag OPTION), the command line's
 ;; options; (:command PACKAGE NAME).
-(:version "0.90.37")
+(:version "0.90.38")
 (:api "*BUFFERS-ASKED-ABOUT*" :variable)
 (:api "*BUILD*" :variable)
 (:api "*BUILT-AT*" :variable)
@@ -153,6 +153,8 @@
 (:api "EXPAND-PATH" :function (1 nil ("DIRECTORY" "TILDE") nil nil))
 (:api "FAILURE-WORDS" :function (1 nil ("SAID") nil nil))
 (:api "FD-OCTETS" :function (3 ("LIMIT" "TOO-LARGE") nil nil nil))
+(:api "FD-SHA256" :function (2 nil ("BUFFER" "CANCEL" "DONE") nil nil))
+(:api "FD-STAMP" :function (2 nil nil nil nil))
 (:api "FILE-DECLARES" :function (2 nil nil nil nil))
 (:api "FILE-HEAD" :function (1 ("LIMIT") nil nil nil))
 (:api "FILE-KIND" :function (1 nil nil nil nil))
@@ -416,11 +418,14 @@
 (:api "RUNNING-JOB" :function (2 nil nil nil nil))
 (:api "RUNNING-PERCENT" :function (2 nil nil nil nil))
 (:api "SAFE-VISIT-P" :function (1 nil nil nil nil))
+(:api "SANDBOX-CALL" :function (3 nil ("ARGUMENTS" "CANCEL" "FILE-LIMIT" "LABEL" "MEMORY" "PROGRESS" "SECONDS") nil nil))
+(:api "SANDBOX-CALL-HEAP" :function (1 nil nil nil nil))
+(:api "SANDBOX-CALL-REPORT" :function (1 nil nil nil nil))
 (:api "SANDBOX-FIND-PROGRAM" :function (1 nil nil nil nil))
 (:api "SANDBOX-FONT-DIRECTORIES" :function (0 nil nil nil nil))
 (:api "SANDBOX-OUTCOME-WORDS" :function (2 nil ("LABEL" "SECONDS-SETTING") nil nil))
 (:api "SANDBOX-PDF" :function (3 nil ("CANCEL" "DIRECTORIES" "FILES" "LABEL") nil nil))
-(:api "SANDBOX-RUN" :function (2 nil ("CANCEL" "DIRECTORIES" "DIRECTORY" "ENDED-WELL" "ENVIRONMENT" "FILE-LIMIT" "FILES" "INPUT" "LINKS" "MEMORY" "OUTPUT-KEPT" "OUTPUT-LIMIT" "OVERLAYS" "SECONDS" "SECRET" "WRITABLE") nil nil))
+(:api "SANDBOX-RUN" :function (2 nil ("CANCEL" "DIRECTORIES" "DIRECTORY" "ENDED-WELL" "ENVIRONMENT" "FILE-LIMIT" "FILES" "INPUT" "LINKS" "MEMORY" "ON-OUTPUT" "OUTPUT-KEPT" "OUTPUT-LIMIT" "OVERLAYS" "SECONDS" "SECRET" "WATCH" "WRITABLE") nil nil))
 (:api "SAVE-BUFFER-WITH-CARE" :function (1 nil ("PATH" "QUIET" "THEN") nil nil))
 (:api "SEARCH-FILTER-LIST" :function (0 nil nil nil nil))
 (:api "SEARCH-FILTER-MATCH-P" :function (2 nil nil nil nil))

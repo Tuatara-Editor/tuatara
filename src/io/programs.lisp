@@ -557,7 +557,7 @@ one started."
   "The most octets kept of what a program says on its error output
 \(FILTER-THROUGH-PROGRAM); the rest is read and let go.")
 
-(defun read-outputs (fds limits drains &key deadline too-much cancel (kept t) wipe)
+(defun read-outputs (fds limits drains &key deadline too-much cancel (kept t) wipe each watch)
   "Read FDS, pipes open for reading, each to its end, on this thread alone,
 waiting on them all at once so that none waits on another. Of each, the first
 octets up to its limit in LIMITS (NIL: all) are kept, or only counted when its
@@ -567,25 +567,31 @@ function of no arguments, is called; when it returns :STOP, no pipe is read
 any more. Reading stops at DEADLINE
 \(TUATARA.RUNTIME:DEADLINE-IN) when one is given, and when CANCEL, a cons, has
 a true car. With WIPE, every octet read is filled with zeros once it is
-joined into what is given, or let go.
-Four values. The first is a list of what each gave, as octets, NIL for one
+joined into what is given, or let go. EACH, when given, is called with the
+index of a pipe in FDS, a vector of octets just read from it and how many of
+them were read, before they are kept or counted; the vector is filled again
+after the call. WATCH, when given, is called with no arguments at least once
+a second; when it returns true, no pipe is read any more, and that value is
+the fifth.
+Five values. The first is a list of what each gave, as octets, NIL for one
 that gave more than its limit and was not drained, or whose octets were only
 counted. The second is a list of true for each that gave more than its limit.
 The third is true when DEADLINE came, or CANCEL, before every pipe ended; the
-fourth is true when CANCEL did."
+fourth is true when CANCEL did; the fifth is what WATCH returned, or NIL."
   (let* ((count (length fds))
          (pieces (loop repeat count collect (make-octet-pieces)))
          (read (make-list count :initial-element 0))
          (over (make-list count))
          (kept (if (eq kept t) (make-list count :initial-element t) kept))
          (open (copy-list fds))
-         (cancelled nil)
+         (cancelled nil) (watched nil)
          (buffer (make-array 65536 :element-type '(unsigned-byte 8))))
     (loop named reading
           while open
           until (or (and deadline (tuatara.runtime:deadline-passed-p deadline))
-                    (and cancel (car cancel) (setf cancelled t)))
-          do (let ((ready (wait-for-fds open (min (if cancel 0.1 1)
+                    (and cancel (car cancel) (setf cancelled t))
+                    (and watch (setf watched (funcall watch))))
+          do (let ((ready (wait-for-fds open (min (if (or cancel watch) 0.1 1)
                                                   (if deadline (max 0 (tuatara.runtime:seconds-left deadline)) 1)))))
                (when (consp ready)
                  (dolist (fd ready)
@@ -593,6 +599,7 @@ fourth is true when CANCEL did."
                           (into (nth i pieces))
                           (limit (nth i limits))
                           (got (read-fd-into fd buffer :path "a program's output")))
+                     (when (and each (plusp got)) (funcall each i buffer got))
                      (cond ((zerop got) (setf open (remove fd open)))
                            ((nth i over))
                            (t (incf (nth i read) got)
@@ -613,7 +620,8 @@ fourth is true when CANCEL did."
                       collect (and keep (or (not past) drain) (joined-octets into)))
                 over
                 (and open t)
-                cancelled)
+                cancelled
+                watched)
       (when wipe
         (fill buffer 0)
         (mapc #'wipe-octet-pieces pieces)))))

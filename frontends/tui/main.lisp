@@ -1041,11 +1041,12 @@ it starts are given the environment as it was before
 \(LEAVE-APPIMAGE-ENVIRONMENT).
 Run again by the editor itself with TUATARA_COMPILE_PACKAGE in its
 environment, it compiles a package apart from it instead, its arguments never
-looked at (TUATARA.PACKAGES:COMPILE-PACKAGE-CHILD). Run again by tuatara
---daemon with TUATARA_DAEMON, it is that daemon (RUN-DAEMON). Run by the
-scripts installing it with TUATARA_DESKTOP_ENTRIES, it writes its desktop
-entries (DESKTOP-ENTRIES-CHILD), a request it does not take said and left
-alone.
+looked at (TUATARA.PACKAGES:COMPILE-PACKAGE-CHILD); with TUATARA_SANDBOX_CALL,
+shut in, it runs a package's function (TUATARA.PACKAGES:SANDBOX-CALL-CHILD).
+Run again by tuatara --daemon with TUATARA_DAEMON, it is that daemon
+\(RUN-DAEMON). Run by the scripts installing it with TUATARA_DESKTOP_ENTRIES,
+it writes its desktop entries (DESKTOP-ENTRIES-CHILD), a request it does not
+take said and left alone.
 A client keeps the heap it was saved with (FIT-HEAP) until it starts an editor
 of its own (--fallback)."
   (sb-ext:disable-debugger)
@@ -1061,8 +1062,12 @@ of its own (--fallback)."
       (setf tuatara.io:*saved-program* appimage)))
   (leave-appimage-environment)
   (uiop:call-image-restore-hook)
-  ;; run again by the editor to compile a package apart from it: told so by the
-  ;; environment the editor gave it, never by the command line
+  ;; run again by the editor to compile a package apart from it, or shut in to run a package's
+  ;; function: told so by the environment the editor gave it, never by the command line
+  (when (tuatara.io:own-variable tuatara.packages:*sandbox-call-variable*)
+    (let ((code (tuatara.packages:sandbox-call-child)))
+      (finish-output)
+      (sb-ext:exit :code code :abort t)))
   (when (tuatara.io:own-variable "TUATARA_COMPILE_PACKAGE")
     (let ((code (tuatara.packages:compile-package-child)))
       (finish-output)

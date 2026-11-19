@@ -26,6 +26,7 @@
 (:FUNCTION "src/io/deflate.lisp" "inflate" 105)
 (:FUNCTION "src/io/in-place.lisp" "write-changes-in-place" 100)
 (:FUNCTION "src/io/kinds.lisp" "octets-kind" 116)
+(:FUNCTION "src/io/sandbox.lisp" "sandbox-run" 86)
 (:FUNCTION "src/io/save.lisp" "write-in-place" 91)
 (:FUNCTION "src/syntax/highlight.lisp" "layers-highlights" 87)
 (:FUNCTION "src/syntax/highlight.lisp" "local-highlights" 118)

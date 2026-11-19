@@ -72,16 +72,20 @@ sources, is made (COMPILER-CORE), so that it is made once.")
 
 (defun compiler-core-toplevel ()
   "What the core COMPILER-CORE makes runs: compile a package as the editor
-asks (COMPILE-PACKAGE-CHILD), then exit with its code."
+asks (COMPILE-PACKAGE-CHILD), or, started by SANDBOX-CALL, run a package's
+function shut in (SANDBOX-CALL-CHILD); then exit with its code."
   (sb-ext:disable-debugger)
   (uiop:call-image-restore-hook)
-  (let ((code (compile-package-child)))
+  (let ((code (if (tuatara.io:own-variable *sandbox-call-variable*)
+                  (sandbox-call-child)
+                  (compile-package-child))))
     (finish-output)
     (sb-ext:exit :code code :abort t)))
 
 (defun compiler-core ()
   "Run from Tuatara's sources, the Steel Bank Common Lisp (SBCL) core a process
-compiling a package apart starts from, so that it starts at once. It is SBCL
+compiling a package apart starts from, so that it starts at once, and a
+package's function run shut in too (SANDBOX-CALL). It is SBCL
 with Quicklisp and these sources loaded, saved once into the directory of compiled
 packages. That directory is this Tuatara's alone (PACKAGE-CACHE: another source
 tree, or the same one changed, has another). The core is made again only when it

@@ -503,18 +503,28 @@ editor instead."
             (setf *package-code* (acons name own (alist-without name *package-code*))))))
     file))
 
+(defvar *loaded-package-directories* '()
+  "The directory each package loaded this session was loaded from, each (NAME
+DIRECTORY FILE), FILE its entry when named, the one loaded last first: never
+deleted while the editor runs.")
+
 (defun load-package-for-test (name directory)
   "Load the package NAME from DIRECTORY as load-package loads one fetched anew:
 each of its files compiled afresh, its names checked; then DIRECTORY's
 test.lisp, its tests, when there is one. For a package repository's tests,
 run against a Tuatara source tree. NIL when it loaded; else why Tuatara
-refused it, a string: it uses a name this Tuatara lacks."
+refused it, a string: it uses a name this Tuatara lacks. It is counted
+among the packages loaded from their directory (*LOADED-PACKAGE-DIRECTORIES*),
+so that its functions can be run shut in (SANDBOX-CALL)."
   (dolist (file (uiop:directory-files directory "*.lisp"))
     (uiop:delete-file-if-exists (package-fasl file)))
   (handler-case
       (let ((*package-directory* directory)
             (*loading-package-name* name))
         (tuatara-user:load-package-file (concatenate 'string name ".lisp"))
+        (setf *loaded-package-directories*
+              (cons (list name (tuatara.io:native directory) nil)
+                    (remove name *loaded-package-directories* :key #'first :test #'string=)))
         (let ((tests (merge-pathnames "test.lisp" directory)))
           (when (probe-file tests) (load tests)))
         nil)
@@ -649,11 +659,6 @@ than this one: it is not loaded."))
 
 (setf (documentation 'package-needs-newer-tuatara-name 'function) "The name of the package not loaded."
       (documentation 'package-needs-newer-tuatara-needed 'function) "The version of Tuatara it needs.")
-
-(defvar *loaded-package-directories* '()
-  "The directory each package loaded this session was loaded from, each (NAME
-DIRECTORY FILE), FILE its entry when named, the one loaded last first: never
-deleted while the editor runs.")
 
 (defun load-package-entry (directory name file)
   "Load the package called NAME in DIRECTORY by its entry (PACKAGE-ENTRY), FILE

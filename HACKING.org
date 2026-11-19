@@ -558,6 +558,20 @@ package most often needs:
   =sandbox-pdf= has one draw a PDF of a document, =sandbox-outcome-words=
   says why a run gave nothing, and =program-health-words= says what runs
   a thing, for =M-x check-health=.
+- A file from outside taken apart by the package :: a package that parses
+  such a file itself never does it in the editor. =sandbox-call= runs one
+  of its functions in a Tuatara of its own shut in the sandbox: it loads the
+  package as it was compiled, reads the files it is given where they are,
+  read only, writes in one directory, and gives back the function's value as
+  JSON reads it, or why it gave nothing (an error, time or memory up, the
+  job stopped). =sandbox-call-report= in that function tells the editor how
+  far it has got. The package passes the settings it needs as arguments, and
+  reads what was written as any file from outside, within limits. A file it
+  has checked or summed is given open (=call-with-file=, =fd-stamp=,
+  =fd-sha256= through the same descriptor), so that the file read is the one
+  checked; =sandbox-call= says how many links it took away of what was written.
+  =sandbox-call-heap= tells the heap the function has for the =:memory= it is
+  given, for a package to size what it holds at once below it.
 - Telling what has just happened :: =notify= (a title, words, =:source=
   such as ="Mail"=) shows it on the desktop and keeps it in
   =*Notifications*= (=C-h N=) with the date and time, from any thread; a

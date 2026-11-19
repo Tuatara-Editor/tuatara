@@ -5,7 +5,7 @@
   :description "Tuatara: an Emacs-shaped editor in Common Lisp."
   :author "Michael A Jones <yardquit@pm.me>"
   :license "GPL-3.0-or-later"
-  :version "0.90.37"
+  :version "0.90.38"
   :depends-on ("tuatara/core")
   :in-order-to ((test-op (test-op "tuatara/tests"))))
 
@@ -181,8 +181,8 @@ and the frontend interface. Depends on nothing under lisp/ or frontends/."
                (:static-file "starter-init" :pathname "../data/init.lisp")
                (:file "config")
                (:module "packages" :serial t
-                :components ((:file "signing") (:file "declare") (:file "loading") (:file "compile-apart")
-                             (:file "fetch") (:file "manager") (:file "sweep") (:file "unload")))
+                :components ((:file "signing") (:file "declare") (:file "loading") (:file "sandbox-call")
+                             (:file "compile-apart") (:file "fetch") (:file "manager") (:file "sweep") (:file "unload")))
                (:file "scratch")
                (:file "daemon")
                (:file "servers")
@@ -259,6 +259,7 @@ the program's entry point."
                (:file "jobs")
                (:file "files")
                (:file "sandbox")
+               (:file "sandbox-call")
                (:file "counting-lines")
                (:file "disk-changes")
                (:file "line-endings")

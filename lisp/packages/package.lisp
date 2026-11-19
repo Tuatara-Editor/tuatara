@@ -32,4 +32,6 @@ process of its own; a package repository's tests load its package through
 LOAD-PACKAGE-FOR-TEST.")
   (:export #:install-packages #:packages-directory #:call-with-start-packages #:define-package-setting
            #:declare-package-needs #:*package-needs*
-           #:claim-package-setting #:compile-package-child #:load-package-for-test))
+           #:claim-package-setting #:compile-package-child #:load-package-for-test
+           #:sandbox-call #:sandbox-call-report #:sandbox-call-child #:*sandbox-call-variable*
+           #:sandbox-call-heap))

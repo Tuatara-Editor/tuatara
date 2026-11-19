@@ -74,7 +74,7 @@ elsewhere.")
    #:*restricted-variables*
    #:restricted-environment #:software-version-numbers #:software-version-at-least-p
    #:rename-path #:make-directory #:path-join #:parent-path #:copy-path-tree #:delete-tree #:move-path #:trash-path
-   #:walk-directory #:tree-size
+   #:walk-directory #:tree-size #:remove-special-entries
    #:trash-for #:home-trash #:scratch-directory #:buffer-scratch-directory #:kind-words #:size-words
    #:open-scratch-file #:open-unnamed-file #:name-unnamed-file #:cache-directory #:chosen-directory
    #:directory-in-memory-p #:directories-in-memory-words #:data-home #:config-home #:cache-home #:download-directory
