@@ -221,31 +221,39 @@ drawer (ORG-LOG-EDIT), made when it has none; a headline's with no drawer
 when *ORG-CLOCK-INTO-DRAWER* is NIL, though BUFFER is narrowed to a part
 below the headline. Saved when that is BUFFER's only change
 \(ORG-SAVE-CHANGED), so that the clock runs again after a restart."
-  ;; the clock running stopped first: its line changes the text the new one goes into
-  (when *org-clock* (org-clock-out-now :now now))
-  (let* ((parse (org-parse-now buffer))
-         (tree (and parse (org-parse-tree parse)))
-         (text (and parse (org-parse-text parse)))
-         (position (and parse (org-parse-point parse)))
-         (item (and tree (org-checkbox-item-at tree text position)))
-         (owner (or item (and tree (org-current-headline tree position)))))
-    (if (null owner)
-        (message "Not under a headline: clock in on a task")
-        (let* ((started (org-minute now))
-               (line (format nil "CLOCK: ~a" (org-timestamp-text started)))
-               (title (if item (org-checkbox-title item text) (or (org-property owner :raw-value) "")))
-               (edit (org-log-edit owner text (list line) :drawer (or item *org-clock-into-drawer*)))
-               (at (search line (third edit)))
-               ;; where the clock's line begins in the text after the edit
-               (line-start (+ (first edit) (string-line-start (third edit) at)))
-               (modified (tuatara.io:changes-unsaved-p buffer)))
-          ;; the task's headline may be above the part of the buffer shown
-          (tuatara.buffer:with-narrowing-lifted (buffer)
-            (org-apply-edits parse (list edit) :point position))
-          (setf *org-clock* (make-org-clock :started started :task title))
-          (org-clock-hold *org-clock* buffer (org-parse-octet parse line-start))
-          (org-save-changed buffer modified :existing t)
-          (message "Clock starts at ~a: ~a" (format-time "%R" started) title)))))
+  (flet ((task-at-point ()
+           ;; the parse, the checkbox item or headline point is under, and the item when it is one
+           (let* ((parse (org-parse-now buffer))
+                  (tree (and parse (org-parse-tree parse)))
+                  (text (and parse (org-parse-text parse)))
+                  (position (and parse (org-parse-point parse)))
+                  (item (and tree (org-checkbox-item-at tree text position))))
+             (values parse item (or item (and tree (org-current-headline tree position)))))))
+    (multiple-value-bind (parse item owner) (task-at-point)
+      (when (and owner *org-clock*)
+        ;; the clock running is stopped only when there is a task to clock in on; its line changes the
+        ;; text the new one goes into, so the parse is made again
+        (org-clock-out-now :now now)
+        (multiple-value-setq (parse item owner) (task-at-point)))
+      (if (null owner)
+          (message "Not under a headline: clock in on a task")
+          (let* ((text (org-parse-text parse))
+                 (position (org-parse-point parse))
+                 (started (org-minute now))
+                 (line (format nil "CLOCK: ~a" (org-timestamp-text started)))
+                 (title (if item (org-checkbox-title item text) (or (org-property owner :raw-value) "")))
+                 (edit (org-log-edit owner text (list line) :drawer (or item *org-clock-into-drawer*)))
+                 (at (search line (third edit)))
+                 ;; where the clock's line begins in the text after the edit
+                 (line-start (+ (first edit) (string-line-start (third edit) at)))
+                 (modified (tuatara.io:changes-unsaved-p buffer)))
+            ;; the task's headline may be above the part of the buffer shown
+            (tuatara.buffer:with-narrowing-lifted (buffer)
+              (org-apply-edits parse (list edit) :point position))
+            (setf *org-clock* (make-org-clock :started started :task title))
+            (org-clock-hold *org-clock* buffer (org-parse-octet parse line-start))
+            (org-save-changed buffer modified :existing t)
+            (message "Clock starts at ~a: ~a" (format-time "%R" started) title))))))
 
 (define-command org-clock-in ()
   "Clock in on the task point is under (\\`C-c C-x C-i'): CLOCK: and the time go into its :LOGBOOK: drawer, made

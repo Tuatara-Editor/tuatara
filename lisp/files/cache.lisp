@@ -182,30 +182,47 @@ in /; NIL when PLACE could name something outside it."
 
 ;;; Kinds
 
-(define-record (cache-kind (:constructor make-cache-kind (name directory title open)) (:copier nil))
+(define-record (cache-kind (:constructor make-cache-kind (name directory title open untrusted)) (:copier nil))
   "A kind of entry of the cache (DEFINE-CACHE-KIND): NAME, a string; DIRECTORY,
 where in the cache directory its entries are made; TITLE, what \\[cache-manager]
 calls them; OPEN, a function of an entry's directory, key and facts opening it,
-or NIL."
+or NIL; UNTRUSTED, true when its files came from outside."
   (name "" :type string :read-only t :documentation "The name of KIND.")
   (directory "" :type string :read-only t :documentation "Where in the cache directory KIND's entries are made.")
   (title "" :type string :read-only t :documentation "What the list of the cache calls KIND's entries.")
-  (open nil :read-only t :documentation "The function opening an entry of KIND, or NIL."))
+  (open nil :read-only t :documentation "The function opening an entry of KIND, or NIL.")
+  (untrusted t :read-only t :documentation "True when the files of KIND's entries came from outside."))
 
 (defvar *cache-kinds* (make-hash-table :test 'equal :synchronized t)
   "The kinds of entry of the cache (DEFINE-CACHE-KIND), by name.")
 
-(defun define-cache-kind (kind directory title &key open)
+(defun define-cache-kind (kind directory title &key open (untrusted t))
   "Make KIND, a string (\"mailbox\"), a kind of entry of the cache: its entries
 are made in DIRECTORY of the cache directory (\"mailboxes/\", ending in /), are
 listed by \\[cache-manager] under TITLE (\"Mailboxes read by readpst\"), and are
 opened from there by OPEN, a function of the entry's directory, its key and
-the facts noted of it (NOTE-CACHE-ENTRY), when given. A package defines its
-kinds as it loads; defining a kind again replaces it."
+the facts noted of it (NOTE-CACHE-ENTRY), when given. With UNTRUSTED, true as
+standard, what its entries hold came from outside, read or written by a
+program taking an outside file apart, and is untrusted (UNTRUSTED-PATH-P):
+it opens safely and its project runs nothing of its own. UNTRUSTED NIL is for
+a kind holding only what Tuatara made itself of trusted files. A package
+defines its kinds as it loads; defining a kind again replaces it."
   (unless (cache-place-p directory)
     (error "~s is no directory within the cache directory" directory))
-  (setf (gethash kind *cache-kinds*) (make-cache-kind kind directory title open))
+  (setf (gethash kind *cache-kinds*) (make-cache-kind kind directory title open (and untrusted t)))
   kind)
+
+(defun untrusted-cache-kind-directories ()
+  "The directories within the cache directory (\"mailboxes/\") of the kinds of
+entry of the cache defined untrusted (DEFINE-CACHE-KIND)."
+  (let ((directories '()))
+    (sb-ext:with-locked-hash-table (*cache-kinds*)
+      (maphash (lambda (name kind)
+                 (declare (ignore name))
+                 (when (cache-kind-untrusted kind)
+                   (pushnew (cache-kind-directory kind) directories :test #'string=)))
+               *cache-kinds*))
+    directories))
 
 ;;; In use
 
@@ -801,8 +818,6 @@ unpins it, \\[list-mark-for-deletion] and \\[list-execute] delete."
   (let ((buffer (buffer-in-mode "*Cache*" 'cache-list-mode)))
     (cache-list-show buffer)
     (show-buffer buffer)))
-
-(define-renamed-command list-cache cache-manager)
 
 (defun cache-items-of (list keys)
   "The items of LIST, the list of the cache, known by KEYS, their paths."

@@ -437,12 +437,14 @@ file sets them."
                            (mapcar #'cdr (tuatara.defaults::files-under (merge-pathnames "proj/" dir) :gitignore t))
                            :test #'string=)))
              (is = 13 (length (tuatara.defaults::files-under (merge-pathnames "proj/" dir))))
-             ;; from src/a.txt, b.txt in the project's root is found
+             ;; from src/a.txt, b.txt in the project's root is found; the path typed is
+             ;; completed in the tests' own directories alone, never in your home
              (multiple-value-bind (f editor)
-                 (run-keys (format nil
-                                   "C-x C-f ~a RET M-s g b e t a RET"
-                                   (key-string (concatenate 'string root "proj/src/a.txt")))
-                           :width 100 :height 20)
+                 (with-real-home-unreached
+                   (run-keys (format nil
+                                     "C-x C-f ~a RET M-s g b e t a RET"
+                                     (key-string (concatenate 'string root "proj/src/a.txt")))
+                             :width 100 :height 20))
                ;; the prompt names the project's root; a long path may put it on a row of its own,
                ;; and while the files are still listed, how many so far follow it
                (true (tuatara.frontend.fake:fake-frame-showing-across-rows

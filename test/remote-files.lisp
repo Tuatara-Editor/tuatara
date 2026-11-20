@@ -29,7 +29,8 @@ says the host is the machine MACHINE, else the host as named, for the user
 written before an @ in it, else me:
 kept a minute, so a test naming MACHINE names hosts of its own. BEFORE, shell
 lines, run before it serves, and it then says it is OpenSSH 9.9, as one able
-to ask questions (SSH-ASKING)."
+to ask questions (SSH-ASKING); without them, a command asked for in place of
+SFTP is run by the shell, as sha256sum there is (SERVER-SUM)."
   (let ((answers-file (gensym)) (old (gensym)))
     `(with-test-directory (,dir)
        (let* ((,log (namestring (merge-pathnames "ssh.log" ,dir)))
@@ -46,9 +47,11 @@ to ask questions (SSH-ASKING)."
                                                 case \"$3\" in *@*) u=\"${3%%@*}\";; *) u=me;; esac; ~
                                                 printf 'hostname %s\\nport 22\\nuser %s\\n' ~:[\"$3\"~;'~:*~a'~] \"$u\"; ~
                                                 exit 0; fi~%~
+                                                ~:[for a do last=\"$a\"; done; ~
+                                                case \"$last\" in sftp) ;; *) exec sh -c \"$last\";; esac~%~;~]~
                                                 printf '%s\\n' \"$@\" > '~a'~%~@[~a~%~]umask 077~%~:[exec '~a'~;cat '~a'; ~
                                                 exec sleep 60~]~%"
-                                           ,before ,machine ,log ,before ,answers
+                                           ,before ,machine ,before ,log ,before ,answers
                                            (if ,answers ,answers-file (sftp-server-program)))))
                 ,@body)
            (tuatara.defaults::close-remote-links)
@@ -625,6 +628,9 @@ with a failure and nothing after it, the other writes sent on unanswered.")
               (work :copy (concatenate 'string remote "tree") (concatenate 'string local "tree"))
               (is string= "first" (file-text (merge-pathnames "tree/a.txt" here)))
               (is string= "second" (file-text (merge-pathnames "tree/deep/b.txt" here)))
+              ;; from a server not trusted: untrusted here, wherever it is
+              (let ((tuatara-user:*untrusted-directories* '()))
+                (true (tuatara.defaults::untrusted-path-p (namestring (merge-pathnames "tree/deep/b.txt" here)))))
               (is = #o600
                   (logand #o777 (sb-posix:stat-mode (sb-posix:stat (namestring (merge-pathnames "tree/a.txt" here))))))
               ;; here to there, and never over a file there
@@ -1749,7 +1755,7 @@ killed after."
                (copy nil) (inode nil) (said 0))
           (alexandria:write-string-into-file "first" file)
           (unwind-protect
-               (flet ((kept-said () (count-matches "checked against the server"
+               (flet ((kept-said () (count-matches "its SHA-256 sum the one the server gives"
                                                    (tuatara.buffer:buffer-string (tuatara.command::messages-buffer))))
                       (visit () (remote-session (visit-keys name) (list :until (lambda () (remote-buffer-of name))))
                         (remote-buffer-of name)))
@@ -1811,14 +1817,97 @@ killed after."
                                        (declare (ignore function host stretches))
                                        (error 'tuatara.io:file-system-error :operation "read" :path path
                                                                             :reason "the server did not answer")))
+                 (sb-int:encapsulate 'tuatara.defaults::server-sum 'none
+                                     (lambda (function host path)
+                                       (declare (ignore function host path))
+                                       (values nil "the server did not answer")))
                  (unwind-protect
                       (remote-session (visit-keys name) (list :until (lambda () (remote-buffer-of name))))
-                   (sb-int:unencapsulate 'tuatara.defaults::remote-read-stretches 'failing))
+                   (sb-int:unencapsulate 'tuatara.defaults::remote-read-stretches 'failing)
+                   (sb-int:unencapsulate 'tuatara.defaults::server-sum 'none))
                  (let ((buffer (remote-buffer-of name)))
                    (is string= "kept" (tuatara.buffer:buffer-string buffer) "read afresh")
                    (false (equal copy (tuatara.io:native (tuatara.buffer:buffer-file buffer))) "into a new copy")
                    (false (tuatara.io:path-kind copy :follow nil) "the old copy let go and cleared")))
             (kill-remote-buffers))))))
+
+(define-test (remote-files kept-copy-summed-whole)
+  ;; a kept copy is compared whole, by its SHA-256 sum there, before it is used again: a change in the middle,
+  ;; the size and time as they were and where no sample falls, has the file read anew
+  (if (null (sftp-server-program))
+      (skip "no sftp-server here" (true nil))
+      (with-stand-in-sftp (dir log)
+        (let* ((file (concatenate 'string (namestring dir) "image.txt"))
+               (name (concatenate 'string "/ssh:box:" file))
+               (middle (* 3 512 1024))
+               (blocks tuatara.defaults::*remote-sample-blocks*)
+               (said 0))
+          (alexandria:write-string-into-file (make-string (* 2 middle) :initial-element #\a) file)
+          (setf tuatara.defaults::*remote-sample-blocks* 0)
+          (unwind-protect
+               (flet ((kept-said () (count-matches "kept copy from"
+                                                   (tuatara.buffer:buffer-string (tuatara.command::messages-buffer)))))
+                 (remote-session (visit-keys name) (list :until (lambda () (remote-buffer-of name))))
+                 (tuatara.buffer:kill-buffer (remote-buffer-of name))
+                 (setf said (kept-said))
+                 (let ((then (sb-posix:stat-mtime (sb-posix:stat file))))
+                   (with-open-file (out file :direction :output :if-exists :overwrite)
+                     (file-position out middle)
+                     (write-char #\b out))
+                   (sb-posix:utimes file then then))
+                 (remote-session (visit-keys name) (list :until (lambda () (remote-buffer-of name))))
+                 (is char= #\b (char (tuatara.buffer:buffer-string (remote-buffer-of name)) middle) "read anew")
+                 (is = said (kept-said) "not said to be kept"))
+            (setf tuatara.defaults::*remote-sample-blocks* blocks)
+            (kill-remote-buffers))))))
+
+(define-test (remote-files kept-copy-sampled-said-so)
+  ;; a server that gives no SHA-256 sum: the kept copy is used once its samples agree, and the echo area says how
+  ;; much was compared and why no sum, never that the copy was checked whole
+  (if (null (sftp-server-program))
+      (skip "no sftp-server here" (true nil))
+      (with-stand-in-sftp (dir log)
+        (let* ((file (concatenate 'string (namestring dir) "notes.txt"))
+               (name (concatenate 'string "/ssh:box:" file))
+               (copy nil) (summed 0))
+          (alexandria:write-string-into-file "as it was" file)
+          (unwind-protect
+               (progn
+                 (remote-session (visit-keys name) (list :until (lambda () (remote-buffer-of name))))
+                 (setf copy (tuatara.io:native (tuatara.buffer:buffer-file (remote-buffer-of name))))
+                 (tuatara.buffer:kill-buffer (remote-buffer-of name))
+                 (setf summed (count-matches "SHA-256 sum the one"
+                                             (tuatara.buffer:buffer-string (tuatara.command::messages-buffer))))
+                 (remote-session (visit-keys name) (list :until (lambda () (remote-buffer-of name))))
+                 (tuatara.buffer:kill-buffer (remote-buffer-of name))
+                 (sb-int:encapsulate 'tuatara.defaults::server-sum 'none
+                                     (lambda (function host path)
+                                       (declare (ignore function host path))
+                                       (values nil "sha256sum is not there")))
+                 (unwind-protect
+                      (remote-session (visit-keys name) (list :until (lambda () (remote-buffer-of name))))
+                   (sb-int:unencapsulate 'tuatara.defaults::server-sum 'none))
+                 (is string= copy (tuatara.io:native (tuatara.buffer:buffer-file (remote-buffer-of name))) "used again")
+                 (let ((messages (tuatara.buffer:buffer-string (tuatara.command::messages-buffer))))
+                   (is = (1+ summed) (count-matches "SHA-256 sum the one" messages) "only the first reuse summed")
+                   (true (search "9 B of it compared with the server, which gave no SHA-256 sum: sha256sum is not there"
+                                 messages))))
+            (kill-remote-buffers))))))
+
+(define-test (remote-files arrival-goes-on-after-a-short-piece)
+  ;; going on with a copy that stopped part-way: what came is not asked for again, and the rest of a piece the
+  ;; server gave short is asked for, never passed over
+  (let* ((piece tuatara.defaults::+sftp-piece+)
+         (arrival (tuatara.defaults::make-arrival (* 4 piece) :in-order t)))
+    (setf (tuatara.defaults::arrival-end arrival) (* 4 piece)
+          (tuatara.defaults::arrival-arrived arrival) (list (cons 0 (+ piece 100))))
+    (is = (+ piece 100) (tuatara.defaults::arrival-next arrival '()) "the rest of the short piece first")
+    (is = (* 2 piece) (tuatara.defaults::arrival-next arrival (list (+ piece 100))) "then the next piece")
+    (loop repeat 8
+          for at = (tuatara.defaults::arrival-next arrival '())
+          while at
+          do (tuatara.defaults::arrival-add arrival at (+ at (tuatara.defaults::arrival-piece-length arrival at))))
+    (true (tuatara.defaults::arrival-complete-p arrival) "all of it asked for and come")))
 
 (define-test (remote-files cut-off-read-goes-on)
   ;; the connection lost part of the way and the buffer closed: what came is kept, and the next visit goes on

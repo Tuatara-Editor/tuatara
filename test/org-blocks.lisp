@@ -225,6 +225,23 @@
     (tuatara.defaults::toc-without-tags (concatenate 'string "* " (make-string 1000000 :initial-element #\:) "x"))
     (true (< (- (thread-cpu-time) start) internal-time-units-per-second))))
 
+(define-test (org clocktable-keeps-a-bar-in-its-cell)
+  ;; a bar in a title or a link does not add a column: sorting and formulas act on the column asked for
+  (let ((tables (list (list nil 150
+                            (list (list 1 "Call A | B" 60 nil nil nil)
+                                  (list 1 "[[file:a|b.org::*x][t]]" 90 nil nil nil))))))
+    (let ((rows (tuatara.defaults::clocktable-rows-for tables '())))
+      (is equal '("Call A | B" "1:00") (nth 4 rows))
+      (is equal '("[[file:a|b.org::*x][t]]" "1:30") (nth 5 rows))
+      (true (every (lambda (row) (or (eq row :rule) (= 2 (length row)))) rows)))
+    (let* ((text (tuatara.defaults::clocktable-text (tuatara.defaults::clocktable-rows-for tables '()) '(:sort (2 . #\T))))
+           (first-call (search "Call A | B" text))
+           (first-link (search "file:a|b.org" text)))
+      (true (and first-call first-link (< first-link first-call)) "~a" text))
+    (let ((text (tuatara.defaults::clocktable-text (tuatara.defaults::clocktable-rows-for tables '(:formula "%"))
+                                                   '(:formula "%"))))
+      (true (search "40.0" text) "~a" text))))
+
 (define-modal-test (org clocktable-archives-and-returns)
   (let* ((directory (tuatara.io:native (merge-pathnames "test/org/dblock/" (asdf:system-source-directory :tuatara))))
          (tuatara.defaults::*org-now* (encode-universal-time 0 40 15 2 10 2026))

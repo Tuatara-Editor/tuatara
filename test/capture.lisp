@@ -351,6 +351,23 @@ templates those in DIRECTORY's capture-templates/ (none unless a test makes them
                (false (search "2026-01-01" line) "~a" line)))
         (setf tuatara.defaults::*org-clock* nil)))))
 
+(define-test (capture clocking-in-with-no-task-keeps-the-clock-running)
+  ;; C-c C-x C-i above the first headline says so and leaves the clock running, its line open
+  (with-capture (dir agenda)
+    (alexandria:write-string-into-file (format nil "#+title: Notes~%~%* Task~%Text~%") agenda :if-exists :supersede)
+    (let ((buffer (tuatara.io:visit-file agenda)))
+      (unwind-protect
+           (progn
+             (setf (tuatara.buffer:buffer-point buffer) (search "* Task" (tuatara.buffer:buffer-string buffer)))
+             (tuatara.defaults::org-clock-in-here buffer)
+             (let ((clock tuatara.defaults::*org-clock*))
+               (true clock)
+               (setf (tuatara.buffer:buffer-point buffer) 0)
+               (tuatara.defaults::org-clock-in-here buffer)
+               (true (eq clock tuatara.defaults::*org-clock*))
+               (false (search "=>" (tuatara.buffer:buffer-string buffer)) "~a" (tuatara.buffer:buffer-string buffer))))
+        (setf tuatara.defaults::*org-clock* nil)))))
+
 (define-test (capture refile-targets-alike-in-agenda-files)
   ;; an agenda file offers its archived and commented headings to refile into, as any file does
   (with-capture (dir agenda)

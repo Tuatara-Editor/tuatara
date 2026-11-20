@@ -223,20 +223,6 @@ list taken away when ENTRIES is empty."
                           :permissions #o600 :like '(:permissions #o600) :expected (constantly nil)
                           :linked-refusal "the list of what was brought is kept under one name"))))))
 
-(defun server-sum (host path)
-  "The SHA-256 sum of the file at PATH on HOST as sha256sum there says it, in
-lower-case hex, and NIL; else NIL and words saying why there is none: no
-answer in time, sha256sum failing, or an answer that is not a sum."
-  (unless (plain-path-p path :relative t) (refuse "~a is no plain path" path))
-  (multiple-value-bind (code output said) (run-on-server host (list (format nil "sha256sum -- ~a" path)) :seconds 300)
-    (let ((why (or (server-unreached-words host code said 300)
-                   (and (not (eql code 0)) (format nil "sha256sum on ~a says: ~a" host (server-said-shown said)))
-                   (and (not (and (<= 66 (length output))
-                                  (tuatara.text:lowercase-hex-p (subseq output 0 64) 64)
-                                  (string= output "  " :start1 64 :end1 66)))
-                        (format nil "~a answered with something that is not a sum" host)))))
-      (if why (values nil why) (values (subseq output 0 64) nil)))))
-
 (defun server-entry-usable-p (attributes uid)
   "True when ATTRIBUTES, of a file or directory there, are as the daemon's
 lookup of a brought language server (BROUGHT-LANGUAGE-SERVER) wants them: the

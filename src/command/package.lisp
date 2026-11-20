@@ -16,7 +16,7 @@ hooks, the minibuffer core, the modal state slot.")
   (:export #:buffer-override-keymap #:buffer-given-directory #:buffer-mode-name #:buffer-kind)
   (:export #:keymap #:keymap-p #:make-keymap #:define-key #:define-keys #:label-keys #:lookup-key #:keymaps-lookup
            #:map-keymap-bindings #:keymap-parent #:keymap-entries #:keymap-name #:unbind-commands-if
-           #:define-command #:define-renamed-command #:key-only-command-p #:find-command #:command-symbol #:command-names
+           #:define-command #:define-command-alias #:key-only-command-p #:find-command #:command-symbol #:command-names
            #:*commands*
            #:*keymaps-generation* #:forget-command #:install-command
            #:quit #:keyboard-quit-signal #:editor #:editor-p #:make-editor #:*editor* #:current-buffer

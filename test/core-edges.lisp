@@ -250,6 +250,32 @@ three runs of CALLS calls."
     (let ((made (octets-per-call (lambda () (tuatara.io:octets-kind octets)))))
       (true (< made 6000) "~:d octets for each file" made))))
 
+(define-test (core-edges org-colours-keep-the-code-colours-uncopied)
+  ;; the colours kept for a note's source blocks are given as they are, not copied, for each paint
+  (let* ((text (format nil "#+begin_src lisp~%(f x)~%#+end_src~%"))
+         (buffer (org-parts-buffer text nil))
+         (kept (loop for i below 4000 collect (list i (1+ i) :org-bold))))
+    (unwind-protect
+         (let* ((view (org-parts-whole-view buffer))
+                (size (tuatara.buffer:buffer-size buffer)))
+           (with-functions-replaced ((tuatara.defaults::org-src-cached-highlights
+                                      (lambda (&rest arguments) (declare (ignore arguments)) kept)))
+             (let ((colours (tuatara.defaults::org-view-colours buffer view 0 size nil)))
+               (true (member kept colours :test #'eq) "the kept list is one of the lists given"))
+             (let ((made (octets-per-call
+                          (lambda () (tuatara.defaults::org-view-colours buffer view 0 size nil)))))
+               (true (< made 40000) "~:d octets for each paint" made))))
+      (tuatara.buffer:kill-buffer buffer))))
+
+(define-test (core-edges note-link-patterns-are-compiled-once)
+  ;; looking for the links of a note does not compile its pattern again for each file
+  (let ((text (format nil "see [[denote:20260106T090000][a note]] and [b](denote:20260107T090000)~%")))
+    (true (functionp tuatara.defaults::*formatted-org-link-re*))
+    (true (functionp tuatara.defaults::*formatted-markdown-link-re*))
+    (dolist (kind '(:org :markdown-yaml))
+      (let ((made (octets-per-call (lambda () (tuatara.defaults::formatted-linked-identifiers text kind)))))
+        (true (< made 6000) "~:d octets for each file of kind ~a" made kind)))))
+
 (define-test (core-edges watcher-finds-a-file-by-table)
   ;; an event about one file of thousands is found without going through them all
   (let* ((items (loop for i below 20000
@@ -702,3 +728,23 @@ true when the helper answered in time."
   (false (cl-ppcre:scan (tuatara.syntax::compile-regex-for-query "(a+){2,25}b") "aab"))
   (false (cl-ppcre:scan (tuatara.syntax::compile-regex-for-query "(a|a){1,30}b") "aab"))
   (true (cl-ppcre:scan (tuatara.syntax::compile-regex-for-query "(a+){2,3}b") "aab")))
+
+(define-test (core-edges xml-elements-read-once)
+  ;; elements found by tag read the text once: many comments before them, many elements after the one asked
+  ;; for, many top elements each found in turn
+  (let ((comments (format nil "<w:body>~{~a~}<w:p>x</w:p></w:body>" (make-list 30000 :initial-element "<!---->")))
+        (paragraphs (format nil "<w:body>~{~a~}</w:body>" (make-list 20000 :initial-element "<w:p>x</w:p>"))))
+    (multiple-value-bind (found ended) (within-seconds 1 (lambda () (tuatara.text:xml-elements comments "w:p")))
+      (true ended "not found within a second")
+      (is = 1 (length found)))
+    (multiple-value-bind (found ended)
+        (within-seconds 1 (lambda () (tuatara.text:xml-top-elements paragraphs 8 (- (length paragraphs) 9))))
+      (true ended "not found within a second")
+      (is = 20000 (length found)))))
+
+(define-test (core-edges zip-entry-held-to-its-size)
+  ;; a deflated entry that unpacks to more than its size says is refused, never unpacked past it
+  (let* ((octets (deflated-zip))
+         (entry (copy-list (zip-entry-named octets "long.xml"))))
+    (setf (getf entry :size) 100)
+    (fail (tuatara.defaults::zip-entry-octets octets entry) 'tuatara.defaults::zip-error)))

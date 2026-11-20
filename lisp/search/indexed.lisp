@@ -128,17 +128,6 @@ encrypted file's).
 (defvar *directory-indexes* '()
   "The directories kept read, a DIRECTORY-INDEX each, as *INDEXED-DIRECTORIES* asks.")
 
-(defun same-stamp-p (a b)
-  "True when the stamps A and B say a file is as it was: its time, size,
-inode and change time (ctime) alike. A program can set a file's time back,
-but not its ctime, so a file written again at the same size and given its old
-time is not taken to be as it was."
-  (and a b
-       (= (tuatara.io:stamp-mtime a) (tuatara.io:stamp-mtime b))
-       (= (tuatara.io:stamp-size a) (tuatara.io:stamp-size b))
-       (= (tuatara.io:stamp-ino a) (tuatara.io:stamp-ino b))
-       (= (tuatara.io:stamp-ctime a) (tuatara.io:stamp-ctime b))))
-
 (defun indexed-directory-listing (path)
   "The directory PATH (a native name ending in /) as the index keeping it read
 has it listed (INDEX-DIRECTORY), or NIL when none keeps it."
@@ -292,7 +281,7 @@ octets."
                       (loop for j below n
                             for text = (aref texts (+ k j))
                             always (and (string= (first text) (aref paths j))
-                                        (same-stamp-p (third text) (aref stamps j))))))))
+                                        (tuatara.io:same-state-p (third text) (aref stamps j))))))))
       (let ((k 0))
         (loop while (< k (length texts))
               do (let* ((text (aref texts k))
@@ -308,10 +297,11 @@ octets."
                        (destructuring-bind (relative path stamp) text
                          (let ((entry (gethash relative where)))
                            (case (cond ((and entry
-                                             (same-stamp-p stamp (aref (index-piece-stamps (car entry)) (cdr entry))))
+                                             (tuatara.io:same-state-p
+                                              stamp (aref (index-piece-stamps (car entry)) (cdr entry))))
                                         (gather-text-file gatherer relative path
                                                           :stamp stamp :octets (old-octets entry)))
-                                       ((same-stamp-p stamp (gethash relative not-text)) :not-text)
+                                       ((tuatara.io:same-state-p stamp (gethash relative not-text)) :not-text)
                                        (t (gather-text-file gatherer relative path :stamp stamp)))
                              (:text (remhash relative not-text))
                              ((nil) (when stamp (setf (gethash relative not-text) stamp)))))
@@ -393,15 +383,15 @@ counted for lines on this thread. An error when it is not BYTES long."
 (defun index-piece-changed-p (piece directory)
   "True when the file PIECE, a piece of an index's text, is kept in, in
 DIRECTORY, was changed in place since it was written, so that its text as
-mapped is changed too: the same inode, but not as it was (SAME-STAMP-P). A
-file taken away or put in its place leaves the text mapped as it was."
+mapped is changed too: the same file, but not as it was
+\(TUATARA.IO:SAME-STATE-P). A file taken away or put in its place leaves the
+text mapped as it was."
   (let* ((file (index-piece-file piece))
          (kept (index-piece-kept piece))
          (stamp (and file kept (tuatara.io:path-stamp (concatenate 'string directory file) :follow nil :failure nil))))
     (and stamp
-         (= (tuatara.io:stamp-dev stamp) (tuatara.io:stamp-dev kept))
-         (= (tuatara.io:stamp-ino stamp) (tuatara.io:stamp-ino kept))
-         (not (same-stamp-p stamp kept)))))
+         (tuatara.io:same-stamped-file-p stamp kept)
+         (not (tuatara.io:same-state-p stamp kept)))))
 
 (defun save-index (index directory)
   "Keep INDEX's text on disk in DIRECTORY (INDEX-CACHE-DIRECTORY): each piece
@@ -417,11 +407,12 @@ left to the other when it holds the lock long."
 (defun index-piece-kept-p (piece directory)
   "True when PIECE, a piece of an index's text, is kept on disk in DIRECTORY
 as it was written: its file still there, not taken away by a clear of the
-cache or another session's save, and not changed since, the same inode, size,
-time and change time (SAME-STAMP-P), a regular file and not a link."
+cache or another session's save, and not changed since, the same device,
+inode, size, time and change time (TUATARA.IO:SAME-STATE-P), a regular file
+and not a link."
   (let* ((file (index-piece-file piece))
          (stamp (and file (tuatara.io:path-stamp (concatenate 'string directory file) :follow nil :failure nil))))
-    (and stamp (eq :regular (tuatara.io:stamp-kind stamp)) (same-stamp-p stamp (index-piece-kept piece)))))
+    (and stamp (eq :regular (tuatara.io:stamp-kind stamp)) (tuatara.io:same-state-p stamp (index-piece-kept piece)))))
 
 (defun save-index-now (index directory)
   "SAVE-INDEX's work, its lock held."

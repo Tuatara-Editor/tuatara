@@ -284,8 +284,6 @@ with the number of buffers, their size and files summed up at the end.
             (remove (current-client) (remove-if-not #'client-remote (editor-clients *editor*)))))
     (buffers-render list (1+ *buffers-title-lines*))))
 
-(define-renamed-command buffers buffer-manager)
-
 (defmethod list-entry-noun ((mode buffers-mode))
   "A buffer."
   "buffer")

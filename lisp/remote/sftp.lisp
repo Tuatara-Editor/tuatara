@@ -752,16 +752,23 @@ read from the start to the end, nothing out of turn."
     (nreverse holes)))
 
 (defun arrival-absent (arrival from to asked)
-  "The offset of the first piece (+SFTP-PIECE+ octets) of ARRIVAL's file from
-FROM below TO that is neither here nor among ASKED, a list of offsets, or NIL."
+  "The offset of the first piece of ARRIVAL's file from FROM below TO that is
+neither here nor among ASKED, a list of offsets, or NIL. Pieces are
++SFTP-PIECE+ octets from a multiple of it, but for the rest of one of which
+only the start is here, which begins where what is here ends."
   (let ((at (* +sftp-piece+ (floor from +sftp-piece+)))
         (to (min to (arrival-end arrival)))
         (arrived (arrival-arrived arrival)))
     (loop while (< at to)
           do (let ((covering (find-if (lambda (range) (and (<= (car range) at) (< at (cdr range)))) arrived)))
-               (cond (covering (setf at (* +sftp-piece+ (ceiling (cdr covering) +sftp-piece+))))
-                     ((member at asked) (incf at +sftp-piece+))
+               (cond (covering (setf at (cdr covering)))
+                     ((member at asked) (setf at (* +sftp-piece+ (1+ (floor at +sftp-piece+)))))
                      (t (return at)))))))
+
+(defun arrival-piece-length (arrival offset)
+  "The octets of the piece of ARRIVAL's file at OFFSET (ARRIVAL-ABSENT): up
+to the next multiple of +SFTP-PIECE+, or the end of the file."
+  (- (min (* +sftp-piece+ (1+ (floor offset +sftp-piece+))) (arrival-end arrival)) offset))
 
 (defun arrival-next (arrival asked)
   "The offset of the piece of ARRIVAL's file to ask for next, none of ASKED,
@@ -839,7 +846,7 @@ them."
                      (loop while (< (hash-table-count asked) +sftp-pieces-ahead+)
                            do (let ((offset (arrival-next arrival (offsets))))
                                 (unless offset (return))
-                                (ask offset (min +sftp-piece+ (- (arrival-end arrival) offset))))))
+                                (ask offset (arrival-piece-length arrival offset)))))
                    (stopping ()
                      (or (remote-cancelled-p)
                          (and tuatara.runtime:*job* (car (tuatara.runtime:job-cancel tuatara.runtime:*job*)))))

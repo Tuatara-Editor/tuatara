@@ -246,21 +246,50 @@ XML has no place for (a control character, a raw byte's) as U+FFFD."
 ;;; XML as text, its elements found by their tags: for changing a document's
 ;;; XML in place, what is not touched kept as it was
 
-(defun xml-hidden-ranges (xml start end)
-  "Where XML from START below END holds comments and CDATA sections, whose
-text is no tags, as a vector of (BEGIN . END), in order."
-  (let ((ranges '()) (p start))
-    (loop
-      (let ((comment (search "<!--" xml :start2 p :end2 end))
-            (cdata (search "<![CDATA[" xml :start2 p :end2 end)))
-        (when (and (null comment) (null cdata)) (return))
-        (let* ((at (if (and comment (or (null cdata) (< comment cdata))) comment cdata))
-               (closer (if (eql at comment) "-->" "]]>"))
-               (close (search closer xml :start2 (min end (+ at (if (eql at comment) 4 9))) :end2 end))
-               (after (if close (+ close (length closer)) end)))
-          (push (cons at after) ranges)
-          (setf p after))))
-    (coerce (nreverse ranges) 'simple-vector)))
+(defun xml-hidden-test (xml start end)
+  "A function of a position in XML from START below END, true when the
+position falls within a comment or a CDATA section, whose text is no tags.
+XML is read for them only as far as the furthest position asked about, each
+part of it once."
+  (let ((ranges (make-array 8 :adjustable t :fill-pointer 0))
+        (p start)
+        ;; of comments and of CDATA sections: the opening and closing, the next opening found
+        ;; from P or NIL, and the position below which no opening begins
+        (kinds (list (vector "<!--" "-->" nil start) (vector "<![CDATA[" "]]>" nil start))))
+    (labels ((next-opening (kind limit)
+               ;; KIND's next opening from P, looked for no further than one beginning at LIMIT
+               (let ((open (svref kind 0)) (found (svref kind 2)))
+                 (when (and found (< found p)) (setf found nil (svref kind 2) nil))
+                 (or found
+                     (let ((from (max p (svref kind 3))) (stop (min end (+ limit (length open)))))
+                       (when (< from stop)
+                         (setf found (search open xml :start2 from :end2 stop)))
+                       (if found
+                           (setf (svref kind 2) found)
+                           (setf (svref kind 3) (max (svref kind 3) (1+ (- stop (length open))))))
+                       found))))
+             (read-to (i)
+               ;; the comments and CDATA sections beginning at I or before, taken into RANGES
+               (loop while (<= p i)
+                     do (let* ((comment (next-opening (first kinds) i))
+                               (cdata (next-opening (second kinds) i))
+                               (kind (cond ((and comment (<= comment i) (or (null cdata) (< comment cdata)))
+                                            (first kinds))
+                                           ((and cdata (<= cdata i)) (second kinds)))))
+                          (unless kind (return))
+                          (let* ((at (svref kind 2))
+                                 (closer (svref kind 1))
+                                 (close (search closer xml :start2 (min end (+ at (length (svref kind 0)))) :end2 end)))
+                            (vector-push-extend (cons at (if close (+ close (length closer)) end)) ranges)
+                            (setf p (cdr (aref ranges (1- (fill-pointer ranges))))))))))
+      (lambda (i)
+        (read-to i)
+        ;; the last range beginning at I or before, by bisection
+        (let ((low 0) (high (fill-pointer ranges)))
+          (loop while (< low high)
+                do (let ((middle (floor (+ low high) 2)))
+                     (if (<= (car (aref ranges middle)) i) (setf low (1+ middle)) (setf high middle))))
+          (and (plusp low) (< i (cdr (aref ranges (1- low))))))))))
 
 (defun xml-elements (xml name &key (start 0) (end (length xml)) count)
   "The elements of XML from START below END called NAME (w:p), as (BEGIN .
@@ -268,28 +297,25 @@ END) of each, the outermost only, in order, no more than COUNT of them when
 it is given; one cut short at the end left out. XML nesting NAME deeper than
 *XML-DEEPEST*, or holding more than *XML-MOST-ELEMENTS* of them, is refused,
 as XML-PARSE refuses it. Tags within comments and CDATA sections are none, as
-XML-PARSE has them. Each part of XML is read once."
+XML-PARSE has them. XML is read only as far as the elements given, each part
+of it once."
   (let ((found '()) (taken 0) (seen 0) (counted -1) (p start)
         (open (format nil "<~a" name)) (close (format nil "</~a>" name))
-        (hidden (xml-hidden-ranges xml start end)))
+        (hidden-p (xml-hidden-test xml start end)))
     (labels ((name-ends-at (i)
                (and (< i (length xml)) (xml-name-end-p (char xml i))))
-             (hidden-p (i)
-               ;; within a comment or CDATA, by bisection of HIDDEN
-               (let ((low 0) (high (length hidden)))
-                 (loop while (< low high)
-                       do (let ((middle (floor (+ low high) 2)))
-                            (if (<= (car (svref hidden middle)) i) (setf low (1+ middle)) (setf high middle))))
-                 (and (plusp low) (< i (cdr (svref hidden (1- low)))))))
-             (outside (needle from)
-               ;; the next NEEDLE from FROM not within a comment or CDATA
-               (loop for s = (search needle xml :start2 from :end2 end)
-                       then (search needle xml :start2 (1+ s) :end2 end)
-                     while (and s (hidden-p s))
-                     finally (return s)))
-             (open-from (q)
-               ;; the next opening tag of NAME from Q, each counted once against the most allowed
-               (loop for s = (outside open q) then (outside open (1+ s))
+             (outside (needle from &optional (before end))
+               ;; the next NEEDLE from FROM, beginning before BEFORE, not within a comment or CDATA
+               (let ((stop (min end (+ before (length needle) -1))))
+                 (when (<= from stop)
+                   (loop for s = (search needle xml :start2 from :end2 stop)
+                           then (search needle xml :start2 (1+ s) :end2 stop)
+                         while (and s (funcall hidden-p s))
+                         finally (return s)))))
+             (open-from (q &optional (before end))
+               ;; the next opening tag of NAME from Q, beginning before BEFORE, each counted once against
+               ;; the most allowed
+               (loop for s = (outside open q before) then (outside open (1+ s) before)
                      while (and s (not (name-ends-at (+ s (length open)))))
                      finally (when (and s (> s counted))
                                (setf counted s)
@@ -305,25 +331,24 @@ XML-PARSE has them. Each part of XML is read once."
               ((null tag-end) (return))
               ((char= (char xml (1- tag-end)) #\/)
                (push (cons at (1+ tag-end)) found) (incf taken) (setf p (1+ tag-end)))
-              ;; to the close that matches, nested ones of the same name counted; the next
-              ;; opening and closing tags are each looked for again only once passed
+              ;; to the close that matches, nested ones of the same name counted: the next
+              ;; closing tag looked for again only once passed, an opening only before it
               (t
-               (let* ((depth 1) (q (1+ tag-end)) (next-open (open-from q))
-                      (next-close (outside close q)))
+               (let ((depth 1) (q (1+ tag-end)) (next-close nil))
                  (loop while (plusp depth)
-                       do (cond ((null next-close) (return-from xml-elements (nreverse found)))
-                                ((and next-open (< next-open next-close))
-                                 (let ((e (xml-tag-end xml next-open)))
-                                   (unless e (return-from xml-elements (nreverse found)))
-                                   (unless (char= (char xml (1- e)) #\/)
-                                     (when (>= (incf depth) *xml-deepest*)
-                                       (error "XML nested deeper than ~d elements" *xml-deepest*)))
-                                   (setf q (1+ e) next-open (open-from q))
-                                   (when (< next-close q) (setf next-close (outside close q)))))
-                                (t (decf depth)
-                                   (setf q (+ next-close (length close))
-                                         next-close (outside close q))
-                                   (when (and next-open (< next-open q)) (setf next-open (open-from q))))))
+                       do (unless (and next-close (>= next-close q)) (setf next-close (outside close q)))
+                          (unless next-close (return-from xml-elements (nreverse found)))
+                          ;; an opening of the same name is looked for only up to the close
+                          (let ((next-open (open-from q next-close)))
+                            (cond (next-open
+                                   (let ((e (xml-tag-end xml next-open)))
+                                     (unless e (return-from xml-elements (nreverse found)))
+                                     (unless (char= (char xml (1- e)) #\/)
+                                       (when (>= (incf depth) *xml-deepest*)
+                                         (error "XML nested deeper than ~d elements" *xml-deepest*)))
+                                     (setf q (1+ e))))
+                                  (t (decf depth)
+                                     (setf q (+ next-close (length close)))))))
                  (push (cons at q) found) (incf taken)
                  (setf p q))))))))
     (nreverse found)))

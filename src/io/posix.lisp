@@ -236,10 +236,10 @@ garbage is made for them; BODY must not keep SAP."
 ;;; The system's C functions the editor calls itself
 
 (declaim (inline %accept4 %bind %closedir %connect %copy-file-range %execv %execve %fchmodat %fcntl %fdopendir
-                 %fgetxattr %flistxattr %free %fsetxattr %fstatfs %fstatvfs %futimens %getgroups %getsockopt
+                 %fgetxattr %getxattr %flistxattr %free %fsetxattr %fstatfs %fstatvfs %futimens %getgroups %getsockopt
                  %inotify-add-watch %inotify-init1 %inotify-rm-watch %ioctl %ioctl-with-int %lgetxattr %linkat
-                 %linkat-named %listen %memfd-create %memset %mkdirat %openat %pidfd-open %pidfd-send-signal %pipe2
-                 %poll %pread %pwrite %read %readdir %readlinkat %realpath %realloc %recvmsg %renameat2
+                 %linkat-named %listen %lsetxattr %memfd-create %memset %mkdirat %openat %pidfd-open %pidfd-send-signal
+                 %pipe2 %poll %pread %pwrite %read %readdir %readlinkat %realpath %realloc %recvmsg %renameat2
                  %send %sendmsg %shutdown %socket %socketpair %statvfs %statx %strlen %symlinkat %sync-file-range
                  %unlinkat %utimensat %write))
 
@@ -266,6 +266,9 @@ garbage is made for them; BODY must not keep SAP."
 (define-c-function ("utimensat" %utimensat) :int (dirfd :int) (path :pointer) (times :pointer) (flags :int))
 (define-c-function ("futimens" %futimens) :int (fd :int) (times :pointer))
 (define-c-function ("lgetxattr" %lgetxattr) :long (path :pointer) (name :pointer) (value :pointer) (size :size))
+(define-c-function ("getxattr" %getxattr) :long (path :pointer) (name :pointer) (value :pointer) (size :size))
+(define-c-function ("lsetxattr" %lsetxattr) :int (path :pointer) (name :pointer) (value :pointer) (size :size)
+  (flags :int))
 (define-c-function ("flistxattr" %flistxattr) :long (fd :int) (names :pointer) (size :size))
 (define-c-function ("fgetxattr" %fgetxattr) :long (fd :int) (name :pointer) (value :pointer) (size :size))
 (define-c-function ("fsetxattr" %fsetxattr) :int (fd :int) (name :pointer) (value :pointer) (size :size) (flags :int))
@@ -372,6 +375,14 @@ changed, in nanoseconds."))
 the system tells: device, inode, size and modification time."
   (and (same-stamped-file-p a b)
        (= (stamp-size a) (stamp-size b)) (= (stamp-mtime a) (stamp-mtime b))))
+
+(defun same-state-p (a b)
+  "True when stamps A and B name the same file, unchanged as far as the system
+tells: device, inode, size, modification time and change time (ctime) alike
+\(SAME-CONTENT-P and the ctime). A program can set a file's modification time
+back, but not its ctime, so a file written again at its old size and given its
+old time is told apart."
+  (and (same-content-p a b) (= (stamp-ctime a) (stamp-ctime b))))
 
 (defconstant +at-fdcwd+ -100 "The directory a relative name is taken from: the current one.")
 (defconstant +o-directory+ #o200000 "open's O_DIRECTORY: only a directory is opened.")
@@ -1796,13 +1807,30 @@ again; NIL before it was first asked for. The same string while it stays the
 same, for a cheap EQ."
   (cdr *download-directory-seen*))
 
-(defun path-xattr-p (path name)
-  "True when the file at PATH, a link itself and not what it leads to, has the
-extended attribute NAME. Reading it changes no time of the file."
+(defun path-xattr-p (path name &key follow)
+  "True when the file at PATH, a link itself and not what it leads to unless
+FOLLOW, has the extended attribute NAME. Reading it changes no time of the
+file."
   (let ((key (sb-ext:string-to-octets name :external-format :latin-1 :null-terminate t)))
     (with-c-string (sap (native path))
       (with-octets-sap (key-sap key)
-        (>= (%lgetxattr sap key-sap (sb-sys:int-sap 0) 0) 0)))))
+        (>= (if follow
+                (%getxattr sap key-sap (sb-sys:int-sap 0) 0)
+                (%lgetxattr sap key-sap (sb-sys:int-sap 0) 0))
+            0)))))
+
+(defun set-path-xattr (path name value)
+  "Give the file or directory at PATH, a link itself and not what it leads to,
+the extended attribute NAME with VALUE, a string written as UTF-8, in place of
+any it had. True when it is set; NIL when the file system, the kind of file
+or your rights do not allow it."
+  (let ((key (sb-ext:string-to-octets name :external-format :latin-1 :null-terminate t))
+        (octets (tuatara.text:string-octets value)))
+    (with-c-string (sap (native path))
+      (with-octets-sap (key-sap key)
+        ;; an empty value set from a buffer of one octet, none of it given
+        (with-octets-sap (value-sap (if (plusp (length octets)) octets (make-array 1 :element-type '(unsigned-byte 8))))
+          (zerop (%lsetxattr sap key-sap value-sap (length octets) 0)))))))
 
 (defun user-font-directories (&optional (home (home-directory)))
   "Your own font directories, native names without a / at the end: fonts in the

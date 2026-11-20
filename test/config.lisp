@@ -335,7 +335,7 @@ commented inside another one commented (;;   ;; (setf ...) in a load-package's
            (is string= ";; mine" (uiop:read-file-string file)))
       (if old (sb-posix:setenv "XDG_CONFIG_HOME" old 1) (sb-posix:unsetenv "XDG_CONFIG_HOME"))
       (setf tuatara.defaults::*mode-indent-tabs* tabs)
-      (uiop:delete-directory-tree home :validate (lambda (p) (uiop:subpathp p *test-cache-directory*))))))
+      (uiop:delete-directory-tree home :validate #'tests-own-path-p))))
 
 (define-test (config bind-key-a-mode-either-way)
   ;; :map 'csv-mode and :map :global :mode 'csv are the same keys: the mode's own

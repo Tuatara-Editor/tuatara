@@ -271,7 +271,7 @@ a new session would."
   ;; a link in the directory of grammars you add, to a file elsewhere, is no
   ;; grammar of yours to load, nor one of Tuatara's: never loaded, never kept
   (with-test-grammar-added (directory)
-    (let ((elsewhere (merge-pathnames "elsewhere.so" (tuatara.io:cache-directory))))
+    (let ((elsewhere (merge-pathnames "elsewhere.so" *test-home-directory*)))
       (unwind-protect
            (progn
              (rename-file (merge-pathnames "testjson.so" directory) elsewhere)

@@ -34,24 +34,90 @@
 (ensure-directories-exist *test-cache-directory*)
 (sb-posix:chmod (namestring *test-cache-directory*) #o700)
 (setf tuatara-user:*cache-directory* (namestring *test-cache-directory*))
-;; Nor touch the developer's trashes, the home one or a drive's (a USB stick's): the
-;; tests' data home is their own, on the drive their files are made on, and they see
-;; no drive mounted.
-(defvar *test-data-directory*
-  (merge-pathnames (format nil "test-data-~d/" (sb-posix:getpid)) *test-cache-directory*))
-(ensure-directories-exist *test-data-directory*)
+;; Nor list or open anything else in the developer's home: the tests have a made-up
+;; home of their own, in their state directory, and their files and data home in it,
+;; so that a path typed to a question never passes through the developer's home.
+(defvar *real-home-names* (tuatara.io:home-directory-names)
+  "The names of the developer's own home directory, as HOME gave it before the
+tests' made-up home took its place and as the file system has it.")
+(defvar *test-home-directory* (merge-pathnames "home/" *test-state-directory*)
+  "The tests' made-up home directory: HOME and the XDG directories while the
+tests run, and where WITH-TEST-DIRECTORY makes their files.")
+(defvar *test-data-directory* (merge-pathnames ".local/share/" *test-home-directory*)
+  "The tests' data home ($XDG_DATA_HOME), with their home trash, in their made-up home.")
+;; Programs the tests start find Quicklisp where this Lisp found it, not in the made-up home.
+(defvar *quicklisp-home*
+  (let* ((package (find-package "QL"))
+         (symbol (and package (find-symbol "*QUICKLISP-HOME*" package))))
+    (and symbol (boundp symbol) (symbol-value symbol)))
+  "The directory this Lisp loaded Quicklisp from; NIL when it has no Quicklisp.")
+(unless (sb-posix:getenv "QUICKLISP_SETUP")
+  (unless *quicklisp-home*
+    (error "The tests need Quicklisp, which the programs they start load the editor with: load it before the ~
+            tests, or name its setup.lisp in QUICKLISP_SETUP."))
+  (sb-posix:setenv "QUICKLISP_SETUP" (sb-ext:native-namestring (merge-pathnames "setup.lisp" *quicklisp-home*)) 1))
+(defun tree-git-directory ()
+  "The git directory of the tree being tested when it lies elsewhere, as a
+worktree's has it (its .git a file naming the directory); NIL otherwise."
+  (let* ((tree (asdf:system-source-directory :tuatara))
+         (file (merge-pathnames ".git" tree))
+         (line (and (uiop:file-exists-p file) (not (uiop:directory-exists-p file))
+                    (ignore-errors (first (uiop:read-file-lines file))))))
+    (when (and line (uiop:string-prefix-p "gitdir: " line))
+      (let ((named (string-trim " " (subseq line 8))))
+        (uiop:ensure-directory-pathname
+         (if (uiop:absolute-pathname-p named) named (merge-pathnames named tree)))))))
+(defun root-mount-places ()
+  "The other places the drive shown as the root is shown at, the same directory
+of it, each ending with a slash: in a container, its root as the host keeps it,
+which may lie in the developer's home."
+  (let* ((mounts (ignore-errors (tuatara.defaults::mounts-shown)))
+         (root (find "/" mounts :key #'third :test #'string= :from-end t)))
+    (when root
+      (loop for (device directory place) in mounts
+            when (and (string= device (first root)) (string= directory (second root)) (string/= place "/"))
+              collect (tuatara.io:slash-ended place)))))
+(defvar *real-home-allowed*
+  (let ((places (list* (asdf:system-source-directory :tuatara) (tree-git-directory) *test-cache-directory*
+                       *quicklisp-home* (uiop:xdg-cache-home "common-lisp/") (root-mount-places))))
+    (remove-duplicates (loop for place in (remove nil places)
+                             for true = (ignore-errors (truename place))
+                             collect (sb-ext:native-namestring place)
+                             when true collect (sb-ext:native-namestring true))
+                       :test #'string=))
+  "The directories in the developer's home the tests may list and open, each a
+native name ending with a slash: the tree being tested (but *REAL-HOME-KEPT-OUT*)
+and its git directory, the tests' own cache, Quicklisp, the Lisp's compiled
+files, the root's other places (ROOT-MOUNT-PLACES) and the package repositories
+beside the tree (test/source-scan.lisp).")
+(defvar *real-home-kept-out*
+  (let ((notes (merge-pathnames ".project/" (asdf:system-source-directory :tuatara))))
+    (remove-duplicates (remove nil (list (sb-ext:native-namestring notes)
+                                         (ignore-errors (sb-ext:native-namestring (truename notes)))))
+                       :test #'string=))
+  "The directories in *REAL-HOME-ALLOWED* the tests may not reach all the same:
+the untracked private notes of the tree being tested (.project).")
 ;; The developer's init file, configuration directory (their Word and LaTeX templates), state, trashes, GnuPG
 ;; keys and agent (a keyring of the tests' own, made empty), temporary directory (so whatever a test forgets goes
 ;; with the run) and directory of daemons' sockets (so no test reaches a running daemon) are the run's own, and the
 ;; variables naming their agents, display and session bus unset, from tools/fence.lisp, which the tools use too.
-;; The cache home is in the tests' cache, kept from one run to the next for the packages compiled apart there, and
-;; the same for the whole run, so that no .cache/ directory appears in a home a test makes. The home stays where
-;; it was: Quicklisp is found in it.
+;; The home is made up, its directories where a home has them. Its cache directory leads to the tests' cache, kept
+;; from one run to the next for the packages compiled apart there.
 (load (asdf:system-relative-pathname :tuatara "tools/fence.lisp"))
+(let ((cache (merge-pathnames ".cache" *test-home-directory*)))
+  (ensure-directories-exist *test-home-directory*)
+  (ensure-directories-exist (merge-pathnames "cache/" *test-cache-directory*))
+  ;; made once: loaded again in the same Lisp, the link is there already
+  (unless (ignore-errors (sb-posix:lstat (sb-ext:native-namestring cache)))
+    (sb-posix:symlink (sb-ext:native-namestring (merge-pathnames "cache/" *test-cache-directory*))
+                      (sb-ext:native-namestring cache))))
 (funcall (find-symbol "FENCE-PERSON-DATA" "TUATARA.FENCE") *test-state-directory*
-         :places (list (cons "HOME" :keep)
-                       (cons "XDG_CACHE_HOME" (merge-pathnames "cache/" *test-cache-directory*))
-                       (cons "XDG_DATA_HOME" *test-data-directory*)))
+         :places (list (cons "HOME" "home/")
+                       (cons "XDG_CONFIG_HOME" "home/.config/")
+                       (cons "XDG_DATA_HOME" "home/.local/share/")
+                       (cons "XDG_STATE_HOME" "home/.local/state/")
+                       (cons "XDG_CACHE_HOME" "home/.cache/")
+                       (cons "GNUPGHOME" "home/.gnupg/")))
 (setf tuatara.defaults::*runtime-directory* (sb-posix:getenv "XDG_RUNTIME_DIR"))
 (let ((no-drives (merge-pathnames "no-drives" *test-state-directory*)))
   (ensure-directories-exist no-drives)
@@ -88,15 +154,14 @@
 (setf tuatara.io::*at-once-wait* 30)
 
 (defun remove-test-directories ()
-  "Take away the directories this test run kept its state and data in, the
-gpg-agent of the tests' own keyring stopped first."
+  "Take away the directory this test run kept its state, made-up home and data
+in, the gpg-agent of the tests' own keyring stopped first."
   (ignore-errors (uiop:run-program (list "gpgconf"
                                          "--homedir"
-                                         (namestring (merge-pathnames "gnupg/" *test-state-directory*))
+                                         (namestring (merge-pathnames ".gnupg/" *test-home-directory*))
                                          "--kill" "gpg-agent")
                                    :ignore-error-status t))
-  (uiop:delete-directory-tree *test-state-directory* :validate t :if-does-not-exist :ignore)
-  (uiop:delete-directory-tree *test-data-directory* :validate t :if-does-not-exist :ignore))
+  (uiop:delete-directory-tree *test-state-directory* :validate t :if-does-not-exist :ignore))
 ;; however the tests are run, their directories go when Lisp exits
 (pushnew 'remove-test-directories sb-ext:*exit-hooks*)
 
@@ -125,6 +190,11 @@ process no longer running."
       (when (cl-ppcre:scan "^;; \\(bind-key \"[^\"]+\" (nil|'[a-z-]+) :map :leader( :mode '(?:[a-z-]+|\\([a-z -]+\\)))?( :label \"[^\"]*\")?\\)\\s*$" line)
         (eval (read-from-string (subseq line 3)))))))
 
+(defun tests-own-path-p (path)
+  "True when PATH is in a directory of the tests' own: their state directory,
+with their made-up home, or their cache. Only such a directory is removed."
+  (or (uiop:subpathp path *test-state-directory*) (uiop:subpathp path *test-cache-directory*)))
+
 (defmacro with-environment-variable ((name value) &body body)
   "Run BODY with the environment variable NAME set to VALUE (NIL: unset), as it was after."
   (let ((before (gensym "BEFORE")))
@@ -132,3 +202,149 @@ process no longer running."
        (if ,value (sb-posix:setenv ,name ,value 1) (sb-posix:unsetenv ,name))
        (unwind-protect (progn ,@body)
          (if ,before (sb-posix:setenv ,name ,before 1) (sb-posix:unsetenv ,name))))))
+
+(defvar *real-home-reached* '()
+  "Each time a test reached something in the developer's own home outside
+*REAL-HOME-ALLOWED*, newest first, as (WHAT PATH TEST): WHAT is \"list\",
+\"open\", \"examine\" or \"change\", TEST the name of the test running then
+\(NIL in a thread of its own). The run fails when there is any.")
+
+(defvar *real-home-lock* (sb-thread:make-mutex :name "real home reached")
+  "Held while *REAL-HOME-REACHED* is added to.")
+
+(defvar *test-running* nil
+  "The name of the test running now, for every thread to see.")
+
+(defmethod parachute:eval-in-context :around (context (result parachute:test-result))
+  (let ((before *test-running*))
+    (setf *test-running* (ignore-errors (parachute:name (parachute:expression result))))
+    (unwind-protect (call-next-method)
+      (setf *test-running* before))))
+
+(defun real-home-path-p (path &optional what)
+  "True when PATH, a pathname or a native name, is the developer's own home or
+in it, and not in one of the places the tests may reach there. When WHAT is
+\"examine\", a directory on the way to one of those places is not, nor what is
+in such a directory, as making or finding one examines each directory above it
+and what a project's root is told by there."
+  (let* ((name (if (pathnamep path) (ignore-errors (sb-ext:native-namestring path)) path))
+         (name (and (stringp name) (plusp (length name))
+                    (if (char= #\/ (char name 0)) name (concatenate 'string (sb-posix:getcwd) "/" name))))
+         (directory (and name (tuatara.io:slash-ended name))))
+    (and directory
+         (some (lambda (home) (uiop:string-prefix-p home directory)) *real-home-names*)
+         (or (notany (lambda (allowed) (uiop:string-prefix-p allowed directory)) *real-home-allowed*)
+             (some (lambda (kept) (uiop:string-prefix-p kept directory)) *real-home-kept-out*))
+         (not (and (equal what "examine")
+                   (let ((above (subseq directory 0 (1+ (position #\/ directory :end (1- (length directory))
+                                                                               :from-end t)))))
+                     (some (lambda (allowed) (uiop:string-prefix-p above allowed)) *real-home-allowed*)))))))
+
+(defun note-real-home (what path)
+  "Add PATH to *REAL-HOME-REACHED* as WHAT (\"list\", \"open\", \"examine\",
+\"change\") when it is in the developer's own home (REAL-HOME-PATH-P), and
+then return true."
+  (when (real-home-path-p path what)
+    (sb-thread:with-mutex (*real-home-lock*)
+      (push (list what (if (pathnamep path) (namestring path) path) *test-running*) *real-home-reached*))
+    t))
+
+(defun guard-real-home (function what paths refused)
+  "Watch FUNCTION, a function of the editor or the system that reaches files
+by name. PATHS is a function of its arguments giving the paths that call is
+to reach (the others it takes being descriptors or flags). When one of them is
+in the developer's own home it is noted (NOTE-REAL-HOME) as WHAT, and the call
+is not made: REFUSED, a function of the name of FUNCTION and that path,
+gives what is returned in its place, as the system refuses one who may not
+look there."
+  (let ((name (string-downcase (symbol-name function))))
+    (sb-int:encapsulate function 'real-home
+                        (lambda (real &rest arguments)
+                          (let ((reached (find-if (lambda (path) (note-real-home what path))
+                                                  (apply paths arguments))))
+                            (if reached
+                                (funcall refused name reached)
+                                (apply real arguments)))))))
+
+(defun at-name (dirfd name)
+  "As a list, the name NAME (a string, or octets) taken relative to the
+directory open as DIRFD when it is a name from the current directory or a
+whole path; none when it is relative to another directory, which was opened
+by name, and watched, first."
+  (let ((name (if (stringp name) name (and (plusp (length name)) (tuatara.text:octets-string name)))))
+    (when (and name (or (eql dirfd tuatara.io::+at-fdcwd+) (and (plusp (length name)) (char= #\/ (char name 0)))))
+      (list name))))
+
+(defun syscall-refused (name path)
+  "Signal what SB-POSIX signals when the system call NAME on PATH is refused leave (EACCES)."
+  (declare (ignore path))
+  (error 'sb-posix:syscall-error :name name :errno sb-posix:eacces))
+
+(defun errno-refused (name path)
+  "NIL and the errno of leave refused (EACCES), as a call NAME on PATH that gives them on failure returns."
+  (declare (ignore name path))
+  (values nil sb-posix:eacces))
+
+(defun nothing-refused (name path)
+  "NIL, as a call NAME on PATH that gives NIL on failure returns."
+  (declare (ignore name path))
+  nil)
+
+(defun file-system-refused (operation)
+  "A function that signals the editor's FILE-SYSTEM-ERROR for OPERATION (a
+verb phrase) on the path it is given, refused leave (EACCES), as a call of
+the editor that signals on failure does."
+  (lambda (name path)
+    (declare (ignore name))
+    (tuatara.io::fail operation path sb-posix:eacces)))
+
+;; every way the tests and the editor reach a file by name is watched: listing a directory (CL:DIRECTORY and UIOP,
+;; SB-POSIX, the editor's own reading of one), opening (OPEN, SB-POSIX, the editor's openat), examining (PROBE-FILE,
+;; SB-POSIX, statx, realpath, readlink, attributes, statvfs, inotify) and changing (Lisp's own, SB-POSIX, the
+;; editor's links and modes). Lisp's file functions reach the system through SB-UNIX; the editor calls those of
+;; SB-POSIX that take a name, not copied into it (src/package.lisp). Its other calls on names (renameat2, unlinkat,
+;; mkdirat, utimensat, symlinkat) take a descriptor of a directory it opened by name, and so watched, first.
+(flet ((first-one (path &rest more) (declare (ignore more)) (list path))
+       (first-two (one two &rest more) (declare (ignore more)) (list one two))
+       (second-one (one two &rest more) (declare (ignore one more)) (list two))
+       (at (dirfd name &rest more) (declare (ignore more)) (at-name dirfd name)))
+  (guard-real-home 'sb-impl::call-with-native-directory-iterator "list"
+                   (lambda (iterate namestring &rest more) (declare (ignore iterate more)) (list namestring))
+                   #'nothing-refused)
+  (guard-real-home 'tuatara.io::map-directory-fd "list"
+                   (lambda (each fd path) (declare (ignore each fd)) (list path))
+                   (file-system-refused "read"))
+  (guard-real-home 'sb-posix:opendir "list" #'first-one #'syscall-refused)
+  (guard-real-home 'sb-unix:unix-open "open" #'first-one #'errno-refused)
+  (dolist (function '(sb-unix:unix-stat sb-unix:unix-lstat sb-unix:unix-access sb-unix:unix-realpath
+                      sb-unix:unix-readlink))
+    (guard-real-home function "examine" #'first-one #'errno-refused))
+  (dolist (function '(sb-unix:unix-mkdir sb-unix:unix-unlink))
+    (guard-real-home function "change" #'first-one #'errno-refused))
+  (guard-real-home 'sb-unix:unix-rename "change" #'first-two #'errno-refused)
+  (dolist (function '(sb-posix:open sb-posix:creat))
+    (guard-real-home function "open" #'first-one #'syscall-refused))
+  (dolist (function '(sb-posix:stat sb-posix:lstat sb-posix:access sb-posix:readlink sb-posix:chdir))
+    (guard-real-home function "examine" #'first-one #'syscall-refused))
+  (dolist (function '(sb-posix:unlink sb-posix:rmdir sb-posix:mkdir sb-posix:mkfifo sb-posix:chmod sb-posix:chown
+                      sb-posix:lchown sb-posix:truncate sb-posix:utime sb-posix:utimes))
+    (guard-real-home function "change" #'first-one #'syscall-refused))
+  (guard-real-home 'sb-posix:rename "change" #'first-two #'syscall-refused)
+  (guard-real-home 'sb-posix:link "change" #'first-two #'syscall-refused)
+  (guard-real-home 'sb-posix:symlink "change" #'second-one #'syscall-refused)
+  (guard-real-home 'tuatara.io::openat-octets "open" #'at #'errno-refused)
+  (guard-real-home 'tuatara.io::statx-fields "examine" #'at #'errno-refused)
+  (guard-real-home 'tuatara.io::link-octets "examine" #'at #'nothing-refused)
+  (dolist (function '(tuatara.io::real-path tuatara.io::statvfs-fields tuatara.io::path-xattr-p))
+    (guard-real-home function "examine" #'first-one #'nothing-refused))
+  (guard-real-home 'tuatara.io::inotify-watch "list" #'second-one #'nothing-refused)
+  (guard-real-home 'tuatara.io::set-path-mode "change" #'first-one #'nothing-refused)
+  (guard-real-home 'tuatara.io::make-hard-link "change" #'first-one (file-system-refused "give another name to")))
+
+(defmacro with-real-home-unreached (&body body)
+  "Run BODY, then check that nothing it did reached anything in the
+developer's own home (*REAL-HOME-REACHED*), naming what it reached if so."
+  (let ((before (gensym "BEFORE")))
+    `(let ((,before *real-home-reached*))
+       (multiple-value-prog1 (progn ,@body)
+         (is equal '() (ldiff *real-home-reached* ,before) "the developer's own home was reached")))))

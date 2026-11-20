@@ -614,7 +614,10 @@ Two settings keep a document read as text within bounds. A small Office file
 can stand for a great deal of text. Reading stops at =*office-note-size-limit*=
 characters and the text says that the rest is left out. A single cell or
 formula longer than =*office-value-length-limit*= characters is cut short and
-ends in =...=.
+ends in =...=. A row of a table holds no more than 16,384 cells, as a sheet's
+does, however often the file says its cells repeat; each sheet or slide named
+takes room in the text, so a file naming a great many stops where the text is
+full.
 
 #+table: commands office-view-pages
 

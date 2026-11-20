@@ -69,20 +69,23 @@ thread may take is multiplied by it."
      (remove-if-not (lambda (entry) (and (stringp entry) (tuatara.io:path-within-p entry top)))
                     (tuatara.defaults::state-list-entries tuatara.defaults::*trusted*)))))
 
-(defmacro with-test-directory ((directory) &body body)
-  "Run BODY with DIRECTORY bound to a new empty directory in the cache directory
-(on the file system of your home, which shares blocks on btrfs), removed
-afterwards with everything in it, the buffers visiting its files killed and
-the projects within it trusted no more."
+(defmacro with-test-directory ((directory &key in-cache) &body body)
+  "Run BODY with DIRECTORY bound to a new empty directory in the tests' made-up
+home (*TEST-HOME-DIRECTORY*), removed afterwards with everything in it, the
+buffers visiting its files killed and the projects within it trusted no more.
+With IN-CACHE it is in the tests' cache instead, on the drive of your home and
+in no temporary directory, for the tests of a file system that shares blocks
+\(btrfs) and of files trusted as standard: a test that types its path to a
+question passes through your home there."
   `(let ((,directory (ensure-directories-exist
                       (merge-pathnames (format nil "test-~d-~36r/" (sb-posix:getpid) (random (expt 36 8) (load-time-value (make-random-state t))))
-                                       (tuatara.io:cache-directory)))))
+                                       (if ,in-cache (tuatara.io:cache-directory) *test-home-directory*)))))
      (unwind-protect (progn ,@body)
        (kill-buffers-under ,directory)
        (forget-kept-indexes ,directory)
        (forget-committed-lines)
        (forget-trusted-under ,directory)
-       (uiop:delete-directory-tree ,directory :validate (lambda (p) (uiop:subpathp p *test-cache-directory*))))))
+       (uiop:delete-directory-tree ,directory :validate #'tests-own-path-p))))
 
 (defmacro with-file-in-tmp ((path ending) &body body)
   "Run BODY with PATH bound to a new name for a file lying directly in /tmp,
@@ -338,8 +341,36 @@ buffer. Returns the slice."
         (kill-buffers-visiting dir))
       (is equal '("big.txt") (directory-names dir)))))
 
-(define-test (visiting-and-saving scratch-places)
+(define-test (visiting-and-saving stamp-on-another-device-changed)
+  ;; each check of whether a file is as it was takes a stamp alike in all but the device for a change
   (with-test-directory (dir)
+    (let* ((directory (namestring dir))
+           (path (put-file (concatenate 'string directory "a.txt") "as looked at"))
+           (stamp (tuatara.io:path-stamp path :follow nil))
+           (moved (tuatara.io:make-stamp (1+ (tuatara.io:stamp-dev stamp)) (tuatara.io:stamp-ino stamp)
+                                         (tuatara.io:stamp-size stamp) (tuatara.io:stamp-mtime stamp)
+                                         (tuatara.io:stamp-nlink stamp) (tuatara.io:stamp-mode stamp)
+                                         (tuatara.io:stamp-uid stamp) (tuatara.io:stamp-gid stamp)
+                                         (tuatara.io:stamp-ctime stamp))))
+      (flet ((known (stamp)
+               (list :dev (tuatara.io:stamp-dev stamp) :ino (tuatara.io:stamp-ino stamp)
+                     :copy-size (tuatara.io:stamp-size stamp) :copy-mtime (tuatara.io:stamp-mtime stamp)
+                     :copy-ctime (tuatara.io:stamp-ctime stamp))))
+        (true (tuatara.io:same-state-p stamp (tuatara.io:path-stamp path)))
+        (false (tuatara.io:same-state-p stamp moved))
+        (true (search "changed after it was looked at"
+                      (tuatara.defaults::open-in-place-externally path "a.txt" nil "text" "/bin/true" :stamp moved))
+              "not opened outside")
+        (true (tuatara.defaults::index-piece-kept-p (tuatara.defaults::make-index-piece nil nil "a.txt" stamp)
+                                                    directory))
+        (false (tuatara.defaults::index-piece-kept-p (tuatara.defaults::make-index-piece nil nil "a.txt" moved)
+                                                     directory)
+               "an index's piece not kept")
+        (true (tuatara.defaults::remote-copy-intact-p path (known stamp)))
+        (false (tuatara.defaults::remote-copy-intact-p path (known moved)) "a remote file's copy not intact")))))
+
+(define-test (visiting-and-saving scratch-places)
+  (with-test-directory (dir :in-cache t)
     (let ((path (put-file (merge-pathnames "a.txt" dir) "x")))
       ;; beside the file where its file system shares blocks, for a save to share them
       (let ((tuatara.io::*block-sharing-file-systems* (list (directory-magic dir))))
@@ -359,7 +390,7 @@ that BUFFER's mapping holds."
                                (uiop:parse-native-namestring (subseq link 0 (search " (deleted)" link)))))))
 
 (define-test (visiting-and-saving copies-places)
-  (with-test-directory (dir)
+  (with-test-directory (dir :in-cache t)
     (let ((path (put-file (merge-pathnames "big.txt" dir) *lines-text*))
           (upper (string-upcase *lines-text*))
           (cache (namestring (truename (tuatara.io:cache-directory))))
@@ -1633,7 +1664,7 @@ length, and a line inserted near the end. Returns the text it has then."
     (tuatara.buffer:buffer-string buffer)))
 
 (define-test (visiting-and-saving saved-in-place-where-blocks-are-not-shared)
-  (with-test-directory (dir)
+  (with-test-directory (dir :in-cache t)
     (without-shared-blocks
       (let* ((path (put-file (merge-pathnames "big.txt" dir) *long-lines-text*))
              (inode (tuatara.io:stamp-ino (tuatara.io:path-stamp path))))

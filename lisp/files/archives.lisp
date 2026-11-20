@@ -580,7 +580,9 @@ what is there: a name there already is left as it is, and returned among the
 second value, the names so left. An archive locked with a password is
 opened with PASSWORD, tried first on all of it, so that a wrong one unpacks
 nothing; without one, ARCHIVE-LOCKED is signalled. What it makes you may
-write, move and delete (MAKE-EXTRACTED-WRITABLE). Stopped when CANCEL's car
+write, move and delete (MAKE-EXTRACTED-WRITABLE). What it makes of an
+untrusted archive is marked as come from outside (MARK-FROM-OUTSIDE), and
+stays untrusted wherever it is unpacked. Stopped when CANCEL's car
 turns true, or before the drive has less than *ARCHIVE-FREE-RESERVE* free
 or room for too few more files (ARCHIVE-FILES-LEFT), said so. An error
 saying why when it does not work; what was unpacked before stays. The
@@ -595,6 +597,7 @@ as EXTRACT-ARCHIVE says, with CANCEL and PASSWORD as it has them."
          (program (archive-program kind))
          (directory (tuatara.io:slash-ended directory))
          (made (not (tuatara.io:path-stamp directory :follow nil)))
+         (origin (and (source-untrusted-p archive) archive))
          (passing nil) (left '()))
     (when (and (null password) (archive-locked-p archive kind program copy))
       (error 'archive-locked :path archive))
@@ -624,32 +627,37 @@ as EXTRACT-ARCHIVE says, with CANCEL and PASSWORD as it has them."
                  (error (e) (unless failure (setf failure e))))))
         (unwind-protect (unpack-archive program kind archive copy passing cancel password)
           (attempt (lambda () (make-extracted-writable passing)))
-          (attempt (lambda () (setf left (move-into-place passing directory))))
+          (attempt (lambda () (setf left (move-into-place passing directory origin))))
           (attempt (lambda () (tuatara.io:delete-tree passing)))
           ;; a directory made for it that nothing went into is taken away again
           (when made
             (handler-case (sb-posix:rmdir (string-right-trim "/" directory))
-              (sb-posix:syscall-error () nil)))))
+              (sb-posix:syscall-error () nil))
+            (when origin (attempt (lambda () (mark-from-outside directory origin)))))))
       (when failure (error failure)))
     (values directory left)))
 
-(defun move-into-place (from to)
+(defun move-into-place (from to &optional origin)
   "Move each thing in the directory FROM into the directory TO, never over what is
 there (TUATARA.IO:RENAME-PATH): a directory whose name is a directory there
 already has what it holds moved into that one the same way; anything else
-whose name is there stays in FROM. The names so left, from FROM."
+whose name is there stays in FROM. With ORIGIN, the untrusted file it was
+made from, each thing moved is marked as come from outside
+\(MARK-FROM-OUTSIDE). The names so left, from FROM."
   (let ((left '()))
     (dolist (entry (tuatara.io:directory-entries from))
       (destructuring-bind (name kind size own &rest more) entry
         (declare (ignore kind size more))
         (let ((source (tuatara.io:path-join from name))
               (target (tuatara.io:path-join to name)))
-          (handler-case (tuatara.io:rename-path source target)
+          (handler-case (progn (tuatara.io:rename-path source target)
+                               (when origin (mark-from-outside target origin)))
             (tuatara.io:file-system-error (e)
               (let ((there (tuatara.io:path-kind target :follow nil)))
                 (cond ((null there) (error e))
                       ((and (eq own :directory) (eq there :directory))
-                       (dolist (inner (move-into-place (tuatara.io:slash-ended source) (tuatara.io:slash-ended target)))
+                       (dolist (inner (move-into-place (tuatara.io:slash-ended source) (tuatara.io:slash-ended target)
+                                                       origin))
                          (push (format nil "~a/~a" name inner) left)))
                       (t (push name left)))))))))
     (nreverse left)))

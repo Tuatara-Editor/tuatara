@@ -63,7 +63,7 @@ undo. Returns where the entry begins and where it ends (octets), two values."
   (let* ((chars (org-parse-text parse))
          (level (cond (headline (org-property headline :level)) (title 1) (t nil)))
          (top (org-top-level entry))
-         (entry (org-tags-aligned (org-shift-levels (org-ensure-newline entry)
+         (entry (org-tags-aligned (org-shift-levels (ensure-final-newline entry)
                                                     (if (and level top) (- (1+ level) top) 0))))
          (size (length chars))
          (newline (if (and (plusp size) (char/= (char chars (1- size)) #\Newline)) (string #\Newline) "")))

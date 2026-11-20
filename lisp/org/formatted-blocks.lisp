@@ -384,12 +384,14 @@ them in order. REVERSE turns the order round, but for random."
 ;;; Links in a note's text
 
 (defparameter *formatted-org-link-re*
-  "\\[\\[denote:([^\\]\\[]*?)(?:::.*)?\\]\\[(.*?)\\]\\]|\\[\\[denote:([^\\]\\[]*?)\\]\\]"
+  (cl-ppcre:create-scanner
+   "\\[\\[denote:([^\\]\\[]*?)(?:::.*)?\\]\\[(.*?)\\]\\]|\\[\\[denote:([^\\]\\[]*?)\\]\\]")
   "A link to a note by its identifier as an Org note writes it, labelled or not: the
 identifier the first or the third group.")
 
 (defparameter *formatted-markdown-link-re*
-  "\\[(.*?)\\]\\(denote:([^\\]\\[]*?)\\)|\\[\\[denote:([^\\]\\[]*?)\\]\\]"
+  (cl-ppcre:create-scanner
+   "\\[(.*?)\\]\\(denote:([^\\]\\[]*?)\\)|\\[\\[denote:([^\\]\\[]*?)\\]\\]")
   "A link to a note by its identifier as Markdown writes it, or as an Org note
 writes one with no label: the identifier the second or the third group.")
 
@@ -545,7 +547,7 @@ with no title or no tags gets no headline. NIL when it cannot be read."
 
 (defun formatted-final-newline (text)
   "TEXT, a block's, ending with a line end unless it is empty."
-  (if (string= text "") text (org-ensure-newline text)))
+  (if (string= text "") text (ensure-final-newline text)))
 
 ;;; Sequences
 

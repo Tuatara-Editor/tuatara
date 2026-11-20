@@ -89,6 +89,89 @@
   (true (uiop:subpathp (uiop:ensure-directory-pathname (sb-posix:getenv "GNUPGHOME")) *test-state-directory*))
   (false (probe-file tuatara.defaults:*config-file*)))
 
+(define-test (tools real-home-guard-sees-every-route)
+  ;; each way the editor opens, saves, examines, changes or lists a file is seen when it names one in the
+  ;; developer's own home, and refused before the system is asked: the name is one no file system takes (a
+  ;; directory name longer than any may be), so that nothing could be made there even were it asked
+  (let* ((home (string-right-trim "/" (first *real-home-names*)))
+         (directory (format nil "~a/~a/" home (make-string 300 :initial-element #\q)))
+         (path (concatenate 'string directory "never.txt"))
+         (elsewhere (namestring (merge-pathnames "guard-link" *test-state-directory*)))
+         (octets (tuatara.text:string-octets path))
+         (routes
+           (list (cons "visit" (lambda () (tuatara.io:visit-file path)))
+                 (cons "save" (lambda ()
+                                (let ((buffer (tuatara.buffer:make-buffer "guard-probe" :text "text")))
+                                  (unwind-protect (tuatara.io:save-buffer-file buffer :path path :force t)
+                                    (tuatara.buffer:kill-buffer buffer)))))
+                 (cons "open" (lambda () (with-open-file (in path) (read-line in))))
+                 (cons "sb-posix open" (lambda () (sb-posix:open path sb-posix:o-rdonly)))
+                 (cons "openat" (lambda () (tuatara.io::openat-octets tuatara.io::+at-fdcwd+ octets 0)))
+                 (cons "stamp" (lambda () (tuatara.io:path-stamp path)))
+                 (cons "times" (lambda () (tuatara.io::path-times path)))
+                 (cons "real path" (lambda () (tuatara.io::real-path path)))
+                 (cons "link" (lambda () (tuatara.io::symlink-target path)))
+                 (cons "file system" (lambda () (tuatara.io::statvfs-fields path 0)))
+                 (cons "mode" (lambda () (tuatara.io::set-path-mode path #o600)))
+                 (cons "attribute" (lambda () (tuatara.io::path-xattr-p path "user.probe")))
+                 (cons "watch" (lambda ()
+                                 (let ((fd (tuatara.io::inotify-open)))
+                                   (unwind-protect (tuatara.io::inotify-watch fd directory)
+                                     (sb-posix:close fd)))))
+                 (cons "hard link" (lambda () (tuatara.io::make-hard-link path elsewhere)))
+                 (cons "make directory" (lambda () (tuatara.io::make-directory directory)))
+                 (cons "remove" (lambda () (tuatara.io::remove-file path)))
+                 (cons "rename" (lambda () (sb-posix:rename path elsewhere)))
+                 (cons "unlink" (lambda () (sb-posix:unlink path)))
+                 (cons "mkdir" (lambda () (sb-posix:mkdir directory #o700)))
+                 (cons "stat" (lambda () (sb-posix:stat path)))
+                 (cons "readlink" (lambda () (sb-posix:readlink path))))))
+    (dolist (route routes)
+      (let* ((before *real-home-reached*)
+             (outcome (handler-case (progn (funcall (cdr route)) :done)
+                        (error (condition) condition)))
+             (reached (ldiff *real-home-reached* before)))
+        ;; the records are this test's own, not a failure of the run
+        (sb-thread:with-mutex (*real-home-lock*)
+          (setf *real-home-reached* (set-difference *real-home-reached* reached)))
+        ;; the file's own name, or the directory it is in, which is opened first
+        (true (find-if (lambda (record) (uiop:string-prefix-p home (second record))) reached)
+              "the guard did not see ~a" (car route))
+        ;; refused as the system refuses one who may not look (EACCES), never the system's own answer
+        (false (and (typep outcome 'sb-posix:syscall-error)
+                    (eql (sb-posix:syscall-errno outcome) sb-posix:enametoolong))
+               "~a reached the system" (car route))))
+    (false (probe-file elsewhere))))
+
+(define-test (tools fences-load-again)
+  ;; loaded again in the same Lisp, as from a session, the fence loads, and each call is watched once
+  (load (asdf:system-relative-pathname :tuatara "test/fences.lisp"))
+  (let* ((path (format nil "~a/~a"
+                       (string-right-trim "/" (first *real-home-names*)) (make-string 300 :initial-element #\q)))
+         (before *real-home-reached*)
+         (outcome (handler-case (sb-posix:stat path) (sb-posix:syscall-error (condition) condition)))
+         (reached (ldiff *real-home-reached* before)))
+    (sb-thread:with-mutex (*real-home-lock*)
+      (setf *real-home-reached* (set-difference *real-home-reached* reached)))
+    (is = 1 (length reached))
+    (is eql sb-posix:eacces (sb-posix:syscall-errno outcome))))
+
+(define-test (tools fences-say-quicklisp-is-missing)
+  ;; in a Lisp without Quicklisp the fence stops at once, saying what is missing
+  (let ((setup (sb-posix:getenv "QUICKLISP_SETUP"))
+        (home *quicklisp-home*))
+    (unwind-protect
+         (progn
+           (sb-posix:unsetenv "QUICKLISP_SETUP")
+           (makunbound '*quicklisp-home*)
+           (let ((refusal (progv (list (find-symbol "*QUICKLISP-HOME*" "QL")) '()
+                            (handler-case (progn (load (asdf:system-relative-pathname :tuatara "test/fences.lisp")) nil)
+                              (error (condition) condition)))))
+             (true (typep refusal 'simple-error))
+             (true (search "need Quicklisp" (princ-to-string refusal)))))
+      (setf *quicklisp-home* home)
+      (sb-posix:setenv "QUICKLISP_SETUP" setup 1))))
+
 (define-test (tools tests-homes-are-their-own)
   ;; however the tests are run, the homes of settings, caches, data and state, and what the editor
   ;; keeps in them, are in the tests' own directories, never the developer's

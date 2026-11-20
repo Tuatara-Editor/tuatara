@@ -2037,3 +2037,104 @@ TUATARA: what a job of its own would take from a buffer before it starts.")
            (tuatara.command::key-hint-parts editor)
            (is = 1 made "the key hints made ~d times" made))
       (sb-int:unencapsulate 'tuatara.command::prefix-entries 'counting))))
+
+(defmacro with-test-commands ((&rest names) &body body)
+  "Run BODY, then make the symbols NAMES no longer commands."
+  `(unwind-protect (progn ,@body)
+     (dolist (name ',names)
+       (tuatara.command:forget-command name)
+       (remprop name 'tuatara.command::alias-of))))
+
+(defun alias-test-ran-count ()
+  "How many times the test command ALIAS-TEST-TARGET has run."
+  (get 'alias-test-target 'ran))
+
+(define-test (command command-alias-runs-and-is-offered)
+  ;; an alias runs its command quietly, M-x offers it, and its help says what it is
+  (with-test-commands (alias-test-target alias-test-name)
+    (setf (get 'alias-test-target 'ran) 0)
+    (tuatara.command:define-command alias-test-target () "Counts its runs."
+      (incf (get 'alias-test-target 'ran)))
+    (is eq 'alias-test-name (tuatara.command:define-command-alias 'alias-test-name 'alias-test-target))
+    (multiple-value-bind (f editor) (run-keys "M-x a l i a s - t e s t - n a m e RET" :text "" :width 80)
+      (declare (ignore editor))
+      (is = 1 (alias-test-ran-count))
+      (false (tuatara.frontend.fake:fake-frame-showing f "is now")))
+    (multiple-value-bind (f editor) (run-keys "" :text "")
+      (declare (ignore f))
+      (let ((tuatara.command:*editor* editor))
+        (true (find 'alias-test-name (tuatara.defaults::command-candidates)
+                    :key #'tuatara.command:candidate-result))))
+    (let ((help (documentation 'alias-test-name 'function)))
+      (true (search "Another name for alias-test-target" help))
+      (false (search "Obsolete" help)))
+    (multiple-value-bind (f editor)
+        (run-keys "C-h f a l i a s - t e s t - n a m e RET" :text "" :width 80 :height 20)
+      (declare (ignore editor))
+      (true (tuatara.frontend.fake:fake-frame-showing f "Another name for alias-test-target")))))
+
+(define-test (command command-alias-names-from-another-package)
+  ;; an init file reads its symbols in a package of its own: an alias naming a command or a
+  ;; key-only command by a symbol from there still runs it and stays key-only
+  (let ((elsewhere (make-package (symbol-name (gensym "ALIAS-ELSEWHERE")) :use '())))
+    (unwind-protect
+         (with-test-commands (alias-test-target alias-test-name alias-test-keys alias-test-keys-name)
+           (setf (get 'alias-test-target 'ran) 0)
+           (tuatara.command:define-command alias-test-target () "Counts its runs."
+             (incf (get 'alias-test-target 'ran)))
+           (eval '(tuatara.command:define-command alias-test-keys (:interactive nil) "For a key." nil))
+           (tuatara.command:define-command-alias 'alias-test-name (intern "ALIAS-TEST-TARGET" elsewhere))
+           (tuatara.command:define-command-alias 'alias-test-keys-name (intern "ALIAS-TEST-KEYS" elsewhere))
+           (run-keys "M-x a l i a s - t e s t - n a m e RET" :text "" :width 80)
+           (is = 1 (alias-test-ran-count))
+           (true (tuatara.command:key-only-command-p 'alias-test-keys-name)))
+      (delete-package elsewhere))))
+
+(define-test (command command-alias-obsolete-says-so-once)
+  ;; an obsolete alias says which name to use the first time it runs in a session only
+  (with-test-commands (alias-test-target alias-test-old)
+    (setf (get 'alias-test-target 'ran) 0)
+    (tuatara.command:define-command alias-test-target () "Counts its runs."
+      (incf (get 'alias-test-target 'ran)))
+    (tuatara.command:define-command-alias 'alias-test-old 'alias-test-target :obsolete "1.0")
+    (let ((help (documentation 'alias-test-old 'function))
+          (said '()))
+      (true (search "Obsolete" help))
+      (true (search "until Tuatara 1.0" help))
+      (sb-int:encapsulate 'tuatara.command:message 'collected
+                          (lambda (function control &rest arguments)
+                            (declare (ignore function))
+                            (push (apply #'format nil control arguments) said)))
+      (unwind-protect (dotimes (i 3) (funcall (tuatara.command:find-command 'alias-test-old)))
+        (sb-int:unencapsulate 'tuatara.command:message 'collected))
+      (is = 3 (alias-test-ran-count))
+      (is equal '("alias-test-old is now alias-test-target; use that name") said))))
+
+(define-test (command command-alias-of-later-command)
+  ;; an alias made before its command exists runs the command once it does
+  (with-test-commands (alias-test-target alias-test-early)
+    (tuatara.command:forget-command 'alias-test-target)
+    (setf (get 'alias-test-target 'ran) 0)
+    (tuatara.command:define-command-alias 'alias-test-early 'alias-test-target)
+    (multiple-value-bind (f editor) (run-keys "M-x a l i a s - t e s t - e a r l y RET" :text "" :width 80)
+      (declare (ignore editor))
+      (is = 0 (alias-test-ran-count))
+      (true (tuatara.frontend.fake:fake-frame-showing f "which is not a command")))
+    (tuatara.command:install-command 'alias-test-target
+                                     (lambda () (incf (get 'alias-test-target 'ran))))
+    (run-keys "M-x a l i a s - t e s t - e a r l y RET" :text "" :width 80)
+    (is = 1 (alias-test-ran-count))))
+
+(define-test (command command-alias-of-key-only-stays-key-only)
+  ;; an alias of a command made for keys alone is not offered by M-x either
+  (with-test-commands (alias-test-keys alias-test-keys-name)
+    (eval '(tuatara.command:define-command alias-test-keys (:interactive nil) "For a key." nil))
+    (tuatara.command:define-command-alias 'alias-test-keys-name 'alias-test-keys)
+    (true (tuatara.command:key-only-command-p 'alias-test-keys-name))
+    (multiple-value-bind (f editor) (run-keys "" :text "")
+      (declare (ignore f))
+      (let ((tuatara.command:*editor* editor))
+        (false (find 'alias-test-keys-name (tuatara.defaults::command-candidates)
+                     :key #'tuatara.command:candidate-result))
+        (true (find 'alias-test-keys-name (tuatara.defaults::command-candidates :everywhere t)
+                    :key #'tuatara.command:candidate-result))))))

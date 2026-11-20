@@ -523,8 +523,10 @@ log keeps it: - State \"DONE\" from \"TODO\" [2026-10-01 Thu 18:00]."
 (defun org-view-colours (buffer view first last style-level)
   "The colours of the Org text of BUFFER from octet FIRST below LAST, within
 the part VIEW (an ORG-VIEW) knows, in the style STYLE-LEVEL (NIL rich, else
-the sparse style's level): (START END FACE) in octets, in order, code in its
-language's colours after them when the parse is of the text as it is now."
+the sparse style's level): a list of lists of (START END FACE) in octets, in
+order, code in its language's colours as a list after them when the parse is
+of the text as it is now. The code's list is the one kept for the next paint:
+it is not copied, so nothing may change it."
   (let* ((rope (tuatara.buffer:buffer-text buffer))
          (text (org-view-text view))
          (from (max first (org-view-from view)))
@@ -541,10 +543,8 @@ language's colours after them when the parse is of the text as it is now."
     (org-fontify (org-view-tree view))
     (let ((ranges (nreverse *org-ranges*)))
       (if (and *org-src-blocks* (not (eql style-level 0)) (org-view-current view))
-          ;; the cached list is copied: the caller joins these lists destructively, and a cache entry
-          ;; linked into the next view's colours turns into a loop when it is given again
-          (nconc ranges (copy-list (org-src-cached-highlights buffer rope from to)))
-          ranges))))
+          (list ranges (org-src-cached-highlights buffer rope from to))
+          (list ranges)))))
 
 (defmethod mode-syntax-highlights ((mode org-mode) buffer rows)
   "The colours of the Org text of BUFFER in ROWS, the rows shown, from the
@@ -554,10 +554,10 @@ parses of the parts of it they show (ORG-VIEWS)."
                        (case style (:rich nil) (:none 0) (t level)))))
     (when (and (plusp (length rows)) (tuatara.text:rope-indexed-p rope))
       ;; only the text the rows show: what a fold or a search filter hides between them is not looked at
-      (list (loop with bytes = (tuatara.text:rope-octet-length rope)
-                  for (first . last) in (tuatara.display:shown-ranges rows :buffer buffer)
-                  nconc (loop for view in (org-views buffer first (min last bytes))
-                              nconc (org-view-colours buffer view first last style-level)))))))
+      (loop with bytes = (tuatara.text:rope-octet-length rope)
+            for (first . last) in (tuatara.display:shown-ranges rows :buffer buffer)
+            append (loop for view in (org-views buffer first (min last bytes))
+                         append (org-view-colours buffer view first last style-level))))))
 
 (defun org-src-cached-highlights (buffer rope first last)
   "ORG-SRC-HIGHLIGHTS for *ORG-SRC-BLOCKS* of BUFFER from octet FIRST below

@@ -422,7 +422,9 @@ Adwaita Mono 11 on ao-dark."
   "Run SCRIPT, a file of test/gtk/, with sbcl --script and ARGUMENTS, strings
 and :OUT for the file it writes what it found to, on a broadway display of its
 own, its state in DIR, and what it wrote there, read as data; NIL when it
-wrote nothing."
+wrote nothing. The script's session has the standard settings, under which
+files in a temporary directory are untrusted: DIR is made in the tests' cache
+\(WITH-TEST-DIRECTORY's IN-CACHE)."
   (let* ((display (+ 40 (random 40)))
          (out (merge-pathnames "drawn" dir))
          (server (sb-ext:run-program (tuatara.io:find-program "gtk4-broadwayd")
@@ -498,7 +500,7 @@ windows side by side, \"floated\" for an Org note's two pictures."
   ;; pixels
   (if (null (tuatara.io:find-program "gtk4-broadwayd"))
       (skip "gtk4-broadwayd is not installed here" (true nil))
-      (with-test-directory (dir)
+      (with-test-directory (dir :in-cache t)
         (let ((sample (merge-pathnames "sample.csv" dir)))
           (with-open-file (o sample :direction :output :if-exists :supersede)
             (dotimes (i 200) (format o "2026-01-01T00:00:00Z,~d,The quick brown fox jumps over the lazy dog.,abc~d~%" (+ 1700000000 i) i)))
@@ -550,7 +552,7 @@ windows side by side, \"floated\" for an Org note's two pictures."
   ;; beginning right below the red one, at the same left edge
   (if (null (tuatara.io:find-program "gtk4-broadwayd"))
       (skip "gtk4-broadwayd is not installed here" (true nil))
-      (with-test-directory (dir)
+      (with-test-directory (dir :in-cache t)
         (uiop:run-program (list "magick" "-size" "200x100" "xc:#ff0000" (namestring (merge-pathnames "red.png" dir))))
         (uiop:run-program (list "magick" "-size" "300x100" "xc:#0000ff" (namestring (merge-pathnames "blue.png" dir))))
         (let* ((note (put-file (merge-pathnames "note.org" dir)
@@ -581,7 +583,7 @@ windows side by side, \"floated\" for an Org note's two pictures."
   ;; and the window given the keyboard is the frame worked in
   (if (null (tuatara.io:find-program "gtk4-broadwayd"))
       (skip "gtk4-broadwayd is not installed here" (true nil))
-      (with-test-directory (dir)
+      (with-test-directory (dir :in-cache t)
         (let* ((a (put-file (merge-pathnames "a.txt" dir) (format nil "alpha~%")))
                (b (put-file (merge-pathnames "b.txt" dir) (format nil "beta~%")))
                (seen (run-on-broadway dir "two-windows.lisp" (namestring a) (namestring b) :out)))
@@ -601,7 +603,7 @@ windows side by side, \"floated\" for an Org note's two pictures."
   ;; with no font named, the window follows the desktop's monospace font as it changes, nothing typed after
   (if (null (tuatara.io:find-program "gtk4-broadwayd"))
       (skip "gtk4-broadwayd is not installed here" (true nil))
-      (with-test-directory (dir)
+      (with-test-directory (dir :in-cache t)
         (let* ((file (put-file (merge-pathnames "a.txt" dir) (format nil "alpha~%")))
                (seen (run-on-broadway dir "desktop-font.lisp" (namestring file) :out)))
           (true seen "the window wrote nothing")

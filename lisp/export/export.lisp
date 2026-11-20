@@ -391,7 +391,7 @@ whole (TUATARA.IO:SHOWN-PLACE-P), which a setting may name."
          (key (list path (tuatara.io:own-variable "HOME")))
          (found (or (gethash key *tex-trees*)
                     (multiple-value-bind (said kept) (tex-settings-said path)
-                      (let* ((lines (and said (org-text-lines said)))
+                      (let* ((lines (and said (text-lines said)))
                              (found (if (= (length lines) (length *tex-tree-variables*))
                                         (list (loop for line in (butlast lines) append (tex-tree-paths line))
                                               (first (tex-tree-paths (car (last lines)))))
@@ -847,7 +847,7 @@ asked: no kpsewhich, no sandbox, or it failed."
                                     :environment (latex-sandbox-environment kpsewhich tex))
             (values nil (if names :unavailable :done)))
       (if (eq outcome :done)
-          (let ((found (and output (org-text-lines (tuatara.text:lenient-string output)))))
+          (let ((found (and output (text-lines (tuatara.text:lenient-string output)))))
             (mapcar (lambda (name)
                       (cons name (find (tuatara.io:native-file-name name) found
                                        :key #'tuatara.io:native-file-name :test #'string=)))
@@ -883,7 +883,7 @@ the program is run: the sums then say nothing of whether it has anything new."
 \(\\@input, one for each file \\include takes in), as one text."
   (with-output-to-string (out)
     (labels ((read-aux (path depth)
-               (dolist (line (org-text-lines (or (export-file-text path :build t) "")))
+               (dolist (line (text-lines (or (export-file-text path :build t) "")))
                  (cond ((some (lambda (start) (uiop:string-prefix-p start line))
                               '("\\citation{" "\\bibdata{" "\\bibstyle{"))
                         (write-line line out))
@@ -990,7 +990,7 @@ LaTeX file, from which a name is taken) or DIRECTORIES."
   "What RECORD, the file kept beside a PDF's working directory, says each program
 making its bibliography or index last read when it went well, an alist of
 \(NAME . SUM)."
-  (loop for line in (org-text-lines (or (export-file-text record) ""))
+  (loop for line in (text-lines (or (export-file-text record) ""))
         for at = (position #\Space line)
         when at collect (cons (subseq line 0 at) (subseq line (1+ at)))))
 

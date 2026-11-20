@@ -78,5 +78,5 @@ batches, versions and anchors.")
    #:*openers* #:*closers* #:*opening-octets* #:*closing-octets* #:*bracket-octets* #:rope-invalid
    ;; octets and lines of plain strings
    #:octets-latin-1 #:word-char-p #:letter-or-mark-p #:name-char-p #:charset-text #:octets-hex #:*hex-pairs*
-   #:string-line-start
+   #:string-line-start #:ends-with-newline-p #:ensure-final-newline #:text-lines
    #:string-line-end #:one-line #:natural-string-lessp))

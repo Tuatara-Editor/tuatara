@@ -1849,8 +1849,8 @@ extra field of the AE-x kind (ID #x9901) saying strength 3."
   (with-operations-tree (dir)
     (is equal (list (cons (tuatara.io:home-trash) nil)) (tuatara.defaults::trash-directories))
     (true (search (namestring dir) (tuatara.io:home-trash))))
-  ;; and the runner's own: a data home of the tests', no drive mounted
-  (false (search "/.local/share/" (tuatara.io:home-trash)))
+  ;; and the runner's own: in the tests' made-up home, no drive mounted
+  (true (uiop:subpathp (pathname (tuatara.io:home-trash)) *test-home-directory*))
   (is equal (list (cons (tuatara.io:home-trash) nil)) (tuatara.defaults::trash-directories)))
 
 (define-test (rimu-operations trash-list)
@@ -2343,3 +2343,49 @@ extra field of the AE-x kind (ID #x9901) saying strength 3."
                  (true (< large (* 2.5 (max small 1/1000000))) "each file: ~,2e s of 4000, ~,2e s of 16000"
                        small large)))
           (loop for (name) in faked do (sb-int:unencapsulate name 'names-there)))))))
+
+(define-test (rimu-operations made-from-untrusted-stays-untrusted)
+  ;; what is unpacked, copied or moved out of an untrusted directory into one of your own stays untrusted, and so
+  ;; does a project made of it, whose git, language servers and builds then run nothing until trusted; a copy of a
+  ;; trusted file stays trusted
+  (with-operations-tree (dir)
+    (let* ((downloads (ensure-directories-exist (here dir "downloads/")))
+           (tuatara-user:*untrusted-directories* (list (namestring downloads))))
+      (flet ((work (verb from to)
+               (tuatara.defaults::rimu-work verb (cons (namestring from) (namestring to)) (list nil)))
+             (untrusted (path) (tuatara.defaults::untrusted-path-p (namestring path)))
+             (trusted-project (path) (tuatara.defaults::project-trusted-p (namestring path))))
+        (ensure-directories-exist (here downloads "repo/.git/"))
+        (alexandria:write-string-into-file (format nil "[filter \"x\"]~%  clean = touch ran~%")
+                                           (here downloads "repo/.git/config"))
+        (alexandria:write-string-into-file (format nil "* filter=x~%") (here downloads "repo/.gitattributes"))
+        (is string= "" (bsdtar-make (here downloads "repo.zip") "zip" "-C" (namestring downloads) "repo"))
+        (is string= "" (bsdtar-make (here downloads "loose.zip") "zip" "-C" (namestring (here downloads "repo/"))
+                                    ".gitattributes" ".git"))
+        ;; a repository unpacked whole into a directory of your own
+        (work :extract (here downloads "repo.zip") (ensure-directories-exist (here dir "work/")))
+        (true (untrusted (here dir "work/repo/.gitattributes")))
+        (true (untrusted (here dir "work/repo/.git/config")))
+        (false (trusted-project (here dir "work/repo/")))
+        ;; unpacked piece by piece into a directory there already: what was there stays trusted, the project not
+        (ensure-directories-exist (here dir "mine/"))
+        (alexandria:write-string-into-file "own" (here dir "mine/own.txt"))
+        (work :extract (here downloads "loose.zip") (here dir "mine/"))
+        (false (untrusted (here dir "mine/own.txt")))
+        (true (untrusted (here dir "mine/.gitattributes")))
+        (false (trusted-project (here dir "mine/")))
+        ;; unpacked into a directory made for it
+        (work :extract (here downloads "loose.zip") (here dir "made/"))
+        (false (trusted-project (here dir "made/")))
+        ;; copied and moved out of it
+        (work :copy (here downloads "repo") (here dir "copied"))
+        (true (untrusted (here dir "copied/.gitattributes")))
+        (false (trusted-project (here dir "copied/")))
+        (alexandria:write-string-into-file "words" (here downloads "note.txt"))
+        (work :move (here downloads "note.txt") (here dir "note.txt"))
+        (true (untrusted (here dir "note.txt")))
+        ;; a copy of what is trusted stays trusted
+        (ensure-directories-exist (here dir "plain/"))
+        (work :copy (here dir "sub") (here dir "plain/sub"))
+        (false (untrusted (here dir "plain/sub/c.txt")))
+        (true (trusted-project (here dir "plain/sub/")))))))

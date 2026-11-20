@@ -39,13 +39,15 @@ them is none.")
   "The parts of the document being read directly in DIRECTORY (xl/worksheets/,
 ppt/slides/), XML ones, that are not among LISTED, the names of those its own
 list names: parts its program never shows, sorted."
-  (sort (loop for entry in (docx-reading-entries *docx-reading*)
-              for name = (getf entry :name)
-              when (and (uiop:string-prefix-p directory name) (uiop:string-suffix-p name ".xml")
-                        (not (find #\/ name :start (length directory)))
-                        (not (member name listed :test #'string-equal)))
-              collect name)
-        #'string<))
+  (let ((named (make-hash-table :test 'equalp)))
+    (dolist (name listed) (setf (gethash name named) t))
+    (sort (loop for entry in (docx-reading-entries *docx-reading*)
+                for name = (getf entry :name)
+                when (and (uiop:string-prefix-p directory name) (uiop:string-suffix-p name ".xml")
+                          (not (find #\/ name :start (length directory)))
+                          (not (gethash name named)))
+                collect name)
+          #'string<)))
 
 ;;; Excel workbooks
 
@@ -378,6 +380,7 @@ its car turns true. Signals ZIP-ERROR or an error when it cannot be read."
                                      (part (docx-relation-target relations (xml-attribute sheet "r:id")))
                                      (type (if related (getf related :type) ""))
                                      (state (xml-attribute sheet "state")))
+                                (office-spend 80)
                                 (when part (push part listed))
                                 (cond ((equal state "hidden") (incf hidden))
                                       ((equal state "veryHidden") (incf very-hidden)))

@@ -9,7 +9,6 @@
 (:FUNCTION "lisp/help/health.lisp" "write-health-report" 142)
 (:FUNCTION "lisp/modes/lisp-indent.lisp" "advance-scan" 121)
 (:FUNCTION "lisp/modes/lisp.lisp" "run-evaluation" 89)
-(:FUNCTION "lisp/org/dblock.lisp" "clocktable-lines" 100)
 (:FUNCTION "lisp/org/docx-import.lisp" "docx-import" 87)
 (:FUNCTION "lisp/org/formatted-blocks.lisp" "org-regexp-to-ppcre" 98)
 (:FUNCTION "lisp/org/parts.lisp" "org-assemble" 97)

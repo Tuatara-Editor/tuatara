@@ -149,22 +149,6 @@ structure."
            (declare (ignorable ,buffer ,tree ,text ,position))
            ,@body))))
 
-(defun org-ends-with-newline-p (string)
-  "True when STRING ends with a newline."
-  (and (plusp (length string)) (char= (char string (1- (length string))) #\Newline)))
-
-(defun org-ensure-newline (string)
-  "STRING ending with a newline."
-  (if (org-ends-with-newline-p string)
-      string
-      (concatenate 'string string (string #\Newline))))
-
-(defun org-text-lines (text)
-  "The lines of TEXT, the newline it ends with not making one more; none for an empty TEXT."
-  (and (plusp (length text))
-       (uiop:split-string (if (org-ends-with-newline-p text) (subseq text 0 (1- (length text))) text)
-                          :separator '(#\Newline))))
-
 (defun org-entry-from-lines (headline lines final-newline)
   "The entry made of HEADLINE, its headline's line, and LINES under it, ending
 with a newline when FINAL-NEWLINE is true."
@@ -192,7 +176,7 @@ point going with it, each kept folded when it was."
                        (first-text (subseq text from (org-node-end first)))
                        (second-text (subseq text (org-node-begin second) to))
                        (ended (and (plusp to) (char= (char text (1- to)) #\Newline)))
-                       (moved (concatenate 'string (org-ensure-newline second-text) (org-ensure-newline first-text)))
+                       (moved (concatenate 'string (ensure-final-newline second-text) (ensure-final-newline first-text)))
                        (moved (if ended moved (subseq moved 0 (1- (length moved)))))
                        ;; folded before: folded after, where each went
                        (first-folded (let ((r (org-fold-range first text))) (and r (org-folded-p parse r))))
@@ -200,7 +184,7 @@ point going with it, each kept folded when it was."
                        (offset (- position (org-node-begin headline)))
                        ;; after the move, SECOND stands at FROM and FIRST after it
                        (second-at from)
-                       (first-at (+ from (length (org-ensure-newline second-text))))
+                       (first-at (+ from (length (ensure-final-newline second-text))))
                        (new-begin (if (eq direction :down) first-at second-at)))
                   (org-replace-chars parse from to moved :point (+ new-begin offset))
                   (when (or first-folded second-folded)
@@ -482,7 +466,7 @@ entry (ORG-BOXES-TICKED)."
     (if (plusp all)
         (list finished all t)
         (let ((line-end (string-line-end text (org-node-begin headline))))
-          (append (multiple-value-list (org-boxes-ticked (org-text-lines (subseq text line-end
+          (append (multiple-value-list (org-boxes-ticked (text-lines (subseq text line-end
                                                                                  (org-entry-end headline text)))))
                   (list nil))))))
 
@@ -551,9 +535,9 @@ not done: noted as such \(ORG-OCCURRENCE-NOTE), whatever *ORG-LOG-REPEAT* says."
          (rule (org-rule-timestamp-in body 0 (length body)))
          (done-for (and rule (org-rule-done-text rule (org-headline-property headline "LAST_REPEAT") now cancelled)))
          (subtree (subseq text end subtree-end)))
-    (multiple-value-bind (lines boxes-cleared) (org-boxes-cleared (org-text-lines moved))
+    (multiple-value-bind (lines boxes-cleared) (org-boxes-cleared (text-lines moved))
       (multiple-value-bind (reopened-lines reopened)
-          (org-subtasks-reopened (org-text-lines subtree) (cdr keywords) first-todo)
+          (org-subtasks-reopened (text-lines subtree) (cdr keywords) first-todo)
         (let* ((headline-text (if (if (third counts) (plusp reopened) boxes-cleared)
                                   (org-cookies-nought headline-text)
                                   headline-text))
@@ -561,12 +545,12 @@ not done: noted as such \(ORG-OCCURRENCE-NOTE), whatever *ORG-LOG-REPEAT* says."
                             (*org-log-repeat* (org-entry-lines-with lines "LAST_REPEAT" (org-timestamp-text now)))
                             (t lines)))
                (new (org-entry-from-lines headline-text lines
-                                          (or (org-ends-with-newline-p moved)
+                                          (or (ends-with-newline-p moved)
                                               (and (null lines) (< entry-line-end (length entry)))))))
           (when (plusp reopened)
-            (setf new (concatenate 'string (org-ensure-newline new)
+            (setf new (concatenate 'string (ensure-final-newline new)
                                    (format nil "~{~a~^~%~}~:[~;~%~]"
-                                           reopened-lines (org-ends-with-newline-p subtree)))))
+                                           reopened-lines (ends-with-newline-p subtree)))))
           (org-replace-chars parse begin (if (plusp reopened) subtree-end end) new
                              :point (if (<= position line-end) (min position (+ begin (length headline-text))) begin))
           (org-repeat-message rule done-for cancelled cancelling-time first-todo boxes-cleared reopened))))))

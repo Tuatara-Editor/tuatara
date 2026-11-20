@@ -183,29 +183,34 @@ DOWNLOADS, the directory downloads/ in DIR, the download directory
 (define-test (external untrusted-by-the-standard-places)
   ;; the cache's copies of outside files, removable media, the temporary directories and files marked
   ;; as downloaded are untrusted; a file of your own is not
+  ;; (yours outside the temporary directories, as a home is; the cache in the tests' home, as the path to
+  ;; its copy is typed)
   (with-untrusted-places (dir record downloads)
-    (let ((tuatara-user:*untrusted-directories* (tuatara.runtime:setting-standard-value
-                                                 'tuatara-user:*untrusted-directories*))
-          (copy (tuatara.io:path-join (tuatara.defaults::opened-copies-directory) "tuatara-test-copy/sheet.xlsm"))
-          (mine (merge-pathnames "mine.txt" dir)))
-      (put-file mine "words")
-      (ensure-directories-exist (sb-ext:parse-native-namestring copy))
-      (put-file (sb-ext:parse-native-namestring copy) "macros")
-      (unwind-protect
-           (progn
-             (true (tuatara.defaults::untrusted-path-p copy))
-             (true (tuatara.defaults::untrusted-path-p "/tmp/tuatara-test-nowhere/x.txt"))
-             (true (tuatara.defaults::untrusted-path-p "/var/tmp/x.txt"))
-             (true (tuatara.defaults::untrusted-path-p "/run/media/someone/STICK/repo/a.rs"))
-             (true (tuatara.defaults::untrusted-path-p "/mnt/image/a.rs"))
-             (false (tuatara.defaults::untrusted-path-p (namestring mine)))
-             (mark-downloaded mine)
-             (true (tuatara.defaults::untrusted-path-p (namestring mine)))
-             ;; a copy in the cache asked about, not opened in place
-             (let ((f (rimu-session (tuatara.io:parent-path copy) "g f s h e e t . x l s m RET O n RET" :width 240)))
-               (true (tuatara.frontend.fake:fake-frame-showing f "(n or e, then RET)"))
-               (false (probe-file record))))
-        (tuatara.io:delete-tree (tuatara.io:parent-path copy))))))
+    (with-test-directory (own :in-cache t)
+      (let* ((tuatara-user:*untrusted-directories* (tuatara.runtime:setting-standard-value
+                                                    'tuatara-user:*untrusted-directories*))
+             (tuatara-user:*cache-directory* (namestring (ensure-directories-exist (merge-pathnames "cache/" dir))))
+             (copy (tuatara.io:path-join (tuatara.defaults::opened-copies-directory) "tuatara-test-copy/sheet.xlsm"))
+             (mine (merge-pathnames "mine.txt" own)))
+        (put-file mine "words")
+        (ensure-directories-exist (sb-ext:parse-native-namestring copy))
+        (put-file (sb-ext:parse-native-namestring copy) "macros")
+        (unwind-protect
+             (progn
+               (let ((tuatara-user:*untrusted-directories* '()))
+                 (true (tuatara.defaults::untrusted-path-p copy)))
+               (true (tuatara.defaults::untrusted-path-p "/tmp/tuatara-test-nowhere/x.txt"))
+               (true (tuatara.defaults::untrusted-path-p "/var/tmp/x.txt"))
+               (true (tuatara.defaults::untrusted-path-p "/run/media/someone/STICK/repo/a.rs"))
+               (true (tuatara.defaults::untrusted-path-p "/mnt/image/a.rs"))
+               (false (tuatara.defaults::untrusted-path-p (namestring mine)))
+               (mark-downloaded mine)
+               (true (tuatara.defaults::untrusted-path-p (namestring mine)))
+               ;; a copy in the cache asked about, not opened in place
+               (let ((f (rimu-session (tuatara.io:parent-path copy) "g f s h e e t . x l s m RET O n RET" :width 240)))
+                 (true (tuatara.frontend.fake:fake-frame-showing f "(n or e, then RET)"))
+                 (false (probe-file record))))
+          (tuatara.io:delete-tree (tuatara.io:parent-path copy)))))))
 
 (define-test (external evidence-executed-as-a-copy)
   ;; e on evidence opens a private copy whatever its kind, never the file beside the evidence
@@ -448,7 +453,7 @@ those that read in the sandbox too when SANDBOXED."
       (multiple-value-bind (b f) (visited-buffer file)
         (true (tuatara.io:safe-visit-p b))
         (true (tuatara.frontend.fake:fake-frame-showing
-               f "notes.txt opened safely: a web browser marked it as downloaded (user.xdg.origin.url)"))
+               f "notes.txt opened safely: it is marked as come from outside (user.xdg.origin.url)"))
         (tuatara.buffer:kill-buffer b)))))
 
 (define-test (external programs-asked-wherever)

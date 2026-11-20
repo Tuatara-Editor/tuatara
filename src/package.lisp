@@ -165,3 +165,9 @@ available unqualified, and the public API of TUATARA is used.")
            #:*untrusted-directories* #:*open-binary-files-safely* #:*evidence-directories*
            ;; files on another machine
            #:*remote-seconds* #:*remote-preview-size-limit* #:*client-kept-without-buffers*))
+
+;; the system calls that take a file's name are called, not copied into each caller, so that what watches them
+;; (test/fences.lisp) sees every one: a call costs nothing beside the system's own work
+(declaim (notinline sb-posix:open sb-posix:creat sb-posix:opendir sb-posix:access sb-posix:chdir sb-posix:unlink
+                    sb-posix:rmdir sb-posix:mkdir sb-posix:mkfifo sb-posix:rename sb-posix:link sb-posix:symlink
+                    sb-posix:chmod sb-posix:chown sb-posix:lchown sb-posix:truncate))

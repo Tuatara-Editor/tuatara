@@ -41,12 +41,25 @@ found where they are on the machine at hand:
 
 Two more kinds of file are untrusted wherever they are. The copies of outside
 files Tuatara keeps in its cache (those it hands to the desktop's programs,
-those read from other machines, those given to programs shut in) are untrusted.
-So is a file a web browser marked as downloaded: Firefox and Chromium give what
-they download the extended attribute =user.xdg.origin.url=, which stays with
-the file when you move it on the same drive. Tuatara reads it without changing
-the file's times. To trust such a file, take the mark away with
-=setfattr -x user.xdg.origin.url FILE=, or copy the file: a copy has no mark.
+those read from other machines, those given to programs shut in, and what a
+package writes there, such as the messages of a mailbox) are untrusted. So is
+a file marked as come from outside, or in a directory so marked. Firefox and
+Chromium give what they download the extended attribute =user.xdg.origin.url=,
+which stays with the file when you move it on the same drive. Tuatara gives it
+to what it makes from an untrusted file: what rimu copies, moves or hard-links
+out of your downloads, what it unpacks from an archive there, what it copies
+from another machine not on your list of trusted servers, and the directory a
+package's program shut in writes in. So an archive downloaded and unpacked
+into =~/Work/= stays untrusted, and so does a project made of it or holding it
+at its top: its git, language servers and builds run nothing until you trust
+it. Where the drive keeps no extended attributes, and for a hard link to
+evidence or evidence moved out, on which nothing is ever written, Tuatara
+remembers such a file in the list =from-outside= in its state directory
+instead, every one kept until you take its line out. Tuatara reads the mark
+without changing the file's times. To trust such a file, take the mark away
+with =setfattr -x user.xdg.origin.url FILE= (or from the directory holding
+it), or copy it with a program other than Tuatara that leaves the mark
+behind.
 
 Clone or download what others made into one of these directories, or add the
 directory you keep such things in:
@@ -84,8 +97,8 @@ through a language server (rust-analyzer runs =build.rs=), git's filters, its
 build commands.
 
 =nil= leaves only the evidence directories, the cache's copies and the files
-marked as downloaded untrusted. ='("/")= takes every file as untrusted, as
-these features did before this setting came: every file opens safely then, so
+marked as come from outside untrusted. ='("/")= takes every file as untrusted,
+as these features did before this setting came: every file opens safely then, so
 keep that for a machine used for nothing else.
 
 Three settings of earlier releases are gone: =*safe-directories*=,
@@ -130,7 +143,7 @@ There are four ways to open a file safely.
   named on the line that way. A file piped in with ~ls | tuatara -~ is a safe
   buffer too.
 - An untrusted file (the section before: your downloads, removable drives and
-  the temporary directories as standard, files a browser marked as downloaded,
+  the temporary directories as standard, files marked as come from outside,
   and evidence) always opens safely, however you open it. The echo area says
   why. One shown by a view read in the sandbox, such as a PDF's pages or a
   mailbox's list, is the exception: it is shown so, unless it is evidence.

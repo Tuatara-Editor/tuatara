@@ -241,6 +241,9 @@ DIRECTORY, however deep, once it has ended and every symbolic link and
 anything else that is neither a plain file nor a directory is taken away
 \(TUATARA.IO:REMOVE-SPECIAL-ENTRIES), *SANDBOX-CALL-MOST-ENTRIES* entries at
 most looked through; read it within limits, as any file from outside.
+DIRECTORY is marked as come from outside before FUNCTION runs
+\(MARK-FROM-OUTSIDE), so that what is written there is untrusted
+\(UNTRUSTED-PATH-P) wherever it is.
 Four values: what FUNCTION returned, or NIL; NIL, or why it gave nothing, as
 a sentence beginning with LABEL; how it went: :DONE, :FAILED (an error, its
 words said), :MEMORY, :TIMEOUT, :CANCELLED, :FULL (the drive), :TOO-MUCH (it
@@ -260,6 +263,8 @@ loaded; a FILE-SYSTEM-ERROR when an input is neither a file nor a directory."
              (multiple-value-bind (fd path own) (sandbox-call-open-input input)
                (when own (push fd opened))
                (push (list fd path) open-inputs)))
+           ;; written by a program taking files from outside apart, whatever they are
+           (mark-from-outside directory (or (second (car (last open-inputs))) directory))
            (sandbox-call-opened place function (reverse open-inputs) directory arguments seconds memory file-limit
                                 progress cancel label))
       (dolist (fd opened) (tuatara.runtime:close-fd-quietly fd "an input read shut in")))))

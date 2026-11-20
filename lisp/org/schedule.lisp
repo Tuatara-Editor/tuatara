@@ -643,12 +643,12 @@ date that does not repeat, which would end its repeats: that is said."
                           (entry (org-entry-with-log headline text (and note (list note)) *org-log-into-drawer*))
                           (entry-line-end (or (position #\Newline entry) (length entry)))
                           (body (if (< entry-line-end (length entry)) (subseq entry (1+ entry-line-end)) ""))
-                          (lines (org-text-lines body))
+                          (lines (text-lines body))
                           (new-entry (org-entry-from-lines
                                       (subseq text begin line-end)
                                       (append (and (plusp (length planning)) (list planning))
                                               (if planning-p (rest lines) lines))
-                                      (org-ends-with-newline-p entry))))
+                                      (ends-with-newline-p entry))))
                      (org-replace-chars parse begin end new-entry
                                         :point (cond ((<= position line-end) position)
                                                      ((>= position end)

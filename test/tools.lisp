@@ -139,7 +139,7 @@ or is not installed here; what it says as a second value."
   (let* ((directory (namestring (uiop:xdg-config-home "autostart/")))
          (path (concatenate 'string directory "tuatara-daemon.desktop"))
          (named (concatenate 'string directory "tuatara-daemon-work.desktop")))
-    (true (search "/config/" directory) "the tests' own configuration directory")
+    (true (uiop:subpathp (pathname directory) *test-home-directory*) "the tests' own configuration directory")
     (unwind-protect
          (progn
            (let ((out (with-output-to-string (*standard-output*)

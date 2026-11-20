@@ -99,7 +99,8 @@ for the environment a program is started with. Packages have uiop's getenv from 
    ("lisp/packages/fetch.lisp" "moving a fetched package into its place")
    ("lisp/packages/loading.lisp" "a package's compiled files")
    ("lisp/packages/signing.lisp" "a file made to check a signature")
-   ("lisp/search/indexed.lisp" "the files of a search index"))
+   ("lisp/search/indexed.lisp" "the files of a search index")
+   ("src/package.lisp" "names the removing calls only, to have them called and not copied in"))
   "A file is renamed or removed by the file layer (src/io), and in the few other files that clean up what they made.")
 
 (defun colour-literal-p (string)

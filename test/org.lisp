@@ -364,8 +364,8 @@ seconds; the editor draws after it as it does when woken."
   (false (tuatara.defaults::org-src-language "text")))
 
 (define-test (org source-blocks-colours-joined-leave-the-cache-whole)
-  ;; the colours of views joined with NCONC (as MODE-SYNTAX-HIGHLIGHTS does) never link the kept colours of
-  ;; code into another list: given twice, the cached list stays as it was and the joins end
+  ;; the colours of views given as lists, the kept colours of code among them uncopied and never joined to
+  ;; another list: given three times, the cached list stays as it was and is the very list each time
   (let* ((buffer (org-internals-buffer (format nil "* A~%#+begin_src sh~%echo~%#+end_src~%")))
          (cached (list (list 0 1 :org-block) (list 2 3 :org-block)))
          (kept (copy-tree cached)))
@@ -377,12 +377,12 @@ seconds; the editor draws after it as it does when woken."
              (let ((joined (handler-case
                                (sb-ext:with-timeout 20
                                  (loop repeat 3
-                                       nconc (tuatara.defaults::org-view-colours
+                                       append (tuatara.defaults::org-view-colours
                                               buffer view 0 (tuatara.buffer:buffer-size buffer) nil)))
                              (sb-ext:timeout () nil))))
                (true (list-length joined))
                (is equal kept cached)
-               (is = 3 (count-if (lambda (range) (eq (first range) 2)) joined)))))
+               (is = 3 (count cached joined :test #'eq)))))
       (tuatara.buffer:kill-buffer buffer))))
 
 (define-test (org source-blocks-coloured-when-ready)

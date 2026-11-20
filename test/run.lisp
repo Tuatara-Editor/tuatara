@@ -1,8 +1,9 @@
 ;;;; test/run.lisp --- Command-line test runner: sbcl --non-interactive --load test/run.lisp
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; Exits 0 when every test passes, 1 otherwise. The tests keep away from the
-;;;; developer's own files however they are run (test/fences.lisp).
+;;;; Exits 0 when every test passes and none reached the developer's own home,
+;;;; 1 otherwise. The tests keep away from the developer's own files however
+;;;; they are run (test/fences.lisp).
 
 ;; The nursery size the saved executable uses: fewer,
 ;; cheaper collections on a machine with tens of GB of RAM.
@@ -39,5 +40,9 @@ hundred thousand checks holds no more than the tests themselves do."))
       (when (typep result 'parachute:group-result)
         (setf (parachute:body result) nil)))))
 
-(let ((report (parachute:test :tuatara.tests :report 'lean-report)))
-  (sb-ext:exit :code (if (eql (parachute:status report) :passed) 0 1)))
+(let ((report (parachute:test :tuatara.tests :report 'lean-report))
+      (reached (reverse tuatara.tests::*real-home-reached*)))
+  (when reached
+    (format t "~&~%The tests reached the developer's own home (~a times):~%~:{  ~a ~a (~(~a~))~%~}"
+            (length reached) reached))
+  (sb-ext:exit :code (if (and (eql (parachute:status report) :passed) (null reached)) 0 1)))

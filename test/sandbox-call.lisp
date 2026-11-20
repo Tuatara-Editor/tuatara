@@ -109,6 +109,9 @@ package repository's tests load theirs."
       (false (probe-file (merge-pathnames "x" elsewhere)))
       ;; what it wrote is there, the link it left taken away
       (is string= (format nil "written~%") (alexandria:read-file-into-string (merge-pathnames "out.txt" output)))
+      ;; and untrusted, wherever it is
+      (let ((tuatara-user:*untrusted-directories* '()))
+        (true (tuatara.defaults::untrusted-path-p (namestring (merge-pathnames "out.txt" output)))))
       (false (tuatara.io:path-kind (namestring (merge-pathnames "link" output)) :follow nil))
       (true (member 0 reports) "~a" reports))))
 

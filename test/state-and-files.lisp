@@ -47,6 +47,66 @@ nothing read yet."
     (tuatara.defaults::*chosen-paths* "/other/one/" "/mine/two.txt"))
   "Each list kept between sessions with an entry another session puts there and one put here.")
 
+(define-test (state-and-files from-outside-kept-where-no-mark)
+  ;; where no mark can be written (on a link, which takes no user attributes), what was made from an untrusted
+  ;; file is remembered as such, between sessions, and it and all it holds stay untrusted
+  (with-fresh-state
+    (with-test-directory (dir)
+      (let ((tuatara-user:*untrusted-directories* '())
+            (link (concatenate 'string (namestring dir) "link"))
+            (inside (namestring (merge-pathnames "made/inside.txt" dir))))
+        (ensure-directories-exist (merge-pathnames "made/" dir))
+        (alexandria:write-string-into-file "words" inside)
+        (sb-posix:symlink "made" link)
+        (false (tuatara.defaults::untrusted-path-p inside))
+        (tuatara.defaults::mark-from-outside link "/elsewhere/downloaded")
+        (true (tuatara.defaults::untrusted-path-p inside))
+        (true (member (namestring (merge-pathnames "made/" dir))
+                      (tuatara.defaults::state-list-entries tuatara.defaults::*from-outside*) :test #'string=))))))
+
+(define-test (state-and-files evidence-never-marked)
+  ;; a hard link to an evidence file, and the file moved out, by other means than Tuatara's (whose own refuse),
+  ;; keep its extended attributes and times as they were: no mark is written on evidence; they stay untrusted,
+  ;; remembered instead
+  (with-fresh-state
+    (with-case-directory (root evidence work)
+      (let ((tuatara-user:*untrusted-directories* '())
+            (a (concatenate 'string evidence "a.txt"))
+            (b (concatenate 'string evidence "b.pdf"))
+            (hard (concatenate 'string work "hard.txt"))
+            (moved (concatenate 'string work "moved.pdf")))
+        (flet ((names (path)
+                 (let ((fd (sb-posix:open path sb-posix:o-rdonly)))
+                   (unwind-protect (tuatara.io:fd-xattr-names fd) (sb-posix:close fd))))
+               (changed (path) (sb-posix:stat-ctime (sb-posix:stat path))))
+          (with-evidence-directories ((list (concatenate 'string root "cases/*/evidence/")))
+            (let ((names-a (names a)) (names-b (names b)))
+              (tuatara.defaults::keeping-untrusted (a hard) (sb-posix:link a hard))
+              (is equal names-a (names a))
+              (true (tuatara.defaults::untrusted-path-p hard))
+              ;; and marked again, its time of change kept
+              (let ((before (changed a)))
+                (sleep 1.1)
+                (tuatara.defaults::mark-from-outside hard a)
+                (is = before (changed a)))
+              (is equal names-a (names a))
+              (tuatara.defaults::keeping-untrusted (b moved) (sb-posix:rename b moved))
+              (is equal names-b (names moved))
+              (true (tuatara.defaults::untrusted-path-p moved)))))))))
+
+(define-test (state-and-files from-outside-never-forgotten)
+  ;; however many places could not be marked, none is dropped from the list and made trusted again
+  (with-fresh-state
+    (with-test-directory (dir)
+      (let ((tuatara-user:*untrusted-directories* '())
+            (first (namestring (merge-pathnames "first/x.txt" dir))))
+        (tuatara.defaults::state-list-put tuatara.defaults::*from-outside*
+                                          (list (namestring (merge-pathnames "first/" dir))))
+        (tuatara.defaults::state-list-put tuatara.defaults::*from-outside*
+                                          (loop for n below 600
+                                                collect (namestring (merge-pathnames (format nil "d~d/" n) dir))))
+        (true (tuatara.defaults::untrusted-path-p first))))))
+
 (define-test (state-and-files temporary-files-kept-to-the-run)
   ;; what a test writes to the temporary directory lands in the run's own directory, removed with it
   (let ((tmp (uiop:temporary-directory)))

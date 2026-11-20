@@ -19,7 +19,8 @@
                 #:define-state-list #:delete-entries
                 #:display-toggle-name #:entry-list-keys #:entry-preview-again #:entry-preview-keys #:entry-preview-width
                 #:escape-path #:field-line-key #:keep-shown-current #:list-entry-at #:list-entry-noun #:list-mark-face
-                #:list-mark-sign #:list-preview-p #:list-question #:map-text-forms #:marked-list-mode #:mode-named
+                #:list-mark-sign #:list-preview-p #:list-question #:map-text-forms #:mark-from-outside
+                #:marked-list-mode #:mode-named
                 #:outside-program-install-words #:preview-entry #:render-table-list #:rimu-show-directory
                 #:show-help #:side-preview-note #:state-line-fields #:state-list-drop
                 #:state-list-entries #:state-list-find #:state-list-put #:table-columns-width #:unescape-path

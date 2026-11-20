@@ -64,6 +64,8 @@ state, data or cache; PATH within it, a directory's ending in /; CLASS :KEPT,
      "/projects/one/" "/projects/two three/")
     (tuatara.defaults::*look-only*
      "/cases/2026-0001/seized repo/" "/cases/2026-0002/")
+    (tuatara.defaults::*from-outside*
+     "/home/someone/Work/unpacked/" "/mnt/no-attributes/copied report.pdf/")
     (tuatara.packages::*package-trust*
      ("https://example.org/signed.git"
       "SHA256:abcDEF0123456789+/="

@@ -210,3 +210,74 @@
       (let ((written (alexandria:read-file-into-string (merge-pathnames "t/named/word/hdra.xml" dir))))
         (false (search "DDEAUTO" written) "~a" written)
         (true (search "kept" written))))))
+
+(define-test (office-view odf-repeated-cells-take-room-first)
+  ;; a row of cells each repeated often takes room as it is read, not after, and holds no more cells than a sheet
+  (let* ((xml (format nil "<table:table><table:table-row>~{~a~}</table:table-row></table:table>"
+                      (make-list 20000 :initial-element "<table:table-cell table:number-columns-repeated='64'/>")))
+         (table (tuatara.text:xml-root (tuatara.text:xml-parse xml)))
+         (tuatara.defaults::*docx-reading* (tuatara.defaults::make-docx-reading nil nil nil)))
+    (is = tuatara.defaults::*sheet-most-columns* (length (first (tuatara.defaults::odf-table-rows table))))
+    (setf (tuatara.defaults::docx-reading-room tuatara.defaults::*docx-reading*) 1000)
+    (let* ((before (sb-ext:get-bytes-consed))
+           (full (handler-case (progn (tuatara.defaults::odf-table-rows table) nil)
+                   (tuatara.defaults::office-note-full () t)))
+           (made (- (sb-ext:get-bytes-consed) before)))
+      (true full)
+      ;; the cells repeated as written would take some 20 MB
+      (true (< made (* 4 1024 1024)) "~:d octets" made))))
+
+(defun xlsx-many-sheets-parts (count)
+  "The parts of an Excel workbook made for the tests, its list naming COUNT
+sheets, each by a relation of its own to a part the file does not hold."
+  (let ((type "http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet"))
+    (append (remove-if (lambda (part) (member (car part) '("xl/workbook.xml" "xl/_rels/workbook.xml.rels")
+                                              :test #'string=))
+                       *xlsx-test-parts*)
+            (list (cons "xl/workbook.xml"
+                        (format nil "<workbook xmlns:r='r'><sheets>~{~a~}</sheets></workbook>"
+                                (loop for i from 1 to count
+                                      collect (format nil "<sheet name='S~d' r:id='rId~:*~d'/>" i))))
+                  (cons "xl/_rels/workbook.xml.rels"
+                        (format nil "<Relationships>~{~a~}</Relationships>"
+                                (loop for i from 1 to count
+                                      collect (format nil "<Relationship Id='rId~d' Type='~a' Target='w/s~d.xml'/>"
+                                                      i type i))))))))
+
+(define-test (office-view workbook-many-sheets-bounded)
+  ;; a workbook naming many sheets is read in time, each sheet found by its relation at once, and each
+  ;; sheet takes room in the note, so that the reading stops where the note is full
+  (with-test-directory (dir)
+    (let ((path (write-office-test-file (merge-pathnames "many.xlsx" dir) (xlsx-many-sheets-parts 20000))))
+      (multiple-value-bind (note ended) (within-seconds 3 (lambda () (tuatara.defaults::xlsx-read-note path)))
+        (true ended "not read within 3 seconds")
+        (when ended (note-has note "* Sheet 20000: S20000")))
+      (let ((note (let ((tuatara.defaults::*office-note-size-limit* 20000))
+                    (tuatara.defaults::xlsx-read-note path))))
+        (note-has note "The rest is left out")
+        (false (search "Sheet 20000" note))))))
+
+(define-test (template-import docx-import-tags-without-ends-in-time)
+  ;; a part holding many openings of a tag the import takes out, none ended as the tag is, is changed in time
+  (flet ((in-time (function text)
+           (multiple-value-bind (result ended) (within-seconds 2 (lambda () (funcall function text)))
+             (declare (ignore result))
+             (true ended "~a not done within 2 seconds" function))))
+    (in-time #'tuatara.defaults::docx-import-without-changes
+             (format nil "~{~a~}" (make-list 20000 :initial-element "<w:commentRangeStart ")))
+    (in-time #'tuatara.defaults::docx-import-content-types
+             (format nil "~{~a~}>/>" (make-list 20000 :initial-element "<Override PartName='/word/comments")))
+    (in-time #'tuatara.defaults::docx-import-left-out-relations
+             (format nil "~{~a~}>/>" (make-list 20000 :initial-element "<Relationship Target='comments "))))
+  ;; what is taken out still is, the rest kept
+  (is string= "<w:p>a</w:p>"
+      (tuatara.defaults::docx-import-without-changes
+       "<w:p><w:commentRangeStart w:id='1'/>a<w:commentRangeEnd w:id=\"1\"/></w:p>"))
+  (is string= "<Types><Override PartName='/word/document.xml'/></Types>"
+      (tuatara.defaults::docx-import-content-types
+       (concatenate 'string "<Types><Default Extension='bin' ContentType='application/vnd.ms-office.vbaProject'/>"
+                    "<Override PartName='/word/document.xml'/><Override PartName = \"/word/comments.xml\"/></Types>")))
+  (is string= "<Relationships><Relationship Id='r1' Target='styles.xml'/></Relationships>"
+      (tuatara.defaults::docx-import-left-out-relations
+       (concatenate 'string "<Relationships><Relationship Id='r1' Target='styles.xml'/>"
+                    "<Relationship Id='r2' Target='commentsExtended.xml'/></Relationships>"))))

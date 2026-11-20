@@ -604,7 +604,7 @@ list starts on its first line, on a screen WIDTH by HEIGHT."
   ;; the help of the lists says the mark they show: > for marked (LIST-MARK-SIGN), never *
   (is string= ">" (tuatara.defaults::list-mark-sign :marked))
   (dolist (text (list (documentation 'tuatara.defaults::*buffers-columns* 'variable)
-                      (documentation 'tuatara.defaults::buffers 'function)
+                      (documentation 'tuatara.defaults::buffer-manager 'function)
                       (documentation 'tuatara.defaults::*auto-saves-columns* 'variable)
                       (documentation 'tuatara.defaults::bookmark-manager 'function)
                       (documentation 'tuatara.defaults::*trash-columns* 'variable)))

@@ -5,7 +5,9 @@
 ;;;; *UNTRUSTED-DIRECTORIES* (your downloads, as standard): it opens safely,
 ;;;; the desktop's programs get a copy of it after asking, its export takes
 ;;;; files from its own directory only, and its project runs nothing of its
-;;;; own until trusted when asked. UNTRUSTED-PATH-P alone decides it.
+;;;; own until trusted when asked. UNTRUSTED-PATH-P alone decides it. What
+;;;; Tuatara copies, moves or unpacks from an untrusted file is marked as come
+;;;; from outside (MARK-FROM-OUTSIDE), and stays untrusted wherever it goes.
 ;;;;
 ;;;; A project's language servers run its code (a build script, a plugin, a
 ;;;; macro), git runs the programs a repository names for itself (hooks,
@@ -28,8 +30,11 @@
   "The directories whose files came from outside and are not trusted, besides
 the evidence directories (*EVIDENCE-DIRECTORIES*), whose files never are, and
 the copies of outside files Tuatara keeps in its cache (*UNTRUSTED-CACHE*). A
-file a web browser marked as downloaded (the extended attribute
-user.xdg.origin.url) is untrusted wherever it is. A file is in a directory
+file marked as come from outside (the extended attribute user.xdg.origin.url,
+which web browsers leave on what they download, and Tuatara on what it
+copies, moves or unpacks from an untrusted file, or from another machine not
+trusted), or in a directory so marked, is untrusted wherever it is, and so is
+a project holding one at its top. A file is in a directory
 when where it really is, links followed, is that directory or below it. An
 untrusted file:
   opens safely however it is opened, as \\[find-file-safely] opens a file:
@@ -57,7 +62,7 @@ of these directories.
   keywords: '(:downloads :removable-media :temporary \"~/Clones/\").
 - '(\"/\"): every file untrusted.
 - nil: only the files in evidence directories, the cache's copies and those
-  marked as downloaded untrusted."
+  marked as come from outside untrusted."
   :values (list-of (or (member :downloads :removable-media :temporary) directory)))
 
 (defparameter *untrusted-places*
@@ -67,7 +72,9 @@ of these directories.
 (defparameter *untrusted-cache* '("opened/" "remote/" "sandbox-copies/")
   "The directories of Tuatara's cache that hold copies of files from outside:
 those opened in the desktop's programs, read from other machines, and given
-to programs shut in. Their files are always untrusted (UNTRUSTED-PATH-P).")
+to programs shut in. Their files are always untrusted (UNTRUSTED-PATH-P), as
+are those of the kinds of entry of the cache defined untrusted
+\(DEFINE-CACHE-KIND).")
 
 (defun untrusted-directory-names ()
   "The directories of *UNTRUSTED-DIRECTORIES* as native names, ~ expanded and
@@ -108,24 +115,122 @@ links are not read."
 
 (defun untrusted-cache-p (path)
   "True when the file at PATH, links followed, is in one of the directories of
-Tuatara's cache that hold copies of files from outside (*UNTRUSTED-CACHE*),
-told by its name as given before any link is read."
+Tuatara's cache that hold copies of files from outside (*UNTRUSTED-CACHE*) or
+in those of a kind of entry defined untrusted (DEFINE-CACHE-KIND), told by
+its name as given before any link is read."
   (let ((directories (let ((cache (tuatara.io:native (tuatara.io:cache-directory))))
-                       (mapcar (lambda (name) (tuatara.io:path-join cache name)) *untrusted-cache*))))
+                       (mapcar (lambda (name) (tuatara.io:path-join cache name))
+                               (append *untrusted-cache* (untrusted-cache-kind-directories))))))
     ;; by the names as given first: the links on the way are read only when those do not tell
     (or (some (lambda (directory) (tuatara.io:path-within-p path directory)) directories)
         (some (lambda (directory) (tuatara.io:really-within-p path directory)) directories))))
 
-(defun downloaded-mark-p (path)
-  "True when the file at PATH, where it really is, carries the mark a web
-browser leaves on what it downloads (the extended attribute
-user.xdg.origin.url). Read without changing its times, and a link at PATH
-followed only when there is one; NIL for a file not there."
-  (let ((real (if (eq :symlink (ignoring-errors-reported ("examining ~a" path) (tuatara.io:path-kind path :follow nil)))
-                  (ignoring-errors-reported ("finding where ~a is" path) (tuatara.io:real-path path))
-                  path)))
-    (and real (ignoring-errors-reported ("reading the marks of ~a" real)
-                (tuatara.io:path-xattr-p real "user.xdg.origin.url")))))
+(defparameter *origin-mark* "user.xdg.origin.url"
+  "The extended attribute that marks a file or directory as come from outside:
+web browsers leave it on what they download, and Tuatara on what it makes
+from an untrusted file (MARK-FROM-OUTSIDE). Its value says where it came from.")
+
+(define-state-list *from-outside* "from-outside" 'parse-absolute-path-line 'escape-path nil :class :kept
+  :header (format nil "# Files and directories made from untrusted ones where no mark could be~%~
+                       # written on them: they, and all they hold, stay untrusted. One a line,~%~
+                       # where it really is (\\\\, \\n and \\r stand for \\, a newline and a return).~%")
+  :line-key 'parse-absolute-path-line)
+
+(defvar *marks-made* (list 0)
+  "How many times something was marked as come from outside this session
+\(MARK-FROM-OUTSIDE), in a cons: what keeps an answer of whether a project is
+trusted asks again once it changes.")
+
+(defun origin-marked-place (path)
+  "The file or directory at PATH, or the directory holding it nearest to it,
+that is marked as come from outside, as named from PATH: it carries
+*ORIGIN-MARK*, or it, or where it really is, was made from an untrusted file
+where no mark could be written (*FROM-OUTSIDE*). NIL when none is. Each mark
+is read from what a name leads to, links followed by the system, so that
+no link is read here unless something is in *FROM-OUTSIDE*; reading the marks
+changes no time of a file."
+  (let ((path (string-right-trim "/" path))
+        (kept (state-list-entries *from-outside*)))
+    (flet ((kept-p (place)
+             (let ((real (ignoring-errors-reported ("finding where ~a is" place)
+                           (tuatara.io:real-path-so-far place))))
+               (some (lambda (entry)
+                       (or (tuatara.io:path-within-p (tuatara.io:slash-ended place) entry)
+                           (and real (tuatara.io:path-within-p (tuatara.io:slash-ended real) entry))))
+                     kept))))
+      (or (and kept (kept-p (if (string= path "") "/" path)) path)
+          (loop for place = path then (string-right-trim "/" (tuatara.io:parent-path place))
+                for named = (if (string= place "") "/" place)
+                when (ignoring-errors-reported ("reading the marks of ~a" named)
+                       (tuatara.io:path-xattr-p named *origin-mark* :follow t))
+                  return named
+                until (string= place ""))))))
+
+(defun origin-marked-entry (directory)
+  "The first thing at the top of DIRECTORY, by name, that is marked as come
+from outside (*ORIGIN-MARK*, links not followed), or NIL: a project unpacked or
+copied, piece by piece, into a directory of your own."
+  (loop for (name) in (ignoring-errors-reported ("listing ~a" directory) (tuatara.io:directory-entries directory))
+        for path = (tuatara.io:path-join directory name)
+        when (ignoring-errors-reported ("reading the marks of ~a" path)
+               (tuatara.io:path-xattr-p path *origin-mark*))
+          return path))
+
+(defun source-untrusted-p (from)
+  "True when what is made from FROM, a file or directory here or on another
+machine (/ssh:HOST:PATH), is untrusted: FROM is untrusted here
+\(UNTRUSTED-PATH-P), or is on a machine not trusted (\\[server-list]) or in
+evidence there."
+  (if (remote-name-p from)
+      (multiple-value-bind (host path) (remote-name-parts from)
+        (or (not (remote-trusted-p host))
+            (and (remote-evidence-words host path) t)))
+      (untrusted-path-p from)))
+
+(defun mark-from-outside (path origin &key evidence)
+  "Mark PATH, a file or directory here just made from ORIGIN, an untrusted file
+or directory here or on another machine, as come from outside: it carries
+*ORIGIN-MARK* with ORIGIN as a file: address (as written for another
+machine's), so that it, all it holds and every copy of it Tuatara makes stay
+untrusted (UNTRUSTED-PATH-P) wherever they are moved. PATH is remembered in
+*FROM-OUTSIDE* in place of the mark, every one kept, where the file system
+keeps no extended attributes, where PATH is a link, and where PATH is evidence
+or may be another name of it (EVIDENCE-VISIT-REASON, EVIDENCE-INODE-P), or
+EVIDENCE is true (PATH is the evidence file ORIGIN itself, moved): evidence is
+never written on, its times left as they are. Nothing is done for PATH on
+another machine or not there."
+  (unless (or (remote-name-p path) (null (tuatara.io:path-kind path :follow nil)))
+    (let* ((path (string-right-trim "/" (tuatara.io:native path)))
+           (stamp (tuatara.io:path-stamp path :follow nil)))
+      (unless (and (not evidence)
+                   (not (evidence-visit-reason path))
+                   (not (and stamp (evidence-inode-p stamp)))
+                   (ignoring-errors-reported ("marking ~a as come from outside" path)
+                     (tuatara.io:set-path-xattr path *origin-mark*
+                                                (if (remote-name-p origin) origin (format nil "file://~a" origin)))))
+        (state-list-put *from-outside* (list (tuatara.io:slash-ended
+                                              (or (ignoring-errors-reported ("finding where ~a is" path)
+                                                    (tuatara.io:real-path-so-far path))
+                                                  path)))))
+      (sb-ext:atomic-incf (car *marks-made*)))))
+
+(defmacro keeping-untrusted ((from to) &body body)
+  "Run BODY, which makes TO, a file or directory, from FROM, by a copy, a move
+or another way; when FROM was untrusted before it ran (SOURCE-UNTRUSTED-P), TO
+is marked as come from outside (MARK-FROM-OUTSIDE) once BODY is over, whether
+it ended or failed, when TO is there. When FROM was evidence and TO is the
+same file (a hard link, a move within one drive), nothing is written on it:
+it is remembered instead. BODY's values."
+  (let ((origin (gensym "ORIGIN")) (made (gensym "MADE")) (evidence (gensym "EVIDENCE")))
+    `(let* ((,origin (and (source-untrusted-p ,from) ,from))
+            (,made ,to)
+            (,evidence (and ,origin (not (remote-name-p ,origin)) (evidence-visit-reason ,origin)
+                            (tuatara.io:path-stamp ,origin :follow nil))))
+       (unwind-protect (progn ,@body)
+         (when ,origin
+           (mark-from-outside ,made ,origin
+                              :evidence (and ,evidence (tuatara.io:same-stamped-file-p
+                                                        ,evidence (tuatara.io:path-stamp ,made :follow nil)))))))))
 
 (defun untrusted-reason (path &optional stamp)
   "Why the file or directory at PATH came from outside and is not trusted, a
@@ -133,12 +238,13 @@ phrase, or NIL when it is trusted: it is evidence (EVIDENCE-VISIT-REASON,
 links followed), or, given its STAMP, has another name that may be in an
 evidence directory (EVIDENCE-INODE-P); it is in one of *UNTRUSTED-DIRECTORIES*
 \(UNTRUSTED-DIRECTORY-OF), in the cache's copies of outside files
-\(UNTRUSTED-CACHE-P), or marked by a web browser as downloaded
-\(DOWNLOADED-MARK-P). When *UNTRUSTED-DIRECTORIES* cannot be read, every file
-is untrusted, and the reason says so."
+\(UNTRUSTED-CACHE-P), or it or a directory holding it is marked as come from
+outside (ORIGIN-MARKED-PLACE). When *UNTRUSTED-DIRECTORIES* cannot be read,
+every file is untrusted, and the reason says so."
   (let* ((path (or (ignoring-errors-reported ("expanding ~a" path) (tuatara.io:native (tuatara.io:expand-path path)))
                    path))
          (directory nil)
+         (marked nil)
          (local (not (remote-name-p path))))
     ;; evidence first: what follows reads the links on the way, which would change their access times
     (cond ((evidence-visit-reason path))
@@ -147,7 +253,10 @@ is untrusted, and the reason says so."
           ((eq (setf directory (untrusted-directory-of path)) t) "*untrusted-directories* could not be read")
           (directory (format nil "it is in ~a (*untrusted-directories*)" directory))
           ((and local (untrusted-cache-p path)) "it is a copy of a file from outside, in Tuatara's cache")
-          ((and local (downloaded-mark-p path)) "a web browser marked it as downloaded (user.xdg.origin.url)"))))
+          ((and local (setf marked (origin-marked-place path)))
+           (if (string= (string-right-trim "/" path) marked)
+               "it is marked as come from outside (user.xdg.origin.url)"
+               (format nil "~a, holding it, is marked as come from outside (user.xdg.origin.url)" marked))))))
 
 (defun untrusted-path-p (path)
   "True when the file or directory at PATH came from outside and is not
@@ -187,7 +296,8 @@ ending in /; NIL when it is not there."
 (defun project-trusted-p (root)
   "True when the project at ROOT may run its own programs. That holds when it,
 where it really is, is trusted (UNTRUSTED-PATH-P: in no evidence directory and
-none of *UNTRUSTED-DIRECTORIES*), or was trusted when asked (kept by where it
+none of *UNTRUSTED-DIRECTORIES*, and neither it nor a directory holding it
+nor a thing at its top marked as come from outside), or was trusted when asked (kept by where it
 really was then). It never holds for one that is, is in or holds an evidence directory
 \(DIRECTORY-HOLDS-EVIDENCE-P), whose programs could write there, nor for one
 within a directory answered look only (PROJECT-LOOK-ONLY-P). The answer that runs
@@ -197,7 +307,7 @@ is to be asked again."
   (let ((real (real-directory root)))
     (and real
          (or (member real (state-list-entries *trusted*) :test #'equal)
-             (not (untrusted-path-p real)))
+             (not (or (untrusted-path-p real) (origin-marked-entry real))))
          (not (real-directory-look-only-p real))
          ;; asked only of a project trusted, and told from the setting, not by reading the project
          (not (evidence-path-p real))
@@ -208,9 +318,10 @@ is to be asked again."
   "What an answer of BUFFER-IN-TRUSTED-PROJECT-P about FILE depends on, as it
 stands now: a vector of FILE, the generations of the projects trusted and of
 those looked at only (STATE-LIST-GENERATION), *UNTRUSTED-DIRECTORIES*, the
-generation of *EVIDENCE-DIRECTORIES* and the download directory as last read."
+generation of *EVIDENCE-DIRECTORIES*, the download directory as last read and
+how many marks of files come from outside were made (*MARKS-MADE*)."
   (vector file (state-list-generation *trusted*) (state-list-generation *look-only*) *untrusted-directories*
-          (evidence-generation) (tuatara.io:download-directory)))
+          (evidence-generation) (tuatara.io:download-directory) (car *marks-made*)))
 
 (defun trusted-project-key-current-p (key file)
   "True when KEY, made by TRUSTED-PROJECT-KEY, is what it would be now for
@@ -220,13 +331,15 @@ FILE, which allocates nothing."
        (eql (svref key 2) (state-list-generation *look-only*))
        (equal (svref key 3) *untrusted-directories*)
        (eql (svref key 4) (evidence-generation))
-       (eq (svref key 5) (tuatara.io:known-download-directory))))
+       (eq (svref key 5) (tuatara.io:known-download-directory))
+       (eql (svref key 6) (car *marks-made*))))
 
 (defun buffer-in-trusted-project-p (buffer)
   "True when BUFFER visits a file of a project you trust (PROJECT-TRUSTED-P):
 its text is then parsed by the program shared by such files, not one of its
 own. Looked up again only when the file, the projects trusted or looked at
-only when asked, *UNTRUSTED-DIRECTORIES* or *EVIDENCE-DIRECTORIES* change, or
+only when asked, *UNTRUSTED-DIRECTORIES* or *EVIDENCE-DIRECTORIES* change, a
+file is marked as come from outside, or
 while the project is still being looked through for evidence directories."
   (let* ((file (tuatara.buffer:buffer-file buffer))
          (seen (tuatara.buffer:buffer-local buffer :trusted-project-seen)))

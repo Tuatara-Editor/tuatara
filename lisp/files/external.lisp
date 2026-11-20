@@ -184,12 +184,6 @@ endings, or a plain file anyone may run (an execute bit set)."
              (member (nth-value 1 (file-kind native)) *program-kinds*))
          t)))
 
-(defun same-file-state-p (stamp other)
-  "True when the stamps STAMP and OTHER name the same file, its content and its
-mode unchanged as far as the system tells (TUATARA.IO:SAME-CONTENT-P and the
-time of its last change)."
-  (and (tuatara.io:same-content-p stamp other) (= (tuatara.io:stamp-ctime stamp) (tuatara.io:stamp-ctime other))))
-
 (defun open-externally-refusal (path &key also)
   "Why the file at PATH, untrusted, is not opened from a copy in the desktop's
 program, as a sentence, or NIL when it may be, with its kind in words and its
@@ -301,9 +295,9 @@ of it, LABEL naming the program."
   "What a thread does to open the file NATIVE itself, where it really is,
 told to be KIND (NIL when its contents do not say), in PROGRAM, given
 ARGUMENTS before its name, STAMP its stamp when that was decided. A file that
-is no longer the one looked at (SAME-FILE-STATE-P), or, for a trusted one, has
-become untrusted or a program meanwhile, is not opened. With EXECUTE, an
-untrusted file trusted this once, its SHA-256 is summed first and written to
+is no longer the one looked at (TUATARA.IO:SAME-STATE-P), or, for a trusted
+one, has become untrusted or a program meanwhile, is not opened. With EXECUTE,
+an untrusted file trusted this once, its SHA-256 is summed first and written to
 the debug log with its path, so that the choice can be shown later: the sum
 of the file as read before it was opened, which is not opened when it changed
 while being summed. The program opens the file again itself, after these
@@ -316,12 +310,12 @@ naming the program."
           (flet ((refused (control)
                    (return-from open-in-place-externally (format nil control name))))
             (unless now (refused "~a is not there: not opened"))
-            (unless (or (null stamp) (same-file-state-p stamp now))
+            (unless (or (null stamp) (tuatara.io:same-state-p stamp now))
               (refused "~a changed after it was looked at: not opened"))
             (if execute
                 (let ((sum (file-sha256 real)))
                   (unless sum (refused "~a could not be read whole: not opened"))
-                  (unless (same-file-state-p now (tuatara.io:path-stamp real :failure nil))
+                  (unless (tuatara.io:same-state-p now (tuatara.io:path-stamp real :failure nil))
                     (refused "~a changed while it was summed: not opened"))
                   (tuatara.runtime:debug-report :file "trusted this once and opened outside Tuatara: ~a (~a), ~
                                                        SHA-256 ~a as read before opening, with ~a"

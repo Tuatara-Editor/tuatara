@@ -796,9 +796,10 @@ and endnotes, whose notes are not kept, so that Word finds nothing missing."
            (xml (xml-replace-elements xml "w:ins" #'inside))
            (xml (xml-replace-elements xml "w:moveTo" #'inside))
            (xml (xml-replace-elements xml "w:r" #'unreferring)))
-      (cl-ppcre:regex-replace-all #.(concatenate 'string "<w:(?:commentRangeStart|commentRangeEnd|moveFromRangeStart|"
-                                                 "moveFromRangeEnd|moveToRangeStart|"
-                                                 "moveToRangeEnd)[\\s/][^>]*>") xml ""))))
+      (dolist (name '("w:commentRangeStart" "w:commentRangeEnd" "w:moveFromRangeStart" "w:moveFromRangeEnd"
+                      "w:moveToRangeStart" "w:moveToRangeEnd")
+                    xml)
+        (setf xml (xml-replace-elements xml name (constantly nil)))))))
 
 (defun docx-import-note-fetched (entries)
   "Note, of the document being imported whose parts are ENTRIES, each picture,
@@ -810,15 +811,12 @@ was. Links clicked on are not noted; at most *OFFICE-MOST-LISTED* named."
     (dolist (entry entries)
       (cond ((string-equal entry "word/_rels/settings.xml.rels"))  ; its attached template, left out
             ((cl-ppcre:scan "(?i)\\.rels$" entry)
-             (cl-ppcre:do-matches-as-strings
-                 (relation #.(concatenate 'string "(?i)<Relationship\\s[^>]*\\sTargetMode\\s*=\\s*"
-                                          "[\"']External[\"'][^>]*>")
-                           (docx-reading-text entry))
-               ;; a link clicked on is not fetched: told by the relation's type alone
-               (unless (cl-ppcre:scan "(?i)\\sType\\s*=\\s*[\"'][^\"']*/hyperlink[\"']" relation)
-                 (cl-ppcre:register-groups-bind (double single)
-                     ("(?i)\\sTarget\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)')" relation)
-                   (setf (gethash (xml-text-value (or double single)) targets) t)))))
+             (let ((rels (docx-reading-part entry)))
+               (dolist (relation (and rels (xml-find-all rels "Relationship")))
+                 ;; a link clicked on is not fetched: told by the relation's type alone
+                 (when (and (string-equal (xml-attribute relation "TargetMode") "External")
+                            (not (cl-ppcre:scan "(?i)/hyperlink$" (or (xml-attribute relation "Type") ""))))
+                   (setf (gethash (or (xml-attribute relation "Target") "") targets) t)))))
             ((cl-ppcre:scan "(?i)^word/.*\\.xml$" entry)
              (cl-ppcre:do-register-groups (field)
                ("(?i)(INCLUDE(?:PICTURE|TEXT)\\s+(?:\\\\[a-z]\\s+)*\"?[^\"<\\s]*)" (docx-reading-text entry))
@@ -829,24 +827,26 @@ was. Links clicked on are not noted; at most *OFFICE-MOST-LISTED* named."
 (take them out in Word if they should not be)"
                (mapcar #'org-safe-line (office-listed targets)))))))
 
-(defparameter *docx-import-left-out-relations*
-  #.(concatenate 'string "(?i)<Relationship\\s[^>]*\\sTarget\\s*=\\s*[\"'](?:comments|commentsExtended|commentsIds|"
-                 "commentsExtensible|people|vbaProject\\.bin|embeddings/|activeX/)[^\"']*[\"'][^>]*/>")
-  "The relations of a Word document's parts to what an import leaves out: its
-comments, macros, embedded objects and controls.")
+(defun docx-import-without-elements (xml name attribute regex)
+  "XML without each element called NAME whose ATTRIBUTE's value REGEX
+matches; the rest as it is."
+  (xml-replace-elements xml name (lambda (element)
+                                   (unless (cl-ppcre:scan regex (or (xml-value element name attribute) ""))
+                                     element))))
+
+(defun docx-import-left-out-relations (xml)
+  "XML, relations of a Word document's part, without those to what an import
+leaves out: its comments, macros, embedded objects and controls."
+  (docx-import-without-elements xml "Relationship" "Target"
+                                "(?i)^(?:comments|people|vbaProject\\.bin|embeddings/|activeX/)"))
 
 (defun docx-import-content-types (xml)
   "XML, the [Content_Types].xml of a Word document imported, without the types
 of what the import leaves out, its main part a document's, not one with macros."
-  (let* ((xml (cl-ppcre:regex-replace-all
-               #.(concatenate 'string "(?i)<Override\\s+PartName\\s*=\\s*[\"']/word/(?:comments|"
-                              "commentsExtended|commentsIds|commentsExtensible|people|vbaProject|vbaData|"
-                              "embeddings/|activeX/)[^\"']*[\"'][^>]*/>")
-               xml ""))
-         (xml (cl-ppcre:regex-replace-all
-               #.(concatenate 'string "(?i)<Default\\s+Extension\\s*=\\s*[\"']bin[\"']\\s+ContentType\\s*=\\s*"
-                              "[\"']application/vnd\\.ms-office\\.vbaProject[\"']\\s*/>")
-               xml "")))
+  (let* ((xml (docx-import-without-elements xml "Override" "PartName"
+                                            "(?i)^/word/(?:comments|people|vbaProject|vbaData|embeddings/|activeX/)"))
+         (xml (docx-import-without-elements xml "Default" "ContentType"
+                                            "(?i)^application/vnd\\.ms-office\\.vbaProject$")))
     (cl-ppcre:regex-replace-all "(?i)application/vnd\\.ms-word\\.(document|template)\\.macroEnabled\\.main\\+xml" xml
                                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml")))
 
@@ -891,9 +891,9 @@ each left out noted (TEMPLATE-IMPORT-NOTE)."
                    parts)))
           ((string= name "word/settings.xml")
            (let* ((xml (docx-reading-text entry))
-                  (xml (cl-ppcre:regex-replace-all "<w:attachedTemplate [^>]*/>" xml ""))
-                  (xml (cl-ppcre:regex-replace-all "<w:trackRevisions(?:\\s[^>]*)?/>" xml ""))
-                  (xml (cl-ppcre:regex-replace-all "<w:documentProtection [^>]*/>" xml ""))
+                  (xml (xml-replace-elements xml "w:attachedTemplate" (constantly nil)))
+                  (xml (xml-replace-elements xml "w:trackRevisions" (constantly nil)))
+                  (xml (xml-replace-elements xml "w:documentProtection" (constantly nil)))
                   (xml (xml-replace-elements xml "w:mailMerge"
                                              (lambda (element)
                                                (declare (ignore element))
@@ -906,7 +906,7 @@ each left out noted (TEMPLATE-IMPORT-NOTE)."
            (let ((filled (docx-import-fields-in (docx-reading-text entry))))
              (push (cons name (docx-import-without-active (docx-import-without-changes filled))) parts)))
           ((cl-ppcre:scan "^word/_rels/.*\\.rels$" name)
-           (push (cons name (cl-ppcre:regex-replace-all *docx-import-left-out-relations* (docx-reading-text entry) ""))
+           (push (cons name (docx-import-left-out-relations (docx-reading-text entry)))
                  parts))
           ((string-equal entry "[Content_Types].xml")
            (push (cons entry (docx-import-content-types (docx-reading-text entry))) parts))

@@ -53,11 +53,11 @@ versions' setting."
       (dolist (directory (list kept (directory-namestring (tuatara.packages::package-fasl (merge-pathnames "x" kept)))))
         (when (probe-file directory)
           (uiop:delete-directory-tree (pathname directory)
-                                      :validate (lambda (p) (uiop:subpathp p *test-cache-directory*))))))
+                                      :validate #'tests-own-path-p))))
     (let ((fasls (directory-namestring (tuatara.packages::package-fasl (merge-pathnames "x" dir)))))
       (when (probe-file fasls)
         (uiop:delete-directory-tree (pathname fasls)
-                                    :validate (lambda (p) (uiop:subpathp p *test-cache-directory*))))))
+                                    :validate #'tests-own-path-p))))
   (tuatara.defaults::state-list-drop tuatara.packages::*removed-packages*
                                      (tuatara.defaults::state-list-entries tuatara.packages::*removed-packages*))
   (setf tuatara.packages::*declared-packages* '()
@@ -565,7 +565,7 @@ after."
         (is equal '() (remove-if-not (lambda (p) (search ".new" (namestring p)))
                                      (uiop:directory-files (directory-namestring fasl))))
         (uiop:delete-directory-tree (pathname (directory-namestring fasl))
-                                    :validate (lambda (p) (uiop:subpathp p *test-cache-directory*)))))))
+                                    :validate #'tests-own-path-p)))))
 
 (define-test (packages private-directories-kept-private)
   ;; a directory of yours there already, open to others, is made yours alone; one not yours

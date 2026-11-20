@@ -129,6 +129,14 @@ their branches left out; none when there is no such directory."
                                    (uiop:subdirectories root))
                     #'string< :key #'namestring))))
 
+;; the code scans read the package repositories beside the tree, in the developer's home, looked for first
+(dolist (candidate *packages-directory-candidates*)
+  (pushnew (sb-ext:native-namestring (merge-pathnames candidate (asdf:system-source-directory :tuatara)))
+           *real-home-allowed* :test #'string=))
+(let ((packages (sibling-packages-directory)))
+  (when packages
+    (pushnew (sb-ext:native-namestring packages) *real-home-allowed* :test #'string=)))
+
 (defun package-source-files ()
   "Every Lisp file of the package repositories."
   (loop for directory in (package-repositories)

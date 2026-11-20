@@ -285,6 +285,14 @@ shown.
 | =(bind-key "t n" '("numbers" . command) :map :leader)= | ~SPC t n~, shown as "numbers" in the key hints |
 | =(bind-key "t" nil :map :leader :label "toggles")= | The label of a prefix: ~SPC~ then shows =t +toggles= |
 | =(unbind-key "C-c t")=                          | Takes a key away |
+| =(define-command-alias 'tt 'toggle-light-dark-theme)= | =tt= is another name for the command: ~M-x tt~ runs it and a key can be bound to it |
+
+=define-command-alias= gives a command a second name, as Emacs's =defalias=
+does. The alias is offered by ~M-x~, its help says it is another name for
+the command and points to it, and it runs quietly. The command may be one of a
+package that is not loaded yet. With =:obsolete "1.0"= the alias is a rename
+kept until that version: the first time it runs in a session it says which
+name to use, and its help says it is obsolete and until when.
 
 Three more things about the table. First, the maps. =:global= is the standard,
 every buffer in both states. =:normal=, =:insert= and =:support= are the keys of

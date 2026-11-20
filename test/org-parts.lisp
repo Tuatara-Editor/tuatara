@@ -48,7 +48,8 @@ the carriage returns before newlines left out only where lines end in CR LF."
   (let ((size (tuatara.buffer:buffer-size buffer)))
     (with-functions-replaced ((tuatara.defaults::org-src-cached-highlights (lambda (&rest arguments)
                                                                              (declare (ignore arguments)) nil)))
-      (stable-sort (loop for view in views nconc (tuatara.defaults::org-view-colours buffer view 0 size nil))
+      (stable-sort (loop for view in views
+                         append (apply #'append (tuatara.defaults::org-view-colours buffer view 0 size nil)))
                    #'< :key #'first))))
 
 (define-test (org-internals parts-colour-as-the-whole-parse)

@@ -8,7 +8,7 @@
     (:use #:cl #:tuatara.command #:tuatara.modes #:tuatara.dates #:tuatara-user)
   (:import-from #:tuatara.runtime #:define-record #:jobs-of #:ignoring-errors-reported #:refusal #:refuse
                 #:*secret-at-hand* #:define-setting #:bisect)
-  (:import-from #:tuatara.text #:name-char-p)
+  (:import-from #:tuatara.text #:name-char-p #:text-lines)
   (:import-from #:tuatara.defaults
                 #:buffer-in-mode #:*built-in-latex-templates* #:call-with-details-shown #:code-point-label
                 #:command-key-words #:commands-for-mode
@@ -26,7 +26,7 @@
                 #:org-headline-property #:org-hidden-kinds #:org-hiding-kind #:org-html-document
                 #:org-insert-export-drawer #:org-latex-parts #:*org-macro-call-re* #:org-macro-definitions
                 #:org-mode #:org-node-begin #:org-node-end #:org-node-post-blank #:org-node-type #:org-parse-char
-                #:org-parse-point #:org-parse-text #:org-parse-tree #:org-property #:org-text-lines
+                #:org-parse-point #:org-parse-text #:org-parse-tree #:org-property
                 #:org-walk-tree #:outside-program-install-words #:page-size #:pdf-page-boxes
                 #:pdf-view-info #:*pdf-view-keymap* #:pdf-view-maker #:pdf-view-mode #:pdf-view-of #:pdf-view-path
                 #:pdf-view-place-at #:pdf-view-place-shown #:pdf-view-reload #:pdf-view-show-place #:pdf-view-task

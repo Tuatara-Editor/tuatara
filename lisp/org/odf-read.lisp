@@ -324,21 +324,28 @@ NUMBERS counts the items of each level."
 (defun odf-table-rows (table)
   "The rows of TABLE, a table of the file being read, each a list of its
 cells' elements in order, a row or cell repeated given as often as it is,
-within reason, each cell taken from the room left for the note
-\(OFFICE-SPEND); header rows and groups of rows taken in."
+within reason, and no more than *SHEET-MOST-COLUMNS* cells to a row; each cell
+taken from the room left for the note (OFFICE-SPEND) before it is given, an
+empty one too; header rows and groups of rows taken in."
   (let ((rows '()))
-    (labels ((walk (node)
+    (labels ((repeats (element attribute)
+               (max 1 (min 64 (or (docx-read-number element attribute) 1))))
+             (row-cells (row)
+               (let ((cells '()) (left *sheet-most-columns*))
+                 (dolist (cell (xml-children row) (nreverse cells))
+                   (when (and (plusp left) (member (xml-name cell) *odf-table-cells* :test #'equal))
+                     (let ((repeat (min left (repeats cell "table:number-columns-repeated"))))
+                       (office-spend repeat)
+                       (decf left repeat)
+                       (dotimes (i repeat) (push cell cells)))))))
+             (walk (node)
                (dolist (child (xml-children node))
                  (let ((name (xml-name child)))
                    (cond ((equal name "table:table-row")
-                          (let ((cells (loop for cell in (xml-children child)
-                                             when (member (xml-name cell) *odf-table-cells* :test #'equal)
-                                             append (make-list (max 1 (min 64 (or (docx-read-number
-                                                                                   cell "table:number-columns-repeated")
-                                                                                  1)))
-                                                               :initial-element cell))))
-                            (dotimes (i (max 1 (min 64 (or (docx-read-number child "table:number-rows-repeated") 1))))
-                              ;; each cell given takes room in the note, an empty one too
+                          (let ((cells (row-cells child)))
+                            (push cells rows)
+                            ;; a row repeated is the same cells again, each taking room as before
+                            (dotimes (i (1- (repeats child "table:number-rows-repeated")))
                               (office-spend (length cells))
                               (push cells rows))))
                          ((member name *odf-row-groups* :test #'equal)

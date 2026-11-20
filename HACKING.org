@@ -178,10 +178,17 @@ runs it with the layer on whatever the setting. Both runs are to be clean.
 
 One group or one test runs from a Lisp session with the tests loaded:
 =(ql:quickload :tuatara/tests)= then =(parachute:test 'tuatara.tests::terminal)=.
-However the tests run, they keep away from your own files: they have their own
-state, data and trash directories, a cache home inside =tuatara-tests/= in your
-cache, see no drives mounted, and never read your init file
-(=test/fences.lisp=).
+However the tests run, they keep away from your own files: they have a made-up
+home of their own in the temporary directory, with their configuration, state,
+data, trash and GnuPG directories and the directories their files are made in;
+its cache directory leads to =tuatara-tests/= in your cache. They see no drives
+mounted and never read your init file (=test/fences.lisp=). A test that lists,
+opens, examines or changes anything else in your home is refused as one without
+leave would be, and fails the run, which names it. Lisp's own file functions,
+the calls of =sb-posix= that take a name and the editor's own (=openat=,
+=statx= and the rest in =src/io/=) are watched; programs the tests start are
+not, and keep away from your files only through the environment the fence gives
+them (=HOME=, the XDG directories, =GNUPGHOME=).
 
 Full compiler warnings fail the suite. Build once with an empty cache too
 (=XDG_CACHE_HOME= pointing at a new directory): a setting used before the file
@@ -404,6 +411,8 @@ package =tuatara= exports (=lisp/api.lisp=), and nothing else of Tuatara's:
 #+end_src
 
 Positions are octets from 0 into a buffer's text, as the core counts them. A
+command is made with =define-command=; =define-command-alias= gives one a
+second name (=:obsolete "1.0"= for a rename kept until then). A
 setting is made with =define-package-setting=, its name beginning with the
 package's (=*garamond-mode-line*=), so that an init file sets it by that name
 as it sets Tuatara's own. Its =:values= says which values it takes, as each of
@@ -456,13 +465,16 @@ package most often needs:
 - Work kept to save time :: what takes long to make and is worth having
   again (readpst's messages of a mailbox) is an entry of the cache:
   =define-cache-kind= names the kind, its directory in the cache and how
-  =M-x list-cache= opens one; =make-cache-entry= makes one, found again by
+  =M-x cache-manager= opens one; =make-cache-entry= makes one, found again by
   a key with =find-cache-entry=, each used by a buffer until it is killed;
   =note-cache-entry= keeps a few words about it between sessions (whether
   it was finished). Tuatara clears it =*cache-keep*= after its last use,
   never while in use or pinned. =remote-copy-origin= says whether a file is
   Tuatara's whole, unchanged copy of a file on another machine, which a
-  program may read in place of a copy of its own.
+  program may read in place of a copy of its own. What a kind's entries hold
+  is untrusted, as files from outside are, unless the kind is defined with
+  =:untrusted nil=, for one holding only what Tuatara made of trusted files.
+  =untrusted-path-p= tells whether a file came from outside.
 - Files kept :: a file written for keeping (a report, a copy taken out) is
   made with =write-new-file=: read-only (0400) from the moment it is
   created, never written over a file or a link already there.
@@ -570,6 +582,8 @@ package most often needs:
   has checked or summed is given open (=call-with-file=, =fd-stamp=,
   =fd-sha256= through the same descriptor), so that the file read is the one
   checked; =sandbox-call= says how many links it took away of what was written.
+  The directory it writes in is marked as come from outside first, so what
+  is written there is untrusted wherever it is.
   =sandbox-call-heap= tells the heap the function has for the =:memory= it is
   given, for a package to size what it holds at once below it.
 - Telling what has just happened :: =notify= (a title, words, =:source=

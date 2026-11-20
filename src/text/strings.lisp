@@ -314,6 +314,22 @@ the same in every version of Tuatara and of the Lisp it runs on."
 
 ;;; Lines of a string
 
+(defun ends-with-newline-p (string)
+  "True when STRING ends with a newline."
+  (and (plusp (length string)) (char= (char string (1- (length string))) #\Newline)))
+
+(defun ensure-final-newline (string)
+  "STRING ending with a newline: itself when it does, else with one added."
+  (if (ends-with-newline-p string)
+      string
+      (concatenate 'string string (string #\Newline))))
+
+(defun text-lines (text)
+  "The lines of TEXT, the newline it ends with not making one more; none for an empty TEXT."
+  (and (plusp (length text))
+       (uiop:split-string (if (ends-with-newline-p text) (subseq text 0 (1- (length text))) text)
+                          :separator '(#\Newline))))
+
 (defun string-line-start (text position)
   "Where the line of the string TEXT holding POSITION begins: just after the
 newline before POSITION, or 0."

@@ -269,7 +269,7 @@ that its length is its length in octets."
 lines of evidence, and every file over 1024 octets copied to the drive for a
 decoder (*SANDBOX-MEMORY-COPY-LIMIT*)."
   (let ((dir (gensym "DIR")))
-    `(with-test-directory (,dir)
+    `(with-test-directory (,dir :in-cache t)
        (let* ((,cache (ensure-directories-exist (merge-pathnames "cache/" ,dir)))
               (,path (namestring (merge-pathnames "mailbox.pst" ,dir)))
               (,text (plain-evidence-text 2000))
@@ -917,8 +917,10 @@ cat ~a/l.txt; echo; echo new > ~a/n.txt && cat ~a/n.txt; cat ~a/h.txt 2>/dev/nul
         (is string= (format nil "new~%") (alexandria:read-file-into-string (format nil "~a/n.txt" upper))))
       ;; the system's own directory in WORK, left unreadable, made removable
       (when (probe-file (format nil "~a/work/" work)) (sb-posix:chmod (format nil "~a/work" work) #o700))))
-  ;; a directory reached through a link at the root (/home to /var/home) is found either way
-  (let ((arguments (tuatara.io::mount-arguments (list (format nil "~aprojects" (namestring (user-homedir-pathname))))
+  ;; a directory reached through a link at the root (/home to /var/home) is found either way; a home that is no
+  ;; one's is named, as the tests' own lies elsewhere and the developer's is not to be looked in
+  (let ((arguments (tuatara.io::mount-arguments (list (format nil "/home/tuatara-test-nobody-~d/projects"
+                                                              (sb-posix:getpid)))
                                                 '() '())))
     (when (ignore-errors (sb-posix:readlink "/home"))
       (true (search (list "--symlink" (sb-posix:readlink "/home") "/home") arguments :test #'equal))))

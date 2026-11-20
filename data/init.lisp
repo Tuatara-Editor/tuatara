@@ -36,6 +36,10 @@
   ;; A key of your own, in every buffer and both modal states.
   ;; (bind-key "C-c t" 'toggle-light-dark-theme)
 
+  ;; Another name for a command, offered by M-x and bindable to a key; with
+  ;; :obsolete "1.0" a rename that says the new name once a session.
+  ;; (define-command-alias 'tt 'toggle-light-dark-theme)
+
   ;; SPC o in NORMAL state.
   ;; (bind-key "o" 'find-file :map :leader)
 

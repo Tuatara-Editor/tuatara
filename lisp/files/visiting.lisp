@@ -904,23 +904,22 @@ show one (*FILE-VIEWS*): a directory's list is then opened safely too. True as
 well while a view of *SANDBOXED-FILE-VIEWS* is asked to show a file from
 outside.")
 
-(defun run-remote-file-views (copy show missing)
+(defun run-sandboxed-file-views (path show &key (native path) missing)
   "Ask the views of *FILE-VIEWS* that are of *SANDBOXED-FILE-VIEWS* in turn to
-show COPY, the copy here of a file read from another machine, as such a view
-shows a file from outside: the first that does returns its buffer, shown with
+show the file at PATH as such a view shows a file from outside, reading it shut
+in by the sandbox, *VISITING-SAFELY* true and *FILE-VIEW-STAMP* the stamp of
+NATIVE, PATH's native name: the first that does returns its buffer, shown with
 SHOW, a function of the buffer, and marked as a view of a file from outside
-\(:VIEWED-UNTRUSTED); NIL when none does. Only these show such a copy, for
-they only show it, and read it shut in by the sandbox. MISSING, words saying
-that part of the file has not arrived, or NIL: given, no view is asked, as a
-decoder would read what is missing as zeros, and why is said
-\(FILE-VIEW-REFUSES)."
+\(:VIEWED-UNTRUSTED); NIL when none does. MISSING, words saying that part of
+the file has not arrived, or NIL: given, no view is asked, as a decoder would
+read what is missing as zeros, and why is said (FILE-VIEW-REFUSES)."
   (if missing
       (progn (file-view-refuses "~a" missing) nil)
       (let ((view (let ((*visiting-safely* t)
-                        (*file-view-stamp* (tuatara.io:path-stamp copy :failure nil)))
+                        (*file-view-stamp* (tuatara.io:path-stamp native :failure nil)))
                     (run-hook-until-done (remove-if-not (lambda (view) (member view *sandboxed-file-views*))
                                                         *file-views*)
-                                         copy show))))
+                                         path show))))
         (when view
           (setf (tuatara.buffer:buffer-local view :viewed-untrusted) t))
         view)))
@@ -929,28 +928,22 @@ decoder would read what is missing as zeros, and why is said
   "Visit the file at PATH as VISIT-PATH does, SAFE and SHOW as it takes them,
 its first octets read once meanwhile. A file asked to be opened safely is
 shown by no view. One from outside (UNTRUSTED-PATH-P) is shown only by a view
-of *SANDBOXED-FILE-VIEWS*, which reads it in the sandbox, and by none when it
-is or may be evidence (MAY-BE-EVIDENCE-P); such a view is not noted as the
-path chosen last. A directory is listed (\\[rimu]) however it is opened, its
-access time kept and nothing in it opened."
+of *SANDBOXED-FILE-VIEWS*, which reads it in the sandbox
+\(RUN-SANDBOXED-FILE-VIEWS), and by none when it is or may be evidence
+\(MAY-BE-EVIDENCE-P); such a view is not noted as the path chosen last. A
+directory is listed (\\[rimu]) however it is opened, its access time kept and
+nothing in it opened."
   (let* ((*file-view-said* nil)
          (*visiting-safely* (and safe t))
          (untrusted (and (not safe) (untrusted-path-p path)))
          (native (ignoring-errors-reported ("expanding ~a" path) (tuatara.io:native (tuatara.io:expand-path path))))
          (directory (and (or safe untrusted) native
                          (eq :directory (ignoring-errors-reported ("examining ~a" path)
-                                          (tuatara.io:path-kind native)))))
-         (view (cond ((or directory (not (or safe untrusted))) (run-hook-until-done *file-views* path show))
-                     ((and untrusted native (not (may-be-evidence-p native)))
-                      (let ((*visiting-safely* t)
-                            (*file-view-stamp* (tuatara.io:path-stamp native :failure nil)))
-                        (run-hook-until-done (remove-if-not (lambda (view) (member view *sandboxed-file-views*))
-                                                            *file-views*)
-                                             path show))))))
-    (cond ((null view) (visit-path-as-text path safe show))
-          (t (when (and untrusted (not directory))
-               (setf (tuatara.buffer:buffer-local view :viewed-untrusted) t))
-             view))))
+                                          (tuatara.io:path-kind native))))))
+    (or (cond ((or directory (not (or safe untrusted))) (run-hook-until-done *file-views* path show))
+              ((and untrusted native (not (may-be-evidence-p native)))
+               (run-sandboxed-file-views path show :native native)))
+        (visit-path-as-text path safe show))))
 
 (defun say-new-file-directory (buffer)
   "When BUFFER is a new file whose directory is not there yet: say so, and that
@@ -1153,7 +1146,7 @@ safely, having taken B's place (TAKE-PLACE-OF), or shown in the selected
 window when B was shown in none; NIL, B left as it is, when no view shows
 the file. A copy of a file on another machine is shown only by the views of
 *SANDBOXED-FILE-VIEWS*, as when it is first read, and by none while part of
-it has not arrived (RUN-REMOTE-FILE-VIEWS)."
+it has not arrived (RUN-SANDBOXED-FILE-VIEWS)."
   (let* ((windows (buffer-windows b))
          (view (let ((*file-view-said* nil))
                  (tuatara.io:call-with-file-heads
@@ -1161,7 +1154,7 @@ it has not arrived (RUN-REMOTE-FILE-VIEWS)."
                     (let ((native (tuatara.io:native (tuatara.buffer:buffer-file b)))
                           (show (lambda (view) (unless windows (show-buffer view)))))
                       (if (buffer-remote b)
-                          (run-remote-file-views native show (remote-missing-words b))
+                          (run-sandboxed-file-views native show :missing (remote-missing-words b))
                           (run-hook-until-done *file-views* native show))))))))
     (when view
       (take-place-of view b windows)

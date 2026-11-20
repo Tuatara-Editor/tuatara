@@ -438,27 +438,34 @@ in an archive extracted that were there already). An error when not all of
 it was done: a named pipe, a socket or a device left out of a copy is said; a
 copy stopped or failed half-way is taken away, so that no file is left with
 part of what it should hold. A file or directory on another machine is worked
-on through SFTP (REMOTE-RIMU-WORK)."
+on through SFTP (REMOTE-RIMU-WORK). What a copy, a move, a hard link or an
+archive extracted makes here from an untrusted file, or from a machine not
+trusted, is marked as come from outside (KEEPING-UNTRUSTED), and stays
+untrusted wherever it is."
   (destructuring-bind (from . to) pair
     (let ((skipped '()))
       (flet ((skip (path words) (push (format nil "~a (~a)" (tuatara.io:native-file-name path) words) skipped)))
         (when (or (remote-name-p from) (and to (remote-name-p to)))
-          (remote-rimu-work verb from to #'skip)
+          (if (eq verb :copy)
+              (keeping-untrusted (from to) (remote-rimu-work verb from to #'skip))
+              (remote-rimu-work verb from to #'skip))
           (when skipped
             (refuse "not all copied, left out: ~{~a~^, ~}" (reverse skipped)))
           (return-from rimu-work nil))
         (ecase verb
           ;; a copy stopped or failed half-way leaves nothing under its name (COPY-PATH-TREE)
-          (:copy (let ((whole (tuatara.io:copy-path-tree from to :cancel cancel :skipped #'skip)))
+          (:copy (let ((whole (keeping-untrusted (from to)
+                                (tuatara.io:copy-path-tree from to :cancel cancel :skipped #'skip))))
                    (cond ((and (not whole) (car cancel))
                           (refuse "stopped; what was copied of it taken away"))
                          ((not whole)
                           (refuse "not all copied~@[, left out: ~{~a~^, ~}~]" (reverse skipped))))))
-          (:move (handler-case (tuatara.io:move-path from to :cancel cancel :skipped #'skip)
+          (:move (handler-case (keeping-untrusted (from to)
+                                 (tuatara.io:move-path from to :cancel cancel :skipped #'skip))
                    (tuatara.io:file-system-error (e)
                      (if skipped (refuse "~a; left out: ~{~a~^, ~}" e (reverse skipped)) (error e)))))
           (:symlink (tuatara.io:make-symbolic-link (string-right-trim "/" from) to))
-          (:hardlink (tuatara.io:make-hard-link (string-right-trim "/" from) to))
+          (:hardlink (keeping-untrusted (from to) (tuatara.io:make-hard-link (string-right-trim "/" from) to)))
           (:extract (return-from rimu-work
                       (mapcar (lambda (name) (format nil "~a (in ~a)" name (tuatara.io:native-file-name from)))
                               (nth-value 1 (extract-archive from to :cancel cancel :password password)))))

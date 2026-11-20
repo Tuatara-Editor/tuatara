@@ -101,7 +101,8 @@ their names, the first of each."
   "A Word document, an Excel workbook or a PowerPoint presentation being read:
 its OCTETS, its zip ENTRIES, BY-NAME and BY-LOWER-NAME, the entries by their
 names as written and in small letters (the first of each). The PARTS read so far
-by name, as XML trees, and their TEXTS; the RELATIONS of each part read so far \(DOCX-PART-RELATIONS). Of a
+by name, as XML trees, and their TEXTS; the RELATIONS of each part read so far
+\(DOCX-PART-RELATIONS), and RELATION-IDS, each list of them by id. Of a
 Word document, its STYLES (id to name and outline level), NUMBERING (list kinds
 by number and level), FOOTNOTES (endnotes as eID) and COMMENTS by id, CHANGES,
 the tracked changes met, each (KIND AUTHOR DATE TEXT). UNPACKED, the octets of
@@ -126,6 +127,9 @@ whose car turns true to stop the reading, or NIL."
   (relations (make-hash-table :test 'equal)
              :documentation "The relations of each part DOCX-READING has read so far, by part name
 \(DOCX-PART-RELATIONS).")
+  (relation-ids (make-hash-table :test 'eq)
+                :documentation "Of each list of relations of DOCX-READING looked in by id, its relations by id
+\(DOCX-RELATION-WITH-ID).")
   (styles (make-hash-table :test 'equal)
           :documentation "The styles of a Word document being read, an id to a name and outline level.")
   (numbering (make-hash-table :test 'equal)
@@ -299,8 +303,16 @@ or for one leading outside the document (OUTSIDE true) the address as written."
                                                   (docx-target-part part (or (xml-attribute rel "Target") "")))))))))))
 
 (defun docx-relation-with-id (relations id)
-  "The relation among RELATIONS (DOCX-PART-RELATIONS) whose id is ID, or NIL."
-  (and id (find id relations :key (lambda (r) (getf r :id)) :test #'equal)))
+  "The relation among RELATIONS (DOCX-PART-RELATIONS) whose id is ID, the
+first with it, or NIL; found at once however many relations there are, each
+list's relations taken by id the first time it is looked in."
+  (when (and id relations)
+    (let ((by-list (docx-reading-relation-ids *docx-reading*)))
+      (values (gethash id (or (gethash relations by-list)
+                              (setf (gethash relations by-list)
+                                    (let ((by-id (make-hash-table :test 'equal)))
+                                      (dolist (relation (reverse relations) by-id)
+                                        (setf (gethash (getf relation :id) by-id) relation))))))))))
 
 (defun docx-relation-target (relations id)
   "The part of the document the relation ID among RELATIONS leads to, or NIL

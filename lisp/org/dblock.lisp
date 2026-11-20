@@ -857,123 +857,177 @@ value, rounded to the nearest, halves to even."
   (let ((tenths (round (* 10 (rational (* 100 (/ (float part 1d0) (float whole 1d0))))))))
     (format nil "~d.~d" (floor tenths 10) (mod tenths 10))))
 
-(defun clocktable-lines (tables params)
-  "The lines of a clock table of TABLES (CLOCKTABLE-FILE-TABLE's, one for each
-file) before aligning them, PARAMS its parameters: a column for the file when
-:MULTIFILE, a level column \(:level), a timestamp column (:timestamp), a tags
-column (:tags), the property columns, :emphasize, :compact, :narrow (40! by
-default, headlines cut to 40), :tcolumns, :filetitle, a hundredths column
-(:formula %)."
-  (let* ((multifile (getf params :multifile))
-         (maxlevel (clocktable-maxlevel params))
-         (emph (clocktable-flag params :emphasize))
+(define-record (clocktable-layout (:conc-name clocktable-layout-))
+  "The columns of a clock table, as its parameters ask for them."
+  (multifile nil :documentation "True when there is a column for the file.")
+  (level nil :documentation "True when there is a column for the level.")
+  (timestamp nil :documentation "True when there is a column for the timestamp.")
+  (tags nil :documentation "True when there is a column for the tags.")
+  (properties '() :documentation "The names of the property columns.")
+  (percent nil :documentation "True when there is a column for hundredths.")
+  (time-columns 1 :documentation "How many columns the times are shared over, one for each level.")
+  (emphasize nil :documentation "True when the times and headlines of levels 1 and 2 are marked.")
+  (indent nil :documentation "True when the headlines of deeper levels are set in."))
+
+(defun clocktable-layout-for (tables params)
+  "The CLOCKTABLE-LAYOUT of a clock table of TABLES (CLOCKTABLE-FILE-TABLE's)
+as PARAMS asks for it."
+  (let* ((maxlevel (clocktable-maxlevel params))
+         (compact (clocktable-flag params :compact)))
+    (make-clocktable-layout
+     :multifile (getf params :multifile)
+     :level (and (not compact) (clocktable-flag params :level))
+     :timestamp (clocktable-flag params :timestamp)
+     :tags (clocktable-flag params :tags)
+     :properties (clocktable-properties params)
+     :percent (equal (getf params :formula) "%")
+     :emphasize (clocktable-flag params :emphasize)
+     :indent (or compact (if (member :indent params) (clocktable-flag params :indent) t))
+     :time-columns (if (or compact (< maxlevel 2))
+                       1
+                       (let ((levels (loop for (nil minutes entries) in tables
+                                           when (and (integerp minutes) (/= minutes 0))
+                                             append (mapcar #'first entries)))
+                             (most (getf params :tcolumns)))
+                         (min maxlevel (if (integerp most) most 100) (if levels (reduce #'max levels) 1)))))))
+
+(defun clocktable-before-headline (layout)
+  "How many columns come before the headline's in a clock table of LAYOUT."
+  (+ (if (clocktable-layout-multifile layout) 1 0) (if (clocktable-layout-level layout) 1 0)
+     (if (clocktable-layout-timestamp layout) 1 0) (if (clocktable-layout-tags layout) 1 0)
+     (length (clocktable-layout-properties layout))))
+
+(defun clocktable-padded (cells layout minutes-cell &optional percent)
+  "The row of CELLS before the headline's column's end, MINUTES-CELL after it,
+the other time columns empty, and PERCENT last when LAYOUT has that column."
+  (append cells (list minutes-cell) (make-list (1- (clocktable-layout-time-columns layout)) :initial-element "")
+          (and (clocktable-layout-percent layout) (list (or percent "")))))
+
+(defun clocktable-header-row (layout params)
+  "The header row of a clock table of LAYOUT, its words as PARAMS' :lang says."
+  (clocktable-padded
+   (append (and (clocktable-layout-multifile layout) (list (clocktable-word params "File")))
+           (and (clocktable-layout-level layout) (list (clocktable-word params "L")))
+           (and (clocktable-layout-timestamp layout) (list (clocktable-word params "Timestamp")))
+           (and (clocktable-layout-tags layout) (list "Tags"))
+           (clocktable-layout-properties layout)
+           (list (clocktable-word params "Headline")))
+   layout (clocktable-word params "Time") (and (clocktable-layout-percent layout) "%")))
+
+(defun clocktable-total-row (layout params total)
+  "The row of a clock table of LAYOUT that gives TOTAL minutes, as the first
+of its time columns: the label as Org writes it, the word for all files beside
+that of the total when nothing separates them."
+  (let ((others (- (clocktable-before-headline layout) (if (clocktable-layout-multifile layout) 1 0)))
+        (label (clocktable-word params "Total time"))
+        (all (clocktable-word params "ALL")))
+    (clocktable-padded
+     (cond ((not (clocktable-layout-multifile layout))
+            (append (make-list others :initial-element "") (list (format nil "*~a*" label))))
+           ((zerop others) (list "" (format nil "~a *~a*" all label)))
+           (t (append (list "" all) (make-list (1- others) :initial-element "") (list (format nil "*~a*" label)))))
+     layout (format nil "*~a*" (clocktable-time total)) (and (clocktable-layout-percent layout)
+                                                            (if (plusp total) "100.0" "0.0")))))
+
+(defun clocktable-file-row (layout params file title minutes total)
+  "The row of a clock table of LAYOUT for FILE, shown by TITLE, with its MINUTES of TOTAL."
+  (clocktable-padded
+   (append (list (or title (if file (tuatara.io:native-file-name file) "")))
+           (make-list (1- (clocktable-before-headline layout)) :initial-element "")
+           (list (format nil "*~a*" (clocktable-word params "File time"))))
+   layout (format nil "*~a*" (clocktable-time minutes))
+   (and (clocktable-layout-percent layout) (clocktable-percent minutes total))))
+
+(defun clocktable-entry-row (layout entry total cut)
+  "The row of a clock table of LAYOUT for ENTRY, (LEVEL HEADLINE MINUTES
+PROPERTIES TAGS TIMESTAMP) of CLOCKTABLE-FILE-TABLE; the headline shortened
+to CUT characters when that is a number. TOTAL is the minutes all the rows
+share."
+  (destructuring-bind (level headline minutes props entry-tags stamp) entry
+    (let ((time-columns (clocktable-layout-time-columns layout))
+          (headline (if cut (clocktable-cut-headline headline cut) headline)))
+      (flet ((marked (text)
+               (cond ((not (clocktable-layout-emphasize layout)) text)
+                     ((= level 1) (format nil "*~a*" text))
+                     ((= level 2) (format nil "/~a/" text))
+                     (t text))))
+        (append (and (clocktable-layout-multifile layout) (list ""))
+                (and (clocktable-layout-level layout) (list (format nil "~d" level)))
+                (and (clocktable-layout-timestamp layout) (list (or stamp "")))
+                (and (clocktable-layout-tags layout) (list (format nil "~{~a~^, ~}" entry-tags)))
+                (loop for name in (clocktable-layout-properties layout)
+                      collect (or (cdr (assoc name props :test #'string=)) ""))
+                (list (format nil "~a~a"
+                              (if (and (clocktable-layout-indent layout) (> level 1))
+                                  (format nil "\\_~a" (spaces (* 2 (1- level))))
+                                  "")
+                              (marked headline)))
+                (make-list (1- (min time-columns level)) :initial-element "")
+                (list (marked (clocktable-time minutes)))
+                (make-list (max 0 (- time-columns level)) :initial-element "")
+                (and (clocktable-layout-percent layout) (list (clocktable-percent minutes total))))))))
+
+(defun clocktable-cut-headline (headline width)
+  "HEADLINE shortened to WIDTH columns with ... at its end; the label of a link
+shortened, the link kept."
+  (let ((groups (nth-value 1 (cl-ppcre:scan-to-strings "^\\[\\[((?:[^]\\\\]|\\\\.)*)\\]\\[(.*)\\]\\]$" headline))))
+    (flet ((shortened (text) (tuatara.display:shorten-string text width :ellipsis "...")))
+      (if groups
+          (format nil "[[~a][~a]]" (aref groups 0) (shortened (aref groups 1)))
+          (shortened headline)))))
+
+(defun clocktable-file-rows (layout params file minutes entries total cut narrow)
+  "The rows of a clock table of LAYOUT for FILE with its MINUTES and ENTRIES, of
+TOTAL minutes in all: its own row when the table has a column for the file,
+then a row for each entry, their headlines cut to NARROW characters when CUT."
+  (append (when (clocktable-layout-multifile layout)
+            (list (clocktable-file-row layout params file
+                                       (and (clocktable-flag params :filetitle) (clocktable-file-title file))
+                                       minutes total)))
+          (when (> (clocktable-maxlevel params) 0)
+            (loop for entry in entries
+                  collect (clocktable-entry-row layout entry total (and cut narrow))))))
+
+(defun clocktable-rows-for (tables params)
+  "The rows of a clock table of TABLES (CLOCKTABLE-FILE-TABLE's, one for each
+file) before aligning them, PARAMS its parameters: :RULE for a rule, else the
+cells of the row as text. There is a column for the file when :MULTIFILE, a
+level column (:level), a timestamp column (:timestamp), a tags column (:tags),
+the property columns, :emphasize, :compact, :narrow (40! by default, headlines
+cut to 40), :tcolumns, :filetitle, a hundredths column (:formula %). The cells
+are data: a bar in a title, a link or a property keeps its column."
+  (let* ((layout (clocktable-layout-for tables params))
          (compact (clocktable-flag params :compact))
          (narrow (let ((n (getf params :narrow)))
                    (cond ((member :narrow params) (if (equalp n "nil") (and compact "40!") n))
                          (t "40!"))))
-         (show-level (and (not compact) (clocktable-flag params :level)))
-         (timestamp (clocktable-flag params :timestamp))
-         (tags (clocktable-flag params :tags))
-         (percent (equal (getf params :formula) "%"))
-         (filetitle (clocktable-flag params :filetitle))
-         (properties (clocktable-properties params))
-         (indent (or compact (if (member :indent params) (clocktable-flag params :indent) t)))
-         (time-columns (if (or compact (< maxlevel 2))
-                           1
-                           (let ((levels (loop for (nil minutes entries) in tables
-                                               when (and (integerp minutes) (/= minutes 0))
-                                                 append (mapcar #'first entries)))
-                                 (most (getf params :tcolumns)))
-                             (min maxlevel (if (integerp most) most 100) (if levels (reduce #'max levels) 1)))))
          (total (reduce #'+ tables :key #'second))
          (cut nil))
-    (flet ((bars (n) (make-string (max 0 n) :initial-element #\|)))
-      ;; a whole number with a link: cut all the same
-      (when (and (integerp narrow) (clocktable-flag params :link))
-        (setf narrow (format nil "~d!" narrow)))
-      (when (and (stringp narrow) (cl-ppcre:scan "^[0-9]+!$" narrow))
-        (setf cut t narrow (parse-integer narrow :junk-allowed t)))
-      (with-output-to-string (out)
-        (when (and (integerp narrow) (not cut))
-          (format out "|~:[~;|~]~:[~;|~]~:[~;|~]~:[~;|~]~a<~d>| |~%"
-                  multifile show-level timestamp tags (bars (length properties)) narrow))
-        ;; the header
-        (format out "|~a~a~a~:[~;Tags |~]~{~a|~}~a|~a|~a~:[~;%|~]~%"
-                (if multifile (format nil "~a|" (clocktable-word params "File")) "")
-                (if show-level (format nil "~a|" (clocktable-word params "L")) "")
-                (if timestamp (format nil "~a|" (clocktable-word params "Timestamp")) "")
-                tags properties (clocktable-word params "Headline") (clocktable-word params "Time")
-                (bars (1- time-columns)) percent)
-        ;; the total
-        (format out "|-~%|~a~:[~;|~]~:[~;|~]~:[~;|~]~a*~a*| *~a*|~a~:[~;~:*~a|~]~%"
-                (if multifile (format nil "| ~a " (clocktable-word params "ALL")) "")
-                show-level timestamp tags (bars (length properties))
-                (clocktable-word params "Total time")
-                (clocktable-time total) (bars (1- time-columns))
-                (and percent (if (plusp total) "100.0" "0.0")))
-        (when (plusp total)
-          (loop for (file minutes entries) in tables
-                when (or (plusp minutes) (not (clocktable-flag params :fileskip0)))
-                  do (format out "|-~%")
-                     (when multifile
-                       (format out "| ~a ~:[~;| ~]| ~:[~;| ~]~:[~;| ~]~a*~a* | *~a*|~a~:[~;~:* ~a |~]~%"
-                               (or (and filetitle (clocktable-file-title file))
-                                   (if file (tuatara.io:native-file-name file) ""))
-                               show-level timestamp tags
-                               (bars (length properties)) (clocktable-word params "File time")
-                               (clocktable-time minutes) (bars (1- time-columns))
-                               (and percent (clocktable-percent minutes total))))
-                     (when (> maxlevel 0)
-                       (loop for (level headline minutes props entry-tags stamp) in entries
-                             do (when cut
-                                  (setf headline
-                                        (let ((groups (nth-value
-                                                       1 (cl-ppcre:scan-to-strings
-                                                          "^\\[\\[((?:[^]\\\\]|\\\\.)*)\\]\\[(.*)\\]\\]$" headline))))
-                                          (flet ((shortened (text)
-                                                   (tuatara.display:shorten-string text narrow :ellipsis "...")))
-                                            (if groups
-                                                (format nil "[[~a][~a]]" (aref groups 0) (shortened (aref groups 1)))
-                                                (shortened headline))))))
-                                (flet ((field (text)
-                                         (format nil (cond ((not emph) "~a |")
-                                                           ((= level 1) "*~a* |")
-                                                           ((= level 2) "/~a/ |")
-                                                           (t "~a |")) text)))
-                                  (format out
-                                          (concatenate 'string "|~:[~;|~]~:[~;~:*~d|~]~:[~;~:*~a|~]~:[~;~:*~a|~]~{~a|~}"
-                                                       "~a~a~a~a~a~:[~;~:*~a |~]~%")
-                                          multifile
-                                          (and show-level level)
-                                          (and timestamp (or stamp ""))
-                                          (and tags (format nil "~{~a~^, ~}" entry-tags))
-                                          (mapcar (lambda (name) (or (cdr (assoc name props :test #'string=)) ""))
-                                                  properties)
-                                          (if (and indent (> level 1))
-                                              (format nil "\\_~a" (spaces (* 2 (1- level))))
-                                              "")
-                                          (field headline)
-                                          (bars (1- (min time-columns level)))
-                                          (field (clocktable-time minutes))
-                                          (bars (- time-columns level))
-                                          (and percent (clocktable-percent minutes total))))))))))))
+    ;; a whole number with a link: cut all the same
+    (when (and (integerp narrow) (clocktable-flag params :link))
+      (setf narrow (format nil "~d!" narrow)))
+    (when (and (stringp narrow) (cl-ppcre:scan "^[0-9]+!$" narrow))
+      (setf cut t narrow (parse-integer narrow :junk-allowed t)))
+    (loop for row in (append
+                      (when (and (integerp narrow) (not cut))
+                        ;; the width mark Org puts above the table, over the headline's column
+                        (list (append (make-list (clocktable-before-headline layout) :initial-element "")
+                                      (list (format nil "<~d>" narrow) ""))))
+                      (list (clocktable-header-row layout params) :rule (clocktable-total-row layout params total))
+                      (when (plusp total)
+                        (loop for (file minutes entries) in tables
+                              when (or (plusp minutes) (not (clocktable-flag params :fileskip0)))
+                                append (cons :rule (clocktable-file-rows layout params file minutes entries total cut
+                                                                         narrow)))))
+          collect (if (eq row :rule)
+                      row
+                      (mapcar (lambda (cell) (string-trim '(#\Space #\Tab) cell)) row)))))
 
 (defun clocktable-file-title (file)
   "The #+TITLE: of the Org file at FILE, as its clock table's :filetitle shows it, or NIL."
   (multiple-value-bind (tree text) (clocktable-file-tree file)
     (declare (ignore tree))
     (and text (org-file-keyword text "TITLE"))))
-
-(defun clocktable-rows-of (lines)
-  "The rows of the clock table LINES (CLOCKTABLE-LINES): :RULE for a rule
-line, else the cells between the bars, each trimmed."
-  (loop for line in (cl-ppcre:split "\\n" (string-right-trim '(#\Newline) lines))
-        collect (if (and (> (length line) 1) (char= (char line 1) #\-))
-                    :rule
-                    (let ((cells (cl-ppcre:split "\\|" (subseq line 1) :limit most-positive-fixnum)))
-                      ;; the bar that ends the line ends its last cell
-                      (when (and cells (string= (car (last cells)) "")) (setf cells (butlast cells)))
-                      (mapcar (lambda (cell) (string-trim '(#\Space #\Tab) cell)) cells)))))
 
 (defun clocktable-leading-number (text)
   "The number TEXT begins with, read as far as it goes (ORG-CALC-READ-NUMBER,
@@ -1001,7 +1055,7 @@ or of the first H:MM in it; 0 for none)."
                       (if groups (+ (* 60 (parse-integer (aref groups 0))) (parse-integer (aref groups 1))) 0))))))))
 
 (defun clocktable-sorted (rows sort)
-  "ROWS of a clock table (CLOCKTABLE-ROWS-OF) with the rows about the third
+  "ROWS of a clock table (CLOCKTABLE-ROWS-FOR) with the rows about the third
 row of cells, between the rules around it, sorted as :sort (COLUMN . KIND)
 says: by the cell in COLUMN, KIND ?a alphabetically, ?n as numbers, ?t as
 times, a capital the other way round, rows alike kept in their order; as they
@@ -1021,11 +1075,11 @@ are without a third row or a sort it knows."
                                     :key key)))
           (append (subseq rows 0 from) sorted (subseq rows to))))))
 
-(defun clocktable-text (lines params)
-  "The clock table LINES (CLOCKTABLE-LINES) as the block shows them: sorted as
+(defun clocktable-text (rows params)
+  "The clock table ROWS (CLOCKTABLE-ROWS-FOR) as the block shows them: sorted as
 PARAMS' :sort says, their formulas (:formula, a #+TBLFM: line; or the old
 block's, kept) worked out and written under them, aligned, each column as wide as its widest cell."
-  (let* ((rows (clocktable-sorted (clocktable-rows-of lines) (getf params :sort)))
+  (let* ((rows (clocktable-sorted rows (getf params :sort)))
          (columns (loop for row in rows unless (eq row :rule) maximize (length row)))
          (rows (loop for row in rows
                      collect (if (eq row :rule) row (append row
@@ -1223,7 +1277,7 @@ timestamp as written; NIL for none."
         (values (if formatter
                     (funcall formatter tables (list* :multifile multifile params))
                     (concatenate 'string caption
-                                 (clocktable-text (clocktable-lines tables (list* :multifile multifile params))
+                                 (clocktable-text (clocktable-rows-for tables (list* :multifile multifile params))
                                                   params)))
                 (reduce #'+ tables :key #'second))))))
 

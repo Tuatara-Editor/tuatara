@@ -120,10 +120,11 @@ takes). :ARGUMENTS is what its form says, as ORG-READ-RULE reads them. :HOUR,
 
 (defparameter *api*
   '(;; defining commands, modes, keys, faces, settings and background work
-    tuatara.command:define-command tuatara.modes:define-major-mode define-face tuatara-user:define-theme
-    tuatara.packages:define-package-setting tuatara.packages:declare-package-needs tuatara.command:define-key
-    tuatara.command:define-keys tuatara.command:label-keys tuatara.modes:mode-keymap tuatara.runtime:define-job-words
-    tuatara.runtime:define-record tuatara.command:substitute-command-keys commands-for-mode buttons-in-mode
+    tuatara.command:define-command tuatara.command:define-command-alias tuatara.modes:define-major-mode define-face
+    tuatara-user:define-theme tuatara.packages:define-package-setting tuatara.packages:declare-package-needs
+    tuatara.command:define-key tuatara.command:define-keys tuatara.command:label-keys tuatara.modes:mode-keymap
+    tuatara.runtime:define-job-words tuatara.runtime:define-record tuatara.command:substitute-command-keys
+    commands-for-mode buttons-in-mode
     tuatara.modes:fundamental-mode special-mode text-mode org-mode org-agenda-mode
     ;; colours, as themes derive their shades
     tuatara.display:colour-components tuatara.display:colour-hex tuatara.display:mix-colours
@@ -231,7 +232,7 @@ takes). :ARGUMENTS is what its form says, as ORG-READ-RULE reads them. :HOUR,
     org-agenda-file-entries agenda-entry-get org-read-ts make-org-ts org-ts-get org-ts-text org-ts-time-text
     org-day-timestamp-text org-read-rule org-rule-get org-rule-text-p org-rule-part-text org-rule-next
     org-occurrence-notes org-occurrence-note repeat-rule-text repeat-months repeat-open-end org-agenda-main-file
-    org-capture-with org-planning-line-p org-ends-with-newline-p org-ensure-newline
+    org-capture-with org-planning-line-p tuatara.text:ends-with-newline-p tuatara.text:ensure-final-newline
     ;; an Org file written to while it may be open: its buffer, its new text by lines, saved
     tuatara.io:visit-file put-text-by-lines save-buffer-with-care
     ;; text from elsewhere written into Org safely, and read back
@@ -260,6 +261,8 @@ takes). :ARGUMENTS is what its form says, as ORG-READ-RULE reads them. :HOUR,
     start-detached open-externally-file new-private-directory private-cache-directory private-state-directory
     ;; entries of the cache kept to be used again, and the copies of files read from other machines
     define-cache-kind find-cache-entry make-cache-entry note-cache-entry remote-copy-origin
+    ;; whether a file came from outside and is not trusted
+    untrusted-path-p
     tuatara.io:replace-file tuatara.io:memory-file tuatara.io:call-with-memory-file
     sandbox-font-directories pdf-view-make
     ;; pictures turned into pixels in the sandbox, and their pixels read

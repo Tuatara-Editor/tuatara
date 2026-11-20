@@ -77,16 +77,13 @@ is filled again only when the jobs have changed.")
       ;; the tutor is text too
       (is eq nil (binding-or-nil (mode-named "TUATARA-TUTOR-MODE") "h")))))
 
-(define-test (list-buffers renamed-commands-keep-working)
-  ;; the managers' old names run the new commands, saying once which name to use
+(define-test (list-buffers old-manager-names-are-gone)
+  ;; the managers have one name each; buffers and list-cache were removed
   (run-keys "" :text "")
-  (dolist (pair '(("BUFFERS" "BUFFER-MANAGER") ("LIST-CACHE" "CACHE-MANAGER")))
-    (true (tuatara.command:command-symbol (first pair)) "~a still a command" (first pair))
-    (true (tuatara.command:command-symbol (second pair)) "~a is a command" (second pair)))
-  (multiple-value-bind (f editor) (fresh-list-session "M-x b u f f e r s RET" :width 80)
-    (declare (ignore editor))
-    (true (tuatara.frontend.fake:fake-frame-showing f "buffers is now buffer-manager"))
-    (true (tuatara.frontend.fake:fake-frame-showing f "*Buffers*"))))
+  (dolist (name '("BUFFERS" "LIST-CACHE"))
+    (false (tuatara.command:command-symbol name) "~a is no longer a command" name))
+  (dolist (name '("BUFFER-MANAGER" "CACHE-MANAGER"))
+    (true (tuatara.command:command-symbol name) "~a is a command" name)))
 
 (define-test (list-buffers spans-found-by-halves)
   ;; the faces shown between two places are those a look at every span finds, overlapping ones too

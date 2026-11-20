@@ -11,8 +11,11 @@
 
 (defun key-only-command-p (name)
   "True when the command NAME is made for a key to run, not to be named: it
-is not offered by \\[execute-extended-command] and is outside the stable surface."
-  (gethash name *key-only-commands*))
+is not offered by \\[execute-extended-command] and is outside the stable surface.
+An alias of such a command (DEFINE-COMMAND-ALIAS) is key-only too."
+  (or (gethash name *key-only-commands*)
+      (let ((target (get name 'alias-of)))
+        (and target (not (eq target name)) (key-only-command-p (or (command-symbol target) target))))))
 
 (defmacro define-command (name (&key (interactive t)) doc &body body)
   "Define NAME as an interactive command with docstring DOC (required) whose
@@ -32,21 +35,6 @@ longer marked as made while the editor runs (INSTALL-COMMAND)."
           `(setf (gethash ',name *key-only-commands*) t))
      ',name))
 
-(defmacro define-renamed-command (old new)
-  "Keep OLD, the name a command had before it was renamed NEW, running that
-command until Tuatara 1.0. The first time OLD is run in a session it says
-which name to use instead. A command renamed is named here and in the release
-notes."
-  (let ((told (gensym "TOLD")))
-    `(let ((,told nil))
-       (define-command ,old ()
-         ,(format nil "The old name of ~(~a~), kept until Tuatara 1.0: runs it, saying so the first time."
-                  new)
-         (unless ,told
-           (setf ,told t)
-           (message "~(~a~) is now ~(~a~); use that name" ',old ',new))
-         (funcall ',new)))))
-
 (defun install-command (name function &optional documentation)
   "Make NAME a command that runs FUNCTION, as DEFINE-COMMAND makes one, for a
 command made while the editor runs (a name given to recorded keys, a key of an
@@ -59,6 +47,35 @@ after, telling it from a command a source file defines. Returns NAME."
   (when documentation
     (setf (documentation name 'function) documentation))
   name)
+
+(defun define-command-alias (name command &key obsolete)
+  "Make NAME another name for the command COMMAND: running NAME runs COMMAND,
+which may be defined later (a package's command before the package loads).
+Both are symbols; COMMAND is matched by name, so a symbol read in an init file
+names the command whatever its package. NAME is offered by
+\\[execute-extended-command], keys can be bound to it, and its help says it is
+another name for COMMAND. An alias of a key-only command is key-only. Quiet
+unless OBSOLETE is a version string, as \"1.0\": then NAME is a rename kept until
+that version, its help says so, and the first time it runs in a session it says
+which name to use. Returns NAME."
+  (let ((told nil))
+    (install-command
+     name
+     (lambda ()
+       (when (and obsolete (not told))
+         (setf told t)
+         (message "~(~a~) is now ~(~a~); use that name" name command))
+       (let ((function (find-command (or (command-symbol command) command))))
+         (if function
+             (funcall function)
+             (message "~(~a~) is another name for ~(~a~), which is not a command" name command))))
+     (if obsolete
+         (format nil "Obsolete: the old name of ~(~a~), kept until Tuatara ~a. Runs it, saying so the first time.~
+                      ~%~%See ~(~a~)."
+                 command obsolete command)
+         (format nil "Another name for ~(~a~); runs it.~%~%See ~(~a~)." command command)))
+    (setf (get name 'alias-of) command)
+    name))
 
 (defvar *command-names* (cons -1 nil)
   "The commands by name, as COMMAND-SYMBOL finds them: (COUNT . TABLE), TABLE

@@ -25,7 +25,8 @@
   (:import-from #:tuatara.text #:word-char-p #:letter-or-mark-p #:name-char-p #:number-formatter #:blank-text-p
                 #:space-or-tab-char-p #:search-count #:spaces
                 #:blank-char-p #:*blank-characters*)
-  (:import-from #:tuatara.text #:string-line-start #:string-line-end #:xml-entity #:xml-tag-end #:xml-text-value
+  (:import-from #:tuatara.text #:string-line-start #:string-line-end #:ends-with-newline-p #:ensure-final-newline
+                #:text-lines #:xml-entity #:xml-tag-end #:xml-text-value
                 #:utf-16-text #:parse-decimal #:whole-number #:+fnv-offset+
                 #:xml-name #:xml-attribute #:xml-children #:xml-child #:xml-root #:xml-local-name
                 #:xml-local-children #:xml-find-all #:xml-all-text)

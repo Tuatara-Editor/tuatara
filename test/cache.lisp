@@ -341,3 +341,15 @@ the entry's last use 1000 seconds before now. Its copy on disk gone after."
            (index-now index (tuatara.defaults::read-directory-index index '() (* 1024 1024) 64 t))
         (sb-int:unencapsulate 'tuatara.io:write-new-file 'counted))
       (is = 0 written "nothing written again by turns"))))
+
+(define-test (cache kinds-untrusted-unless-said)
+  ;; what the entries of a kind hold is untrusted, as files from outside are, unless the kind is defined trusted
+  (with-cache-kind ("test" "cache-test/")
+    (let* ((tuatara-user:*untrusted-directories* '())
+           (directory (tuatara.defaults::make-cache-entry "test" "one" "The first" :user :someone))
+           (file (tuatara.io:path-join directory "message.html")))
+      (alexandria:write-string-into-file "<p>words</p>" (sb-ext:parse-native-namestring file))
+      (true (tuatara:untrusted-path-p file))
+      (tuatara:define-cache-kind "test" "cache-test/" "Things of the tests" :untrusted nil)
+      (false (tuatara:untrusted-path-p file))
+      (tuatara.defaults::stop-using-cache-directory directory :someone))))

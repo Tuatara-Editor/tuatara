@@ -491,6 +491,26 @@ error output, reached nothing there within SECONDS, in words; NIL when it did."
   (cond ((null code) (format nil "~a did not answer within ~d second~:p" host seconds))
         ((eql code 255) (format nil "ssh could not reach ~a without asking: ~a" host (server-said-shown said)))))
 
+(defun server-sum (host path)
+  "The SHA-256 sum of the file at PATH on HOST as sha256sum there says it, in
+lower-case hex, and NIL; else NIL and words saying why there is none: no
+answer within five minutes, sha256sum failing or not there, or an answer that is
+not a sum. PATH reaches sha256sum through xargs, from its input, and never
+through the shell there, so a name of any characters is summed as it is; the
+\\ sha256sum puts before the sum of a name holding a \\ or a line break is
+passed over."
+  (multiple-value-bind (code output said)
+      (run-on-server host '("xargs -0 sha256sum --") :seconds 300
+                     :input (concatenate 'tuatara.text:octets (tuatara.text:string-octets path) #(0)))
+    (let* ((line (if (uiop:string-prefix-p "\\" output) (subseq output 1) output))
+           (why (or (server-unreached-words host code said 300)
+                    (and (not (eql code 0)) (format nil "sha256sum on ~a says: ~a" host (server-said-shown said)))
+                    (and (not (and (<= 66 (length line))
+                                   (tuatara.text:lowercase-hex-p (subseq line 0 64) 64)
+                                   (string= line "  " :start1 64 :end1 66)))
+                         (format nil "~a answered with something that is not a sum" host)))))
+      (if why (values nil why) (values (subseq line 0 64) nil)))))
+
 (defun import-on-server (host octets)
   "Import the armoured public keys OCTETS into the keyring of gpg on HOST,
 through ssh with no question asked (BatchMode) and nothing forwarded: words

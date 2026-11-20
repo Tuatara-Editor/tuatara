@@ -30,7 +30,7 @@ elsewhere.")
    #:stamp #:stamp-p #:path-stamp #:path-size #:fd-stamp #:stamp-kind #:make-stamp #:same-content-p
    #:stamp-dev #:stamp-ino #:stamp-size #:stamp-mtime #:stamp-nlink #:stamp-mode #:stamp-uid #:stamp-gid #:stamp-ctime
    #:file-holes-p #:fd-holes-p
-   #:same-stamped-file-p #:symlink-target
+   #:same-stamped-file-p #:same-state-p #:symlink-target
    #:fd-file-system #:file-system-class #:free-octets #:free-inodes #:set-path-mode #:umask-bits #:now-nanoseconds
    #:read-only-mount-p #:can-give-owner-p #:writable-p #:nearest-directory #:writing-refused #:host-writing-refusal
    #:writing-refusal
@@ -78,7 +78,7 @@ elsewhere.")
    #:trash-for #:home-trash #:scratch-directory #:buffer-scratch-directory #:kind-words #:size-words
    #:open-scratch-file #:open-unnamed-file #:name-unnamed-file #:cache-directory #:chosen-directory
    #:directory-in-memory-p #:directories-in-memory-words #:data-home #:config-home #:cache-home #:download-directory
-   #:known-download-directory #:path-xattr-p #:read-line-bounded
+   #:known-download-directory #:path-xattr-p #:set-path-xattr #:read-line-bounded
    #:read-stream-octets
    #:session-log #:move-session-log #:state-directory #:write-private-file #:write-new-file #:replace-file
    #:open-lock-file #:lock-file-held-p #:call-with-state-lock
