@@ -13,7 +13,7 @@
 <div class="site">
 <nav class="toc" id="contents" aria-label="Contents">
 <strong>Tuatara Manual</strong>
-<small>for version 0.90.37</small>
+<small>for version 0.90.39</small>
 <p class="tools"><a href="all.html">All on one page</a>
 <button type="button" class="theme" hidden>Dark</button></p>
 <input type="search" placeholder="Search the manual" aria-label="Search the manual">
@@ -551,10 +551,10 @@ included, into a buffer you can search. You install kitty yourself.</p>
 evidence: nothing in a message runs, and attachments open only when you ask,
 from private copies. In a message, <kbd>P</kbd> shows it as it looks, <kbd>O</kbd> opens an
 attachment in the desktop's own program after asking, and <kbd>C-c o</kbd> is the
-prefix for the same commands. In a mailbox, <kbd>C</kbd> copies messages out. What
-readpst wrote of a mailbox stays in Tuatara's cache (chapter 9, &quot;The cache&quot;),
-so the same mailbox opens again without readpst. It needs readpst and
-WeasyPrint.</p>
+prefix for the same commands. In a mailbox, <kbd>C</kbd> copies messages out. A
+mailbox is read by the package itself, shut in the sandbox (chapter 12), and
+what it wrote stays in Tuatara's cache (chapter 9, &quot;The cache&quot;), so the same
+mailbox opens again without being read. It needs WeasyPrint.</p>
 <h3 id="caldav"><span class="num">19.8.8</span> caldav</h3>
 <p>caldav shares Tuatara's agenda with GNOME Calendar, Thunderbird and phones,
 through a CalDAV server (Radicale, or EteSync through its local bridge). The

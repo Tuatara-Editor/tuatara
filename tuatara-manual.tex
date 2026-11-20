@@ -1,4 +1,4 @@
-% Created 2026-11-18 Wed 18:12 with Tuatara, template article
+% Created 2026-11-18 Wed 23:46 with Tuatara, template article
 % Intended LaTeX compiler: xelatex
 %
 % The enhanced export's own look, for a note that sets none of its own
@@ -277,7 +277,7 @@ none & \texttt{C-M-h} & \texttt{select-\codebreak{}window-\codebreak{}left} & Mo
 none & \texttt{C-M-l} & \texttt{select-\codebreak{}window-\codebreak{}right} & Moves to the window on the right.\\
 none & \texttt{C-M-k} & \texttt{select-\codebreak{}window-\codebreak{}above} & Moves to the window above.\\
 none & \texttt{C-M-j} & \texttt{select-\codebreak{}window-\codebreak{}below} & Moves to the window below.\\
-none & \texttt{q}, \texttt{h} & \texttt{quit-\codebreak{}window} & Closes a window that was opened for a help buffer, a list or a log, or shows the buffer it had before. \texttt{h} works in lists.\\
+none & \texttt{q} & \texttt{quit-\codebreak{}window} & Closes a window that was opened for a help buffer, a list or a log, or shows the buffer it had before. \texttt{h} closes only a git log.\\
 none & \texttt{C-x 4 0} & \texttt{kill-\codebreak{}buffer-\codebreak{}and-\codebreak{}window} & Kills this buffer, asking first if it has unsaved changes, and closes its window.\\
 none & \texttt{C-x 4 b} & \texttt{switch-\codebreak{}to-\codebreak{}buffer-\codebreak{}other-\codebreak{}window} & Asks for a buffer and shows it in another window.\\
 none & \texttt{C-x 4 f}, \texttt{C-x 4 C-f} & \texttt{find-\codebreak{}file-\codebreak{}other-\codebreak{}window} & Opens a file in another window.\\
@@ -355,7 +355,7 @@ none & \texttt{M-x describe-\codebreak{}buffer-\codebreak{}places} & \texttt{des
 \endhead
 none & \texttt{C-x b} & \texttt{switch-\codebreak{}to-\codebreak{}buffer} & Asks for a buffer. A name that does not exist makes a new buffer. \texttt{RET} alone goes back to the last one.\\
 none & \texttt{C-x x b} & \texttt{switch-\codebreak{}other-\codebreak{}buffer} & Goes to the buffer used before this one. Press it again to come back.\\
-none & \texttt{C-x C-b} & \texttt{buffers} & Lists every buffer, grouped by project.\\
+none & \texttt{C-x C-b} & \texttt{buffer-\codebreak{}manager} & Lists every buffer, grouped by project.\\
 none & \texttt{C-x k} & \texttt{kill-\codebreak{}buffer} & Kills this buffer, asking first if it has unsaved changes.\\
 none & \texttt{C-x C-s} & \texttt{save-\codebreak{}buffer} & Writes the buffer to its file.\\
 \bottomrule
@@ -804,7 +804,11 @@ none & \texttt{C-a}, \texttt{<home>} & \texttt{minibuffer-\codebreak{}beginning}
 none & \texttt{C-e}, \texttt{<end>} & \texttt{minibuffer-\codebreak{}end} & Moves to the end of the answer.\\
 none & \texttt{C-k} & \texttt{minibuffer-\codebreak{}kill-\codebreak{}line} & Deletes the answer after the cursor.\\
 none & \texttt{C-u} & \texttt{minibuffer-\codebreak{}clear} & Clears the answer. The prompt stays.\\
-none & \texttt{C-<backspace>}, \texttt{M-DEL} & \texttt{minibuffer-\codebreak{}backward-\codebreak{}kill-\codebreak{}word} & Deletes the word before the cursor.\\
+none & \texttt{C-<backspace>}, \texttt{M-DEL} & \texttt{minibuffer-\codebreak{}backward-\codebreak{}kill-\codebreak{}word} & Deletes the word before the cursor. In a path, one name.\\
+none & \texttt{C-w} & \texttt{minibuffer-\codebreak{}backward-\codebreak{}kill-\codebreak{}to-\codebreak{}space} & Deletes back to the space before the cursor, as in a shell. A path goes whole.\\
+none & \texttt{M-d} & \texttt{minibuffer-\codebreak{}kill-\codebreak{}word} & Deletes the word after the cursor.\\
+none & \texttt{M-b}, \texttt{C-<left>} & \texttt{minibuffer-\codebreak{}backward-\codebreak{}word} & Moves back to the start of a word.\\
+none & \texttt{M-f}, \texttt{C-<right>} & \texttt{minibuffer-\codebreak{}forward-\codebreak{}word} & Moves on to the end of a word.\\
 none & \texttt{C-y}, \texttt{C-V}, \texttt{S-<insert>} & \texttt{minibuffer-\codebreak{}paste} & Pastes the clipboard, or what you cut last.\\
 none & \texttt{M-p} & \texttt{minibuffer-\codebreak{}previous-\codebreak{}history} & Brings back an earlier answer to this question.\\
 none & \texttt{M-n} & \texttt{minibuffer-\codebreak{}next-\codebreak{}history} & Goes to a later answer.\\
@@ -828,6 +832,7 @@ replaces it and \texttt{RET} takes it.
 \endhead
 \texttt{*show-\codebreak{}completion-\codebreak{}count*} & \texttt{t} & Shows the place of the selected choice and how many there are before the prompt.\\
 \texttt{*prompt-\codebreak{}above-\codebreak{}candidates*} & \texttt{t} & Shows the prompt above the list of choices. \texttt{nil} puts it on the last row, under them.\\
+\texttt{*path-\codebreak{}delete-\codebreak{}by-\codebreak{}branches*} & \texttt{t} & In questions for a file or directory, DEL deletes back by the branches of the path, the reverse of TAB. \texttt{:directories} does so after a directory’s \texttt{/} only, \texttt{nil} never.\\
 \texttt{*last-\codebreak{}used-\codebreak{}first*} & \texttt{t} & Questions for a file or directory start where you chose last and list that entry first.\\
 \bottomrule
 \end{xltabular}
@@ -920,6 +925,7 @@ The settings for the prompt, \texttt{*prompt-\codebreak{}above-\codebreak{}candi
 \midrule
 \endhead
 \texttt{:completion-\codebreak{}selected} & theme & The selected choice.\\
+\texttt{:minibuffer-\codebreak{}deletion-\codebreak{}mark} & theme & The end of an answer the next \texttt{DEL} deletes, in a question for a path.\\
 \texttt{:completion-\codebreak{}annotation} & theme & Notes beside choices.\\
 \texttt{:completion-\codebreak{}group-\codebreak{}title} & theme & The title of a group of choices.\\
 \texttt{:completion-\codebreak{}group-\codebreak{}line} & theme & The line beside a title.\\
@@ -1520,7 +1526,8 @@ work there too: \texttt{h}, \texttt{j}, \texttt{k}, \texttt{l}, \texttt{w}, \tex
 
 A list that a command made, such as the list of buffers or of the files in a
 directory, may use some of these letters for its own purposes. In a list \texttt{h}
-closes the window, and \texttt{g} starts a move, so the list is made again with \texttt{r}.
+folds the heading of a section, goes back to where the list came from when it
+is a step into another view, or does nothing, and \texttt{g} starts a move, so the list is made again with \texttt{r}.
 The chapter for each list says what its keys do. Wherever \texttt{h}, \texttt{j}, \texttt{k} or \texttt{l}
 does something of its own (a list, git, rimu, a manual page, a PDF, the
 agenda, the date question), \texttt{C-b}, \texttt{C-n}, \texttt{C-p} and \texttt{C-f} do the same, with or
@@ -2396,7 +2403,7 @@ none & \texttt{C-x r +} & \texttt{register-\codebreak{}add} & Adds to a number r
 none & \texttt{M-x register-\codebreak{}prepend} & \texttt{register-\codebreak{}prepend} & Puts the selected text before the text a register keeps.\\
 none & \texttt{C-x r i} & \texttt{register-\codebreak{}insert} & Writes what a register keeps at the cursor. Text goes in as it was, with the mark before it. A block goes in as a block, each row as many times as the number you gave first. A number goes in as digits.\\
 none & \texttt{C-x r j} & \texttt{register-\codebreak{}jump} & Goes to the place a register keeps.\\
-none & \texttt{C-x r l} & \texttt{register-\codebreak{}list} & Lists the registers in a buffer, one per line. \texttt{RET} on a place goes there, and \texttt{q} or \texttt{h} closes the list.\\
+none & \texttt{C-x r l} & \texttt{register-\codebreak{}list} & Lists the registers in a buffer, one per line. \texttt{RET} on a place goes there, and \texttt{q} closes the list.\\
 \bottomrule
 \end{xltabular}
 
@@ -3850,7 +3857,10 @@ faint when idle (\texttt{*indexing-\codebreak{}indicator*}, \texttt{*searching-\
 
 By default what was read is also kept on disk between sessions
 (\texttt{*indexes-\codebreak{}kept-\codebreak{}on-\codebreak{}disk*}), so that at the next start only the files that
-changed are read again. Set it to nil for a directory whose text must not be
+changed are read again. A file counts as changed when its size, time or
+change time (ctime) moved, so a file written again and given its old time back
+is read again too. Text kept on disk that another program changed is not
+searched: the files it came from are read again. Set it to nil for a directory whose text must not be
 copied anywhere. \texttt{*search-\codebreak{}files-\codebreak{}limit*} is the most text Tuatara keeps for
 one search or one kept directory, 128 MB as standard, and
 \texttt{*indexed-\codebreak{}files-\codebreak{}most*} the most files whose text it keeps, 100,000 as
@@ -4130,7 +4140,7 @@ You can skip this until chapter 18.
 \textbf{Modal} & \textbf{Non-modal} & \textbf{Command} & \textbf{What it does}\\
 \midrule
 \endhead
-none & \texttt{C-x C-b} & \texttt{buffers} & List every live buffer in \textbf{Buffers}, those used most recently first, in a section for each project (a directory holding .git or .project, \textbf{PROJECT-ROOT-MARKERS}), the project of the buffer used last first, then one for those in none.\\
+none & \texttt{M-x buffers} & \texttt{buffers} & The old name of buffer-manager, kept until Tuatara 1.0: runs it, saying so the first time.\\
 none & \texttt{s} & \texttt{buffers-\codebreak{}save} & Save the marked buffers (>) that have a file, or with none marked the buffer on the current line.\\
 none & \texttt{K}, \texttt{C-c K} & \texttt{buffers-\codebreak{}keep-\codebreak{}client} & Make the client whose group the cursor is in, in the buffer list, the one that stays when its last buffer is closed, in place of the one \textbf{CLIENT-KEPT-WITHOUT-BUFFERS} names, until it ends.\\
 none & \texttt{l}, \texttt{C-f}, \texttt{RET} & \texttt{list-\codebreak{}visit} & Open the entry on the current line of the list: the buffer, the bookmark’s place, the file; on a section’s heading, fold or unfold the section.\\
@@ -5172,10 +5182,11 @@ The system’s own manual pages, the ones that explain programs such as \texttt{
 \texttt{ls}, \texttt{ls(1)} or \texttt{1 ls}, and lists the names of the pages the system has as you
 type. The page opens read-only in a window of its own, laid out for the width of
 the window, with its headings, bold text and underlined text drawn in faces.
-Every mention of another page, such as \texttt{chmod(1)}, is a link. \texttt{RET} or \texttt{l}
-follows it, \texttt{TAB} goes to the next link, and \texttt{h} comes back to the page you
-came from. \texttt{n} and \texttt{p} go to the next and the previous section, \texttt{r} lays the
-page out again if you changed the size of the window, and \texttt{q} closes it.
+Every mention of another page, such as \texttt{chmod(1)}, is a link. \texttt{RET}
+follows it, \texttt{TAB} goes to the next link, and \texttt{B} comes back to the page you
+came from. \texttt{h}, \texttt{j}, \texttt{k} and \texttt{l} move the cursor as in any text. \texttt{n} and \texttt{p}
+go to the next and the previous section, \texttt{r} lays the page out again if you
+changed the size of the window, and \texttt{q} closes it.
 
 If you open the source of a page, a file such as \texttt{tool.1}, \texttt{M-x man} offers
 that file first, so that you can see what you wrote as it will look.
@@ -5193,7 +5204,7 @@ none & \texttt{M-x tuatara-\codebreak{}tutor} & \texttt{tuatara-\codebreak{}tuto
 none & \texttt{M-x man} & \texttt{man} & Show a manual page in a buffer of its own, read-only: ask for it by name (ls), with its section (ls(1)) or by section and name (1 ls), completing on the names of the pages the system has.\\
 none & \texttt{n}, \texttt{C-c n} & \texttt{man-\codebreak{}next-\codebreak{}section} & Go to the start of the next section heading of the manual page.\\
 none & \texttt{p}, \texttt{C-c p} & \texttt{man-\codebreak{}previous-\codebreak{}section} & Go to the start of the section heading before the line point is on.\\
-none & \texttt{h}, \texttt{C-b}, \texttt{C-c h} & \texttt{man-\codebreak{}back} & Show the page a link was followed from; close the window when this page was not reached by a link.\\
+none & \texttt{B}, \texttt{C-c B} & \texttt{man-\codebreak{}back} & Show the page a link was followed from; close the window when this page was not reached by a link.\\
 \bottomrule
 \end{xltabular}
 
@@ -5246,7 +5257,8 @@ feature needs, and is nothing to worry about. Further down, a table has a row
 for each language, with a tick when its colours, indentation and selections
 work, and then the major modes and the files they take. In a window, the
 report also measures how quickly each way of drawing is on your machine and
-which is faster.
+which is faster. In a window of a daemon’s client it is measured where the
+client runs.
 
 In the report \texttt{r} checks again and \texttt{q} closes it. Run it first when something
 does not work, and send it with a report of a fault.
@@ -5403,7 +5415,20 @@ into it and the list shows what it holds. The question starts in the directory
 of the last file or directory you chose, so when you work on one project you
 seldom type more than the end of a name. \texttt{S-TAB} puts your home directory, \texttt{\textasciitilde{}/},
 in place of what is typed, and lists it. Typing \texttt{\textasciitilde{}/} after a directory does the
-same, starting the path again from home.
+same, starting the path again from home. \texttt{C-u} clears the line.
+
+The directory filled in is not painted, because what you type is added to it.
+\texttt{DEL} just after a \texttt{/} deletes back by the branches of the path. It takes the
+\texttt{/} away and colours the end of the name before it, the part past where that
+name begins as another entry of its directory does. With \texttt{public} and \texttt{pubman}
+in \texttt{\textasciitilde{}/Projects/}, \texttt{DEL} on \texttt{\textasciitilde{}/Projects/\codebreak{}public/} paints \texttt{lic}. The next \texttt{DEL}
+deletes it, leaving \texttt{pub}, which matches both, and paints \texttt{pub}. The one after
+leaves \texttt{\textasciitilde{}/Projects/} with all it holds listed. Typing adds to the path as ever,
+and any other key takes the paint away. The same goes for a file’s name typed whole: with \texttt{todo.\codebreak{}org} and
+\texttt{todo.\codebreak{}txt} side by side, \texttt{DEL} after \texttt{todo.\codebreak{}org} paints \texttt{org}. In a name you are
+still typing, \texttt{DEL} deletes one character. It is the reverse of \texttt{TAB}.
+\texttt{*path-\codebreak{}delete-\codebreak{}by-\codebreak{}branches*} set to \texttt{:directories} keeps this to directories,
+and \texttt{nil} has \texttt{DEL} delete one character everywhere.
 
 Beside each file the list shows its permissions, its size and when it last
 changed. Where a file is one you opened safely before, the list marks it, and
@@ -5482,17 +5507,20 @@ none & \texttt{M-x describe-\codebreak{}file-\codebreak{}local-\codebreak{}setti
 \end{xltabular}
 }
 
+{\footnotesize
 \begin{xltabular}{\textwidth}{@{}l l l >{\raggedright\arraybackslash\hsize=1.000\hsize}X@{}}
 \toprule
 \textbf{Setting} & \textbf{Default} & \textbf{Values} & \textbf{What it changes}\\
 \midrule
 \endhead
 \texttt{*last-\codebreak{}used-\codebreak{}first*} & \texttt{t} & t, nil & Whether the questions that choose a file or a directory (M-x find-file, M-x rimu and the rest) start where you chose last.\\
+\texttt{*path-\codebreak{}delete-\codebreak{}by-\codebreak{}branches*} & \texttt{t} & t, :directories, nil & What C-h does in the questions that choose a file or a directory (M-x find-file and the rest), as the reverse of TAB.\\
 \texttt{*open-\codebreak{}dropped-\codebreak{}files-\codebreak{}safely*} & \texttt{nil} & t, nil & Whether files dropped on the window are opened safely, as M-x universal-argument M-x find-file does: read-only, no mode, nothing written beside them.\\
 \texttt{*file-\codebreak{}local-\codebreak{}variables*} & \texttt{t} & t, nil & Whether a file’s own settings are taken as it is opened.\\
 \texttt{*preview-\codebreak{}files*} & \texttt{nil} & t, nil & Whether choosing a file shows the selected file in the window you are in.\\
 \bottomrule
 \end{xltabular}
+}
 
 \begin{xltabular}{\textwidth}{@{}l >{\raggedright\arraybackslash\hsize=1.000\hsize}X@{}}
 \toprule
@@ -6240,11 +6268,21 @@ is cleared \texttt{*cache-\codebreak{}keep*} after its last use, one day as stan
 come back within a day, the copy is there, and the day counts again from when
 you close it. A pinned entry is never cleared by itself.
 
+The index of a directory kept read (chapter 6) is an entry too. It is in use
+while a search reads it or while Tuatara reads the directory again, and its
+last use is when the search or the reading ended. The index of a directory you
+no longer keep read is cleared by the same rule. If a session still keeps the
+directory read when its index is cleared, nothing is lost: its searches go on
+from what it holds in memory, and it writes the index to disk again without
+reading your files again. With \texttt{*cache-\codebreak{}keep*} set to 0, that happens after
+nearly every search, as the index is cleared within a minute of each: for a
+large directory that is a lot of writing, so keep at least a few hours there.
+
 The cache is only a time saver. A copy of a file from a server, evidence
 included, is cleared by the same rule as any other: the file itself is still
 safe on the server, and if the copy has gone, it is fetched again.
 
-\texttt{M-x list-\codebreak{}cache} lists what the cache holds, in sections by kind: copies of
+\texttt{M-x cache-\codebreak{}manager} lists what the cache holds, in sections by kind: copies of
 files from servers with their names there, mailboxes read by readpst, search
 indexes, pictures of formulas and the other directories of the cache. The logs
 and the compiled packages are left out. Each line shows what the entry is, its
@@ -6269,12 +6307,12 @@ is followed through a link. A pin can keep only a directory in the cache.
 \begin{enumerate}
 \item Press \texttt{C-x C-f}, type \texttt{/ssh:\codebreak{}pinetree:\codebreak{}notes.\codebreak{}txt} and press \texttt{RET}. Then press
    \texttt{C-x k} to close it.
-\item Run \texttt{M-x list-\codebreak{}cache}. Under \texttt{Copies of files on other machines} is
+\item Run \texttt{M-x cache-\codebreak{}manager}. Under \texttt{Copies of files on other machines} is
    \texttt{/ssh:\codebreak{}pinetree:\codebreak{}notes.\codebreak{}txt}, with \texttt{until} and a time one day from now.
 \item Press \texttt{p}. The line now says \texttt{pinned}. Press \texttt{p} again to unpin it.
 \item Press \texttt{RET}. The file opens, and the echo area says \texttt{kept copy from}, the
    time, and \texttt{checked against the server}.
-\item Press \texttt{C-x k}, then \texttt{M-x list-\codebreak{}cache} again. Move to the line, press \texttt{d} and
+\item Press \texttt{C-x k}, then \texttt{M-x cache-\codebreak{}manager} again. Move to the line, press \texttt{d} and
    then \texttt{x}, and answer \texttt{yes}. The copy is gone. The file on pinetree is not
    touched.
 \end{enumerate}
@@ -6285,17 +6323,17 @@ is followed through a link. A pin can keep only a directory in the cache.
 \textbf{Modal} & \textbf{Non-modal} & \textbf{Command} & \textbf{What it does}\\
 \midrule
 \endhead
-none & \texttt{M-x list-\codebreak{}cache} & \texttt{list-\codebreak{}cache} & List what the cache directory keeps to save time, by kind: copies of files read from other machines, mailboxes read by readpst, search indexes, pictures of formulas and the rest (the logs and the compiled packages left out), with their sizes, when they were made and last used, whether they are pinned or when they are cleared (\textbf{CACHE-KEEP}), and whether they are in use.\\
-none & \texttt{p}, \texttt{C-c p} & \texttt{cache-\codebreak{}toggle-\codebreak{}pin} & Pin the marked entries of the list of the cache, or the one on the line, so that they are never cleared by themselves (\textbf{CACHE-KEEP}); entries all pinned already are unpinned.\\
+none & \texttt{M-x cache-\codebreak{}manager} & \texttt{cache-\codebreak{}manager} & List what the cache directory keeps to save time, by kind: copies of files read from other machines, mailboxes read by readpst, search indexes, pictures of formulas and the rest (the logs and the compiled packages left out), with their sizes, when they were made and last used, whether they are pinned or when they are cleared (\textbf{CACHE-KEEP}), and whether they are in use.\\
+none & \texttt{P}, \texttt{C-c P} & \texttt{cache-\codebreak{}toggle-\codebreak{}pin} & Pin the marked entries of the list of the cache, or the one on the line, so that they are never cleared by themselves (\textbf{CACHE-KEEP}); entries all pinned already are unpinned.\\
 \bottomrule
 \end{xltabular}
 
-\begin{xltabular}{\textwidth}{@{}l l >{\raggedright\arraybackslash\hsize=0.689\hsize}X >{\raggedright\arraybackslash\hsize=1.311\hsize}X@{}}
+\begin{xltabular}{\textwidth}{@{}l l >{\raggedright\arraybackslash\hsize=0.667\hsize}X >{\raggedright\arraybackslash\hsize=1.333\hsize}X@{}}
 \toprule
 \textbf{Setting} & \textbf{Default} & \textbf{Values} & \textbf{What it changes}\\
 \midrule
 \endhead
-\texttt{*cache-\codebreak{}keep*} & \texttt{86400} & a number of seconds, 0 or more, or a time in words such as 500ms, 90s, 30m or 2h, at most a hundred years & How long after it was last used an entry of the cache is cleared: a copy of a file read from another machine, a mailbox read by readpst, or other work kept in the cache directory (M-x list-cache).\\
+\texttt{*cache-\codebreak{}keep*} & \texttt{86400} & a number of seconds, 0 or more, or a time in words such as 500ms, 90s, 30m or 2h, at most a hundred years & How long after it was last used an entry of the cache is cleared: a copy of a file read from another machine, a mailbox read by readpst, the index of a directory kept read, or other work kept in the cache directory (M-x cache-manager).\\
 \bottomrule
 \end{xltabular}
 
@@ -7346,7 +7384,7 @@ in last is at the top, and each line says when it was deleted and where it
 was. In the list, \texttt{R} puts the marked things back where they were, \texttt{D}
 deletes them for good and \texttt{x} deletes those marked with \texttt{D}. \texttt{X} empties the
 whole trash and asks twice. \texttt{RET} opens a thing safely so that you can look
-at it before you decide. \texttt{h} or \texttt{q} returns to your directory.
+at it before you decide. \texttt{q} returns to your directory.
 
 A file that you trash on a USB stick goes to the stick’s own trash and comes
 back to where it was. That is why the trash list has a section for each
@@ -9721,7 +9759,7 @@ With a server, you can also ask more of the project:
 
 In an \texttt{*xref*} list, \texttt{n} and \texttt{p} show the next and the previous place in the
 window you came from and leave the list where it is. \texttt{RET} or \texttt{l} goes to the
-place. \texttt{o} shows it in the other window, and \texttt{h} or \texttt{q} closes the list.
+place. \texttt{o} shows it in the other window, and \texttt{q} closes the list.
 
 For what no server knows, such as a word in a comment or a message in a string,
 \texttt{M-s g} (\texttt{search-\codebreak{}in-\codebreak{}files}) searches the text of every file in the project as
@@ -13935,7 +13973,7 @@ none & \texttt{b}, \texttt{t}, \texttt{z} & Open the branch, tag and stash menus
 none & \texttt{m}, \texttt{R} & Open the merge and rebase menus.\\
 none & \texttt{f}, \texttt{F}, \texttt{P} & Open the fetch, pull and push menus.\\
 none & \texttt{r} & Reads the repository again.\\
-none & \texttt{q}, \texttt{h} & Closes the status.\\
+none & \texttt{q} & Closes the status.\\
 \bottomrule
 \end{xltabular}
 
@@ -14284,7 +14322,7 @@ check it out or make a branch at it.
 
 The log takes the keys of every list: \texttt{RET}, \texttt{l} or \texttt{C-f} shows the commit on
 the line, \texttt{o} shows it beside the log, which stays selected, and \texttt{n} and \texttt{p}
-go to the next commit and the one before. \texttt{h} closes the log.
+go to the next commit and the one before. \texttt{h} and \texttt{q} close the log, going back to where it was opened.
 
 {\small
 \begin{xltabular}{\textwidth}{@{}l l l >{\raggedright\arraybackslash\hsize=1.000\hsize}X@{}}
@@ -16920,7 +16958,9 @@ reads what you type in a terminal.
 \item \texttt{tuatara --client --start} does the same, but starts the daemon first if
   none is running. Many people use only this one.
 \item \texttt{tuatara --client --gui} shows the daemon in a window of its own instead of
-  in the terminal.
+  in the terminal. The client draws that window itself, with the graphics card
+  as \texttt{*gui-\codebreak{}renderer*} says, just as plain \texttt{tuatara --gui} does. \texttt{M-x
+  check-\codebreak{}health} in it measures each way of drawing on the client’s machine.
 \item \texttt{tuatara --stop} stops the daemon. It asks about any change you have not
   saved, as described under “Stopping the daemon” below.
 \end{itemize}
@@ -17691,7 +17731,7 @@ none & \texttt{K} & Unloads the marked ones from the running editor.\\
 none & \texttt{R} & Removes them: unloads them and keeps them from loading.\\
 none & \texttt{d}, then \texttt{x} & Marks for deletion, then deletes what is kept of them.\\
 none & \texttt{D} & Deletes what is kept of the marked ones.\\
-none & \texttt{h}, \texttt{q} & Closes the list.\\
+none & \texttt{q} & Closes the list.\\
 \bottomrule
 \end{xltabular}
 
@@ -18321,7 +18361,7 @@ that backs up or cleans your home directory already knows about them.
   again: previews, pages drawn from documents, copies of files opened
   safely, copies of files from servers, mailboxes read by readpst, compiled
   packages and the log of what happened. You can delete it at any time.
-  \texttt{M-x list-\codebreak{}cache} shows what it keeps, and \texttt{*cache-\codebreak{}keep*} says how long an
+  \texttt{M-x cache-\codebreak{}manager} shows what it keeps, and \texttt{*cache-\codebreak{}keep*} says how long an
   entry stays once unused (chapter 9).
 \end{itemize}
 
@@ -19380,7 +19420,7 @@ middle button pastes in Tuatara and in other programs.
 \endhead
 none & \texttt{TAB} & \texttt{forward-\codebreak{}button} & Move point to the next button, from the last round to the first.\\
 none & \texttt{S-TAB} & \texttt{backward-\codebreak{}button} & Move point to the button before, from the first round to the last.\\
-none & \texttt{l}, \texttt{C-f}, \texttt{RET} & \texttt{push-\codebreak{}button} & Do what the button at point does: open what it names.\\
+none & \texttt{RET} & \texttt{push-\codebreak{}button} & Do what the button at point does: open what it names.\\
 none & \texttt{<down-\codebreak{}mouse-1>} & \texttt{push-\codebreak{}button-\codebreak{}at-\codebreak{}click} & Put point where the first mouse button went down, as <down-mouse-1> does, and do what a button there does.\\
 none & \texttt{C-c C-o} & \texttt{markdown-\codebreak{}follow-\codebreak{}link-\codebreak{}at-\codebreak{}point} & Follow the Markdown link point is on (C-c C-o, and RET in NORMAL state): to the heading a table of contents’s link (\#an-anchor) leads to, a web or mail address in the desktop’s program after asking, or a file, visited (safely from a file opened safely).\\
 none & \texttt{<drag-\codebreak{}mouse-1>} & \texttt{mouse-\codebreak{}drag-\codebreak{}region} & Select from where the first mouse button went down to where the mouse is now, point following it, in the window it went down in; held above or below that window’s text, it scrolls a line at a time.\\
@@ -19643,7 +19683,7 @@ type the word.
 \texttt{*bookm\codebreak{}ark-\codebreak{}set-\codebreak{}asks-\codebreak{}catego\codebreak{}ries*} & \texttt{t} & t, nil & Whether M-x bookmark-set asks, after the name, which categories the bookmark is in.\\
 \texttt{*bookm\codebreak{}arks-\codebreak{}kept*} & \texttt{1000} & a whole number, 0 or more & How many bookmarks you may have before setting another says you have more.\\
 \texttt{*cache\codebreak{}-\codebreak{}direct\codebreak{}ory*} & \texttt{nil} & nil, or a directory’s name & The directory Tuatara keeps its cache in.\\
-\texttt{*cache\codebreak{}-\codebreak{}keep*} & \texttt{86400} & a number of seconds, 0 or more, or a time in words such as 500ms, 90s, 30m or 2h, at most a hundred years & How long after it was last used an entry of the cache is cleared: a copy of a file read from another machine, a mailbox read by readpst, or other work kept in the cache directory (M-x list-cache).\\
+\texttt{*cache\codebreak{}-\codebreak{}keep*} & \texttt{86400} & a number of seconds, 0 or more, or a time in words such as 500ms, 90s, 30m or 2h, at most a hundred years & How long after it was last used an entry of the cache is cleared: a copy of a file read from another machine, a mailbox read by readpst, the index of a directory kept read, or other work kept in the cache directory (M-x cache-manager).\\
 \texttt{*calen\codebreak{}dar-\codebreak{}mark-\codebreak{}days*} & \texttt{t} & t, nil & Whether the calendar marks the days \textbf{CALENDAR-MARK-FUNCTIONS} name (the days with agenda entries) as soon as it shows them.\\
 \texttt{*calen\codebreak{}dar-\codebreak{}months*} & \texttt{3} & nil, or a whole number, 1 or more & How many months the calendar shows.\\
 \texttt{*calen\codebreak{}dar-\codebreak{}months\codebreak{}-\codebreak{}per-\codebreak{}row*} & \texttt{nil} & nil, or a whole number, 1 or more & How many months the calendar shows side by side, the rest of \textbf{CALENDAR-MONTHS} in rows of them below, a blank line between.\\
@@ -19908,6 +19948,7 @@ type the word.
 \texttt{*packa\codebreak{}ge-\codebreak{}sources*} & \texttt{nil} & a list, each (NAME . WHERE) & The places packages come from (PACKAGE-SOURCE sets them).\\
 \texttt{*packa\codebreak{}ges-\codebreak{}direct\codebreak{}ory*} & \texttt{nil} & nil, or a directory’s name & The directory Tuatara keeps the packages it fetches in.\\
 \texttt{*pair-\codebreak{}delimi\codebreak{}ters*} & \texttt{((\#\textbackslash{}\{ . \#\textbackslash{}\}) (\#\textbackslash{}[ . \#\textbackslash{}]) (\#\textbackslash{}( . \#\textbackslash{})) (\#\textbackslash{}...} & a list, each a pair (A . B), A a character and B a character & The pairs of delimiters.\\
+\texttt{*path-\codebreak{}delete\codebreak{}-\codebreak{}by-\codebreak{}branch\codebreak{}es*} & \texttt{t} & t, :directories, nil & What C-h does in the questions that choose a file or a directory (M-x find-file and the rest), as the reverse of TAB.\\
 \texttt{*pdf-\codebreak{}view-\codebreak{}dark-\codebreak{}pages*} & \texttt{nil} & t, nil & Whether a PDF’s pages are shown dark.\\
 \texttt{*pictu\codebreak{}re-\codebreak{}memory*} & \texttt{429496\codebreak{}7296} & nil, or a whole number of octets, 0 or more, or a size in words such as 512M, 1.5G or 20 GB (in 1024s: 1K is 1024 octets), at most 4E & The most memory the program drawing a large picture is given.\\
 \texttt{*previ\codebreak{}ew-\codebreak{}buffers*} & \texttt{nil} & t, nil & Whether choosing a buffer shows the selected buffer in the window you are in.\\
@@ -19918,7 +19959,6 @@ type the word.
 \texttt{*proce\codebreak{}ssing-\codebreak{}indica\codebreak{}tor*} & \texttt{"P"} & nil, or text & What the mode line shows first, before [-] and the signs of directories kept read (\textbf{INDEXING-INDICATOR}).\\
 \texttt{*progr\codebreak{}am-\codebreak{}output\codebreak{}-\codebreak{}limit*} & \texttt{67108864} & a whole number of octets, 1 or more, or a size in words such as 512M, 1.5G or 20 GB (in 1024s: 1K is 1024 octets), at most 4E & The most octets PROGRAM-OUTPUT takes of what a program writes.\\
 \texttt{*proje\codebreak{}ct-\codebreak{}root-\codebreak{}markers*} & \texttt{(".\codebreak{}git" ".proj\codebreak{}ect")} & a list, each text & The names of the files or directories that mark the root of a project.\\
-\texttt{*promp\codebreak{}t-\codebreak{}above-\codebreak{}candid\codebreak{}ates*} & \texttt{t} & t, nil & Whether the prompt of a completing read is shown above its candidates.\\
 \bottomrule
 \end{xltabular}
 }
@@ -19929,6 +19969,7 @@ type the word.
 \textbf{Setting} & \textbf{Default} & \textbf{Values} & \textbf{What it changes}\\
 \midrule
 \endhead
+\texttt{*promp\codebreak{}t-\codebreak{}above-\codebreak{}candid\codebreak{}ates*} & \texttt{t} & t, nil & Whether the prompt of a completing read is shown above its candidates.\\
 \texttt{*recen\codebreak{}t-\codebreak{}files-\codebreak{}auto-\codebreak{}cleanup*} & \texttt{t} & t, nil & Whether the files no longer there are taken out of the list of recent files when the editor starts.\\
 \texttt{*recen\codebreak{}t-\codebreak{}files-\codebreak{}limit*} & \texttt{25} & a whole number, 0 or more & How many files the list of recent files keeps.\\
 \texttt{*recta\codebreak{}ngle-\codebreak{}cursor\codebreak{}s-\codebreak{}limit*} & \texttt{10000} & nil, or a whole number, 0 or more & The most rows M-x tuatara-change on a rectangle (M-x rectangle-mark-mode) puts a cursor on.\\
@@ -19968,7 +20009,6 @@ type the word.
 \texttt{*searc\codebreak{}h-\codebreak{}files-\codebreak{}limit*} & \texttt{134217\codebreak{}728} & a whole number of octets, 0 or more, or a size in words such as 512M, 1.5G or 20 GB (in 1024s: 1K is 1024 octets), at most 4E & The most octets of text kept in memory for a search of many files.\\
 \texttt{*searc\codebreak{}h-\codebreak{}files-\codebreak{}lines-\codebreak{}limit*} & \texttt{2000} & a whole number, 1 or more & The most matching lines search-in-files and search-in-formatted list.\\
 \texttt{*searc\codebreak{}h-\codebreak{}files-\codebreak{}min-\codebreak{}input*} & \texttt{3} & a whole number, 0 or more & How many characters search-in-files and search-in-formatted wait for before searching.\\
-\texttt{*searc\codebreak{}h-\codebreak{}result\codebreak{}s-\codebreak{}save-\codebreak{}files*} & \texttt{t} & t, nil & Whether the files that lines found by M-x search-in-files are written back into are saved (M-x search-results-finish).\\
 \bottomrule
 \end{xltabular}
 }
@@ -19979,6 +20019,7 @@ type the word.
 \textbf{Setting} & \textbf{Default} & \textbf{Values} & \textbf{What it changes}\\
 \midrule
 \endhead
+\texttt{*searc\codebreak{}h-\codebreak{}result\codebreak{}s-\codebreak{}save-\codebreak{}files*} & \texttt{t} & t, nil & Whether the files that lines found by M-x search-in-files are written back into are saved (M-x search-results-finish).\\
 \texttt{*searc\codebreak{}hing-\codebreak{}indica\codebreak{}tor*} & \texttt{"S"} & nil, or text & What the mode line shows after \textbf{INDEXING-INDICATOR} while directories are kept read.\\
 \texttt{*sente\codebreak{}nce-\codebreak{}end-\codebreak{}double\codebreak{}-\codebreak{}space*} & \texttt{nil} & t, nil & Whether two spaces separate sentences, as a typist writes them.\\
 \texttt{*set-\codebreak{}mark-\codebreak{}comman\codebreak{}d-\codebreak{}repeat\codebreak{}-\codebreak{}pop*} & \texttt{nil} & t, nil & Whether M-x set-mark-command pressed again right after M-x universal-argument M-x set-mark-command (or M-x pop-global-mark) goes on back to the mark before.\\
@@ -20018,7 +20059,6 @@ type the word.
 \texttt{*text-\codebreak{}direct\codebreak{}ion-\codebreak{}modes*} & \texttt{nil} & a list, each a pair (A . B), A a symbol and B nil, :auto, :right-to-left, :left-to-right & Major modes whose buffers show right-to-left text in the order it is read, or not: a list of (MODE .\\
 \texttt{*text-\codebreak{}direct\codebreak{}ion-\codebreak{}when-\codebreak{}safe*} & \texttt{nil} & t, nil & Whether a file opened safely (M-x find-file-safely) shows right-to-left text in the order it is read, unless the buffer chose otherwise with M-x text-direction-mode.\\
 \texttt{*tuata\codebreak{}ra-\codebreak{}insert\codebreak{}-\codebreak{}cursor\codebreak{}-\codebreak{}colour*} & \texttt{nil} & nil, or a whole number from 0 to 255, or text, or a keyword & The cursor’s colour in INSERT state.\\
-\texttt{*tuata\codebreak{}ra-\codebreak{}insert\codebreak{}-\codebreak{}cursor\codebreak{}-\codebreak{}shape*} & \texttt{nil} & nil, :block, :bar, :underline & The cursor’s shape in INSERT state, while typing.\\
 \bottomrule
 \end{xltabular}
 }
@@ -20029,6 +20069,7 @@ type the word.
 \textbf{Setting} & \textbf{Default} & \textbf{Values} & \textbf{What it changes}\\
 \midrule
 \endhead
+\texttt{*tuata\codebreak{}ra-\codebreak{}insert\codebreak{}-\codebreak{}cursor\codebreak{}-\codebreak{}shape*} & \texttt{nil} & nil, :block, :bar, :underline & The cursor’s shape in INSERT state, while typing.\\
 \texttt{*tuata\codebreak{}ra-\codebreak{}normal\codebreak{}-\codebreak{}cursor\codebreak{}-\codebreak{}colour*} & \texttt{nil} & nil, or a whole number from 0 to 255, or text, or a keyword & The cursor’s colour in NORMAL state.\\
 \texttt{*tuata\codebreak{}ra-\codebreak{}normal\codebreak{}-\codebreak{}cursor\codebreak{}-\codebreak{}shape*} & \texttt{nil} & nil, :block, :bar, :underline & The cursor’s shape in NORMAL state.\\
 \texttt{*tuata\codebreak{}ra-\codebreak{}normal\codebreak{}-\codebreak{}tab-\codebreak{}modes*} & \texttt{(org-\codebreak{}mode)} & a list, each a symbol & The major modes where M-x tuatara-normal-tab in NORMAL state does what TAB does in the mode, the modes derived from them too.\\
@@ -20079,51 +20120,51 @@ To find the command that a key runs, press \texttt{C-h k} and then the key. To f
 the commands that mention a word, press \texttt{C-h a} and type the word.
 
 {\footnotesize
-\begin{xltabular}{\textwidth}{@{}l >{\raggedright\arraybackslash\hsize=0.867\hsize}X l >{\raggedright\arraybackslash\hsize=1.133\hsize}X@{}}
+\begin{xltabular}{\textwidth}{@{}l >{\raggedright\arraybackslash\hsize=0.765\hsize}X l >{\raggedright\arraybackslash\hsize=1.235\hsize}X@{}}
 \toprule
 \textbf{Modal} & \textbf{Non-modal} & \textbf{Command} & \textbf{What it does}\\
 \midrule
 \endhead
 none & \texttt{C-h C-a} & \texttt{about-\codebreak{}tuatara} & Show \textbf{About Tuatara}, the page that introduces Tuatara.\\
-\texttt{T} & \texttt{C-z T} & \texttt{add-\codebreak{}cursor\codebreak{}-\codebreak{}above} & Add a cursor on the line above, at the same column: the first press makes cursors of point and the line above, each one after adds one above the first, and a count adds that many (negative, below).\\
-\texttt{t} & \texttt{C-z t} & \texttt{add-\codebreak{}cursor\codebreak{}-\codebreak{}below} & Add a cursor on the line below, at the same column.\\
+\texttt{T} & \texttt{C-z T} & \texttt{add-\codebreak{}cursor-\codebreak{}above} & Add a cursor on the line above, at the same column: the first press makes cursors of point and the line above, each one after adds one above the first, and a count adds that many (negative, below).\\
+\texttt{t} & \texttt{C-z t} & \texttt{add-\codebreak{}cursor-\codebreak{}below} & Add a cursor on the line below, at the same column.\\
 none & \texttt{M-x align-\codebreak{}cursors} & \texttt{align-\codebreak{}cursors} & Put every cursor at the real cursor’s column, or its line’s end where the line is shorter; with cursors selecting, wrap the selections in = as any delimiter does.\\
-none & \texttt{C-h a} & \texttt{apropo\codebreak{}s-\codebreak{}command} & List the commands and variables whose names or documentation match the words typed, in \textbf{Apropos}.\\
-none & \texttt{M-m} & \texttt{back-\codebreak{}to-\codebreak{}indent\codebreak{}ation} & Move point to the first character of its line that is not a space or a tab.\\
-none & \texttt{S-TAB} & \texttt{backwa\codebreak{}rd-\codebreak{}button} & Move point to the button before, from the first round to the last.\\
-\texttt{h} & \texttt{C-b}, \texttt{<left>} & \texttt{backwa\codebreak{}rd-\codebreak{}char} & Move point backward one character (or the prefix argument’s worth); in the hex view, one octet.\\
-none & \texttt{C-M-\codebreak{}DEL} & \texttt{backwa\codebreak{}rd-\codebreak{}kill-\codebreak{}sexp} & Kill the balanced expression before point: to where backward-sexp goes.\\
-none & \texttt{C-M-p} & \texttt{backwa\codebreak{}rd-\codebreak{}list} & Move backward over the bracketed group before point, to its opening bracket; the opposite of forward-list.\\
-none & \texttt{M-\{} & \texttt{backwa\codebreak{}rd-\codebreak{}paragr\codebreak{}aph} & Move point to the start of the paragraph: the start of the blank line before it, or the start of the text.\\
-none & \texttt{M-a} & \texttt{backwa\codebreak{}rd-\codebreak{}sentence} & Move point to the start of the sentence: after the end of the one before, or the start of the paragraph’s text.\\
-\texttt{B} & \texttt{C-M-b} & \texttt{backwa\codebreak{}rd-\codebreak{}sexp} & Move backward over a balanced expression, the opposite of forward-sexp: a quote before the expression goes with it.\\
-none & \texttt{C-M-u} & \texttt{backwa\codebreak{}rd-\codebreak{}up-\codebreak{}list} & Move back out of the bracketed group around point, to its opening bracket.\\
-\texttt{b} & \texttt{M-b} & \texttt{backwa\codebreak{}rd-\codebreak{}word} & Move point to the start of the previous word (or the prefix argument’s worth, forward with a negative one).\\
-none & \texttt{C-x +} & \texttt{balanc\codebreak{}e-\codebreak{}windows} & Make the windows the same size: each split shares its room equally.\\
+none & \texttt{C-h a} & \texttt{apropos-\codebreak{}command} & List the commands and variables whose names or documentation match the words typed, in \textbf{Apropos}.\\
+none & \texttt{M-m} & \texttt{back-\codebreak{}to-\codebreak{}indentation} & Move point to the first character of its line that is not a space or a tab.\\
+none & \texttt{S-TAB} & \texttt{backward-\codebreak{}button} & Move point to the button before, from the first round to the last.\\
+\texttt{h} & \texttt{C-b}, \texttt{<left>} & \texttt{backward-\codebreak{}char} & Move point backward one character (or the prefix argument’s worth); in the hex view, one octet.\\
+none & \texttt{C-M-\codebreak{}DEL} & \texttt{backward-\codebreak{}kill-\codebreak{}sexp} & Kill the balanced expression before point: to where backward-sexp goes.\\
+none & \texttt{C-M-p} & \texttt{backward-\codebreak{}list} & Move backward over the bracketed group before point, to its opening bracket; the opposite of forward-list.\\
+none & \texttt{M-\{} & \texttt{backward-\codebreak{}paragraph} & Move point to the start of the paragraph: the start of the blank line before it, or the start of the text.\\
+none & \texttt{M-a} & \texttt{backward-\codebreak{}sentence} & Move point to the start of the sentence: after the end of the one before, or the start of the paragraph’s text.\\
+\texttt{B} & \texttt{C-M-b} & \texttt{backward-\codebreak{}sexp} & Move backward over a balanced expression, the opposite of forward-sexp: a quote before the expression goes with it.\\
+none & \texttt{C-M-u} & \texttt{backward-\codebreak{}up-\codebreak{}list} & Move back out of the bracketed group around point, to its opening bracket.\\
+\texttt{b} & \texttt{M-b} & \texttt{backward-\codebreak{}word} & Move point to the start of the previous word (or the prefix argument’s worth, forward with a negative one).\\
+none & \texttt{C-x +} & \texttt{balance-\codebreak{}windows} & Make the windows the same size: each split shares its room equally.\\
 \texttt{m DEL}, \texttt{m <delete>} & \texttt{C-z m DEL}, \texttt{C-z m <delete>} & \texttt{bank-\codebreak{}clear} & Let go of every banked line of this buffer; the text is left as it is.\\
 \texttt{m l} & \texttt{C-z m l} & \texttt{bank-\codebreak{}lines} & Bank the lines the selection touches, or the line at point: set them aside, highlighted, and let go of the selection, to go on and bank more elsewhere.\\
-\texttt{m u} & \texttt{C-z m u} & \texttt{bank-\codebreak{}releas\codebreak{}e-\codebreak{}line} & Take the line at point out of the bank, the other banked lines kept; on a line not banked, say so.\\
-\texttt{m U} & \texttt{C-z m U} & \texttt{bank-\codebreak{}releas\codebreak{}e-\codebreak{}section} & Take the run of banked lines point is on out of the bank, all the lines beside each other at once; the banks elsewhere are kept.\\
-\texttt{g g} & \texttt{M-<} & \texttt{beginn\codebreak{}ing-\codebreak{}of-\codebreak{}buffer} & Move point to the start of the buffer.\\
-none & \texttt{C-M-a} & \texttt{beginn\codebreak{}ing-\codebreak{}of-\codebreak{}defun} & Move back to the start of the definition point is in, or of the one before; with a count, that many definitions back, or forward to the start of the ones after when negative.\\
-\texttt{g h} & \texttt{C-a}, \texttt{<home>} & \texttt{beginn\codebreak{}ing-\codebreak{}of-\codebreak{}line} & Move point to the start of the current line; where long lines wrap at a word’s edge (C-x T l), of the screen row it is on; in the hex view, of the row of octets.\\
-none & \texttt{C-x m d} & \texttt{bookma\codebreak{}rk-\codebreak{}delete} & Forget a bookmark, chosen by its name.\\
-none & \texttt{C-x m b} & \texttt{bookma\codebreak{}rk-\codebreak{}jump} & Go to a bookmark, chosen by its name (each listed with its file): its file visited, point where it was set, found again when the text above it changed.\\
-none & \texttt{C-x m l} & \texttt{bookma\codebreak{}rk-\codebreak{}manager} & Manage the bookmarks in a list, as the buffer list (C-x C-b) manages buffers, in sections: one for each category (C-x m m asks for them), its heading saying how many it holds, then one for the bookmarks in none; a bookmark in two categories is in both.\\
-none & \texttt{r}, \texttt{C-c r} & \texttt{bookma\codebreak{}rk-\codebreak{}rename} & Give the bookmark on the current line another name, in every section it is in; a name another bookmark has already is taken from it after asking.\\
-none & \texttt{C-x m m} & \texttt{bookma\codebreak{}rk-\codebreak{}set} & Keep where point is in the current file (or the directory a directory list shows and the entry the cursor is on) under a name you give, the file’s name offered, then in the categories you choose, those used already offered, new ones typed (\textbf{BOOKMARK-SET-ASKS-CATEGORIES}).\\
-none & \texttt{c}, \texttt{C-c c} & \texttt{bookma\codebreak{}rk-\codebreak{}set-\codebreak{}catego\codebreak{}ries} & Say which categories the bookmark on the current line is in, or the marked ones (>) are, the sections holding them unfolded first: those used already offered, new ones typed, several apart by commas; the bookmark’s own written in first, to change.\\
-none & \texttt{M-g o} & \texttt{buffer\codebreak{}-\codebreak{}outline} & Go to a heading of the current buffer, chosen from a list of them: Org’s headings, Lisp’s comments of three semicolons and top-level forms, and in a language parsed with tree-sitter its definitions and headings (a function, a type, a Markdown heading), each shown as its line after its number, in the order of the text.\\
-none & \texttt{C-x C-b} & \texttt{buffers} & List every live buffer in \textbf{Buffers}, those used most recently first, in a section for each project (a directory holding .git or .project, \textbf{PROJECT-ROOT-MARKERS}), the project of the buffer used last first, then one for those in none.\\
-none & \texttt{K}, \texttt{C-c K} & \texttt{buffer\codebreak{}s-\codebreak{}keep-\codebreak{}client} & Make the client whose group the cursor is in, in the buffer list, the one that stays when its last buffer is closed, in place of the one \textbf{CLIENT-KEPT-WITHOUT-BUFFERS} names, until it ends.\\
-none & \texttt{s} & \texttt{buffer\codebreak{}s-\codebreak{}save} & Save the marked buffers (>) that have a file, or with none marked the buffer on the current line.\\
-none & \texttt{p}, \texttt{C-c p} & \texttt{cache-\codebreak{}toggle\codebreak{}-\codebreak{}pin} & Pin the marked entries of the list of the cache, or the one on the line, so that they are never cleared by themselves (\textbf{CACHE-KEEP}); entries all pinned already are unpinned.\\
+\texttt{m u} & \texttt{C-z m u} & \texttt{bank-\codebreak{}release-\codebreak{}line} & Take the line at point out of the bank, the other banked lines kept; on a line not banked, say so.\\
+\texttt{m U} & \texttt{C-z m U} & \texttt{bank-\codebreak{}release-\codebreak{}section} & Take the run of banked lines point is on out of the bank, all the lines beside each other at once; the banks elsewhere are kept.\\
+\texttt{g g} & \texttt{M-<} & \texttt{beginning-\codebreak{}of-\codebreak{}buffer} & Move point to the start of the buffer.\\
+none & \texttt{C-M-a} & \texttt{beginning-\codebreak{}of-\codebreak{}defun} & Move back to the start of the definition point is in, or of the one before; with a count, that many definitions back, or forward to the start of the ones after when negative.\\
+\texttt{g h} & \texttt{C-a}, \texttt{<home>} & \texttt{beginning-\codebreak{}of-\codebreak{}line} & Move point to the start of the current line; where long lines wrap at a word’s edge (C-x T l), of the screen row it is on; in the hex view, of the row of octets.\\
+none & \texttt{C-x m d} & \texttt{bookmark-\codebreak{}delete} & Forget a bookmark, chosen by its name.\\
+none & \texttt{C-x m b} & \texttt{bookmark-\codebreak{}jump} & Go to a bookmark, chosen by its name (each listed with its file): its file visited, point where it was set, found again when the text above it changed.\\
+none & \texttt{C-x m l} & \texttt{bookmark-\codebreak{}manager} & Manage the bookmarks in a list, as the buffer list (C-x C-b) manages buffers, in sections: one for each category (C-x m m asks for them), its heading saying how many it holds, then one for the bookmarks in none; a bookmark in two categories is in both.\\
+none & \texttt{r}, \texttt{C-c r} & \texttt{bookmark-\codebreak{}rename} & Give the bookmark on the current line another name, in every section it is in; a name another bookmark has already is taken from it after asking.\\
+none & \texttt{C-x m m} & \texttt{bookmark-\codebreak{}set} & Keep where point is in the current file (or the directory a directory list shows and the entry the cursor is on) under a name you give, the file’s name offered, then in the categories you choose, those used already offered, new ones typed (\textbf{BOOKMARK-SET-ASKS-CATEGORIES}).\\
+none & \texttt{c}, \texttt{C-c c} & \texttt{bookmark-\codebreak{}set-\codebreak{}categories} & Say which categories the bookmark on the current line is in, or the marked ones (>) are, the sections holding them unfolded first: those used already offered, new ones typed, several apart by commas; the bookmark’s own written in first, to change.\\
+none & \texttt{C-x C-b} & \texttt{buffer-\codebreak{}manager} & List every live buffer in \textbf{Buffers}, those used most recently first, in a section for each project (a directory holding .git or .project, \textbf{PROJECT-ROOT-MARKERS}), the project of the buffer used last first, then one for those in none.\\
+none & \texttt{M-g o} & \texttt{buffer-\codebreak{}outline} & Go to a heading of the current buffer, chosen from a list of them: Org’s headings, Lisp’s comments of three semicolons and top-level forms, and in a language parsed with tree-sitter its definitions and headings (a function, a type, a Markdown heading), each shown as its line after its number, in the order of the text.\\
+none & \texttt{M-x buffers} & \texttt{buffers} & The old name of buffer-manager, kept until Tuatara 1.0: runs it, saying so the first time.\\
+none & \texttt{K}, \texttt{C-c K} & \texttt{buffers-\codebreak{}keep-\codebreak{}client} & Make the client whose group the cursor is in, in the buffer list, the one that stays when its last buffer is closed, in place of the one \textbf{CLIENT-KEPT-WITHOUT-BUFFERS} names, until it ends.\\
+none & \texttt{s} & \texttt{buffers-\codebreak{}save} & Save the marked buffers (>) that have a file, or with none marked the buffer on the current line.\\
+none & \texttt{M-x cache-\codebreak{}manager} & \texttt{cache-\codebreak{}manager} & List what the cache directory keeps to save time, by kind: copies of files read from other machines, mailboxes read by readpst, search indexes, pictures of formulas and the rest (the logs and the compiled packages left out), with their sizes, when they were made and last used, whether they are pinned or when they are cleared (\textbf{CACHE-KEEP}), and whether they are in use.\\
+none & \texttt{P}, \texttt{C-c P} & \texttt{cache-\codebreak{}toggle-\codebreak{}pin} & Pin the marked entries of the list of the cache, or the one on the line, so that they are never cleared by themselves (\textbf{CACHE-KEEP}); entries all pinned already are unpinned.\\
 none & \texttt{C-x n a} & \texttt{calendar} & Show the calendar: the month of today and the months either side, below the window you are in, point on today.\\
-none & \texttt{C-b}, \texttt{<left>} & \texttt{calend\codebreak{}ar-\codebreak{}backwa\codebreak{}rd-\codebreak{}day} & Move point a day back in the calendar; with a count, that many.\\
-none & \texttt{M-\{} & \texttt{calend\codebreak{}ar-\codebreak{}backwa\codebreak{}rd-\codebreak{}month} & Move point a month back in the calendar, to the same day of the month (or its last); with a count, that many.\\
-none & \texttt{C-p}, \texttt{<up>} & \texttt{calend\codebreak{}ar-\codebreak{}backwa\codebreak{}rd-\codebreak{}week} & Move point a week back in the calendar; with a count, that many.\\
-none & \texttt{C-x [} & \texttt{calend\codebreak{}ar-\codebreak{}backwa\codebreak{}rd-\codebreak{}year} & Move point a year back in the calendar; with a count, that many.\\
-none & \texttt{M-a} & \texttt{calend\codebreak{}ar-\codebreak{}beginn\codebreak{}ing-\codebreak{}of-\codebreak{}month} & Move point to the first day of its month.\\
+none & \texttt{C-b}, \texttt{<left>} & \texttt{calendar-\codebreak{}backward-\codebreak{}day} & Move point a day back in the calendar; with a count, that many.\\
+none & \texttt{M-\{} & \texttt{calendar-\codebreak{}backward-\codebreak{}month} & Move point a month back in the calendar, to the same day of the month (or its last); with a count, that many.\\
+none & \texttt{C-p}, \texttt{<up>} & \texttt{calendar-\codebreak{}backward-\codebreak{}week} & Move point a week back in the calendar; with a count, that many.\\
 \bottomrule
 \end{xltabular}
 }
@@ -20134,6 +20175,8 @@ none & \texttt{M-a} & \texttt{calend\codebreak{}ar-\codebreak{}beginn\codebreak{
 \textbf{Modal} & \textbf{Non-modal} & \textbf{Command} & \textbf{What it does}\\
 \midrule
 \endhead
+none & \texttt{C-x [} & \texttt{calendar-\codebreak{}backward-\codebreak{}year} & Move point a year back in the calendar; with a count, that many.\\
+none & \texttt{M-a} & \texttt{calendar-\codebreak{}beginning-\codebreak{}of-\codebreak{}month} & Move point to the first day of its month.\\
 none & \texttt{C-a} & \texttt{calendar-\codebreak{}beginning-\codebreak{}of-\codebreak{}week} & Move point to the start of the week it is in (\textbf{CALENDAR-WEEK-START-DAY}); on it, a week back.\\
 none & \texttt{M-<} & \texttt{calendar-\codebreak{}beginning-\codebreak{}of-\codebreak{}year} & Move point to the first day of its year.\\
 none & \texttt{M-e} & \texttt{calendar-\codebreak{}end-\codebreak{}of-\codebreak{}month} & Move point to the last day of its month.\\
@@ -20172,8 +20215,6 @@ none & \texttt{M-x conflict-\codebreak{}keep-\codebreak{}base} & \texttt{conflic
 none & \texttt{M-x conflict-\codebreak{}keep-\codebreak{}both-\codebreak{}sides} & \texttt{conflict-\codebreak{}keep-\codebreak{}both-\codebreak{}sides} & Put the conflict point is in right by keeping both its sides, the first then the second, the base and the marker lines taken away; then go to the next conflict.\\
 none & \texttt{M-x conflict-\codebreak{}keep-\codebreak{}first-\codebreak{}side} & \texttt{conflict-\codebreak{}keep-\codebreak{}first-\codebreak{}side} & Put the conflict point is in right by keeping its first side, the lines after its <<<<<<< line, and taking away the rest and its marker lines; then go to the next conflict.\\
 none & \texttt{M-x conflict-\codebreak{}keep-\codebreak{}second-\codebreak{}side} & \texttt{conflict-\codebreak{}keep-\codebreak{}second-\codebreak{}side} & Put the conflict point is in right by keeping its second side, the lines after its \texttt{=====} line, and taking away the rest and its marker lines; then go to the next conflict.\\
-none & \texttt{M-x conflict-\codebreak{}markers-\codebreak{}mode} & \texttt{conflict-\codebreak{}markers-\codebreak{}mode} & Show the conflicts a merge left in the current buffer, and give it the keys that put them right, or stop.\\
-none & \texttt{M-x conflict-\codebreak{}next} & \texttt{conflict-\codebreak{}next} & Go to the start of the next conflict, its <<<<<<< line, and say which of how many it is.\\
 \bottomrule
 \end{xltabular}
 }
@@ -20184,6 +20225,8 @@ none & \texttt{M-x conflict-\codebreak{}next} & \texttt{conflict-\codebreak{}nex
 \textbf{Modal} & \textbf{Non-modal} & \textbf{Command} & \textbf{What it does}\\
 \midrule
 \endhead
+none & \texttt{M-x conflict-\codebreak{}markers-\codebreak{}mode} & \texttt{conflict-\codebreak{}markers-\codebreak{}mode} & Show the conflicts a merge left in the current buffer, and give it the keys that put them right, or stop.\\
+none & \texttt{M-x conflict-\codebreak{}next} & \texttt{conflict-\codebreak{}next} & Go to the start of the next conflict, its <<<<<<< line, and say which of how many it is.\\
 none & \texttt{M-x conflict-\codebreak{}previous} & \texttt{conflict-\codebreak{}previous} & Go to the start of the conflict before point, its <<<<<<< line, and say which of how many it is.\\
 none & \texttt{M-x conflict-\codebreak{}show-\codebreak{}sides-\codebreak{}diff} & \texttt{conflict-\codebreak{}show-\codebreak{}sides-\codebreak{}diff} & Show how the two sides of the conflict point is in differ, in a buffer of their own in another window, which q closes: the lines only the first side has after -, those only the second has after +, three lines around each change, the sides named by their marker lines.\\
 none & \texttt{M-x copy-\codebreak{}from-\codebreak{}evidence} & \texttt{copy-\codebreak{}from-\codebreak{}evidence} & Copy files out of an evidence directory (\textbf{EVIDENCE-DIRECTORIES}) to a directory asked for, which may not be in one: in a rimu list the marked files, or the one on the line; elsewhere the file at point or the buffer’s file, each of them in an evidence directory.\\
@@ -20222,8 +20265,6 @@ none & \texttt{M-x cursors-\codebreak{}select-\codebreak{}lines} & \texttt{curso
 none & \texttt{M-x cursors-\codebreak{}unbank} & \texttt{cursors-\codebreak{}unbank} & Take every cursor’s line out of the bank, leaving every other bank alone.\\
 none & \texttt{M-x cursors-\codebreak{}undo} & \texttt{cursors-\codebreak{}undo} & Undo, keeping the cursors: a change made at them all is taken back at all.\\
 none & \texttt{M-x cursors-\codebreak{}upcase} & \texttt{cursors-\codebreak{}upcase} & Put every cursor’s selection in upper case, or the count’s words from every cursor.\\
-none & \texttt{M-x cursors-\codebreak{}yank} & \texttt{cursors-\codebreak{}yank} & Paste at every cursor, over its selection.\\
-none & \texttt{M-SPC} & \texttt{cycle-\codebreak{}spacing} & Change the spaces around point in turn: once, one space (M-x just-one-space, a count as there); pressed again, none; a third time, the spaces as they were.\\
 \bottomrule
 \end{xltabular}
 }
@@ -20234,6 +20275,8 @@ none & \texttt{M-SPC} & \texttt{cycle-\codebreak{}spacing} & Change the spaces a
 \textbf{Modal} & \textbf{Non-modal} & \textbf{Command} & \textbf{What it does}\\
 \midrule
 \endhead
+none & \texttt{M-x cursors-\codebreak{}yank} & \texttt{cursors-\codebreak{}yank} & Paste at every cursor, over its selection.\\
+none & \texttt{M-SPC} & \texttt{cycle-\codebreak{}spacing} & Change the spaces around point in turn: once, one space (M-x just-one-space, a count as there); pressed again, none; a third time, the spaces as they were.\\
 none & \texttt{M-x daemon-\codebreak{}quit} & \texttt{daemon-\codebreak{}quit} & Stop the editor running in the background (tuatara --daemon), from any of its clients, asked first about every change not saved in it, the clients that ended included, group by group: s saves those of a group, l leaves them unsaved, C-g keeps the daemon running; the saves begun are waited for (C-g there keeps it running too).\\
 none & \texttt{C-x 8 -} & \texttt{deactivate\codebreak{}-\codebreak{}input-\codebreak{}method} & Turn off this buffer’s input method, whichever it is.\\
 none & \texttt{M-x debug-\codebreak{}mode} & \texttt{debug-\codebreak{}mode} & Switch debug mode on or off.\\
@@ -20272,67 +20315,68 @@ none & \texttt{C-h v} & \texttt{describe-\codebreak{}variable} & Show a variable
 none & \texttt{M-x diff-\codebreak{}files} & \texttt{diff-\codebreak{}files} & Compare the file shown with another asked for, navigating to it as C-x C-f does, and show the differences in a buffer of their own, which q closes: the entry on the line in a list of a directory (there = compares the two marked); with C-u, or where there is none, both asked for.\\
 none & \texttt{C-x 8 .} & \texttt{digraph-\codebreak{}input-\codebreak{}mode} & Type digraphs as you go: turn on the rfc1345 input method, so that typed text takes \& and a digraph’s keys for its character, \&e’ for e with an acute; \& and keys that make none stay as typed.\\
 none & \texttt{C-x T v} & \texttt{display-\codebreak{}fill-\codebreak{}column-\codebreak{}mode} & Mark the current buffer’s fill column (C-x f) with a line down the window, or stop: the last column a filled line may reach, the 80th for a fill column of 80, painted in the :display-fill-column face over the text’s backgrounds (a source block’s, the selection’s) and under the line point is on.\\
-none & \texttt{M-x display-\codebreak{}line-\codebreak{}numbers-\codebreak{}mode} & \texttt{display-\codebreak{}line-\codebreak{}numbers-\codebreak{}mode} & Show absolute line numbers in the gutter of the current buffer, or none: each line its own number, from 1.\\
-none & \texttt{M-x display-\codebreak{}relative-\codebreak{}line-\codebreak{}numbers-\codebreak{}mode} & \texttt{display-\codebreak{}relative-\codebreak{}line-\codebreak{}numbers-\codebreak{}mode} & Show relative line numbers in the gutter of the current buffer, or none: the current line shows its number, the others how many lines away they are, which is what counted motion like C-u 7 j expects; with a count, on when it is positive, off when it is zero or less.\\
+\bottomrule
+\end{xltabular}
+}
+
+{\small
+\begin{xltabular}{\textwidth}{@{}l >{\raggedright\arraybackslash\hsize=0.750\hsize}X l >{\raggedright\arraybackslash\hsize=1.250\hsize}X@{}}
+\toprule
+\textbf{Modal} & \textbf{Non-modal} & \textbf{Command} & \textbf{What it does}\\
+\midrule
+\endhead
+none & \texttt{M-x displa\codebreak{}y-\codebreak{}line-\codebreak{}number\codebreak{}s-\codebreak{}mode} & \texttt{displa\codebreak{}y-\codebreak{}line-\codebreak{}number\codebreak{}s-\codebreak{}mode} & Show absolute line numbers in the gutter of the current buffer, or none: each line its own number, from 1.\\
+none & \texttt{M-x displa\codebreak{}y-\codebreak{}relati\codebreak{}ve-\codebreak{}line-\codebreak{}number\codebreak{}s-\codebreak{}mode} & \texttt{displa\codebreak{}y-\codebreak{}relati\codebreak{}ve-\codebreak{}line-\codebreak{}number\codebreak{}s-\codebreak{}mode} & Show relative line numbers in the gutter of the current buffer, or none: the current line shows its number, the others how many lines away they are, which is what counted motion like C-u 7 j expects; with a count, on when it is positive, off when it is zero or less.\\
+none & \texttt{C-M-d} & \texttt{down-\codebreak{}list} & Move forward into the next bracketed group, just past its opening bracket, the words, strings and comments before it passed over.\\
+none & \texttt{M-x downca\codebreak{}se-\codebreak{}dwim} & \texttt{downca\codebreak{}se-\codebreak{}dwim} & Put the region in lower case, or with none the next word, as downcase-word does.\\
+none & \texttt{C-x C-l} & \texttt{downca\codebreak{}se-\codebreak{}region} & Put the region in lower case.\\
+none & \texttt{M-l} & \texttt{downca\codebreak{}se-\codebreak{}word} & Put the next word, or the count’s, in lower case and move over it; with a negative count, the words before point, point staying.\\
+none & \texttt{M-x drop-\codebreak{}last-\codebreak{}cursor} & \texttt{drop-\codebreak{}last-\codebreak{}cursor} & Take back the cursor added last, keeping the others; the real cursor is never taken back, and C-g ends the cursors.\\
+none & \texttt{M-x electr\codebreak{}ic-\codebreak{}pair-\codebreak{}mode} & \texttt{electr\codebreak{}ic-\codebreak{}pair-\codebreak{}mode} & Turn closing delimiters as they are typed on or off.\\
+\texttt{g e} & \texttt{M->} & \texttt{end-\codebreak{}of-\codebreak{}buffer} & Move point to the end of the buffer.\\
+none & \texttt{C-M-e} & \texttt{end-\codebreak{}of-\codebreak{}defun} & Move forward to the end of the definition point is in, or of the one after, and on to the start of the next line when only blanks or a comment follow it there; with a count, that many definitions on, or back to the ends of those before when negative.\\
+\texttt{g l} & \texttt{C-e}, \texttt{<end>} & \texttt{end-\codebreak{}of-\codebreak{}line} & Move point to the end of the current line, before its newline; where long lines wrap at a word’s edge (C-x T l), of the screen row it is on; in the hex view, of the row of octets.\\
+none & \texttt{M-x end-\codebreak{}safe-\codebreak{}visit} & \texttt{end-\codebreak{}safe-\codebreak{}visit} & Open the file of this buffer, opened safely, as usual from now on, where it is.\\
+none & \texttt{C-x \textasciicircum{}} & \texttt{enlarg\codebreak{}e-\codebreak{}window} & Make the selected window a row taller, or the prefix argument’s rows; they come from the windows below it, then above.\\
+none & \texttt{C-x \}} & \texttt{enlarg\codebreak{}e-\codebreak{}window\codebreak{}-\codebreak{}horizo\codebreak{}ntally} & Make the selected window a column wider, or the prefix argument’s columns; they come from the windows to its right, then its left.\\
+none & \texttt{M-x eval-\codebreak{}buffer} & \texttt{eval-\codebreak{}buffer} & Evaluate every Lisp form in the current buffer one after another, as a file’s are, and show the last one’s value; not a buffer of more than \textbf{REWRITE-THRESHOLD} octets.\\
+none & \texttt{M-:} & \texttt{eval-\codebreak{}expres\codebreak{}sion} & Read a Lisp expression in the minibuffer and evaluate it in the running editor, in the current buffer’s package; show its value, or with a prefix argument (C-u) insert it at point.\\
+none & \texttt{C-x C-e} & \texttt{eval-\codebreak{}last-\codebreak{}expres\codebreak{}sion} & Evaluate the expression before point in the running editor and show its value in the echo area; with a prefix argument (C-u), insert the value after point.\\
+none & \texttt{C-j} & \texttt{eval-\codebreak{}print-\codebreak{}last-\codebreak{}expres\codebreak{}sion} & Evaluate the expression before point in the running editor and put what it printed and its value on the lines after it.\\
+none & \texttt{M-x eval-\codebreak{}region} & \texttt{eval-\codebreak{}region} & Evaluate the Lisp forms in the selection one after another, as a file’s are (IN-PACKAGE carries on to the next), and show the last one’s value.\\
+none & \texttt{C-M-x} & \texttt{eval-\codebreak{}top-\codebreak{}level-\codebreak{}form} & Evaluate the top-level form around point (the one starting with an open bracket at the start of a line) in the running editor and show its value.\\
+none & \texttt{C-x C-x} & \texttt{exchan\codebreak{}ge-\codebreak{}point-\codebreak{}and-\codebreak{}mark} & Swap point and mark.\\
+none & \texttt{M-x} & \texttt{execut\codebreak{}e-\codebreak{}extend\codebreak{}ed-\codebreak{}command} & Run a command chosen by name, with completion over every command: the candidates show each command’s keys and the first line of its documentation.\\
+none & \texttt{M-o} & \texttt{expand\codebreak{}-\codebreak{}select\codebreak{}ion} & Select the smallest piece of syntax around the selection, or around the character at point: the word, then the expression holding it, then the statement, and so on out; in a buffer with no syntax tree, as its language server sees the code.\\
+none & \texttt{M-/} & \texttt{expand\codebreak{}-\codebreak{}word} & Put in place of the start of the word before point the nearest word that starts with it, looked for in this buffer, then in the others (those shown first).\\
+none & \texttt{M-x export\codebreak{}-\codebreak{}check-\codebreak{}redact\codebreak{}ions} & \texttt{export\codebreak{}-\codebreak{}check-\codebreak{}redact\codebreak{}ions} & Look for the texts this Org or \LaTeX{} file hides shown plainly elsewhere in it, and list each place in \textbf{Redactions}, where l shows it.\\
+none & \texttt{M-x export\codebreak{}-\codebreak{}latex-\codebreak{}compil\codebreak{}e-\codebreak{}pdf} & \texttt{export\codebreak{}-\codebreak{}latex-\codebreak{}compil\codebreak{}e-\codebreak{}pdf} & Make the \LaTeX{} file of the current buffer into a PDF beside it, in the background, saving it first when it has changes, by xelatex, or by lualatex when xelatex fails (\textbf{latex-engines}), or first by the one its first lines name (“\% Intended \LaTeX{} compiler: lualatex”, “\%!TEX program = lualatex”), run as often as its cross-references need.\\
+none & \texttt{M-x export\codebreak{}-\codebreak{}latex-\codebreak{}compil\codebreak{}e-\codebreak{}pdf-\codebreak{}buffer} & \texttt{export\codebreak{}-\codebreak{}latex-\codebreak{}compil\codebreak{}e-\codebreak{}pdf-\codebreak{}buffer} & Make the \LaTeX{} file of the current buffer into a PDF beside it, as M-x export-latex-compile-pdf does, and show the PDF where and as M-x org-export-latex-pdf-buffer shows an Org file’s.\\
+none & \texttt{M-x export\codebreak{}-\codebreak{}latex-\codebreak{}compil\codebreak{}e-\codebreak{}pdf-\codebreak{}xdg} & \texttt{export\codebreak{}-\codebreak{}latex-\codebreak{}compil\codebreak{}e-\codebreak{}pdf-\codebreak{}xdg} & Make the \LaTeX{} file of the current buffer into a PDF beside it, as M-x export-latex-compile-pdf does, and open the PDF in the desktop’s program as M-x org-export-latex-pdf-xdg opens an Org file’s.\\
+none & \texttt{M-x export\codebreak{}-\codebreak{}latex-\codebreak{}templa\codebreak{}te-\codebreak{}copy} & \texttt{export\codebreak{}-\codebreak{}latex-\codebreak{}templa\codebreak{}te-\codebreak{}copy} & Copy a built-in template of the enhanced export, asked for with completion (article, its own look, or org, the plain export’s document), into your own templates, \textasciitilde{}/.config/tuatara/latex-templates/NAME.tex, and visit it there to change: from then on \#+template: NAME takes your copy.\\
+none & \texttt{M-x export\codebreak{}-\codebreak{}templa\codebreak{}te-\codebreak{}from-\codebreak{}docx} & \texttt{export\codebreak{}-\codebreak{}templa\codebreak{}te-\codebreak{}from-\codebreak{}docx} & Make a Word document given to you a template to write reports in.\\
+none & \texttt{M-x export\codebreak{}-\codebreak{}templa\codebreak{}te-\codebreak{}from-\codebreak{}latex} & \texttt{export\codebreak{}-\codebreak{}templa\codebreak{}te-\codebreak{}from-\codebreak{}latex} & Make a \LaTeX{} document given to you a template to write reports in.\\
+\texttt{g Q} & \texttt{M-q} & \texttt{fill-\codebreak{}paragr\codebreak{}aph} & Fill the paragraph at point: its words re-flowed so that no line passes the fill column (80, \textbf{FILL-COLUMN}, or the buffer’s own), the text before them on each line kept (an indentation, a comment’s ;;, a quotation’s >).\\
+\texttt{g q} & \texttt{C-z g q} & \texttt{fill-\codebreak{}region} & Fill the lines the selection touches, each paragraph in them as fill-paragraph fills one, the lines before and after the selection left as they are: the column asked for first, or given by a count, and kept as the buffer’s.\\
+none & \texttt{C-x C-f} & \texttt{find-\codebreak{}file} & Visit a file, completing its name against the directory being typed.\\
+none & \texttt{C-x n f} & \texttt{find-\codebreak{}file-\codebreak{}format\codebreak{}ted} & Visit a file, or make a new one with a formatted name.\\
+none & \texttt{C-x 5 f} & \texttt{find-\codebreak{}file-\codebreak{}other-\codebreak{}frame} & Visit a file in another frame and work in it, asking for its name as C-x C-f does; a directory is listed there.\\
+none & \texttt{C-x 4 f}, \texttt{C-x 4 C-f} & \texttt{find-\codebreak{}file-\codebreak{}other-\codebreak{}window} & Visit a file in another window and select it, completing its name as find-file does.\\
+none & \texttt{M-x find-\codebreak{}file-\codebreak{}safely} & \texttt{find-\codebreak{}file-\codebreak{}safely} & Open a file safely, for looking at a file from a source you do not trust: read-only, with no major mode, no hooks and no version control, so that nothing in the file is acted on; its file system left exactly as it was (no copy beside it), and its access time too where the system allows.\\
+none & \texttt{C-x C-r} & \texttt{find-\codebreak{}recent\codebreak{}-\codebreak{}file} & Visit a file visited lately: the latest first, each with its permissions, size and when it last changed beside it.\\
+none & \texttt{M-x flip-\codebreak{}window\codebreak{}-\codebreak{}layout\codebreak{}-\codebreak{}horizo\codebreak{}ntally} & \texttt{flip-\codebreak{}window\codebreak{}-\codebreak{}layout\codebreak{}-\codebreak{}horizo\codebreak{}ntally} & Mirror the layout of windows left to right.\\
 \bottomrule
 \end{xltabular}
 }
 
 {\footnotesize
-\begin{xltabular}{\textwidth}{@{}l >{\raggedright\arraybackslash\hsize=0.947\hsize}X l >{\raggedright\arraybackslash\hsize=1.053\hsize}X@{}}
+\begin{xltabular}{\textwidth}{@{}l >{\raggedright\arraybackslash\hsize=0.800\hsize}X l >{\raggedright\arraybackslash\hsize=1.200\hsize}X@{}}
 \toprule
 \textbf{Modal} & \textbf{Non-modal} & \textbf{Command} & \textbf{What it does}\\
 \midrule
 \endhead
-none & \texttt{C-M-d} & \texttt{down-\codebreak{}list} & Move forward into the next bracketed group, just past its opening bracket, the words, strings and comments before it passed over.\\
-none & \texttt{M-x downcase-\codebreak{}dwim} & \texttt{downcase-\codebreak{}dwim} & Put the region in lower case, or with none the next word, as downcase-word does.\\
-none & \texttt{C-x C-l} & \texttt{downcase-\codebreak{}region} & Put the region in lower case.\\
-none & \texttt{M-l} & \texttt{downcase-\codebreak{}word} & Put the next word, or the count’s, in lower case and move over it; with a negative count, the words before point, point staying.\\
-none & \texttt{M-x drop-\codebreak{}last-\codebreak{}cursor} & \texttt{drop-\codebreak{}last-\codebreak{}cursor} & Take back the cursor added last, keeping the others; the real cursor is never taken back, and C-g ends the cursors.\\
-none & \texttt{M-x electric-\codebreak{}pair-\codebreak{}mode} & \texttt{electric-\codebreak{}pair-\codebreak{}mode} & Turn closing delimiters as they are typed on or off.\\
-\texttt{g e} & \texttt{M->} & \texttt{end-\codebreak{}of-\codebreak{}buffer} & Move point to the end of the buffer.\\
-none & \texttt{C-M-e} & \texttt{end-\codebreak{}of-\codebreak{}defun} & Move forward to the end of the definition point is in, or of the one after, and on to the start of the next line when only blanks or a comment follow it there; with a count, that many definitions on, or back to the ends of those before when negative.\\
-\texttt{g l} & \texttt{C-e}, \texttt{<end>} & \texttt{end-\codebreak{}of-\codebreak{}line} & Move point to the end of the current line, before its newline; where long lines wrap at a word’s edge (C-x T l), of the screen row it is on; in the hex view, of the row of octets.\\
-none & \texttt{M-x end-\codebreak{}safe-\codebreak{}visit} & \texttt{end-\codebreak{}safe-\codebreak{}visit} & Open the file of this buffer, opened safely, as usual from now on, where it is.\\
-none & \texttt{C-x \textasciicircum{}} & \texttt{enlarge-\codebreak{}window} & Make the selected window a row taller, or the prefix argument’s rows; they come from the windows below it, then above.\\
-none & \texttt{C-x \}} & \texttt{enlarge-\codebreak{}window-\codebreak{}horizontally} & Make the selected window a column wider, or the prefix argument’s columns; they come from the windows to its right, then its left.\\
-none & \texttt{M-x eval-\codebreak{}buffer} & \texttt{eval-\codebreak{}buffer} & Evaluate every Lisp form in the current buffer one after another, as a file’s are, and show the last one’s value; not a buffer of more than \textbf{REWRITE-THRESHOLD} octets.\\
-none & \texttt{M-:} & \texttt{eval-\codebreak{}expression} & Read a Lisp expression in the minibuffer and evaluate it in the running editor, in the current buffer’s package; show its value, or with a prefix argument (C-u) insert it at point.\\
-none & \texttt{C-x C-e} & \texttt{eval-\codebreak{}last-\codebreak{}expression} & Evaluate the expression before point in the running editor and show its value in the echo area; with a prefix argument (C-u), insert the value after point.\\
-none & \texttt{C-j} & \texttt{eval-\codebreak{}print-\codebreak{}last-\codebreak{}expression} & Evaluate the expression before point in the running editor and put what it printed and its value on the lines after it.\\
-none & \texttt{M-x eval-\codebreak{}region} & \texttt{eval-\codebreak{}region} & Evaluate the Lisp forms in the selection one after another, as a file’s are (IN-PACKAGE carries on to the next), and show the last one’s value.\\
-none & \texttt{C-M-x} & \texttt{eval-\codebreak{}top-\codebreak{}level-\codebreak{}form} & Evaluate the top-level form around point (the one starting with an open bracket at the start of a line) in the running editor and show its value.\\
-none & \texttt{C-x C-x} & \texttt{exchange-\codebreak{}point-\codebreak{}and-\codebreak{}mark} & Swap point and mark.\\
-none & \texttt{M-x} & \texttt{execute-\codebreak{}extended-\codebreak{}command} & Run a command chosen by name, with completion over every command: the candidates show each command’s keys and the first line of its documentation.\\
-none & \texttt{M-o} & \texttt{expand-\codebreak{}selection} & Select the smallest piece of syntax around the selection, or around the character at point: the word, then the expression holding it, then the statement, and so on out; in a buffer with no syntax tree, as its language server sees the code.\\
-none & \texttt{M-/} & \texttt{expand-\codebreak{}word} & Put in place of the start of the word before point the nearest word that starts with it, looked for in this buffer, then in the others (those shown first).\\
-none & \texttt{M-x export-\codebreak{}check-\codebreak{}redactions} & \texttt{export-\codebreak{}check-\codebreak{}redactions} & Look for the texts this Org or \LaTeX{} file hides shown plainly elsewhere in it, and list each place in \textbf{Redactions}, where l shows it.\\
-none & \texttt{M-x export-\codebreak{}latex-\codebreak{}compile-\codebreak{}pdf} & \texttt{export-\codebreak{}latex-\codebreak{}compile-\codebreak{}pdf} & Make the \LaTeX{} file of the current buffer into a PDF beside it, in the background, saving it first when it has changes, by xelatex, or by lualatex when xelatex fails (\textbf{latex-engines}), or first by the one its first lines name (“\% Intended \LaTeX{} compiler: lualatex”, “\%!TEX program = lualatex”), run as often as its cross-references need.\\
-none & \texttt{M-x export-\codebreak{}latex-\codebreak{}compile-\codebreak{}pdf-\codebreak{}buffer} & \texttt{export-\codebreak{}latex-\codebreak{}compile-\codebreak{}pdf-\codebreak{}buffer} & Make the \LaTeX{} file of the current buffer into a PDF beside it, as M-x export-latex-compile-pdf does, and show the PDF where and as M-x org-export-latex-pdf-buffer shows an Org file’s.\\
-none & \texttt{M-x export-\codebreak{}latex-\codebreak{}compile-\codebreak{}pdf-\codebreak{}xdg} & \texttt{export-\codebreak{}latex-\codebreak{}compile-\codebreak{}pdf-\codebreak{}xdg} & Make the \LaTeX{} file of the current buffer into a PDF beside it, as M-x export-latex-compile-pdf does, and open the PDF in the desktop’s program as M-x org-export-latex-pdf-xdg opens an Org file’s.\\
-none & \texttt{M-x export-\codebreak{}latex-\codebreak{}template-\codebreak{}copy} & \texttt{export-\codebreak{}latex-\codebreak{}template-\codebreak{}copy} & Copy a built-in template of the enhanced export, asked for with completion (article, its own look, or org, the plain export’s document), into your own templates, \textasciitilde{}/.config/tuatara/latex-templates/NAME.tex, and visit it there to change: from then on \#+template: NAME takes your copy.\\
-none & \texttt{M-x export-\codebreak{}template-\codebreak{}from-\codebreak{}docx} & \texttt{export-\codebreak{}template-\codebreak{}from-\codebreak{}docx} & Make a Word document given to you a template to write reports in.\\
-none & \texttt{M-x export-\codebreak{}template-\codebreak{}from-\codebreak{}latex} & \texttt{export-\codebreak{}template-\codebreak{}from-\codebreak{}latex} & Make a \LaTeX{} document given to you a template to write reports in.\\
-\texttt{g Q} & \texttt{M-q} & \texttt{fill-\codebreak{}paragraph} & Fill the paragraph at point: its words re-flowed so that no line passes the fill column (80, \textbf{FILL-COLUMN}, or the buffer’s own), the text before them on each line kept (an indentation, a comment’s ;;, a quotation’s >).\\
-\texttt{g q} & \texttt{C-z g q} & \texttt{fill-\codebreak{}region} & Fill the lines the selection touches, each paragraph in them as fill-paragraph fills one, the lines before and after the selection left as they are: the column asked for first, or given by a count, and kept as the buffer’s.\\
-none & \texttt{C-x C-f} & \texttt{find-\codebreak{}file} & Visit a file, completing its name against the directory being typed.\\
-none & \texttt{C-x n f} & \texttt{find-\codebreak{}file-\codebreak{}formatted} & Visit a file, or make a new one with a formatted name.\\
-none & \texttt{C-x 5 f} & \texttt{find-\codebreak{}file-\codebreak{}other-\codebreak{}frame} & Visit a file in another frame and work in it, asking for its name as C-x C-f does; a directory is listed there.\\
-none & \texttt{C-x 4 f}, \texttt{C-x 4 C-f} & \texttt{find-\codebreak{}file-\codebreak{}other-\codebreak{}window} & Visit a file in another window and select it, completing its name as find-file does.\\
-none & \texttt{M-x find-\codebreak{}file-\codebreak{}safely} & \texttt{find-\codebreak{}file-\codebreak{}safely} & Open a file safely, for looking at a file from a source you do not trust: read-only, with no major mode, no hooks and no version control, so that nothing in the file is acted on; its file system left exactly as it was (no copy beside it), and its access time too where the system allows.\\
-none & \texttt{C-x C-r} & \texttt{find-\codebreak{}recent-\codebreak{}file} & Visit a file visited lately: the latest first, each with its permissions, size and when it last changed beside it.\\
-none & \texttt{M-x flip-\codebreak{}window-\codebreak{}layout-\codebreak{}horizontally} & \texttt{flip-\codebreak{}window-\codebreak{}layout-\codebreak{}horizontally} & Mirror the layout of windows left to right.\\
 none & \texttt{M-x flip-\codebreak{}window-\codebreak{}layout-\codebreak{}vertically} & \texttt{flip-\codebreak{}window-\codebreak{}layout-\codebreak{}vertically} & Mirror the layout of windows top to bottom.\\
 none & \texttt{M-x flush-\codebreak{}lines} & \texttt{flush-\codebreak{}lines} & Delete the lines the selection touches in which a regular expression, asked for in the minibuffer, finds a match.\\
-\bottomrule
-\end{xltabular}
-}
-
-\begin{xltabular}{\textwidth}{@{}l >{\raggedright\arraybackslash\hsize=0.867\hsize}X l >{\raggedright\arraybackslash\hsize=1.133\hsize}X@{}}
-\toprule
-\textbf{Modal} & \textbf{Non-modal} & \textbf{Command} & \textbf{What it does}\\
-\midrule
-\endhead
 none & \texttt{M-x follow-\codebreak{}file} & \texttt{follow-\codebreak{}file} & Keep the current buffer up with its file on disk, or stop.\\
 none & \texttt{M-x font-\codebreak{}list} & \texttt{font-\codebreak{}list} & List every font installed in \textbf{Fonts}, the fixed-width ones first: each family with its variants, the line of the init file that chooses each, and a sample written in it.\\
 none & \texttt{w}, \texttt{C-c w} & \texttt{font-\codebreak{}list-\codebreak{}copy} & Copy the init-file line that chooses the font on the current line, to put in the init file (C-x C-f \textasciitilde{}/.config/tuatara/init.lisp).\\
@@ -20371,10 +20415,9 @@ none & \texttt{M-x git-\codebreak{}branch-\codebreak{}rename} & \texttt{git-\cod
 none & \texttt{M-x git-\codebreak{}branch-\codebreak{}reset} & \texttt{git-\codebreak{}branch-\codebreak{}reset} & Move a branch, asked for, to a revision asked for, after asking: the branch checked out keeps the changes not committed (git refuses when they would be lost); its commits after the revision stay in git’s reflog.\\
 none & \texttt{M-x git-\codebreak{}branch-\codebreak{}set-\codebreak{}upstream} & \texttt{git-\codebreak{}branch-\codebreak{}set-\codebreak{}upstream} & Set the upstream of a branch, asked for (the one checked out when nothing is typed), to a branch of a remote asked for: the one pull brings from and push sends to, and the status counts ahead and behind of.\\
 none & \texttt{M-x git-\codebreak{}branch-\codebreak{}spin-\codebreak{}off} & \texttt{git-\codebreak{}branch-\codebreak{}spin-\codebreak{}off} & Make a new branch, asked for, of the work on the branch checked out and check it out: the commits the branch has that its upstream has not go with the new branch, and the branch goes back to where it and its upstream parted; changes not committed come along.\\
-none & \texttt{M-x git-\codebreak{}bundle-\codebreak{}create} & \texttt{git-\codebreak{}bundle-\codebreak{}create} & Write the whole repository, every branch and tag, as a single bundle file asked for: one file to carry it, from which it can be cloned.\\
-none & \texttt{M-x git-\codebreak{}bundle-\codebreak{}verify} & \texttt{git-\codebreak{}bundle-\codebreak{}verify} & Check a bundle file asked for: whether this repository has what it needs to take it in.\\
 \bottomrule
 \end{xltabular}
+}
 
 {\small
 \begin{xltabular}{\textwidth}{@{}l >{\raggedright\arraybackslash\hsize=0.785\hsize}X l >{\raggedright\arraybackslash\hsize=1.215\hsize}X@{}}
@@ -20382,6 +20425,8 @@ none & \texttt{M-x git-\codebreak{}bundle-\codebreak{}verify} & \texttt{git-\cod
 \textbf{Modal} & \textbf{Non-modal} & \textbf{Command} & \textbf{What it does}\\
 \midrule
 \endhead
+none & \texttt{M-x git-\codebreak{}bundle-\codebreak{}create} & \texttt{git-\codebreak{}bundle-\codebreak{}create} & Write the whole repository, every branch and tag, as a single bundle file asked for: one file to carry it, from which it can be cloned.\\
+none & \texttt{M-x git-\codebreak{}bundle-\codebreak{}verify} & \texttt{git-\codebreak{}bundle-\codebreak{}verify} & Check a bundle file asked for: whether this repository has what it needs to take it in.\\
 none & \texttt{M-x git-\codebreak{}checkout} & \texttt{git-\codebreak{}checkout} & Check out a branch or a revision, asked for: a branch by its name, else a revision (a commit, a tag, origin/main), which leaves HEAD detached.\\
 none & \texttt{M-x git-\codebreak{}cherry-\codebreak{}pick} & \texttt{git-\codebreak{}cherry-\codebreak{}pick} & Make a commit, asked for (the one on point’s line of a status or a log first, or another branch’s newest by the branch’s name), again on the branch checked out, with its message.\\
 none & \texttt{M-x git-\codebreak{}cherry-\codebreak{}pick-\codebreak{}abort} & \texttt{git-\codebreak{}cherry-\codebreak{}pick-\codebreak{}abort} & Stop the cherry-pick, after asking: the branch and the files go back to where they were before it began.\\
@@ -20420,8 +20465,6 @@ none & \texttt{M-x git-\codebreak{}ignore-\codebreak{}shared} & \texttt{git-\cod
 none & \texttt{M-x git-\codebreak{}log} & \texttt{git-\codebreak{}log} & List the commits of the branch checked out, the latest first, a line each (\textbf{GIT-LOG-LENGTH} of them); RET shows one.\\
 none & \texttt{M-x git-\codebreak{}log-\codebreak{}all} & \texttt{git-\codebreak{}log-\codebreak{}all} & List the commits of every reference: branches, remotes’ branches, tags, stashes.\\
 none & \texttt{M-x git-\codebreak{}log-\codebreak{}branches} & \texttt{git-\codebreak{}log-\codebreak{}branches} & List the commits of every branch, the repository’s own and its remotes’.\\
-none & \texttt{M-x git-\codebreak{}log-\codebreak{}file} & \texttt{git-\codebreak{}log-\codebreak{}file} & List the commits that changed the file on point’s line of a status, or the current file, following it across renames.\\
-none & \texttt{L}, \texttt{C-c L} & \texttt{git-\codebreak{}log-\codebreak{}menu} & Open the log menu: list the commits of the branch checked out, another, every branch or reference, or a file’s, or the reflog; its switches and options shape the list.\\
 \bottomrule
 \end{xltabular}
 }
@@ -20432,6 +20475,8 @@ none & \texttt{L}, \texttt{C-c L} & \texttt{git-\codebreak{}log-\codebreak{}menu
 \textbf{Modal} & \textbf{Non-modal} & \textbf{Command} & \textbf{What it does}\\
 \midrule
 \endhead
+none & \texttt{M-x git-\codebreak{}log-\codebreak{}file} & \texttt{git-\codebreak{}log-\codebreak{}file} & List the commits that changed the file on point’s line of a status, or the current file, following it across renames.\\
+none & \texttt{L}, \texttt{C-c L} & \texttt{git-\codebreak{}log-\codebreak{}menu} & Open the log menu: list the commits of the branch checked out, another, every branch or reference, or a file’s, or the reflog; its switches and options shape the list.\\
 none & \texttt{M-x git-\codebreak{}log-\codebreak{}other} & \texttt{git-\codebreak{}log-\codebreak{}other} & List the commits of a branch or revision asked for.\\
 none & \texttt{M-x git-\codebreak{}log-\codebreak{}show} & \texttt{git-\codebreak{}log-\codebreak{}show} & Show the commit on the current line of the log.\\
 none & \texttt{M-x git-\codebreak{}merge} & \texttt{git-\codebreak{}merge} & Merge a branch, asked for, into the one checked out, committing it with git’s own message; files changed on both sides stop it half way, said so in the status (c c commits once they are put right, m a stops it).\\
@@ -20470,8 +20515,6 @@ none & \texttt{M-x git-\codebreak{}remote-\codebreak{}add} & \texttt{git-\codebr
 none & \texttt{M}, \texttt{C-c M} & \texttt{git-\codebreak{}remote-\codebreak{}menu} & Open the remote menu: add a remote, rename one, give it a new address, remove it, or forget its branches gone.\\
 none & \texttt{M-x git-\codebreak{}remote-\codebreak{}prune} & \texttt{git-\codebreak{}remote-\codebreak{}prune} & Forget the branches of a remote, asked for, that it no longer has.\\
 none & \texttt{M-x git-\codebreak{}remote-\codebreak{}remove} & \texttt{git-\codebreak{}remote-\codebreak{}remove} & Remove a remote, asked for, after asking: its branches here go with it.\\
-none & \texttt{M-x git-\codebreak{}remote-\codebreak{}rename} & \texttt{git-\codebreak{}remote-\codebreak{}rename} & Rename a remote, asked for, to a name asked for.\\
-none & \texttt{M-x git-\codebreak{}remote-\codebreak{}set-\codebreak{}address} & \texttt{git-\codebreak{}remote-\codebreak{}set-\codebreak{}address} & Give a remote, asked for, a new address, its own shown to begin with.\\
 \bottomrule
 \end{xltabular}
 }
@@ -20482,6 +20525,8 @@ none & \texttt{M-x git-\codebreak{}remote-\codebreak{}set-\codebreak{}address} &
 \textbf{Modal} & \textbf{Non-modal} & \textbf{Command} & \textbf{What it does}\\
 \midrule
 \endhead
+none & \texttt{M-x git-\codebreak{}remote-\codebreak{}rename} & \texttt{git-\codebreak{}remote-\codebreak{}rename} & Rename a remote, asked for, to a name asked for.\\
+none & \texttt{M-x git-\codebreak{}remote-\codebreak{}set-\codebreak{}address} & \texttt{git-\codebreak{}remote-\codebreak{}set-\codebreak{}address} & Give a remote, asked for, a new address, its own shown to begin with.\\
 none & \texttt{M-x git-\codebreak{}rename-\codebreak{}file} & \texttt{git-\codebreak{}rename-\codebreak{}file} & Rename the file you are in, or the one on point’s line of a status, to a path asked for within the repository (into a directory there, when it names one); the rename is staged, and the buffers visiting the file follow it.\\
 none & \texttt{M-x git-\codebreak{}reset-\codebreak{}file} & \texttt{git-\codebreak{}reset-\codebreak{}file} & Put a file, the one on point’s line of a status or the current one, back to how a revision asked for has it, staged, after asking: its changes not committed are lost.\\
 none & \texttt{M-x git-\codebreak{}reset-\codebreak{}hard} & \texttt{git-\codebreak{}reset-\codebreak{}hard} & Move the branch checked out to a revision asked for, what is staged and the files with it, after asking: changes not committed are lost.\\
@@ -20520,8 +20565,6 @@ none & \texttt{M-x git-\codebreak{}stash-\codebreak{}drop} & \texttt{git-\codebr
 none & \texttt{M-x git-\codebreak{}stash-\codebreak{}index} & \texttt{git-\codebreak{}stash-\codebreak{}index} & Put only what is staged aside as a stash, with a message asked for; the changes not staged stay.\\
 none & \texttt{M-x git-\codebreak{}stash-\codebreak{}keep-\codebreak{}index} & \texttt{git-\codebreak{}stash-\codebreak{}keep-\codebreak{}index} & Put every change aside as a stash, with a message asked for, keeping what is staged in place in the files and staged.\\
 none & \texttt{z}, \texttt{C-c z} & \texttt{git-\codebreak{}stash-\codebreak{}menu} & Open the stash menu: put changes aside (all, only what is staged, or keeping it), apply, pop, drop or show a stash, or make a branch of one.\\
-none & \texttt{M-x git-\codebreak{}stash-\codebreak{}pop} & \texttt{git-\codebreak{}stash-\codebreak{}pop} & Bring the changes of a stash, asked for, back into the files and drop it; one whose changes meet others is kept, said so.\\
-none & \texttt{M-x git-\codebreak{}stash-\codebreak{}show} & \texttt{git-\codebreak{}stash-\codebreak{}show} & Show a stash, asked for: the files it changes and its changes.\\
 \bottomrule
 \end{xltabular}
 }
@@ -20532,6 +20575,8 @@ none & \texttt{M-x git-\codebreak{}stash-\codebreak{}show} & \texttt{git-\codebr
 \textbf{Modal} & \textbf{Non-modal} & \textbf{Command} & \textbf{What it does}\\
 \midrule
 \endhead
+none & \texttt{M-x git-\codebreak{}stash-\codebreak{}pop} & \texttt{git-\codebreak{}stash-\codebreak{}pop} & Bring the changes of a stash, asked for, back into the files and drop it; one whose changes meet others is kept, said so.\\
+none & \texttt{M-x git-\codebreak{}stash-\codebreak{}show} & \texttt{git-\codebreak{}stash-\codebreak{}show} & Show a stash, asked for: the files it changes and its changes.\\
 none & \texttt{M-x git-\codebreak{}submodule-\codebreak{}add} & \texttt{git-\codebreak{}submodule-\codebreak{}add} & Add a repository, its address asked for, as a submodule at a path asked for (named after the address when nothing is typed), cloned there.\\
 none & \texttt{o}, \texttt{C-c o} & \texttt{git-\codebreak{}submodule-\codebreak{}menu} & Open the submodule menu: add a submodule, check them out, take their addresses again, remove one or show its status.\\
 none & \texttt{M-x git-\codebreak{}submodule-\codebreak{}remove} & \texttt{git-\codebreak{}submodule-\codebreak{}remove} & Remove a submodule, asked for, after asking: its directory and its entry in .gitmodules go, the removal staged.\\
@@ -20570,8 +20615,56 @@ none & \texttt{M-x global-\codebreak{}spellcheck-\codebreak{}mode} & \texttt{glo
 none & \texttt{M-x global-\codebreak{}text-\codebreak{}direction-\codebreak{}mode} & \texttt{global-\codebreak{}text-\codebreak{}direction-\codebreak{}mode} & Show right-to-left text in the order it is read, in every buffer, or stop, while the editor runs (\textbf{GLOBAL-TEXT-DIRECTION-MODE} in the init file keeps it); a buffer that chose with M-x text-direction-mode, and the modes \textbf{TEXT-DIRECTION-MODES} names, keep theirs; with a count, on when it is positive, off when it is zero or less.\\
 \texttt{:} & \texttt{M-g g}, \texttt{M-g M-g} & \texttt{goto-\codebreak{}line} & Move point to the start of a line number read from the minibuffer (1-based), the mark left where it was unless the region is active.\\
 none & \texttt{M-x gpg-\codebreak{}choose-\codebreak{}encryption-\codebreak{}keys} & \texttt{gpg-\codebreak{}choose-\codebreak{}encryption-\codebreak{}keys} & Choose again whom the encrypted file shown is encrypted to, or a passphrase, in the minibuffer: from its next save it is encrypted so.\\
+\bottomrule
+\end{xltabular}
+}
+
+{\footnotesize
+\begin{xltabular}{\textwidth}{@{}l >{\raggedright\arraybackslash\hsize=0.865\hsize}X l >{\raggedright\arraybackslash\hsize=1.135\hsize}X@{}}
+\toprule
+\textbf{Modal} & \textbf{Non-modal} & \textbf{Command} & \textbf{What it does}\\
+\midrule
+\endhead
 none & \texttt{M-x gpg-\codebreak{}copy-\codebreak{}to-\codebreak{}clipboard} & \texttt{gpg-\codebreak{}copy-\codebreak{}to-\codebreak{}clipboard} & Put the text copied last on the system clipboard, even text of an encrypted file, which is otherwise kept within Tuatara: other programs (clipboard managers among them) can then read it, and keep it.\\
 none & \texttt{M-x gpg-\codebreak{}decrypt-\codebreak{}file} & \texttt{gpg-\codebreak{}decrypt-\codebreak{}file} & Decrypt the file shown (in a list of a directory, the one on the line) into a file asked for, the name without .gpg offered; after asking, since its text is then on disk where it can be read (made for you alone).\\
+none & \texttt{M-x gpg-\codebreak{}decrypt-\codebreak{}region} & \texttt{gpg-\codebreak{}decrypt-\codebreak{}region} & Decrypt in place the armoured block (-----BEGIN PGP MESSAGE-----) in the text selected, or without a selection the one point is in, else the one nearest to point.\\
+none & \texttt{M-x gpg-\codebreak{}decrypt-\codebreak{}with-\codebreak{}passphrase} & \texttt{gpg-\codebreak{}decrypt-\codebreak{}with-\codebreak{}passphrase} & Decrypt again the encrypted file this buffer waits for, its passphrase asked as \textbf{GPG-PASSPHRASE-FROM} says: in the minibuffer, shown as stars, or by gpg-agent’s pinentry.\\
+none & \texttt{M-x gpg-\codebreak{}encrypt-\codebreak{}file} & \texttt{gpg-\codebreak{}encrypt-\codebreak{}file} & Encrypt the file shown (in a list of a directory, the one on the line; with C-u, or where there is none, asked for) into FILE.gpg, to the keys or with a passphrase chosen in the minibuffer, commas between several.\\
+none & \texttt{M-x gpg-\codebreak{}encrypt-\codebreak{}region} & \texttt{gpg-\codebreak{}encrypt-\codebreak{}region} & Encrypt the text selected in place, as an armoured block (-----BEGIN PGP MESSAGE-----), to the keys or with a passphrase chosen in the minibuffer.\\
+none & \texttt{M-x gpg-\codebreak{}import-\codebreak{}keys} & \texttt{gpg-\codebreak{}import-\codebreak{}keys} & Import the keys in a file asked for (armoured or not) into your keyring; say what was imported.\\
+none & \texttt{M-x gpg-\codebreak{}import-\codebreak{}keys-\codebreak{}region} & \texttt{gpg-\codebreak{}import-\codebreak{}keys-\codebreak{}region} & Import the keys in the text selected (an armoured -----BEGIN PGP PUBLIC KEY BLOCK-----) into your keyring.\\
+none & \texttt{M-x gpg-\codebreak{}keys-\codebreak{}details} & \texttt{gpg-\codebreak{}keys-\codebreak{}details} & Show the details of the key at the cursor: its fingerprint, its names, its subkeys and what they can do, when they expire.\\
+none & \texttt{M-x gpg-\codebreak{}keys-\codebreak{}export} & \texttt{gpg-\codebreak{}keys-\codebreak{}export} & Export the public part of the keys marked (or the one at the cursor), armoured, to a file asked for.\\
+none & \texttt{M-x gpg-\codebreak{}keys-\codebreak{}insert} & \texttt{gpg-\codebreak{}keys-\codebreak{}insert} & Put the public part of the keys marked (or the one at the cursor), armoured, at point in the buffer the list was opened from.\\
+none & \texttt{M-x gpg-\codebreak{}list-\codebreak{}keys} & \texttt{gpg-\codebreak{}list-\codebreak{}keys} & List your GnuPG keys and those you have of others: there m marks one, M-x gpg-keys-details shows its details, M-x gpg-import-keys imports keys from a file, M-x gpg-keys-export exports, M-x gpg-keys-insert inserts and D deletes those marked.\\
+none & \texttt{M-x gpg-\codebreak{}lock} & \texttt{gpg-\codebreak{}lock} & Make gpg-agent forget every passphrase it keeps for a while (ten minutes, as it comes, its default-cache-ttl), of encrypted files and of your keys: the next to open one asks again.\\
+none & \texttt{M-x gpg-\codebreak{}sign-\codebreak{}file} & \texttt{gpg-\codebreak{}sign-\codebreak{}file} & Sign the file shown (in a list of a directory, the one on the line) with your key: a detached signature (FILE.sig, the file left as it is), clear-signed text (FILE.asc) or a signed file (FILE.gpg), asked which.\\
+none & \texttt{M-x gpg-\codebreak{}sign-\codebreak{}region} & \texttt{gpg-\codebreak{}sign-\codebreak{}region} & Clear-sign the text selected in place (-----BEGIN PGP SIGNED MESSAGE-----), with your key.\\
+none & \texttt{M-x gpg-\codebreak{}verify-\codebreak{}file} & \texttt{gpg-\codebreak{}verify-\codebreak{}file} & Check the signature of the file shown (in a list of a directory, the one on the line): a detached signature (FILE.sig, FILE.asc) against its file, else the signature within the file; say who signed it, when, and how far that key is trusted.\\
+none & \texttt{M-x gpg-\codebreak{}verify-\codebreak{}region} & \texttt{gpg-\codebreak{}verify-\codebreak{}region} & Check the signature of the clear-signed block (-----BEGIN PGP SIGNED MESSAGE-----) in the text selected, or without a selection the one point is in, else the one nearest to point: who signed it, when, and how far that key is trusted.\\
+none & \texttt{M-x hex-\codebreak{}mode} & \texttt{hex-\codebreak{}mode} & Show the current buffer as a hex dump, or as text again: each row the offset, sixteen octets in hex and the text they make, a dot for an octet that is no printable ASCII character.\\
+none & \texttt{M-x hex-\codebreak{}search-\codebreak{}backward} & \texttt{hex-\codebreak{}search-\codebreak{}backward} & Find the last place before the cursor that holds the octets asked for in hex, and show it in the hex view.\\
+none & \texttt{M-x hex-\codebreak{}search-\codebreak{}forward} & \texttt{hex-\codebreak{}search-\codebreak{}forward} & Find the next place after the cursor that holds the octets asked for in hex (“de ad be ef”), and show it in the hex view.\\
+none & \texttt{M-x hex-\codebreak{}set-\codebreak{}byte} & \texttt{hex-\codebreak{}set-\codebreak{}byte} & In the hex view, write one octet over the one at the cursor, asking for it in hex (41 is A), and move on to the next.\\
+none & \texttt{M-x hex-\codebreak{}switch-\codebreak{}column} & \texttt{hex-\codebreak{}switch-\codebreak{}column} & In the hex view, go from the hex digits to the text beside them, or back: typing then writes characters there, or hex digits here, over the octets.\\
+none & \texttt{C-x T h} & \texttt{hl-\codebreak{}line-\codebreak{}mode} & Highlight the line point is on in the current buffer, or stop: every row of it, out to the window’s edge, in the :hl-line face, under the syntax colours and the selection, in the selected window.\\
+none & \texttt{M-x ielm} & \texttt{ielm} & Show \textbf{ielm}, where Lisp typed after the prompt is evaluated in the running editor: made with a prompt the first time, as it was after.\\
+none & \texttt{C-c C-b} & \texttt{ielm-\codebreak{}change-\codebreak{}working-\codebreak{}buffer} & Choose the working buffer of \textbf{ielm}: the one the Lisp typed there sees as current, (insert “x”) putting text in it.\\
+none & \texttt{C-c C-u} & \texttt{ielm-\codebreak{}kill-\codebreak{}input} & Take away the input after \textbf{ielm}’s last prompt.\\
+none & \texttt{M-n} & \texttt{ielm-\codebreak{}next-\codebreak{}input} & Put the input after the one shown in \textbf{ielm}’s history in place of the input.\\
+none & \texttt{M-p} & \texttt{ielm-\codebreak{}previous-\codebreak{}input} & Put the input before the one shown in \textbf{ielm}’s history in place of the input.\\
+none & \texttt{RET} & \texttt{ielm-\codebreak{}return} & RET in \textbf{ielm}: after the last prompt, evaluate the input when it is whole expressions, else begin a new line of it; on an earlier input, evaluate that again.\\
+none & \texttt{C-j} & \texttt{ielm-\codebreak{}send-\codebreak{}input} & Evaluate the input after \textbf{ielm}’s last prompt as it is, whole or not.\\
+none & \texttt{TAB} & \texttt{ielm-\codebreak{}tab} & TAB in \textbf{ielm}: where only blanks come before point on its line of the input, indent the line as Lisp (never the prompt’s line); else complete the name at point from a list beside it, as C-M-i does.\\
+none & \texttt{TAB} & \texttt{indent-\codebreak{}for-\codebreak{}tab-\codebreak{}command} & Indent the current line as its major mode indents it: point in the blanks the line begins with goes to where its text begins, point in its text stays with the text.\\
+none & \texttt{C-M-\textbackslash{}} & \texttt{indent-\codebreak{}region} & Indent each line the selection touches as its major mode indents it; the lines inside a comment or a string begun on a line before keep their blanks, which are text.\\
+\texttt{>} & \texttt{C-z >} & \texttt{indent-\codebreak{}selection-\codebreak{}or-\codebreak{}line} & Indent the lines the selection touches, or the current line, as the language’s mode indents them.\\
+none & \texttt{M-x indent-\codebreak{}tabs-\codebreak{}mode} & \texttt{indent-\codebreak{}tabs-\codebreak{}mode} & Switch the current buffer between tab characters and spaces where TAB and indentation go on to a tab stop; with a count, tabs when it is positive, spaces when it is zero or less.\\
+none & \texttt{C-c C-x p} & \texttt{inline-\codebreak{}add-\codebreak{}picture} & Ask for a picture and write a link to it on lines of its own (C-c C-x p in Org, Markdown and \LaTeX{} files), the picture selected shown while you choose.\\
+none & \texttt{C-x T p} & \texttt{inline-\codebreak{}pictures-\codebreak{}mode} & Show the pictures the current buffer links to among its lines, and its formulas as \LaTeX{} sets them, or the text as written.\\
+none & \texttt{C-x 8 RET} & \texttt{insert-\codebreak{}char} & Insert a character by its Unicode name or its code.\\
+none & \texttt{C-x 8 \&} & \texttt{insert-\codebreak{}digraph} & Type the character a digraph stands for, the count’s times: asks for its keys, e’ for e with an acute, -> for an arrow, << for a guillemet; M-x list-digraphs lists them all.\\
+none & \texttt{M-x insert-\codebreak{}formatted-\codebreak{}backlinks-\codebreak{}block} & \texttt{insert-\codebreak{}formatted-\codebreak{}backlinks-\codebreak{}block} & Put in a dynamic block of links to the files with formatted names that link to this one (a block also written denote-backlinks).\\
 \bottomrule
 \end{xltabular}
 }
@@ -20582,56 +20675,8 @@ none & \texttt{M-x gpg-\codebreak{}decrypt-\codebreak{}file} & \texttt{gpg-\code
 \textbf{Modal} & \textbf{Non-modal} & \textbf{Command} & \textbf{What it does}\\
 \midrule
 \endhead
-none & \texttt{M-x gpg-\codebreak{}decryp\codebreak{}t-\codebreak{}region} & \texttt{gpg-\codebreak{}decryp\codebreak{}t-\codebreak{}region} & Decrypt in place the armoured block (-----BEGIN PGP MESSAGE-----) in the text selected, or without a selection the one point is in, else the one nearest to point.\\
-none & \texttt{M-x gpg-\codebreak{}decryp\codebreak{}t-\codebreak{}with-\codebreak{}passph\codebreak{}rase} & \texttt{gpg-\codebreak{}decryp\codebreak{}t-\codebreak{}with-\codebreak{}passph\codebreak{}rase} & Decrypt again the encrypted file this buffer waits for, its passphrase asked as \textbf{GPG-PASSPHRASE-FROM} says: in the minibuffer, shown as stars, or by gpg-agent’s pinentry.\\
-none & \texttt{M-x gpg-\codebreak{}encryp\codebreak{}t-\codebreak{}file} & \texttt{gpg-\codebreak{}encryp\codebreak{}t-\codebreak{}file} & Encrypt the file shown (in a list of a directory, the one on the line; with C-u, or where there is none, asked for) into FILE.gpg, to the keys or with a passphrase chosen in the minibuffer, commas between several.\\
-none & \texttt{M-x gpg-\codebreak{}encryp\codebreak{}t-\codebreak{}region} & \texttt{gpg-\codebreak{}encryp\codebreak{}t-\codebreak{}region} & Encrypt the text selected in place, as an armoured block (-----BEGIN PGP MESSAGE-----), to the keys or with a passphrase chosen in the minibuffer.\\
-none & \texttt{M-x gpg-\codebreak{}import\codebreak{}-\codebreak{}keys} & \texttt{gpg-\codebreak{}import\codebreak{}-\codebreak{}keys} & Import the keys in a file asked for (armoured or not) into your keyring; say what was imported.\\
-none & \texttt{M-x gpg-\codebreak{}import\codebreak{}-\codebreak{}keys-\codebreak{}region} & \texttt{gpg-\codebreak{}import\codebreak{}-\codebreak{}keys-\codebreak{}region} & Import the keys in the text selected (an armoured -----BEGIN PGP PUBLIC KEY BLOCK-----) into your keyring.\\
-none & \texttt{M-x gpg-\codebreak{}keys-\codebreak{}details} & \texttt{gpg-\codebreak{}keys-\codebreak{}details} & Show the details of the key at the cursor: its fingerprint, its names, its subkeys and what they can do, when they expire.\\
-none & \texttt{M-x gpg-\codebreak{}keys-\codebreak{}export} & \texttt{gpg-\codebreak{}keys-\codebreak{}export} & Export the public part of the keys marked (or the one at the cursor), armoured, to a file asked for.\\
-none & \texttt{M-x gpg-\codebreak{}keys-\codebreak{}insert} & \texttt{gpg-\codebreak{}keys-\codebreak{}insert} & Put the public part of the keys marked (or the one at the cursor), armoured, at point in the buffer the list was opened from.\\
-none & \texttt{M-x gpg-\codebreak{}list-\codebreak{}keys} & \texttt{gpg-\codebreak{}list-\codebreak{}keys} & List your GnuPG keys and those you have of others: there m marks one, M-x gpg-keys-details shows its details, M-x gpg-import-keys imports keys from a file, M-x gpg-keys-export exports, M-x gpg-keys-insert inserts and D deletes those marked.\\
-none & \texttt{M-x gpg-\codebreak{}lock} & \texttt{gpg-\codebreak{}lock} & Make gpg-agent forget every passphrase it keeps for a while (ten minutes, as it comes, its default-cache-ttl), of encrypted files and of your keys: the next to open one asks again.\\
-none & \texttt{M-x gpg-\codebreak{}sign-\codebreak{}file} & \texttt{gpg-\codebreak{}sign-\codebreak{}file} & Sign the file shown (in a list of a directory, the one on the line) with your key: a detached signature (FILE.sig, the file left as it is), clear-signed text (FILE.asc) or a signed file (FILE.gpg), asked which.\\
-none & \texttt{M-x gpg-\codebreak{}sign-\codebreak{}region} & \texttt{gpg-\codebreak{}sign-\codebreak{}region} & Clear-sign the text selected in place (-----BEGIN PGP SIGNED MESSAGE-----), with your key.\\
-none & \texttt{M-x gpg-\codebreak{}verify\codebreak{}-\codebreak{}file} & \texttt{gpg-\codebreak{}verify\codebreak{}-\codebreak{}file} & Check the signature of the file shown (in a list of a directory, the one on the line): a detached signature (FILE.sig, FILE.asc) against its file, else the signature within the file; say who signed it, when, and how far that key is trusted.\\
-none & \texttt{M-x gpg-\codebreak{}verify\codebreak{}-\codebreak{}region} & \texttt{gpg-\codebreak{}verify\codebreak{}-\codebreak{}region} & Check the signature of the clear-signed block (-----BEGIN PGP SIGNED MESSAGE-----) in the text selected, or without a selection the one point is in, else the one nearest to point: who signed it, when, and how far that key is trusted.\\
-none & \texttt{M-x hex-\codebreak{}mode} & \texttt{hex-\codebreak{}mode} & Show the current buffer as a hex dump, or as text again: each row the offset, sixteen octets in hex and the text they make, a dot for an octet that is no printable ASCII character.\\
-none & \texttt{M-x hex-\codebreak{}search\codebreak{}-\codebreak{}backward} & \texttt{hex-\codebreak{}search\codebreak{}-\codebreak{}backward} & Find the last place before the cursor that holds the octets asked for in hex, and show it in the hex view.\\
-none & \texttt{M-x hex-\codebreak{}search\codebreak{}-\codebreak{}forward} & \texttt{hex-\codebreak{}search\codebreak{}-\codebreak{}forward} & Find the next place after the cursor that holds the octets asked for in hex (“de ad be ef”), and show it in the hex view.\\
-none & \texttt{M-x hex-\codebreak{}set-\codebreak{}byte} & \texttt{hex-\codebreak{}set-\codebreak{}byte} & In the hex view, write one octet over the one at the cursor, asking for it in hex (41 is A), and move on to the next.\\
-none & \texttt{M-x hex-\codebreak{}switch\codebreak{}-\codebreak{}column} & \texttt{hex-\codebreak{}switch\codebreak{}-\codebreak{}column} & In the hex view, go from the hex digits to the text beside them, or back: typing then writes characters there, or hex digits here, over the octets.\\
-none & \texttt{C-x T h} & \texttt{hl-\codebreak{}line-\codebreak{}mode} & Highlight the line point is on in the current buffer, or stop: every row of it, out to the window’s edge, in the :hl-line face, under the syntax colours and the selection, in the selected window.\\
-none & \texttt{M-x ielm} & \texttt{ielm} & Show \textbf{ielm}, where Lisp typed after the prompt is evaluated in the running editor: made with a prompt the first time, as it was after.\\
-none & \texttt{C-c C-b} & \texttt{ielm-\codebreak{}change\codebreak{}-\codebreak{}workin\codebreak{}g-\codebreak{}buffer} & Choose the working buffer of \textbf{ielm}: the one the Lisp typed there sees as current, (insert “x”) putting text in it.\\
-none & \texttt{C-c C-u} & \texttt{ielm-\codebreak{}kill-\codebreak{}input} & Take away the input after \textbf{ielm}’s last prompt.\\
-none & \texttt{M-n} & \texttt{ielm-\codebreak{}next-\codebreak{}input} & Put the input after the one shown in \textbf{ielm}’s history in place of the input.\\
-none & \texttt{M-p} & \texttt{ielm-\codebreak{}previo\codebreak{}us-\codebreak{}input} & Put the input before the one shown in \textbf{ielm}’s history in place of the input.\\
-none & \texttt{RET} & \texttt{ielm-\codebreak{}return} & RET in \textbf{ielm}: after the last prompt, evaluate the input when it is whole expressions, else begin a new line of it; on an earlier input, evaluate that again.\\
-none & \texttt{C-j} & \texttt{ielm-\codebreak{}send-\codebreak{}input} & Evaluate the input after \textbf{ielm}’s last prompt as it is, whole or not.\\
-none & \texttt{TAB} & \texttt{ielm-\codebreak{}tab} & TAB in \textbf{ielm}: where only blanks come before point on its line of the input, indent the line as Lisp (never the prompt’s line); else complete the name at point from a list beside it, as C-M-i does.\\
-none & \texttt{TAB} & \texttt{indent\codebreak{}-\codebreak{}for-\codebreak{}tab-\codebreak{}command} & Indent the current line as its major mode indents it: point in the blanks the line begins with goes to where its text begins, point in its text stays with the text.\\
-none & \texttt{C-M-\textbackslash{}} & \texttt{indent\codebreak{}-\codebreak{}region} & Indent each line the selection touches as its major mode indents it; the lines inside a comment or a string begun on a line before keep their blanks, which are text.\\
-\texttt{>} & \texttt{C-z >} & \texttt{indent\codebreak{}-\codebreak{}select\codebreak{}ion-\codebreak{}or-\codebreak{}line} & Indent the lines the selection touches, or the current line, as the language’s mode indents them.\\
-none & \texttt{M-x indent\codebreak{}-\codebreak{}tabs-\codebreak{}mode} & \texttt{indent\codebreak{}-\codebreak{}tabs-\codebreak{}mode} & Switch the current buffer between tab characters and spaces where TAB and indentation go on to a tab stop; with a count, tabs when it is positive, spaces when it is zero or less.\\
-none & \texttt{C-c C-x p} & \texttt{inline\codebreak{}-\codebreak{}add-\codebreak{}picture} & Ask for a picture and write a link to it on lines of its own (C-c C-x p in Org, Markdown and \LaTeX{} files), the picture selected shown while you choose.\\
-none & \texttt{C-x T p} & \texttt{inline\codebreak{}-\codebreak{}pictur\codebreak{}es-\codebreak{}mode} & Show the pictures the current buffer links to among its lines, and its formulas as \LaTeX{} sets them, or the text as written.\\
-none & \texttt{C-x 8 RET} & \texttt{insert\codebreak{}-\codebreak{}char} & Insert a character by its Unicode name or its code.\\
-none & \texttt{C-x 8 \&} & \texttt{insert\codebreak{}-\codebreak{}digraph} & Type the character a digraph stands for, the count’s times: asks for its keys, e’ for e with an acute, -> for an arrow, << for a guillemet; M-x list-digraphs lists them all.\\
-none & \texttt{M-x insert\codebreak{}-\codebreak{}format\codebreak{}ted-\codebreak{}backli\codebreak{}nks-\codebreak{}block} & \texttt{insert\codebreak{}-\codebreak{}format\codebreak{}ted-\codebreak{}backli\codebreak{}nks-\codebreak{}block} & Put in a dynamic block of links to the files with formatted names that link to this one (a block also written denote-backlinks).\\
 none & \texttt{M-x insert\codebreak{}-\codebreak{}format\codebreak{}ted-\codebreak{}files-\codebreak{}as-\codebreak{}headin\codebreak{}gs-\codebreak{}block} & \texttt{insert\codebreak{}-\codebreak{}format\codebreak{}ted-\codebreak{}files-\codebreak{}as-\codebreak{}headin\codebreak{}gs-\codebreak{}block} & Put in a dynamic block holding the text of the Org files with formatted names whose names a regular expression matches, each under a headline of its title and tags, its own headlines a level down (a block also written denote-files-as-headings): the regular expression and the order of the files asked for.\\
 none & \texttt{M-x insert\codebreak{}-\codebreak{}format\codebreak{}ted-\codebreak{}files-\codebreak{}block} & \texttt{insert\codebreak{}-\codebreak{}format\codebreak{}ted-\codebreak{}files-\codebreak{}block} & Put in a dynamic block holding the text of the files with formatted names whose names a regular expression matches (a block also written denote-files): the regular expression and the order of the files asked for.\\
-\bottomrule
-\end{xltabular}
-}
-
-{\footnotesize
-\begin{xltabular}{\textwidth}{@{}l >{\raggedright\arraybackslash\hsize=0.788\hsize}X l >{\raggedright\arraybackslash\hsize=1.212\hsize}X@{}}
-\toprule
-\textbf{Modal} & \textbf{Non-modal} & \textbf{Command} & \textbf{What it does}\\
-\midrule
-\endhead
 none & \texttt{M-x insert\codebreak{}-\codebreak{}format\codebreak{}ted-\codebreak{}links-\codebreak{}block} & \texttt{insert\codebreak{}-\codebreak{}format\codebreak{}ted-\codebreak{}links-\codebreak{}block} & Put in a dynamic block of links to the files with formatted names whose names a regular expression matches (a block also written denote-links): asked for, the files it matches listed as it is typed; the links labelled with the files’ signatures and titles.\\
 none & \texttt{M-x insert\codebreak{}-\codebreak{}format\codebreak{}ted-\codebreak{}missin\codebreak{}g-\codebreak{}links-\codebreak{}block} & \texttt{insert\codebreak{}-\codebreak{}format\codebreak{}ted-\codebreak{}missin\codebreak{}g-\codebreak{}links-\codebreak{}block} & Put in a dynamic block of links to the files with formatted names whose names a regular expression matches and that this file does not link to yet, (a block also written denote-missing-links): the regular expression asked for, the files it matches listed as it is typed.\\
 none & \texttt{C-x i} & \texttt{insert\codebreak{}-\codebreak{}format\codebreak{}ted-\codebreak{}note-\codebreak{}template} & Read a note template, or any file, into the current buffer at point: one of your templates (blank, and each file in your note templates’ directory, NOTE-TEMPLATES-DIRECTORY), \%date\% and \%author\% filled in, or with “Another file\ldots{}” any file, as it is.\\
@@ -20665,13 +20710,11 @@ none & \texttt{C-c ]} & \texttt{latex-\codebreak{}close-\codebreak{}enviro\codeb
 none & \texttt{C-c C-e} & \texttt{latex-\codebreak{}insert\codebreak{}-\codebreak{}enviro\codebreak{}nment} & Ask for the name of an environment and write its \texttt{\textbackslash{}begin\codebreak{}\{NAME\}} and \texttt{\textbackslash{}end\{N\codebreak{}AME\}} on lines of their own, indented as the mode indents them, with point on an empty line between.\\
 none & \texttt{M-x lisp-\codebreak{}scratch} & \texttt{lisp-\codebreak{}scratch} & Show \textbf{lisp-scratch}, the Lisp buffer that is not saved, where C-x C-e evaluates in the running editor and C-j puts what the expression before point printed and its value on the lines after it; when it was killed, a new one.\\
 none & \texttt{M-x list-\codebreak{}auto-\codebreak{}saves} & \texttt{list-\codebreak{}auto-\codebreak{}saves} & List the auto-saved copies of changes not saved (\textbf{AUTO-SAVE-DIRECTORY}), the newest first: after a crash or a quit without saving, what can be taken back.\\
-none & \texttt{M-x list-\codebreak{}cache} & \texttt{list-\codebreak{}cache} & List what the cache directory keeps to save time, by kind: copies of files read from other machines, mailboxes read by readpst, search indexes, pictures of formulas and the rest (the logs and the compiled packages left out), with their sizes, when they were made and last used, whether they are pinned or when they are cleared (\textbf{CACHE-KEEP}), and whether they are in use.\\
+none & \texttt{M-x list-\codebreak{}cache} & \texttt{list-\codebreak{}cache} & The old name of cache-manager, kept until Tuatara 1.0: runs it, saying so the first time.\\
 none & \texttt{D}, \texttt{C-c D} & \texttt{list-\codebreak{}delete\codebreak{}-\codebreak{}marked} & Delete the marked entries of the list (>), or with none marked the one on the current line, after asking, as the list deletes, as M-x list-execute does those marked for deletion; in rimu, with C-u, for good rather than to the trash.\\
 none & \texttt{C-x / d} & \texttt{list-\codebreak{}delete\codebreak{}-\codebreak{}records} & Delete the records whose line a regular expression matches, keeping the rest: asked for as C-x / k asks, in the same files.\\
 none & \texttt{M-x list-\codebreak{}digraphs} & \texttt{list-\codebreak{}digraphs} & Show every digraph: the keys that type a character a keyboard lacks, those English text wants most first, then all of them by script, with the code point and name of each, and how to type them.\\
 none & \texttt{x} & \texttt{list-\codebreak{}execute} & Delete the entries of the list marked for deletion (D), after asking, as the list deletes: the buffer list kills its buffers, rimu puts files in the trash, the list of jobs drops those waiting and stops those running.\\
-none & \texttt{M-x list-\codebreak{}faces} & \texttt{list-\codebreak{}faces} & List every face a theme can colour in \textbf{Faces}, in sections by the first word of their names: each face’s name, a sample drawn in it as the theme in force draws it, and the first sentence of what it colours.\\
-none & \texttt{C-x j} & \texttt{list-\codebreak{}jobs} & List the jobs in the background in \textbf{Jobs}: in each buffer those running, with how far they have got, and those waiting their turn, in the order they will run, their text painted in the buffer meanwhile.\\
 \bottomrule
 \end{xltabular}
 }
@@ -20682,6 +20725,8 @@ none & \texttt{C-x j} & \texttt{list-\codebreak{}jobs} & List the jobs in the ba
 \textbf{Modal} & \textbf{Non-modal} & \textbf{Command} & \textbf{What it does}\\
 \midrule
 \endhead
+none & \texttt{M-x list-\codebreak{}faces} & \texttt{list-\codebreak{}faces} & List every face a theme can colour in \textbf{Faces}, in sections by the first word of their names: each face’s name, a sample drawn in it as the theme in force draws it, and the first sentence of what it colours.\\
+none & \texttt{C-x j} & \texttt{list-\codebreak{}jobs} & List the jobs in the background in \textbf{Jobs}: in each buffer those running, with how far they have got, and those waiting their turn, in the order they will run, their text painted in the buffer meanwhile.\\
 none & \texttt{C-x / k} & \texttt{list-\codebreak{}keep-\codebreak{}records} & Keep the records whose line a regular expression matches and delete the rest, in a file of records, a line each: a CSV or TSV, a log, a JSON Lines file, todo.txt and the others \textbf{LINE-RECORD-MODES} names, the column asked for first as C-x / f asks.\\
 none & \texttt{m}, \texttt{C-c m} & \texttt{list-\codebreak{}mark-\codebreak{}entry} & Mark the entry on the current line of the list (>), for the list’s commands that act on those marked, and move down; with a count, as many entries, up the list for a negative one.\\
 none & \texttt{d}, \texttt{C-c d} & \texttt{list-\codebreak{}mark-\codebreak{}for-\codebreak{}deletion} & Mark the entry on the current line of the list for deletion (D), for the list’s command that deletes them, and move down; with a count, as many entries, up the list for a negative one.\\
@@ -20720,8 +20765,6 @@ none & \texttt{C-c n} & \texttt{lsp-\codebreak{}next-\codebreak{}diagnostic} & G
 none & \texttt{C-c o} & \texttt{lsp-\codebreak{}organise-\codebreak{}imports} & Have the language server put the file’s imports in order, as its own action for that does it (unused ones taken out, where it does that), once it answers, when the file is still as it was asked of.\\
 none & \texttt{C-c C} & \texttt{lsp-\codebreak{}outgoing-\codebreak{}calls} & List the functions the function at point calls, as its language server knows them, in \textbf{xref}: RET goes to one.\\
 none & \texttt{C-c p} & \texttt{lsp-\codebreak{}previous-\codebreak{}diagnostic} & Go to the place before point where the language servers found something wrong, and say what.\\
-none & \texttt{C-c R} & \texttt{lsp-\codebreak{}rename} & Rename the thing at point everywhere the language server knows it is used, the new name asked for: each file’s changes one change undo takes back, nothing saved (C-x s saves them).\\
-none & \texttt{M-x lsp-\codebreak{}restart} & \texttt{lsp-\codebreak{}restart} & End the language servers the current buffer is open in and start them again; in a project not trusted, none is started (M-x lsp asks first).\\
 \bottomrule
 \end{xltabular}
 }
@@ -20732,11 +20775,13 @@ none & \texttt{M-x lsp-\codebreak{}restart} & \texttt{lsp-\codebreak{}restart} &
 \textbf{Modal} & \textbf{Non-modal} & \textbf{Command} & \textbf{What it does}\\
 \midrule
 \endhead
+none & \texttt{C-c R} & \texttt{lsp-\codebreak{}rename} & Rename the thing at point everywhere the language server knows it is used, the new name asked for: each file’s changes one change undo takes back, nothing saved (C-x s saves them).\\
+none & \texttt{M-x lsp-\codebreak{}restart} & \texttt{lsp-\codebreak{}restart} & End the language servers the current buffer is open in and start them again; in a project not trusted, none is started (M-x lsp asks first).\\
 none & \texttt{C-c S} & \texttt{lsp-\codebreak{}semantic-\codebreak{}tokens-\codebreak{}mode} & Colour code as its language server sees it, or no longer: each name in the face of its kind (a parameter, a field, a macro), over the mode’s colours.\\
 none & \texttt{M-x lsp-\codebreak{}shutdown} & \texttt{lsp-\codebreak{}shutdown} & End the language servers the current buffer is open in; M-x lsp starts them again.\\
 none & \texttt{C-x 5 2} & \texttt{make-\codebreak{}frame} & Open another frame showing the current buffer and work in it: a window of its own on the desktop, or in a terminal a whole screen of its own shown in place of the one before, the frames taking turns on the terminal, the mode line naming the one shown (F1, F2).\\
 none & \texttt{M-x man} & \texttt{man} & Show a manual page in a buffer of its own, read-only: ask for it by name (ls), with its section (ls(1)) or by section and name (1 ls), completing on the names of the pages the system has.\\
-none & \texttt{h}, \texttt{C-b}, \texttt{C-c h} & \texttt{man-\codebreak{}back} & Show the page a link was followed from; close the window when this page was not reached by a link.\\
+none & \texttt{B}, \texttt{C-c B} & \texttt{man-\codebreak{}back} & Show the page a link was followed from; close the window when this page was not reached by a link.\\
 none & \texttt{n}, \texttt{C-c n} & \texttt{man-\codebreak{}next-\codebreak{}section} & Go to the start of the next section heading of the manual page.\\
 none & \texttt{p}, \texttt{C-c p} & \texttt{man-\codebreak{}previous-\codebreak{}section} & Go to the start of the section heading before the line point is on.\\
 none & \texttt{M-x mark-\codebreak{}defun} & \texttt{mark-\codebreak{}defun} & Select the definition point is in, or the one after: point at its start, with the comments right above it and the blank lines above those, and the mark after it.\\
@@ -20770,8 +20815,6 @@ none & \texttt{M-x menu-\codebreak{}set-\codebreak{}option} & \texttt{menu-\code
 none & \texttt{M-x menu-\codebreak{}toggle-\codebreak{}switch} & \texttt{menu-\codebreak{}toggle-\codebreak{}switch} & Turn the switch of the open menu whose key was typed on, or off, or say it is left out of the menu now; the menu stays open.\\
 none & \texttt{<drag-\codebreak{}mouse-1>} & \texttt{mouse-\codebreak{}drag-\codebreak{}region} & Select from where the first mouse button went down to where the mouse is now, point following it, in the window it went down in; held above or below that window’s text, it scrolls a line at a time.\\
 none & \texttt{<up-\codebreak{}mouse-1>} & \texttt{mouse-\codebreak{}release} & The first mouse button let go: a drag ends there, what it selected staying selected and becoming the desktop’s primary selection, which the middle button pastes in other programs.\\
-none & \texttt{<triple-\codebreak{}mouse-1>} & \texttt{mouse-\codebreak{}select-\codebreak{}line} & Select the line the first mouse button went down on three times, its line break too.\\
-none & \texttt{<double-\codebreak{}mouse-1>} & \texttt{mouse-\codebreak{}select-\codebreak{}word} & Select the word the first mouse button went down on twice, point at its end: the run of letters, digits and \_ there, or of spaces, or of other signs; on a bracket, the bracketed group.\\
 \bottomrule
 \end{xltabular}
 }
@@ -20782,6 +20825,8 @@ none & \texttt{<double-\codebreak{}mouse-1>} & \texttt{mouse-\codebreak{}select-
 \textbf{Modal} & \textbf{Non-modal} & \textbf{Command} & \textbf{What it does}\\
 \midrule
 \endhead
+none & \texttt{<triple-\codebreak{}mouse-1>} & \texttt{mouse-\codebreak{}select-\codebreak{}line} & Select the line the first mouse button went down on three times, its line break too.\\
+none & \texttt{<double-\codebreak{}mouse-1>} & \texttt{mouse-\codebreak{}select-\codebreak{}word} & Select the word the first mouse button went down on twice, point at its end: the run of letters, digits and \_ there, or of spaces, or of other signs; on a bracket, the bracketed group.\\
 none & \texttt{<down-\codebreak{}mouse-1>} & \texttt{mouse-\codebreak{}set-\codebreak{}point} & Put point where the first mouse button went down, selecting the window there, and let go of the selection; dragging then selects from there.\\
 none & \texttt{C-<wheel-\codebreak{}up>}, \texttt{C-<wheel-\codebreak{}down>} & \texttt{mouse-\codebreak{}wheel-\codebreak{}text-\codebreak{}scale} & Make the window’s font a step larger as the mouse wheel turns up with Ctrl held (C-<wheel-up>), a step smaller as it turns down.\\
 none & \texttt{<mouse-2>} & \texttt{mouse-\codebreak{}yank-\codebreak{}primary} & Insert where the middle button was pressed the text selected last in any program (the desktop’s primary selection); the mark at its start.\\
@@ -20820,8 +20865,6 @@ none & \texttt{M-x org-\codebreak{}agenda-\codebreak{}list} & \texttt{org-\codeb
 none & \texttt{L}, \texttt{C-c L} & \texttt{org-\codebreak{}agenda-\codebreak{}log-\codebreak{}mode} & List what was closed and clocked on each day too, or no longer; \textbf{ORG-AGENDA-LOG-MODE} says how the agenda starts.\\
 none & \texttt{m}, \texttt{C-c m}, \texttt{C-x a m} & \texttt{org-\codebreak{}agenda-\codebreak{}month-\codebreak{}view} & Show the agenda of a month: the month of the day at point in the agenda, else this month.\\
 none & \texttt{g l} & \texttt{org-\codebreak{}agenda-\codebreak{}previous-\codebreak{}view} & Go back to the view or span the agenda showed before this one, point on the line it was on, as cd - goes back to the directory before: pressed again, return.\\
-none & \texttt{C-c C-w} & \texttt{org-\codebreak{}agenda-\codebreak{}refile} & Move the entry on the agenda’s line under another heading, as C-c C-w moves one.\\
-none & \texttt{s} & \texttt{org-\codebreak{}agenda-\codebreak{}save-\codebreak{}all-\codebreak{}buffers} & Save the buffers of the agenda files (\textbf{org-agenda-files}, and those added to them) with changes not saved, those the agenda changed among them; other Org buffers are left as they are (M-x org-save-all-org-buffers saves them all).\\
 \bottomrule
 \end{xltabular}
 }
@@ -20832,6 +20875,8 @@ none & \texttt{s} & \texttt{org-\codebreak{}agenda-\codebreak{}save-\codebreak{}
 \textbf{Modal} & \textbf{Non-modal} & \textbf{Command} & \textbf{What it does}\\
 \midrule
 \endhead
+none & \texttt{C-c C-w} & \texttt{org-\codebreak{}agenda-\codebreak{}refile} & Move the entry on the agenda’s line under another heading, as C-c C-w moves one.\\
+none & \texttt{s} & \texttt{org-\codebreak{}agenda-\codebreak{}save-\codebreak{}all-\codebreak{}buffers} & Save the buffers of the agenda files (\textbf{org-agenda-files}, and those added to them) with changes not saved, those the agenda changed among them; other Org buffers are left as they are (M-x org-save-all-org-buffers saves them all).\\
 none & \texttt{C-c C-s} & \texttt{org-\codebreak{}agenda-\codebreak{}schedule} & Schedule the entry on the agenda’s line, the date asked for as C-c C-s asks it; with C-u, take its scheduling away.\\
 none & \texttt{C-c C-q} & \texttt{org-\codebreak{}agenda-\codebreak{}set-\codebreak{}tags} & Set the tags of the entry on the agenda’s line, asked for as C-c C-q asks them.\\
 none & \texttt{RET} & \texttt{org-\codebreak{}agenda-\codebreak{}switch-to} & Open the entry on the agenda’s line in this window, point on its headline.\\
@@ -20870,8 +20915,6 @@ none & \texttt{M-x org-\codebreak{}cycle-\codebreak{}list-\codebreak{}bullet} & 
 none & \texttt{M-x org-\codebreak{}date-\codebreak{}choose-\codebreak{}mark} & \texttt{org-\codebreak{}date-\codebreak{}choose-\codebreak{}mark} & In Org’s date question, answered in the calendar: mark the calendar’s day, beside those marked where the question takes several days, else in place of the one marked.\\
 none & \texttt{M-x org-\codebreak{}date-\codebreak{}choose-\codebreak{}unmark} & \texttt{org-\codebreak{}date-\codebreak{}choose-\codebreak{}unmark} & In Org’s date question, answered in the calendar: take the mark off the calendar’s day.\\
 none & \texttt{M-x org-\codebreak{}date-\codebreak{}choose-\codebreak{}write} & \texttt{org-\codebreak{}date-\codebreak{}choose-\codebreak{}write} & In Org’s date question, answered in the calendar: write the days chosen at the prompt (the calendar’s day when none is marked), to add a time or a repeat to; RET there takes it.\\
-none & \texttt{M-x org-\codebreak{}date-\codebreak{}repeat-\codebreak{}menu} & \texttt{org-\codebreak{}date-\codebreak{}repeat-\codebreak{}menu} & At the date prompt of M-x org-schedule, M-x org-deadline and M-x org-time-stamp: leave it for the menu of a repeat (REPEAT-MENU), started from what was typed, or the calendar’s day.\\
-none & \texttt{C-c C-x C-u} & \texttt{org-\codebreak{}dblock-\codebreak{}update} & Make the dynamic block point is in again (C-c C-x C-u): the text between \#+BEGIN: and \#+END: written anew by the writer \#+BEGIN: names, in the background, the editor free meanwhile.\\
 \bottomrule
 \end{xltabular}
 }
@@ -20882,6 +20925,8 @@ none & \texttt{C-c C-x C-u} & \texttt{org-\codebreak{}dblock-\codebreak{}update}
 \textbf{Modal} & \textbf{Non-modal} & \textbf{Command} & \textbf{What it does}\\
 \midrule
 \endhead
+none & \texttt{M-x org-\codebreak{}date-\codebreak{}repeat\codebreak{}-\codebreak{}menu} & \texttt{org-\codebreak{}date-\codebreak{}repeat\codebreak{}-\codebreak{}menu} & At the date prompt of M-x org-schedule, M-x org-deadline and M-x org-time-stamp: leave it for the menu of a repeat (REPEAT-MENU), started from what was typed, or the calendar’s day.\\
+none & \texttt{C-c C-x C-u} & \texttt{org-\codebreak{}dblock\codebreak{}-\codebreak{}update} & Make the dynamic block point is in again (C-c C-x C-u): the text between \#+BEGIN: and \#+END: written anew by the writer \#+BEGIN: names, in the background, the editor free meanwhile.\\
 none & \texttt{C-c C-d} & \texttt{org-\codebreak{}deadline} & Give the task point is under a deadline (C-c C-d): the date asked for as M-x org-schedule asks it, DEADLINE: on its planning line, a repeater and warning it had kept.\\
 none & \texttt{M-x org-\codebreak{}demote\codebreak{}-\codebreak{}subtree} & \texttt{org-\codebreak{}demote\codebreak{}-\codebreak{}subtree} & Demote the headline point is in a level, and every headline under it.\\
 none & \texttt{M-x org-\codebreak{}do-\codebreak{}demote} & \texttt{org-\codebreak{}do-\codebreak{}demote} & Demote the headline point is in a level, its subtree’s other headlines as they are.\\
@@ -20920,8 +20965,6 @@ none & \texttt{M-x org-\codebreak{}save-\codebreak{}all-\codebreak{}org-\codebre
 none & \texttt{C-c C-s} & \texttt{org-\codebreak{}schedule} & Schedule the task point is under (C-c C-s): the date is asked for (fri, +3d, 10-15, sep 30, 2026-12-24 14:00), what it reads shown as it is typed, and SCHEDULED: goes on its planning line, a repeater and warning it had kept.\\
 none & \texttt{M-x org-\codebreak{}scratch} & \texttt{org-\codebreak{}scratch} & Show \textbf{org-scratch}, the Org buffer for notes that are not saved; when it was killed, a new one.\\
 none & \texttt{C-c C-q} & \texttt{org-\codebreak{}set-\codebreak{}tags-\codebreak{}command} & Set the tags of the headline point is under (C-c C-q): asked for with its tags offered, work urgent or :work:urgent:, nothing for none; they go at the end of its line, where \textbf{ORG-TAGS-COLUMN} says, by default one space after its text.\\
-none & \texttt{S-<left>} & \texttt{org-\codebreak{}shiftl\codebreak{}eft} & On a headline, its TODO keyword before, none before the first.\\
-none & \texttt{M-S-<d\codebreak{}own>} & \texttt{org-\codebreak{}shiftm\codebreak{}etadown} & In an Org table, put an empty row above this one (M-S-<down>).\\
 \bottomrule
 \end{xltabular}
 }
@@ -20932,6 +20975,8 @@ none & \texttt{M-S-<d\codebreak{}own>} & \texttt{org-\codebreak{}shiftm\codebrea
 \textbf{Modal} & \textbf{Non-modal} & \textbf{Command} & \textbf{What it does}\\
 \midrule
 \endhead
+none & \texttt{S-<left>} & \texttt{org-\codebreak{}shiftleft} & On a headline, its TODO keyword before, none before the first.\\
+none & \texttt{M-S-<down>} & \texttt{org-\codebreak{}shiftmetadown} & In an Org table, put an empty row above this one (M-S-<down>).\\
 none & \texttt{M-H}, \texttt{M-S-<left>} & \texttt{org-\codebreak{}shiftmetaleft} & In an Org table, delete the column; else promote the subtree (M-H).\\
 none & \texttt{M-L}, \texttt{M-S-<right>} & \texttt{org-\codebreak{}shiftmetaright} & In an Org table, put an empty column before this one; else demote the subtree (M-L).\\
 none & \texttt{M-S-<up>} & \texttt{org-\codebreak{}shiftmetaup} & In an Org table, delete the row point is in (M-S-<up>).\\
@@ -20970,8 +21015,6 @@ none & \texttt{w}, \texttt{C-c w} & \texttt{pdf-\codebreak{}view-\codebreak{}fit
 none & \texttt{g p} & \texttt{pdf-\codebreak{}view-\codebreak{}goto-\codebreak{}page} & Turn to a page of the PDF by its number, asked for; in its text, go to where it begins.\\
 none & \texttt{g l} & \texttt{pdf-\codebreak{}view-\codebreak{}last-\codebreak{}page} & Turn to the last page of the PDF.\\
 none & \texttt{l}, \texttt{C-f}, \texttt{C-c l} & \texttt{pdf-\codebreak{}view-\codebreak{}next-\codebreak{}page} & Turn to the next page of the PDF: the one in the current buffer, or else the first one another window shows, so that a PDF beside the text it was made from is read on without leaving that text.\\
-none & \texttt{g e} & \texttt{pdf-\codebreak{}view-\codebreak{}page-\codebreak{}end} & Show the bottom of the page.\\
-none & \texttt{g g} & \texttt{pdf-\codebreak{}view-\codebreak{}page-\codebreak{}top} & Show the top of the page.\\
 \bottomrule
 \end{xltabular}
 }
@@ -20982,6 +21025,8 @@ none & \texttt{g g} & \texttt{pdf-\codebreak{}view-\codebreak{}page-\codebreak{}
 \textbf{Modal} & \textbf{Non-modal} & \textbf{Command} & \textbf{What it does}\\
 \midrule
 \endhead
+none & \texttt{g e} & \texttt{pdf-\codebreak{}view-\codebreak{}page-\codebreak{}end} & Show the bottom of the page.\\
+none & \texttt{g g} & \texttt{pdf-\codebreak{}view-\codebreak{}page-\codebreak{}top} & Show the top of the page.\\
 none & \texttt{h}, \texttt{C-b}, \texttt{C-c h} & \texttt{pdf-\codebreak{}view-\codebreak{}previous-\codebreak{}page} & Turn to the page before in the PDF: the one in the current buffer, or else the first one another window shows.\\
 none & \texttt{<wheel-\codebreak{}up>}, \texttt{<wheel-\codebreak{}down>} & \texttt{pdf-\codebreak{}view-\codebreak{}scroll-\codebreak{}by-\codebreak{}wheel} & Scroll the page as the mouse wheel turned, as M-x pdf-view-scroll-down and M-x pdf-view-scroll-up do: down for <wheel-down>, on to the next page at a page’s end (each turn a page, the page fitted whole), up for <wheel-up>.\\
 none & \texttt{j}, \texttt{C-n}, \texttt{C-c j} & \texttt{pdf-\codebreak{}view-\codebreak{}scroll-\codebreak{}down} & Scroll the page down, and at its end on to the top of the next.\\
@@ -21003,7 +21048,7 @@ none & \texttt{C-c M-m} & \texttt{pp-\codebreak{}macroexpan\codebreak{}d-\codebr
 none & \texttt{C-c C-m}, \texttt{C-c RET} & \texttt{pp-\codebreak{}macroexpan\codebreak{}d-\codebreak{}last-\codebreak{}expression} & Show what the macro call at point expands to, once (MACROEXPAND-1), pretty-printed in \textbf{Pp Macroexpand Output}: the call beginning at point when an opening bracket is there, else the one before point.\\
 \texttt{k} & \texttt{C-p}, \texttt{<up>} & \texttt{previous-\codebreak{}line} & Move point up one line (or the prefix argument’s worth), keeping the column when possible; where long lines wrap at a word’s edge (C-x T l), one row.\\
 none & \texttt{M-g p} & \texttt{previous-\codebreak{}place} & Go to the place before the one gone to last in the list of places used last: a compile’s output (M-x compile), the lines a search of files found (M-s g), the places the language servers found something wrong in a buffer, or the errors of \textbf{\LaTeX{} errors}, as M-g n goes to the next.\\
-none & \texttt{l}, \texttt{C-f}, \texttt{RET} & \texttt{push-\codebreak{}button} & Do what the button at point does: open what it names.\\
+none & \texttt{RET} & \texttt{push-\codebreak{}button} & Do what the button at point does: open what it names.\\
 none & \texttt{<down-\codebreak{}mouse-1>} & \texttt{push-\codebreak{}button-\codebreak{}at-\codebreak{}click} & Put point where the first mouse button went down, as <down-mouse-1> does, and do what a button there does.\\
 none & \texttt{M-x push-\codebreak{}mark-\codebreak{}command} & \texttt{push-\codebreak{}mark-\codebreak{}command} & Set the mark at point and activate the region, the mark before going on the mark ring; when the mark is at point already, only activate it.\\
 none & \texttt{M-\%} & \texttt{query-\codebreak{}replace} & Replace literal text, asking at each match: y replaces, n skips, ! replaces all the rest, .\\
@@ -21020,8 +21065,6 @@ none & \texttt{C-r} & \texttt{regex-\codebreak{}search-\codebreak{}backward} & S
 none & \texttt{M-x regex-\codebreak{}search-\codebreak{}backward-\codebreak{}thorough} & \texttt{regex-\codebreak{}search-\codebreak{}backward-\codebreak{}thorough} & Search backward as regex-search-backward does, finding every match of up to a megabyte whole however many lines it spans, with the cost and the limit of regex-search-forward-thorough: a match of more than a megabyte is still cut short, or missed when it needs text further on.\\
 none & \texttt{C-s} & \texttt{regex-\codebreak{}search-\codebreak{}forward} & Search forward as you type for a regular expression (Perl-compatible regular expression (PCRE) syntax); a pattern without upper-case letters ignores case, unless it names a case: :upper:, :lower:, \texttt{\textbackslash{}p\{Lu\}}, \texttt{\textbackslash{}p\{Ll\}} and \texttt{\textbackslash{}p\{Lt\}} heed it, as a capital letter does.\\
 none & \texttt{M-x regex-\codebreak{}search-\codebreak{}forward-\codebreak{}thorough} & \texttt{regex-\codebreak{}search-\codebreak{}forward-\codebreak{}thorough} & Search forward as regex-search-forward does, finding every match of up to a megabyte (about a million characters of ASCII) whole however many lines it spans, where regex-search-forward may miss one of more than 4 KB that runs across lines and needs text further on (a block of lines matched by \texttt{BEGIN[\textbackslash{}s\textbackslash{}S\codebreak{}]*?END}, say).\\
-none & \texttt{C-x r +} & \texttt{register-\codebreak{}add} & Add to what a register keeps: a number grows by the prefix argument (1 without one, below 0 to take away), text has the selected text put after it.\\
-none & \texttt{C-x r s} & \texttt{register-\codebreak{}copy} & Keep the selection under a character you type, as long as the editor runs: the text between point and mark, or the block of columns when a rectangle is selected (C-x r SPC).\\
 \bottomrule
 \end{xltabular}
 }
@@ -21032,6 +21075,8 @@ none & \texttt{C-x r s} & \texttt{register-\codebreak{}copy} & Keep the selectio
 \textbf{Modal} & \textbf{Non-modal} & \textbf{Command} & \textbf{What it does}\\
 \midrule
 \endhead
+none & \texttt{C-x r +} & \texttt{register-\codebreak{}add} & Add to what a register keeps: a number grows by the prefix argument (1 without one, below 0 to take away), text has the selected text put after it.\\
+none & \texttt{C-x r s} & \texttt{register-\codebreak{}copy} & Keep the selection under a character you type, as long as the editor runs: the text between point and mark, or the block of columns when a rectangle is selected (C-x r SPC).\\
 none & \texttt{C-x r i} & \texttt{register-\codebreak{}insert} & Put what a register keeps into the text at point, asked for by its character: text as it was, with point after it and the mark before; a block (C-x r s of a rectangle) as a block of columns, as C-x r y pastes one, with a prefix argument each row that many times across; a number as digits.\\
 none & \texttt{C-x r j} & \texttt{register-\codebreak{}jump} & Go to the place a register keeps (C-x r p), asked for by its character: in its buffer, shown, point where it was set, moved with the text around it.\\
 none & \texttt{C-x r l} & \texttt{register-\codebreak{}list} & List the registers in \textbf{Registers}: the character that names each, what it keeps (a place, text, a rectangle, a number) and a look at that.\\
@@ -21070,8 +21115,6 @@ none & \texttt{+}, \texttt{C-c +} & \texttt{rimu-\codebreak{}make-\codebreak{}di
 none & \texttt{A}, \texttt{C-c A} & \texttt{rimu-\codebreak{}make-\codebreak{}formatted-\codebreak{}file} & Make a new file with a formatted name in this list’s directory, asking what new-file-formatted asks but the subdirectory (the title, the keywords, the kind and the template), with the header of its kind, saved at once; the list shows it, point on it.\\
 none & \texttt{C-c f m} & \texttt{rimu-\codebreak{}mark-\codebreak{}master} & Mark the file on the line of this rimu list as a master (M), a file that the files marked (m) are compared with by the commands that compare files, a photo of the person looked for among photos, and go to the next line; u takes the mark away.\\
 none & \texttt{M}, \texttt{C-c M} & \texttt{rimu-\codebreak{}move} & Move the marked entries, or the one on the line, into a directory asked for, navigating to it as C-x C-f does, only directories offered: the directory of the other list beside this one offered first.\\
-none & \texttt{C-c C-k} & \texttt{rimu-\codebreak{}names-\codebreak{}cancel} & Leave the names as they are, and go back to the list.\\
-none & \texttt{C-c C-c} & \texttt{rimu-\codebreak{}names-\codebreak{}finish} & Rename the entries whose line changed, and go back to the list: all or, when a line does not do, none, and why is said.\\
 \bottomrule
 \end{xltabular}
 }
@@ -21082,6 +21125,8 @@ none & \texttt{C-c C-c} & \texttt{rimu-\codebreak{}names-\codebreak{}finish} & R
 \textbf{Modal} & \textbf{Non-modal} & \textbf{Command} & \textbf{What it does}\\
 \midrule
 \endhead
+none & \texttt{C-c C-k} & \texttt{rimu-\codebreak{}names-\codebreak{}cancel} & Leave the names as they are, and go back to the list.\\
+none & \texttt{C-c C-c} & \texttt{rimu-\codebreak{}names-\codebreak{}finish} & Rename the entries whose line changed, and go back to the list: all or, when a line does not do, none, and why is said.\\
 none & \texttt{>}, \texttt{C-c >} & \texttt{rimu-\codebreak{}next-\codebreak{}directory} & Go to the next directory of this list.\\
 none & \texttt{l}, \texttt{C-f}, \texttt{RET} & \texttt{rimu-\codebreak{}open} & Open the entry on the current line: a directory is listed in its place in this list; a file is visited as C-x C-f visits it, safely where that would be, and with a prefix argument (C-u) safely always.\\
 none & \texttt{C-x 5 d} & \texttt{rimu-\codebreak{}other-\codebreak{}frame} & List a directory with rimu in another frame and work in it, the directory asked for as C-x d asks.\\
@@ -21120,8 +21165,6 @@ none & \texttt{C-M-v} & \texttt{scroll-\codebreak{}other-\codebreak{}window} & S
 none & \texttt{C-M-V} & \texttt{scroll-\codebreak{}other-\codebreak{}window-\codebreak{}down} & Scroll the next window backward by nearly a screenful, leaving the selected one as it is.\\
 none & \texttt{C-v}, \texttt{<next>} & \texttt{scroll-\codebreak{}up-\codebreak{}command} & Scroll the window forward by nearly a screenful: by the rows it shows, where long lines wrap.\\
 none & \texttt{M-x search-\codebreak{}abort} & \texttt{search-\codebreak{}abort} & Cancel the search and return to where it began; a search filter being typed goes, the list shown as the filters kept leave it.\\
-none & \texttt{M-x search-\codebreak{}exit} & \texttt{search-\codebreak{}exit} & End the search, leaving point at the match and the mark where the search began; when the string holds a replacement, carry it out; for a search filter, keep it on the list.\\
-none & \texttt{M-x search-\codebreak{}files-\codebreak{}list} & \texttt{search-\codebreak{}files-\codebreak{}list} & While searching files (M-s g), list the lines found so far in a buffer of their own, one each as path:line: text, to go through with RET or to change at once, with C-x C-q, and write back into their files.\\
 \bottomrule
 \end{xltabular}
 }
@@ -21132,6 +21175,8 @@ none & \texttt{M-x search-\codebreak{}files-\codebreak{}list} & \texttt{search-\
 \textbf{Modal} & \textbf{Non-modal} & \textbf{Command} & \textbf{What it does}\\
 \midrule
 \endhead
+none & \texttt{M-x search-\codebreak{}exit} & \texttt{search-\codebreak{}exit} & End the search, leaving point at the match and the mark where the search began; when the string holds a replacement, carry it out; for a search filter, keep it on the list.\\
+none & \texttt{M-x search-\codebreak{}files-\codebreak{}list} & \texttt{search-\codebreak{}files-\codebreak{}list} & While searching files (M-s g), list the lines found so far in a buffer of their own, one each as path:line: text, to go through with RET or to change at once, with C-x C-q, and write back into their files.\\
 none & \texttt{C-x / h} & \texttt{search-\codebreak{}filter-\codebreak{}hide-\codebreak{}records} & Hide the records whose line a regular expression matches, showing the others, deleting nothing: asked for as C-x / f asks, kept with the other filters.\\
 none & \texttt{C-x / l} & \texttt{search-\codebreak{}filter-\codebreak{}list} & List the search filters narrowing the list here (C-x / s) in a buffer of their own, each with how many entries it leaves; there d takes away the filter on the line and D all of them.\\
 none & \texttt{C-x / s} & \texttt{search-\codebreak{}filter-\codebreak{}regex} & Narrow the list here to the entries a regular expression matches, as it is typed: those whose line matches, or what more the list holds of them (a mailbox the headers and contents of its messages).\\
@@ -21170,8 +21215,6 @@ none & \texttt{M-n} & \texttt{select-\codebreak{}next-\codebreak{}sibling} & Sel
 \texttt{K} & \texttt{C-z K} & \texttt{select-\codebreak{}previous-\codebreak{}line} & Move up, extending the line selection if one is active.\\
 none & \texttt{M-p} & \texttt{select-\codebreak{}previous-\codebreak{}sibling} & Select the piece of syntax before the selection, or before the one at point: the argument, statement or item before it, and before the first one, the one before the piece around them.\\
 \texttt{m s} & \texttt{C-z m s} & \texttt{select-\codebreak{}sentence} & Select the sentence at point, as far as its full stop; from the gap between two, the one ahead.\\
-\texttt{m S} & \texttt{C-z m S} & \texttt{select-\codebreak{}sentence-\codebreak{}backward} & Select the sentence at point, or grow a sentence selection backward: from the gap between two, the one behind.\\
-\texttt{m A} & \texttt{C-z m A} & \texttt{select-\codebreak{}sexp} & Select the bracketed expression around point, its brackets included: point at the start, the mark at the end.\\
 \bottomrule
 \end{xltabular}
 }
@@ -21182,6 +21225,8 @@ none & \texttt{M-p} & \texttt{select-\codebreak{}previous-\codebreak{}sibling} &
 \textbf{Modal} & \textbf{Non-modal} & \textbf{Command} & \textbf{What it does}\\
 \midrule
 \endhead
+\texttt{m S} & \texttt{C-z m S} & \texttt{select-\codebreak{}sentence-\codebreak{}backward} & Select the sentence at point, or grow a sentence selection backward: from the gap between two, the one behind.\\
+\texttt{m A} & \texttt{C-z m A} & \texttt{select-\codebreak{}sexp} & Select the bracketed expression around point, its brackets included: point at the start, the mark at the end.\\
 \texttt{m I} & \texttt{C-z m I} & \texttt{select-\codebreak{}sexp-\codebreak{}inside} & Select what is inside the bracketed expression around point, its brackets left out: point at the start, the mark at the end.\\
 \texttt{m W} & \texttt{C-z m W} & \texttt{select-\codebreak{}symbol} & Select the symbol at point (a name with its \_ and -, Lisp’s own characters in Lisp), punctuation at either end left out: from the gap between two, the one ahead, brackets and quotes crossed.\\
 \texttt{m B} & \texttt{C-z m B} & \texttt{select-\codebreak{}symbol-\codebreak{}backward} & Select the symbol at point, or grow a symbol selection backward: from the gap between two, the one behind.\\
@@ -21220,8 +21265,6 @@ none & \texttt{M-x show-\codebreak{}file-\codebreak{}name} & \texttt{show-\codeb
 none & \texttt{C-c C-v} & \texttt{show-\codebreak{}line-\codebreak{}in-\codebreak{}pdf} & Show the line point is on in the PDF made of this \LaTeX{} file: the PDF’s view shown beside when it is not, turned to the page the line is on, the place scrolled into sight and marked for a moment.\\
 none & \texttt{M-x show-\codebreak{}paren-\codebreak{}mode} & \texttt{show-\codebreak{}paren-\codebreak{}mode} & Switch on or off showing the bracket that pairs with the one at point, in every buffer: when on, the bracket before point when it closes, else the one after it when it opens, is shown with its partner in :paren-match, or in :paren-mismatch when the partner is of another kind or there is none.\\
 none & \texttt{M-i} & \texttt{shrink-\codebreak{}selection} & Go back to the selection before the last M-o, or else select the first piece of syntax inside the selection; without a selection, the smallest piece of syntax at point.\\
-none & \texttt{M-x shrink-\codebreak{}window} & \texttt{shrink-\codebreak{}window} & Make the selected window a row shorter, or the prefix argument’s rows; they go to the window below it, or above.\\
-none & \texttt{C-x \{} & \texttt{shrink-\codebreak{}window-\codebreak{}horizontally} & Make the selected window a column narrower, or the prefix argument’s columns; they go to the window to its right, or its left.\\
 \bottomrule
 \end{xltabular}
 }
@@ -21232,6 +21275,8 @@ none & \texttt{C-x \{} & \texttt{shrink-\codebreak{}window-\codebreak{}horizonta
 \textbf{Modal} & \textbf{Non-modal} & \textbf{Command} & \textbf{What it does}\\
 \midrule
 \endhead
+none & \texttt{M-x shrink-\codebreak{}window} & \texttt{shrink-\codebreak{}window} & Make the selected window a row shorter, or the prefix argument’s rows; they go to the window below it, or above.\\
+none & \texttt{C-x \{} & \texttt{shrink-\codebreak{}window-\codebreak{}horizontally} & Make the selected window a column narrower, or the prefix argument’s columns; they go to the window to its right, or its left.\\
 none & \texttt{C-x -} & \texttt{shrink-\codebreak{}window-\codebreak{}if-\codebreak{}larger-\codebreak{}than-\codebreak{}buffer} & Make the selected window as short as its buffer’s lines need, when it is taller.\\
 none & \texttt{M-x snippet-\codebreak{}next-\codebreak{}field} & \texttt{snippet-\codebreak{}next-\codebreak{}field} & Go to the next field of the snippet being filled in; past the last, end it where it puts the cursor.\\
 none & \texttt{M-x snippet-\codebreak{}previous-\codebreak{}field} & \texttt{snippet-\codebreak{}previous-\codebreak{}field} & Go back to the field of the snippet before the one the cursor is in.\\
@@ -21270,8 +21315,6 @@ none & \texttt{M-x split-\codebreak{}wrap} & \texttt{split-\codebreak{}wrap} & W
 none & \texttt{M-x split-\codebreak{}wrap-\codebreak{}key} & \texttt{split-\codebreak{}wrap-\codebreak{}key} & Wrap every place of the split in the pair of the delimiter pressed, or take it off; see split-wrap.\\
 none & \texttt{C-x (} & \texttt{start-\codebreak{}recording-\codebreak{}keys} & Begin recording the keys you type, the answers typed to questions too, until C-x ); C-x e then plays them again, as if typed once more: C-x ( C-s date RET C-k C-x ) records a search for date and a kill there, and each play searches for date again and kills from where it found it.\\
 \texttt{v} & none & \texttt{start-\codebreak{}selection} & Start a selection at point: any motion extends it.\\
-none & \texttt{C-x J}, \texttt{C-c C-k} & \texttt{stop-\codebreak{}job} & Stop the work running in the background in the current buffer, after asking.\\
-none & \texttt{C-x )} & \texttt{stop-\codebreak{}recording-\codebreak{}keys} & End the recording C-x ( began: the keys typed since, but those of this command, become the keys C-x e plays.\\
 \bottomrule
 \end{xltabular}
 }
@@ -21282,6 +21325,8 @@ none & \texttt{C-x )} & \texttt{stop-\codebreak{}recording-\codebreak{}keys} & E
 \textbf{Modal} & \textbf{Non-modal} & \textbf{Command} & \textbf{What it does}\\
 \midrule
 \endhead
+none & \texttt{C-x J}, \texttt{C-c C-k} & \texttt{stop-\codebreak{}job} & Stop the work running in the background in the current buffer, after asking.\\
+none & \texttt{C-x )} & \texttt{stop-\codebreak{}recording-\codebreak{}keys} & End the recording C-x ( began: the keys typed since, but those of this command, become the keys C-x e plays.\\
 none & \texttt{C-x r t} & \texttt{string-\codebreak{}rectangle} & Replace the rectangle between the mark and point with a text read in the minibuffer, on each of its lines; with no width, the text goes in at its column on each line.\\
 none & \texttt{C-x w k} & \texttt{swap-\codebreak{}window-\codebreak{}above} & Swap the selected window’s buffer with the window above; you go with your buffer, so it moves up.\\
 none & \texttt{C-x w j} & \texttt{swap-\codebreak{}window-\codebreak{}below} & Swap the selected window’s buffer with the window below; you go with your buffer, so it moves down.\\
@@ -21320,8 +21365,6 @@ none & \texttt{<f11>} & \texttt{toggle-\codebreak{}frame-\codebreak{}fullscreen}
 none & \texttt{M-<f10>} & \texttt{toggle-\codebreak{}frame-\codebreak{}maximized} & Make the window as large as the screen allows, or go back to its size before.\\
 none & \texttt{C-\textbackslash{}} & \texttt{toggle-\codebreak{}input-\codebreak{}method} & Turn this buffer’s input method off, or on again.\\
 none & \texttt{M-x toggle-\codebreak{}light-\codebreak{}dark-\codebreak{}theme} & \texttt{toggle-\codebreak{}light-\codebreak{}dark-\codebreak{}theme} & Switch between the light and the dark theme: the two ao variants, unless the init file sets \textbf{light-theme} and \textbf{dark-theme} to others.\\
-none & \texttt{M-x toggle-\codebreak{}line-\codebreak{}numbers} & \texttt{toggle-\codebreak{}line-\codebreak{}numbers} & Cycle the gutter of the current buffer through no line numbers, absolute, relative.\\
-none & \texttt{C-x T t} & \texttt{toggle-\codebreak{}mode-\codebreak{}line-\codebreak{}tuatara} & Write TUATARA before the modal state in the mode line, TUATARA[N], or the state alone, [N]; \textbf{mode-line-tuatara} says which as Tuatara starts.\\
 \bottomrule
 \end{xltabular}
 }
@@ -21332,6 +21375,8 @@ none & \texttt{C-x T t} & \texttt{toggle-\codebreak{}mode-\codebreak{}line-\code
 \textbf{Modal} & \textbf{Non-modal} & \textbf{Command} & \textbf{What it does}\\
 \midrule
 \endhead
+none & \texttt{M-x toggle-\codebreak{}line-\codebreak{}numbers} & \texttt{toggle-\codebreak{}line-\codebreak{}numbers} & Cycle the gutter of the current buffer through no line numbers, absolute, relative.\\
+none & \texttt{C-x T t} & \texttt{toggle-\codebreak{}mode-\codebreak{}line-\codebreak{}tuatara} & Write TUATARA before the modal state in the mode line, TUATARA[N], or the state alone, [N]; \textbf{mode-line-tuatara} says which as Tuatara starts.\\
 none & \texttt{C-t} & \texttt{transpose-\codebreak{}chars} & Interchange the characters about point, moving on past them; at the end of a line, the two before point.\\
 none & \texttt{C-x C-t} & \texttt{transpose-\codebreak{}lines} & Interchange this line and the one before it, point after them; with a count N, carry the line before point past N lines (back when N is negative); with 0, interchange the lines of point and the mark.\\
 none & \texttt{C-M-t} & \texttt{transpose-\codebreak{}sexps} & Interchange the balanced expressions about point, point after them; with a count N, carry the expression before point past N expressions (back when N is negative); with 0, interchange the expressions at point and at the mark.\\
@@ -21370,8 +21415,6 @@ none & \texttt{C-x w x} & \texttt{window-\codebreak{}swap-\codebreak{}states} & 
 none & \texttt{M-x wipe-\codebreak{}file} & \texttt{wipe-\codebreak{}file} & Wipe the file shown (in a list of a directory, the one on the line; with C-u, or where there is none, asked for) after asking: its contents overwritten with random octets, put on disk, then the file renamed and deleted, in the background, so that it is not found again where the disk writes in place.\\
 \texttt{"}, \texttt{\$}, \texttt{'} & \texttt{C-z "}, \texttt{C-z \$}, \texttt{C-z '} & \texttt{wrap-\codebreak{}selection-\codebreak{}with-\codebreak{}key} & Wrap the selection in the delimiter pressed and its partner, or take them off when they stand just outside it: ” on a word quotes it, and ” on the word of a quoted word unquotes it.\\
 none & \texttt{C-x C-w} & \texttt{write-\codebreak{}file} & Write the current buffer to another file, asked for as C-x C-f asks (C-x C-w), from the directory of the path chosen last in a question for a path, else the buffer’s own directory.\\
-none & \texttt{M-.}, \texttt{RET}, \texttt{C-c d} & \texttt{xref-\codebreak{}find-\codebreak{}definitions} & Go to the definition of the name at point.\\
-none & \texttt{M-,}, \texttt{C-c D} & \texttt{xref-\codebreak{}go-\codebreak{}back} & Go back to where M-.\\
 \bottomrule
 \end{xltabular}
 }
@@ -21381,6 +21424,8 @@ none & \texttt{M-,}, \texttt{C-c D} & \texttt{xref-\codebreak{}go-\codebreak{}ba
 \textbf{Modal} & \textbf{Non-modal} & \textbf{Command} & \textbf{What it does}\\
 \midrule
 \endhead
+none & \texttt{M-.}, \texttt{RET}, \texttt{C-c d} & \texttt{xref-\codebreak{}find-\codebreak{}definitions} & Go to the definition of the name at point.\\
+none & \texttt{M-,}, \texttt{C-c D} & \texttt{xref-\codebreak{}go-\codebreak{}back} & Go back to where M-.\\
 none & \texttt{C-M-,} & \texttt{xref-\codebreak{}go-\codebreak{}forward} & Go forward again to where M-, came back from.\\
 none & \texttt{C-y} & \texttt{yank} & Insert the most recently killed text at point, or what another program copied to the system clipboard since, its lines ending as the buffer’s do.\\
 \texttt{p} & none & \texttt{yank-\codebreak{}over-\codebreak{}selection} & Paste the last kill COUNT times, replacing the selection if there is one, its lines ending as the buffer’s do; what another program copied to the system clipboard since counts as the last kill.\\

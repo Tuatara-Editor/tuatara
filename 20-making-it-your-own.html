@@ -13,7 +13,7 @@
 <div class="site">
 <nav class="toc" id="contents" aria-label="Contents">
 <strong>Tuatara Manual</strong>
-<small>for version 0.90.37</small>
+<small>for version 0.90.39</small>
 <p class="tools"><a href="all.html">All on one page</a>
 <button type="button" class="theme" hidden>Dark</button></p>
 <input type="search" placeholder="Search the manual" aria-label="Search the manual">
@@ -262,7 +262,14 @@ shown.</p>
 <tr><td><code>(bind-key &quot;t n&quot; '(&quot;numbers&quot; . command) :map :leader)</code></td><td><kbd>SPC t n</kbd>, shown as &quot;numbers&quot; in the key hints</td></tr>
 <tr><td><code>(bind-key &quot;t&quot; nil :map :leader :label &quot;toggles&quot;)</code></td><td>The label of a prefix: <kbd>SPC</kbd> then shows <code>t +toggles</code></td></tr>
 <tr><td><code>(unbind-key &quot;C-c t&quot;)</code></td><td>Takes a key away</td></tr>
+<tr><td><code>(define-command-alias 'tt 'toggle-light-dark-theme)</code></td><td><code>tt</code> is another name for the command: <kbd>M-x tt</kbd> runs it and a key can be bound to it</td></tr>
 </tbody></table></div>
+<p><code>define-command-alias</code> gives a command a second name, as Emacs's <code>defalias</code>
+does. The alias is offered by <kbd>M-x</kbd>, its help says it is another name for
+the command and points to it, and it runs quietly. The command may be one of a
+package that is not loaded yet. With <code>:obsolete &quot;1.0&quot;</code> the alias is a rename
+kept until that version: the first time it runs in a session it says which
+name to use, and its help says it is obsolete and until when.</p>
 <p>Three more things about the table. First, the maps. <code>:global</code> is the standard,
 every buffer in both states. <code>:normal</code>, <code>:insert</code> and <code>:support</code> are the keys of
 the NORMAL state, the INSERT state and the buffers that Tuatara makes itself,

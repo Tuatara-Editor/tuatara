@@ -13,7 +13,7 @@
 <div class="site">
 <nav class="toc" id="contents" aria-label="Contents">
 <strong>Tuatara Manual</strong>
-<small>for version 0.90.37</small>
+<small>for version 0.90.39</small>
 <p class="tools"><a href="all.html">All on one page</a>
 <button type="button" class="theme" hidden>Dark</button></p>
 <input type="search" placeholder="Search the manual" aria-label="Search the manual">
@@ -713,17 +713,28 @@ entry is a directory of its own that only you can read.</p>
 <p>A file from a server is fetched again only when it has changed there. When you
 open it again, Tuatara asks the server for the file's size and the time it was
 last changed, its owner and its permissions. If all are as they were when the
-copy was made, and the copy is as it was left, Tuatara also reads a few small
-parts of the file from the server, its first and last megabyte and sixteen
+copy was made, and the copy is as it was left, Tuatara then compares the
+contents. It asks the server for the file's SHA-256 sum, running <code>sha256sum</code>
+there through ssh without asking anything, and sums the copy here. If the sums
+agree, the copy is used, and the echo area says <code>kept copy from TIME, its
+SHA-256 sum the one the server gives</code>.</p>
+<p>If the server gives no sum (no <code>sha256sum</code> there, ssh needs to ask for a
+password, or no answer within five minutes), Tuatara reads a few small parts of
+the file from the server instead, its first and last megabyte and sixteen
 blocks at random, about 3 MB however large the file, and compares them with the
-copy. Only if they agree is the copy used, and the echo area says <code>kept copy
-from TIME, checked against the server</code>. If anything differs, the file is
-fetched again from the start. A file put back with its old size and time but
-other contents is told this way. A transfer that was cut off, by a lost
-connection or by closing the buffer, keeps what came. The next time you open
-the file, the transfer goes on from where it stopped, after the same checks of
-what has come; if any differs, the file is fetched again whole, never joined
-from two versions. Copies of evidence are checked the same way.</p>
+copy. If they agree, the copy is used, and the echo area says how much was
+compared and why there was no sum, for example <code>kept copy from TIME, 3.0 MB of
+it compared with the server, which gave no SHA-256 sum: ...</code>. The rest of the
+file was not compared. To have the whole file fetched again, delete its entry
+with <kbd>M-x cache-manager</kbd> (below) and open it again.</p>
+<p>If anything differs, the file is fetched again from the start. A file put
+back with its old size and time but other contents is told this way. A
+transfer that was cut off, by a lost connection or by closing the buffer,
+keeps what came. The next time you open the file, the transfer goes on from
+where it stopped, after the same checks of what has come, by its small parts,
+as a sum of part of a file cannot be had; the echo area says how much was
+compared. If any differs, the file is fetched again whole, never joined from
+two versions. Copies of evidence are checked the same way.</p>
 <p>An entry in use is never cleared. It is in use while a buffer or list shows
 it, in any of your sessions. Its last use is the moment it stops being in use:
 the buffer or list is closed, or the session ends. An entry that is not in use
@@ -768,7 +779,7 @@ is followed through a link. A pin can keep only a directory in the cache.</p>
    <code>/ssh:pinetree:notes.txt</code>, with <code>until</code> and a time one day from now.</li>
 <li>Press <kbd>p</kbd>. The line now says <code>pinned</code>. Press <kbd>p</kbd> again to unpin it.</li>
 <li>Press <kbd>RET</kbd>. The file opens, and the echo area says <code>kept copy from</code>, the
-   time, and <code>checked against the server</code>.</li>
+   time, and how the copy was compared with the file on pinetree.</li>
 <li>Press <kbd>C-x k</kbd>, then <kbd>M-x cache-manager</kbd> again. Move to the line, press <kbd>d</kbd> and
    then <kbd>x</kbd>, and answer <code>yes</code>. The copy is gone. The file on pinetree is not
    touched.</li>
@@ -943,7 +954,7 @@ your own files from files that came from outside.</p>
 <p>A file is untrusted when it is in an evidence directory or in one of
 <code>*untrusted-directories*</code>, which holds your download directory, removable
 drives and the temporary directories as standard, or when it is a copy
-Tuatara made of an outside file or a file a browser marked as downloaded
+Tuatara made of an outside file or a file marked as come from outside
 (chapter 12). Links are followed first: a link in your notes that leads into
 your downloads is untrusted too. Tuatara asks before opening an untrusted file,
 and the answer is typed and ended with <kbd>RET</kbd>:</p>

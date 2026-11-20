@@ -13,7 +13,7 @@
 <div class="site">
 <nav class="toc" id="contents" aria-label="Contents">
 <strong>Tuatara Manual</strong>
-<small>for version 0.90.37</small>
+<small>for version 0.90.39</small>
 <p class="tools"><a href="all.html">All on one page</a>
 <button type="button" class="theme" hidden>Dark</button></p>
 <input type="search" placeholder="Search the manual" aria-label="Search the manual">
@@ -688,7 +688,10 @@ document's macros, say no unless you trust where the file came from.</p>
 can stand for a great deal of text. Reading stops at <code>*office-note-size-limit*</code>
 characters and the text says that the rest is left out. A single cell or
 formula longer than <code>*office-value-length-limit*</code> characters is cut short and
-ends in <code>...</code>.</p>
+ends in <code>...</code>. A row of a table holds no more than 16,384 cells, as a sheet's
+does, however often the file says its cells repeat; each sheet or slide named
+takes room in the text, so a file naming a great many stops where the text is
+full.</p>
 <div class="tablewrap"><table>
 <thead>
 <tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it does</th></tr>

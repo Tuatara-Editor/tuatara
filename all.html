@@ -13,7 +13,7 @@
 <div class="site">
 <nav class="toc" id="contents" aria-label="Contents">
 <strong>Tuatara Manual</strong>
-<small>for version 0.90.37</small>
+<small>for version 0.90.39</small>
 <p class="tools"><a href="index.html">By chapter</a>
 <button type="button" class="theme" hidden>Dark</button></p>
 <input type="search" placeholder="Search the manual" aria-label="Search the manual">
@@ -22,7 +22,7 @@
 <main>
 <article>
 <h1>Tuatara Manual</h1>
-<p class="lead">for version 0.90.37, every chapter on one page</p>
+<p class="lead">for version 0.90.39, every chapter on one page</p>
 <p>This manual is written with modal editing on, first and foremost. Where a command also has a key that works with modal editing off, it is given as well, as the non-modal key.</p>
 <section class="chapter" id="01-the-screen">
 <h1 id="01-the-screen--the-screen">The screen</h1>
@@ -3317,7 +3317,6 @@ You can skip this until chapter 18.</p>
 <tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td>none</td><td><kbd>M-x buffers</kbd></td><td><code>buffers</code></td><td>The old name of buffer-manager, kept until Tuatara 1.0: runs it, saying so the first time.</td></tr>
 <tr><td>none</td><td><kbd>s</kbd></td><td><code>buffers-save</code></td><td>Save the marked buffers (&gt;) that have a file, or with none marked the buffer on the current line.</td></tr>
 <tr><td>none</td><td><kbd>K</kbd>, <kbd>C-c K</kbd></td><td><code>buffers-keep-client</code></td><td>Make the client whose group the cursor is in, in the buffer list, the one that stays when its last buffer is closed, in place of the one <strong>CLIENT-KEPT-WITHOUT-BUFFERS</strong> names, until it ends.</td></tr>
 <tr><td>none</td><td><kbd>l</kbd>, <kbd>C-f</kbd>, <kbd>RET</kbd></td><td><code>list-visit</code></td><td>Open the entry on the current line of the list: the buffer, the bookmark's place, the file; on a section's heading, fold or unfold the section.</td></tr>
@@ -5016,17 +5015,28 @@ entry is a directory of its own that only you can read.</p>
 <p>A file from a server is fetched again only when it has changed there. When you
 open it again, Tuatara asks the server for the file's size and the time it was
 last changed, its owner and its permissions. If all are as they were when the
-copy was made, and the copy is as it was left, Tuatara also reads a few small
-parts of the file from the server, its first and last megabyte and sixteen
+copy was made, and the copy is as it was left, Tuatara then compares the
+contents. It asks the server for the file's SHA-256 sum, running <code>sha256sum</code>
+there through ssh without asking anything, and sums the copy here. If the sums
+agree, the copy is used, and the echo area says <code>kept copy from TIME, its
+SHA-256 sum the one the server gives</code>.</p>
+<p>If the server gives no sum (no <code>sha256sum</code> there, ssh needs to ask for a
+password, or no answer within five minutes), Tuatara reads a few small parts of
+the file from the server instead, its first and last megabyte and sixteen
 blocks at random, about 3 MB however large the file, and compares them with the
-copy. Only if they agree is the copy used, and the echo area says <code>kept copy
-from TIME, checked against the server</code>. If anything differs, the file is
-fetched again from the start. A file put back with its old size and time but
-other contents is told this way. A transfer that was cut off, by a lost
-connection or by closing the buffer, keeps what came. The next time you open
-the file, the transfer goes on from where it stopped, after the same checks of
-what has come; if any differs, the file is fetched again whole, never joined
-from two versions. Copies of evidence are checked the same way.</p>
+copy. If they agree, the copy is used, and the echo area says how much was
+compared and why there was no sum, for example <code>kept copy from TIME, 3.0 MB of
+it compared with the server, which gave no SHA-256 sum: ...</code>. The rest of the
+file was not compared. To have the whole file fetched again, delete its entry
+with <kbd>M-x cache-manager</kbd> (below) and open it again.</p>
+<p>If anything differs, the file is fetched again from the start. A file put
+back with its old size and time but other contents is told this way. A
+transfer that was cut off, by a lost connection or by closing the buffer,
+keeps what came. The next time you open the file, the transfer goes on from
+where it stopped, after the same checks of what has come, by its small parts,
+as a sum of part of a file cannot be had; the echo area says how much was
+compared. If any differs, the file is fetched again whole, never joined from
+two versions. Copies of evidence are checked the same way.</p>
 <p>An entry in use is never cleared. It is in use while a buffer or list shows
 it, in any of your sessions. Its last use is the moment it stops being in use:
 the buffer or list is closed, or the session ends. An entry that is not in use
@@ -5071,7 +5081,7 @@ is followed through a link. A pin can keep only a directory in the cache.</p>
    <code>/ssh:pinetree:notes.txt</code>, with <code>until</code> and a time one day from now.</li>
 <li>Press <kbd>p</kbd>. The line now says <code>pinned</code>. Press <kbd>p</kbd> again to unpin it.</li>
 <li>Press <kbd>RET</kbd>. The file opens, and the echo area says <code>kept copy from</code>, the
-   time, and <code>checked against the server</code>.</li>
+   time, and how the copy was compared with the file on pinetree.</li>
 <li>Press <kbd>C-x k</kbd>, then <kbd>M-x cache-manager</kbd> again. Move to the line, press <kbd>d</kbd> and
    then <kbd>x</kbd>, and answer <code>yes</code>. The copy is gone. The file on pinetree is not
    touched.</li>
@@ -5246,7 +5256,7 @@ your own files from files that came from outside.</p>
 <p>A file is untrusted when it is in an evidence directory or in one of
 <code>*untrusted-directories*</code>, which holds your download directory, removable
 drives and the temporary directories as standard, or when it is a copy
-Tuatara made of an outside file or a file a browser marked as downloaded
+Tuatara made of an outside file or a file marked as come from outside
 (chapter 12). Links are followed first: a link in your notes that leads into
 your downloads is untrusted too. Tuatara asks before opening an untrusted file,
 and the answer is typed and ended with <kbd>RET</kbd>:</p>
@@ -6800,12 +6810,25 @@ found where they are on the machine at hand:</p>
 </ul>
 <p>Two more kinds of file are untrusted wherever they are. The copies of outside
 files Tuatara keeps in its cache (those it hands to the desktop's programs,
-those read from other machines, those given to programs shut in) are untrusted.
-So is a file a web browser marked as downloaded: Firefox and Chromium give what
-they download the extended attribute <code>user.xdg.origin.url</code>, which stays with
-the file when you move it on the same drive. Tuatara reads it without changing
-the file's times. To trust such a file, take the mark away with
-<code>setfattr -x user.xdg.origin.url FILE</code>, or copy the file: a copy has no mark.</p>
+those read from other machines, those given to programs shut in, and what a
+package writes there, such as the messages of a mailbox) are untrusted. So is
+a file marked as come from outside, or in a directory so marked. Firefox and
+Chromium give what they download the extended attribute <code>user.xdg.origin.url</code>,
+which stays with the file when you move it on the same drive. Tuatara gives it
+to what it makes from an untrusted file: what rimu copies, moves or hard-links
+out of your downloads, what it unpacks from an archive there, what it copies
+from another machine not on your list of trusted servers, and the directory a
+package's program shut in writes in. So an archive downloaded and unpacked
+into <code>~/Work/</code> stays untrusted, and so does a project made of it or holding it
+at its top: its git, language servers and builds run nothing until you trust
+it. Where the drive keeps no extended attributes, and for a hard link to
+evidence or evidence moved out, on which nothing is ever written, Tuatara
+remembers such a file in the list <code>from-outside</code> in its state directory
+instead, every one kept until you take its line out. Tuatara reads the mark
+without changing the file's times. To trust such a file, take the mark away
+with <code>setfattr -x user.xdg.origin.url FILE</code> (or from the directory holding
+it), or copy it with a program other than Tuatara that leaves the mark
+behind.</p>
 <p>Clone or download what others made into one of these directories, or add the
 directory you keep such things in:</p>
 <pre class="ex">(setf *untrusted-directories*
@@ -6838,8 +6861,8 @@ directories therefore runs its own code when you open it: a build script
 through a language server (rust-analyzer runs <code>build.rs</code>), git's filters, its
 build commands.</p>
 <p><code>nil</code> leaves only the evidence directories, the cache's copies and the files
-marked as downloaded untrusted. <code>'(&quot;/&quot;)</code> takes every file as untrusted, as
-these features did before this setting came: every file opens safely then, so
+marked as come from outside untrusted. <code>'(&quot;/&quot;)</code> takes every file as untrusted,
+as these features did before this setting came: every file opens safely then, so
 keep that for a machine used for nothing else.</p>
 <p>Three settings of earlier releases are gone: <code>*safe-directories*</code>,
 <code>*export-trusted-directories*</code> and <code>*trusted-projects*</code> (once
@@ -6883,7 +6906,7 @@ marked.</p>
   named on the line that way. A file piped in with <kbd>ls | tuatara -</kbd> is a safe
   buffer too.</li>
 <li>An untrusted file (the section before: your downloads, removable drives and
-  the temporary directories as standard, files a browser marked as downloaded,
+  the temporary directories as standard, files marked as come from outside,
   and evidence) always opens safely, however you open it. The echo area says
   why. One shown by a view read in the sandbox, such as a PDF's pages or a
   mailbox's list, is the exception: it is shown so, unless it is evidence.</li>
@@ -7210,6 +7233,20 @@ room keep the sockets they are reached through.
 Language grammars run in it too, where a sandbox exists. Without a sandbox, the
 setting <code>*syntax-helper-unconfined*</code> decides whether the grammars of projects
 you trust run on their own without one.</p>
+<p>A package that reads a kind of file itself, as outlook reads mailboxes, does not
+read it in the editor either. Tuatara starts a second Tuatara inside the room,
+which loads only that package, as it was compiled when you loaded it, and none
+of your settings. It sees the file where it is, read only, so that reading it
+changes not even its access time, and one directory it writes its results in. It
+sees nothing else of yours, and no network, and its time and memory are limited
+as a decoder's are. The file it reads is opened once by the editor and given to
+it open, so that it reads the very file the package checked and summed, whatever
+is put at its path meanwhile; one that changes while it is read spoils the
+reading, and the package says so. The editor reads only the files it wrote, and
+first takes away any link it left among them, however deep; the files and
+directories themselves stay as written. Stopping the job, with <kbd>C-g</kbd> in its
+buffer or from <kbd>C-x j</kbd>, ends that Tuatara at once; one that fails or runs out of
+time or memory says so. Without a sandbox, such a package reads nothing.</p>
 <p>Press <kbd>M-x check-health</kbd> to see whether <code>bwrap</code> was found and which version.
 Tuatara looks for it on the PATH, so a <code>bwrap</code> installed somewhere of your own
 is found when its directory is on the PATH. If it was not found, or if you set
@@ -13025,7 +13062,10 @@ document's macros, say no unless you trust where the file came from.</p>
 can stand for a great deal of text. Reading stops at <code>*office-note-size-limit*</code>
 characters and the text says that the rest is left out. A single cell or
 formula longer than <code>*office-value-length-limit*</code> characters is cut short and
-ends in <code>...</code>.</p>
+ends in <code>...</code>. A row of a table holds no more than 16,384 cells, as a sheet's
+does, however often the file says its cells repeat; each sheet or slide named
+takes room in the text, so a file naming a great many stops where the text is
+full.</p>
 <div class="tablewrap"><table>
 <thead>
 <tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it does</th></tr>
@@ -14645,10 +14685,10 @@ included, into a buffer you can search. You install kitty yourself.</p>
 evidence: nothing in a message runs, and attachments open only when you ask,
 from private copies. In a message, <kbd>P</kbd> shows it as it looks, <kbd>O</kbd> opens an
 attachment in the desktop's own program after asking, and <kbd>C-c o</kbd> is the
-prefix for the same commands. In a mailbox, <kbd>C</kbd> copies messages out. What
-readpst wrote of a mailbox stays in Tuatara's cache (chapter 9, &quot;The cache&quot;),
-so the same mailbox opens again without readpst. It needs readpst and
-WeasyPrint.</p>
+prefix for the same commands. In a mailbox, <kbd>C</kbd> copies messages out. A
+mailbox is read by the package itself, shut in the sandbox (chapter 12), and
+what it wrote stays in Tuatara's cache (chapter 9, &quot;The cache&quot;), so the same
+mailbox opens again without being read. It needs WeasyPrint.</p>
 <h3 id="19-packages--caldav"><span class="num">19.8.8</span> caldav</h3>
 <p>caldav shares Tuatara's agenda with GNOME Calendar, Thunderbird and phones,
 through a CalDAV server (Radicale, or EteSync through its local bridge). The
@@ -14942,7 +14982,14 @@ shown.</p>
 <tr><td><code>(bind-key &quot;t n&quot; '(&quot;numbers&quot; . command) :map :leader)</code></td><td><kbd>SPC t n</kbd>, shown as &quot;numbers&quot; in the key hints</td></tr>
 <tr><td><code>(bind-key &quot;t&quot; nil :map :leader :label &quot;toggles&quot;)</code></td><td>The label of a prefix: <kbd>SPC</kbd> then shows <code>t +toggles</code></td></tr>
 <tr><td><code>(unbind-key &quot;C-c t&quot;)</code></td><td>Takes a key away</td></tr>
+<tr><td><code>(define-command-alias 'tt 'toggle-light-dark-theme)</code></td><td><code>tt</code> is another name for the command: <kbd>M-x tt</kbd> runs it and a key can be bound to it</td></tr>
 </tbody></table></div>
+<p><code>define-command-alias</code> gives a command a second name, as Emacs's <code>defalias</code>
+does. The alias is offered by <kbd>M-x</kbd>, its help says it is another name for
+the command and points to it, and it runs quietly. The command may be one of a
+package that is not loaded yet. With <code>:obsolete &quot;1.0&quot;</code> the alias is a rename
+kept until that version: the first time it runs in a session it says which
+name to use, and its help says it is obsolete and until when.</p>
 <p>Three more things about the table. First, the maps. <code>:global</code> is the standard,
 every buffer in both states. <code>:normal</code>, <code>:insert</code> and <code>:support</code> are the keys of
 the NORMAL state, the INSERT state and the buffers that Tuatara makes itself,
@@ -16225,7 +16272,6 @@ the commands that mention a word, press <kbd>C-h a</kbd> and type the word.</p>
 <tr><td>none</td><td><kbd>c</kbd>, <kbd>C-c c</kbd></td><td><code>bookmark-set-categories</code></td><td>Say which categories the bookmark on the current line is in, or the marked ones (&gt;) are, the sections holding them unfolded first: those used already offered, new ones typed, several apart by commas; the bookmark's own written in first, to change.</td></tr>
 <tr><td>none</td><td><kbd>C-x C-b</kbd></td><td><code>buffer-manager</code></td><td>List every live buffer in <strong>Buffers</strong>, those used most recently first, in a section for each project (a directory holding .git or .project, <strong>PROJECT-ROOT-MARKERS</strong>), the project of the buffer used last first, then one for those in none.</td></tr>
 <tr><td>none</td><td><kbd>M-g o</kbd></td><td><code>buffer-outline</code></td><td>Go to a heading of the current buffer, chosen from a list of them: Org's headings, Lisp's comments of three semicolons and top-level forms, and in a language parsed with tree-sitter its definitions and headings (a function, a type, a Markdown heading), each shown as its line after its number, in the order of the text.</td></tr>
-<tr><td>none</td><td><kbd>M-x buffers</kbd></td><td><code>buffers</code></td><td>The old name of buffer-manager, kept until Tuatara 1.0: runs it, saying so the first time.</td></tr>
 <tr><td>none</td><td><kbd>K</kbd>, <kbd>C-c K</kbd></td><td><code>buffers-keep-client</code></td><td>Make the client whose group the cursor is in, in the buffer list, the one that stays when its last buffer is closed, in place of the one <strong>CLIENT-KEPT-WITHOUT-BUFFERS</strong> names, until it ends.</td></tr>
 <tr><td>none</td><td><kbd>s</kbd></td><td><code>buffers-save</code></td><td>Save the marked buffers (&gt;) that have a file, or with none marked the buffer on the current line.</td></tr>
 <tr><td>none</td><td><kbd>M-x cache-manager</kbd></td><td><code>cache-manager</code></td><td>List what the cache directory keeps to save time, by kind: copies of files read from other machines, mailboxes read by readpst, search indexes, pictures of formulas and the rest (the logs and the compiled packages left out), with their sizes, when they were made and last used, whether they are pinned or when they are cleared (<strong>CACHE-KEEP</strong>), and whether they are in use.</td></tr>
@@ -16669,7 +16715,6 @@ the commands that mention a word, press <kbd>C-h a</kbd> and type the word.</p>
 <tr><td>none</td><td><kbd>C-c C-e</kbd></td><td><code>latex-insert-environment</code></td><td>Ask for the name of an environment and write its <code>\begin{NAME}</code> and <code>\end{NAME}</code> on lines of their own, indented as the mode indents them, with point on an empty line between.</td></tr>
 <tr><td>none</td><td><kbd>M-x lisp-scratch</kbd></td><td><code>lisp-scratch</code></td><td>Show <strong>lisp-scratch</strong>, the Lisp buffer that is not saved, where C-x C-e evaluates in the running editor and C-j puts what the expression before point printed and its value on the lines after it; when it was killed, a new one.</td></tr>
 <tr><td>none</td><td><kbd>M-x list-auto-saves</kbd></td><td><code>list-auto-saves</code></td><td>List the auto-saved copies of changes not saved (<strong>AUTO-SAVE-DIRECTORY</strong>), the newest first: after a crash or a quit without saving, what can be taken back.</td></tr>
-<tr><td>none</td><td><kbd>M-x list-cache</kbd></td><td><code>list-cache</code></td><td>The old name of cache-manager, kept until Tuatara 1.0: runs it, saying so the first time.</td></tr>
 <tr><td>none</td><td><kbd>D</kbd>, <kbd>C-c D</kbd></td><td><code>list-delete-marked</code></td><td>Delete the marked entries of the list (&gt;), or with none marked the one on the current line, after asking, as the list deletes, as M-x list-execute does those marked for deletion; in rimu, with C-u, for good rather than to the trash.</td></tr>
 <tr><td>none</td><td><kbd>C-x / d</kbd></td><td><code>list-delete-records</code></td><td>Delete the records whose line a regular expression matches, keeping the rest: asked for as C-x / k asks, in the same files.</td></tr>
 <tr><td>none</td><td><kbd>M-x list-digraphs</kbd></td><td><code>list-digraphs</code></td><td>Show every digraph: the keys that type a character a keyboard lacks, those English text wants most first, then all of them by script, with the code point and name of each, and how to type them.</td></tr>

@@ -13,7 +13,7 @@
 <div class="site">
 <nav class="toc" id="contents" aria-label="Contents">
 <strong>Tuatara Manual</strong>
-<small>for version 0.90.37</small>
+<small>for version 0.90.39</small>
 <p class="tools"><a href="all.html">All on one page</a>
 <button type="button" class="theme" hidden>Dark</button></p>
 <input type="search" placeholder="Search the manual" aria-label="Search the manual">
@@ -56,12 +56,25 @@ found where they are on the machine at hand:</p>
 </ul>
 <p>Two more kinds of file are untrusted wherever they are. The copies of outside
 files Tuatara keeps in its cache (those it hands to the desktop's programs,
-those read from other machines, those given to programs shut in) are untrusted.
-So is a file a web browser marked as downloaded: Firefox and Chromium give what
-they download the extended attribute <code>user.xdg.origin.url</code>, which stays with
-the file when you move it on the same drive. Tuatara reads it without changing
-the file's times. To trust such a file, take the mark away with
-<code>setfattr -x user.xdg.origin.url FILE</code>, or copy the file: a copy has no mark.</p>
+those read from other machines, those given to programs shut in, and what a
+package writes there, such as the messages of a mailbox) are untrusted. So is
+a file marked as come from outside, or in a directory so marked. Firefox and
+Chromium give what they download the extended attribute <code>user.xdg.origin.url</code>,
+which stays with the file when you move it on the same drive. Tuatara gives it
+to what it makes from an untrusted file: what rimu copies, moves or hard-links
+out of your downloads, what it unpacks from an archive there, what it copies
+from another machine not on your list of trusted servers, and the directory a
+package's program shut in writes in. So an archive downloaded and unpacked
+into <code>~/Work/</code> stays untrusted, and so does a project made of it or holding it
+at its top: its git, language servers and builds run nothing until you trust
+it. Where the drive keeps no extended attributes, and for a hard link to
+evidence or evidence moved out, on which nothing is ever written, Tuatara
+remembers such a file in the list <code>from-outside</code> in its state directory
+instead, every one kept until you take its line out. Tuatara reads the mark
+without changing the file's times. To trust such a file, take the mark away
+with <code>setfattr -x user.xdg.origin.url FILE</code> (or from the directory holding
+it), or copy it with a program other than Tuatara that leaves the mark
+behind.</p>
 <p>Clone or download what others made into one of these directories, or add the
 directory you keep such things in:</p>
 <pre class="ex">(setf *untrusted-directories*
@@ -94,8 +107,8 @@ directories therefore runs its own code when you open it: a build script
 through a language server (rust-analyzer runs <code>build.rs</code>), git's filters, its
 build commands.</p>
 <p><code>nil</code> leaves only the evidence directories, the cache's copies and the files
-marked as downloaded untrusted. <code>'(&quot;/&quot;)</code> takes every file as untrusted, as
-these features did before this setting came: every file opens safely then, so
+marked as come from outside untrusted. <code>'(&quot;/&quot;)</code> takes every file as untrusted,
+as these features did before this setting came: every file opens safely then, so
 keep that for a machine used for nothing else.</p>
 <p>Three settings of earlier releases are gone: <code>*safe-directories*</code>,
 <code>*export-trusted-directories*</code> and <code>*trusted-projects*</code> (once
@@ -139,7 +152,7 @@ marked.</p>
   named on the line that way. A file piped in with <kbd>ls | tuatara -</kbd> is a safe
   buffer too.</li>
 <li>An untrusted file (the section before: your downloads, removable drives and
-  the temporary directories as standard, files a browser marked as downloaded,
+  the temporary directories as standard, files marked as come from outside,
   and evidence) always opens safely, however you open it. The echo area says
   why. One shown by a view read in the sandbox, such as a PDF's pages or a
   mailbox's list, is the exception: it is shown so, unless it is evidence.</li>
@@ -466,6 +479,20 @@ room keep the sockets they are reached through.
 Language grammars run in it too, where a sandbox exists. Without a sandbox, the
 setting <code>*syntax-helper-unconfined*</code> decides whether the grammars of projects
 you trust run on their own without one.</p>
+<p>A package that reads a kind of file itself, as outlook reads mailboxes, does not
+read it in the editor either. Tuatara starts a second Tuatara inside the room,
+which loads only that package, as it was compiled when you loaded it, and none
+of your settings. It sees the file where it is, read only, so that reading it
+changes not even its access time, and one directory it writes its results in. It
+sees nothing else of yours, and no network, and its time and memory are limited
+as a decoder's are. The file it reads is opened once by the editor and given to
+it open, so that it reads the very file the package checked and summed, whatever
+is put at its path meanwhile; one that changes while it is read spoils the
+reading, and the package says so. The editor reads only the files it wrote, and
+first takes away any link it left among them, however deep; the files and
+directories themselves stay as written. Stopping the job, with <kbd>C-g</kbd> in its
+buffer or from <kbd>C-x j</kbd>, ends that Tuatara at once; one that fails or runs out of
+time or memory says so. Without a sandbox, such a package reads nothing.</p>
 <p>Press <kbd>M-x check-health</kbd> to see whether <code>bwrap</code> was found and which version.
 Tuatara looks for it on the PATH, so a <code>bwrap</code> installed somewhere of your own
 is found when its directory is on the PATH. If it was not found, or if you set
