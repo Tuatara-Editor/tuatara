@@ -203,7 +203,7 @@ def holds(text, shows):
 class Session:
     """An editor running in a pseudo-terminal of its own, its output read into a Screen."""
 
-    def __init__(self, wrap, argv, env, rows, columns, quiet, rest, record=None):
+    def __init__(self, wrap, argv, env, rows, columns, quiet, rest, record=None, cwd=None):
         """Start ARGV with environment ENV in a ROWS by COLUMNS terminal, run by the command WRAP.
 
         WRAP (a list, maybe empty) runs with the harness's own environment, as
@@ -213,7 +213,9 @@ class Session:
         QUIET and REST are in seconds: how long no output means a key is done,
         and how long to wait for quiet before the next key. RECORD, when
         given, is a path to write the session to as an asciicast (version 2):
-        what the editor wrote and the keys it was sent, each with its time."""
+        what the editor wrote and the keys it was sent, each with its time.
+        CWD, when given, is the directory ARGV starts in, so that a file
+        named relative to it shows on the screen by its name alone."""
         self.screen = Screen(rows, columns)
         self.quiet = quiet
         self.rest_time = rest
@@ -237,6 +239,8 @@ class Session:
         if pid == 0:
             try:
                 fcntl.ioctl(0, termios.TIOCSWINSZ, struct.pack("HHHH", rows, columns, 0, 0))
+                if cwd:
+                    os.chdir(cwd)
                 command = wrap + ["env", "-i"] + [f"{k}={v}" for k, v in env.items()] + argv
                 os.execvp(command[0], command)
             finally:
@@ -647,8 +651,10 @@ def run_replace(editor, entry, data, args, wrap):
     made afresh for each run and removed after it, so the benchmark's own
     file never changes."""
     keys = EDITORS[editor]
-    copy = os.path.join(args.scratch, "replace-" + entry["path"])
     env = fence(args.scratch, editor)
+    # the copy in the editor's own empty home, opened by name from there, so that the screen shows it as
+    # ~/replace-... and nothing of where the scratch directory is
+    copy = os.path.join(env["HOME"], "replace-" + entry["path"])
     record = {"editor": editor, "file": entry["kind"], "scenario": "replace", "status": "ok", "open_ms": None,
               "step_keys": [], "typing": [], "typing_span_ms": None, "switch_to_ms": None,
               "switch_back_ms": None, "finished_ms": None, "save_ms": None, "saved_whole": None,
@@ -667,8 +673,9 @@ def run_replace(editor, entry, data, args, wrap):
     shutil.copyfile(os.path.join(data, entry["path"]), copy)
     warm_cache(copy)
     cast = os.path.join(args.record, editor + ".cast") if args.record else None
-    session = Session(wrap, keys["command"] + [copy], env, args.rows, args.columns, args.quiet_ms / 1000,
-                      args.rest_ms / 1000, cast)
+    # the copy named from the scratch directory, so that no editor shows where that directory is
+    session = Session(wrap, keys["command"] + [os.path.basename(copy)], env, args.rows, args.columns,
+                      args.quiet_ms / 1000, args.rest_ms / 1000, cast, cwd=env["HOME"])
     case = "open"
     problems = []
     try:

@@ -15,7 +15,9 @@ two by two, each from its own start, so that all start together: the film
 shows what each would have shown in the same seconds. The first --real
 seconds play at their true speed, the rest --speed times as fast, which the
 clock at the top says. Above each pane are the editor's name and its own
-clock; below it, the last keys sent and, once its run has ended, how. The
+clock; below it, the last keys sent, in red how long a key has gone
+without the editor writing anything to the screen (from half a second on),
+and, once its run has ended, how. The
 film is encoded by ffmpeg (H.264 by OpenH264, or VP9 for a .webm name).
 
 Pillow draws the frames; it is used here only, never by the harness.
@@ -90,7 +92,15 @@ class Pane:
         self.end = self.events[-1][0] if self.events else 0.0
         self.at = 0
         self.keys = ""
+        self.key_at = None
+        self.output_at = 0.0
         self.changed = True
+
+    def waiting(self, seconds):
+        """How long, at SECONDS, a key sent has gone without the editor writing anything since; 0 when it has."""
+        if self.key_at is None or self.output_at >= self.key_at:
+            return 0.0
+        return seconds - self.key_at
 
     def play_to(self, seconds):
         """Play the recording up to SECONDS from its start; note whether the screen changed."""
@@ -98,9 +108,12 @@ class Pane:
             _, kind, data = self.events[self.at]
             if kind == "o":
                 self.screen.feed(data.encode("utf-8"))
+                self.output_at = self.events[self.at][0]
                 self.changed = True
             elif kind == "i":
                 self.keys = (self.keys + data)[-24:]
+                if self.key_at is None or self.output_at >= self.key_at:
+                    self.key_at = self.events[self.at][0]
                 self.changed = True
             self.at += 1
 
@@ -115,6 +128,8 @@ class Film:
         bold = font.replace("Regular", "Bold")
         self.bold = ImageFont.truetype(bold, size) if os.path.exists(bold) else self.font
         self.small = ImageFont.truetype(font, size + 4)
+        # the keys typed, read at a glance below each editor
+        self.caption = ImageFont.truetype(bold if os.path.exists(bold) else font, size + 10)
         self.cell_w = max(1, round(self.font.getlength("M")))
         self.cell_h = round(size * 1.25)
         screen = panes[0].screen
@@ -177,8 +192,13 @@ class Film:
                 draw.text((x + self.bar // 2, below), "done" if ok else f"ended: {self.outcomes[i]}",
                           font=self.small, fill=DONE if ok else ENDED)
             elif pane.keys:
-                draw.text((x + self.bar // 2, below), "keys: " + key_words(pane.keys[-12:]), font=self.small,
-                          fill=CAPTION)
+                caption = "keys: " + key_words(pane.keys[-16:])
+                draw.text((x + self.bar // 2, below - self.bar // 10), caption, font=self.caption, fill=CAPTION)
+                waiting = pane.waiting(seconds)
+                if waiting >= 0.5:
+                    left = x + self.bar // 2 + draw.textlength(caption + "   ", font=self.caption)
+                    draw.text((left, below - self.bar // 10), f"no answer for {waiting:.1f} s", font=self.caption,
+                              fill=ENDED)
         return image
 
 

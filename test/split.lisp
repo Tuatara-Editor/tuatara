@@ -304,6 +304,24 @@ BACKGROUND, the search too goes to the background."
     ;; the search in the background holds those in sight as it ends
     (is string= "ne tw three fur" (every-match-text '("% f o RET" "d") text :background t))))
 
+(define-modal-test (split undone-meanwhile-found-in-one-walk)
+  ;; the places the split holds typed at and undone while the other matches are
+  ;; written: the stretches undone are found in the text written by one walk over
+  ;; the matches, not by walks from the piece's start, one for each stretch
+  (let ((text (format nil "~{~a~%~}"
+                      (loop repeat 300 collect (format nil "~{~a~^ ~}" (make-list 50 :initial-element "o"))))))
+    (multiple-value-bind (editor walks)
+        (counting-calls (tuatara.defaults::rewrite-walk)
+          (let ((tuatara-user:*split-limit* 3000)
+                (tuatara.defaults::*rewrite-threshold* 0)
+                (tuatara.defaults::*rewrite-piece-hook* (lambda () (sleep 0.2))))
+            (nth-value 1 (run-keys-in-turns '("% f o RET" "c X C-g u" "") :text text))))
+      (let ((result (session-text editor)))
+        ;; those held as they were, the others written
+        (true (< (position #\o result :from-end t) (position #\X result)))
+        (is = 3000 (count #\o result)))
+      (true (< walks 20) "~:d walks over the matches" walks))))
+
 (define-modal-test (split rectangles-read-as-they-come)
   ;; a rectangle over more than *rewrite-threshold* is searched a row at a time,
   ;; in the background: the matches in its columns only

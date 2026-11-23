@@ -168,6 +168,9 @@ lines of the text written.")
   (out-starts-cache nil
                     :documentation "The vector of where the output of each piece of JOB starts in the rewritten text,
 NIL until worked out.")
+  (regions-memo nil
+                :documentation "What REWRITE-REGIONS has worked out for JOB, NIL before: a cons of two EQUAL hash
+tables, the stretches edited meanwhile widened, by stretch, and the offsets mapped, by offset and bias.")
   (checkpoint (* 256 1024) :documentation "The value of *REWRITE-CHECKPOINT* as JOB began.")
   (hook nil :documentation "The value of *REWRITE-PIECE-HOOK* as JOB began."))
 
@@ -438,9 +441,10 @@ within a line never needs it, the pieces beginning at line starts."
 (defun rewrite-run (job)
   "What JOB's thread does (TUATARA.RUNTIME:START-JOB-THREAD): rewrite the
 pieces on the pool, then build the text rewritten over their files and count
-its lines, on all but two cores at once, the count's progress in COUNTING; or
-note that it stopped. The editor is woken as the count begins. However it
-ends, the files not mapped by then are closed."
+its lines, on all but two cores at once, the count's progress in COUNTING, and
+where the stretches edited so far stand in it (REWRITE-REGIONS); or note that
+it stopped. The editor is woken as the count begins. However it ends, the
+files not mapped by then are closed."
   (unwind-protect
        (let ((pieces (rewrite-pieces job)))
          (setf (rewrite-files job) (make-piece-files (rewrite-directory job)))
@@ -465,10 +469,14 @@ ends, the files not mapped by then are closed."
                     (loop for piece across pieces for rope in ropes do (setf (rewrite-piece-rope piece) rope))
                     (setf (rewrite-counting job) counting)
                     (when (rewrite-wake job) (funcall (rewrite-wake job)))
-                    (let ((counted (tuatara.text:index-rope written :progress counting :cancel (rewrite-cancel job))))
-                      (if counted
-                          (setf (rewrite-result job) counted (rewrite-status job) :done)
-                          (setf (rewrite-status job) :stopped)))))))
+                    (let ((counted (tuatara.text:index-rope written :progress counting :cancel (rewrite-cancel job)))
+                          (dirties (rewrite-tracker job)))
+                      (cond (counted
+                             ;; where the stretches edited so far stand, worked out here: the editor works out only those
+                             ;; edited from now on
+                             (when (consp dirties) (rewrite-regions job dirties))
+                             (setf (rewrite-result job) counted (rewrite-status job) :done))
+                            (t (setf (rewrite-status job) :stopped))))))))
     (when (rewrite-files job) (discard-piece-files (rewrite-files job)))))
 
 ;;; Mapping offsets between the text read and the text written
@@ -532,24 +540,68 @@ text read, OS and OE in the text written. Stops when FUNCTION returns true."
                         in (rewrite-piece-end piece) nil)))
     nil))
 
+(defun rewrite-sweep (job count start-at visit)
+  "Walk JOB's replaced matches once for COUNT items in the order of their
+offsets in the text read, START-AT a function giving item K's, each within
+the scope: from the checkpoint at or before the first item still open, on
+until VISIT has closed every one. VISIT is called with (K S E OS OE IN OUT)
+for each match from S below E in the text read, OS below OE in the text
+written, IN and OUT where the last match passed over ends in either text; it
+returns true when the match closes item K, the next item then being shown the
+same match, or NIL to pass the match over. Past the last match S is NIL. A
+walk begins again at a later checkpoint when the next item open lies past
+one, so items close together share one walk and each costs at most the text
+between two checkpoints."
+  (let ((k 0) (pieces (rewrite-pieces job)) (starts (rewrite-out-starts job)))
+    (flet ((checkpoint-at (offset)
+             (values (checkpoint-before (aref pieces (piece-index-at job offset)) offset))))
+      (loop while (< k count)
+            do (let* ((from (funcall start-at k))
+                      (index (piece-index-at job from)))
+                 (multiple-value-bind (in local allowed) (checkpoint-before (aref pieces index) from)
+                   (let ((last-in in) (last-out (+ (aref starts index) local)))
+                     (unless (rewrite-walk
+                              job index in last-out allowed
+                              (lambda (s e os oe)
+                                (let ((open k))
+                                  (loop while (and (< k count) (funcall visit k s e os oe last-in last-out))
+                                        do (incf k))
+                                  (cond ((>= k count) t)
+                                        ((and (> k open) (> (checkpoint-at (funcall start-at k)) e)) t)
+                                        (t (setf last-in e last-out oe) nil)))))
+                       (loop while (< k count)
+                             do (funcall visit k nil nil nil nil last-in last-out)
+                                (incf k))))))))))
+
+(defun rewrite-map-all (job offsets)
+  "Where OFFSETS, in the text JOB read, are in its rewritten text, as
+REWRITE-MAP gives them, found in one walk over the matches (REWRITE-SWEEP).
+OFFSETS is a list of (BASE . BIAS) in the order of BASE, and the result a
+list in the same order."
+  (let* ((low (rewrite-low job)) (high (rewrite-high job)) (delta (rewrite-delta job))
+         (items (coerce offsets 'simple-vector))
+         (mapped (make-array (length items)))
+         (inside (loop for k from 0 below (length items)
+                       for base = (car (aref items k))
+                       if (<= base low) do (setf (aref mapped k) base)
+                       else if (>= base high) do (setf (aref mapped k) (+ base delta))
+                       else collect k)))
+    (when inside
+      (let ((inside (coerce inside 'simple-vector)))
+        (rewrite-sweep job (length inside) (lambda (k) (car (aref items (aref inside k))))
+                       (lambda (k s e os oe in out)
+                         (destructuring-bind (base . bias) (aref items (aref inside k))
+                           (let ((at (cond ((or (null s) (>= s base)) (+ out (- base in)))
+                                           ((< base e) (if (eq bias :after) oe os)))))
+                             (when at (setf (aref mapped (aref inside k)) at))
+                             at))))))
+    (coerce mapped 'list)))
+
 (defun rewrite-map (job base &optional (bias :before))
   "The offset in JOB's rewritten text of BASE, an offset in the text it read. An
 offset inside a replaced match goes to the start of its replacement with BIAS
 :BEFORE and to its end with :AFTER."
-  (let ((low (rewrite-low job)) (high (rewrite-high job)))
-    (cond ((<= base low) base)
-          ((>= base high) (+ base (rewrite-delta job)))
-          (t (let* ((index (piece-index-at job base))
-                    (piece (aref (rewrite-pieces job) index)))
-               (multiple-value-bind (in local allowed) (checkpoint-before piece base)
-                 (let* ((out (+ (aref (rewrite-out-starts job) index) local))
-                        (last-in in) (last-out out) (inside nil))
-                   (rewrite-walk job index in out allowed
-                                 (lambda (s e os oe)
-                                   (cond ((>= s base) t)
-                                         ((< base e) (setf inside (if (eq bias :after) oe os)) t)
-                                         (t (setf last-in e last-out oe) nil))))
-                   (or inside (+ last-out (- base last-in))))))))))
+  (first (rewrite-map-all job (list (cons base bias)))))
 
 (defun rewrite-unmap (job out &optional (bias :before))
   "The offset in the text JOB read of OUT, an offset in the text it wrote. An
@@ -572,26 +624,35 @@ BIAS :BEFORE and to its end with :AFTER."
                                          (t (setf last-in e last-out oe) nil))))
                    (or inside (+ last-in (- out last-out))))))))))
 
-(defun rewrite-widen (job start end)
-  "START and END, offsets in the text JOB read, widened to take in whole every
-replaced match they overlap (for an empty range, every one it falls strictly
-inside). Values: the widened start and end, and how many matches were taken in."
-  (let ((low (rewrite-low job)) (high (rewrite-high job)) (count 0))
-    (when (and (< start high) (> end low) (plusp (length (rewrite-pieces job))))
-      (let* ((from (max low start))
-             (index (piece-index-at job from))
-             (piece (aref (rewrite-pieces job) index)))
-        (multiple-value-bind (in local allowed) (checkpoint-before piece from)
-          (rewrite-walk job index in (+ (aref (rewrite-out-starts job) index) local) allowed
-                        (lambda (s e os oe)
-                          (declare (ignore os oe))
-                          (cond ((if (= start end) (>= s start) (>= s end)) t)
-                                ((if (= start end) (< s start e) (and (< s end) (> e start)))
-                                 (incf count)
-                                 (setf start (min start s) end (max end e))
-                                 nil)
-                                (t nil)))))))
-    (values start end count)))
+(defun rewrite-widen-all (job stretches)
+  "Each of STRETCHES, in the text JOB read, widened to take in whole every
+replaced match it overlaps (for an empty one, every match it falls strictly
+inside), found in one walk over the matches (REWRITE-SWEEP). STRETCHES is a
+list of (START . END) in order, none overlapping; the result is a list of
+\(START END COUNT) for them, COUNT how many matches each took in."
+  (let* ((low (rewrite-low job)) (high (rewrite-high job))
+         (items (coerce stretches 'simple-vector))
+         (widened (map 'simple-vector (lambda (stretch) (list (car stretch) (cdr stretch) 0)) items))
+         (inside (and (plusp (length (rewrite-pieces job)))
+                      (coerce (loop for k from 0 below (length items)
+                                    for (start . end) = (aref items k)
+                                    when (and (< start high) (> end low)) collect k)
+                              'simple-vector))))
+    (when (plusp (length inside))
+      (rewrite-sweep job (length inside) (lambda (k) (max low (car (aref items (aref inside k)))))
+                     (lambda (k s e os oe in out)
+                       (declare (ignore os oe in out))
+                       (destructuring-bind (start . end) (aref items (aref inside k))
+                         (let ((w (aref widened (aref inside k))))
+                           (cond ((null s) t)
+                                 ((if (= start end) (>= s start) (>= s end)) t)
+                                 ((if (= start end) (< s start e) (and (< s end) (> e start)))
+                                  (setf (first w) (min (first w) s) (second w) (max (second w) e))
+                                  (incf (third w))
+                                  ;; a match reaching the stretch's end leaves no other one to meet it
+                                  (or (= start end) (>= e end)))
+                                 (t nil)))))))
+    (coerce widened 'list)))
 
 ;;; Edits made while the job runs
 
@@ -649,30 +710,52 @@ read and in the text now."
 
 ;;; Taking the result in
 
-(defun rewrite-regions (job)
-  "The stretches edited while JOB ran, widened over the replaced matches they
-meet and merged, as a simple-vector of plists (:base-start :base-end :start :end
-:out-start :out-end); and, second, how many replaced matches they took back."
-  (let ((merged '()) (taken 0))
-    (dolist (d (rewrite-tracker job))
-      (multiple-value-bind (b1 b2 count) (rewrite-widen job (dirty-base-start d) (dirty-base-end d))
-        (incf taken count)
-        ;; the widened parts are text nobody edited, so they move with the stretch
-        (let ((c1 (- (dirty-start d) (- (dirty-base-start d) b1)))
-              (c2 (+ (dirty-end d) (- b2 (dirty-base-end d))))
-              (previous (first merged)))
-          (if (and previous (<= b1 (getf previous :base-end)))
-              ;; the end now is where the later of the two ends is now
-              (let ((pb2 (getf previous :base-end)))
-                (setf (getf previous :end) (if (>= b2 pb2) c2 (+ c2 (- pb2 b2)))
-                      (getf previous :base-end) (max b2 pb2)))
-              (push (list :base-start b1 :base-end b2 :start c1 :end c2) merged)))))
+(defun memo-misses (table keys work)
+  "Put in TABLE, an EQUAL hash table, what WORK, a function of a list of keys
+giving a list of values in their order, gives for those of KEYS not in it yet."
+  (let ((misses (remove-if (lambda (key) (nth-value 1 (gethash key table))) keys)))
+    (when misses
+      (loop for key in misses for value in (funcall work misses) do (setf (gethash key table) value)))))
+
+(defun rewrite-regions (job &optional (dirties (rewrite-tracker job)))
+  "The stretches edited while JOB ran, DIRTIES, widened over the replaced
+matches they meet and merged, as a simple-vector of plists (:base-start
+:base-end :start :end :out-start :out-end); and, second, how many replaced
+matches they took back. What is worked out is kept in JOB (REGIONS-MEMO): JOB's
+thread works out the stretches edited before it ends, and the editor then
+only those edited since, each kind in one walk over the matches."
+  (let* ((memo (or (rewrite-regions-memo job)
+                   (setf (rewrite-regions-memo job)
+                         (cons (make-hash-table :test 'equal) (make-hash-table :test 'equal)))))
+         (stretches (mapcar (lambda (d) (cons (dirty-base-start d) (dirty-base-end d))) dirties))
+         (merged '()) (taken 0))
+    (memo-misses (car memo) stretches (lambda (misses) (rewrite-widen-all job misses)))
+    (loop for d in dirties
+          for stretch in stretches
+          do (destructuring-bind (b1 b2 count) (gethash stretch (car memo))
+               (incf taken count)
+               ;; the widened parts are text nobody edited, so they move with the stretch
+               (let ((c1 (- (dirty-start d) (- (dirty-base-start d) b1)))
+                     (c2 (+ (dirty-end d) (- b2 (dirty-base-end d))))
+                     (previous (first merged)))
+                 (if (and previous (<= b1 (getf previous :base-end)))
+                     ;; the end now is where the later of the two ends is now
+                     (let ((pb2 (getf previous :base-end)))
+                       (setf (getf previous :end) (if (>= b2 pb2) c2 (+ c2 (- pb2 b2)))
+                             (getf previous :base-end) (max b2 pb2)))
+                     (push (list :base-start b1 :base-end b2 :start c1 :end c2) merged)))))
+    (setf merged (nreverse merged))
+    (memo-misses (cdr memo)
+                 (loop for r in merged
+                       collect (cons (getf r :base-start) :before)
+                       collect (cons (getf r :base-end) :after))
+                 (lambda (misses) (rewrite-map-all job misses)))
     (values (map 'simple-vector
                  (lambda (r)
-                   (list* :out-start (rewrite-map job (getf r :base-start) :before)
-                          :out-end (rewrite-map job (getf r :base-end) :after)
+                   (list* :out-start (gethash (cons (getf r :base-start) :before) (cdr memo))
+                          :out-end (gethash (cons (getf r :base-end) :after) (cdr memo))
                           r))
-                 (nreverse merged))
+                 merged)
             taken)))
 
 (defun last-region-at-or-before (regions key value)

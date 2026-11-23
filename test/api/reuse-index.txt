@@ -4462,6 +4462,7 @@ tuatara.defaults:line-rewrite-pieces (internal)  function  The pieces of the sco
 tuatara.defaults:line-rewrite-point (internal)  function  Where point was in the buffer when JOB began.  lisp/editing/rewrites.lisp
 tuatara.defaults:line-rewrite-prepare (internal)  function  A function of JOB run on its thread before the pieces are rewritten, NIL when none.  lisp/editing/rewrites.lisp
 tuatara.defaults:line-rewrite-process (internal)  function  The program a job runs, ended when it is stopped, or NIL.  lisp/editing/rewrites.lisp
+tuatara.defaults:line-rewrite-regions-memo (internal)  function  What REWRITE-REGIONS has worked out for JOB, NIL before: a cons of two EQUAL hash tables, the stretches edited meanwhile widened, by stretch, and the offsets mapped, by offset and bias.  lisp/editing/rewrites.lisp
 tuatara.defaults:line-rewrite-report (internal)  function  A function of JOB saying how it ended (:DONE, :NONE, :STOPPED or :FAILED), the changes made, the seconds taken and the changes kept as edited meanwhile; NIL when none.  lisp/editing/rewrites.lisp
 tuatara.defaults:line-rewrite-result (internal)  function  The text rewritten by JOB once it is done, NIL before.  lisp/editing/rewrites.lisp
 tuatara.defaults:line-rewrite-rope (internal)  function  The text of the version JOB reads.  lisp/editing/rewrites.lisp
@@ -5029,6 +5030,7 @@ tuatara.defaults:match-rewrite-p (internal)  function  True when OBJECT is a MAT
 tuatara.defaults:match-rewrite-pieces (internal)  function  The pieces of the scope of JOB, a vector, rewritten by the workers of the pool.  lisp/search/rewrite.lisp
 tuatara.defaults:match-rewrite-point (internal)  function  Where point was in the buffer when JOB began.  lisp/search/rewrite.lisp
 tuatara.defaults:match-rewrite-process (internal)  function  The program a job runs, ended when it is stopped, or NIL.  lisp/search/rewrite.lisp
+tuatara.defaults:match-rewrite-regions-memo (internal)  function  What REWRITE-REGIONS has worked out for JOB, NIL before: a cons of two EQUAL hash tables, the stretches edited meanwhile widened, by stretch, and the offsets mapped, by offset and bias.  lisp/search/rewrite.lisp
 tuatara.defaults:match-rewrite-report (internal)  function  A function of JOB saying how it ended (:DONE, :NONE, :STOPPED or :FAILED), the changes made, the seconds taken and the changes kept as edited meanwhile; NIL when none.  lisp/search/rewrite.lisp
 tuatara.defaults:match-rewrite-result (internal)  function  The text rewritten by JOB once it is done, NIL before.  lisp/search/rewrite.lisp
 tuatara.defaults:match-rewrite-rope (internal)  function  The text of the version JOB reads.  lisp/search/rewrite.lisp
@@ -5078,6 +5080,7 @@ tuatara.defaults:matlab-mode (internal)  function  Switch the current buffer to 
 tuatara.defaults:may-be-evidence-p (internal)  function  True when the file at PATH is evidence (EVIDENCE-PATH-P), the file a link leads to counting, or has another name that is or may be in an evidence directory (EVIDENCE-INODE-P): what no view of *FILE-VIEWS* reads in place.  lisp/files/evidence.lisp
 tuatara.defaults:measured-drawing (internal)  function  How FRONTEND draws with RENDERER, measured (FRONTEND-MEASURE-DRAWING); NIL when the measuring fails, which is noted in the debug log.  lisp/help/health.lisp
 tuatara.defaults:mediawiki-mode (internal)  function  Switch the current buffer to mediawiki-mode.  lisp/modes/more-languages-markup.lisp
+tuatara.defaults:memo-misses (internal)  function  Put in TABLE, an EQUAL hash table, what WORK, a function of a list of keys giving a list of values in their order, gives for those of KEYS not in it yet.  lisp/editing/rewrites.lisp
 tuatara.defaults:memo-values (internal)  function  The values FUNCTION, of no arguments, gives: kept in TABLE, a hash table, under KEY the first time and given from there after; worked out each time when TABLE is NIL.  lisp/org/agenda.lisp
 tuatara.defaults:mend-seams (internal)  function  Join JOB's pieces, done in parallel, so that what they found and wrote is what one scan of its scope would make (TUATARA.SYNTAX:JOIN-PIECES).  lisp/editing/rewrites.lisp
 tuatara.defaults:merge-files-into  function  Merge the files LOCAL, BASE and REMOTE in the background into the buffer visiting MERGED, its conflicts marked and left to resolve; saving it writes MERGED.  lisp/files/merging.lisp
@@ -7725,6 +7728,7 @@ tuatara.defaults:rewrite-lines (internal)  function  Give each line of BUFFER fr
 tuatara.defaults:rewrite-lines-here (internal)  function  Change the lines of BUFFER from START below END as PER-LINE says (START-LINE-JOB), at once on this thread, as one change to undo.  lisp/editing/line-jobs.lisp
 tuatara.defaults:rewrite-low (internal)  function  Where the scope of JOB starts.  lisp/editing/rewrites.lisp
 tuatara.defaults:rewrite-map (internal)  function  The offset in JOB's rewritten text of BASE, an offset in the text it read.  lisp/editing/rewrites.lisp
+tuatara.defaults:rewrite-map-all (internal)  function  Where OFFSETS, in the text JOB read, are in its rewritten text, as REWRITE-MAP gives them, found in one walk over the matches (REWRITE-SWEEP).  lisp/editing/rewrites.lisp
 tuatara.defaults:rewrite-mapper (internal)  function  The function of JOB that finds the changes in a piece, NIL for work that writes nothing.  lisp/editing/rewrites.lisp
 tuatara.defaults:rewrite-mapper-for (internal)  function  A function of (FUNCTION FROM TO HALT) calling FUNCTION with each match of MATCHER in ROPE starting in [FROM, TO), as one scan from FROM finds them, empty ones too and the one at HIGH, the scope's end (STRETCH-MATCHES); the pattern sees no text past HIGH, so that a match may run past TO.  lisp/search/rewrite.lisp
 tuatara.defaults:rewrite-maps (internal)  function  Two functions of (POSITION BIAS): from the buffer's text now to the text taken in (JOB's result with REGIONS' stretches as edited), and back.  lisp/editing/rewrites.lisp
@@ -7752,15 +7756,17 @@ tuatara.defaults:rewrite-pieces-for (internal)  function  The pieces of [LOW, HI
 tuatara.defaults:rewrite-point (internal)  function  Where point was in the buffer when JOB began.  lisp/editing/rewrites.lisp
 tuatara.defaults:rewrite-process (internal)  function  The program a job runs, ended when it is stopped, or NIL.  lisp/editing/rewrites.lisp
 tuatara.defaults:rewrite-progress (internal)  function  How much of JOB's scope, its pieces, is done, from 0 to 100.  lisp/editing/rewrites.lisp
-tuatara.defaults:rewrite-regions (internal)  function  The stretches edited while JOB ran, widened over the replaced matches they meet and merged, as a simple-vector of plists (:base-start :base-end :start :end :out-start :out-end); and, second, how many replaced matches they took back.  lisp/editing/rewrites.lisp
+tuatara.defaults:rewrite-regions (internal)  function  The stretches edited while JOB ran, DIRTIES, widened over the replaced matches they meet and merged, as a simple-vector of plists (:base-start :base-end :start :end :out-start :out-end); and, second, how many replaced matches they took back.  lisp/editing/rewrites.lisp
+tuatara.defaults:rewrite-regions-memo (internal)  function  What REWRITE-REGIONS has worked out for JOB, NIL before: a cons of two EQUAL hash tables, the stretches edited meanwhile widened, by stretch, and the offsets mapped, by offset and bias.  lisp/editing/rewrites.lisp
 tuatara.defaults:rewrite-report (internal)  function  A function of JOB saying how it ended (:DONE, :NONE, :STOPPED or :FAILED), the changes made, the seconds taken and the changes kept as edited meanwhile; NIL when none.  lisp/editing/rewrites.lisp
 tuatara.defaults:rewrite-result (internal)  function  The text rewritten by JOB once it is done, NIL before.  lisp/editing/rewrites.lisp
 tuatara.defaults:rewrite-rope (internal)  function  The text of the version JOB reads.  lisp/editing/rewrites.lisp
-tuatara.defaults:rewrite-run (internal)  function  What JOB's thread does (TUATARA.RUNTIME:START-JOB-THREAD): rewrite the pieces on the pool, then build the text rewritten over their files and count its lines, on all but two cores at once, the count's progress in COUNTING; or note that it stopped.  lisp/editing/rewrites.lisp
+tuatara.defaults:rewrite-run (internal)  function  What JOB's thread does (TUATARA.RUNTIME:START-JOB-THREAD): rewrite the pieces on the pool, then build the text rewritten over their files and count its lines, on all but two cores at once, the count's progress in COUNTING, and where the stretches edited so far stand in it (REWRITE-REGIONS); or note that it stopped.  lisp/editing/rewrites.lisp
 tuatara.defaults:rewrite-session (internal)  function  True for a job that writes out of sight what typing at places in sight still goes on writing, so that its change joins that typing.  lisp/editing/rewrites.lisp
 tuatara.defaults:rewrite-since (internal)  function  The undo stack of the buffer as JOB began, where its change stands in the undo history.  lisp/editing/rewrites.lisp
 tuatara.defaults:rewrite-started (internal)  function  The internal real time a job began.  lisp/editing/rewrites.lisp
 tuatara.defaults:rewrite-status (internal)  function  A job's status: :RUNNING, :DONE, :STOPPED or :FAILED.  lisp/editing/rewrites.lisp
+tuatara.defaults:rewrite-sweep (internal)  function  Walk JOB's replaced matches once for COUNT items in the order of their offsets in the text read, START-AT a function giving item K's, each within the scope: from the checkpoint at or before the first item still open, on until VISIT has closed every one.  lisp/editing/rewrites.lisp
 tuatara.defaults:rewrite-take-in (internal)  function  Swap JOB's result into its buffer as one undoable step, with the stretches edited meanwhile as they are now, unless the buffer may no longer take it (RESULT-REFUSED-P).  lisp/editing/rewrites.lisp
 tuatara.defaults:rewrite-thread (internal)  function  The thread a job runs on.  lisp/editing/rewrites.lisp
 tuatara.defaults:rewrite-totals (internal)  function  How many matches JOB's pieces found and on how many lines, two values.  lisp/editing/rewrites.lisp
@@ -7771,7 +7777,7 @@ tuatara.defaults:rewrite-verb (internal)  function  What JOB does as a verb, for
 tuatara.defaults:rewrite-wake (internal)  function  The function a job's thread calls to wake the editor, or NIL.  lisp/editing/rewrites.lisp
 tuatara.defaults:rewrite-walk (internal)  function  Call FUNCTION with (S E OS OE) for each match JOB replaced, in order, from base offset IN in piece INDEX, whose output is at rewritten offset OUT there, with the one-per-line bound ALLOWED, through the later pieces: S and E in the text read, OS and OE in the text written.  lisp/editing/rewrites.lisp
 tuatara.defaults:rewrite-what (internal)  function  What JOB does said in full for the list of jobs, NIL for a replacement.  lisp/editing/rewrites.lisp
-tuatara.defaults:rewrite-widen (internal)  function  START and END, offsets in the text JOB read, widened to take in whole every replaced match they overlap (for an empty range, every one it falls strictly inside).  lisp/editing/rewrites.lisp
+tuatara.defaults:rewrite-widen-all (internal)  function  Each of STRETCHES, in the text JOB read, widened to take in whole every replaced match it overlaps (for an empty one, every match it falls strictly inside), found in one walk over the matches (REWRITE-SWEEP).  lisp/editing/rewrites.lisp
 tuatara.defaults:rewrite-words (internal)  function  The words naming the scope of JOB.  lisp/editing/rewrites.lisp
 tuatara.defaults:rewritten-header (internal)  function  LINES, the lines of a header of STYLE, with the title's line saying TITLE and the keywords' line KEYWORDS, a Markdown list of keywords under it left out; true as a second value when there was a keywords' line to write.  lisp/files/rename-formatted.lisp
 tuatara.defaults:rich-face (internal)  function  The face for capture NAME: the face named by the longest leading part of NAME, cut at dots, that is a face; :NONE for the capture none, which takes a colour away; NIL when no part is a face.  lisp/modes/languages.lisp
@@ -8216,6 +8222,7 @@ tuatara.defaults:rows-rewrite-p (internal)  function  True when OBJECT is a ROWS
 tuatara.defaults:rows-rewrite-pieces (internal)  function  The pieces of the scope of JOB, a vector, rewritten by the workers of the pool.  lisp/selecting/rectangles.lisp
 tuatara.defaults:rows-rewrite-point (internal)  function  Where point was in the buffer when JOB began.  lisp/selecting/rectangles.lisp
 tuatara.defaults:rows-rewrite-process (internal)  function  The program a job runs, ended when it is stopped, or NIL.  lisp/selecting/rectangles.lisp
+tuatara.defaults:rows-rewrite-regions-memo (internal)  function  What REWRITE-REGIONS has worked out for JOB, NIL before: a cons of two EQUAL hash tables, the stretches edited meanwhile widened, by stretch, and the offsets mapped, by offset and bias.  lisp/selecting/rectangles.lisp
 tuatara.defaults:rows-rewrite-report (internal)  function  A function of JOB saying how it ended (:DONE, :NONE, :STOPPED or :FAILED), the changes made, the seconds taken and the changes kept as edited meanwhile; NIL when none.  lisp/selecting/rectangles.lisp
 tuatara.defaults:rows-rewrite-result (internal)  function  The text rewritten by JOB once it is done, NIL before.  lisp/selecting/rectangles.lisp
 tuatara.defaults:rows-rewrite-rope (internal)  function  The text of the version JOB reads.  lisp/selecting/rectangles.lisp
@@ -8500,6 +8507,7 @@ tuatara.defaults:search-rewrite-p (internal)  function  True when OBJECT is a SE
 tuatara.defaults:search-rewrite-pieces (internal)  function  The pieces of the scope of JOB, a vector, rewritten by the workers of the pool.  lisp/selecting/split.lisp
 tuatara.defaults:search-rewrite-point (internal)  function  Where point was in the buffer when JOB began.  lisp/selecting/split.lisp
 tuatara.defaults:search-rewrite-process (internal)  function  The program a job runs, ended when it is stopped, or NIL.  lisp/selecting/split.lisp
+tuatara.defaults:search-rewrite-regions-memo (internal)  function  What REWRITE-REGIONS has worked out for JOB, NIL before: a cons of two EQUAL hash tables, the stretches edited meanwhile widened, by stretch, and the offsets mapped, by offset and bias.  lisp/selecting/split.lisp
 tuatara.defaults:search-rewrite-report (internal)  function  A function of JOB saying how it ended (:DONE, :NONE, :STOPPED or :FAILED), the changes made, the seconds taken and the changes kept as edited meanwhile; NIL when none.  lisp/selecting/split.lisp
 tuatara.defaults:search-rewrite-result (internal)  function  The text rewritten by JOB once it is done, NIL before.  lisp/selecting/split.lisp
 tuatara.defaults:search-rewrite-rope (internal)  function  The text of the version JOB reads.  lisp/selecting/split.lisp
