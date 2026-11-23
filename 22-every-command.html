@@ -13,7 +13,7 @@
 <div class="site">
 <nav class="toc" id="contents" aria-label="Contents">
 <strong>Tuatara Manual</strong>
-<small>for version 0.90.40</small>
+<small>for version 0.90.42</small>
 <p class="tools"><a href="all.html">All on one page</a>
 <button type="button" class="theme" hidden>Dark</button></p>
 <input type="search" placeholder="Search the manual" aria-label="Search the manual">
@@ -706,8 +706,8 @@ the commands that mention a word, press <kbd>C-h a</kbd> and type the word.</p>
 <tr><td>none</td><td><kbd>M-x org-make-reminder</kbd></td><td><code>org-make-reminder</code></td><td>Make the heading point is under a reminder: it takes the tags <strong>ORG-REMINDER-TAG</strong> and <strong>ORG-NOTIFY-TAG</strong>, so that the agenda lists it on its day and it is told on the desktop when its time comes.</td></tr>
 <tr><td>none</td><td><kbd>M-RET</kbd></td><td><code>org-meta-return</code></td><td>A new item or headline after what point is in and all under it: in a list, an item of the same kind after the one point is in and all under it (its bullet, the next number, [ ] when it has a checkbox).</td></tr>
 <tr><td>none</td><td><kbd>M-j</kbd>, <kbd>M-&lt;down&gt;</kbd></td><td><code>org-metadown</code></td><td>In an Org table, move the row down; else move the subtree down (M-j).</td></tr>
-<tr><td>none</td><td><kbd>M-h</kbd>, <kbd>M-&lt;left&gt;</kbd></td><td><code>org-metaleft</code></td><td>In an Org table, move the column left; else promote the headline (M-h).</td></tr>
-<tr><td>none</td><td><kbd>M-l</kbd>, <kbd>M-&lt;right&gt;</kbd></td><td><code>org-metaright</code></td><td>In an Org table, move the column right; else demote the headline (M-l).</td></tr>
+<tr><td>none</td><td><kbd>M-h</kbd>, <kbd>M-&lt;left&gt;</kbd></td><td><code>org-metaleft</code></td><td>In an Org table, move the column left; on a list item, set it out a level, or every item the selection's lines begin; else promote the headline (M-h).</td></tr>
+<tr><td>none</td><td><kbd>M-l</kbd>, <kbd>M-&lt;right&gt;</kbd></td><td><code>org-metaright</code></td><td>In an Org table, move the column right; on a list item, set it in a level under the item before it, or every item the selection's lines begin; else demote the headline (M-l).</td></tr>
 <tr><td>none</td><td><kbd>M-k</kbd>, <kbd>M-&lt;up&gt;</kbd></td><td><code>org-metaup</code></td><td>In an Org table, move the row up; else move the subtree up (M-k).</td></tr>
 <tr><td>none</td><td><kbd>M-x org-move-subtree-down</kbd></td><td><code>org-move-subtree-down</code></td><td>Move the subtree point is in down, past its next sibling.</td></tr>
 <tr><td>none</td><td><kbd>M-x org-move-subtree-up</kbd></td><td><code>org-move-subtree-up</code></td><td>Move the subtree point is in up, before its sibling above.</td></tr>
@@ -722,8 +722,8 @@ the commands that mention a word, press <kbd>C-h a</kbd> and type the word.</p>
 <tr><td>none</td><td><kbd>C-c C-q</kbd></td><td><code>org-set-tags-command</code></td><td>Set the tags of the headline point is under (C-c C-q): asked for with its tags offered, work urgent or :work:urgent:, nothing for none; they go at the end of its line, where <strong>ORG-TAGS-COLUMN</strong> says, by default one space after its text.</td></tr>
 <tr><td>none</td><td><kbd>S-&lt;left&gt;</kbd></td><td><code>org-shiftleft</code></td><td>On a headline, its TODO keyword before, none before the first.</td></tr>
 <tr><td>none</td><td><kbd>M-S-&lt;down&gt;</kbd></td><td><code>org-shiftmetadown</code></td><td>In an Org table, put an empty row above this one (M-S-&lt;down&gt;).</td></tr>
-<tr><td>none</td><td><kbd>M-H</kbd>, <kbd>M-S-&lt;left&gt;</kbd></td><td><code>org-shiftmetaleft</code></td><td>In an Org table, delete the column; else promote the subtree (M-H).</td></tr>
-<tr><td>none</td><td><kbd>M-L</kbd>, <kbd>M-S-&lt;right&gt;</kbd></td><td><code>org-shiftmetaright</code></td><td>In an Org table, put an empty column before this one; else demote the subtree (M-L).</td></tr>
+<tr><td>none</td><td><kbd>M-H</kbd>, <kbd>M-S-&lt;left&gt;</kbd></td><td><code>org-shiftmetaleft</code></td><td>In an Org table, delete the column; on a list item, set it out a level with the items under it; else promote the subtree (M-H).</td></tr>
+<tr><td>none</td><td><kbd>M-L</kbd>, <kbd>M-S-&lt;right&gt;</kbd></td><td><code>org-shiftmetaright</code></td><td>In an Org table, put an empty column before this one; on a list item, set it in a level with the items under it; else demote the subtree (M-L).</td></tr>
 <tr><td>none</td><td><kbd>M-S-&lt;up&gt;</kbd></td><td><code>org-shiftmetaup</code></td><td>In an Org table, delete the row point is in (M-S-&lt;up&gt;).</td></tr>
 <tr><td>none</td><td><kbd>S-&lt;right&gt;</kbd></td><td><code>org-shiftright</code></td><td>On a headline, its next TODO keyword, as M-x org-todo does.</td></tr>
 <tr><td>none</td><td><kbd>C-x a l</kbd></td><td><code>org-store-link</code></td><td>Keep a link to where point is, for insert-link (M-x insert-link) to offer.</td></tr>
