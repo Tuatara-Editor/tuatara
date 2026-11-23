@@ -1131,11 +1131,7 @@ a task."
                 (bullet (org-property item :bullet))
                 (indent (subseq text (org-node-begin item)
                                 (+ (org-node-begin item) (org-leading-blanks text (org-node-begin item)))))
-                (next (cl-ppcre:regex-replace "^(\\d+)" (string-trim " " bullet)
-                                              (lambda (match number)
-                                                (declare (ignore match))
-                                                (princ-to-string (1+ (parse-integer number))))
-                                              :simple-calls t))
+                (next (org-bullet-after bullet))
                 (new (format nil "~%~a~a ~:[~;[ ] ~]" indent next (org-property item :checkbox)))
                 (after (rest (member item (org-node-children (org-node-parent item))))))
            (org-apply-edits parse

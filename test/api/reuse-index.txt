@@ -4090,7 +4090,7 @@ tuatara.defaults:install-org-notify (internal)  function  Tell the agenda's entr
 tuatara.defaults:install-org-parts (internal)  function  Have large parts of Org buffers parsed once typing in them pauses (ORG-PARSE-TICK).  lisp/org/parts.lisp
 tuatara.defaults:install-org-pictures (internal)  function  Bind \[org-resize-picture] in Org buffers, and the keys that go on with it.  lisp/org/pictures.lisp
 tuatara.defaults:install-org-schedule (internal)  function  Bind \`C-c C-s', \`C-c C-d', \`C-c .' and \`C-c !' in Org buffers.  lisp/org/schedule.lisp
-tuatara.defaults:install-org-tables (internal)  function  Bind Org's table keys: \`M-h' \`M-j' \`M-k' \`M-l' (and the arrows) move a table's columns and rows, else headlines; \`M-H' and \`M-L' delete and insert columns, else promote and demote subtrees; \`C-c -' puts a rule below a table row, and gives a list its next kind of bullet.  lisp/org/tables.lisp
+tuatara.defaults:install-org-tables (internal)  function  Bind Org's table keys: \`M-h' \`M-j' \`M-k' \`M-l' (and the arrows) move a table's columns and rows, else set list items out and in, else move headlines; \`M-H' and \`M-L' delete and insert columns, else set items out and in with the items under them, else promote and demote subtrees; \`C-c -' puts a rule below a table row, and gives a list its next kind of bullet.  lisp/org/tables.lisp
 tuatara.defaults:install-outline (internal)  function  Bind \[buffer-outline] to \`M-g o', and light the line of the heading it shows.  lisp/outline.lisp
 tuatara.defaults:install-pairs (internal)  function  Have typing and \[delete-backward-char] consult electric-pair-mode.  lisp/editing/pairs.lisp
 tuatara.defaults:install-paths-in-text (internal)  function  List the entries of a path's directory beside the cursor as the path is typed in a buffer (*COMPLETE-PATHS*, *COMPLETE-PATHS-MODES*), and bind \`C-x C-p' to \[open-path-at-point].  lisp/files/paths-in-text.lisp
@@ -5574,6 +5574,7 @@ tuatara.defaults:org-buffer-parse (internal)  function  BUFFER's ORG-PARSE, of i
 tuatara.defaults:org-buffer-parts (internal)  function  BUFFER's text as its parts (ORG-PARTS), as it is now: made the first time, then kept up with the changes since, taken in one pass (ORG-PARTS-TAKE-EDITS); the TODO keywords read again only when a change touched a #+TODO: line, and every parse let go when they changed.  lisp/org/parts.lisp
 tuatara.defaults:org-buffer-state (internal)  function  BUFFER's ORG-STATE, made the first time.  lisp/org/parse.lisp
 tuatara.defaults:org-buffer-text (internal)  function  The text Org reads of BUFFER from octet START below END, all of it unless they are given: in a buffer whose lines end with a carriage return and a newline, each return before a newline left out; a carriage return that ends a line alone read as a newline.  lisp/org/parse.lisp
+tuatara.defaults:org-bullet-after (internal)  function  The bullet of the item after one whose bullet is BULLET, blanks trimmed: the next number for a numbered one, its .  lisp/org/items.lisp
 tuatara.defaults:org-byte->char (internal)  function  The character of the text Org reads of BUFFER at its octet BYTE: the carriage returns before it (RETURNS) left out, one itself taken as its newline.  lisp/org/parse.lisp
 tuatara.defaults:org-calc-arith (internal)  function  A OPERATOR B, as table formulas work it out: integers kept exact, decimal numbers rounded.  lisp/org/formulas.lisp
 tuatara.defaults:org-calc-bounded (internal)  function  N, an integer a formula gives a count of digits or an exponent with, when it is within *ORG-CALC-LARGEST*; else an error for the field (#ERROR).  lisp/org/formulas.lisp
@@ -5728,6 +5729,7 @@ tuatara.defaults:org-cycle-drawer (internal)  function  Fold the drawer whose fi
 tuatara.defaults:org-cycle-headline (internal)  function  Cycle HEADLINE's subtree, of PARSE: folded, then its children, then all of it, then folded again.  lisp/org/fold.lisp
 tuatara.defaults:org-cycle-headline-at (internal)  function  Cycle the subtree of the headline whose line starts at the octet LINE of BUFFER, as ORG-CYCLE-HEADLINE does, found by reading its lines rather than by parsing the file: it ends at the next headline of its level or above, its direct children are the headlines in it with no shallower one before them.  lisp/org/fold.lisp
 tuatara.defaults:org-cycle-item (internal)  function  Cycle the list ITEM, of PARSE, as ORG-CYCLE-HEADLINE cycles a headline: folded, then its sub-items, then all of it; one with nothing under its first line is said to be empty.  lisp/org/fold.lisp
+tuatara.defaults:org-cycle-item-indentation (internal)  function  \`TAB' on an empty list item of PARSE, one with nothing after its bullet and its checkbox: set it in a level, then on each \`TAB' after it further in while it can go, then out a level at a time, and then back where it was.  lisp/org/items.lisp
 tuatara.defaults:org-cycle-list-bullet (internal)  function  Give the list point is in its next kind of bullet (\`C-c -'): - to + to * to 1.  lisp/org/items.lisp
 tuatara.defaults:org-cycle-ranges (internal)  function  Cycle a subtree of BUFFER whose fold hides RANGE and its direct children's folds CHILDREN (a list, NIL for a child with nothing under it), all (START .  lisp/org/fold.lisp
 tuatara.defaults:org-date-calendar-follow (internal)  function  Put the calendar the date prompt shows on the day of TS, as it is read.  lisp/org/schedule.lisp
@@ -6026,12 +6028,14 @@ tuatara.defaults:org-insert-heading (internal)  function  Insert a new headline 
 tuatara.defaults:org-insert-timestamp (internal)  function  Ask for a date and put it in at point as a timestamp, ACTIVE <...> or inactive [...]; on a timestamp or just after it (ORG-TIMESTAMP-AROUND), put it in that one's place, its repeater and warning kept, and its time when none was typed.  lisp/org/schedule.lisp
 tuatara.defaults:org-insert-todo-heading (internal)  function  A new TODO headline of this level after this subtree.  lisp/org/edit.lisp
 tuatara.defaults:org-item-after-bullet (internal)  function  Where ITEM's bullet ends in TEXT, the text it was parsed of: the character after its -, + or number.  lisp/org/syntax.lisp
+tuatara.defaults:org-item-bullet (internal)  function  ITEM's bullet, its blanks trimmed: -, +, *, or a number and .  lisp/org/items.lisp
 tuatara.defaults:org-item-day (internal)  function  The day an agenda item is listed on, a day number, or NIL in a list of tasks.  lisp/org/agenda.lisp
 tuatara.defaults:org-item-end (internal)  function  The end of the time range of an agenda item, 1500 for 14:00-15:00, or NIL.  lisp/org/agenda.lisp
 tuatara.defaults:org-item-entry (internal)  function  The agenda entry of an agenda item.  lisp/org/agenda.lisp
 tuatara.defaults:org-item-extra (internal)  function  The extra text of an agenda item, such as Scheduled: or (1/3).  lisp/org/agenda.lisp
 tuatara.defaults:org-item-indent (internal)  function  The spaces lines under ITEM begin with: as far in as the text after its bullet.  lisp/org/checklist.lisp
 tuatara.defaults:org-item-line-scanner (internal)  function  A scanner of *ORG-ITEM-RE* at the start of a line, letters allowed as bullets while *ORG-LIST-ALLOW-ALPHABETICAL*; made once.  lisp/org/syntax.lisp
+tuatara.defaults:org-item-may-go-out-p (internal)  function  True when \`TAB' may set the empty list ITEM out a level: it stands under an item, the last of its list, with no item under it.  lisp/org/items.lisp
 tuatara.defaults:org-item-on-line (internal)  function  The list item of TREE beginning at the character POSITION (a line's start), or NIL.  lisp/org/fold.lisp
 tuatara.defaults:org-item-own-end (internal)  function  Where ITEM's own text ends: at its first sub-item, else at its end.  lisp/org/checklist.lisp
 tuatara.defaults:org-item-parser (internal)  function  The item at POSITION, in the list structure of its plain list.  lisp/org/syntax.lisp
@@ -6041,6 +6045,7 @@ tuatara.defaults:org-item-time (internal)  function  The time of day of an agend
 tuatara.defaults:org-item-title (internal)  function  The title of an agenda item.  lisp/org/agenda.lisp
 tuatara.defaults:org-item-type (internal)  function  The type of an agenda item, one of *ORG-AGENDA-ITEM-TYPES*.  lisp/org/agenda.lisp
 tuatara.defaults:org-item-urgency (internal)  function  The urgency of an agenda item, by which the agenda orders it.  lisp/org/agenda.lisp
+tuatara.defaults:org-items-to-shift (internal)  function  The list items of PARSE that \[org-metaright] and the like move, as a list, and whether they were selected as a second value: those whose first line is among the selection's lines; else the innermost item point is in.  lisp/org/items.lisp
 tuatara.defaults:org-job-text (internal)  function  The text JOB, as ORG-WANT-PARSE asks for it, has parsed, as Org reads it: two values, the text and where it lost a carriage return before a newline (ORG-STRIP-RETURNS).  lisp/org/parse.lisp
 tuatara.defaults:org-keep-whole-places (internal)  function  Note in each part of SNAPSHOT where it is in TREE, the whole parse made of it (ORG-ASSEMBLE's PLACES), and let go of the parses it holds of its own, the whole one now holding them.  lisp/org/parts.lisp
 tuatara.defaults:org-keyword-arguments (internal)  function  The settings TEXT gives as :KEY VALUE (:tangle ~/.bashrc :mkdirp yes), in order, as an alist of (KEY .  lisp/org/properties.lisp
@@ -6189,6 +6194,12 @@ tuatara.defaults:org-link-unescape (internal)  function  LINK, the target of a b
 tuatara.defaults:org-link-within (internal)  function  LINK, a stored link, as it is put in BUFFER: a file link to a headline of BUFFER's own file made a link within it (*Title, #id); another file link written from BUFFER's directory when the file is in it or under it.  lisp/org/linking.lisp
 tuatara.defaults:org-links-as-labels (internal)  function  TEXT with each bracket link written as it is shown: [[target][label]] as label, [[target]] as its target with the backslashes of its escapes taken off.  lisp/org/syntax.lisp
 tuatara.defaults:org-links-descriptive-p (internal)  function  True when BUFFER, an Org buffer, shows its links as their labels.  lisp/org/links.lisp
+tuatara.defaults:org-list-edits (internal)  function  The edits, (FROM TO NEW) of TEXT, giving each item of ENTRIES (ORG-LIST-ENTRIES) the column COLUMNS has for it and the bullet BULLETS has (hash tables), and moving the lines of its own text as far as its text moved; at the margin a * bullet, which would make a headline, becomes -.  lisp/org/items.lisp
+tuatara.defaults:org-list-entries (internal)  function  ITEMS and every item under them, in order, each as (ITEM .  lisp/org/items.lisp
+tuatara.defaults:org-list-moved-whole-edits (internal)  function  The edits, (FROM TO NEW) of TEXT, moving the whole list whose items are ENTRIES (ORG-LIST-ENTRIES) a column in, BY 1, or out, BY -1, all its lines with it; a string saying why when it is at the margin already.  lisp/org/items.lisp
+tuatara.defaults:org-list-new-bullets (internal)  function  The bullets of the items of ENTRIES (ORG-LIST-ENTRIES) once each stands under its parent of PARENTS (ORG-LIST-NEW-PARENTS), as a hash table: in each list whose items changed, the first numbered from 1 and each after it the bullet of the one before it; elsewhere the bullets they have.  lisp/org/items.lisp
+tuatara.defaults:org-list-new-parents (internal)  function  Where each item of ENTRIES (ORG-LIST-ENTRIES of a whole list) stands when the items TARGETS holds (a hash table) are set in a level, BY 1, or out, BY -1: a hash table of each item's new parent, NIL at the top.  lisp/org/items.lisp
+tuatara.defaults:org-list-shift-edits (internal)  function  The edits, (FROM TO NEW) of TEXT, setting the items TARGETS holds (a hash table) of the whole list whose items are ENTRIES (ORG-LIST-ENTRIES) in a level, BY 1, or out, BY -1.  lisp/org/items.lisp
 tuatara.defaults:org-list-structure (internal)  function  The items of the list whose first item is at START, below LIMIT: a list of (BEGIN INDENT BULLET COUNTER CHECKBOX TAG END), in order, as org-list reads them.  lisp/org/syntax.lisp
 tuatara.defaults:org-listed-headline-ends (internal)  function  The first and the last, as a cons, of the headlines under PARENT that are written, which are the ones a list is begun and ended by; worked out once for each PARENT.  lisp/org/latex.lisp
 tuatara.defaults:org-log-edit (internal)  function  The edit, (FROM TO NEW) of TEXT's characters, logging LINES for OWNER, a headline or a list item with a checkbox, newest first: at the top of its :LOGBOOK: drawer, one made where ORG-LOG-PLACE says when it has none; with DRAWER NIL, there with no drawer.  lisp/org/edit.lisp
@@ -6210,8 +6221,8 @@ tuatara.defaults:org-merge-tags (internal)  function  The tags of a headline who
 tuatara.defaults:org-merged-ranges (internal)  function  The ranges ONE and TWO, each a list of (START END ...) in order of START, as one list in that order, those of ONE first where two start together.  lisp/org/indent.lisp
 tuatara.defaults:org-meta-return (internal)  function  A new item or headline after what point is in and all under it: in a list, an item of the same kind after the one point is in and all under it (its bullet, the next number, [ ] when it has a checkbox).  lisp/org/edit.lisp
 tuatara.defaults:org-metadown (internal)  function  In an Org table, move the row down; else move the subtree down (\`M-j').  lisp/org/tables.lisp
-tuatara.defaults:org-metaleft (internal)  function  In an Org table, move the column left; else promote the headline (\`M-h').  lisp/org/tables.lisp
-tuatara.defaults:org-metaright (internal)  function  In an Org table, move the column right; else demote the headline (\`M-l').  lisp/org/tables.lisp
+tuatara.defaults:org-metaleft (internal)  function  In an Org table, move the column left; on a list item, set it out a level, or every item the selection's lines begin; else promote the headline (\`M-h').  lisp/org/tables.lisp
+tuatara.defaults:org-metaright (internal)  function  In an Org table, move the column right; on a list item, set it in a level under the item before it, or every item the selection's lines begin; else demote the headline (\`M-l').  lisp/org/tables.lisp
 tuatara.defaults:org-metaup (internal)  function  In an Org table, move the row up; else move the subtree up (\`M-k').  lisp/org/tables.lisp
 tuatara.defaults:org-minute (internal)  function  The universal TIME without its seconds, as a timestamp keeps it.  lisp/org/clock.lisp
 tuatara.defaults:org-mode (internal)  function  Switch the current buffer to org-mode.  lisp/modes/org.lisp
@@ -6275,6 +6286,7 @@ tuatara.defaults:org-open-under (internal)  function  What keeps HEADLINE from b
 tuatara.defaults:org-option-default (internal)  function  What the word KEY of #+OPTIONS: stands for when a note does not give it (*ORG-OPTION-DEFAULTS*).  lisp/org/export-core.lisp
 tuatara.defaults:org-option-default-note (internal)  function  The words "Not set: NAME:VALUE" for the option WRITTEN ("NAME:VALUE"), the value of *ORG-OPTION-DEFAULTS*, and what more is said of it.  lisp/org/keywords.lisp
 tuatara.defaults:org-options-pairs (internal)  function  The options an #+OPTIONS: line gives, LINE being what follows the keyword: each KEY:VALUE as (KEY .  lisp/org/export-core.lisp
+tuatara.defaults:org-outermost-list (internal)  function  The plain list holding ITEM that no item holds: the whole list ITEM is in, its sub-lists with it.  lisp/org/items.lisp
 tuatara.defaults:org-overview (internal)  function  Show only the headlines of the first level of PARSE's buffer, all else folded.  lisp/org/fold.lisp
 tuatara.defaults:org-own-words-p (internal)  function  True when BUFFER's Org file is visited as usual: not safely (TUATARA.IO:SAFE-VISIT-P), and may be written.  lisp/org/pictures.lisp
 tuatara.defaults:org-page-run (internal)  function  NODE's page (ORG-PAGE-SETTING), and as second and third values whether a run of pages so begins and ends with it: elements side by side with the same page share them, the drawers and keywords between not counting.  lisp/org/export-settings.lisp
@@ -6479,11 +6491,13 @@ tuatara.defaults:org-set-checkbox (internal)  function  Set ITEM's checkbox, of 
 tuatara.defaults:org-set-tags-command (internal)  function  Set the tags of the headline point is under (\`C-c C-q'): asked for with its tags offered, work urgent or :work:urgent:, nothing for none; they go at the end of its line, where *ORG-TAGS-COLUMN* says, by default one space after its text.  lisp/org/edit.lisp
 tuatara.defaults:org-set-todo (internal)  function  Set the TODO keyword of the headline point is in to the one STEP (1 or -1) from it in the document's sequence (ORG-KEYWORD-SEQUENCE), none past either end; from none, or from a keyword the sequence passes over, the first with STEP 1 and the last with -1.  lisp/org/edit.lisp
 tuatara.defaults:org-set-todo-to (internal)  function  Set the TODO keyword of the headline point is in to KEYWORD, NIL for none, as ORG-PUT-TODO sets it.  lisp/org/edit.lisp
+tuatara.defaults:org-shift-item (internal)  function  Set ITEM of PARSE (an ORG-PARSE) alone a level in, BY 1, or out, BY -1, in one step to undo, point kept on its character.  lisp/org/items.lisp
+tuatara.defaults:org-shift-items (internal)  function  Set the list item point is in a level in, BY 1, or out, BY -1, or every item the selection's lines begin; with SUBTREE, the items under each with it.  lisp/org/items.lisp
 tuatara.defaults:org-shift-levels (internal)  function  TEXT with each of its headings BY levels deeper (shallower when negative, never above the first).  lisp/org/refile.lisp
 tuatara.defaults:org-shiftleft (internal)  function  On a headline, its TODO keyword before, none before the first.  lisp/org/edit.lisp
 tuatara.defaults:org-shiftmetadown (internal)  function  In an Org table, put an empty row above this one (\`M-S-<down>').  lisp/org/tables.lisp
-tuatara.defaults:org-shiftmetaleft (internal)  function  In an Org table, delete the column; else promote the subtree (\`M-H').  lisp/org/tables.lisp
-tuatara.defaults:org-shiftmetaright (internal)  function  In an Org table, put an empty column before this one; else demote the subtree (\`M-L').  lisp/org/tables.lisp
+tuatara.defaults:org-shiftmetaleft (internal)  function  In an Org table, delete the column; on a list item, set it out a level with the items under it; else promote the subtree (\`M-H').  lisp/org/tables.lisp
+tuatara.defaults:org-shiftmetaright (internal)  function  In an Org table, put an empty column before this one; on a list item, set it in a level with the items under it; else demote the subtree (\`M-L').  lisp/org/tables.lisp
 tuatara.defaults:org-shiftmetaup (internal)  function  In an Org table, delete the row point is in (\`M-S-<up>').  lisp/org/tables.lisp
 tuatara.defaults:org-shiftright (internal)  function  On a headline, its next TODO keyword, as \[org-todo] does.  lisp/org/edit.lisp
 tuatara.defaults:org-show-id (internal)  function  Visit the Org file at PATH, with SAFE safely, and go to its headline whose ID is ID.  lisp/org/links.lisp

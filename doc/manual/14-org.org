@@ -198,7 +198,8 @@ The keys that move the cursor, held with Alt, move headings.
 
 Taking a star away is called promoting, and adding one is called demoting.
 The arrow keys with Alt do the same as the letters. Each move is one step
-for undo.
+for undo. On a list item ~M-h~ and ~M-l~ move the item instead, as the
+next section shows, and in a table they move a column.
 
 To jump to a heading by name, press ~M-g o~, which chapter 13 describes. It
 lists every heading of the note, and typing a few letters narrows the list.
@@ -287,6 +288,27 @@ plus, a star, =1.= and =1)=, and a list at the left edge skips the star. That
 is the quick way to turn a plain list into a numbered one.
 ~TAB~ on an item that has sub-items or more lines under it folds it, as on a
 heading.
+
+The keys that change a heading's level move items too, when the cursor is on
+one.
+
+| Modal | Non-modal     | What it does to the item the cursor is on                 |
+|-------+---------------+-----------------------------------------------------------|
+| none  | ~M-l~ / ~M-h~ | Sets it in under the item above it, or out a level        |
+| none  | ~M-L~ / ~M-H~ | The same, with the sub-items under it                     |
+| none  | ~TAB~         | On an empty item, sets it in, and in or out on each press |
+
+An item set in goes where the text of the item above it begins, and becomes
+its last sub-item. Select lines with ~V~ and ~J~ first, and ~M-l~ or ~M-h~
+moves every item that begins on them. The first item of a list cannot be
+set in alone, as there is nothing above it to go under; ~M-L~ and ~M-H~ on
+it move the whole list a column. An item with sub-items is set out with
+~M-H~, which takes them along. Numbered items are numbered again.
+
+~TAB~ on an item with nothing after its bullet, the one ~M-RET~ has just
+made, sets it in a level. Each ~TAB~ after it sets it further in while it can
+go, then out a level at a time, and at the end puts it back where it was.
+On an item with words in it, ~TAB~ folds as before.
 
 *** Checkboxes
 

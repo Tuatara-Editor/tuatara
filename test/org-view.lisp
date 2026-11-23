@@ -1028,3 +1028,109 @@ window draws them with (set-face :org-level-1 :height 2)."
       (true (search "Pictures are not shown here: " text) "~a" text)
       (true (find-if (lambda (span) (and (eq (third span) :help-key-binding) (= (first span) 29)))
                      (tuatara.command:text-spans text))))))
+
+(defun note-lines (&rest lines)
+  "LINES as the text of a note, each ended by a newline."
+  (format nil "~{~a~%~}" lines))
+
+;; a list set in four columns under a paragraph, its sub-items four further, as written by hand
+(defparameter *org-case-note*
+  (note-lines "#+options: toc:t tags:nil" "* Case Creation" "Forensic Procession Profile Custom"
+              "    - Generate System Summary, (enable this)" "    - Create Thumbnails for Videos" ""
+              "- Expansion Option" "    - Categories Browsers" "        - Select All" "* Next")
+  "An Org note with a list under a headline's paragraph, as written by hand.")
+
+(defun org-text-and-message (keys text)
+  "The text an Org session typing KEYS on TEXT leaves, and its last message."
+  (let ((editor (nth-value 1 (run-keys (format nil "M-x o r g - m o d e RET ~a" keys)
+                                       :text text :width 80 :height 14))))
+    (values (session-text editor) (tuatara.command:editor-message editor))))
+
+(define-modal-test (org list-items-set-in-and-out)
+  ;; M-l and M-h set the item point is on in and out, as Emacs's org-indent-item and org-outdent-item do
+  ;; (what Emacs 31 leaves is written here), the headline left as it is
+  (let ((list (format nil "* H~%- a~%- b~%  - b1~%  - b2~%- c~%  text of c~%- d~%")))
+    (flet ((after (keys) (org-text-and-message keys list)))
+      (is string= (format nil "* H~%- a~%  - b~%  - b1~%  - b2~%- c~%  text of c~%- d~%") (after "j j M-l"))
+      (is string= (format nil "* H~%- a~%- b~%- b1~%  - b2~%- c~%  text of c~%- d~%") (after "j j j M-h"))
+      (is string= (format nil "* H~%- a~%- b~%  - b1~%  - b2~%  - c~%    text of c~%- d~%") (after "j j j j j M-l"))
+      (is string= list (after "j j M-l M-h"))
+      ;; M-L and M-H take the items under it along; at a list's first item, the whole list
+      (is string= (format nil "* H~%- a~%  - b~%    - b1~%    - b2~%- c~%  text of c~%- d~%") (after "j j M-L"))
+      (is string= (format nil "* H~%- a~%- b~%- b1~%  - b2~%- c~%  text of c~%- d~%") (after "j j j M-H"))
+      (is string= (format nil "* H~% - a~% - b~%   - b1~%   - b2~% - c~%   text of c~% - d~%") (after "j M-L"))
+      ;; the selection's items, each
+      (is string= (format nil "* H~%- a~%- b~%- b1~%- b2~%- c~%  text of c~%- d~%") (after "j j j V J M-h"))
+      (is string= (format nil "* H~%- a~%  - b~%    - b1~%    - b2~%  - c~%    text of c~%- d~%")
+          (after "j j V J J J M-l"))
+      ;; what cannot move is said, nothing changed
+      (multiple-value-bind (text said) (after "j M-l")
+        (is string= list text)
+        (true (search "At first item" said) "~a" said))
+      (multiple-value-bind (text said) (after "j j j j j M-h")
+        (is string= list text)
+        (is string= "Cannot outdent top-level items" said))
+      (multiple-value-bind (text said) (after "j j M-h")
+        (is string= list text)
+        (is string= "Cannot outdent an item without its children" said))
+      (multiple-value-bind (text said) (after "j V J M-l")
+        (is string= list text)
+        (is string= "Cannot indent the first item of a list" said))
+      (multiple-value-bind (text said) (after "j M-H")
+        (is string= list text)
+        (is string= "Cannot outdent beyond margin" said))))
+  ;; numbered items numbered again
+  (is string= (format nil "* H~%1. a~%   1. b~%2. c~%")
+      (org-text-and-message "j j M-l" (format nil "* H~%1. a~%2. b~%3. c~%")))
+  ;; a list set in from the margin under a paragraph: the item under the one before it, at its text
+  (let ((note *org-case-note*))
+    (flet ((after (keys) (org-text-and-message keys note)))
+      (is string= (note-lines "#+options: toc:t tags:nil" "* Case Creation" "Forensic Procession Profile Custom"
+                              "    - Generate System Summary, (enable this)" "      - Create Thumbnails for Videos" ""
+                              "- Expansion Option" "    - Categories Browsers" "        - Select All" "* Next")
+          (after "j j j j M-l"))
+      (is string= note (after "j j j j M-l M-h"))
+      (is string= note (after "j j j j M-l M-l M-h"))
+      ;; the selection's items, those under a moved one at its text
+      (is string= (note-lines "#+options: toc:t tags:nil" "* Case Creation" "Forensic Procession Profile Custom"
+                              "    - Generate System Summary, (enable this)" "      - Create Thumbnails for Videos" ""
+                              "      - Expansion Option" "        - Categories Browsers" "          - Select All"
+                              "* Next")
+          (after "j j j j V J J J J M-l")))))
+
+(define-modal-test (org list-item-moves-drawn-at-once)
+  ;; after M-l and M-h on items, and M-l on a headline, every row shows what a window opened on the text shows
+  (dolist (keys '("j j j j M-l" "j j j j V J J J J M-l" "j M-l" "j j j j M-l M-h"))
+    (multiple-value-bind (lines editor) (org-screen keys :text *org-case-note* :height 14)
+      (is equal (org-screen "" :text (session-text editor) :height 14) lines "after ~a" keys))))
+
+(define-modal-test (org empty-item-tab-cycles-its-level)
+  ;; TAB on an item with nothing after its bullet sets it in, further in while it can go, out, and back, as
+  ;; Emacs's org-cycle-item-indentation does (what Emacs 31 leaves after each TAB is written here)
+  (flet ((after (text line tabs)
+           (org-text-and-message (format nil "~{~a ~}A~{ ~a~}" (make-list line :initial-element "j")
+                                         (make-list tabs :initial-element "TAB"))
+                                 text)))
+    (let ((second (format nil "* H~%- one~%- ")))
+      (is string= (format nil "* H~%- one~%  - ") (after second 2 1))
+      (is string= second (after second 2 2))
+      (is string= (format nil "* H~%- one~%  - ") (after second 2 3)))
+    (let ((deep (format nil "* H~%- one~%  - two~%    - three~%- ")))
+      (is string= (format nil "* H~%- one~%  - two~%    - three~%  - ") (after deep 4 1))
+      (is string= (format nil "* H~%- one~%  - two~%    - three~%    - ") (after deep 4 2))
+      (is string= (format nil "* H~%- one~%  - two~%    - three~%      - ") (after deep 4 3))
+      (is string= deep (after deep 4 4))
+      (is string= (format nil "* H~%- one~%  - two~%    - three~%  - ") (after deep 4 5)))
+    (let ((last (format nil "* H~%- one~%  - two~%  - ")))
+      (is string= (format nil "* H~%- one~%  - two~%    - ") (after last 3 1))
+      (is string= (format nil "* H~%- one~%  - two~%- ") (after last 3 2))
+      (is string= last (after last 3 3)))
+    (is string= (format nil "* H~%1. one~%   1. ") (after (format nil "* H~%1. one~%2. ") 2 1))
+    (is string= (format nil "* H~%- [ ] one~%  - [ ] ") (after (format nil "* H~%- [ ] one~%- [ ] ") 2 1))
+    ;; the first item has nowhere to go
+    (multiple-value-bind (text said) (after (format nil "* H~%- ") 1 1)
+      (is string= (format nil "* H~%- ") text)
+      (is string= "Cannot move item" said))
+    ;; an item with text keeps TAB's folding, as in Emacs
+    (let ((text (format nil "* H~%- one~%- two")))
+      (is string= text (after text 2 1)))))

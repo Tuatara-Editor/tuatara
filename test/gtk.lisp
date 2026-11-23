@@ -390,6 +390,24 @@ Adwaita Mono 11 on ao-dark."
         (is equalp (with-painting-window (g) (painted-pixels g (frame 5) width height))
             (painted-pixels f (frame 5) width height))))))
 
+;; Org's indented view sets a headline's lines two columns further in when it is demoted, as M-l does
+(define-test (gtk rows-set-further-in-painted-whole)
+  ;; rows whose text moved further in, the blanks before it more blanks, the rest the same: painted as when
+  ;; painted whole, not only where the first character changed
+  (with-painting-window (f)
+    (flet ((frame (in)
+             (tuatara.frontend.gtk:make-frame
+              (coerce (loop for text in '("Forensic Procession Profile Custom" "    - Generate System Summary"
+                                          "    - Create Thumbnails for Videos" "- Expansion Option")
+                            collect (list (format nil "~a~a" (tuatara.text:spaces in) text) nil '()))
+                      'vector))))
+      (let ((width (+ 12 (* 50 (tuatara.frontend.gtk::cell-width f))))
+            (height (+ 8 (* 4 (tuatara.frontend.gtk::cell-height f)))))
+        (painted-pixels f (frame 2) width height)
+        ;; painted on the rows kept first: a window made after would have them painted afresh
+        (let ((kept (painted-pixels f (frame 4) width height)))
+          (is equalp (with-painting-window (g) (painted-pixels g (frame 4) width height)) kept))))))
+
 (define-test (gtk rows-unchanged-make-nothing)
   ;; a frame the same as the one before, its rows made anew as the editor makes them, makes nothing of what its
   ;; rows show to compare, nor looks for the text moved; one row changed makes that row's alone

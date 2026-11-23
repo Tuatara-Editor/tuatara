@@ -429,21 +429,26 @@ A field holding =FORMULA or :=FORMULA makes it a formula of the table, worked ou
   (unless (org-table-move-row 1) (org-move-subtree :down)))
 
 (define-command org-metaleft ()
-  "In an Org table, move the column left; else promote the headline (\\`M-h')."
-  (unless (org-table-move-column -1) (org-promote nil -1)))
+  "In an Org table, move the column left; on a list item, set it out a level,
+or every item the selection's lines begin; else promote the headline
+\(\\`M-h')."
+  (unless (or (org-table-move-column -1) (org-shift-items -1 nil)) (org-promote nil -1)))
 
 (define-command org-metaright ()
-  "In an Org table, move the column right; else demote the headline (\\`M-l')."
-  (unless (org-table-move-column 1) (org-promote nil 1)))
+  "In an Org table, move the column right; on a list item, set it in a level
+under the item before it, or every item the selection's lines begin; else
+demote the headline (\\`M-l')."
+  (unless (or (org-table-move-column 1) (org-shift-items 1 nil)) (org-promote nil 1)))
 
 (define-command org-shiftmetaleft ()
-  "In an Org table, delete the column; else promote the subtree (\\`M-H')."
-  (unless (org-table-delete-column) (org-promote t -1)))
+  "In an Org table, delete the column; on a list item, set it out a level
+with the items under it; else promote the subtree (\\`M-H')."
+  (unless (or (org-table-delete-column) (org-shift-items -1 t)) (org-promote t -1)))
 
 (define-command org-shiftmetaright ()
-  "In an Org table, put an empty column before this one; else demote the
-subtree (\\`M-L')."
-  (unless (org-table-insert-column) (org-promote t 1)))
+  "In an Org table, put an empty column before this one; on a list item, set
+it in a level with the items under it; else demote the subtree (\\`M-L')."
+  (unless (or (org-table-insert-column) (org-shift-items 1 t)) (org-promote t 1)))
 
 (define-command org-shiftmetaup ()
   "In an Org table, delete the row point is in (\\`M-S-<up>')."
@@ -455,9 +460,11 @@ subtree (\\`M-L')."
 
 (defun install-org-tables ()
   "Bind Org's table keys: \\`M-h' \\`M-j' \\`M-k' \\`M-l' (and the arrows) move a
-table's columns and rows, else headlines; \\`M-H' and \\`M-L' delete and insert
-columns, else promote and demote subtrees; \\`C-c -' puts a rule below a
-table row, and gives a list its next kind of bullet."
+table's columns and rows, else set list items out and in, else move
+headlines; \\`M-H' and \\`M-L' delete and insert columns, else set items out
+and in with the items under them, else promote and demote subtrees;
+\\`C-c -' puts a rule below a table row, and gives a list its next kind of
+bullet."
   (let ((keymap (mode-keymap 'org-mode)))
     (define-keys keymap '(("M-j" org-metadown) ("M-k" org-metaup) ("M-<down>" org-metadown) ("M-<up>" org-metaup)
                           ("M-h" org-metaleft) ("M-l" org-metaright) ("M-<left>" org-metaleft)

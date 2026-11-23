@@ -441,6 +441,10 @@ bullets while *ORG-LIST-ALLOW-ALPHABETICAL*; made once."
   "The start of a list item's first line up to its checkbox, [ ], [X] or [-],
 as the parser reads one; the checkbox is a group.")
 
+(defparameter *org-empty-item-scanner*
+  (cl-ppcre:create-scanner (concatenate 'string "^" *org-bullet-re* "(?:[ \\t]+\\[[ X-]\\])?[ \\t]*$"))
+  "A list item's first line with nothing after its bullet and its checkbox.")
+
 (defparameter *org-full-item-re*
   (concatenate 'string
               "[ \\t]*((?:[-+*]|(?:[0-9]+|[A-Za-z])[.)])(?:[ \\t]+|$))(?:\\[@(?:start:)?([0-9]+|[A-Za-z])\\][ \\t]*)?"

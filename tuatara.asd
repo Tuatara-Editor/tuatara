@@ -5,7 +5,7 @@
   :description "Tuatara: an Emacs-shaped editor in Common Lisp."
   :author "Michael A Jones <yardquit@pm.me>"
   :license "GPL-3.0-or-later"
-  :version "0.90.41"
+  :version "0.90.42"
   :depends-on ("tuatara/core")
   :in-order-to ((test-op (test-op "tuatara/tests"))))
 

@@ -357,7 +357,9 @@ SCHEDULED:, DEADLINE:), a drawer's :END:, or a line inside a drawer."
   "On a headline, fold its subtree to its headline alone, then show its
 children's headlines, then all of it, and fold it again, a step each time.
 On a list item with something under it, the same for
-the item (*org-cycle-include-plain-lists*). On a drawer's first line
+the item (*org-cycle-include-plain-lists*). On an empty list item, set it in
+a level, then on each \\`TAB' after it in and out through the levels it may
+take, and back where it was. On a drawer's first line
 \(:LOGBOOK:), fold or open the drawer; on a planning line (CLOSED:,
 SCHEDULED:, DEADLINE:), a drawer's :END: or a line inside a drawer, nothing,
 so that what Org keeps there stays as written. In a table, align it and go
@@ -379,8 +381,12 @@ to the next field. After a snippet's key (<s for a source block), the snippet
     ;; planning lines and a drawer's lines: left as Org writes them
     (when (org-line-kept-from-tab-p buffer start line)
       (return-from org-cycle))
-    ;; a line that is no headline, table, template or list item to fold: indented, the file not parsed for it
+    ;; a line that is no headline, table, template, empty item or list item to fold: indented, the file not
+    ;; parsed for it
     (unless (or headline-table-or-template
+                (cl-ppcre:scan *org-empty-item-scanner* line)
+                (and (eq (editor-last-command *editor*) 'org-cycle)
+                     (tuatara.buffer:buffer-local buffer 'org-item-cycle))
                 (and *org-cycle-include-plain-lists* (cl-ppcre:scan (org-item-line-scanner) line)))
       (return-from org-cycle (indent-for-tab-command)))
     ;; a list item of a large file whose parse is not ready: said, the parse under way
@@ -404,6 +410,7 @@ to the next field. After a snippet's key (<s for a source block), the snippet
            (headline (and tree (org-headline-on-line tree text (org-parse-point parse)))))
       (cond ((expand-snippet-at-point))
             (headline (org-cycle-headline parse headline))
+            ((and tree (org-cycle-item-indentation parse)))
             ((and *org-cycle-include-plain-lists* tree
                   (let ((item (org-item-on-line tree (string-line-start text (org-parse-point parse)))))
                     (and item (org-cycle-item parse item)))))

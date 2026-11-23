@@ -4,10 +4,6 @@ Tuatara, an editor in Common Lisp after the ideas of Emacs, for the terminal and
 
 (Written before the release is published.)
 
-Renamed, the old name gone:
-
-- `toc-org-insert-toc` is now `org-update-toc` (`M-x org-update-toc` makes a note's table of contents again).
-
 ## Getting it
 
 For x86-64 Linux. Download what you need and `SHA256SUMS`, and check them first:
