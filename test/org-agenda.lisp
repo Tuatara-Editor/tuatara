@@ -13,24 +13,24 @@
              (setf tuatara.defaults::*org-clock* nil))))
     ;; into a :LOGBOOK: drawer made after the headline, its planning line and properties, as Org puts it
     (is string= (format nil "* TODO Task~%:LOGBOOK:~%CLOCK: [T]--[T] => D~%:END:~%Body~%* Next~%")
-        (clocked "C-c C-x C-i C-c C-x C-o" (format nil "* TODO Task~%Body~%* Next~%")))
+        (clocked "C-c C-x I C-c C-x O" (format nil "* TODO Task~%Body~%* Next~%")))
     (is string= (format nil "* TODO Task~%SCHEDULED: <2026-10-02 Fri>~%:PROPERTIES:~%:ID: x~%:END:~%:LOGBOOK:~%CLOCK: [T]--[T] => D~%:END:~%Body~%")
-        (clocked "C-c C-x C-i C-c C-x C-o"
+        (clocked "C-c C-x I C-c C-x O"
                  (format nil "* TODO Task~%SCHEDULED: <2026-10-02 Fri>~%:PROPERTIES:~%:ID: x~%:END:~%Body~%")))
     ;; into the drawer there, the newest first; from the body too
     (is string= (format nil "* Task~%:LOGBOOK:~%CLOCK: [T]--[T] => D~%CLOCK: [T]--[T] => D~%- Note~%:END:~%Body~%")
-        (clocked "j j j C-c C-x C-i C-c C-x C-o"
+        (clocked "j j j C-c C-x I C-c C-x O"
                  (format nil "* Task~%:LOGBOOK:~%CLOCK: [2026-09-30 Wed 10:00]--[2026-09-30 Wed 11:15] =>  1:15~%- Note~%:END:~%Body~%")))
     ;; running: an open line; cancelled: gone, with the drawer it made
     (is string=
         (format nil "* Task~%:LOGBOOK:~%CLOCK: [T]~%:END:~%Body~%")
-        (clocked "C-c C-x C-i" (format nil "* Task~%Body~%")))
-    (is string= (format nil "* Task~%Body~%") (clocked "C-c C-x C-i C-c C-x C-q" (format nil "* Task~%Body~%")))
+        (clocked "C-c C-x I" (format nil "* Task~%Body~%")))
+    (is string= (format nil "* Task~%Body~%") (clocked "C-c C-x I C-c C-x C" (format nil "* Task~%Body~%")))
     ;; a headline at the end of the text, no newline after it
-    (is string= (format nil "* Task~%:LOGBOOK:~%CLOCK: [T]~%:END:~%") (clocked "C-c C-x C-i" "* Task"))
+    (is string= (format nil "* Task~%:LOGBOOK:~%CLOCK: [T]~%:END:~%") (clocked "C-c C-x I" "* Task"))
     ;; clocking in elsewhere clocks out first
     (is string= (format nil "* A~%:LOGBOOK:~%CLOCK: [T]--[T] => D~%:END:~%* B~%:LOGBOOK:~%CLOCK: [T]~%:END:~%")
-        (clocked "C-c C-x C-i g e C-c C-x C-i" (format nil "* A~%* B~%"))))
+        (clocked "C-c C-x I g e C-c C-x I" (format nil "* A~%* B~%"))))
   ;; C-c C-c on a clock line writes its duration again, as Org does
   (is string= (format nil "* Task~%CLOCK: [2026-10-01 Thu 17:30]--[2026-10-01 Thu 19:00] =>  1:30~%")
       (org-text-after "j C-c C-c"
@@ -39,11 +39,11 @@
       (org-text-after "j C-c C-c" (format nil "* T~%CLOCK: [2026-10-01 Thu 17:30]--[2026-10-03 Sat 09:05]~%")))
   ;; before the first headline: said
   (true (tuatara.frontend.fake:fake-frame-showing
-         (run-keys "M-x o r g - m o d e RET C-c C-x C-i" :text (format nil "Text~%") :width 80 :height 8)
+         (run-keys "M-x o r g - m o d e RET C-c C-x I" :text (format nil "Text~%") :width 80 :height 8)
          "Not under a headline"))
   (setf tuatara.defaults::*org-clock* nil)
   ;; while it runs, the mode line shows it; SPC a O clocks out from anywhere
-  (let ((f (run-keys "M-x o r g - m o d e RET C-c C-x C-i C-x b o t h e r C-j SPC a O"
+  (let ((f (run-keys "M-x o r g - m o d e RET C-c C-x I C-x b o t h e r C-j SPC a O"
                      :text (format nil "* TODO Write the report~%")
                      :width 80
                      :height 8)))
@@ -51,7 +51,7 @@
     (true (tuatara.frontend.fake:fake-frame-showing f "Clock stopped")))
   (is eq nil tuatara.defaults::*org-clock*)
   ;; quitting with a clock running asks first
-  (let ((f (run-keys "M-x o r g - m o d e RET C-c C-x C-i C-x C-c" :text (format nil "* Task~%") :width 100 :height 8)))
+  (let ((f (run-keys "M-x o r g - m o d e RET C-c C-x I C-x C-c" :text (format nil "* Task~%") :width 100 :height 8)))
     (true (tuatara.frontend.fake:fake-frame-showing f "clock out before quitting?")))
   (setf tuatara.defaults::*org-clock* nil))
 
@@ -492,9 +492,9 @@ help left out."
           ;; the next week and back, the day, the log
           (showing "SPC a a a l" "Week-agenda (W41):" "Monday      5 October 2026 W41")
           (showing "SPC a a a l h h" "Week-agenda (W39):")
-          (showing "SPC a a a D" "Day-agenda (W40):" "Thursday    1 October 2026")
+          (showing "SPC a a a C-c D" "Day-agenda (W40):" "Thursday    1 October 2026")
           ;; a day's agenda of another day has its time grid too
-          (showing "SPC a a a D l" "Friday      2 October 2026" "8:00 ┄┄┄┄┄ ┄┄┄")
+          (showing "SPC a a a C-c D l" "Friday      2 October 2026" "8:00 ┄┄┄┄┄ ┄┄┄")
           (showing "SPC a a a L" "Closed:     DONE Deadline done" "Log mode is on")
           (multiple-value-bind (f editor b) (agenda "SPC a a a l g h")
             (declare (ignore editor))
@@ -528,7 +528,7 @@ help left out."
                            (point-line b)))))
             (is equal '("Week-agenda (W40):" "Thursday    1 October 2026") (header-and-line "SPC a a a l g l"))
             (is string= "Week-agenda (W41):" (first (header-and-line "SPC a a a l g l g l")))
-            (let ((back (header-and-line "SPC a a a j j D g l")))
+            (let ((back (header-and-line "SPC a a a j j C-c D g l")))
               (is string= "Week-agenda (W40):" (first back))
               (true (search "10:00 ┄┄┄┄┄ ┄┄┄" (second back))))
             (is string=
@@ -541,10 +541,10 @@ help left out."
           (showing "SPC a w" "Week-agenda (W40):")
           (showing "SPC a m" "Month-agenda (W40-W44):" "Saturday   31 October 2026")
           (showing "SPC a y" "Year-agenda (W01-W53):")
-          ;; and in the agenda, on their own: w m Y the spans, D the day, a the views to choose from
-          (showing "SPC a a a m" "Month-agenda (W40-W44):")
-          (showing "SPC a a a D w" "Week-agenda (W40):")
-          (showing "SPC a a a Y" "Year-agenda (W01-W53):")
+          ;; and in the agenda, on their own: C-c W C-c M C-c Y the spans, C-c D the day, a the views to choose from
+          (showing "SPC a a a C-c M" "Month-agenda (W40-W44):")
+          (showing "SPC a a a C-c D C-c W" "Week-agenda (W40):")
+          (showing "SPC a a a C-c Y" "Year-agenda (W01-W53):")
           (showing "SPC a a a a t" "Global list of TODO items of type: ALL")
           (showing "SPC a s" "SPC a s is undefined")
           ;; the TODO list, a match, the untagged tasks; C-u 2 r the tasks with the second keyword
@@ -628,7 +628,7 @@ help left out."
             (false (search "NEXT Plain scheduled" (alexandria:read-file-into-string tasks))))
           ;; clocking out from the agenda saves the clock's file too
           (let ((tuatara-user:*org-agenda-autosave-files* t))
-            (after "SPC a a t I O")
+            (after "SPC a a t C-c I C-c O")
             (true (search "=>  0:00" (alexandria:read-file-into-string tasks))))
           ;; with large agenda files (here: any), the agenda is drawn in the background, at first and again
           ;; after a change from it
@@ -669,9 +669,9 @@ help left out."
                         (after "SPC a a t C-c C-q u r g e n t RET")))
           (true (search (format nil "SCHEDULED: <2026-09-30 Wed>~%- Note taken on [2026-10-01 Thu 18:00] \\\\~%  Called back~%")
                         (after "SPC a a t C-c C-z C a l l e d SPC b a c k RET")))
-          ;; I clocks in on the entry, O clocks out
+          ;; C-c I clocks in on the entry, C-c O clocks out
           (true (search (format nil "SCHEDULED: <2026-09-30 Wed>~%:LOGBOOK:~%CLOCK: [2026-10-01 Thu 18:00]--[2026-10-01 Thu 18:00] =>  0:00~%:END:")
-                        (after "SPC a a t I O")))
+                        (after "SPC a a t C-c I C-c O")))
           ;; s saves the agenda files changed, an Org buffer not on the agenda left unsaved
           (let* ((other-path (merge-pathnames "other.org" dir))
                  (other (progn
@@ -856,7 +856,7 @@ help left out."
       (alexandria:write-string-into-file (format nil "* Other~%* Write the minutes~%Body~%") file)
       (unwind-protect
            (progn
-             (multiple-value-bind (f editor) (run-keys "j C-c C-x C-i C-x C-s C-x k C-x a j"
+             (multiple-value-bind (f editor) (run-keys "j C-c C-x I C-x C-s C-x k C-x a j"
                                                        :file file
                                                        :width 80
                                                        :height 12)
@@ -896,7 +896,7 @@ help left out."
              (setf tuatara.defaults::*org-clock* nil)
              (let ((start (namestring (merge-pathnames "start.org" dir))))
                (alexandria:write-string-into-file (format nil "* Task~%") start)
-               (run-keys "C-c C-x C-i" :file start :width 80 :height 12)
+               (run-keys "C-c C-x I" :file start :width 80 :height 12)
                (true tuatara.defaults::*org-clock*)
                (is string= (format nil "* Task~%:LOGBOOK:~%CLOCK: [2026-10-26 Mon 14:40]~%:END:~%")
                    (alexandria:read-file-into-string start))
@@ -914,7 +914,7 @@ help left out."
                                      (apply write text path options)))
                (unwind-protect
                     (let ((tuatara.defaults::*save-wait* 0))
-                      (run-keys "C-c C-x C-i C-x a o" :file slow :width 80 :height 12))
+                      (run-keys "C-c C-x I C-x a o" :file slow :width 80 :height 12))
                  (sb-int:unencapsulate 'tuatara.io::write-text-file 'held)
                  (sb-thread:signal-semaphore held 2))
                (false tuatara.defaults::*org-clock*)
@@ -930,7 +930,7 @@ help left out."
              (setf tuatara.defaults::*org-clock* nil)
              (let ((undone (namestring (merge-pathnames "undone.org" dir))))
                (alexandria:write-string-into-file (format nil "* Task~%") undone)
-               (run-keys "C-c C-x C-i C-c C-x C-q" :file undone :width 80 :height 12)
+               (run-keys "C-c C-x I C-c C-x C" :file undone :width 80 :height 12)
                (false tuatara.defaults::*org-clock*)
                (is string= (format nil "* Task~%") (alexandria:read-file-into-string undone)))
              ;; a note with changes of your own not saved is left for you to save
@@ -1001,11 +1001,11 @@ help left out."
       (false (tuatara.frontend.fake:fake-frame-showing f "UNSIGNED-BYTE")))
     ;; the clock's messages show the time of day
     (true (tuatara.frontend.fake:fake-frame-showing
-           (run-keys "M-x o r g - m o d e RET C-c C-x C-i" :text (format nil "* Task~%") :width 80 :height 10)
+           (run-keys "M-x o r g - m o d e RET C-c C-x I" :text (format nil "* Task~%") :width 80 :height 10)
            "Clock starts at 09:00: Task"))
     (setf tuatara.defaults::*org-clock* nil)
     ;; clocking out in a buffer made read-only keeps the clock running
-    (run-keys "M-x o r g - m o d e RET C-c C-x C-i M-x r e a d - o n l y - m o d e RET C-c C-x C-o"
+    (run-keys "M-x o r g - m o d e RET C-c C-x I M-x r e a d - o n l y - m o d e RET C-c C-x O"
               :text (format nil "* Task~%")
               :width 80
               :height 10)
@@ -1013,12 +1013,12 @@ help left out."
     (setf tuatara.defaults::*org-clock* nil)
     ;; and so does cancelling it there, its line kept
     (is string= (format nil "* Task~%:LOGBOOK:~%CLOCK: [T]~%:END:~%")
-        (org-masked-times (session-text (nth-value 1 (run-keys "M-x o r g - m o d e RET C-c C-x C-i M-x r e a d - o n l y - m o d e RET C-c C-x C-q"
+        (org-masked-times (session-text (nth-value 1 (run-keys "M-x o r g - m o d e RET C-c C-x I M-x r e a d - o n l y - m o d e RET C-c C-x C"
                                                                :text (format nil "* Task~%") :width 80 :height 10)))))
     (true tuatara.defaults::*org-clock*)
     (setf tuatara.defaults::*org-clock* nil)
     ;; killing the buffer of the clock stops it
-    (multiple-value-bind (f editor) (run-keys "M-x o r g - m o d e RET C-c C-x C-i"
+    (multiple-value-bind (f editor) (run-keys "M-x o r g - m o d e RET C-c C-x I"
                                               :text (format nil "* Task~%")
                                               :width 120
                                               :height 10)
@@ -1073,7 +1073,7 @@ help left out."
       (is string= "* Two :b:..." (string-right-trim " " (tuatara.frontend.fake:fake-screen-line f 2)))
       (is string= "* Three :c:" (string-right-trim " " (tuatara.frontend.fake:fake-screen-line f 3))))
     ;; and the clock running on a headline between them keeps its line: clocking out finishes it
-    (let ((editor (nth-value 1 (run-keys "M-x o r g - m o d e RET j j C-c C-x C-i g g M-x o r g - a l i g n - a l l - t a g s RET C-c C-x C-o"
+    (let ((editor (nth-value 1 (run-keys "M-x o r g - m o d e RET j j C-c C-x I g g M-x o r g - a l i g n - a l l - t a g s RET C-c C-x O"
                                          :text lined-up :width 100 :height 12))))
       (true (search "=>  0:00" (session-text editor)))
       (false tuatara.defaults::*org-clock*))
@@ -1308,7 +1308,7 @@ help left out."
                     (let ((cells (tuatara.defaults::org-agenda-item-cells item)))
                       (list (aref cells 3) (aref cells 5) (aref cells 6)))))))
           ;; another day's grid goes with its date when that date has nothing left
-          (let ((text (agenda "SPC a a a D l C-x / s n o t h i n g RET")))
+          (let ((text (agenda "SPC a a a C-c D l C-x / s n o t h i n g RET")))
             (true (uiop:string-prefix-p "Filtered by nothing: 0 of " (first-line text)))
             (false (search "┄┄┄" text))
             (false (search "October" text)))
@@ -1343,7 +1343,7 @@ help left out."
                     (first-line text))
               (false (search "Plain scheduled" text))))
           ;; another span or view is shown whole, the filters gone
-          (dolist (keys '("SPC a a a C-x / s m e e t i n g RET l" "SPC a a a C-x / s m e e t i n g RET D"
+          (dolist (keys '("SPC a a a C-x / s m e e t i n g RET l" "SPC a a a C-x / s m e e t i n g RET C-c D"
                           "SPC a a a C-x / s m e e t i n g RET a t"))
             (let ((text (agenda keys)))
               (false (search "Filtered by" text) "~a: ~a" keys (first-line text))
@@ -1651,7 +1651,7 @@ help left out."
                                                                           :log nil)))))))
 
 (define-test (org cancel-one-time)
-  ;; C-c C-x C on a repeating entry asks: t cancels one time, noted in its log, the rest
+  ;; C-c X on a repeating entry asks: t cancels one time, noted in its log, the rest
   ;; going on; s the series; any other key nothing
   (let ((tuatara.defaults::*org-now* (encode-universal-time 0 0 9 27 10 2026))
         (tuatara-user:*org-standard-todo-keywords* '(("TODO") . ("DONE" "CANCELLED")))
@@ -1659,28 +1659,28 @@ help left out."
     ;; its time open now: moved on as done moves it, its checkboxes cleared
     (is string= (format nil "* TODO Pay bills~%SCHEDULED: <2026-10-28 Wed +1d>~%:PROPERTIES:~%:LAST_REPEAT: [2026-10-27 Tue 09:00]~%:END:~%~
                              - State \"CANCELLED\"  for [2026-10-27 Tue] [2026-10-27 Tue 09:00]~%- [ ] Paper~%")
-        (org-text-after "C-c C-x C t" task))
+        (org-text-after "C-c X t" task))
     (is string=
         (format nil
                 "* CANCELLED Pay bills~%CLOSED: [2026-10-27 Tue 09:00] SCHEDULED: <2026-10-27 Tue +1d>~%- [X] Paper~%")
-        (org-text-after "C-c C-x C s" task))
-    (is string= task (org-text-after "C-c C-x C x" task))
+        (org-text-after "C-c X s" task))
+    (is string= task (org-text-after "C-c X x" task))
     ;; one not repeating is not asked
     (is string= (format nil "* CANCELLED Once~%CLOSED: [2026-10-27 Tue 09:00] SCHEDULED: <2026-10-27 Tue>~%")
-        (org-text-after "C-c C-x C" (format nil "* TODO Once~%SCHEDULED: <2026-10-27 Tue>~%")))
+        (org-text-after "C-c X" (format nil "* TODO Once~%SCHEDULED: <2026-10-27 Tue>~%")))
     ;; a time to come, as the agenda gives it: noted, the date as it was
     (let ((tuatara.defaults::*org-agenda-occurrence* (cons (tuatara.dates:day-number 2026 10 28) nil)))
       (is string= (format nil "* TODO Pay bills~%SCHEDULED: <2026-10-27 Tue +1d>~%- State \"CANCELLED\"  for [2026-10-28 Wed] [2026-10-27 Tue 09:00]~%- [X] Paper~%")
-          (org-text-after "C-c C-x C t" task)))
+          (org-text-after "C-c X t" task)))
     ;; done the day before a cancelled one: on past it
     (true (search "SCHEDULED: <2026-10-29 Thu +1d>"
                   (org-text-after "C-c C-t" (format nil "* TODO Pay bills~%SCHEDULED: <2026-10-27 Tue +1d>~%- State \"CANCELLED\"  for [2026-10-28 Wed] [2026-10-26 Mon 10:00]~%"))))
     ;; a task by rule: the day it is open for, LAST_REPEAT that day
     (true (search ":LAST_REPEAT: [2026-10-27 Tue 10:00]"
-                  (org-text-after "C-c C-x C t" (format nil "* TODO Team~%SCHEDULED: <%%(memq (calendar-day-of-week date) '(1 2 3 4 5)) 10:00>~%"))))
+                  (org-text-after "C-c X t" (format nil "* TODO Team~%SCHEDULED: <%%(memq (calendar-day-of-week date) '(1 2 3 4 5)) 10:00>~%"))))
     ;; an entry that is no task: its first time from today, noted, nothing moved
     (is string= (format nil "* Medication~%- State \"CANCELLED\"  for [2026-10-27 Tue 08:00] [2026-10-27 Tue 09:00]~%<2026-10-20 Tue 08:00 +1d>~%<2026-10-20 Tue 20:00 +1d>~%")
-        (org-text-after "C-c C-x C t"
+        (org-text-after "C-c X t"
                         (format nil "* Medication~%<2026-10-20 Tue 08:00 +1d>~%<2026-10-20 Tue 20:00 +1d>~%"))))
   ;; the agenda: a time cancelled listed as such, faint, never told; the others as they were
   (uiop:with-temporary-file (:pathname path :type "org")
@@ -1770,7 +1770,7 @@ help left out."
             "yesterday's line, and today's, not its last")))))
 
 (define-modal-test (org agenda-cancel-one-time)
-  ;; C-c C-x C t on a line of the agenda cancels the time of that line, a day to come too
+  ;; C-c X t on a line of the agenda cancels the time of that line, a day to come too
   (uiop:with-temporary-file (:pathname path :type "org")
     (with-open-file (o path :direction :output :if-exists :supersede :external-format :utf-8)
       (format o "* TODO Pay bills~%SCHEDULED: <2026-10-27 Tue +1d>~%"))
@@ -1783,7 +1783,7 @@ help left out."
                                                     (loop while (find-if #'tuatara.runtime:job-running-p
                                                                          tuatara.runtime:*jobs*)
                                                           do (sleep 0.01)))
-                                                  :tick "j j j C-c C-x C t")
+                                                  :tick "j j j C-c X t")
                                             :width 100 :height 30)))
              (buffer (tuatara.io:visit-file (namestring path))))
         (declare (ignore editor))
@@ -1919,7 +1919,7 @@ help left out."
   ;; nothing left to cancel, a time moved in its log: said, nothing changed
   (let ((tuatara.defaults::*org-now* (encode-universal-time 0 0 9 26 10 2026))
         (event (format nil "* Course~%<%%(diary-block 2026 1 1 2026 1 5)>~%- State \"MOVED\"      for [2026-01-02 Fri] to [2026-01-03 Sat] [2026-01-01 Thu 09:00]~%")))
-    (is string= event (org-text-after "C-c C-x C t" event))
+    (is string= event (org-text-after "C-c X t" event))
     (true (search "No time of it is left to cancel" (messages-text)))))
 
 (define-modal-test (org agenda-move-one-time)
@@ -2149,7 +2149,8 @@ help left out."
 
 (define-test (org c-c-hints-line-up)
   ;; C-c on a heading: what acts on it under its title, the rest under it, the columns at the
-  ;; same places in both; the prefixes under it named
+  ;; same places in both (a key may stand in a different column of each group, as the groups
+  ;; are of different lengths); the prefixes under it named
   (let* ((f (run-keys-in-turns (list "M-x o r g - m o d e RET C-c" "")
                                :text (format nil "* TODO Thing~%")
                                :width 110
@@ -2158,7 +2159,16 @@ help left out."
          (deadline (find-if (lambda (row) (search "C-d org-deadline" row)) rows))
          (formula (find-if (lambda (row) (search "= org-table-eval-formula" row)) rows)))
     (true (and deadline formula))
-    (is = (search "C-d org-deadline" deadline) (search "= org-table-eval-formula" formula))
+    ;; the two keys may stand in different columns, the groups being of different lengths, but
+    ;; every column starts at a multiple of one width: the first cell start after a gap
+    (let* ((hints (member-if (lambda (row) (search "heading at point" row)) rows))
+           (width (loop for row in hints
+                        for gap = (cl-ppcre:scan "(?<=\\S)  +(?=\\S)" row)
+                        for cell = (and gap (position #\Space row :start gap :test-not #'char=))
+                        when cell minimize cell)))
+      (true width)
+      (dolist (start (list (search "C-d org-deadline" deadline) (search "= org-table-eval-formula" formula)))
+        (is = 0 (mod start width))))
     (true (find-if (lambda (row) (search "C-x +clock, blocks and more" row)) rows))
     (true (find-if (lambda (row) (search "C-v +code files" row)) rows))))
 
@@ -2585,7 +2595,7 @@ help left out."
           (tuatara.defaults::org-agenda-todo-keywords (list one two))))))
 
 (define-modal-test (org agenda-cancel-and-rotation)
-  ;; in the agenda T goes TODO to WAIT and C-c C-x C cancels; the TODO list holds WAIT, leaves CANCELLED out as DONE
+  ;; in the agenda T goes TODO to WAIT and C-c X cancels; the TODO list holds WAIT, leaves CANCELLED out as DONE
   (with-test-directory (dir)
     (let* ((file (namestring (merge-pathnames "jobs.org" dir)))
            (tuatara.defaults::*org-agenda-files* (list file))
@@ -2601,7 +2611,7 @@ help left out."
         (run-keys "SPC a a t C-c C-t" :width 100 :height 20)
         (is string= (format nil "* WAIT Call Ngaio~%") (text))
         (fresh (format nil "* WAIT Call Ngaio~%"))
-        (run-keys "SPC a a t C-c C-x C" :width 100 :height 20)
+        (run-keys "SPC a a t C-c X" :width 100 :height 20)
         (is string= (format nil "* CANCELLED Call Ngaio~%CLOSED: [2026-10-01 Thu 18:00]~%") (text))
         (fresh (format nil "* TODO Call Ngaio~%* WAIT Parts~%* CANCELLED Fence~%* DONE Gate~%"))
         (let ((f (run-keys "SPC a a t" :width 100 :height 20)))
@@ -2927,16 +2937,6 @@ buffer of FILE killed first."
              (false (search "runs again: Gone" (messages-text))))
         (setf tuatara.defaults::*org-clock* nil)))))
 
-(define-test (org clock-in-from-a-terminal)
-  ;; C-c C-x C-i reaches a terminal as C-c C-x TAB, which clocks in as well
-  (let ((tuatara.defaults::*org-now* (encode-universal-time 0 0 9 2 10 2026)))
-    (unwind-protect
-         (multiple-value-bind (f editor) (run-keys "M-x o r g - m o d e RET C-c C-x TAB"
-                                                   :text (format nil "* Task~%") :width 80 :height 10)
-           (declare (ignore f))
-           (true (search "CLOCK: [2026-10-02 Fri 09:00]" (session-text editor)) "~a" (session-text editor)))
-      (setf tuatara.defaults::*org-clock* nil))))
-
 (define-test (org agenda-reminders)
   ;; a reminder (tag :reminder:) says Reminder: in the column of kinds, whether its time is a timestamp or SCHEDULED:;
   ;; one time, no duration; faint once past; a scheduled one stays on its day; a date alone is over after its day
@@ -3011,3 +3011,36 @@ buffer of FILE killed first."
     (is string= (format nil "* Ring Ngaio :reminder:notify:~%SCHEDULED: <2026-10-27 Tue 10:00>~%")
         (org-text-after "M-x o r g - m a k e - r e m i n d e r RET 2 0 2 6 - 1 0 - 2 7 SPC 1 0 : 0 0 RET"
                         (format nil "* Ring Ngaio~%")))))
+
+(define-test (org agenda-clock-keys-under-c-c)
+  ;; the clock's keys in the agenda under C-c, capital letters as SPC a has them: C cancels the
+  ;; clock, J goes to its task (J alone selects the next line), and C-c X cancels the task
+  (flet ((key (sequence)
+           (tuatara.command:lookup-key tuatara.defaults::*org-agenda-keymap*
+                                       (tuatara.frontend:parse-key-sequence sequence))))
+    (is eq 'tuatara.defaults::org-agenda-clock-cancel (key "C-c C"))
+    (is eq 'tuatara.defaults::org-clock-goto (key "C-c J"))
+    (is eq 'tuatara.defaults::org-agenda-cancel-task (key "C-c X"))
+    (is eq 'tuatara.defaults::org-agenda-clock-in (key "C-c I"))
+    (is eq 'tuatara.defaults::org-agenda-clock-out (key "C-c O"))
+    (false (key "C-c C-x C"))
+    (is eq 'tuatara.defaults::org-agenda-day-view (key "C-c D"))
+    (is eq 'tuatara.defaults::org-agenda-year-view (key "C-c Y"))
+    (is eq 'tuatara.defaults::org-agenda-week-view (key "C-c W"))
+    (is eq 'tuatara.defaults::org-agenda-month-view (key "C-c M"))
+    (dolist (letter '("I" "O" "C" "D" "Y" "w" "m"))
+      (false (key letter) "~a" letter)))
+  ;; in Org files the clock is under C-c C-x in capitals, C-c X cancels the task, and neither the
+  ;; Emacs keys (C-c C-x C-i and the rest) nor C-c I, O, J and C are bound
+  (flet ((key (sequence)
+           (tuatara.command:lookup-key (tuatara.modes:mode-keymap 'tuatara.defaults::org-mode)
+                                       (tuatara.frontend:parse-key-sequence sequence))))
+    (is eq 'tuatara.defaults::org-clock-in (key "C-c C-x I"))
+    (is eq 'tuatara.defaults::org-clock-out (key "C-c C-x O"))
+    (is eq 'tuatara.defaults::org-clock-goto (key "C-c C-x J"))
+    (is eq 'tuatara.defaults::org-clock-cancel (key "C-c C-x C"))
+    (is eq 'tuatara.defaults::org-cancel-task (key "C-c X"))
+    (is eq 'tuatara.export::org-macro-unwrap (key "C-c M"))
+    (dolist (old '("C-c C-x C-i" "C-c C-x TAB" "C-c C-x C-o" "C-c C-x C-q" "C-c C-x C-j" "C-c I" "C-c O"
+                   "C-c J" "C-c C"))
+      (false (key old) "~a" old))))

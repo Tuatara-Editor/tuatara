@@ -3,7 +3,7 @@
 ;;;;
 ;;;; An item with a checkbox, - [ ] call Anna Raglan, is a task as a TODO
 ;;;; headline is: the agenda lists it (an open box TODO, a ticked one DONE), and
-;;;; C-c C-t ticks it, C-c C-x C-i clocks in on it and C-c C-z notes on it, on
+;;;; C-c C-t ticks it, C-c C-x I clocks in on it and C-c C-z notes on it, on
 ;;;; its line in the file or on its line in the agenda. What is logged of it
 ;;;; goes into a :LOGBOOK: drawer of its own, set in under it, newest first, as
 ;;;; Org lets a drawer stand in an item; Emacs keeps those lines, and counts

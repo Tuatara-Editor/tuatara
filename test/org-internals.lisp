@@ -186,7 +186,7 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
     (flet ((after (keys text)
              (prog1 (org-text-after keys text) (setf tuatara.defaults::*org-clock* nil))))
       (is string= (format nil "* TODO Task~%Body~%:LOGBOOK:~%CLOCK: [2026-10-01 Thu 18:00]--[2026-10-01 Thu 18:00] =>  0:00~%- old~%:END:~%More~%")
-          (after "C-c C-x C-i C-c C-x C-o" (format nil "* TODO Task~%~aMore~%" body)))
+          (after "C-c C-x I C-c C-x O" (format nil "* TODO Task~%~aMore~%" body)))
       (is string= (format nil "* TODO Task~%Body~%:LOGBOOK:~%- Note taken on [2026-10-01 Thu 18:00] \\\\~%  hi~%- old~%:END:~%More~%")
           (after "C-c C-z h i RET" (format nil "* TODO Task~%~aMore~%" body)))
       (is string= (format nil "* TODO Task~%SCHEDULED: <2026-10-05 Mon +1w>~%:PROPERTIES:~%:LAST_REPEAT: [2026-10-01 Thu 18:00]~%:END:~%Body~%:LOGBOOK:~%- State \"DONE\"       from \"TODO\"       [2026-10-01 Thu 18:00]~%- old~%:END:~%")
@@ -195,7 +195,7 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
           (after "C-c C-s 2 0 2 6 - 1 0 - 0 5 RET" (format nil "* TODO Task~%SCHEDULED: <2026-09-28 Mon>~%~a" body)))
       ;; none yet: one made after the planning line and properties, before another drawer
       (is string= (format nil "* TODO Task~%SCHEDULED: <2026-10-05 Mon>~%:PROPERTIES:~%:ID: x~%:END:~%:LOGBOOK:~%CLOCK: [2026-10-01 Thu 18:00]--[2026-10-01 Thu 18:00] =>  0:00~%:END:~%:NOTES:~%x~%:END:~%")
-          (after "C-c C-x C-i C-c C-x C-o"
+          (after "C-c C-x I C-c C-x O"
                  (format nil
                          "* TODO Task~%SCHEDULED: <2026-10-05 Mon>~%:PROPERTIES:~%:ID: x~%:END:~%:NOTES:~%x~%:END:~%")))
       (is string= (format nil "* TODO Task~%:LOGBOOK:~%- Note taken on [2026-10-01 Thu 18:00] \\\\~%  hi~%:END:~%:NOTES:~%x~%:END:~%")
@@ -207,11 +207,11 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
                    (format nil "* TODO Task~%SCHEDULED: <2026-10-05 Mon>~%:LOGBOOK:~%- old~%:END:~%Body~%"))))
       ;; a list item with a checkbox: its own drawer under it, each line on top
       (is string= (format nil "* Errands~%- [X] call Anna~%  :LOGBOOK:~%  - State \"DONE\"       from \"TODO\"       [2026-10-01 Thu 18:00]~%  - Note taken on [2026-10-01 Thu 18:00] \\\\~%    hi~%  CLOCK: [2026-10-01 Thu 18:00]--[2026-10-01 Thu 18:00] =>  0:00~%  :END:~%- [ ] buy milk~%")
-          (after "j C-c C-x C-i C-c C-x C-o C-c C-z h i RET C-c C-t"
+          (after "j C-c C-x I C-c C-x O C-c C-z h i RET C-c C-t"
                  (format nil "* Errands~%- [ ] call Anna~%- [ ] buy milk~%"))))))
 
 (define-modal-test (org-internals clock-in-alike-from-every-key)
-  ;; C-c C-x C-i in the file, I on the agenda's line: the same line in the same place, a task's or a checkbox item's
+  ;; C-c C-x I in the file and on the agenda's line: the same line in the same place, a task's or a checkbox item's
   (with-test-directory (dir)
     (let* ((file (merge-pathnames "work.org" dir))
            (tuatara.defaults::*org-agenda-files* (list (namestring file)))
@@ -223,7 +223,7 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
                (setf tuatara.defaults::*org-clock* nil)
                (alexandria:write-string-into-file text file :if-exists :supersede))
              (from-agenda ()
-               (run-keys "SPC a a t I" :width 100 :height 20)
+               (run-keys "SPC a a t C-c I" :width 100 :height 20)
                (prog1 (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "work.org"))
                  (setf tuatara.defaults::*org-clock* nil)))
              (in-file (keys text)
@@ -233,12 +233,12 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
           (let ((agenda (from-agenda)))
             (is string= (format nil "* TODO Write~%SCHEDULED: <2026-10-01 Thu>~%:PROPERTIES:~%:ID: w~%:END:~%:LOGBOOK:~%CLOCK: [2026-10-01 Thu 18:00]~%:END:~%Body~%")
                 agenda)
-            (is string= agenda (in-file "C-c C-x C-i" task))))
+            (is string= agenda (in-file "C-c C-x I" task))))
         (let ((items (format nil "* Errands~%- [ ] call Anna~%")))
           (fresh items)
           (let ((agenda (from-agenda)))
             (is string= (format nil "* Errands~%- [ ] call Anna~%  :LOGBOOK:~%  CLOCK: [2026-10-01 Thu 18:00]~%  :END:~%") agenda)
-            (is string= agenda (in-file "j C-c C-x C-i" items))))
+            (is string= agenda (in-file "j C-c C-x I" items))))
         (fresh "")))))
 
 (define-test (org-internals links-shown-as-labels)

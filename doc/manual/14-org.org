@@ -426,7 +426,7 @@ and none again. ~S-<right>~ and ~S-<left>~ go forward and back through the
 same round. In NORMAL state ~RET~ on a task's line also moves it to the next
 keyword, and never leaves it without one. =CANCELLED= is left out of the
 round so that you do not cancel something by pressing a key once too often.
-~C-c C-x C~ cancels the task the cursor is in.
+~C-c X~ cancels the task the cursor is in.
 
 When a task becomes =DONE=, Tuatara writes a line under it that says when:
 
@@ -489,7 +489,7 @@ bar are open and those after it are closed:
 Two settings shape the round that ~C-c C-t~, ~S-<right>~ and ~RET~ make.
 =*org-todo-keywords-not-cycled*= lists the keywords the round passes over.
 Its standard is =("CANCELLED" "CANCELED")=, which is why the round is none,
-=TODO=, =WAIT=, =DONE= and none again, and why ~C-c C-x C~ is the way to
+=TODO=, =WAIT=, =DONE= and none again, and why ~C-c X~ is the way to
 cancel. It applies to the keywords of a file's own =#+TODO:= line too, and
 to the agenda's key for a task. With =(setf *org-todo-keywords-not-cycled*
 '("CANCELLED" "SOMEDAY"))=, a note with =#+TODO: TODO NEXT | DONE SOMEDAY
@@ -890,7 +890,7 @@ because the day and the time column already say it. =t= leaves it in.
 *** Moving about
 
 ~j~ and ~k~ move from line to line. ~l~ or ~C-f~ shows the next week, and ~h~
-or ~C-b~ the one before. ~g h~ comes back to today. ~D~, ~w~, ~m~ and ~Y~
+or ~C-b~ the one before. ~g h~ comes back to today. ~C-c D~, ~C-c W~, ~C-c M~ and ~C-c Y~
 change the span to a day, a week, a month or a year, and ~g l~ returns to the
 view you had before.
 ~RET~ opens the entry on the line in its file, and ~TAB~ shows it in another
@@ -907,16 +907,18 @@ once.
 You do not have to open a file to deal with a task. The keys below act on
 the entry of the line the cursor is on, and change it in its file.
 
-| Modal | Non-modal | What it does to the entry                               |
-|-------+-----------+---------------------------------------------------------|
-| none  | ~C-c C-t~ | Gives it the next keyword, as in the file               |
-| none  | ~C-c C-s~ | Schedules it for another day                            |
-| none  | ~C-c C-d~ | Gives it a deadline                                     |
-| none  | ~C-c C-q~ | Sets its tags                                           |
-| none  | ~C-c C-z~ | Adds a note to it                                       |
-| none  | ~I~ / ~O~ | Starts and stops the clock on it                        |
-| none  | ~u~       | Undoes the last change made from this agenda            |
-| none  | ~s~       | Saves every agenda file that has changes                |
+| Modal | Non-modal         | What it does to the entry                    |
+|-------+-------------------+----------------------------------------------|
+| none  | ~C-c C-t~         | Gives it the next keyword, as in the file    |
+| none  | ~C-c C-s~         | Schedules it for another day                 |
+| none  | ~C-c C-d~         | Gives it a deadline                          |
+| none  | ~C-c C-q~         | Sets its tags                                |
+| none  | ~C-c C-z~         | Adds a note to it                            |
+| none  | ~C-c I~ / ~C-c O~ | Starts and stops the clock on it             |
+| none  | ~C-c C~           | Cancels the clock, taking its line away      |
+| none  | ~C-c X~           | Cancels the task                             |
+| none  | ~u~               | Undoes the last change made from this agenda |
+| none  | ~s~               | Saves every agenda file that has changes     |
 
 These are the keys of the file itself. Changes made from the agenda are in the
 files' buffers and are not on disk until you press ~s~. If you want them saved as they are made, name the
@@ -958,7 +960,7 @@ entry in the setting is a pattern to copy.
 
 #+table: commands org-agenda org-agenda-list org-todo-list org-tags-view org-agenda-check-dates org-agenda-day-view org-agenda-week-view org-agenda-month-view org-agenda-year-view org-agenda-later org-agenda-earlier org-agenda-goto-today org-agenda-previous-view org-agenda-log-mode org-agenda-goto-calendar org-calendar-goto-agenda
 
-#+table: commands org-agenda-switch-to org-agenda-goto org-agenda-todo org-agenda-cancel-task org-agenda-schedule org-agenda-deadline org-agenda-set-tags org-agenda-add-note org-agenda-refile org-agenda-clock-in org-agenda-clock-out org-agenda-clock-cancel org-agenda-undo org-agenda-save-all-buffers org-save-all-org-buffers org-capture-on-day
+#+table: commands org-agenda-switch-to org-agenda-goto org-agenda-todo org-agenda-cancel-task org-agenda-schedule org-agenda-deadline org-agenda-set-tags org-agenda-add-note org-agenda-refile org-agenda-clock-in org-agenda-clock-out org-agenda-clock-cancel org-clock-goto org-agenda-undo org-agenda-save-all-buffers org-save-all-org-buffers org-capture-on-day
 
 #+table: settings *org-agenda-files* *org-agenda-span* *org-agenda-start-on-weekday* *org-agenda-log-mode* *org-agenda-refresh-minutes* *org-agenda-autosave-files* *org-agenda-custom-commands* *org-agenda-time-grid* *org-agenda-current-time-string* *org-agenda-category-width* *org-agenda-untimed-text* *org-agenda-event-kind-text* *org-agenda-task-kind-text* *org-agenda-reminder-kind-text* *org-reminder-tag* *org-agenda-date-in-title*
 
@@ -1130,14 +1132,13 @@ the agenda files:
 The clock records how long you spend on a task. It is for anyone who bills
 by the hour, and for anyone curious where a day went.
 
-~C-c C-x C-i~ starts the clock on the task the cursor is under. A line
+~C-c C-x I~ starts the clock on the task the cursor is under. A line
 beginning =CLOCK:= is written in the task's =:LOGBOOK:= drawer with the time
 you started. While the clock runs, the mode line of every window shows the
 time so far and the task's name, so you cannot forget it. Starting the clock
-on another task stops the first. A terminal sends =C-i= as =TAB=, so there
-the same keys arrive as ~C-c C-x TAB~, which starts the clock too.
+on another task stops the first.
 
-~C-x a o~ stops the clock from any buffer. The line is finished with the
+~C-x a o~ stops the clock from any buffer, and ~C-c C-x O~ in an Org file. The line is finished with the
 time you stopped and how long that was. With no clock running, it looks in
 your agenda files for one left running, as after a restart. When the files
 to read are large, it looks in the background and says so; the clock it
@@ -1152,9 +1153,10 @@ drawer and fold away with it. With =(setf *org-clock-into-drawer* nil)= the
 =CLOCK:= lines are written right under the heading instead.
 
 ~C-x a j~ takes you to the task that is being clocked, from wherever you
-are. ~C-c C-x C-q~ stops the clock and removes its line, for when you
-started it by mistake. In the agenda, ~I~ and ~O~ start and stop the clock
-on the line's entry. Large agenda files changed since they were last read are
+are, and ~C-c C-x J~ does the same in an Org file, ~C-c J~ in the agenda. ~C-c C-x C~ stops the clock and removes its line, for when you
+started it by mistake. In the agenda, ~C-c I~, ~C-c O~ and ~C-c C~
+start, stop and cancel the clock on the line's entry, the same letters
+as in an Org file, where they come after ~C-c C-x~. Large agenda files changed since they were last read are
 read in the background, as for tags, and their headings are offered once read.
 
 If you leave Tuatara while the clock runs, it asks whether to stop it. If

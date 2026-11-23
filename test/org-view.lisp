@@ -796,24 +796,24 @@ window draws them with (set-face :org-level-1 :height 2)."
         (is string= (format nil "* CANCELLED Gate~%") (after "C-c C-t C-c C-t C-c C-t" (format nil "* TODO Gate~%")))))))
 
 (define-modal-test (org cancel-task)
-  ;; C-c C-x C cancels a task: CANCELLED noted with CLOSED: as DONE is; one that repeats asks, s ending it where it is
+  ;; C-c X cancels a task: CANCELLED noted with CLOSED: as DONE is; one that repeats asks, s ending it where it is
   (let ((tuatara.defaults::*org-now* (encode-universal-time 0 0 18 1 10 2026))
         (tuatara-user:*org-log-done* :time))
     (is string= (format nil "* CANCELLED Gate~%CLOSED: [2026-10-01 Thu 18:00]~%Body~%")
-        (org-text-after "C-c C-x C" (format nil "* TODO Gate~%Body~%")))
+        (org-text-after "C-c X" (format nil "* TODO Gate~%Body~%")))
     (is string= (format nil "* CANCELLED Mow~%CLOSED: [2026-10-01 Thu 18:00] SCHEDULED: <2026-10-05 Mon +1w>~%")
-        (org-text-after "C-c C-x C s" (format nil "* WAIT Mow~%SCHEDULED: <2026-10-05 Mon +1w>~%")))
+        (org-text-after "C-c X s" (format nil "* WAIT Mow~%SCHEDULED: <2026-10-05 Mon +1w>~%")))
     ;; a file's own keywords: its CANCELED; with neither, said and nothing changed
     (is string= (format nil "#+TODO: TODO | DONE CANCELED~%* CANCELED Gate~%CLOSED: [2026-10-01 Thu 18:00]~%")
-        (org-text-after "j C-c C-x C" (format nil "#+TODO: TODO | DONE CANCELED~%* TODO Gate~%")))
+        (org-text-after "j C-c X" (format nil "#+TODO: TODO | DONE CANCELED~%* TODO Gate~%")))
     (let ((own (format nil "#+TODO: TODO | DONE~%* TODO Gate~%")))
-      (multiple-value-bind (lines editor) (org-screen "j C-c C-x C" :text own)
+      (multiple-value-bind (lines editor) (org-screen "j C-c X" :text own)
         (declare (ignore lines))
         (is string= own (session-text editor))
         (true (search "No CANCELLED" (messages-text)))))
     ;; a checkbox's line is refused, its heading left as it is
     (let ((errands (format nil "* TODO Errands~%- [ ] call Anna~%")))
-      (is string= errands (org-text-after "j C-c C-x C" errands)))))
+      (is string= errands (org-text-after "j C-c X" errands)))))
 
 (define-modal-test (org new-items-and-bullets)
   ;; M-RET: an item of the same kind after the one point is in and all under it, a checkbox carried over
@@ -863,7 +863,7 @@ window draws them with (set-face :org-level-1 :height 2)."
       (is string= (format nil "* Errands~%- [X] call Anna~%- [ ] buy milk~%") (org-text-after "j C-c C-t" text)))
     ;; clocked in and out on the item, its line in its own drawer
     (is string= (format nil "* Errands~%- [ ] call Anna~%  :LOGBOOK:~%  CLOCK: [2026-10-02 Fri 14:05]--[2026-10-02 Fri 14:05] =>  0:00~%  :END:~%- [ ] buy milk~%")
-        (org-text-after "j C-c C-x C-i C-c C-x C-o" text))
+        (org-text-after "j C-c C-x I C-c C-x O" text))
     (setf tuatara.defaults::*org-clock* nil)
     ;; a note
     (true (search (format nil "  :LOGBOOK:~%  - Note taken on [2026-10-02 Fri 14:05] \\\\~%    hi~%  :END:")

@@ -1179,11 +1179,12 @@ or on a headline, a headline of the section's level after its subtree."
 with tables, are bound by INSTALL-ORG-TABLES)."
   (let ((keymap (mode-keymap 'org-mode)))
     (define-keys keymap '(("C-c C-t" org-todo) ("S-<right>" org-shiftright) ("S-<left>" org-shiftleft)
-                          ("C-c C-x C" org-cancel-task)
+                          ("C-c X" org-cancel-task)
                           ("C-c C-q" org-set-tags-command) ("C-c C-z" org-add-note) ("C-c C-w" org-refile)
                           ("M-RET" org-meta-return) ("M-S-RET" org-insert-todo-heading)
                           ("C-c C-x C-u" org-dblock-update)
-                          ("C-c C-x x" org-dynamic-block-insert-dblock)))))
+                          ("C-c C-x x" org-dynamic-block-insert-dblock)))
+    (label-keys keymap '(("C-c C-x" "clock, blocks and more")))))
 
 ;;; Saving a note changed for you
 

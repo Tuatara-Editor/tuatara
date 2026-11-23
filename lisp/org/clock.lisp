@@ -1,11 +1,11 @@
 ;;;; lisp/org/clock.lisp --- Org's clock: time spent on a task, kept in its LOGBOOK, shown while it runs.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
-;;;; C-c C-x C-i clocks in on the headline point is under: a line CLOCK:
+;;;; C-c C-x I clocks in on the headline point is under: a line CLOCK:
 ;;;; [2026-10-01 Thu 17:30] goes into its :LOGBOOK: drawer, the newest first,
-;;;; after its planning line and properties, as Org puts it. C-c C-x C-o
+;;;; after its planning line and properties, as Org puts it. C-c C-x O
 ;;;; clocks out, the line finished with the time it ended and how long it
-;;;; ran (=> 1:12); C-c C-x C-q cancels it, the line taken away; C-c C-x C-j
+;;;; ran (=> 1:12); C-c C-x C cancels it, the line taken away; C-c C-x J
 ;;;; goes to the task. While it runs the mode line and the window's title
 ;;;; show [0:22] (Task); quitting asks whether to clock out first.
 
@@ -256,7 +256,7 @@ below the headline. Saved when that is BUFFER's only change
             (message "Clock starts at ~a: ~a" (format-time "%R" started) title))))))
 
 (define-command org-clock-in ()
-  "Clock in on the task point is under (\\`C-c C-x C-i'): CLOCK: and the time go into its :LOGBOOK: drawer, made
+  "Clock in on the task point is under (\\`C-c C-x I'): CLOCK: and the time go into its :LOGBOOK: drawer, made
 when it has none, after its planning line and properties; a clock running is
 clocked out first. While it runs, the mode line and the window's title show
 how long, and the task. On a list item's line with a checkbox, on that item:
@@ -304,7 +304,7 @@ buffer is narrowed to another part; the clock stops only once it is."
                      (string-left-trim " " (org-duration-text minutes)) (org-clock-task clock)))))))
 
 (define-command org-clock-out ()
-  "Clock out (\\`C-c C-x C-o', from any buffer \\`C-x a o'):
+  "Clock out (\\`C-c C-x O', from any buffer \\`C-x a o'):
 the clock's line finished with the time it ended and how long it ran; with
 none running, of the one left open in the agenda files (ORG-CLOCK-RUNNING).
 The note is saved at once when the clock's line is its only change, so
@@ -314,7 +314,7 @@ saved in it, it is left for you to save."
 
 (define-command org-clock-cancel ()
   "Stop the clock running and take its line away
-(\\`C-c C-x C-q'): its :LOGBOOK: drawer too, when nothing else is in it;
+(\\`C-c C-x C'): its :LOGBOOK: drawer too, when nothing else is in it;
 saved when that is its buffer's only change, as \\[org-clock-out] does."
   (let ((clock (org-clock-running)))
     (cond
@@ -346,10 +346,10 @@ saved when that is its buffer's only change, as \\[org-clock-out] does."
                (message "Clock cancelled: ~a" (org-clock-task clock)))))))))
 
 (define-command org-clock-goto ()
-  "Go to the task the clock runs on (\\`C-c C-x C-j', from any buffer \\`C-x a j'):
-its file opened again when its buffer was killed; with none running, one
-left open in the agenda files, as after a restart, runs again
-\(ORG-CLOCK-RUNNING)."
+  "Go to the task the clock runs on (\\`C-c C-x J', in the agenda \\`C-c J',
+from any buffer \\`C-x a j'): its file opened again when its buffer was
+killed; with none running, one left open in the agenda files, as after a
+restart, runs again \(ORG-CLOCK-RUNNING)."
   (let* ((clock (org-clock-running))
          (start (and clock (org-clock-live-buffer clock) (org-clock-line-start clock))))
     (if (null start)
@@ -402,16 +402,13 @@ finished CLOCK: line, write its duration again from its two times; true when it 
   t)
 
 (defun install-org-clock ()
-  "Bind Org's clock keys in Org buffers, under \\`C-c C-x' (clock, blocks and
-more), show the clock running, and ask about it before quitting."
+  "Bind Org's clock keys in Org buffers, \\`C-c C-x' and a capital letter as
+\\`SPC a' has them, show the clock running, and ask about it before quitting."
   (let ((keymap (mode-keymap 'org-mode)))
-    (define-key keymap "C-c C-x C-i" 'org-clock-in)
-    ;; C-i reaches a terminal as TAB
-    (define-key keymap "C-c C-x TAB" 'org-clock-in)
-    (define-key keymap "C-c C-x C-o" 'org-clock-out)
-    (define-key keymap "C-c C-x C-q" 'org-clock-cancel)
-    (define-key keymap "C-c C-x C-j" 'org-clock-goto)
-    (label-keys keymap '(("C-c C-x" "clock, blocks and more"))))
+    (define-key keymap "C-c C-x I" 'org-clock-in)
+    (define-key keymap "C-c C-x O" 'org-clock-out)
+    (define-key keymap "C-c C-x C" 'org-clock-cancel)
+    (define-key keymap "C-c C-x J" 'org-clock-goto))
   (pushnew 'org-clock-mode-line *mode-line-functions*)
   (pushnew 'org-clock-title *title-functions*)
   (pushnew 'org-clock-tick *tick-functions*)

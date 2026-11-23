@@ -1089,7 +1089,7 @@
   ;; (setf *org-standard-todo-keywords* '(("TODO" "NEXT") . ("DONE")))
 
   ;; C-c C-t, S-right and RET stop on CANCELLED too. Not set: they pass over
-  ;; CANCELLED, which C-c C-x C sets.
+  ;; CANCELLED, which C-c X sets.
   ;; (setf *org-todo-keywords-not-cycled* nil)
 
   ;; NEXT in WAIT's colour. Not set: WAIT and CANCELLED have their own.

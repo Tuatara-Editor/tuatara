@@ -552,11 +552,11 @@ or :HUNG, so that each of several sessions in a test says how it ended."
       (when (typep editor 'tuatara.command:editor) (is string= text (session-text editor)))))
   (with-test-directory (dir)
     (let* ((path (put-file (merge-pathnames "clock.org" dir) (format nil "* Task~%body~%more~%")))
-           (editor (keys-finish-within (list "C-c C-x C-i"
+           (editor (keys-finish-within (list "C-c C-x I"
                                                 (lambda () (let ((b (tuatara.command:current-buffer)))
                                                              (tuatara.buffer:narrow-buffer b (- (tuatara.buffer:buffer-size b) 5)
                                                                                            (tuatara.buffer:buffer-size b))))
-                                                "C-c C-x C-j C-c C-x C-o")
+                                                "C-c C-x J C-c C-x O")
                                        :file path :width 80)))
       (true (typep editor 'tuatara.command:editor) "~a" editor)
       (when (typep editor 'tuatara.command:editor)
@@ -568,13 +568,13 @@ or :HUNG, so that each of several sessions in a test says how it ended."
   ;; staying where it was; a change that fails leaves the clock running
   (with-test-directory (dir)
     (let* ((path (put-file (merge-pathnames "clock.org" dir) (format nil "* Task~%body~%more~%")))
-           (editor (nth-value 1 (narrowing-keys (list "C-c C-x C-i"
+           (editor (nth-value 1 (narrowing-keys (list "C-c C-x I"
                                    (lambda () (let ((b (tuatara.command:current-buffer)))
                                                 (tuatara.buffer:narrow-buffer b
                                                                               (- (tuatara.buffer:buffer-size b) 5)
                                                                               (tuatara.buffer:buffer-size b))
                                                 (setf (tuatara.buffer:buffer-point b) (tuatara.buffer:buffer-size b))))
-                                   "C-c C-x C-o")
+                                   "C-c C-x O")
                              :file path :width 80))))
       (let ((b (session-buffer editor)))
         (true (search "=>" (tuatara.buffer:buffer-string b)))
@@ -585,13 +585,13 @@ or :HUNG, so that each of several sessions in a test says how it ended."
     (let ((path (put-file (merge-pathnames "kept.org" dir) (format nil "* Task~%body~%"))))
       (unwind-protect
            (progn
-             (narrowing-keys (list "C-c C-x C-i"
+             (narrowing-keys (list "C-c C-x I"
                              (lambda ()
                                (push (lambda (buffer edits)
                                        (declare (ignore buffer edits))
                                        (error "Refused for the test"))
                                      tuatara.buffer:*before-edit-functions*))
-                             "C-c C-x C-o"
+                             "C-c C-x O"
                              (lambda () (pop tuatara.buffer:*before-edit-functions*)))
                        :file path :width 80)
              (true tuatara.defaults::*org-clock*))
@@ -602,13 +602,13 @@ or :HUNG, so that each of several sessions in a test says how it ended."
   ;; then lets the clock go
   (with-test-directory (dir)
     (let* ((path (put-file (merge-pathnames "clock.org" dir) (format nil "* Task~%body~%more~%")))
-           (editor (nth-value 1 (narrowing-keys (list "C-c C-x C-i"
+           (editor (nth-value 1 (narrowing-keys (list "C-c C-x I"
                                                       (lambda ()
                                                         (let ((b (tuatara.command:current-buffer)))
                                                           (tuatara.buffer:narrow-buffer b
                                                                                         (- (tuatara.buffer:buffer-size b) 5)
                                                                                         (tuatara.buffer:buffer-size b))))
-                                                      "C-c C-x C-q")
+                                                      "C-c C-x C")
                                                 :file path :width 80))))
       (unwind-protect
            (let ((b (session-buffer editor)))

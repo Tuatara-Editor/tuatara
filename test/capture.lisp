@@ -368,7 +368,7 @@ templates those in DIRECTORY's capture-templates/ (none unless a test makes them
         (setf tuatara.defaults::*org-clock* nil)))))
 
 (define-test (capture clocking-in-with-no-task-keeps-the-clock-running)
-  ;; C-c C-x C-i above the first headline says so and leaves the clock running, its line open
+  ;; C-c C-x I above the first headline says so and leaves the clock running, its line open
   (with-capture (dir agenda)
     (alexandria:write-string-into-file (format nil "#+title: Notes~%~%* Task~%Text~%") agenda :if-exists :supersede)
     (let ((buffer (tuatara.io:visit-file agenda)))
