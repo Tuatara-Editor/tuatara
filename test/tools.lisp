@@ -1159,7 +1159,10 @@ printf 'Source: foo\\nChecksums-Sha256:\\n %s 4 foo_1.0.orig.tar.xz\\nFiles:\\n 
     (true (search "cp build/$name build/$name.libraries.txt build/release/$name.library-sources.tar.zst dist/"
                   workflow))
     (false (search "legacy" workflow))
-    (false (search "legacy" appimage))))
+    (false (search "legacy" appimage))
+    ;; every call of tools/appimage.sh in the workflow is one it takes: it takes no argument
+    (true (search "run: tools/appimage.sh" workflow))
+    (false (cl-ppcre:scan "tools/appimage\\.sh [^\\s#]" workflow))))
 
 (define-test (tools legacy-styles-only)
   ;; --dark and --light go in the desktop entry only when the legacy AppImage installs itself

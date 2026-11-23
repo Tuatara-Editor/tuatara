@@ -61,7 +61,7 @@ jobs:
         run: tools/release.sh
 
       - name: The AppImage
-        run: tools/appimage.sh current
+        run: tools/appimage.sh
 
       - name: The Fedora, Ubuntu and Arch packages, each installed and run
         run: tools/distro-packages.sh --check
