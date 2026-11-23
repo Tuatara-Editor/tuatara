@@ -128,18 +128,16 @@ needs FUSE 2 for it first: =sudo pacman -S fuse2=.
 ** The AppImages
 
 One file, nothing installed, for a system the packages above do not cover.
-There are two; take the one your system's glibc fits (=ldd --version= says
-which glibc you have):
+=Tuatara-x86_64.AppImage= is for glibc 2.43 and GTK 4.20 or later (Ubuntu
+26.04, Fedora 44 and newer; =ldd --version= says which glibc you have). It
+brings GTK 4.20 or later, so its window follows the desktop's light or dark
+style, in the Ao theme's light or dark colours, unless your init file names a
+theme.
 
-- =Tuatara-x86_64.AppImage=, for glibc 2.43 or later (Ubuntu 26.04, Fedora
-  44 and newer). It brings GTK 4.20 or later, so its window follows the
-  desktop's light or dark style, in the Ao theme's light or dark colours,
-  unless your init file names a theme.
-- =Tuatara-legacy-x86_64.AppImage=, for glibc 2.39 to 2.42 (Ubuntu 24.04,
-  Debian 13, Fedora 40 to 43). Its GTK cannot learn the desktop's style, so
-  =--dark= and =--light= set the style of the window's title bar. Tuatara
-  0.90.40 is the last release with a legacy AppImage: later releases need
-  glibc 2.43 and GTK 4.20 or later.
+Tuatara 0.90.40 was the last release with a legacy AppImage, for older
+systems (glibc 2.39 to 2.42); it is in
+[[https://github.com/Tuatara-Editor/tuatara/releases/tag/0.90.40][release 0.90.40]]. Later releases need glibc 2.43 and GTK 4.20 or later; on an
+older system, use a package.
 
 On Arch and Omarchy, install FUSE 2 first (=sudo pacman -S fuse2=).
 
@@ -152,24 +150,21 @@ chmod +x Tuatara-x86_64.AppImage
 
 =--install-desktop= copies it to =~/.local/bin/tuatara= and puts Tuatara in the
 desktop's applications; run it again from a new AppImage, and after moving
-from the legacy AppImage to the other. The manual's chapter 20 says more about
+from the legacy AppImage of 0.90.40. The manual's chapter 20 says more about
 the desktop entry and the window's title bar.
 
 The libraries the AppImage brings (GTK 4 and what it needs) are Ubuntu
-26.04's, the legacy AppImage's Ubuntu 24.04's, at their newest versions on the
-day it was built. Each release has =Tuatara-x86_64.AppImage.libraries.txt=,
+26.04's, at their newest versions on the day it was built. Each release has =Tuatara-x86_64.AppImage.libraries.txt=,
 also inside the AppImage as =licenses/bundled-libraries.txt=: every bundled
 library with its package, exact version and SHA-256, so it can be checked
 against security advisories. The libraries come with their sources, as many of
 their licences (the LGPL among them) ask:
 =Tuatara-x86_64.AppImage.library-sources.tar.zst=, a file of the same release,
-holds the Ubuntu source package of each, at exactly the version bundled. The
-legacy AppImage's two files are named after it in the same way.
+holds the Ubuntu source package of each, at exactly the version bundled.
 
 ** Building the files yourself
 
-=tools/appimage.sh= makes the AppImage (=tools/appimage.sh legacy= the legacy
-one), and =tools/distro-packages.sh= the
+=tools/appimage.sh= makes the AppImage, and =tools/distro-packages.sh= the
 packages for Fedora (40 and newer), Ubuntu (24.04 and newer) and Arch, in
 =build/packages/=.
 
@@ -248,7 +243,7 @@ keys, faces and themes.
 
 * Status
 
-Version 0.90.40, a pre-release: in daily use by its author, its parts tested
+Version 0.90.41, a pre-release: in daily use by its author, its parts tested
 (=tools/test.sh=, about 225,000 checks), its interfaces still changing until
 1.0.0, the first stable release.
 

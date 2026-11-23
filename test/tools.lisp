@@ -1154,11 +1154,12 @@ printf 'Source: foo\\nChecksums-Sha256:\\n %s 4 foo_1.0.orig.tar.xz\\nFiles:\\n 
         (workflow (uiop:read-file-string (asdf:system-relative-pathname :tuatara ".github/workflows/release.yml"))))
     (true (search "library_sources=\"$root/build/release/$name.library-sources.tar.zst\"" appimage))
     (true (search "# Their sources, at exactly these versions: $(basename \"$library_sources\")" appimage))
-    ;; both AppImages, each with its manifest and the sources of its libraries
-    (true (search "for name in Tuatara-x86_64.AppImage Tuatara-legacy-x86_64.AppImage; do" workflow))
+    ;; the AppImage with its manifest and the sources of its libraries; no legacy one
+    (true (search "name=Tuatara-x86_64.AppImage" workflow))
     (true (search "cp build/$name build/$name.libraries.txt build/release/$name.library-sources.tar.zst dist/"
                   workflow))
-    (true (search "run: tools/appimage.sh legacy" workflow))))
+    (false (search "legacy" workflow))
+    (false (search "legacy" appimage))))
 
 (define-test (tools legacy-styles-only)
   ;; --dark and --light go in the desktop entry only when the legacy AppImage installs itself

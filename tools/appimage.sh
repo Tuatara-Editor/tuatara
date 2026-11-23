@@ -10,11 +10,6 @@
 # 2.43 or later, and its window follows the desktop's light or dark style, which
 # GTK 4.20 and later learn from the desktop; tools/distro-packages.sh
 # makes Fedora, Ubuntu and Arch packages of the same.
-# tools/appimage.sh legacy makes build/Tuatara-legacy-x86_64.AppImage instead,
-# the same with Ubuntu 24.04's libraries, for glibc 2.39 to 2.42 (Ubuntu 24.04,
-# Debian 13, Fedora 40 to 43): its GTK cannot learn the desktop's style, so its
-# launcher takes --dark and --light for the window's title bar. It is the last
-# of its kind; everything that makes it is in the legacy branches below.
 # The libraries
 # every system has its own of (glibc, the graphics drivers, fontconfig and the
 # rest of AppImage's exclude list) are the computer's. Spelling uses the
@@ -37,27 +32,18 @@
 # index and it against its .dsc) and packed, sorted and with fixed times and
 # owners, into build/release/Tuatara-x86_64.AppImage.library-sources.tar.zst,
 # the release file the manifest names, so that the release carries the
-# libraries' sources itself. The legacy AppImage's manifest and sources are
-# named after it likewise.
-# Usage: tools/appimage.sh [current|legacy]  (current when not given)
+# libraries' sources itself.
+# Usage: tools/appimage.sh
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
 . tools/containers.sh
 . tools/inside.sh
 . tools/fetch.sh
-image="${1:-current}"
-case "$image" in
-  current)
-    name=Tuatara-x86_64.AppImage
-    base_image="$ubuntu_current_image"
-    container=tuatara-appimage-libs ;;
-  legacy)
-    name=Tuatara-legacy-x86_64.AppImage
-    base_image="$ubuntu_image"
-    container=tuatara-appimage-legacy-libs ;;
-  *) echo "Usage: tools/appimage.sh [current|legacy]" >&2; exit 2 ;;
-esac
+[ $# -eq 0 ] || { echo "Usage: tools/appimage.sh" >&2; exit 2; }
+name=Tuatara-x86_64.AppImage
+base_image="$ubuntu_current_image"
+container=tuatara-appimage-libs
 tools_dir="$root/build/appimage-tools"
 appdir="$root/build/appimage/Tuatara.AppDir"
 out="$root/build/$name"
@@ -140,24 +126,13 @@ cp "$manifest" "$appdir/tuatara/licenses/bundled-libraries.txt"
 # back to the programs it starts (LEAVE-APPIMAGE-ENVIRONMENT), TUATARA_APPIMAGE
 # saying which AppImage it is; --install-desktop and --remove-desktop put it in
 # the desktop's applications and take it out (tools/install-desktop.sh, inside
-# it). The legacy AppImage's --dark or --light first shows the window's own
-# parts (its title bar) in GTK's dark or light style, which the GTK it brings
-# cannot learn from the desktop, --install-desktop --dark with the style kept
-# in the entry.
+# it).
 {
   cat <<'APPRUN'
 #!/bin/sh
 here="$(dirname "$(readlink -f "$0")")"
 APPRUN
-  if [ "$image" = legacy ]; then
-    cat <<'APPRUN'
-case "${1:-}" in
-  --dark) export GTK_THEME=Adwaita:dark; shift ;;
-  --light) export GTK_THEME=Adwaita; shift ;;
-esac
-APPRUN
-  fi
-  echo "export TUATARA_APPIMAGE=$image"
+  echo "export TUATARA_APPIMAGE=current"
   cat <<'APPRUN'
 case "${1:-}" in
   --install-desktop) shift; exec "$here/install-desktop.sh" --appimage "${APPIMAGE:?run the AppImage file itself}" "$@" ;;

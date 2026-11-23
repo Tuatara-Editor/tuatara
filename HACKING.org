@@ -108,9 +108,7 @@ lays out a directory to give to others, its program built from the last commit
 in a new directory of its own, =/tmp/tuatara-release-build.XXXXXX/=, so that it
 names no directory of the machine it was built on (it refuses one that names the
 home directory or the account); =tools/appimage.sh= makes an AppImage of it (it
-takes its libraries from Ubuntu 26.04, in a podman container; =tools/appimage.sh
-legacy= makes =build/Tuatara-legacy-x86_64.AppImage= with Ubuntu 24.04's, the
-last of its kind, whose launcher alone takes =--dark= and =--light=), and
+takes its libraries from Ubuntu 26.04, in a podman container), and
 =tools/distro-packages.sh= Fedora, Ubuntu and Arch packages (each made by its
 system's own tools in a podman container, made by =TUATARA_PACKAGER=, a name
 and address as "Name <address>", or else the project's name; =--check= installs
@@ -133,7 +131,7 @@ source package of every bundled library at exactly that version
 file against Ubuntu's signed index, and the script again against its =.dsc=,
 either stopping the build on a file that differs. It is a release file too, so
 that a release carries its libraries' sources itself, whatever Ubuntu's archive
-keeps. The legacy AppImage's manifest and sources are named after it.
+keeps.
 
 A release carries the Lisp sources in =source/= beside the program, for the
 links in help to where a name is defined.

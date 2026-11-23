@@ -16,7 +16,7 @@ For x86-64 Linux. Download what you need and `SHA256SUMS`, and check them first:
 sha256sum -c --ignore-missing SHA256SUMS
 ```
 
-**AppImage** is one file, nothing installed. `Tuatara-x86_64.AppImage` is for systems with glibc 2.43 or later (Ubuntu 26.04, Fedora 44 and newer); its window follows the desktop's light or dark style. `Tuatara-legacy-x86_64.AppImage` is for glibc 2.39 to 2.42 (Ubuntu 24.04, Debian 13, Fedora 40 to 43), and the only one that takes `--dark` and `--light`. `ldd --version` says which glibc you have. This is the last release with a legacy AppImage: later ones need glibc 2.43 and GTK 4.20 or later. Run it like this:
+**AppImage** is one file, nothing installed. `Tuatara-x86_64.AppImage` is for systems with glibc 2.43 or later (Ubuntu 26.04, Fedora 44 and newer); its window follows the desktop's light or dark style. `ldd --version` says which glibc you have. There is no legacy AppImage since 0.90.40, the last to have one; later ones need glibc 2.43 and GTK 4.20 or later. Run it like this:
 
 ```sh
 chmod +x Tuatara-x86_64.AppImage
@@ -47,6 +47,6 @@ Open an issue with the **bug** label: what you did, what you expected and what h
 
 ## Sources and licences
 
-Tuatara is GPL-3.0-or-later. `tuatara-sources.tar.zst` holds the sources this release is built from: Tuatara, the Lisp libraries compiled into it, Ghostty's terminal library, and tree-sitter with every grammar at its pinned commit. The licences of SBCL, of those libraries and of every grammar go with every file of the release (`licenses/` and `grammars/licenses/`), and are in `/usr/share/licenses/tuatara/` once a package is installed. The AppImage bundles libraries of Ubuntu 26.04, the legacy AppImage those of Ubuntu 24.04 (GTK 4, GLib, Cairo, Pango and what they need, many under the LGPL): `Tuatara-x86_64.AppImage.libraries.txt` lists each with its exact version, and `Tuatara-x86_64.AppImage.library-sources.tar.zst` holds the source of each at that version; the legacy AppImage's two files are named after it in the same way. Their licences are inside each AppImage, in `licenses/libraries/`.
+Tuatara is GPL-3.0-or-later. `tuatara-sources.tar.zst` holds the sources this release is built from: Tuatara, the Lisp libraries compiled into it, Ghostty's terminal library, and tree-sitter with every grammar at its pinned commit. The licences of SBCL, of those libraries and of every grammar go with every file of the release (`licenses/` and `grammars/licenses/`), and are in `/usr/share/licenses/tuatara/` once a package is installed. The AppImage bundles libraries of Ubuntu 26.04 (GTK 4, GLib, Cairo, Pango and what they need, many under the LGPL): `Tuatara-x86_64.AppImage.libraries.txt` lists each with its exact version, and `Tuatara-x86_64.AppImage.library-sources.tar.zst` holds the source of each at that version. Their licences are inside the AppImage, in `licenses/libraries/`.
 
 Built on GitHub from the tag `@VERSION@` (commit `@COMMIT@`).

@@ -543,7 +543,8 @@ its =--help= lists them. =--dark= before the rest shows the title bar dark, as
 in =./Tuatara-legacy-x86_64.AppImage --dark --gui FILE=, and =--install-desktop
 --dark= starts it so from the desktop's applications. Programs started from
 Tuatara are shown dark too. The editor's own colours are its theme's.
-Tuatara 0.90.40 is the last release with a legacy AppImage.
+Tuatara 0.90.40 was the last release with a legacy AppImage; later
+releases build none.
 
 A package puts Tuatara in =/usr/lib/tuatara/= and it uses the system's GTK and
 libraries. With a GTK older than 4.20, =GTK_THEME=Adwaita:dark tuatara --gui=

@@ -1,10 +1,10 @@
 # Builds a release from a version tag, as tools/release.sh, tools/appimage.sh
 # and tools/distro-packages.sh build one anywhere, and makes a draft of it:
-# the two AppImages (Ubuntu 26.04's libraries, and the legacy one with Ubuntu
-# 24.04's), the Fedora, Ubuntu and Arch packages (each installed and run in
-# its own system first), the sources, those of the libraries each AppImage
-# bundles, and SHA256SUMS. Each AppImage's libraries come from its Ubuntu
-# image in podman, which this runner's system need not match. The draft is published by hand, once "What
+# the AppImage (with Ubuntu 26.04's libraries), the Fedora, Ubuntu and Arch
+# packages (each installed and run in its own system first), the sources,
+# those of the libraries the AppImage bundles, and SHA256SUMS. The AppImage's
+# libraries come from its Ubuntu image in podman, which this runner's system
+# need not match. The draft is published by hand, once "What
 # changed" is written; a 0.x version is marked a pre-release. Run by hand
 # (Actions, Release, Run workflow), it builds the same files from the branch
 # chosen and keeps them with the run, nothing published.
@@ -63,18 +63,14 @@ jobs:
       - name: The AppImage
         run: tools/appimage.sh current
 
-      - name: The legacy AppImage
-        run: tools/appimage.sh legacy
-
       - name: The Fedora, Ubuntu and Arch packages, each installed and run
         run: tools/distro-packages.sh --check
 
       - name: SHA256SUMS
         run: |
           mkdir dist
-          for name in Tuatara-x86_64.AppImage Tuatara-legacy-x86_64.AppImage; do
-            cp build/$name build/$name.libraries.txt build/release/$name.library-sources.tar.zst dist/
-          done
+          name=Tuatara-x86_64.AppImage
+          cp build/$name build/$name.libraries.txt build/release/$name.library-sources.tar.zst dist/
           cp build/packages/* build/release/tuatara-sources.tar.zst dist/
           cd dist
           sha256sum * > SHA256SUMS
