@@ -1,0 +1,36 @@
+#+TITLE: Clock test
+
+#+BEGIN: clocktable :scope file :maxlevel 4 :tstart "<2026-03-01>" :tend "<2026-04-02>"
+#+CAPTION: Clock summary at [2026-10-02 Fri 20:20]
+| Headline        | Time   |      |      |
+|-----------------+--------+------+------|
+| *Total time*    | *2:35* |      |      |
+|-----------------+--------+------+------|
+| Project A       | 2:35   |      |      |
+| \_  Task one    |        | 1:05 |      |
+| \_    Deep task |        |      | 0:20 |
+#+END:
+
+* Project A
+:LOGBOOK:
+CLOCK: [2026-03-01 Sun 09:00]--[2026-03-01 Sun 10:30] =>  1:30
+:END:
+** Task one
+:LOGBOOK:
+CLOCK: [2026-03-02 Mon 09:00]--[2026-03-02 Mon 09:45] =>  0:45
+CLOCK: [2025-12-30 Tue 09:00]--[2025-12-30 Tue 11:00] =>  2:00
+:END:
+*** Deep task
+:LOGBOOK:
+CLOCK: [2026-04-01 Wed 13:00]--[2026-04-01 Wed 13:20] =>  0:20
+:END:
+**** Deeper
+:LOGBOOK:
+CLOCK: [2026-04-02 Thu 13:00]--[2026-04-02 Thu 14:00] =>  1:00
+:END:
+* Project B
+** Task two [[https://x.org][a link]]
+:LOGBOOK:
+CLOCK: [2026-10-02 Fri 08:00]--[2026-10-02 Fri 09:10] =>  1:10
+:END:
+* Unclocked

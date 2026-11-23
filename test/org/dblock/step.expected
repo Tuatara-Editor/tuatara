@@ -1,0 +1,215 @@
+* Alpha
+:LOGBOOK:
+CLOCK: [2026-09-28 Mon 09:00]--[2026-09-28 Mon 10:30] =>  1:30
+CLOCK: [2026-09-30 Wed 09:00]--[2026-09-30 Wed 09:20] =>  0:20
+CLOCK: [2026-10-01 Thu 14:00]--[2026-10-01 Thu 15:00] =>  1:00
+CLOCK: [2026-08-15 Sat 10:00]--[2026-08-15 Sat 11:00] =>  1:00
+CLOCK: [2025-12-31 Wed 23:00]--[2026-01-01 Thu 01:00] =>  2:00
+:END:
+** Beta
+:LOGBOOK:
+CLOCK: [2026-10-02 Fri 08:00]--[2026-10-02 Fri 08:45] =>  0:45
+CLOCK: [2026-09-16 Wed 08:00]--[2026-09-16 Wed 08:10] =>  0:10
+:END:
+* Gamma
+:LOGBOOK:
+CLOCK: [2026-09-29 Tue 12:00]--[2026-09-29 Tue 12:05] =>  0:05
+:END:
+
+#+BEGIN: clocktable :maxlevel 2 :block 2026-09 :step day :stepskip0 t
+
+Daily report: [2026-09-16 Wed]
+| Headline     | Time   |      |
+|--------------+--------+------|
+| *Total time* | *0:10* |      |
+|--------------+--------+------|
+| Alpha        | 0:10   |      |
+| \_  Beta     |        | 0:10 |
+
+Daily report: [2026-09-28 Mon]
+| Headline     | Time   |
+|--------------+--------|
+| *Total time* | *1:30* |
+|--------------+--------|
+| Alpha        | 1:30   |
+
+Daily report: [2026-09-29 Tue]
+| Headline     | Time   |
+|--------------+--------|
+| *Total time* | *0:05* |
+|--------------+--------|
+| Gamma        | 0:05   |
+
+Daily report: [2026-09-30 Wed]
+| Headline     | Time   |
+|--------------+--------|
+| *Total time* | *0:20* |
+|--------------+--------|
+| Alpha        | 0:20   |
+#+END:
+
+#+BEGIN: clocktable :maxlevel 2 :tstart "<2026-09-28 Mon>" :tend "<2026-10-02 Fri>" :step day
+
+Daily report: [2026-09-28 Mon]
+| Headline     | Time   |
+|--------------+--------|
+| *Total time* | *1:30* |
+|--------------+--------|
+| Alpha        | 1:30   |
+
+Daily report: [2026-09-29 Tue]
+| Headline     | Time   |
+|--------------+--------|
+| *Total time* | *0:05* |
+|--------------+--------|
+| Gamma        | 0:05   |
+
+Daily report: [2026-09-30 Wed]
+| Headline     | Time   |
+|--------------+--------|
+| *Total time* | *0:20* |
+|--------------+--------|
+| Alpha        | 0:20   |
+
+Daily report: [2026-10-01 Thu]
+| Headline     | Time   |
+|--------------+--------|
+| *Total time* | *1:00* |
+|--------------+--------|
+| Alpha        | 1:00   |
+#+END:
+
+#+BEGIN: clocktable :maxlevel 2 :block thismonth :step week
+
+Weekly report starting on: [2026-10-01 Thu]
+| Headline     | Time   |      |
+|--------------+--------+------|
+| *Total time* | *1:45* |      |
+|--------------+--------+------|
+| Alpha        | 1:45   |      |
+| \_  Beta     |        | 0:45 |
+
+Weekly report starting on: [2026-10-05 Mon]
+| Headline     | Time   |
+|--------------+--------|
+| *Total time* | *0:00* |
+
+Weekly report starting on: [2026-10-12 Mon]
+| Headline     | Time   |
+|--------------+--------|
+| *Total time* | *0:00* |
+
+Weekly report starting on: [2026-10-19 Mon]
+| Headline     | Time   |
+|--------------+--------|
+| *Total time* | *0:00* |
+
+Weekly report starting on: [2026-10-26 Mon]
+| Headline     | Time   |
+|--------------+--------|
+| *Total time* | *0:00* |
+#+END:
+
+#+BEGIN: clocktable :maxlevel 2 :tstart "<2026-08-01 Sat>" :tend "<2026-11-01 Sun>" :step month :stepskip0 t
+
+Monthly report starting on: [2026-08-01 Sat]
+| Headline     | Time   |
+|--------------+--------|
+| *Total time* | *1:00* |
+|--------------+--------|
+| Alpha        | 1:00   |
+
+Monthly report starting on: [2026-09-01 Tue]
+| Headline     |   Time |      |
+|--------------+--------+------|
+| *Total time* | *2:05* |      |
+|--------------+--------+------|
+| Alpha        |   2:00 |      |
+| \_  Beta     |        | 0:10 |
+| Gamma        |   0:05 |      |
+
+Monthly report starting on: [2026-10-01 Thu]
+| Headline     | Time   |      |
+|--------------+--------+------|
+| *Total time* | *1:45* |      |
+|--------------+--------+------|
+| Alpha        | 1:45   |      |
+| \_  Beta     |        | 0:45 |
+#+END:
+
+#+BEGIN: clocktable :maxlevel 2 :block 2026-09 :step semimonth
+
+Semimonthly report starting on: [2026-09-01 Tue]
+| Headline     | Time   |
+|--------------+--------|
+| *Total time* | *0:00* |
+
+Semimonthly report starting on: [2026-09-16 Wed]
+| Headline     |   Time |      |
+|--------------+--------+------|
+| *Total time* | *2:05* |      |
+|--------------+--------+------|
+| Alpha        |   2:00 |      |
+| \_  Beta     |        | 0:10 |
+| Gamma        |   0:05 |      |
+#+END:
+
+#+BEGIN: clocktable :maxlevel 2 :block 2026 :step quarter :stepskip0 t
+
+Quarterly report starting on: [2026-01-01 Thu]
+| Headline     | Time   |
+|--------------+--------|
+| *Total time* | *1:00* |
+|--------------+--------|
+| Alpha        | 1:00   |
+
+Quarterly report starting on: [2026-07-01 Wed]
+| Headline     |   Time |      |
+|--------------+--------+------|
+| *Total time* | *3:05* |      |
+|--------------+--------+------|
+| Alpha        |   3:00 |      |
+| \_  Beta     |        | 0:10 |
+| Gamma        |   0:05 |      |
+
+Quarterly report starting on: [2026-10-01 Thu]
+| Headline     | Time   |      |
+|--------------+--------+------|
+| *Total time* | *1:45* |      |
+|--------------+--------+------|
+| Alpha        | 1:45   |      |
+| \_  Beta     |        | 0:45 |
+#+END:
+
+#+BEGIN: clocktable :maxlevel 2 :tstart "<2025-01-01 Thu>" :tend "<2027-01-01 Fri>" :step year
+
+Annual report starting on: [2025-01-01 Wed]
+| Headline     | Time   |
+|--------------+--------|
+| *Total time* | *1:00* |
+|--------------+--------|
+| Alpha        | 1:00   |
+
+Annual report starting on: [2026-01-01 Thu]
+| Headline     |   Time |      |
+|--------------+--------+------|
+| *Total time* | *5:50* |      |
+|--------------+--------+------|
+| Alpha        |   5:45 |      |
+| \_  Beta     |        | 0:55 |
+| Gamma        |   0:05 |      |
+#+END:
+
+#+BEGIN: clocktable :maxlevel 2 :block lastweek :step day :stepskip0 t
+
+#+END:
+
+#+BEGIN: clocktable :maxlevel 1 :block thisweek :step week :wstart 4
+
+Weekly report starting on: [2026-10-01 Thu]
+| Headline     | Time   |
+|--------------+--------|
+| *Total time* | *1:45* |
+|--------------+--------|
+| Alpha        | 1:45   |
+#+END:

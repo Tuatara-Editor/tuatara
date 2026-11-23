@@ -1,0 +1,17 @@
+| Name  | Value |
+|-------+-------|
+| a     |     1 |
+| b     |     2 |
+|-------+-------|
+| total |     3 |
+#+TBLFM: @>$2=vsum(@I..@II)
+
+| one | two
+| three |
+
++---+---+
+| a | b |
++---+---+
+
+[fn:1] A footnote definition.
+[fn:named] Another, with *markup*.

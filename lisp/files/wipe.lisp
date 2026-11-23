@@ -1,0 +1,187 @@
+;;;; lisp/files/wipe.lisp --- Files wiped: overwritten with random octets, then deleted, so that they are not found
+;;;; again.
+;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
+;;;;
+;;;; M-x wipe-file wipes the file shown (g w in a list of a directory, the
+;;;; files marked), after asking: its contents overwritten with random
+;;;; octets (*WIPE-PASSES* times), put on disk, the file emptied, renamed and
+;;;; deleted (TUATARA.IO:WIPE-FILE), in the background. The question says
+;;;; plainly where that cannot work: on a file system that writes changes
+;;;; elsewhere (btrfs, zfs), and on a solid-state drive, which moves writes
+;;;; about, the old blocks stay until reused; only the disk's own encryption
+;;;; keeps them from being read. Encrypting a file (M-x gpg-encrypt-file) offers to
+;;;; wipe the original once it is done; with a passphrase, only after the
+;;;; passphrase, asked again, is seen to open the encrypted file to the same
+;;;; octets, so that a passphrase mistyped or forgotten never loses the file.
+
+(in-package #:tuatara.defaults)
+
+(define-setting *wipe-passes* 1
+  "How many times a file wiped is overwritten with random octets before it is
+deleted.
+Once is enough for a disk that writes in place; more do not help one that does
+not (a copy-on-write file system, a solid-state drive).
+- a whole number, 1 or more: the passes, 1 as standard."
+  :values (integer 1 *))
+
+(defun wipe-caveat (paths)
+  "What wiping PATHS cannot promise, in a few words: a copy-on-write file
+system keeps old copies of their blocks; a solid-state drive may. Each
+directory of them is asked once."
+  (if (some (lambda (path) (ignoring-errors-reported ("examining ~a" path) (tuatara.io:copy-on-write-p path)))
+            (remove-duplicates paths :key #'tuatara.io:parent-path :test #'string=))
+      "its file system keeps old copies (copy-on-write)"
+      "an SSD may keep old copies"))
+
+(define-record (wipe-job (:include tuatara.runtime:job) (:constructor make-wipe-job (buffer paths total)) (:copier nil))
+  "PATHS being wiped, a job: TOTAL octets to overwrite, all passes counted;
+DONE, so far; WIPED, those gone; REFUSED, why none was wiped, when one was
+found not to hold what it had to."
+  (paths nil :documentation "The paths that WIPE-JOB wipes.")
+  (total nil :documentation "How many octets WIPE-JOB overwrites in all, every pass counted.")
+  (done 0 :documentation "How many octets WIPE-JOB has overwritten so far.")
+  (wiped '() :documentation "The paths WIPE-JOB has wiped and removed.")
+  (refused nil :documentation "Why WIPE-JOB wiped nothing, when a path did not hold what it had to, or NIL."))
+
+(tuatara.runtime:define-job-words wipe-job
+  :doing "Wiping"
+  :description (format nil "Wiping ~{~a~^, ~}" (mapcar #'tuatara.io:native-file-name (wipe-job-paths job)))
+  :verb "wipe"
+  :left-words "the files partly overwritten, still there")
+
+(defmethod tuatara.runtime:job-percent ((job wipe-job))
+  "How far the wiping has got."
+  (tuatara.runtime:running-percent (wipe-job-done job) (max 1 (wipe-job-total job))))
+
+(defmethod tuatara.runtime:job-take-in ((job wipe-job))
+  "Say what was wiped, and show the lists of their directories again."
+  (let ((wiped (wipe-job-wiped job)))
+    (paths-changed wiped)
+    (cond ((wipe-job-refused job) (message "~a" (wipe-job-refused job)))
+          ((eq (tuatara.runtime:job-status job) :done)
+           (message "Wiped: ~{~a~^, ~}" (mapcar #'tuatara.io:native-file-name (reverse wiped))))
+          (t (message "~@[Wiped ~{~a~^, ~}; ~]~a" (and wiped (mapcar #'tuatara.io:native-file-name (reverse wiped)))
+                      (tuatara.runtime:job-ending-words job))))))
+
+(defun file-holds-p (path octets)
+  "True when the file at PATH, a regular file, holds OCTETS and nothing else,
+compared a piece at a time, each piece read overwritten after; anything else
+at PATH, a named pipe or a device, is refused without being opened."
+  (let ((fd (tuatara.io:open-for-reading path t :accept '(:regular))))
+    (unwind-protect
+         (and (= (tuatara.io:stamp-size (tuatara.io:fd-stamp fd path)) (length octets))
+              (let ((piece (make-array (* 1024 1024) :element-type '(unsigned-byte 8))) (at 0))
+                (unwind-protect
+                     (and (loop for n = (tuatara.io:read-fd-at fd piece at :path path)
+                                while (plusp n)
+                                always (and (<= (+ at n) (length octets))
+                                            (not (mismatch piece octets :end1 n :start2 at :end2 (+ at n))))
+                                do (incf at n))
+                          ;; all of it read: a file cut short while it was read holds less
+                          (= at (length octets)))
+                  (fill piece 0))))
+      (ignoring-errors-reported ("closing ~a" path) (sb-posix:close fd)))))
+
+(defun start-wiping (paths &key same-as)
+  "Wipe PATHS in the background (TUATARA.IO:WIPE-FILE, *WIPE-PASSES* times);
+with SAME-AS, octets, the one path only once it is seen to hold them
+\(FILE-HOLDS-P), none wiped else, and SAME-AS overwritten with zeros after."
+  (tuatara.runtime:start-job-thread
+   (make-wipe-job (current-buffer) paths 0)
+   (let ((passes *wipe-passes*))
+     (lambda (job)
+       ;; their sizes asked here, not on the editor's thread
+       (setf (wipe-job-total job) (* passes (loop for path in paths sum (tuatara.io:path-size path))))
+       (if (and same-as (not (unwind-protect (ignoring-errors-reported ("comparing ~a" (first paths))
+                                               (file-holds-p (first paths) same-as))
+                               (fill same-as 0))))
+           (setf (wipe-job-refused job)
+                 (format nil "~a is not wiped: what was encrypted does not hold the same octets"
+                         (tuatara.io:native-file-name (first paths))))
+           (let ((before 0))
+             (dolist (path (wipe-job-paths job))
+               (let ((size (* passes (tuatara.io:path-size path))))
+                 (when (eq :stopped (tuatara.io:wipe-file path :passes passes
+                                                                :cancel (tuatara.runtime:job-cancel job)
+                                                                :progress (lambda (n)
+                                                                            (setf (wipe-job-done job) (+ before n)))))
+                   (tuatara.runtime:job-check-stop))
+                 (push path (wipe-job-wiped job))
+                 (incf before size)))))))
+   :name "tuatara wipe"))
+
+(defun confirm-wipe (paths &optional what)
+  "True when, asked, you say to wipe PATHS for good, what it cannot promise said;
+WHAT, words naming them (\"3 files in 2 directories\"), or the name of one or
+how many."
+  (yes-or-no-p* (format nil "Wipe ~a for good? (~a)"
+                        (or what (list-question nil "file" paths :the nil :name-of #'tuatara.io:native-file-name))
+                        (wipe-caveat paths))))
+
+(define-command wipe-file ()
+  "Wipe the file shown (in a list of a directory, the one on the line; with
+\\[universal-argument], or where there is none, asked for) after asking: its contents
+overwritten with random octets, put on disk, then the file renamed and deleted,
+in the background, so that it is not found again where the disk writes in
+place. Where it does not, the old blocks stay until reused, and only the
+disk's own encryption keeps them from being read: a copy-on-write file system
+(btrfs, zfs) keeps old copies, and a solid-state drive may, which the question
+says. A link, a directory, and a file with other names are refused."
+  (let ((path (shown-file-argument "Wipe file: ")))
+    (when (confirm-wipe (list path))
+      (start-wiping (list path)))))
+
+;;; After encrypting
+
+(defun encryption-yours-p (encryption)
+  "True when ENCRYPTION, as READ-ENCRYPTION chose it, can be opened by you
+again: with a passphrase, or to one of your own keys (its :YOURS)."
+  (or (getf encryption :symmetric) (getf encryption :yours)))
+
+(defun wipe-original-question (what encryption caveat)
+  "Ask whether to wipe WHAT once encrypted as ENCRYPTION says, a typed answer
+\(YES-OR-NO-P*), true for yes. Its details say that the passphrase is asked
+again first, that to keys none of which is yours it cannot be opened again,
+and CAVEAT."
+  (yes-or-no-p* (format nil "Wipe ~a?" what)
+                :details (format nil "~:[~;The passphrase is asked again first.~%~]~
+                                      ~:[None of the keys is yours: it cannot be opened again.~%~;~]~
+                                      Wiping cannot promise all is gone: ~a."
+                                 (getf encryption :symmetric) (encryption-yours-p encryption) caveat)))
+
+(defun wipe-original (path target encryption &key (passphrase nil passphrase-p))
+  "Wipe the file at PATH, now encrypted as TARGET with ENCRYPTION: at once
+when it is encrypted to keys only; with a passphrase, once the passphrase,
+asked again (gpg-agent's cache passed by), opens TARGET to the very octets of
+PATH, so that a passphrase mistyped or forgotten never loses the file.
+PASSPHRASE, for the minibuffer's loopback, is asked for when not given, and
+wiped once gpg has it."
+  (if (not (getf encryption :symmetric))
+      (start-wiping (list path))
+      (run-gpg-work (format nil "checking the passphrase opens ~a" (tuatara.io:native-file-name target))
+                    (list "--no-symkey-cache" "--decrypt" "--output" "-")
+                    (lambda (output statuses ok said)
+                      (if (and ok output (gpg-status-p statuses "DECRYPTION_OKAY"))
+                          ;; compared with the file on the wiping's thread, never here
+                          (start-wiping (list path) :same-as output)
+                          (progn
+                            (message "~a is not wiped: the passphrase given does not open ~a (~a)"
+                                     (tuatara.io:native-file-name path) (tuatara.io:native-file-name target)
+                                     (gpg-failure-words statuses said))
+                            (when output (fill output 0)))))
+                    :input-path target
+                    :passphrase (if passphrase-p
+                                    passphrase
+                                    (and (gpg-minibuffer-p)
+                                         (gpg-read-passphrase (format nil
+                                                                      "The passphrase again, to check it opens ~a: "
+                                                                      (tuatara.io:native-file-name target))))))))
+
+(defun offer-wipe-original (path target encryption)
+  "Ask, as the editor's next command, whether to wipe the file at PATH now
+encrypted as TARGET (WIPE-ORIGINAL)."
+  (defer-action (lambda ()
+                  (when (and (tuatara.io:path-stamp path)
+                             (wipe-original-question (format nil "the original ~a" (tuatara.io:native-file-name path))
+                                                     encryption (wipe-caveat (list path))))
+                    (wipe-original path target encryption)))))

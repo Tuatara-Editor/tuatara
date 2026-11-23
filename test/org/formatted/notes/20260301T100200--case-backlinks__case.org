@@ -1,0 +1,21 @@
+#+title: Case backlinks
+#+identifier: 20260301T100200
+
+#+BEGIN: denote-backlinks
+#+END:
+
+#+BEGIN: denote-backlinks :sort-by-component title
+#+END:
+
+#+BEGIN: denote-backlinks :reverse-sort t :id-only t
+#+END:
+
+#+BEGIN: denote-backlinks :not-regexp "lambda" :include-date t
+#+END:
+
+* Here
+:PROPERTIES:
+:CUSTOM_ID: h1
+:END:
+#+BEGIN: denote-backlinks :this-heading-only t
+#+END:

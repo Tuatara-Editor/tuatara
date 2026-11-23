@@ -1,0 +1,8 @@
+* Contents :TOC:
+:PROPERTIES:
+:VISIBILITY: all
+:END:
+- old entry
+
+* A
+** B

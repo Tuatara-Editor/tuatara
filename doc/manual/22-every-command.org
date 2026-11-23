@@ -1,0 +1,39 @@
+#+title: Every command
+#+language: en
+
+* Every command
+
+The name, keys and purpose of every command Tuatara has.
+
+The earlier chapters describe the commands of each subject where you meet
+them. This chapter lists them all in one table, in the alphabetical order of
+their names, so that you can look one up by name. The table is made from the
+program each time this manual is made, so it never lists a command that Tuatara
+does not have.
+
+The table has four columns. The first two are keys, as chapter 1 explains: the
+modal keys, which work only with modal editing on, and the non-modal keys, which
+work with it off too. Each shows up to three keys, the shortest first, or
+"none". A command with no key at all says ~M-x~ and its name in the second
+column, because you can only run it by its name. The third column is the name
+of the command and the fourth says what it does, in one sentence. The keys of a
+command can differ from one major mode to another, and the table shows keys from
+every mode. A key written ~C-x~ means hold down Control and press x.
+
+To run a command by its name, press ~M-x~, type a few letters of the name and
+press ~RET~. To find a command from within the editor, press ~C-h f~ and type
+a few letters of its name. Tuatara shows its keys and its full description.
+To find the command that a key runs, press ~C-h k~ and then the key. To find
+the commands that mention a word, press ~C-h a~ and type the word.
+
+#+table: all-commands
+
+** Commands that switch to a major mode
+
+A major mode sets how Tuatara treats one kind of text, as chapter 13
+describes. Each major mode has a command named after it that switches the
+current buffer to that mode. Most have no key, because Tuatara picks the mode
+from the file's name and contents when it opens the file. The commands are
+listed here, apart from the rest, so that the table above can be read through.
+
+#+table: mode-commands

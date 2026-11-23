@@ -1,0 +1,147 @@
+;;;; lisp/org/checklist.lisp --- List items with a checkbox kept as tasks: ticked, clocked and logged.
+;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
+;;;;
+;;;; An item with a checkbox, - [ ] call Anna Raglan, is a task as a TODO
+;;;; headline is: the agenda lists it (an open box TODO, a ticked one DONE), and
+;;;; C-c C-t ticks it, C-c C-x C-i clocks in on it and C-c C-z notes on it, on
+;;;; its line in the file or on its line in the agenda. What is logged of it
+;;;; goes into a :LOGBOOK: drawer of its own, set in under it, newest first, as
+;;;; Org lets a drawer stand in an item; Emacs keeps those lines, and counts
+;;;; their time towards the headline the item is under.
+
+(in-package #:tuatara.defaults)
+
+(define-setting *org-log-checkboxes* t
+  "Whether ticking or clearing a list item's checkbox is logged.
+- t: logged in a :LOGBOOK: drawer under the item, - State \"DONE\" from
+  \"TODO\" and the time, as a TODO headline's change of state is logged.
+- nil: nothing logged."
+  :values boolean)
+
+(defun org-checkbox-item-at (tree text position)
+  "The list item with a checkbox whose first line holds the character POSITION of TEXT, or NIL."
+  (let ((item (org-item-on-line tree (string-line-start text position))))
+    (and item (org-property item :checkbox) item)))
+
+(defun org-checkbox-title (item text)
+  "ITEM's text on its first line after its bullet and checkbox: what it is about."
+  (let* ((line (org-line-at text (org-node-begin item)))
+         (end (nth-value 1 (cl-ppcre:scan *org-checkbox-line-scanner* line))))
+    (string-trim *org-blanks* (if end (subseq line end) line))))
+
+(defun org-item-indent (item text)
+  "The spaces lines under ITEM begin with: as far in as the text after its bullet."
+  (spaces (1+ (- (org-item-after-bullet item text) (org-node-begin item)))))
+
+(defun org-item-own-end (item)
+  "Where ITEM's own text ends: at its first sub-item, else at its end."
+  (let ((children (org-child-items item)))
+    (if children (org-node-begin (first children)) (org-node-end item))))
+
+(defun org-tick-taken-back-edit (item text)
+  "The edit taking away the note of ITEM's tick when it is the newest of its
+:LOGBOOK: drawer and was made this minute, the drawer too when nothing else
+is in it; NIL otherwise."
+  (let ((logbook (nth-value 1 (org-log-place item text))))
+    (when logbook
+      (let* ((line-end (string-line-end text logbook))
+             (next (min (length text) (1+ line-end))))
+        (when (string= (string-trim *org-blanks* (subseq text logbook line-end))
+                       (org-state-note "DONE" "TODO" (org-now)))
+          (if (string-equal (string-trim *org-blanks* (subseq text next (string-line-end text next))) ":END:")
+              (list (string-line-start text (1- logbook)) (min (length text) (1+ (string-line-end text next))) "")
+              (list logbook next "")))))))
+
+(defun org-checkbox-state-edits (item text old new)
+  "What logging ITEM's checkbox turned from the state OLD to NEW (OFF, TRANS,
+ON) adds (*ORG-LOG-CHECKBOXES*): a note of DONE when it is ticked, of TODO
+when a tick is taken away; NIL otherwise. A tick taken back the minute it
+was made, as cycling the checkbox round does, takes its note away instead,
+so that the log and the agenda's log mode keep no tick that did not stay."
+  (when (and *org-log-checkboxes* (not (eq (eq old 'on) (eq new 'on))))
+    (let ((taken-back (and (eq old 'on) (org-tick-taken-back-edit item text))))
+      (list (or taken-back
+                (org-log-edit item text (list (if (eq new 'on)
+                                                  (org-state-note "DONE" "TODO" (org-now))
+                                                  (org-state-note "TODO" "DONE" (org-now))))))))))
+
+(defun call-on-checkbox-item (function)
+  "When point is on the first line of a list item with a checkbox in the
+current Org buffer, call FUNCTION with its ORG-PARSE, point as a character of
+it and the item, and return true; else NIL."
+  (let ((buffer (current-buffer)))
+    (when (org-checkbox-line-p (buffer-line-head buffer (point)))
+      (let* ((parse (org-parse-now buffer))
+             (position (and parse (org-parse-point parse)))
+             (item (and parse (org-checkbox-item-at (org-parse-tree parse) (org-parse-text parse) position))))
+        (when item
+          (funcall function parse position item)
+          t)))))
+
+(define-setting *org-todo-follows-checkboxes* t
+  "Whether a TODO headline with a statistics cookie becomes done by itself.
+A statistics cookie is [2/3] or [66%]; the cookies are kept up to date either
+way.
+- t: the headline becomes done, with CLOSED: and the time, once all it counts
+  are done (its TODO sub-headlines or, with none, the checkboxes right under
+  it), and not done again when one is not yet done; up the tree, a headline
+  above with a cookie follows in turn. A task whose keyword the TODO keys pass
+  over (*org-todo-keywords-not-cycled*), such as one CANCELLED, is left as it
+  is.
+- nil: the keyword is left to you."
+  :values boolean)
+
+(defun org-summary-todo (buffer octet)
+  "After a checkbox or a sub-headline's TODO keyword changed at OCTET of
+BUFFER: the cookies of the headline it is under brought up to date from its
+TODO sub-headlines, and that headline made done, with CLOSED:, or not, as all
+it counts are done or not \(*ORG-TODO-FOLLOWS-CHECKBOXES*). Then the same for
+the headline above it when this one changed. Point kept where it is. In a
+large note only the part holding OCTET is read (ORG-PARSE-AT-NOW)."
+  (let* ((parse (org-parse-at-now buffer octet))
+         (text (and parse (org-parse-text parse)))
+         (headline (and parse (org-current-headline (org-parse-tree parse) (org-parse-char parse octet)))))
+    (when headline
+      (multiple-value-bind (total done) (org-cookie-counts headline)
+        (let ((point (tuatara.text:make-anchor (tuatara.buffer:buffer-version buffer)
+                                               (tuatara.buffer:buffer-point buffer) :bias :before))
+              (begin (org-node-begin headline))
+              (changed nil))
+          ;; its cookies, when it counts TODO sub-headlines
+          (when (plusp (org-headline-todo-counts headline))
+            (let ((edits (org-cookie-edits headline text done total)))
+              (when edits (org-apply-edits parse edits :point (org-parse-point parse)))))
+          (when (and *org-todo-follows-checkboxes* (org-property headline :todo-keyword) (org-cookies-of headline text)
+                     (plusp total))
+            (let* ((keyword (org-property headline :todo-keyword))
+                   (sequence (org-keyword-sequence (org-parse-todo-keywords parse)))
+                   (cycled (member keyword sequence :test #'string=))
+                   (done-keywords (cdr (org-parse-todo-keywords parse)))
+                   (is-done (member keyword done-keywords :test #'string=))
+                   (target (cond ((not cycled) nil)
+                                 ((and (= done total) (not is-done))
+                                  (find-if (lambda (k) (member k done-keywords :test #'string=)) sequence))
+                                 ((and is-done (< done total))
+                                  (find-if-not (lambda (k) (member k done-keywords :test #'string=)) sequence)))))
+              (when target
+                (setf (tuatara.buffer:buffer-point buffer) (org-parse-octet parse begin))
+                ;; done by itself: noted with CLOSED: and when, whatever *org-log-done* says
+                (let ((*org-log-done* :time))
+                  (org-set-todo-to target))
+                (setf changed t))))
+          (setf (tuatara.buffer:buffer-point buffer)
+                (tuatara.text:anchor-position point (tuatara.buffer:buffer-version buffer)))
+          ;; the headline above, counting this one among its TODO sub-headlines
+          (when changed
+            (let ((parent (org-node-parent headline)))
+              (when (and parent (eq (org-node-type parent) 'headline))
+                (org-summary-todo buffer (org-parse-octet parse (org-node-begin parent)))))))))))
+
+(defun org-todo-changed (buffer)
+  "After the TODO keyword of the headline point is on changed in BUFFER: the
+headline above brought up to date, as ORG-SUMMARY-TODO does."
+  (let* ((parse (org-parse-now buffer))
+         (headline (and parse (org-current-headline (org-parse-tree parse) (org-parse-point parse))))
+         (parent (and headline (org-node-parent headline))))
+    (when (and parent (eq (org-node-type parent) 'headline))
+      (org-summary-todo buffer (org-parse-octet parse (org-node-begin parent))))))

@@ -1,0 +1,503 @@
+;;;; src/runtime/jobs.lisp --- Jobs in the background: one runner for every kind of work.
+;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
+;;;;
+;;;; Work that takes time runs as a job on a thread of its own, the editor free
+;;;; meanwhile: a replacement, a sort, a sum, a save, files copied, an agenda
+;;;; worked out. Every kind of job is a structure including JOB, started by
+;;;; START-JOB-THREAD and kept in *JOBS* until the editor takes it in
+;;;; (TAKE-IN-JOBS) once it has ended. However its work ends, an error, a lack
+;;;; of memory or stack, or the thread cut short, the job leaves :RUNNING and
+;;;; the editor is woken to take it in. What differs between kinds, how far one
+;;;; has got, what it says of itself, how it stops and what is done with it at
+;;;; the end, each kind says through the generic functions here.
+
+(in-package #:tuatara.runtime)
+
+(define-record (job (:constructor nil) (:copier nil))
+  "Work in the background for BUFFER, the buffer it belongs to (NIL for none),
+running on THREAD. STATUS is :RUNNING, then :DONE, :STOPPED or :FAILED, with
+ERROR saying why in words. The car of CANCEL turning true asks it to stop.
+STARTED is the internal real time it began. WAKE, a function of no arguments
+or NIL, wakes the editor for its thread, so that what it has to show shows at
+once. FRAME is the editor's frame it was begun in, where what it says is
+shown, or NIL. PROCESS is the program it runs, if any (JOB-PROGRAM-STARTED).
+Each kind of job is a structure including this one, and says how it differs
+through generic functions: JOB-PERCENT, JOB-DOING, JOB-DESCRIPTION, JOB-VERB,
+JOB-LEFT-WORDS, JOB-CONSEQUENCE, JOB-STOP, JOB-HOLDS-QUEUE-P,
+JOB-SHOWS-PROCESSING-P, JOB-AT-EXIT, JOB-GUARDED-SPANS and JOB-TAKE-IN."
+  (buffer nil :documentation "The buffer a job belongs to, or NIL.")
+  (status :running :documentation "A job's status: :RUNNING, :DONE, :STOPPED or :FAILED.")
+  (error nil :documentation "Why a job failed, in words, or NIL.")
+  (cancel (list nil) :documentation "A cons whose car turning true asks a job to stop.")
+  (thread nil :documentation "The thread a job runs on.")
+  (started (get-internal-real-time) :documentation "The internal real time a job began.")
+  (wake nil :documentation "The function a job's thread calls to wake the editor, or NIL.")
+  (frame nil :documentation "The editor's frame a job was begun in, where what it says is shown, or NIL.")
+  (process nil :documentation "The program a job runs, ended when it is stopped, or NIL."))
+
+(setf (documentation 'job-p 'function) "True when OBJECT is a JOB, of any kind.")
+
+(defvar *jobs* '()
+  "The jobs in the background, running or ended and not yet taken in, the
+oldest first. The list is never changed in place: one is added or taken out
+under **JOBS-LOCK**, so that a reader may walk the list it took.")
+
+(sb-ext:defglobal **jobs-lock** (sb-thread:make-mutex :name "tuatara jobs")
+  "Held while a job is added to *JOBS* or taken out of it, which a job's own
+thread may do as well as the editor's.")
+
+(defvar *job* nil
+  "On the thread of a job, the job its work is for (START-JOB-THREAD); NIL elsewhere.")
+
+(defvar *job-taken-in* nil
+  "On the editor's thread, while a job that has ended is taken in (TAKE-IN-JOBS),
+that job; NIL otherwise.")
+
+(defgeneric host-job-started (host job)
+  (:documentation "Tie JOB, starting now on the editor's thread (START-JOB-THREAD), to the editor
+running: give it the function its thread calls to wake the editor (JOB-WAKE),
+unless it has one, and the frame it was begun in (JOB-FRAME). Without a
+command loop, there is no editor to tie it to.")
+  (:method ((host host) job)
+    (declare (ignore job))
+    nil))
+
+(defgeneric host-take-in-job (host job function)
+  (:documentation "Call FUNCTION, of no arguments, JOB's taking in (TAKE-IN-JOBS), where JOB
+belongs in the editor: with the frame it was begun in the one worked in, so
+that what it says shows there; without a command loop, where it is.")
+  (:method ((host host) job function)
+    (declare (ignore job))
+    (funcall function)))
+
+(defgeneric host-job-waits-p (host job)
+  (:documentation "True when JOB, ended, is to be taken in later, not now (TAKE-IN-JOBS): the
+editor keeps a job waiting while a question its taking in could change waits
+for another to be answered. Without a command loop, never.")
+  (:method ((host host) job)
+    (declare (ignore job))
+    nil))
+
+(defgeneric host-wait-for-job (host job words)
+  (:documentation "Wait for JOB, begun for what the editor is doing now, to end, the editor
+answering keys meanwhile and showing WORDS, a string, once it takes a while;
+signal to give up what waited when the wait is given up (\\`C-g'), JOB going
+on. Without a command loop, simply wait.")
+  (:method ((host host) job words)
+    (declare (ignore words))
+    (sb-thread:join-thread (job-thread job) :default nil)))
+
+(defvar *job-buffer-name* (lambda (buffer) (if buffer (princ-to-string buffer) "no buffer"))
+  "A function of a buffer, or NIL, giving its name, for what the jobs report;
+the buffers' package sets it.")
+
+(define-condition job-stopped (serious-condition) ()
+  (:documentation "Signalled in a job's work where it finds it was asked to stop (JOB-CHECK-STOP):
+the job ends :STOPPED."))
+
+(defun job-running-p (job)
+  "True while JOB runs."
+  (eq (job-status job) :running))
+
+(defun jobs-of (buffer &key running)
+  "The jobs in the background of BUFFER, the oldest first: running, or ended
+and not yet taken in; with RUNNING those running alone."
+  (remove-if-not (lambda (job) (and (eq (job-buffer job) buffer)
+                                    (or (not running) (job-running-p job))))
+                 *jobs*))
+
+(defun current-job-cancel ()
+  "In a job's work, the job's stop flag, a cell whose first part turns true when
+the job is asked to stop, for work that takes a :CANCEL argument. Elsewhere,
+NIL."
+  (and *job* (job-cancel *job*)))
+
+(defun job-check-stop ()
+  "In a job's work, between two pieces of it: end the job there, :STOPPED, when
+it has been asked to stop. Elsewhere, nothing."
+  (when (car (current-job-cancel))
+    (error 'job-stopped)))
+
+(defun job-buffer-name (job)
+  "The name of the buffer JOB belongs to, for reports."
+  (funcall *job-buffer-name* (job-buffer job)))
+
+(defun job-secret-p (job)
+  "True when JOB's work holds a secret: one was at hand where it is asked
+\(*SECRET-AT-HAND*), or JOB is for a buffer of secret text."
+  (or *secret-at-hand* (secret-buffer-p (job-buffer job))))
+
+(defun condition-words (condition &key headline)
+  "CONDITION in words on one line, as an error is said: its report as ONE-LINE
+gives it, each run of spaces its printer laid out one space; a few words of its
+kind when it cannot be printed (a lack of memory may leave none to print with).
+With HEADLINE, only its first words, up to its first stop, colon or
+parenthesis, in lower case: \"control stack exhausted\"."
+  (let ((words (cl-ppcre:regex-replace-all
+                "  +" (one-line (or (ignoring-errors-reported ("printing ~(~a~)" (type-of condition))
+                                      (princ-to-string condition))
+                                    (string-downcase (type-of condition))))
+                " ")))
+    (if headline
+        (string-downcase (string-trim " "
+                                      (subseq words 0 (or (position-if (lambda (c) (find c ".:(")) words)
+                                                          (length words)))))
+        words)))
+
+;;; What differs between kinds
+
+(defgeneric job-percent (job)
+  (:documentation "How far JOB has got, all it does counted, from 0 to 99; NIL when it cannot tell.")
+  (:method ((job job)) nil))
+
+(defgeneric job-doing (job)
+  (:documentation "What JOB does, in a word or a few with a capital: Sorting,
+Replacing, Working out the agenda. Its state in the list of jobs, and its
+stop question, are made of it."))
+
+(defgeneric job-state-words (job)
+  (:documentation "How far JOB has got, for the list of jobs: what it does and
+the per cent, Sorting 42%, or what it does alone when it cannot tell.")
+  (:method ((job job)) (format nil "~a~@[ ~d%~]" (job-doing job) (job-percent job))))
+
+(defgeneric job-description (job)
+  (:documentation "What JOB does, in full, for the list of jobs: Replacing a with b in the buffer.")
+  (:method ((job job)) (job-doing job)))
+
+(defgeneric job-verb (job)
+  (:documentation "What JOB does as a verb, for when it fails: Could not VERB: why.")
+  (:method ((job job)) (string-downcase (job-doing job))))
+
+(defgeneric job-left-words (job)
+  (:documentation "What stopping JOB leaves, for when it has stopped, as Stopped: WORDS.")
+  (:method ((job job)) "nothing was changed"))
+
+(defmacro define-job-words (class &key (doing nil doing-p) (description nil description-p) (verb nil verb-p)
+                                        (left-words nil left-words-p) (at-exit nil at-exit-p))
+  "Say how the jobs of CLASS are told of, each a form evaluated with JOB bound
+to the job (a string, most often): DOING (JOB-DOING), DESCRIPTION
+\(JOB-DESCRIPTION), VERB (JOB-VERB), LEFT-WORDS (JOB-LEFT-WORDS); AT-EXIT
+\(JOB-AT-EXIT), :STOP, :QUIET or :WAIT. Those not given are as for any job.
+JOB is the symbol of that name where the forms are written."
+  (let ((job (intern "JOB" *package*)))
+    `(progn
+       ,@(when doing-p `((defmethod job-doing ((,job ,class)) (declare (ignorable ,job)) ,doing)))
+       ,@(when description-p `((defmethod job-description ((,job ,class)) (declare (ignorable ,job)) ,description)))
+       ,@(when verb-p `((defmethod job-verb ((,job ,class)) (declare (ignorable ,job)) ,verb)))
+       ,@(when left-words-p `((defmethod job-left-words ((,job ,class)) (declare (ignorable ,job)) ,left-words)))
+       ,@(when at-exit-p `((defmethod job-at-exit ((,job ,class)) (declare (ignorable ,job)) ,at-exit)))
+       ',class)))
+
+(defgeneric job-consequence (job)
+  (:documentation "A sentence on what stopping JOB part of the way does, for the
+question before it is stopped, or NIL: The file stays as it was.")
+  (:method ((job job)) nil))
+
+(defgeneric job-stop (job)
+  (:documentation "Ask JOB to stop: it ends soon after, :STOPPED, and is taken
+in as any job is. By standard its CANCEL's car is set, which its work looks
+at between pieces, a call of it that does not look (a regular expression's
+matcher) is cut short (STOP-WORK), and the program it runs (its PROCESS), if
+any, is ended with every program that one started (END-PROGRAM).")
+  (:method ((job job))
+    (stop-work (job-cancel job))
+    (let ((process (job-process job)))
+      (when process (end-program process)))))
+
+(defgeneric host-end-program (host process)
+  (:documentation "End PROCESS, a program a job runs, and every program it started, asked to end
+first and killed when it does not, its pipes left for the job reading them to
+close. Answered by the file layer (TUATARA.IO), which starts programs."))
+
+(defun end-program (process)
+  "End PROCESS, a program a job runs, and every program it started (a hook, a
+helper), so that none keeps the job waiting: asked to end, then killed when it
+has not ended within a grace of seconds (HOST-END-PROGRAM)."
+  (ignoring-errors-reported ("ending the program ~a" process)
+    (host-end-program *host* process)))
+
+(defun job-program-started (job process)
+  "Keep PROCESS as the program JOB runs, ended when JOB is stopped; ended at
+once when JOB was stopped before it started. Returns PROCESS."
+  (setf (job-process job) process)
+  ;; the store seen before the stop is looked at, as JOB-STOP stores the stop before looking at the process
+  (sb-thread:barrier (:memory))
+  (when (car (job-cancel job)) (end-program process))
+  process)
+
+(defgeneric job-holds-queue-p (job)
+  (:documentation "True when JOB has the jobs asked for in its buffer wait their
+turn behind it, from when it starts until it is taken in. A save, a list's
+files copied and the like let others start beside them.")
+  (:method ((job job)) t))
+
+(defgeneric job-shows-processing-p (job)
+  (:documentation "True when the mode line of JOB's buffer lights its sign of
+work (P) while JOB runs, and the list of jobs shows how far it has got; NIL
+for work the mode line shows in words of its own (a save).")
+  (:method ((job job)) t))
+
+(defgeneric job-at-exit (job)
+  (:documentation "What is done to JOB, running, when its buffer is killed or
+the editor left. :STOP stops it, after asking. :QUIET stops it without asking,
+for work that only shows something and is quick to do again (a sum, a count of
+words, an agenda worked out, a calendar's marks). :WAIT waits for it to end,
+after asking (a save, which stopping would leave not done).")
+  (:method ((job job)) :stop))
+
+(defgeneric job-guarded-spans (job)
+  (:documentation "The stretches of JOB's buffer whose change while JOB runs
+would spoil its work, each (START . END), offsets in the text as it is now:
+an insertion at START or inside, or a deletion or replacement overlapping it
+\(SPAN-TOUCHED-P). A sort or filter gives its lines, dynamic blocks being made
+their blocks. NIL, by standard, for work that carries the edits made meanwhile
+onto its result (a replacement) or that they do not touch (a sum or a count,
+of the text as it was when it began; a save, of the version it took).")
+  (:method ((job job)) nil))
+
+(defgeneric job-take-in (job)
+  (:documentation "Take in JOB, which has ended, on the editor's thread: put its
+result where it goes, say how it went. Called once, after JOB has left
+*JOBS*.")
+  (:method ((job job)) nil))
+
+;;; Words alike for every kind
+
+(defun job-ending-words (job)
+  "How JOB ended, when it did not end done, in the words every kind says it
+with. For a stop it is Stopped: what that left. Otherwise it is Could not do it: why."
+  (ecase (job-status job)
+    (:stopped (format nil "Stopped: ~a" (job-left-words job)))
+    (:failed (format nil "Could not ~a: ~a" (job-verb job) (or (job-error job) "it ended unexpectedly")))))
+
+(defun job-stop-question (job)
+  "The question asked before JOB is stopped: Stop sorting at 42%? and what
+stopping does, when the job says (JOB-CONSEQUENCE)."
+  (format nil "Stop ~(~a~)~@[ at ~d%~]?~@[ ~a~]" (job-doing job) (job-percent job) (job-consequence job)))
+
+(defun job-guard-question (job)
+  "The question asked before an edit that would spoil the work of JOB, running
+over the text edited, is made: Sorting works on this text (42%); stop sorting
+and change it? and what stopping does, when the job says (JOB-CONSEQUENCE)."
+  (format nil "~a works on this text~@[ (~d%)~]; stop ~(~a~) and change it?~@[ ~a~]"
+          (job-doing job) (job-percent job) (job-doing job) (job-consequence job)))
+
+(defun job-guard-refusal (job)
+  "What is said when an edit that would spoil the work of JOB is not made, as Not
+changed: sorting goes on."
+  (format nil "Not changed: ~(~a~) goes on" (job-doing job)))
+
+(defun running-percent (done total)
+  "How far work that has DONE of TOTAL has got, from 0 to 99: never 100 while
+it runs, 0 while there is nothing to do yet."
+  (min 99 (floor (* 100 done) (max 1 total))))
+
+(defun running-job (buffer type)
+  "The job of TYPE (a job structure's name) running for BUFFER, or NIL."
+  (find-if (lambda (job) (and (typep job type) (eq (job-buffer job) buffer) (job-running-p job))) *jobs*))
+
+(defun part-percent (cell)
+  "How far the work CELL follows has got, from 0 to 100: CELL a cons of what is
+done and what there is to do, 0 while there is nothing to do."
+  (let ((done (car cell)) (total (cdr cell)))
+    (if (plusp total) (min 100 (floor (* 100 done) total)) 0)))
+
+(defun two-phase-percent (first counting &key (halves t))
+  "How far work in two phases has got, from 0 to 99: writing its result, FIRST
+per cent of it done, the first half, then counting the lines of what it
+wrote, COUNTING a cons of the octets counted and the octets to count once that
+begins, the second. With HALVES NIL the work has its first phase alone, which
+is then all of it."
+  (min 99 (cond (counting (+ 50 (floor (part-percent counting) 2)))
+                (halves (floor first 2))
+                (t first))))
+
+(defun two-phase-words (doing first counting)
+  "The state of work in two phases (TWO-PHASE-PERCENT) for the list of jobs,
+DOING and FIRST per cent, Sorting 42%, then, once COUNTING is a cons, counting
+the lines of what it wrote, as Sorting: counting lines 42%."
+  (if counting
+      (format nil "~a: counting lines ~d%" doing (part-percent counting))
+      (format nil "~a ~d%" doing (min 100 first))))
+
+;;; Text a job works on
+
+(defun span-touched-p (span start end)
+  "True when a change of the text from START below END, START = END for an
+insertion there, touches SPAN, a stretch (FROM . TO) of it: an insertion at
+FROM or inside it, or a deletion or replacement overlapping it. O(1)."
+  (let ((from (car span)) (to (cdr span)))
+    (if (= start end)
+        (and (<= from start) (< start to))
+        (and (< start to) (> end from)))))
+
+(defun job-guards (buffer)
+  "The jobs running for BUFFER, not asked to stop, whose work a change of some
+of its text would spoil (JOB-GUARDED-SPANS), each as (JOB . SPANS), the oldest
+first; NIL when there are none. O(jobs), and the spans of those that guard."
+  (loop for job in *jobs*
+        for spans = (and (eq (job-buffer job) buffer) (job-running-p job) (not (car (job-cancel job)))
+                         (job-guarded-spans job))
+        when spans collect (cons job spans)))
+
+(defun guard-touched (guards start end)
+  "The job of GUARDS (JOB-GUARDS) whose work a change of the text from START
+below END would spoil (SPAN-TOUCHED-P), or NIL. O(spans)."
+  (loop for (job . spans) in guards
+        when (some (lambda (span) (span-touched-p span start end)) spans)
+          return job))
+
+;;; Reports
+
+(defun report-job (job event &optional details)
+  "Report in the debug log that JOB, what it does and the buffer it is in, has
+reached EVENT (started, ended), DETAILS, a string or NIL, said after it."
+  (debug-report :job "~a in ~a ~a~@[: ~a~]" (job-description job) (job-buffer-name job) event details))
+
+(defun report-job-ended (job)
+  "Report in the debug log that JOB has ended, how, and why when it failed."
+  (report-job job "ended" (format nil "~(~a~)~@[, ~a~]" (job-status job)
+                                  (and (eq (job-status job) :failed) (job-error job)))))
+
+;;; Running
+
+(defun job-wake-editor (job)
+  "Wake the editor for JOB's thread, when JOB has a way to."
+  (let ((wake (job-wake job)))
+    (when wake (ignoring-errors-reported ("waking the editor for ~a" (job-description job)) (funcall wake)))))
+
+(defun start-background-result (function name wake &optional cancel)
+  "Call FUNCTION on a thread of its own named NAME, and return a cell whose car
+becomes what FUNCTION returns, or (:ERROR TEXT) when it fails, a lack of
+memory or stack too. WAKE (a function, or NIL) is called then to have the
+editor look. Nothing is kept when CANCEL, a cell, has turned true meanwhile.
+STOP-WORK on CANCEL also cuts short a call of FUNCTION's that does not look at
+it (STOPPABLE-WORK). FUNCTION runs as background work (CALL-AS-LONG-WORK)."
+  (let ((cell (list nil)))
+    (make-guarded-thread
+     (lambda ()
+       (let ((value (handling-errors-reported ("~a" name)
+                        (call-as-long-work
+                         (lambda ()
+                           (if cancel (stoppable-work (cancel) (funcall function)) (funcall function))))
+                      (serious-condition (condition) (list :error (failure-words condition :said t))))))
+         (unless (and cancel (car cancel))
+           (setf (car cell) value)
+           (when wake (funcall wake)))))
+     :name name)
+    cell))
+
+(define-record (background-work (:constructor make-background-work (key result cancel)) (:copier nil))
+  "Work started in the background by START-BACKGROUND-WORK, for KEY: its
+RESULT turns up in the background, CANCEL stops it (STOP-BACKGROUND-WORK)."
+  (key nil :documentation "What the work is for, to tell whether it is still the work wanted.")
+  (result nil :documentation "A cell whose car becomes what the work gave (START-BACKGROUND-RESULT).")
+  (cancel nil :documentation "The cell that stops the work (STOP-WORK)."))
+
+(defun start-background-work (key function name wake)
+  "Call FUNCTION, of the cell that stops it (STOP-WORK), on a thread of its own
+named NAME, for KEY (what the work is for), as START-BACKGROUND-RESULT does,
+WAKE called once it is done; return the BACKGROUND-WORK. BACKGROUND-WORK-VALUE
+gives what it gave once it is there."
+  (let ((cancel (list nil)))
+    (make-background-work key (start-background-result (lambda () (funcall function cancel)) name wake cancel)
+                          cancel)))
+
+(defun background-work-value (work)
+  "What WORK (a BACKGROUND-WORK, or NIL) gave, or (:ERROR TEXT) when it failed;
+NIL while it goes on, and for no work."
+  (and work (car (background-work-result work))))
+
+(defmacro stop-background-work (place &environment environment)
+  "Stop the BACKGROUND-WORK PLACE holds, when it holds one, so that what it
+finds is never taken in, and set PLACE to NIL. PLACE's forms are evaluated
+once."
+  (multiple-value-bind (variables values stores setter getter) (get-setf-expansion place environment)
+    (let ((work (gensym "WORK")))
+      `(let* (,@(mapcar #'list variables values) (,work ,getter))
+         (when ,work
+           (stop-work (background-work-cancel ,work))
+           (let ((,(first stores) nil)) ,setter))))))
+
+(defun start-job-thread (job work &key (name "tuatara job") details)
+  "Start JOB: keep it in *JOBS* and run WORK, a function of JOB, on a guarded
+thread called NAME, *JOB* bound to JOB there, its errors reported in the debug
+log; DETAILS, a string or NIL, are reported with its start. WORK sets JOB's
+status as it ends, :DONE or :STOPPED, with what it made; a return leaving it
+:RUNNING ends it :DONE, or :STOPPED when it was asked to stop. Whatever else
+happens, the job never stays :RUNNING: a condition signalled in WORK, a lack
+of memory or stack too, or no thread to be had for it, ends it :FAILED with
+the condition's words, JOB-STOPPED or anything once it was asked to stop ends
+it :STOPPED; and the editor is woken as it ends. WORK is the job's stoppable
+work (STOPPABLE-WORK): JOB-STOP ends it even inside a call that never looks,
+and background work (CALL-AS-LONG-WORK). Returns JOB."
+  (host-job-started *host* job)
+  (remember-job job)
+  (report-job job "started" details)
+  (flet ((run ()
+           (unwind-protect
+                (let ((*job* job)
+                      (*secret-at-hand* (job-secret-p job)))
+                  (handler-case
+                      (progn
+                        (reporting-errors ("~a in ~a" (job-description job) (job-buffer-name job))
+                          ;; M-x stop-job reaches into a call that never looks (STOP-WORK)
+                          (call-as-long-work
+                           (lambda ()
+                             (stoppable-work ((job-cancel job))
+                               (funcall work job)))))
+                        (when (job-running-p job)
+                          (setf (job-status job) (if (car (job-cancel job)) :stopped :done))))
+                    (job-stopped () (setf (job-status job) :stopped))
+                    (serious-condition (condition)
+                      (if (car (job-cancel job))
+                          (setf (job-status job) :stopped)
+                          (setf (job-error job) (failure-words condition :said t) (job-status job) :failed)))))
+             ;; cut short, the thread ended from outside: never left running
+             (when (job-running-p job)
+               (setf (job-status job) (if (car (job-cancel job)) :stopped :failed)))
+             (job-wake-editor job))))
+    (handling-errors-reported ("starting a thread for ~a" (job-description job))
+        (setf (job-thread job) (make-guarded-thread #'run :name name))
+      ;; no thread to be had (too many, no memory): the job ends at once, failed
+      (serious-condition (condition)
+        (setf (job-error job) (let ((*secret-at-hand* (job-secret-p job)))
+                                (failure-words condition :said t))
+              (job-status job) :failed)
+        (job-wake-editor job))))
+  job)
+
+(defun remember-job (job)
+  "Add JOB to the end of *JOBS*."
+  (sb-thread:with-mutex (**jobs-lock**)
+    (setf *jobs* (append *jobs* (list job)))))
+
+(defun forget-job (job)
+  "Take JOB out of *JOBS*, never to be taken in."
+  (sb-thread:with-mutex (**jobs-lock**)
+    (setf *jobs* (remove job *jobs*))))
+
+(defun take-in-jobs (&optional (test (constantly t)))
+  "Take in the jobs that have ended and pass TEST, a function of a job, on the
+editor's thread, the oldest first: each leaves *JOBS*, its end is reported in
+the debug log, and JOB-TAKE-IN takes it in, where the job belongs in the
+editor (HOST-TAKE-IN-JOB). One the host keeps waiting (HOST-JOB-WAITS-P)
+stays for a later call. Returns the jobs taken in."
+  (let ((taken '()))
+    (dolist (job (copy-list *jobs*))
+      (when (and (not (job-running-p job)) (member job *jobs*) (funcall test job) (not (host-job-waits-p *host* job)))
+        (forget-job job)
+        (report-job-ended job)
+        (push job taken)
+        (let ((*job-taken-in* job)
+              (*secret-at-hand* (job-secret-p job)))
+          (host-take-in-job *host* job (lambda () (job-take-in job))))))
+    (nreverse taken)))
+
+(defun stop-and-settle (job)
+  "Ask JOB to stop and wait for its thread to end, at most *STOP-WAIT*
+seconds; true when it ended, else it is reported left to end on its own."
+  (job-stop job)
+  (or (null (job-thread job))
+      (join-within (job-thread job))
+      (progn (left-running (job-thread job) (job-description job)) nil)))

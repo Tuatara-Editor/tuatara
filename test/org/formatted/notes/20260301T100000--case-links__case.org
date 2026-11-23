@@ -1,0 +1,46 @@
+#+title: Case links
+#+identifier: 20260301T100000
+
+* Plain
+#+BEGIN: denote-links :regexp "_alpha"
+#+END:
+* Title
+#+BEGIN: denote-links :regexp "_alpha" :sort-by-component title
+#+END:
+* Keywords reversed
+#+BEGIN: denote-links :regexp "_alpha" :sort-by-component keywords :reverse-sort t
+#+END:
+* Signature
+#+BEGIN: denote-links :regexp "_alpha" :sort-by-component signature
+#+END:
+* Identifier reversed
+#+BEGIN: denote-links :regexp "_alpha" :sort-by-component identifier :reverse-sort t
+#+END:
+* Reversed only
+#+BEGIN: denote-links :regexp "_alpha" :reverse-sort t
+#+END:
+* Left out, identifiers only
+#+BEGIN: denote-links :regexp "_alpha" :not-regexp "_md" :id-only t
+#+END:
+* With dates and a name
+#+BEGIN: denote-links :regexp "_alpha" :include-date t :block-name "alpha-notes"
+#+END:
+* In the subdirectory
+#+BEGIN: denote-links :regexp "sub/"
+#+END:
+* Capitals
+#+BEGIN: denote-links :regexp "_ALPHA"
+#+END:
+* Emacs's groups
+#+BEGIN: denote-links :regexp "\\(beta\\|gamma\\)-"
+#+END:
+* A directory left out
+#+BEGIN: denote-links :regexp "_alpha" :excluded-dirs-regexp "sub"
+#+END:
+* Nothing matches
+#+BEGIN: denote-links :regexp "nothing-is-called-this"
+old text
+#+END:
+* Every sequence
+#+BEGIN: denote-links :regexp "=="
+#+END:

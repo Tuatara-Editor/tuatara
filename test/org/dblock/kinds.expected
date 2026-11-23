@@ -1,0 +1,40 @@
+* TODO [#A] Project A [1/2] :work:urgent:
+:LOGBOOK:
+CLOCK: [2026-03-01 Sun 09:00]--[2026-03-02 Mon 12:30] => 27:30
+:END:
+#+BEGIN: clocktable :scope subtree :maxlevel 3
+#+CAPTION: Clock summary at [2026-10-02 Fri 20:20]
+| Headline        | Time      |      |      |
+|-----------------+-----------+------+------|
+| *Total time*    | *1d 4:30* |      |      |
+|-----------------+-----------+------+------|
+| Project A [1/2] | 1d 4:30   |      |      |
+| \_  Task one    |           | 1:00 |      |
+| \_    hidden    |           |      | 0:15 |
+#+END:
+** DONE Task one :home:
+:LOGBOOK:
+CLOCK: [2026-03-02 Mon 09:00]--[2026-03-02 Mon 09:45] =>  0:45
+:END:
+*** COMMENT hidden
+:LOGBOOK:
+CLOCK: [2026-03-02 Mon 10:00]--[2026-03-02 Mon 10:15] =>  0:15
+:END:
+* Project B
+#+BEGIN: clocktable :scope tree :maxlevel 3
+#+CAPTION: Clock summary at [2026-10-02 Fri 20:20]
+| Headline     | Time   |      |
+|--------------+--------+------|
+| *Total time* | *1:40* |      |
+|--------------+--------+------|
+| Project B    | 1:40   |      |
+| \_  Task two |        | 1:40 |
+#+END:
+** Task two
+:LOGBOOK:
+CLOCK: [2026-10-02 Fri 08:00]--[2026-10-02 Fri 09:10] =>  1:10
+:END:
+- [ ] item
+  :LOGBOOK:
+  CLOCK: [2026-10-02 Fri 10:00]--[2026-10-02 Fri 10:30] =>  0:30
+  :END:

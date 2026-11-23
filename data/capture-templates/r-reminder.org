@@ -1,0 +1,7 @@
+# name: Reminder
+# key: r
+# file: *org-agenda-files*
+# heading: Reminders
+# --
+* %^{What}  :reminder:notify:
+%^T

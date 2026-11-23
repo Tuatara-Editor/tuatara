@@ -1,0 +1,5 @@
+#+BEGIN: clocktable :scope ("multi/a.org" "multi/b.org") :maxlevel 3
+#+END:
+
+#+BEGIN: clocktable :scope ("multi/b.org") :maxlevel 1
+#+END:

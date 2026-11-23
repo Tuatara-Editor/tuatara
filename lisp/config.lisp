@@ -1,0 +1,342 @@
+;;;; lisp/config.lisp --- Your init file and the configuration API it uses.
+;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
+;;;;
+;;;; ~/.config/tuatara/init.lisp is read after the defaults are installed, in the
+;;;; TUATARA-USER package, so that BIND-KEY and friends are available unqualified.
+;;;; An error in it becomes a message; the editor still starts. The first time
+;;;; the editor runs without one, it writes a starter there, every setting in it
+;;;; commented out (but the tabs some languages' tools require): the settings
+;;;; there are to be found, with how to use them.
+
+(in-package #:tuatara.defaults)
+
+(defvar *config-file* nil
+  "The init file to load, or NIL for the default ~/.config/tuatara/init.lisp (XDG_CONFIG_HOME respected).")
+
+(defun config-path (name)
+  "The path of NAME, a file or a directory ending in /, in Tuatara's
+configuration directory, ~/.config/tuatara/ (tuatara/ in XDG_CONFIG_HOME when it
+is set), as text: (config-path \"snippets/\"). Worked out when asked, so
+that it follows the environment the editor runs in."
+  (namestring (merge-pathnames (concatenate 'string "tuatara/" name) (tuatara.io:config-home))))
+
+(defun config-file ()
+  "The init file path: *CONFIG-FILE* or init.lisp in the configuration
+directory (CONFIG-PATH)."
+  (or *config-file* (pathname (config-path "init.lisp"))))
+
+(defun keymap-registry ()
+  "The keymaps an init file can name, as an alist of (KEYWORD . KEYMAP)."
+  `((:global . ,*global-keymap*)
+    (:normal . ,*tuatara-normal-keymap*)
+    (:insert . ,*tuatara-insert-keymap*)
+    (:support . ,*tuatara-support-keymap*)
+    (:leader . ,*tuatara-leader-keymap*)
+    (:buffers . ,*buffers-keymap*)
+    (:help . ,*help-keymap*)
+    (:search . ,*search-keymap*)
+    (:pattern . ,*pattern-keymap*)
+    (:pattern-answer . ,*pattern-answer-keymap*)
+    (:search-files . ,*search-files-keymap*)
+    (:path-question . ,*path-question-keymap*)
+    (:popup . ,*popup-keymap*)
+    ,@(when *editor* `((:minibuffer . ,(editor-minibuffer-keymap *editor*))))))
+
+(defun keymap-named (map)
+  "The keymap MAP designates: a keymap object, or a keyword from
+KEYMAP-REGISTRY."
+  (cond ((keymap-p map) map)
+        ((cdr (assoc map (keymap-registry))))
+        (t (refuse "Unknown keymap ~s; use a major mode's name or one of ~{~s~^ ~}."
+                   map (mapcar #'car (keymap-registry))))))
+
+(defun mode-keymaps (map mode)
+  "The keymaps bind-key's MAP and MODE stand for: MAP's (KEYMAP-NAMED) without
+MODE; with MODE, a major mode's name or a list of them (MODE-NAMED, as org for
+org-mode), the keys bound for each of those modes (and the modes made from
+them) in MAP, which is then :global (the mode's own keys), :normal, :insert,
+:support or :leader (MODE-LAYER). MAP a major mode's name stands for that
+mode's own keys, as with MAP :global and MODE that mode."
+  (cond ((and (null mode) map (symbolp map) (not (keywordp map)))
+         (mode-keymaps :global map))
+        ((null mode) (list (keymap-named map)))
+        (t (loop for given in (if (listp mode) mode (list mode))
+                 for name = (if (and given (symbolp given))
+                                (mode-named given)
+                                (refuse "No major mode called ~s." given))
+                 collect (case map
+                           (:global (mode-keymap name))
+                           ((:normal :insert :support :leader) (mode-layer name map))
+                           (t (refuse "With :mode, :map is :global, :normal, :insert, :support or :leader, not ~s."
+                                      map)))))))
+
+(defun tuatara-user:bind-key (keys command &key (map :global) mode label)
+  "Bind KEYS (keys apart by spaces, C- for Control, M- for Meta and S- for
+Shift, as help writes them: \"C-c t\", \"SPC ,\") to COMMAND (a command name
+from any package, matched by name) in MAP. MAP is :global (both states),
+:normal, :insert, :support or :leader (keys under the leader key, \\`SPC' or
+*LEADER-KEY*, and under \\`C-x SPC' everywhere). It can be a special buffer's
+map such as :buffers, :help, :search, :pattern (every question that takes a
+pattern, a search of files as you type among them) or :minibuffer. It can be
+:popup (the list of completions beside the cursor). It can also be a major
+mode's name ('csv-mode) for keys only in that mode and the modes derived from
+it. The main configuration call of an init file.
+
+MODE, a major mode's name or a list of them, binds KEYS only in those modes and
+the modes made from them. MAP is then :global, :normal, :insert, :support or
+:leader. For example, (bind-key \"o l\" 'org-store-link :map :leader :mode
+'(org-mode markdown-mode)) makes \\`SPC o l' that in Org and Markdown. The same
+key bound without MODE stays as it is everywhere else.
+
+LABEL, a string, is what the key hints show for the key instead of the
+command's name: (bind-key \"t h\" 'hl-line-mode :map :leader :label \"toggle
+hl-line\"). COMMAND may also be the label and the command together: '(\"toggle
+hl-line\" . hl-line-mode). A prefix key is labelled with COMMAND NIL, its
+binding left as it is: (bind-key \"t\" nil :map :leader :label \"toggle\") shows
++toggle beside \\`t' after \\`SPC'."
+  (let* ((label (or label (and (consp command) (car command))))
+         (command (if (consp command) (cdr command) command))
+         (symbol (and (or command (null label))
+                      (or (command-symbol command) (refuse "No command named ~(~a~)." command)))))
+    (dolist (keymap (mode-keymaps map mode))
+      (cond ((and (null command) label) (set-key-label keymap keys label))
+            (t (define-key keymap keys symbol)
+               (when label (set-key-label keymap keys label)))))
+    symbol))
+
+(defun tuatara-user:unbind-key (keys &key (map :global) mode)
+  "Remove the binding of KEYS in MAP, or in MAP for MODE (see BIND-KEY)."
+  (dolist (keymap (mode-keymaps map mode))
+    (define-key keymap keys nil)))
+
+(defun tuatara-user:set-face (name &rest attributes)
+  "Change face NAME (a keyword such as :comment, :keyword or :csv-column-1) with
+ATTRIBUTES. :fg and :bg take a colour (:red, :bright-blue ..., a number 0-255,
+or \"#rrggbb\"). :bold :italic :reverse :dim take T or NIL. :underline takes T
+\(a straight line), :wave, :dotted, :box (a box round each character; a terminal
+draws a line) or NIL. :underline-colour takes a colour (NIL for the text's).
+:inherit names a face. In a window of its own (tuatara --gui), :font names a
+font and its weight (\"Adwaita Mono Bold\"), drawn at the window's size. In that
+window :height 1.25, 1.5, 2 (up to 3) draws a line beginning in the face that
+many rows tall and its letters as wide (an Org headline level's face,
+:org-level-1). Attributes not given keep their value. Your settings stay on top
+of any theme. Examples: (set-face :comment :fg :cyan), (set-face :spellcheck
+:underline :dotted)."
+  (apply #'tuatara.display:set-user-face name attributes))
+
+(defun tuatara-user:load-theme (name)
+  "Make theme NAME the one in force, for example (load-theme 'ao-light); the
+themes are listed by \\[load-theme]. Your own set-face settings stay on top.
+The desktop's light or dark style is not followed after it."
+  (choose-theme name))
+
+(defmacro tuatara-user:define-theme (name doc &body settings)
+  "Define a theme called NAME, said by DOC, that \\[load-theme] lists and
+(load-theme 'NAME) puts in force. The simplest starts from a theme and gives
+some of its roles colours of their own: (define-theme my-ao \"Ao on black.\"
+:faces-from ao-dark :palette ((ground \"#000000\"))). :palette gives roles
+their colours (a role may name another role); :faces-from takes another
+theme's faces, coloured by this palette, the roles it does not give from that
+theme's; then face settings such as (:comment :fg comment :italic t), :fg and
+:bg taking a role or a colour. The roles of ao-dark and ao-light are listed in
+lisp/theme.lisp."
+  `(tuatara.display:define-theme ,name ,doc ,@settings))
+
+(defmacro starter-config-text ()
+  "The starter init file as data/init.lisp has it, read when this file is
+compiled and kept in the program."
+  (data-file-text "init.lisp"))
+
+(defparameter *starter-config* (starter-config-text)
+  "The init file written the first time the editor runs without one: every
+setting commented out, each with what it does, but for the tabs some languages'
+own tools require (Make, gofmt), set there so that taking them away is taking
+a line away.")
+
+(defun write-starter-config (path)
+  "Write *STARTER-CONFIG* to PATH as a new file, making its directory where
+writing is not refused (TUATARA.IO:ENSURE-DIRECTORIES); a file there already,
+or a link, is never touched. True when written; NIL when
+not, and why as a second value when it could not be."
+  (handling-errors-reported ("writing the starter init file ~a" path)
+      (unless (tuatara.io:path-kind path :follow nil)
+        (tuatara.io:ensure-directories path)
+        ;; made new or not at all: a link there, even one leading nowhere, is never written through
+        (tuatara.io:write-new-file path *starter-config* :mode #o600)
+        t)
+    (error (e) (values nil (princ-to-string e)))))
+
+(defvar *init-file-stop* nil
+  "Where the init file was last read up to when its reading went wrong,
+\(LINE . WHY), or NIL when it was read to its end: a form that failed, or
+text that could not be read on.")
+
+(defun start-bare ()
+  "Have the editor start without the init file, so without packages, and with a
+state directory of its own, new and empty, in bare-state/ in the cache directory. This
+session holds the directory (MAKE-OWNED-DIRECTORY), and it is deleted when the editor
+ends, once the last of what is kept has been written (FINISH-STATE-WRITES). What
+the editor keeps between sessions (the files visited lately, the session,
+auto-saved text, bookmarks) is neither read nor written, so that nothing of the
+real state is changed or lost. The directories of earlier bare starts, left behind
+by sessions that ended, are deleted (FORGET-ABANDONED-DIRECTORIES). The
+configuration directory (snippets, templates) is read as always. Call it before the
+editor starts."
+  (forget-abandoned-directories "bare-state/")
+  (multiple-value-bind (directory lock) (make-owned-directory "bare-state/")
+    (setf *config-file* (merge-pathnames "no-init-file.lisp" directory)
+          tuatara-user:*state-directory* directory
+          *bare-state-directory* (cons directory lock))))
+
+(defun say-started-bare ()
+  "Say that the editor started without its init file and packages, with state of its own."
+  (message "Started with -Q: no init file, no packages, and what is kept between sessions kept apart"))
+
+(defparameter *renamed-settings*
+  '(("*EXPORT-TRUSTED-FOLDERS*" . "*untrusted-directories* decides where a note's export takes files from")
+    ("*EXPORT-TRUSTED-DIRECTORIES*" . "*untrusted-directories* decides where a note's export takes files from")
+    ("*SAFE-DIRECTORIES*" :into tuatara-user:*untrusted-directories*)
+    ("*EVIDENCE-FOLDERS*" . tuatara-user:*evidence-directories*)
+    ("*CODE-FILES-MAKE-FOLDERS*" . tuatara-user:*code-files-make-directories*)
+    ("*FOLDER-TREE-DEPTH-LIMIT*" . tuatara-user:*directory-tree-depth-limit*)
+    ("*TRUSTED-PROJECTS*" . "*untrusted-directories* decides which projects are trusted")
+    ("*LSP-TRUSTED-PROJECTS*" . "*untrusted-directories* decides which projects are trusted")
+    ("*SAVE-PLACE-MODE*" . tuatara-user:*remember-places*)
+    ("*SAVE-PLACE-LIMIT*" . tuatara-user:*remembered-places-limit*))
+  "Settings renamed or taken away before Tuatara 1.0, each (OLD-NAME . SETTING)
+for one renamed, (OLD-NAME :INTO SETTING) for one taken away whose list is
+added to SETTING, or (OLD-NAME . WORDS) for one taken away, WORDS saying what
+decides instead: an init file that still sets or changes one by its old name
+has its value given to the setting, added to it, or is told the setting is
+gone, and is read on (LEND-RENAMED-SETTINGS, CARRY-RENAMED-SETTINGS). Only a
+setting whose values made Tuatara more careful is added to its successor;
+those that trusted more are let go.")
+
+;; an init file setting an old name is compiled without a warning of an undefined variable
+(dolist (renamed *renamed-settings*)
+  (proclaim `(special ,(intern (car renamed) :tuatara-user))))
+
+(defun lend-renamed-settings ()
+  "Give each old name of *RENAMED-SETTINGS* its setting's value, so that an
+init file may read it or add to it by that name, as by (push ... OLD-NAME); a
+setting taken away, NIL. Each old name, what it became (its entry's rest)
+and the value lent, for CARRY-RENAMED-SETTINGS."
+  (loop for (old . new) in *renamed-settings*
+        for symbol = (intern old :tuatara-user)
+        collect (list symbol new (setf (symbol-value symbol) (and (symbolp new) (symbol-value new))))))
+
+(defun carry-renamed-settings (lent)
+  "Give each setting the init file changed by its old name that value, and say
+which name to write there instead; add what it gave a setting taken away
+into its successor, and say so; or say that a setting it changed is gone and
+what decides instead. LENT is what LEND-RENAMED-SETTINGS lent before the file
+was read; the old names are then let go. A value the setting does not take
+is put back, and said (PUT-BACK-MISFIT-SETTINGS)."
+  (let ((settings (settings-snapshot)))
+    (loop for (symbol new value) in lent
+          for name = (string-downcase (symbol-name symbol))
+          when (and (boundp symbol) (not (eq (symbol-value symbol) value)))
+            do (cond ((symbolp new)
+                      (setf (symbol-value new) (symbol-value symbol))
+                      (message "Your init file sets ~a, now called ~(~a~): its value is used; rename it there"
+                               name (symbol-name new)))
+                     ((stringp new)
+                      (message "Your init file sets ~a, which is gone: ~a; take it out there" name new))
+                     (t
+                      (let ((into (second new)) (given (symbol-value symbol)))
+                        (setf (symbol-value into)
+                              (append (symbol-value into)
+                                      (remove-if (lambda (entry) (member entry (symbol-value into) :test #'equal))
+                                                 (if (listp given) given (list given)))))
+                        (message "Your init file sets ~a, which is gone: its directories are added to ~(~a~); ~
+                                  move them there"
+                                 name (symbol-name into)))))
+          do (makunbound symbol))
+    (dolist (words (put-back-misfit-settings settings))
+      (message "Your init file: ~a" words))))
+
+(defun load-user-config ()
+  "Load the init file if it exists, in the TUATARA-USER package, form by form
+\(READ-INIT-FILE), the packages it loads said with their times
+\(CALL-WITH-START-PACKAGES); an error in it is said and the rest is read, a
+setting given a value it does not take among them (READ-INIT-FILE); a
+setting set by its old name is carried over (LEND-RENAMED-SETTINGS). The
+first time the editor runs without an init file of its own (*CONFIG-FILE*
+NIL: not a test's), a starter is written there first (WRITE-STARTER-CONFIG)
+and said."
+  (let ((file (config-file)))
+    (when (and (null *config-file*) (not (probe-file file)))
+      (multiple-value-bind (written why) (write-starter-config file)
+        (cond (written (message "Wrote a starter init file: ~a" (abbreviated-path file)))
+              (why (message "No starter init file written at ~a: ~a" (abbreviated-path file) why)))))
+    (if (probe-file file)
+        (let ((*package* (find-package :tuatara-user)))
+          (setf *init-file-outcome* :read
+                *init-file-stop* nil)
+          (let ((lent (lend-renamed-settings)))
+            (tuatara.packages:call-with-start-packages (lambda () (read-init-file file)))
+            (carry-renamed-settings lent))
+          (eq *init-file-outcome* :read))
+        (progn (setf *init-file-outcome* :none) nil))))
+
+(defun next-form-start (text at)
+  "Where the next form of TEXT, Lisp, begins at or after AT: past spaces,
+line ends, ; comments and #| |# comments."
+  (loop with i = at
+        while (< i (length text))
+        do (let ((c (char text i)))
+             (cond ((blank-char-p c) (incf i))
+                   ((char= c #\;) (setf i (or (position #\Newline text :start i) (length text))))
+                   ((and (char= c #\#) (< (1+ i) (length text)) (char= (char text (1+ i)) #\|))
+                    (setf i (nested-comment-end (lambda (j) (if (< j (length text)) (char-code (char text j)) 0))
+                                                i (length text))))
+                   (t (return i))))
+        finally (return i)))
+
+(defun map-text-forms (text function)
+  "Read the forms of TEXT, Lisp, one after another, in the package and with
+the reader as they are, calling FUNCTION with each and the line it begins on,
+from 1. NIL when the whole of TEXT was read; else where reading stopped, as
+\(LINE . CONDITION)."
+  (let ((at 0) (counted 0) (line 1))
+    (loop
+      ;; the lines counted on from the form before, not from the start each time
+      (let ((start (next-form-start text at)))
+        (incf line (count #\Newline text :start counted :end start))
+        (setf counted start))
+      (multiple-value-bind (form next)
+          (handling-errors-reported ("reading the form on line ~d" line)
+              (read-from-string text nil text :start at)
+            (error (e) (return (cons line e))))
+        (when (eq form text) (return nil))
+        (funcall function form line)
+        (setf at next)))))
+
+(defun read-init-file (file)
+  "Read and evaluate the forms of the init file FILE one by one, in the package
+it is read in (MAP-TEXT-FORMS): one that fails is said, with its line and why,
+the first such kept in *INIT-FILE-OUTCOME*, and the forms after it are read
+all the same; text that cannot be read at all ends the reading, said so. A
+setting a form gives a value it does not take is put back and said the same
+way, on the form's line, the other settings it gives kept
+\(PUT-BACK-MISFIT-SETTINGS).
+The functions, commands and recorded keys its forms define are noted as
+defined in FILE (NOTE-INIT-FILE-DEFINITION), where help shows them."
+  (let ((text (tuatara.io:file-text file))
+        (*load-truename* (truename file))
+        (*load-pathname* (pathname file)))
+    (flet ((fail (line e)
+             (when (eq *init-file-outcome* :read)
+               (setf *init-file-outcome* (cons :error (princ-to-string e))
+                     *init-file-stop* (cons line (tuatara.text:one-line (princ-to-string e)))))
+             (message "Error in ~a, line ~d: ~a" (namestring file) line e)))
+      (let* ((path (namestring (truename file)))
+             (stopped (map-text-forms text (lambda (form line)
+                                             (let ((settings (settings-snapshot)))
+                                               (handling-errors-reported ("the init file's line ~d" line)
+                                                   (progn (eval form)
+                                                          (note-init-file-definition form path line))
+                                                 (error (e) (fail line e)))
+                                               (dolist (words (put-back-misfit-settings settings))
+                                                 (fail line words)))))))
+        (when stopped (fail (car stopped) (cdr stopped)))))))

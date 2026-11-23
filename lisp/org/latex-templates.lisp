@@ -1,0 +1,112 @@
+;;;; lisp/org/latex-templates.lisp --- LaTeX templates an Org document's keywords fill in.
+;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
+;;;;
+;;;; A template is a LaTeX document with places for what an Org document
+;;;; gives: {{{body}}} for its text written as LaTeX, {{{title}}}, {{{author}}}
+;;;; and the like, and {{{KEY}}} for the value of any #+KEY: line. The plain
+;;;; export's PDFs come from the built-in template org; the enhanced
+;;;; export takes the template #+template: names, by name (yours in
+;;;; latex-templates/ in the configuration directory before a built-in one) or
+;;;; as the path of a file of its own, else the built-in article. Only the
+;;;; general ones are built in, data/latex-templates/*.tex, read into the
+;;;; program when it is built; a report, a letter or any other design of your
+;;;; own is a file of yours.
+
+(in-package #:tuatara.defaults)
+
+(defparameter *built-in-latex-templates*
+  (loop for (file text) in (built-in-data-files "latex-templates/" :type "tex")
+        collect (cons (pathname-name file) text))
+  "The templates that come with Tuatara, each (NAME . TEMPLATE): org, the
+plain export's document, and article, the enhanced export's
+own look for a note that sets none.")
+
+(defun latex-templates-directory ()
+  "Where your own templates are: latex-templates/ in the configuration
+directory (~/.config/tuatara/latex-templates/), each NAME.tex."
+  (config-path "latex-templates/"))
+
+(defun latex-templates ()
+  "The templates there are, each (NAME . TEMPLATE): yours, the files NAME.tex
+in LATEX-TEMPLATES-DIRECTORY, then the built-in ones none of yours takes the
+place of (IN-PLACE-OF-OWN)."
+  (in-place-of-own (loop for (file . text) in (directory-files (list (latex-templates-directory)))
+                         when (and text (string-equal (name-extension file) ".tex"))
+                         collect (cons (subseq file 0 (- (length file) 4)) text))
+                   *built-in-latex-templates*
+                   #'car))
+
+(defun latex-template-names ()
+  "The names of the templates there are, yours and the built-in ones, sorted."
+  (sort (mapcar #'car (latex-templates)) #'string<))
+
+(defun find-latex-template (name &key built-in)
+  "The template called NAME: yours (LATEX-TEMPLATES-DIRECTORY) before the
+built-in one, or with BUILT-IN the built-in one alone; NIL when there is none."
+  (cdr (assoc name (if built-in *built-in-latex-templates* (latex-templates)) :test #'string-equal)))
+
+(defun latex-template-path-p (value)
+  "True when VALUE, what #+template: says, is the path of a file rather
+than a name: it holds a /, starts with ~ or ends with .tex."
+  (or (find #\/ value) (uiop:string-prefix-p "~" value) (uiop:string-suffix-p (string-downcase value) ".tex")))
+
+(defun template-path-allowed-p (path directory)
+  "True when a note in DIRECTORY may name the template at PATH by its path:
+anywhere for a trusted note; for an untrusted one (UNTRUSTED-PATH-P), PATH
+stands in DIRECTORY or a directory in it, or in your own templates' directory,
+links followed (EXPORT-DIRECTORY-P), so that a note given to you cannot make
+its export take in a file of yours from elsewhere."
+  (export-directory-p path (or directory (tuatara.io:home-directory)) (list (latex-templates-directory))
+                      (if *org-export* (org-export-untrusted-p) (and directory (untrusted-path-p directory)))))
+
+(defun latex-template-for (value directory)
+  "The template VALUE names, what a note's #+template: says: a file's
+path (LATEX-TEMPLATE-PATH-P; .tex added when it has none, ./report for
+report.tex), ~ your home directory and a relative one taken
+from DIRECTORY, the note's own (your home directory for a note with no
+file), and only where TEMPLATE-PATH-ALLOWED-P lets it be; else a name
+\(FIND-LATEX-TEMPLATE). Its path is a second value, NIL for one named.
+Signals, saying what there is, when there is no such template."
+  (if (latex-template-path-p value)
+      (let* ((path (org-export-path value directory))
+             ;; a pair named without .tex (./report): its LaTeX half report.tex, its Word half the directory report/
+             (path (if (uiop:string-suffix-p (string-downcase path) ".tex") path (concatenate 'string path ".tex"))))
+        (cond ((not (eq :regular (tuatara.io:path-kind path)))
+               (refuse "There is no LaTeX template at ~:[~a~;the path #+template: gives~*~] (#+template:)"
+                       *secret-at-hand* (abbreviated-path path)))
+              ((not (template-path-allowed-p path directory))
+               (refuse "The template ~:[~a~;#+template: names~*~] is outside the note's directory (#+template:); ~
+                        the note is untrusted (*untrusted-directories*)"
+                       *secret-at-hand* (abbreviated-path path)))
+              (t (values (tuatara.io:file-text path :limit *org-file-read-limit*) path))))
+      (or (find-latex-template value)
+          (refuse "There is no LaTeX template called ~:[~a~;what #+template: says~*~] (#+template:): yours are in ~a, ~
+                   and there are ~{~a~^, ~}; a file of its own is named by its path ~
+                   (./report.tex, ~~/Templates/report.tex)"
+                  *secret-at-hand* value (abbreviated-path (latex-templates-directory)) (latex-template-names)))))
+
+(defun fill-latex-template (template field)
+  "TEMPLATE with its places filled by FIELD, a function of a name and a way,
+:TEXT, :RAW or :PATH, giving the string for it, or NIL when there is none.
+{{{NAME}}} is the value, {{{NAME:raw}}} and {{{NAME:path}}} the value read
+the other ways, {{{NAME:date=d MMMM yyyy}}} a date written in Word's pattern
+\(DOCX-FORMAT-DATE: 30 September 2026), as an imported Word template's date
+field has it; {{{#NAME}}}...{{{/NAME}}} is kept when NAME has a value that
+is not empty, {{{^NAME}}}...{{{/NAME}}} when it has none. A brace before a
+place, as in \\title{{{{title}}}}, stays a brace."
+  (flet ((value (place)
+           (let ((key (getf place :name)) (date (getf place :date)))
+             (if date
+                 ;; a date written in the pattern given, else the value as it is
+                 (let ((given (funcall field key :raw)))
+                   (multiple-value-bind (y m d) (and given (docx-date-parts given))
+                     (if y
+                         (latex-escape (docx-format-date date y m d))
+                         (funcall field key :text))))
+                 ;; a picture's size is the Word half's: here its path alone
+                 (funcall field key (getf place :way))))))
+    (with-output-to-string (out)
+      (map-template-text template
+                         (lambda (words) (write-string words out))
+                         (lambda (place) (write-string (or (value place) "") out))
+                         (lambda (name) (let ((v (funcall field name :text))) (and v (plusp (length v)))))))))

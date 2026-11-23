@@ -1,0 +1,36 @@
+#+FILETAGS: :f:
+#+BEGIN: clocktable :scope file :maxlevel 3 :tags t
+#+END:
+
+#+BEGIN: clocktable :scope file :maxlevel 2 :match "b"
+#+END:
+
+* TODO Plain task :b:
+SCHEDULED: <2026-10-01 Thu>
+:LOGBOOK:
+CLOCK: [2026-10-01 Thu 09:00]--[2026-10-01 Thu 10:00] =>  1:00
+:END:
+** TODO Child with a tag twice :f:c:b:
+CLOCK: [2026-10-01 Thu 10:00]--[2026-10-01 Thu 10:05] =>  0:05
+* COMMENT TODO Commented task
+CLOCK: [2026-10-01 Thu 11:00]--[2026-10-01 Thu 11:30] =>  0:30
+** TODO Under a commented one :b:
+CLOCK: [2026-10-01 Thu 12:00]--[2026-10-01 Thu 12:15] =>  0:15
+* TODO Archived task :ARCHIVE:
+CLOCK: [2026-10-01 Thu 13:00]--[2026-10-01 Thu 13:45] =>  0:45
+** TODO Under an archived one
+CLOCK: [2026-10-01 Thu 14:00]--[2026-10-01 Thu 14:20] =>  0:20
+* Clock lines written oddly
+CLOCK: [2026-10-01 Thu 17:00]
+  CLOCK: [2026-10-01 Thu 17:10]--[2026-10-01 Thu 17:20]
+CLOCK: => 0:07
+CLOCK:   [2026-10-01 Thu 16:00]---[2026-10-01 Thu 16:10] =>  0:10
+CLOCK:	[2026-10-01 Thu 11:00]--[2026-10-01 Thu 11:45]	=>	0:45
+clock: [2026-10-01 Thu 12:00]--[2026-10-01 Thu 12:30] =>  0:30
+CLOCK: [2026-10-01 Thu 13:00]--[2026-10-01 Thu 13:20] => 0:20 late
+CLOCK:    [2026-10-01 Thu 14:00]--[2026-10-01 Thu 14:05]   =>    0:05
+CLOCK:[2026-10-01 Thu 15:00]--[2026-10-01 Thu 15:30] =>  0:30
+Some text CLOCK: [2026-10-01 Thu 18:00]--[2026-10-01 Thu 18:05] =>  0:05
+#+begin_src text
+CLOCK: [2026-10-01 Thu 19:00]--[2026-10-01 Thu 19:05] =>  0:05
+#+end_src

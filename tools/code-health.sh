@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# tools/code-health.sh --- One plain-text report of facts about the code, to start a review from.
+# Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
+# Writes, section by section with the counts first: definitions whose bodies
+# are alike (the package repositories in ../tuatara-packages/*/ included),
+# functions and macros nothing calls, functions and files over the size
+# limits, lines past the column limits and names taken from another package
+# with two colons (the package repositories included), functions that only
+# call another with their own arguments, whether the reuse index is current,
+# the places that join, sort, reverse or delete from in place a list a cache
+# keeps and gives again, the definitions this tree adds to main with
+# the entries of the index nearest to them, the questions asked at a prompt
+# built from more than 80 columns of text with no details beside it (the
+# package repositories included) and, when the local embedding model
+# is there (tools/meaning.py), the pairs of definitions alike by meaning. The
+# editor's code is loaded once, for the sections that need it.
+# Usage: tools/code-health.sh [REPORT-FILE]
+#   Without REPORT-FILE the report goes to standard output.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+. tools/inside.sh
+work="$(mktemp -d)"
+trap 'rm -rf "$work"' EXIT
+# one system load for the sections that need the code
+in_tree :tuatara/tests \
+  "(flet ((section (name function)
+                   (with-open-file (out (format nil \"$work/~a\" name) :direction :output :if-exists :supersede)
+                     (funcall function out))))
+            (section \"3-dead\" 'tuatara.tests::dead-code-report)
+            (section \"4-sizes\" 'tuatara.tests::sizes-report)
+            (section \"6-index\" 'tuatara.tests::reuse-index-report)
+            (section \"9-kept\" 'tuatara.tests::kept-results-report))" >"$work/load.log" 2>&1 ||
+  { cat "$work/load.log" >&2; exit 1; }
+tools/possible-copies.sh --bodies --packages >"$work/1-bodies"
+tools/possible-copies.sh --pass-through >"$work/5-pass"
+{ tools/line-check.py --summary --packages | tail -n 1; tools/line-check.py --summary --packages | head -n -1; } >"$work/2-lines"
+{ tools/package-reaches.py --summary --packages | tail -n 1; tools/package-reaches.py --summary --packages | head -n -1; } >"$work/8-reaches"
+{ tools/possible-copies.sh main || echo "possible-copies.sh main failed"; } >"$work/7-copies.body"
+{ echo "$(grep -c '^[^ ]' "$work/7-copies.body") definitions added to main here have near matches in the reuse index"
+  cat "$work/7-copies.body"; } >"$work/7-copies"
+{ tools/long-prompts.py --packages | tail -n 1; tools/long-prompts.py --packages | head -n -1; } >"$work/10-prompts"
+sections="1-bodies 2-lines 3-dead 4-sizes 5-pass 6-index 7-copies 8-reaches 9-kept 10-prompts"
+tools/possible-copies.sh --alike-meaning --packages >"$work/11-meaning"
+if head -n 1 "$work/11-meaning" | grep -q '^no meaning model'; then :; else sections="$sections 11-meaning"; fi
+report() {
+  echo "Code health of $(git rev-parse --short HEAD) on $(git rev-parse --abbrev-ref HEAD), $(date +%Y-%m-%d)"
+  echo
+  echo "Counts"
+  for section in $sections; do
+    echo "  $(head -n 1 "$work/$section")"
+  done
+  for section in $sections; do
+    echo
+    echo "== $(head -n 1 "$work/$section")"
+    tail -n +2 "$work/$section"
+  done
+}
+if [ -n "${1:-}" ]; then report >"$1"; echo "Wrote $1"; else report; fi

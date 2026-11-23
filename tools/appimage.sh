@@ -1,0 +1,187 @@
+#!/usr/bin/env bash
+# tools/appimage.sh --- Make Tuatara into one AppImage.
+# Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
+# Make build/Tuatara-x86_64.AppImage: one file that runs Tuatara on another
+# computer, in its terminal or in a window of its own, nothing installed. It
+# holds Tuatara as tools/release.sh lays it out (the program, grammars, the
+# terminal library, the grammars' rules, icons) and the libraries of its window
+# and terminal versions (GTK 4 and what it needs, ncurses, OpenSSL's crypto),
+# taken from Ubuntu 26.04 in a podman container, so that it runs where glibc is
+# 2.43 or later, and its window follows the desktop's light or dark style, which
+# GTK 4.20 and later learn from the desktop; tools/distro-packages.sh
+# makes Fedora, Ubuntu and Arch packages of the same.
+# tools/appimage.sh legacy makes build/Tuatara-legacy-x86_64.AppImage instead,
+# the same with Ubuntu 24.04's libraries, for glibc 2.39 to 2.42 (Ubuntu 24.04,
+# Debian 13, Fedora 40 to 43): its GTK cannot learn the desktop's style, so its
+# launcher takes --dark and --light for the window's title bar. It is the last
+# of its kind; everything that makes it is in the legacy branches below.
+# The libraries
+# every system has its own of (glibc, the graphics drivers, fontconfig and the
+# rest of AppImage's exclude list) are the computer's. Spelling uses the
+# computer's enchant and dictionaries; the programs Tuatara runs (bwrap for the
+# sandbox, ImageMagick, poppler's tools, git, TeX, LibreOffice) are the
+# computer's too, each feature saying so when its program is not there.
+# appimagetool, the AppImage runtime it puts at the front of the file (what
+# runs first when the AppImage is started) and the exclude list are fetched
+# once into build/appimage-tools/, each a pinned version checked against its
+# SHA-256 before it is used; the
+# container is made from the Ubuntu image pinned in tools/containers.sh and
+# brought up to date with apt-get upgrade at every build; the package and exact
+# version of every library taken, with the image's digest and the build tools'
+# hashes, are written to the manifest build/Tuatara-x86_64.AppImage.libraries.txt,
+# which is also inside the AppImage (tuatara/licenses/bundled-libraries.txt, with
+# each library package's copyright file in tuatara/licenses/libraries/) and
+# a release file, so that a library can be checked against advisories. The
+# source package of every library, at exactly the version bundled, is fetched
+# there too (tools/library-sources.sh, apt checking it against Ubuntu's signed
+# index and it against its .dsc) and packed, sorted and with fixed times and
+# owners, into build/release/Tuatara-x86_64.AppImage.library-sources.tar.zst,
+# the release file the manifest names, so that the release carries the
+# libraries' sources itself. The legacy AppImage's manifest and sources are
+# named after it likewise.
+# Usage: tools/appimage.sh [current|legacy]  (current when not given)
+set -euo pipefail
+root="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$root"
+. tools/containers.sh
+. tools/inside.sh
+. tools/fetch.sh
+image="${1:-current}"
+case "$image" in
+  current)
+    name=Tuatara-x86_64.AppImage
+    base_image="$ubuntu_current_image"
+    container=tuatara-appimage-libs ;;
+  legacy)
+    name=Tuatara-legacy-x86_64.AppImage
+    base_image="$ubuntu_image"
+    container=tuatara-appimage-legacy-libs ;;
+  *) echo "Usage: tools/appimage.sh [current|legacy]" >&2; exit 2 ;;
+esac
+tools_dir="$root/build/appimage-tools"
+appdir="$root/build/appimage/Tuatara.AppDir"
+out="$root/build/$name"
+manifest="$out.libraries.txt"
+library_sources="$root/build/release/$name.library-sources.tar.zst"
+excludelist_url=https://raw.githubusercontent.com/AppImageCommunity/pkg2appimage/15a64c20dc23a0154622ba25829364323903b6b5/excludelist
+excludelist_sha256=50db0f894f34b169c47a5cbc0c17dbab61e9edebca5bc8269a1e6ac1bf4bdad9
+appimagetool_url=https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage
+appimagetool_sha256=ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0
+runtime_url=https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-x86_64
+runtime_sha256=2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d
+
+fetch() { checked_download "$@" || exit 1; }
+mkdir -p "$tools_dir"
+fetch "$excludelist_url" "$tools_dir/excludelist" "$excludelist_sha256"
+fetch "$appimagetool_url" "$tools_dir/appimagetool-x86_64.AppImage" "$appimagetool_sha256"
+fetch "$runtime_url" "$tools_dir/runtime-x86_64" "$runtime_sha256"
+chmod +x "$tools_dir/appimagetool-x86_64.AppImage"
+
+tools/release.sh >/dev/null
+rm -rf "$root/build/appimage"
+mkdir -p "$appdir/lib"
+cp -a build/release/tuatara "$appdir/tuatara"
+# no man path to install the pages on: --help and the handbooks say what they do
+rm -rf "$appdir/tuatara/man"
+
+# the libraries, from the Ubuntu image: those the program loads (libzstd, which the
+# program itself needs, too) and all they need in turn, each once (a root the
+# others need too, as libzstd), but those on the exclude list
+pinned_container "$container" "$base_image" 'true'
+release="$(podman exec "$container" sh -c '. /etc/os-release && echo "$VERSION_ID"')"
+refresh_container "$container" 'sed -i "s/^Types: deb$/Types: deb deb-src/" /etc/apt/sources.list.d/ubuntu.sources &&
+  DEBIAN_FRONTEND=noninteractive apt-get update -qq &&
+  DEBIAN_FRONTEND=noninteractive apt-get upgrade -y -qq >/dev/null &&
+  DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgtk-4-1 libncursesw6 libssl3t64 libzstd1 >/dev/null'
+podman cp "$tools_dir/excludelist" "$container:/tmp/excludelist"
+podman cp tools/bundle-libraries.sh "$container:/tmp/bundle-libraries.sh"
+podman exec "$container" bash -c '
+  set -euo pipefail
+  rm -rf /tmp/bundle && mkdir -p /tmp/bundle
+  excluded=" $(grep -v "^#" /tmp/excludelist | sed "s/[ #].*//" | grep . | tr "\n" " ") "
+  roots=""
+  known=$(ldconfig -p)
+  for name in libgtk-4.so.1 libncursesw.so.6 libcrypto.so.3 libzstd.so.1; do
+    roots="$roots $(grep -m1 "^\s*$name " <<<"$known" | sed "s/.*=> //")"
+  done
+  wanted=""
+  for path in $(printf "%s\n" $roots $(ldd $roots | grep "=> /" | sed "s/.*=> //; s/ (.*//") | sort -u); do
+    case "$excluded" in *" $(basename "$path") "*) continue ;; esac
+    wanted="$wanted $path"
+  done
+  bash /tmp/bundle-libraries.sh /tmp/bundle $wanted'
+podman cp "$container:/tmp/bundle/lib/." "$appdir/lib/"
+podman cp "$container:/tmp/bundle/lib.tsv" "$tools_dir/lib.tsv"
+mkdir -p "$appdir/tuatara/licenses/libraries"
+podman cp "$container:/tmp/bundle/copyright/." "$appdir/tuatara/licenses/libraries/"
+# the source of each library, exactly as bundled, packed beside the release
+podman cp tools/library-sources.sh "$container:/tmp/library-sources.sh"
+podman exec "$container" bash /tmp/library-sources.sh /tmp/library-sources /tmp/bundle/lib.tsv "$name"
+sources_dir="$root/build/appimage/tuatara-library-sources"
+mkdir -p "$sources_dir"
+podman cp "$container:/tmp/library-sources/." "$sources_dir/"
+tar -C "$root/build/appimage" --sort=name --mtime="@$(git log -1 --format=%ct)" --owner=0 --group=0 --numeric-owner \
+    --mode=u+rw,go=rX -cf - tuatara-library-sources | zstd -T0 -q -f -o "$library_sources"
+{
+  echo "# Native libraries bundled in $name (lib/), for checking against advisories."
+  echo "# Taken from the Ubuntu $release package versions below, after apt-get upgrade at build time."
+  echo "# Their sources, at exactly these versions: $(basename "$library_sources"), a file of the release."
+  echo "base-image	$base_image"
+  echo "appimagetool	$appimagetool_url	$appimagetool_sha256"
+  echo "runtime	$runtime_url	$runtime_sha256"
+  echo "excludelist	$excludelist_url	$excludelist_sha256"
+  echo "# file	package	version	sha256 of the file"
+  cat "$tools_dir/lib.tsv"
+} > "$manifest"
+mkdir -p "$appdir/tuatara/licenses"
+cp "$manifest" "$appdir/tuatara/licenses/bundled-libraries.txt"
+
+# how it starts: the libraries it brings first, the environment as it was given
+# back to the programs it starts (LEAVE-APPIMAGE-ENVIRONMENT), TUATARA_APPIMAGE
+# saying which AppImage it is; --install-desktop and --remove-desktop put it in
+# the desktop's applications and take it out (tools/install-desktop.sh, inside
+# it). The legacy AppImage's --dark or --light first shows the window's own
+# parts (its title bar) in GTK's dark or light style, which the GTK it brings
+# cannot learn from the desktop, --install-desktop --dark with the style kept
+# in the entry.
+{
+  cat <<'APPRUN'
+#!/bin/sh
+here="$(dirname "$(readlink -f "$0")")"
+APPRUN
+  if [ "$image" = legacy ]; then
+    cat <<'APPRUN'
+case "${1:-}" in
+  --dark) export GTK_THEME=Adwaita:dark; shift ;;
+  --light) export GTK_THEME=Adwaita; shift ;;
+esac
+APPRUN
+  fi
+  echo "export TUATARA_APPIMAGE=$image"
+  cat <<'APPRUN'
+case "${1:-}" in
+  --install-desktop) shift; exec "$here/install-desktop.sh" --appimage "${APPIMAGE:?run the AppImage file itself}" "$@" ;;
+  --remove-desktop) exec "$here/install-desktop.sh" --remove ;;
+esac
+export TUATARA_LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
+export LD_LIBRARY_PATH="$here/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+exec "$here/tuatara/tuatara" "$@"
+APPRUN
+} > "$appdir/AppRun"
+chmod +x "$appdir/AppRun"
+cp tools/install-desktop.sh "$appdir/install-desktop.sh"
+# the application's entry, the one an AppImage holds, written by the program as
+# it writes it for --install-desktop (which writes the client's beside it too)
+entries="$root/build/appimage/entries"
+inside env TUATARA_DESKTOP_ENTRIES="$entries" build/release/tuatara/tuatara tuatara >/dev/null
+cp "$entries/tuatara.desktop" "$appdir/tuatara.desktop"
+chmod 644 "$appdir/tuatara.desktop"
+rm -rf "$entries"
+cp data/icons/hicolor/256x256/apps/tuatara.png "$appdir/tuatara.png"
+ln -s tuatara.png "$appdir/.DirIcon"
+
+rm -f "$out"
+ARCH=x86_64 "$tools_dir/appimagetool-x86_64.AppImage" --appimage-extract-and-run --no-appstream --runtime-file "$tools_dir/runtime-x86_64" "$appdir" "$out" >/dev/null
+echo "$out"
+echo "$manifest"
+echo "$library_sources"

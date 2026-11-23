@@ -1,0 +1,370 @@
+;;;; test/health.lisp --- M-x check-health: what each language and mode has here.
+;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
+
+(in-package #:tuatara.tests)
+
+(define-test health
+  :description "M-x check-health shows *Health*: where the init file and grammars are, each language's
+grammar and rules checked (a missing grammar or rules that do not compile said, and why), each major
+mode's language, comments, tabs and files; the rules are compiled in the background when that takes
+a moment.")
+
+(defun health-text ()
+  "The text of *Health*, or NIL when there is none."
+  (let ((b (tuatara.buffer:find-buffer "*Health*")))
+    (and b (tuatara.buffer:buffer-string b))))
+
+(defun health-line (text start)
+  "The line of TEXT that begins with START, or NIL."
+  (find-if (lambda (line) (uiop:string-prefix-p start line))
+           (uiop:split-string text :separator '(#\Newline))))
+
+(define-test (health languages-and-modes)
+  (with-health-waited
+    (multiple-value-bind (f editor) (run-keys "M-x c h e c k - h e a l t h RET" :width 120 :height 50)
+      (declare (ignore editor))
+      (true (tuatara.frontend.fake:fake-frame-showing f "Tuatara health"))
+      (let ((text (health-text)))
+        (true (search "Init file" text))
+        ;; the sandbox, found and working in the container the tests run in
+        (true (search "bubblewrap" (health-line text "Sandbox")))
+        (true (search "no network" (health-line text "Sandbox")))
+        (true (search "(seccomp)" (health-line text "Sandbox")))
+        ;; and what decodes PDFs: poppler, installed in the container the tests run in
+        (true (search "PDF text by pdftotext and pdfinfo (poppler)" (health-line text "Decoders")))
+        (true (search "the program that runs them and" text))
+        ;; every language's grammar found and its rules working
+        (dolist (language '("bash" "c" "containerfile" "lisp" "rust"))
+          (let ((line (health-line text (format nil "~a " language))))
+            (true line)
+            (false (search "✘" line))
+            (true (search "✓ rich" line))))
+        ;; Lisp indents by its own rules, and has definitions by brackets
+        (let ((line (health-line text "lisp ")))
+          (true (search "Lisp" line :start2 5))
+          (true (search "brackets" line)))
+        (true (search "✓" (health-line text "rust ") :start2 20))
+        ;; the modes, their language, comments, tabs and files
+        (let ((line (health-line text "rust-mode ")))
+          (true (search "rust" line :start2 9))
+          (true (search "//" line))
+          (true (search "4 spaces" line))
+          (true (search ".rs" line))
+          (true (search "#!rust-script" line)))
+        (true (search "4 tabs" (health-line text "tsv-mode ")))
+        (true (search ";;" (health-line text "lisp-mode ")))
+        (true (search "The editor's own buffers:" text))
+        (true (search "help-mode" text))
+        (true (search "None found." text))))))
+
+(define-test (health problems-said)
+  (unwind-protect
+       (progn
+         (tuatara.defaults::register-language 'health-broken "Rules that do not compile." "rust" '()
+                                              :definitions "(no_such_node) @definition")
+         (tuatara.defaults::register-language 'health-missing "A grammar that is not there." "no-such-grammar" '())
+         (let* ((check (tuatara.defaults::start-health-check)))
+           (sb-thread:join-thread (tuatara.runtime:job-thread check))
+           (tuatara.runtime:forget-job check)
+           (let ((text (tuatara.defaults::health-report check)))
+             ;; the broken rules: ✘ in their column, and why among the problems
+             (let ((line (health-line text "health-broken ")))
+               (true (search "✘" line))
+               (true (search "✓" line)))
+             (true (search "health-broken: its defuns rules do not compile:" text))
+             ;; no grammar: ✘ for it, its rules not checked
+             (let ((line (health-line text "health-missing ")))
+               (true (search "✘" line)))
+             (true (search "health-missing (no-such-grammar.so)" text))
+             (is = 1 (count-matches "No grammar in " text))
+             (false (search "None found." text)))))
+    (setf tuatara.defaults::*languages*
+          (remove-if (lambda (l) (member (tuatara.defaults::language-name l) '(health-broken health-missing)))
+                     tuatara.defaults::*languages*))))
+
+(define-test (health checked-in-the-background)
+  ;; not ready at once: said so, and shown by the tick when it is
+  (let ((tuatara.defaults::*health-wait* 0))
+    (let ((scratch (tuatara.buffer:find-buffer "*Health*")))
+      (when scratch (tuatara.buffer:kill-buffer scratch)))
+    (multiple-value-bind (f editor)
+        (labels ((settle ()
+                   ;; waits, the editor taking jobs in between, until the check is taken in
+                   (when (some #'tuatara.defaults::health-check-p tuatara.runtime:*jobs*)
+                     (sleep 0.02)
+                     (tuatara.frontend.fake:fake-queue-action (tuatara.command::editor-frontend tuatara.command::*editor*) #'settle))))
+          (with-jobs-held-past-their-wait (tuatara.defaults::health-check)
+            (run-keys (list "M-x c h e c k - h e a l t h RET" #'settle) :width 120 :height 40)))
+      (declare (ignore editor))
+      (true (tuatara.frontend.fake:fake-frame-showing f "Checking the languages' rules in the background"))
+      (true (tuatara.frontend.fake:fake-frame-showing f "the report comes when it is ready"))
+      (false (tuatara.defaults::health-check-running))
+      (true (search "Tuatara health" (health-text))))))
+
+(define-test (health report-keeps-its-columns)
+  ;; its tables are laid out in columns, so its lines never wrap, soft wrapping on or off
+  (unwind-protect
+       (progn
+         (sb-int:encapsulate 'tuatara.defaults::health-pieces 'plain
+                             (lambda (function check) (declare (ignore function check)) (list "x")))
+         (let ((editor (nth-value 1 (run-keys (list (lambda () (tuatara.defaults::show-health-report nil)))))))
+           (declare (ignorable editor))
+           (let ((report (tuatara.buffer:find-buffer "*Health*")))
+             (true report)
+             (true (typep (tuatara.modes:buffer-major-mode report) 'tuatara.defaults::health-mode))
+             (false (tuatara.modes:mode-wraps-p (tuatara.modes:buffer-major-mode report))))))
+    (sb-int:unencapsulate 'tuatara.defaults::health-pieces 'plain)
+    (let ((report (tuatara.buffer:find-buffer "*Health*"))) (when report (tuatara.buffer:kill-buffer report)))))
+
+(define-test (health report-keys)
+  (with-health-waited
+    ;; q in the report closes its window; r checks again
+    (multiple-value-bind (f editor) (run-keys "M-x c h e c k - h e a l t h RET C-x o r q" :width 120 :height 40)
+      (is string= "*scratch*" (current-name editor))
+      (is = 1 (length (tuatara.command:editor-windows editor)))
+      (false (loop for row from 0 below (length (tuatara.frontend.fake:fake-screen f))
+                   thereis (search "Tuatara health" (tuatara.frontend.fake:fake-screen-line f row))))
+      (true (health-text)))))
+
+(define-test (health facts-from-elsewhere)
+  (multiple-value-bind (extensions names interpreters patterns)
+      (tuatara.modes:mode-file-rules 'tuatara.defaults::rust-mode)
+    (is equal '("rs") extensions)
+    (is equal '() names)
+    (is equal '("cargo" "rust-script") interpreters)
+    (is equal '() patterns))
+  (let ((facts (tuatara.frontend:frontend-health (tuatara.frontend.tui:make-tui-frontend))))
+    (true (assoc "Display" facts :test #'string=))
+    (true (assoc "Clipboard" facts :test #'string=)))
+  (is equal '() (tuatara.frontend:frontend-health (tuatara.frontend.fake:make-fake-frontend))))
+
+(define-test (health appimage-said)
+  ;; which AppImage Tuatara runs from, and for the legacy one which to take next
+  (true (search "take Tuatara-x86_64.AppImage" (tuatara.defaults::appimage-words "legacy" '(2 43))))
+  (true (search "later releases need glibc 2.43" (tuatara.defaults::appimage-words "legacy" '(2 39))))
+  (true (search "Ubuntu 26.04's libraries" (tuatara.defaults::appimage-words "current" '(2 43))))
+  (true (search "glibc is 2.43" (tuatara.defaults::appimage-words "current" '(2 43))))
+  (is = 2 (first (tuatara.defaults::glibc-version))))
+
+(define-test (health latex-shut-in-said)
+  ;; health says whether LaTeX runs shut in by the sandbox, where an engine is found
+  (when (tuatara.export::latex-engines-found)
+    (if (eq :ready (tuatara.io:sandbox-status))
+        (true (search "shut in by the sandbox" (tuatara.export:latex-export-words)))
+        (true (search "unconfined" (tuatara.export:latex-export-words))))
+    ;; no sandbox program: unconfined, and said so
+    (unwind-protect
+         (let ((tuatara-user:*sandbox* nil))
+           (tuatara.io:sandbox-status :again t)
+           (true (search "unconfined" (tuatara.export:latex-export-words))))
+      (tuatara.io:sandbox-status :again t))))
+
+(define-test (health drawing-recommended)
+  ;; the window's way of drawing to use, from what each way measured: GL, the
+  ;; standard, unless another shows clearly more of the keys held, or as many sooner
+  (flet ((figures (frames median) (list :renderer "r" :keys 180 :frames frames :median median :slowest (* 2 median))))
+    (is eq :gl
+        (tuatara.defaults::drawing-choice (list (cons :gl (figures 180 15.0)) (cons :vulkan (figures 178 14.0)))))
+    (is eq :gl
+        (tuatara.defaults::drawing-choice (list (cons :gl (figures 180 15.0)) (cons :vulkan (figures 180 14.0)))))
+    (is eq :vulkan
+        (tuatara.defaults::drawing-choice (list (cons :gl (figures 150 23.0)) (cons :vulkan (figures 180 25.0)))))
+    (is eq :vulkan
+        (tuatara.defaults::drawing-choice (list (cons :gl (figures 180 15.0)) (cons :vulkan (figures 180 12.0)))))
+    ;; a millisecond sooner as a rule but slower at the slowest of twenty: alike, the standard kept
+    (flet ((with (frames median slowest) (list :renderer "r" :keys 180 :frames frames :median median :slowest slowest)))
+      (is eq :gl
+        (tuatara.defaults::drawing-choice (list (cons :gl (with 179 6.0 7.0)) (cons :vulkan (with 180 5.0 9.0)))))
+      (is eq :gl
+        (tuatara.defaults::drawing-choice (list (cons :gl (with 180 3.0 4.0)) (cons :vulkan (with 180 2.5 3.0))))))
+    ;; one not measured: the other; none: the standard
+    (is eq :vulkan (tuatara.defaults::drawing-choice (list (cons :gl nil) (cons :vulkan (figures 120 30.0)))))
+    (is eq :gl (tuatara.defaults::drawing-choice (list (cons :gl nil) (cons :vulkan nil))))
+    ;; the report: each way's figures, then which to use, and how when it is not the one in use
+    (let ((words (tuatara.defaults::drawing-words (list (cons :gl (figures 150 23.0))
+                                                        (cons :vulkan (figures 180 25.0))) :gl)))
+      (is = 3 (length words))
+      (true (search "GL: 23.0 ms" (first words)))
+      (true (search "150 frames for 180 keys" (first words)))
+      (true (search "(setf *gui-renderer* :vulkan)" (third words))))
+    (true (search "the one in use"
+            (third (tuatara.defaults::drawing-words (list (cons :gl (figures 180 15.0)) (cons :vulkan nil)) :gl))))
+    (false (tuatara.defaults::drawing-words '() :gl))))
+
+(define-test (health drawing-fallen-back)
+  ;; a way GTK could not draw with, falling back to another, is said to have fallen back, its
+  ;; figures never those of the way asked for, and never called the one in use
+  (flet ((figures (renderer frames median)
+           (list :renderer renderer :keys 180 :frames frames :median median :slowest (* 2 median))))
+    (let ((words (tuatara.defaults::drawing-words (list (cons :gl (figures "GskBroadwayRenderer" 180 10.5))
+                                                        (cons :vulkan (figures "GskBroadwayRenderer" 180 9.1)))
+                                                  :gl)))
+      (true (search "GL: not to be had here, GTK drew with GskBroadwayRenderer instead" (first words)))
+      (true (search "Vulkan: not to be had here" (second words)))
+      (false (search "in use" (third words))))
+    ;; one fell back, the other drew as asked: the other is chosen
+    (is eq :vulkan (tuatara.defaults::drawing-choice (list (cons :gl (figures "GskCairoRenderer" 180 5.0))
+                                                           (cons :vulkan (figures "GskVulkanRenderer" 150 20.0)))))
+    ;; both as asked, under their own names
+    (is eq :gl (tuatara.defaults::drawing-choice (list (cons :gl (figures "GskGLRenderer" 180 15.0))
+                                                       (cons :vulkan (figures "GskVulkanRenderer" 178 14.0)))))))
+
+(define-test (health outside-programs-agree)
+  ;; the software from outside, one table: the distribution packages recommend and suggest
+  ;; what it names, and M-x check-health says what to install from it, git among them
+  (let* ((script (uiop:read-file-lines (merge-pathnames "tools/distro-packages.sh"
+                                                        (asdf:system-source-directory :tuatara))))
+         (programs tuatara.defaults::*outside-programs*))
+    (flet ((field (prefix commas)
+             ;; the packages of the line beginning with PREFIX, with commas between them or not
+             (let ((line (find-if (lambda (line)
+                                    (and (uiop:string-prefix-p prefix line) (eq commas (and (find #\, line) t))))
+                                  script)))
+               (and line (sort (mapcar (lambda (word) (string-trim ", " word))
+                                       (tuatara.text:split-words (subseq line (length prefix))))
+                               #'string<))))
+           (table (system weight)
+             (sort (loop for (nil . entry) in programs
+                         when (or (null weight) (eq weight (getf entry :weight)))
+                           append (copy-list (getf entry system)))
+                   #'string<)))
+      (is equal (table :fedora :recommends) (field "Recommends: " nil))
+      (is equal (table :fedora :suggests) (field "Suggests: " nil))
+      (is equal (table :debian :recommends) (field "Recommends: " t))
+      (is equal (table :debian :suggests) (field "Suggests: " t))
+      ;; Arch's optional packages, each with what it is for
+      (is equal (sort (loop for (nil . entry) in programs
+                            append (mapcar (lambda (package) (format nil "~a: ~a" package (getf entry :what)))
+                                           (getf entry :arch)))
+                      #'string<)
+          (sort (loop for line in script
+                      for start = (position #\' line)
+                      for end = (and start (position #\' line :start (1+ start)))
+                      when (and end (or (search "optdepends=(" line) (uiop:string-prefix-p "            '" line)))
+                        collect (subseq line (1+ start) end))
+                #'string<))))
+  ;; Arch's ImageMagick reads most pictures only with their libraries beside it: each is named with it
+  (dolist (entry tuatara.defaults::*image-format-libraries*)
+    (true (member (third entry) (getf (tuatara.defaults::outside-program :pictures) :arch) :test #'string=)
+          "~a for ~a" (third entry) (first entry)))
+  (true (search "Arch: imagemagick libjpeg-turbo libtiff libwebp libheif librsvg libraw openjpeg2 libjxl"
+                (tuatara.defaults::outside-program-install-words :pictures nil)))
+  (is string= "install GnuPG (Fedora: gnupg2)" (tuatara.defaults::outside-program-install-words :gpg :fedora))
+  (true (search "Debian and Ubuntu: gnupg; Arch: gnupg" (tuatara.defaults::outside-program-install-words :gpg nil)))
+  (let ((words (tuatara.defaults::git-health-words)))
+    (true (or (search "by /" words) (search "install git" words)) "~a" words)))
+
+(define-test (health archives-program-said)
+  ;; bsdtar, which reads archives other than tar ones, named where it is found,
+  ;; or what to install for it, on each system; an archive it would read is
+  ;; refused in the same words
+  (true (search "archives by /usr/bin/bsdtar, shut in" (tuatara.defaults::archive-health-words)))
+  ;; 7-Zip named for the best of them, found or not; one older than 25.00 said worth updating
+  (true (search "7-Zip" (tuatara.defaults::archive-health-words)))
+  (let ((found (tuatara.defaults::seven-zip)))
+    (when found
+      (false (search "older than 25.00" (tuatara.defaults::archive-health-words)))
+      (unwind-protect
+           (progn (setf tuatara.defaults::**seven-zip** (list (first found) '(23 1) (third found)))
+                  (true (search "7-Zip 23.01, shut in: older than 25.00, it lacks fixes"
+                                (tuatara.defaults::archive-health-words))))
+        (setf tuatara.defaults::**seven-zip** found))))
+  (let ((tuatara.defaults::*seven-zip-names* '()))
+    (true (search "7-Zip for the best of them, not found: encrypted 7z and rar, more zip methods: install 7-Zip ("
+                  (tuatara.defaults::archive-health-words))))
+  (is string= "install bsdtar (Fedora: bsdtar; Debian and Ubuntu: libarchive-tools; Arch: libarchive)"
+      (tuatara.defaults::outside-program-install-words :archives nil))
+  (let ((tuatara.io:*sandbox-path* "/nonexistent"))
+    (true (search "archives by none: install bsdtar (" (tuatara.defaults::archive-health-words)))
+    (with-test-directory (dir)
+      (alexandria:write-byte-vector-into-file (tuatara.io:zip-octets '(("a.txt" . "alpha")))
+                                              (merge-pathnames "a.zip" dir))
+      (true (search "bsdtar is not installed: install bsdtar"
+                    (handler-case (progn (tuatara.defaults::extract-archive (namestring (merge-pathnames "a.zip" dir))
+                                                                            (namestring (merge-pathnames "out/" dir)))
+                                         "")
+                      (error (e) (princ-to-string e))))))))
+
+(define-test (health grammar-asked-again)
+  ;; a grammar that could not be had at first, the program loading grammars having ended (as when the
+  ;; sandboxes were ended by something before), is asked for again, not said to be missing
+  (let ((refused 0))
+    (remhash "ada" tuatara.syntax::**grammars**)
+    (sb-int:encapsulate 'tuatara.syntax:find-grammar 'ended-once
+                        (lambda (function name)
+                          (if (and (equal name "ada") (< refused 1))
+                              (progn (incf refused) nil)
+                              (funcall function name))))
+    (unwind-protect
+         (with-health-waited
+           (run-keys "M-x c h e c k - h e a l t h RET" :width 120 :height 50)
+           (is = 1 refused)
+           (let ((line (health-line (health-text) "ada ")))
+             (true line)
+             (false (search "✘" line) "~a" line)))
+      (sb-int:unencapsulate 'tuatara.syntax:find-grammar 'ended-once))))
+
+(define-test (health programs-wanted)
+  ;; Tuatara's programs and each package's, found or missing, the required and the suggested apart
+  (let ((tuatara.packages:*package-needs* '())
+        (rows nil))
+    (let ((tuatara.packages::*loading-package-name* "demo"))
+      (tuatara.packages:declare-package-needs
+       '("sh" "running scripts" :required t)
+       '("no-such-program-anywhere" "making pictures" :required t :install "install Pictures")
+       '(("no-such-program-anywhere" "sh") "a choice" :install "install either")
+       '("no-such-suggested" "a nicety" :install "install Nice")))
+    (fail (tuatara.packages:declare-package-needs '("sh" "again")) 'tuatara.runtime:refusal)
+    (let* ((sections (tuatara.defaults::health-needs))
+           (core (cdr (assoc "Tuatara" sections :test #'string=)))
+           (demo (cdr (assoc "Package demo" sections :test #'string=))))
+      (is = 2 (length sections))
+      (is equal '(:required :required :suggested :suggested) (mapcar #'third demo))
+      (is equal '(nil ("no-such-program-anywhere") nil ("no-such-suggested")) (mapcar #'fourth demo))
+      ;; remote work wants ssh and setpriv; archives 7zz and bsdtar
+      (dolist (name '("OpenSSH and setpriv" "bsdtar" "7-Zip"))
+        (true (find name core :key #'first :test #'string=) "~a" name))
+      (setf rows demo))
+    ;; the report names each, the missing with what to install
+    (let ((tuatara.defaults::*health-pieces* '()))
+      (tuatara.defaults::write-health-needs (list (cons "Package demo" rows)))
+      (let ((text (tuatara.defaults::pieces-text (reverse tuatara.defaults::*health-pieces*))))
+        (true (search "Required" text))
+        (true (search "✓ sh: running scripts" text))
+        (true (search "✘ no-such-program-anywhere: making pictures (not found: no-such-program-anywhere; install Pictures)" text)
+              "~a" text)
+        (true (search "no-such-program-anywhere or sh: a choice" text))
+        (true (< (search "Required" text) (search "Suggested" text))))))
+  ;; a package taken out leaves no needs behind
+  (let ((tuatara.packages:*package-needs* (list (cons "gone" (list (list :programs "sh" :what "x"))))))
+    (tuatara.packages::unload-package "gone")
+    (false tuatara.packages:*package-needs*)))
+
+(define-test (health setting-outside-its-values)
+  ;; a setting holding a value it does not take, a list changed where it stands, is named among
+  ;; the problems with its value and what it takes, and keeps its value
+  (let ((tuatara-user:*gui-padding* (list 4 12)))
+    (setf (second tuatara-user:*gui-padding*) "wide")
+    (let ((problems (tuatara.defaults::health-problems (tuatara.defaults::make-health-check '() '()))))
+      (true (find-if (lambda (problem) (search "*gui-padding* is (4 \"wide\"), but it takes" problem)) problems)
+            "~s" problems))
+    (is equal '(4 "wide") tuatara-user:*gui-padding*))
+  (false (find-if (lambda (problem) (search "*gui-padding*" problem))
+                  (tuatara.defaults::health-problems (tuatara.defaults::make-health-check '() '())))))
+
+(define-test (health grammars-looked-for-on-the-check-thread)
+  ;; the report is written without looking for the grammars' program and directories again on the editor's
+  ;; thread, once for each language
+  (let* ((check (tuatara.defaults::start-health-check))
+         (here 0))
+    (sb-thread:join-thread (tuatara.runtime:job-thread check))
+    (tuatara.runtime:forget-job check)
+    (let ((thread sb-thread:*current-thread*))
+      (dolist (name '(tuatara.syntax:syntax-helper-program tuatara.syntax:grammar-directories))
+        (sb-int:encapsulate name 'counted (lambda (function &rest arguments)
+                                            (when (eq sb-thread:*current-thread* thread) (incf here))
+                                            (apply function arguments)))))
+    (unwind-protect (true (search "Problems" (tuatara.defaults::health-report check)))
+      (dolist (name '(tuatara.syntax:syntax-helper-program tuatara.syntax:grammar-directories))
+        (sb-int:unencapsulate name 'counted)))
+    (is = 0 here)))

@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Tuatara (client)
+GenericName=Text Editor
+Comment=Edit text in a window of the Tuatara daemon, or of its own when none runs
+Icon=tuatara
+Exec=@EXEC@ --gui --client --fallback %F
+Terminal=false
+Categories=Utility;TextEditor;
+Keywords=text;editor;org;notes;files;daemon;client;
+MimeType=text/plain;text/x-csrc;text/x-chdr;text/x-lisp;text/x-rust;text/x-shellscript;text/csv;text/x-org;
+StartupWMClass=tuatara

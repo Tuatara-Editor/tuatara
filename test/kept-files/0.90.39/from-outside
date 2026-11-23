@@ -1,0 +1,6 @@
+# tuatara from-outside 1
+# Files and directories made from untrusted ones where no mark could be
+# written on them: they, and all they hold, stay untrusted. One a line,
+# where it really is (\\, \n and \r stand for \, a newline and a return).
+/home/someone/Work/unpacked/
+/mnt/no-attributes/copied report.pdf/

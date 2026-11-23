@@ -1,0 +1,164 @@
+; This Source Code Form is subject to the terms of the Mozilla Public
+; License, v. 2.0. If a copy of the MPL was not distributed with this
+; file, You can obtain one at https://mozilla.org/MPL/2.0/.
+;
+; The colouring rules for cue: runtime/queries/cue/highlights.scm of
+; Helix (https://github.com/helix-editor/helix) at commit 9bcdf4d79d14,
+; unchanged below this notice.
+
+(identifier) @variable
+
+; Includes
+[
+  "package"
+  "import"
+] @keyword.control.import
+
+; Namespaces
+(package_identifier) @namespace
+
+(import_spec
+  [
+    "."
+    "_"
+  ] @punctuation.special)
+
+[
+  (attr_path)
+  (package_path)
+] @string.special.url ; In attributes
+
+; Attributes
+(attribute) @attribute
+
+; Conditionals
+"if" @keyword.control.conditional
+
+; Repeats
+"for" @keyword.control.repeat
+
+(for_clause
+  "_" @punctuation.special)
+
+; Keywords
+"let" @keyword
+
+"in" @keyword.operator
+
+; Operators
+[
+  "+"
+  "-"
+  "*"
+  "/"
+  "|"
+  "&"
+  "||"
+  "&&"
+  "=="
+  "!="
+  "<"
+  "<="
+  ">"
+  ">="
+  "=~"
+  "!~"
+  "!"
+  "="
+] @operator
+
+; Fields & Properties
+(field
+  (label
+    (identifier) @variable.other.member))
+
+(selector_expression
+  (_)
+  (identifier) @variable.other.member)
+
+; Functions
+(call_expression
+  function: (identifier) @function)
+
+(call_expression
+  function: (selector_expression
+    (_)
+    (identifier) @function))
+
+(call_expression
+  function: (builtin_function) @function)
+
+(builtin_function) @function.builtin
+
+; Variables
+
+; Types
+(primitive_type) @type.builtin
+
+((identifier) @type
+  (#match? @type "^_?#"))
+
+[
+  (slice_type)
+  (pointer_type)
+] @type ; In attributes
+
+; Punctuation
+[
+  ","
+  ":"
+] @punctuation.delimiter
+
+[
+  "{"
+  "}"
+  "["
+  "]"
+  "("
+  ")"
+  "<"
+  ">"
+] @punctuation.bracket
+
+[
+  (ellipsis)
+  "?"
+] @punctuation.special
+
+; Literals
+(string) @string
+
+[
+  (escape_char)
+  (escape_unicode)
+] @constant.character.escape
+
+(number) @constant.numeric
+
+(float) @constant.numeric.float
+
+(si_unit
+  (float)
+  (_) @string.special.symbol)
+
+(boolean) @constant.builtin.boolean
+
+[
+  (null)
+  (top)
+  (bottom)
+] @constant.builtin
+
+; Interpolations
+(interpolation
+  "\\(" @punctuation.special
+  (_)
+  ")" @punctuation.special)
+
+(interpolation
+  "\\("
+  (identifier) @variable
+  ")")
+
+; Comments
+(comment) @comment

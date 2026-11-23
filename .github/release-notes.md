@@ -1,0 +1,52 @@
+Tuatara, an editor in Common Lisp after the ideas of Emacs, for the terminal and the desktop. @STATUS@
+
+## What changed
+
+(Written before the release is published.)
+
+Renamed, the old name gone:
+
+- `toc-org-insert-toc` is now `org-update-toc` (`M-x org-update-toc` makes a note's table of contents again).
+
+## Getting it
+
+For x86-64 Linux. Download what you need and `SHA256SUMS`, and check them first:
+
+```sh
+sha256sum -c --ignore-missing SHA256SUMS
+```
+
+**AppImage** is one file, nothing installed. `Tuatara-x86_64.AppImage` is for systems with glibc 2.43 or later (Ubuntu 26.04, Fedora 44 and newer); its window follows the desktop's light or dark style. `Tuatara-legacy-x86_64.AppImage` is for glibc 2.39 to 2.42 (Ubuntu 24.04, Debian 13, Fedora 40 to 43), and the only one that takes `--dark` and `--light`. `ldd --version` says which glibc you have. This is the last release with a legacy AppImage: later ones need glibc 2.43 and GTK 4.20 or later. Run it like this:
+
+```sh
+chmod +x Tuatara-x86_64.AppImage
+./Tuatara-x86_64.AppImage FILE          # in this terminal
+./Tuatara-x86_64.AppImage --gui FILE    # in a window of its own
+./Tuatara-x86_64.AppImage --install-desktop
+```
+
+**Packages**, installed with the system's own package manager, which brings the libraries Tuatara needs:
+
+```sh
+sudo dnf install ./tuatara-@VERSION@-*.x86_64.rpm         # Fedora 40 and newer
+sudo apt install ./tuatara_@VERSION@*_amd64.deb           # Ubuntu 24.04 and newer
+sudo pacman -U tuatara-@VERSION@*-x86_64.pkg.tar.zst      # Arch
+```
+
+Then `tuatara FILE` starts it in the terminal and `tuatara --gui FILE` in a window; it is in the desktop's applications too.
+
+Some features use programs of the system, and say so when one is missing (bubblewrap, ImageMagick, poppler, LibreOffice, a LaTeX, gpg, git, enchant). The README lists them.
+
+## Trying it
+
+`M-x tuatara-tutor` teaches the modal keys by editing a text with them. The modal keys (DONKEY) are on by default: Escape for normal, `i` for insert; `(setf *modal-editing* nil)` in `~/.config/tuatara/init.lisp` gives plain Emacs-style keys. `M-x check-health` says what Tuatara finds on your system.
+
+## Telling us
+
+Open an issue with the **bug** label: what you did, what you expected and what happened, and the line `M-x tuatara-version` gives. For a security problem, use the private report in the Security tab instead.
+
+## Sources and licences
+
+Tuatara is GPL-3.0-or-later. `tuatara-sources.tar.zst` holds the sources this release is built from: Tuatara, the Lisp libraries compiled into it, Ghostty's terminal library, and tree-sitter with every grammar at its pinned commit. The licences of SBCL, of those libraries and of every grammar go with every file of the release (`licenses/` and `grammars/licenses/`), and are in `/usr/share/licenses/tuatara/` once a package is installed. The AppImage bundles libraries of Ubuntu 26.04, the legacy AppImage those of Ubuntu 24.04 (GTK 4, GLib, Cairo, Pango and what they need, many under the LGPL): `Tuatara-x86_64.AppImage.libraries.txt` lists each with its exact version, and `Tuatara-x86_64.AppImage.library-sources.tar.zst` holds the source of each at that version; the legacy AppImage's two files are named after it in the same way. Their licences are inside each AppImage, in `licenses/libraries/`.
+
+Built on GitHub from the tag `@VERSION@` (commit `@COMMIT@`).

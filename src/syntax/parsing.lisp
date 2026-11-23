@@ -1,0 +1,807 @@
+;;;; src/syntax/parsing.lisp --- Keeping a buffer's syntax tree up to date.
+;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
+;;;;
+;;;; Each buffer with a grammar keeps a syntax tree of its text. Parsing runs in
+;;;; a thread of the buffer's own, so a large file never holds up typing: every edit is
+;;;; passed at once to the tree, which moves its nodes along with the text, and
+;;;; a parse started after the edit brings the tree up to date, reusing all it
+;;;; can of the old one. Redisplay waits a moment for that parse, so the colours
+;;;; of a small change are right in the very frame that shows it; a parse that
+;;;; takes longer finishes in the background and has the editor redraw.
+
+(in-package #:tuatara.syntax)
+
+(defvar *syntax-size-limit* (* 64 1024 1024)
+  "The largest text, in octets, that is parsed; a larger one shows no syntax colours.")
+
+(defvar *syntax-slow-update* 0.05
+  "Seconds past which a parse after an edit counts as slow: the next one then
+waits until typing pauses (PARSE-PAUSE), so that a grammar slow on a large
+text is not run again after every key.")
+
+(defvar *syntax-slow-slice* 0.002
+  "Seconds past which a parse of the lines shown and the text near them, in a
+text coloured from such slices (SLICE-HIGHLIGHTS), counts as slow: after an
+edit their colours are then moved with the text, and the lines parsed again
+only once typing has paused for *SYNTAX-SLICE-PAUSE*.")
+
+(defvar *syntax-slice-pause* 0.25
+  "Seconds typing pauses for before lines coloured from a slice slow to parse
+\(*SYNTAX-SLOW-SLICE*) are parsed again after edits.")
+
+(defvar *syntax-wait* 0.02
+  "Seconds redisplay waits for a parse started after an edit, before it shows
+the text with the colours of the tree as it was. It does not wait at all while
+parses after edits take longer than this, as they do in very large files: the
+edit shows at once, and its colours a moment later.")
+
+(defparameter *edits-logged* 16
+  "How many of a text's latest edits are kept, for colours worked out before
+them to be moved to where their text went (MOVED-COLOURS).")
+
+(defvar *syntax-edit-limit* 1000
+  "The most edits of one change that are passed to the tree one by one; after a
+change with more, the text is parsed afresh.")
+
+(defgeneric host-say-syntax-fault (host syntax)
+  (:documentation "Say, on the editor's thread, that a grammar's own code failed while reading
+SYNTAX's text.")
+  (:method ((host tuatara.runtime:host) syntax)
+    (declare (ignore syntax))
+    nil))
+
+(defvar *syntax-time-limit* 60
+  "The seconds a parse of a text may take, and *SYNTAX-TIME-PER-MEGABYTE* more
+for each megabyte of it; a parse that takes longer is given up, and its buffer
+shows no syntax colours: a grammar can be very slow on text it was not made
+for, such as binary data. NIL for no limit.")
+
+(defvar *syntax-time-per-megabyte* 2
+  "The seconds a parse may take for each megabyte of text, on top of
+*SYNTAX-TIME-LIMIT*.")
+
+(defgeneric host-say-syntax-slow (host syntax)
+  (:documentation "Say, on the editor's thread, that a parse of SYNTAX's text took longer than
+*SYNTAX-TIME-LIMIT*, or more memory than *SYNTAX-MEMORY-LIMIT*, and was given
+up.")
+  (:method ((host tuatara.runtime:host) syntax)
+    (declare (ignore syntax))
+    nil))
+
+(defun parse-time-limit (bytes)
+  "The seconds a parse of a text of BYTES octets may take (*SYNTAX-TIME-LIMIT*),
+or NIL for no limit."
+  (and *syntax-time-limit* (+ *syntax-time-limit* (* *syntax-time-per-megabyte* (/ bytes 1048576)))))
+
+(defvar *syntax-memory-limit* (* 256 1024 1024)
+  "The octets of memory a parse of a text may take, and
+*SYNTAX-MEMORY-PER-OCTET* more for each octet of it. It is never more than a
+quarter of the machine's, nor more than half of what the program parsing may
+still take (*SYNTAX-HELPER-MEMORY*). A parse that takes more is given up, and
+its buffer shows no syntax colours: a grammar can go wrong on a text and
+build without end, which would take all the memory there is. A parse under way
+when memory runs short is given up too, and its text parsed again at its next
+edit once memory is back. NIL for no limit.")
+
+(defvar *syntax-memory-per-octet* 256
+  "The octets of memory a parse may take for each octet of text, on top of
+*SYNTAX-MEMORY-LIMIT*. A syntax tree takes some 15 (JSON) to 30 (C,
+JavaScript) octets for each octet of its text, Markdown's 50, and up to 200
+where every character or two is a token of its own (a long list of numbers).")
+
+(defun parse-memory-limit (bytes)
+  "The octets of memory a parse of a text of BYTES octets may take
+(*SYNTAX-MEMORY-LIMIT*), or NIL for no limit. The program parsing holds it
+to half of what it may still take, too (*SYNTAX-HELPER-MEMORY*), a parse
+stopped by that then tried again once memory is back."
+  (when *syntax-memory-limit*
+    (let ((wanted (+ *syntax-memory-limit* (* *syntax-memory-per-octet* bytes)))
+          (machine (physical-memory)))
+      (if (plusp machine) (min wanted (floor machine 4)) wanted))))
+
+(define-record (parse-job (:constructor make-parse-job (rope old cancel host)) (:copier nil))
+  "One parse, run in its syntax's parse thread: of ROPE, from OLD (a copy of the
+tree before, edited to match ROPE, or NIL), until it finishes or CANCEL (a
+foreign flag) is set. RESULT is the new tree, or NIL; FINISHED is set when the
+parse is done; OBSOLETE when the text changed too much for its tree to be of
+use. HOST, the host where the parse was asked for, is woken when it finishes
+\(HOST-WAKE), unless NIL; STARTED and ENDED are when it began and ended, in
+internal time units. FAULT is the condition when the grammar's own code failed
+while reading; LIMIT is how many seconds the parse may take and BUDGET how many
+octets of memory (NIL: no limit), SLOW :SLOW when it took longer (or the program
+parsing was ended for it), :MEMORY when it took more and :SHORT when memory ran
+short, and was given up. REFRESH is set for a parse afresh of a text left alone
+\(REFRESH-SYNTAX), which an edit stops. SETTINGS calls a function with the
+settings for starting a helper as they were where the parse was asked for
+\(WITH-HELPER-SETTINGS), for the thread parsing."
+  (rope nil :read-only t :documentation "The text the job parses.")
+  (settings (with-helper-settings) :read-only t
+            :documentation "The function that calls another with the settings for starting a helper as they were where
+PARSE-JOB's parse was asked for.")
+  (old nil :read-only t :documentation "The job's copy of the tree it starts from, or NIL.")
+  (cancel (null-pointer) :type sb-sys:system-area-pointer :read-only t
+          :documentation "The foreign flag that stops the job's parse.")
+  (host nil :read-only t :documentation "The host the job wakes when it finishes, or NIL.")
+  (result nil :documentation "The tree the job made, or NIL.")
+  (finished nil :documentation "True once the job's parse is done.")
+  (obsolete nil :documentation "True when the job's tree is no longer of use.")
+  (started (get-internal-real-time) :documentation "When the job started, in internal time units.")
+  (ended nil :documentation "When the job's parse ended, in internal time units, or NIL before.")
+  (fault nil :documentation "The condition when the grammar's own code failed
+while reading, or NIL.")
+  (limit nil :documentation "The seconds the job's parse may take, or NIL for no limit.")
+  (budget nil :documentation "The octets of memory the job's parse may take, or NIL for no limit.")
+  (slow nil :documentation "Why the job's parse was given up: :SLOW when it
+took too long, :MEMORY when it took too much memory, :SHORT when the editor's
+memory ran short; else NIL.")
+  (refresh nil :documentation "True when the job parses afresh a text left
+alone, which an edit stops."))
+
+(setf (documentation 'make-parse-job 'function) "A PARSE-JOB of ROPE from tree OLD, stopped by the
+flag CANCEL, waking HOST when done.")
+
+(define-record (syntax (:constructor %make-syntax (buffer grammar parser)) (:copier nil))
+  "The syntax tree of BUFFER's text in GRAMMAR, parsed by PARSER, both held by
+HELPER, the program parsing for the editor (src/syntax/helper.lisp). TREE
+matches the text ROPE, and is CURRENT when it was parsed from ROPE itself rather
+than edited to match it. JOB is the parse asked for or running, EDITS the edits
+made since it started (to apply to its tree), newest first; NEXT is that job
+until the parse thread WORKER takes it up, and ENDING tells WORKER to end.
+GENERATION counts the trees, for caches; INJECTED keeps the trees of the text in
+other languages parsed for its colours (KEEP-INJECTED-TREES); BROKEN is set when
+the text could not be parsed, and TOO-BIG while the text is larger than
+*SYNTAX-SIZE-LIMIT*. LAST-UPDATE is how long the last parse after an edit took,
+in internal time units, and SLICE-COST the last parse of lines coloured from a
+slice (SLICE-HIGHLIGHTS). EDITED is when the text was last edited; PATCHED is set
+when the tree was brought up to date by parses after edits since it was last
+parsed afresh, FRESH-COST how long that took, and NO-REFRESH once a parse afresh
+of the text was given up (REFRESH-SYNTAX). LOCK and DONE guard the job's result,
+NEXT and ENDING. CACHE keeps the colours worked out lately (KEPT-COLOURS),
+CAPTURE-TABLE the table they are sorted out in, INJECTED-COLOURS those of its
+texts in other languages (KEPT-LAYER) and LOCAL-ROOM the room its local names
+are sorted out in; EDIT-LOG the latest edits, each with the generation it made,
+and EDITS-LOGGED how many there were (LOG-EDIT)."
+  (buffer nil :read-only t :documentation "The buffer whose text the syntax tree is of.")
+  (grammar nil :read-only t :documentation "The grammar the text is parsed with.")
+  (helper nil :documentation "The program parsing the text (a HELPER).")
+  (parser nil :documentation "The tree-sitter parser (a PARSER), or NIL while there is none.")
+  (tree nil :documentation "The newest syntax tree, a foreign pointer, or NIL.")
+  (rope nil :documentation "The text the tree matches.")
+  (current nil :documentation "True when the tree was parsed from its text rather
+than edited to match it; with no tree, when the text is parsed only once it is
+next edited, a parse afresh of it having been given up.")
+  (job nil :documentation "The parse running, or NIL.")
+  (edits '() :documentation "Edits made since the running parse began, newest first.")
+  (generation 0 :type fixnum :documentation "A number that changes whenever the tree does.")
+  (broken nil :documentation "True when the text could not be parsed; :SLOW when
+parsing it took too long, :MEMORY when it took too much memory, :SHORT when the
+editor's memory ran short, the text then parsed again at its next edit once
+memory is back.")
+  (too-big nil :documentation "True while the text is too large to parse.")
+  (last-update nil :documentation "How long the last parse after an edit took, in
+internal time units, or NIL.")
+  (slice-cost nil :documentation "How long the last parse of lines coloured from a
+slice took, in internal time units, or NIL.")
+  (edited nil :documentation "When the text was last edited, in internal time units, or NIL.")
+  (patched nil :documentation "True when the tree was brought up to date by parses
+after edits since it was last parsed afresh.")
+  (fresh-cost nil :documentation "How long the last parse of the text afresh took,
+in internal time units, or NIL.")
+  (no-refresh nil :documentation "True once a parse afresh of the text was given
+up: it is not tried again.")
+  (cache nil :documentation "The colours worked out lately, each with what it was
+for, as KEPT-COLOURS keeps them.")
+  (capture-table nil :documentation "The table colours are sorted out in, used
+again (*CAPTURE-TABLE*).")
+  (injected-colours nil :documentation "The colours of texts in other languages
+kept by their text (*INJECTED-COLOURS*), or NIL.")
+  (local-room nil :documentation "The room local names are sorted out in, used
+again (*LOCAL-ROOM*), or NIL.")
+  (edit-log (make-array (* 2 *edits-logged*) :initial-element nil) :read-only t
+            :documentation "The latest edits, the generation each made and its batch (LOG-EDIT).")
+  (edits-logged 0 :type fixnum :documentation "How many edits were logged (LOG-EDIT).")
+  (injected nil :documentation "The trees of text in other languages kept for the
+colours, as (GENERATION . TABLE), or NIL.")
+  (worker nil :documentation "The thread that parses the text, or NIL while none is needed.")
+  (next nil :documentation "The parse handed to the parse thread and not yet taken up, or NIL.")
+  (ending nil :documentation "True once the parse thread is to end.")
+  (lock (sb-thread:make-mutex :name "syntax") :read-only t
+        :documentation "The lock guarding the running parse's result and what
+the parse thread is given.")
+  (done (sb-thread:make-waitqueue :name "syntax") :read-only t
+        :documentation "Signalled when a parse finishes, and when the parse thread is given work."))
+
+(defmethod print-object ((syntax syntax) stream)
+  (print-unreadable-object (syntax stream :type t :identity t)
+    (format stream "~a of ~a~:[~; parsing~]~:[~; broken~]~:[~; too big~]"
+            (grammar-name (syntax-grammar syntax)) (tuatara.buffer:buffer-name (syntax-buffer syntax))
+            (syntax-job syntax) (syntax-broken syntax) (syntax-too-big syntax))))
+
+(defun buffer-syntax (buffer)
+  "The SYNTAX of BUFFER, or NIL when its text is not parsed."
+  (tuatara.buffer:buffer-local buffer :syntax))
+
+;;; Edits
+
+(defun point-at (rope byte)
+  "The row of octet BYTE of ROPE and its column in octets, as a cons, rows
+counted by newlines alone as tree-sitter counts them (TUATARA.TEXT:BYTE->ROW)."
+  (let ((row (tuatara.text:byte->row rope byte)))
+    (cons row (- byte (tuatara.text:row->byte rope row)))))
+
+(defun point-after (point octets)
+  "The point after OCTETS inserted at POINT (a cons of row and column), rows
+counted by newlines alone as POINT-AT counts them."
+  (let ((newlines (count 10 octets)))
+    (if (zerop newlines)
+        (cons (car point) (+ (cdr point) (length octets)))
+        (cons (+ (car point) newlines) (- (length octets) 1 (position 10 octets :from-end t))))))
+
+(defun edit-records (rope edits)
+  "What EDITS (sorted edits of ROPE) tell a tree, one list (START OLD-END
+NEW-END START-POINT OLD-END-POINT NEW-END-POINT) for each, last edit first, so
+that each is in the offsets of the text the ones before it made."
+  (loop for i from (1- (length edits)) downto 0
+        for edit = (aref edits i)
+        collect (let* ((start (tuatara.text:edit-start edit))
+                       (old-end (tuatara.text:edit-end edit))
+                       (insert (or (tuatara.text:edit-insert edit) (tuatara.text:make-octets 0)))
+                       (start-point (point-at rope start)))
+                  (list start old-end (+ start (length insert))
+                        start-point (point-at rope old-end) (point-after start-point insert)))))
+
+(defun ensure-helper (syntax)
+  "Make ready to parse SYNTAX's text. When its helper has ended (the trees
+that one held are gone, so the text is then parsed afresh) or is no longer
+the one for its buffer (a project you trust, or no longer), let go of it and
+of all it held. The next parse then starts another (RUN-PARSE-JOB), off the
+editor's own thread."
+  (let ((helper (syntax-helper syntax)))
+    (when (and helper
+               (or (not (helper-alive helper))
+                   (not (eq (helper-shared helper) (buffer-text-trusted-p (syntax-buffer syntax))))
+                   ;; never another than the buffer's own
+                   (and (not (helper-shared helper))
+                        (not (eq helper (tuatara.buffer:buffer-local (syntax-buffer syntax) :syntax-helper))))))
+      (when (and (helper-alive helper) (helper-shared helper))
+        (when (syntax-tree syntax) (delete-tree (syntax-tree syntax)))
+        (delete-parser (syntax-parser syntax)))
+      (when (syntax-tree syntax)
+        (setf (syntax-tree syntax) nil (syntax-current syntax) nil)
+        (incf (syntax-generation syntax)))
+      (setf (syntax-injected syntax) nil
+            (syntax-parser syntax) nil
+            (syntax-edits syntax) '()
+            (syntax-helper syntax) nil))))
+
+(defun drop-tree (syntax)
+  "Forget SYNTAX's tree, its edits and the running parse's result, so the text
+is parsed afresh."
+  (when (syntax-tree syntax)
+    (delete-tree (syntax-tree syntax))
+    (setf (syntax-tree syntax) nil))
+  (let ((job (syntax-job syntax)))
+    (when job
+      (setf (parse-job-obsolete job) t
+            (sb-sys:signed-sap-ref-32 (parse-job-cancel job) 0) 1)))
+  (setf (syntax-edits syntax) '()
+        (syntax-current syntax) nil)
+  (incf (syntax-generation syntax)))
+
+(defun log-edit (syntax batch)
+  "Keep BATCH, an edit just made, with the generation it made SYNTAX's tree,
+in place of the oldest of the *EDITS-LOGGED* kept."
+  (let ((at (* 2 (mod (syntax-edits-logged syntax) *edits-logged*))))
+    (setf (svref (syntax-edit-log syntax) at) (syntax-generation syntax)
+          (svref (syntax-edit-log syntax) (1+ at)) batch)
+    (incf (syntax-edits-logged syntax))))
+
+(defun edits-since (syntax generation)
+  "The edits made to SYNTAX's text since its tree was of GENERATION, the
+oldest first, when every generation since was made by one of them and they
+are still kept (LOG-EDIT); else NIL."
+  (let ((wanted (- (syntax-generation syntax) generation))
+        (logged (syntax-edits-logged syntax))
+        (log (syntax-edit-log syntax)))
+    (when (and (plusp wanted) (<= wanted (min logged *edits-logged*)))
+      (loop for k from (- logged wanted) below logged
+            for at = (* 2 (mod k *edits-logged*))
+            for made from (1+ generation)
+            unless (eql (svref log at) made) return nil
+            collect (svref log (1+ at))))))
+
+(defun syntax-change (buffer batch)
+  "Tell BUFFER's syntax tree about BATCH, an edit just made: pass each edit to
+the tree, keep them for the parse running, and ask for a new parse. A change
+of the whole text, or of very many places, has the text parsed afresh. A text
+whose parse was given up when memory ran short is parsed again once memory
+is back."
+  (let ((syntax (buffer-syntax buffer)))
+    (when syntax
+      (setf (syntax-edited syntax) (get-internal-real-time))
+      ;; a parse afresh of the text as it was is of no more use, and would
+      ;; hold up the parse this edit calls for
+      (let ((job (syntax-job syntax)))
+        (when (and job (parse-job-refresh job))
+          (setf (parse-job-obsolete job) t
+                (sb-sys:signed-sap-ref-32 (parse-job-cancel job) 0) 1)))
+      (let ((old (syntax-rope syntax))
+            (edits (tuatara.text:batch-edits batch))
+            (copy nil))
+        ;; the copy is REQUEST-PARSE's once handed to it, else let go however this ends
+        (unwind-protect
+             (progn
+               (if (or (tuatara.text:batch-swap batch) (null old) (> (length edits) *syntax-edit-limit*)
+                       (not (tuatara.text:rope-indexed-p old)))
+                   (drop-tree syntax)
+                   (let ((records (edit-records old edits)))
+                     ;; the copy a parse starting now begins from, made with the edits;
+                     ;; a tree not told of them is of no more use: the text parsed afresh
+                     (when (syntax-tree syntax)
+                       (multiple-value-bind (made told)
+                           (edit-tree (syntax-tree syntax) records
+                                      :copy (and (null (syntax-job syntax)) (not (parse-paused-p syntax))))
+                         (setf copy made)
+                         (unless told (drop-tree syntax))))
+                     (when (syntax-job syntax)
+                       (setf (syntax-edits syntax) (revappend records (syntax-edits syntax))))
+                     (setf (syntax-current syntax) nil)
+                     (incf (syntax-generation syntax))
+                     (log-edit syntax batch)))
+               (setf (syntax-rope syntax) (tuatara.buffer:buffer-text buffer))
+               (when (and (eq (syntax-broken syntax) :short) (nth-value 1 (helper-memory (syntax-helper syntax))))
+                 (setf (syntax-broken syntax) nil))
+               ;; a slow grammar's parse waits until typing pauses (REFRESH-SYNTAX starts it)
+               (unless (and (null copy) (syntax-tree syntax) (parse-paused-p syntax))
+                 (request-parse syntax :old (shiftf copy nil))))
+          (when copy (delete-tree copy)))))))
+
+;;; Parsing
+
+(defvar *parse-thread-idle* 10
+  "Seconds a buffer's parse thread waits for the next parse before it ends,
+to be started again by the next edit.")
+
+(sb-ext:defglobal **parsers-let-go** (list 0)
+  "How many parsers were let go, left half way when memory ran out, in a cons
+for atomic counting.")
+
+(defun parsers-let-go ()
+  "How many parsers were let go this session, left half way when memory ran
+out: the memory they hold comes back only when the editor starts again."
+  (car **parsers-let-go**))
+
+(defun parser-let-go (grammar what)
+  "Count a parser of GRAMMAR, reading WHAT (a buffer's name, or words for
+it), as let go, left half way when memory ran out, and say so in the debug
+log."
+  (let ((count (1+ (sb-ext:atomic-incf (car **parsers-let-go**)))))
+    (tuatara.runtime:debug-report :parse
+                                  "a ~a parser reading ~a let go, memory having run out within it (~d this session)"
+                                  (grammar-name grammar) what count)))
+
+(defun run-parse-job (syntax job)
+  "Parse in this thread for JOB of SYNTAX, then record the result and call the
+job's wake function. A failure inside the grammar's own code, or the program
+parsing ending as it parsed, is recorded as the job's fault, for CATCH-UP to
+deal with; memory running short here gives the parse up as when it runs short
+in the program parsing. The job is finished however the parse ends, so that
+the next is asked for; the editor carries on."
+  (let ((tree nil))
+    (unwind-protect
+         (setf tree (handler-case (funcall (parse-job-settings job) (lambda () (parse-for-job syntax job)))
+                      (storage-condition ()
+                        (setf (parse-job-slow job) :short)
+                        nil)
+                      (error () nil)))
+      (unwind-protect
+           (when (parse-job-old job) (delete-tree (parse-job-old job)))
+        (sb-thread:with-mutex ((syntax-lock syntax))
+          (setf (parse-job-result job) tree
+                (parse-job-ended job) (get-internal-real-time)
+                (parse-job-finished job) t)
+          (sb-thread:condition-broadcast (syntax-done syntax))))))
+  (let ((host (parse-job-host job)))
+    (when host
+      (tuatara.runtime:ignoring-errors-reported ("waking the editor after parsing ~a"
+                                                 (tuatara.buffer:buffer-name (syntax-buffer syntax)))
+        (tuatara.runtime:host-wake host)))))
+
+(defmacro setf-syntax-held ((place syntax) value)
+  "Set PLACE, a slot of SYNTAX, to VALUE under SYNTAX's lock, unless its parse
+thread is ending, and return VALUE either way."
+  (let ((made (gensym "MADE")) (s (gensym "SYNTAX")))
+    `(let ((,made ,value) (,s ,syntax))
+       (sb-thread:with-mutex ((syntax-lock ,s))
+         (unless (syntax-ending ,s) (setf (,place ,s) ,made)))
+       ,made)))
+
+(defun parse-for-job (syntax job)
+  "The tree RUN-PARSE-JOB's parse for JOB of SYNTAX makes, or NIL, the
+helper and parser started here, off the editor's own thread, and kept for
+SYNTAX unless it is being let go; why a parse was given up is noted in JOB."
+  (tuatara.runtime:reporting-errors ("parsing ~a with ~a"
+                                     (tuatara.buffer:buffer-name (syntax-buffer syntax))
+                                     (grammar-name (syntax-grammar syntax)))
+    (multiple-value-bind (tree why unusable)
+        (let* ((helper (or (syntax-helper syntax)
+                           (setf-syntax-held (syntax-helper syntax) (buffer-helper (syntax-buffer syntax)))))
+               (parser (and helper
+                            (or (syntax-parser syntax)
+                                (setf-syntax-held (syntax-parser syntax)
+                                                  (make-parser (syntax-grammar syntax) helper))))))
+          (cond (parser
+                 (parse-rope parser (parse-job-rope job)
+                             :old (parse-job-old job) :cancel (parse-job-cancel job)
+                             :limit (parse-job-limit job) :budget (parse-job-budget job)))
+                (helper (values nil (helper-gone-why helper) t))
+                ;; no helper to be had (no sandbox): not parsed
+                (t (values nil nil t))))
+      (when (eq why :hung) (setf why :slow))
+      ;; its helper ended by the editor (for room): parsed again in another
+      (when (eq why :stopped) (setf (parse-job-obsolete job) t))
+      (when (member why '(:slow :memory :short)) (setf (parse-job-slow job) why))
+      (when (eq why :crashed) (setf (parse-job-fault job) :crashed))
+      ;; a parser left half way when memory ran out is let go; another is made once
+      ;; memory is back (REQUEST-PARSE)
+      (when (and unusable (eq why :short))
+        (parser-let-go (syntax-grammar syntax) (tuatara.buffer:buffer-name (syntax-buffer syntax))))
+      (when unusable (setf-syntax-held (syntax-parser syntax) nil))
+      (when (eq why :failed)
+        (setf (parse-job-fault job) (make-condition 'grammar-failure :grammar (syntax-grammar syntax))))
+      tree)))
+
+(defun parse-thread-loop (syntax)
+  "What SYNTAX's parse thread does: run each parse handed to it (SYNTAX-NEXT),
+one after the other; end when told to (SYNTAX-ENDING) or when no parse came
+for *PARSE-THREAD-IDLE* seconds."
+  (loop
+    (let ((job (sb-thread:with-mutex ((syntax-lock syntax))
+                 (tuatara.runtime:wait-on-until (syntax-done syntax) (syntax-lock syntax)
+                                                (lambda () (or (syntax-next syntax) (syntax-ending syntax)))
+                                                *parse-thread-idle*)
+                 (or (shiftf (syntax-next syntax) nil)
+                     (progn (setf (syntax-worker syntax) nil)
+                            (return))))))
+      (run-parse-job syntax job))))
+
+(defun hand-to-parse-thread (syntax job)
+  "Have SYNTAX's parse thread run JOB, starting the thread when none is
+waiting. True when handed over; NIL when no thread could be started."
+  (sb-thread:with-mutex ((syntax-lock syntax))
+    (let ((worker (syntax-worker syntax)))
+      (unless (and worker (sb-thread:thread-alive-p worker))
+        (setf (syntax-worker syntax)
+              (tuatara.runtime:ignoring-errors-reported ("starting a parse thread")
+                (tuatara.runtime:make-guarded-thread #'parse-thread-loop :name "tuatara parse"
+                                                     :arguments (list syntax))))))
+    (when (syntax-worker syntax)
+      (setf (syntax-next syntax) job)
+      (sb-thread:condition-broadcast (syntax-done syntax))
+      t)))
+
+(defun parse-pause (syntax)
+  "The seconds of no editing SYNTAX's text waits for before it is parsed again
+after edits, twice what the last parse after an edit took, when that was slow
+\(*SYNTAX-SLOW-UPDATE*); NIL when parses after edits are quick and start at
+once."
+  (let ((last (syntax-last-update syntax)))
+    (when last
+      (let ((seconds (/ last internal-time-units-per-second)))
+        (and (> seconds *syntax-slow-update*) (* 2 seconds))))))
+
+(defun parse-paused-p (syntax)
+  "True while SYNTAX's text was edited less than its pause ago (PARSE-PAUSE),
+so that the parse waits for typing to stop."
+  (let ((pause (parse-pause syntax)))
+    (and pause (< (tuatara.runtime:seconds-since (or (syntax-edited syntax) 0)) pause))))
+
+(defun slice-paused-p (syntax)
+  "True while SYNTAX's text, coloured from slices of the lines shown and with
+no tree, was edited less than *SYNTAX-SLICE-PAUSE* ago and the last parse of
+such a slice was slow (*SYNTAX-SLOW-SLICE*): the colours of the lines shown
+are moved with the edits meanwhile, and parsed again once typing pauses."
+  (let ((cost (syntax-slice-cost syntax)))
+    (and cost (null (syntax-tree syntax)) (syntax-edited syntax)
+         (> cost (* *syntax-slow-slice* internal-time-units-per-second))
+         (< (tuatara.runtime:seconds-since (syntax-edited syntax)) *syntax-slice-pause*))))
+
+(defun parsable-p (syntax)
+  "True when SYNTAX's text may be parsed: it was not given up on and its
+grammar has not gone wrong."
+  (not (or (syntax-broken syntax) (grammar-faulted (syntax-grammar syntax)))))
+
+(defun request-parse (syntax &key fresh old)
+  "Start parsing SYNTAX's text in its parse thread, unless a parse is running
+(when it is done, CATCH-UP asks again), the tree is current, or the text cannot
+or should not be parsed. With FRESH, parse it afresh, from no tree, though the
+tree is current (REFRESH-SYNTAX). OLD is a copy of its tree made already for
+the parse to begin from (EDIT-TREE), released when it is not used, also when
+this ends before the parse has it."
+  (let ((rope (syntax-rope syntax)))
+    (flet ((let-go ()
+             (when old (delete-tree old) (setf old nil))))
+      (unwind-protect
+           (cond ((or (syntax-job syntax) (and (syntax-current syntax) (not fresh)) (null rope)
+                      (not (parsable-p syntax))))
+                 ((> (tuatara.text:rope-octet-length rope) *syntax-size-limit*)
+                  (unless (syntax-too-big syntax)
+                    (drop-tree syntax)
+                    (setf (syntax-too-big syntax) t)))
+                 (t
+                  (setf (syntax-too-big syntax) nil)
+                  (ensure-helper syntax)
+                  ;; a tree of a helper let go of is of no more use
+                  (when (or fresh (null (syntax-tree syntax))) (let-go))
+                  ;; OLD the tree the parse begins from, whichever it is
+                  (unless (or fresh old (null (syntax-tree syntax)))
+                    (setf old (copy-tree-pointer (syntax-tree syntax))))
+                  (let* ((cancel (sb-alien:alien-sap (sb-alien:make-alien (sb-alien:signed 32))))
+                         (job (progn (setf (sb-sys:signed-sap-ref-32 cancel 0) 0)
+                                     (make-parse-job rope old cancel tuatara.runtime:*host*))))
+                    (setf (parse-job-refresh job) fresh)
+                    ;; worked out here, where the editor's settings are seen
+                    (setf (parse-job-limit job) (parse-time-limit (tuatara.text:rope-octet-length rope)))
+                    (setf (parse-job-budget job) (parse-memory-limit (tuatara.text:rope-octet-length rope)))
+                    ;; the job's from here, with nothing between to stop it
+                    (unless (sb-sys:without-interrupts
+                              (setf old nil)
+                              (when (hand-to-parse-thread syntax job)
+                                (setf (syntax-job syntax) job
+                                      (syntax-edits syntax) '())
+                                t))
+                      ;; no thread to parse in: give up on this text
+                      (when (parse-job-old job) (delete-tree (parse-job-old job)))
+                      (sb-alien:free-alien (sb-alien:sap-alien cancel (* (sb-alien:signed 32))))
+                      (setf (syntax-broken syntax) t)))))
+        ;; not taken by a parse: let go, however this ends
+        (let-go)))))
+
+(defun finish-job (job)
+  "Release what the parse JOB holds once it is done; return its tree unless
+the tree is of no use, in which case it is released too."
+  (sb-alien:free-alien (sb-alien:sap-alien (parse-job-cancel job) (* (sb-alien:signed 32))))
+  (let ((tree (parse-job-result job)))
+    (if (and tree (parse-job-obsolete job))
+        (progn (delete-tree tree) nil)
+        tree)))
+
+(defun job-finished-p (syntax job)
+  "True when JOB of SYNTAX has finished."
+  (sb-thread:with-mutex ((syntax-lock syntax))
+    (parse-job-finished job)))
+
+(defun catch-up (syntax)
+  "Take the result of SYNTAX's parse when it has finished: bring the new tree up
+to date with the edits made meanwhile and make it SYNTAX's tree. Then start
+another parse if the tree is not current."
+  (let ((job (syntax-job syntax)))
+    (when (and job (job-finished-p syntax job))
+      (setf (syntax-job syntax) nil)
+      (let ((tree (finish-job job))
+            (edits (reverse (shiftf (syntax-edits syntax) '()))))
+        (tuatara.runtime:debug-report
+         :parse "~a in ~a: ~:d octets ~a in ~,1f ms~a"
+         (grammar-name (syntax-grammar syntax)) (tuatara.buffer:buffer-name (syntax-buffer syntax))
+         (tuatara.text:rope-octet-length (parse-job-rope job))
+         (cond ((parse-job-refresh job) "parsed afresh, left alone")
+               ((parse-job-old job) "parsed after edits")
+               (t "parsed"))
+         (/ (* 1000.0 (- (or (parse-job-ended job) (get-internal-real-time)) (parse-job-started job)))
+            internal-time-units-per-second)
+         (cond (tree (if edits (format nil ", ~d edit~:p made meanwhile" (length edits)) ""))
+               ((parse-job-fault job) (format nil ", the grammar failed: ~a" (parse-job-fault job)))
+               ((parse-job-slow job) (format nil ", given up (~(~a~))" (parse-job-slow job)))
+               ((parse-job-obsolete job) ", of no use: the text changed")
+               (t ", no tree")))
+        (cond (tree
+               ;; how long updating the tree takes, as opposed to parsing afresh
+               (if (parse-job-old job)
+                   (setf (syntax-last-update syntax) (- (parse-job-ended job) (parse-job-started job))
+                         (syntax-patched syntax) t)
+                   (setf (syntax-fresh-cost syntax) (- (parse-job-ended job) (parse-job-started job))
+                         (syntax-patched syntax) nil))
+               (if (and edits (not (nth-value 1 (edit-tree tree edits))))
+                   ;; not told of the edits made meanwhile: of no use, the text parsed afresh
+                   (progn (delete-tree tree) (drop-tree syntax))
+                   (progn (when (syntax-tree syntax) (delete-tree (syntax-tree syntax)))
+                          (setf (syntax-tree syntax) tree
+                                (syntax-current syntax) (null edits))
+                          (incf (syntax-generation syntax)))))
+              ((parse-job-fault job) (grammar-failed syntax (parse-job-fault job)))
+              ((and (parse-job-refresh job) (not (eq (parse-job-slow job) :short)))
+               ;; a parse afresh given up (too slow, too large) leaves the
+               ;; tree as it was, or none for a text that let go of it, its
+               ;; lines coloured from slices until the next edit has it
+               ;; parsed, nothing asked of it before then; it is not tried
+               ;; again
+               (unless (parse-job-obsolete job)
+                 (setf (syntax-no-refresh syntax) t)
+                 (unless (syntax-tree syntax)
+                   (setf (syntax-current syntax) t))))
+              ((parse-job-slow job)
+               ;; not parsed again, which would take as long, or as much
+               (setf (syntax-broken syntax) (parse-job-slow job))
+               (tuatara.runtime:ignoring-errors-reported ("saying parsing ~a is given up"
+                                                          (tuatara.buffer:buffer-name (syntax-buffer syntax)))
+                 (host-say-syntax-slow tuatara.runtime:*host* syntax)))
+              ((not (parse-job-obsolete job))
+               ;; not stopped on purpose: the text could not be read
+               (setf (syntax-broken syntax) t)))))
+    ;; edits made meanwhile in a text slow to parse: parsed once typing pauses
+    (unless (parse-paused-p syntax)
+      (request-parse syntax))))
+
+(defvar *syntax-refresh-delay* 1
+  "The seconds a text is left alone, at least, before it is parsed afresh in
+the background: a parse after an edit reuses the tree from before, and some
+grammars then get a part of the text wrong, which a parse from nothing puts
+right. A text is left alone ten times as long as its last parse from nothing
+took, too, so that a large one is parsed afresh seldom. NIL for never.")
+
+(defvar *syntax-refresh-keeps-tree* (* 4 1024 1024)
+  "The largest text, in octets, whose tree is kept while it is parsed afresh
+after edits (REFRESH-SYNTAX). The tree of a larger one is let go of first,
+and the text parsed as when it was opened, its lines coloured meanwhile as
+then: the program parsing then holds one tree of it, not two, a tree taking
+some 15 to 50 octets for each octet of its text.")
+
+(defun refresh-syntax (syntax)
+  "Parse SYNTAX's text afresh in the background when its tree was brought up
+to date by parses after edits and the text has been left alone long enough
+(*SYNTAX-REFRESH-DELAY*); an edit stops that parse, and one given up leaves
+the tree as it was. A text larger than *SYNTAX-REFRESH-KEEPS-TREE* has its
+tree let go of first and is parsed as when it was opened; given up, its
+lines are coloured from slices until the next edit has it parsed. Returns the
+seconds until it is worth asking again, or NIL when there is nothing to do
+until the text is edited. A text whose
+helper went wrong and ended is parsed afresh at once, in a new one; one whose
+helper was ended for room, when it is next shown. Edits to a text slow to
+parse (PARSE-PAUSE) are parsed here once typing has paused, and the lines
+shown of a text coloured from slices slow to parse (SLICE-PAUSED-P) are
+coloured afresh then: the seconds until then are returned meanwhile, for the
+screen to be drawn again."
+  (when (and (syntax-helper syntax) (not (helper-alive (syntax-helper syntax)))
+             (not (eq (helper-ended (syntax-helper syntax)) :stopped))
+             (null (syntax-job syntax)) (parsable-p syntax))
+    (request-parse syntax :fresh t)
+    (return-from refresh-syntax nil))
+  (when (slice-paused-p syntax)
+    (return-from refresh-syntax
+      (float (- *syntax-slice-pause* (tuatara.runtime:seconds-since (syntax-edited syntax))))))
+  ;; edits waiting for typing to pause in a text slow to parse (PARSE-PAUSE)
+  (when (and (not (syntax-current syntax)) (null (syntax-job syntax)) (syntax-tree syntax) (parse-pause syntax)
+             (parsable-p syntax))
+    (return-from refresh-syntax
+      (if (parse-paused-p syntax)
+          (float (- (parse-pause syntax) (tuatara.runtime:seconds-since (or (syntax-edited syntax) 0))))
+          (progn (request-parse syntax) nil))))
+  (when (and *syntax-refresh-delay* (syntax-patched syntax) (not (syntax-no-refresh syntax))
+             (null (syntax-job syntax)) (syntax-current syntax) (syntax-tree syntax) (parsable-p syntax))
+    (let ((delay (max *syntax-refresh-delay*
+                      (* 10 (/ (or (syntax-fresh-cost syntax) 0) internal-time-units-per-second))))
+          (idle (tuatara.runtime:seconds-since (or (syntax-edited syntax) 0))))
+      (cond ((< idle delay) (float (- delay idle)))
+            (t (when (> (tuatara.text:rope-octet-length (syntax-rope syntax)) *syntax-refresh-keeps-tree*)
+                 (drop-tree syntax))
+               (request-parse syntax :fresh t)
+               nil)))))
+
+(defun grammar-failed (syntax fault)
+  "Turn SYNTAX's grammar off for SYNTAX's text after its own code failed
+while reading it, FAULT saying how, and for all text once it has gone wrong
+on several (GRAMMAR-WENT-WRONG): SYNTAX stops parsing, keeping the tree it
+has; its parser is deleted when the grammar only gave it a value it cannot
+have (a GRAMMAR-FAILURE); and HOST-SAY-SYNTAX-FAULT says so."
+  (when (typep fault 'grammar-failure)
+    (delete-parser (syntax-parser syntax)))
+  (grammar-went-wrong (syntax-grammar syntax) (syntax-buffer syntax) fault)
+  (setf (syntax-broken syntax) t
+        (syntax-parser syntax) nil)
+  (tuatara.runtime:ignoring-errors-reported ("saying the grammar failed on ~a"
+                                             (tuatara.buffer:buffer-name (syntax-buffer syntax)))
+    (host-say-syntax-fault tuatara.runtime:*host* syntax)))
+
+(defun parse-under-way-p (syntax &optional (seconds 0))
+  "True when a parse of SYNTAX's text is under way, after waiting at most
+SECONDS for it to finish; SYNTAX-READY-TREE then gives the tree it made."
+  (let ((job (syntax-job syntax)))
+    (and job
+         (sb-thread:with-mutex ((syntax-lock syntax))
+           (not (tuatara.runtime:wait-on-until (syntax-done syntax) (syntax-lock syntax)
+                                               (lambda () (parse-job-finished job)) seconds))))))
+
+(defun wait-for-parse (syntax)
+  "Catch up with SYNTAX's parse, first waiting for it to finish: at most
+*SYNTAX-WAIT* seconds from now, and not past that long after it began; not
+at all while updates of the tree take longer than that, nor for a parse
+afresh of a text left alone (REFRESH-SYNTAX), whose tree is current already."
+  (catch-up syntax)
+  (loop with wait = (* *syntax-wait* internal-time-units-per-second)
+        with slow = (let ((last (syntax-last-update syntax))) (and last (> last wait)))
+        with deadline = (+ (get-internal-real-time) wait)
+        for job = (syntax-job syntax)
+        while (and job (not slow) (not (parse-job-refresh job)))
+        do (let ((limit (min deadline (+ (parse-job-started job) wait))))
+             ;; a wait may end early, without the job finished: wait again until the limit
+             (sb-thread:with-mutex ((syntax-lock syntax))
+               (tuatara.runtime:wait-on-until (syntax-done syntax)
+                                              (syntax-lock syntax)
+                                              (lambda () (parse-job-finished job))
+                                              (max 0 (tuatara.runtime:seconds-left limit))))
+             (unless (job-finished-p syntax job) (return))
+             (catch-up syntax))))
+
+;;; Attaching to buffers
+
+(defun attach-syntax (buffer grammar)
+  "Keep a syntax tree of BUFFER's text in GRAMMAR from now on, parsing it at
+once in the background. Returns the SYNTAX; NIL when GRAMMAR has failed and
+reads nothing more."
+  (detach-syntax buffer)
+  (when (grammar-faulted grammar)
+    (return-from attach-syntax nil))
+  ;; the grammar went wrong on this buffer's text before
+  (when (grammar-off-p grammar buffer)
+    (return-from attach-syntax nil))
+  ;; its helper started now, or as it is first parsed (RUN-PARSE-JOB) when
+  ;; the sandbox is still to be looked for
+  (let* ((syntax (%make-syntax buffer grammar nil)))
+    (setf (syntax-helper syntax) (buffer-helper-soon buffer))
+    (setf (syntax-rope syntax) (tuatara.buffer:buffer-text buffer)
+          (tuatara.buffer:buffer-local buffer :syntax) syntax)
+    (pushnew 'syntax-change (tuatara.buffer:buffer-change-functions buffer))
+    (request-parse syntax)
+    syntax))
+
+(defun detach-syntax (buffer)
+  "Stop keeping a syntax tree of BUFFER's text: stop the parse running, end the
+parse thread and release the tree and the parser. A parse that does not stop in
+time (TUATARA.RUNTIME:*STOP-WAIT*, a grammar that loops) is left to end on its
+own: the parser and the trees it may be reading are then never released, and
+BUFFER's file stays mapped for it (BUFFER-LENT-P)."
+  (let ((syntax (buffer-syntax buffer))
+        (running nil))
+    (when syntax
+      (setf (tuatara.buffer:buffer-local buffer :syntax) nil
+            (tuatara.buffer:buffer-change-functions buffer)
+            (remove 'syntax-change (tuatara.buffer:buffer-change-functions buffer)))
+      (let ((job (shiftf (syntax-job syntax) nil))
+            (worker (sb-thread:with-mutex ((syntax-lock syntax))
+                      (setf (syntax-ending syntax) t)
+                      (sb-thread:condition-broadcast (syntax-done syntax))
+                      (syntax-worker syntax))))
+        (when job
+          (setf (parse-job-obsolete job) t
+                (sb-sys:signed-sap-ref-32 (parse-job-cancel job) 0) 1))
+        (cond ((tuatara.runtime:join-within worker)
+               (when job (finish-job job)))
+              (job
+               (setf running t
+                     (tuatara.buffer:buffer-lent-p buffer) t)
+               (tuatara.runtime:left-running worker "A parse"))))
+      (when (and (syntax-tree syntax) (not running))
+        (delete-tree (syntax-tree syntax)))
+      (forget-injected-trees syntax)
+      (setf (syntax-tree syntax) nil)
+      ;; a parser left alone after its grammar failed is not touched again
+      (unless (or running (null (syntax-parser syntax)))
+        (delete-parser (syntax-parser syntax)))
+      (setf (syntax-parser syntax) nil))
+    nil))
+
+(defun syntax-ready-tree (syntax)
+  "SYNTAX's tree for showing its buffer's text now, after waiting a moment for
+a parse under way; NIL when there is none yet. The tree matches the buffer's
+text, though parts just edited may not be parsed yet. A text whose helper
+was ended is parsed afresh, in another."
+  (let ((helper (syntax-helper syntax)))
+    (when (and helper (not (helper-alive helper)) (null (syntax-job syntax)))
+      (request-parse syntax :fresh t)))
+  (if (eq (syntax-rope syntax) (tuatara.buffer:buffer-text (syntax-buffer syntax)))
+      (wait-for-parse syntax)
+      ;; the text changed without the tree being told: start afresh
+      (progn (drop-tree syntax)
+             (setf (syntax-rope syntax) (tuatara.buffer:buffer-text (syntax-buffer syntax)))
+             (request-parse syntax)))
+  (syntax-tree syntax))

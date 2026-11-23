@@ -1,0 +1,8 @@
+* Contents :TOC:QUOTE:
+#+BEGIN_QUOTE
+- [[#one][One]]
+- [[#two][Two]]
+#+END_QUOTE
+
+* One
+* Two

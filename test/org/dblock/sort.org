@@ -1,0 +1,53 @@
+* Writing the report [2/3]
+:LOGBOOK:
+CLOCK: [2026-09-28 Mon 13:00]--[2026-09-28 Mon 15:10] =>  2:10
+:END:
+** Figures
+:LOGBOOK:
+CLOCK: [2026-09-29 Tue 10:00]--[2026-09-29 Tue 11:00] =>  1:00
+:END:
+*** Checking the sums
+:LOGBOOK:
+CLOCK: [2026-09-29 Tue 11:00]--[2026-09-29 Tue 11:25] =>  0:25
+:END:
+* Short
+:LOGBOOK:
+CLOCK: [2026-09-30 Wed 08:00]--[2026-09-30 Wed 08:05] =>  0:05
+:END:
+* Another one
+:LOGBOOK:
+CLOCK: [2026-09-30 Wed 09:00]--[2026-09-30 Wed 10:15] =>  1:15
+:END:
+
+#+BEGIN: clocktable :maxlevel 1 :sort (2 . ?T)
+#+END:
+
+#+BEGIN: clocktable :maxlevel 1 :sort (2 . ?t)
+#+END:
+
+#+BEGIN: clocktable :maxlevel 3 :sort (2 . ?t)
+#+END:
+
+#+BEGIN: clocktable :maxlevel 3 :sort (1 . ?a)
+#+END:
+
+#+BEGIN: clocktable :maxlevel 3 :sort (1 . ?A)
+#+END:
+
+#+BEGIN: clocktable :maxlevel 1 :sort (2 . ?n)
+#+END:
+
+#+BEGIN: clocktable :maxlevel 3 :compact t :sort (2 . ?T)
+#+END:
+
+#+BEGIN: clocktable :maxlevel 3 :emphasize t :sort (1 . ?a)
+#+END:
+
+#+BEGIN: clocktable :maxlevel 3 :narrow 20 :sort (2 . ?t)
+#+END:
+
+#+BEGIN: clocktable :maxlevel 3 :link t :sort (1 . ?A)
+#+END:
+
+#+BEGIN: clocktable :scope agenda :maxlevel 2 :sort (3 . ?T) :fileskip0 t
+#+END:

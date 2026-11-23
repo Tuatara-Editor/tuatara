@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Tuatara
+GenericName=Text Editor
+Comment=Edit text, with DONKEY's modal keys
+Icon=tuatara
+Exec=@EXEC@ --gui %F
+Terminal=false
+Categories=Utility;TextEditor;
+Keywords=text;editor;org;notes;files;forensics;
+MimeType=text/plain;text/x-csrc;text/x-chdr;text/x-lisp;text/x-rust;text/x-shellscript;text/csv;text/x-org;
+StartupWMClass=tuatara

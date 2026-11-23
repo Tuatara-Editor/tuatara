@@ -1,0 +1,100 @@
+;;;; lisp/files/places.lisp --- Where point was in each file, kept between sessions.
+;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
+;;;;
+;;;; Where point is in a file is written to the state directory when its
+;;;; buffer is killed, when it is saved and when the editor stops, and a file
+;;;; visited again, in this session or a later one, opens with point there, a
+;;;; fold around it opened. The places live in one
+;;;; file of the state directory (state.lisp), so that sessions side by side
+;;;; share them, as the list of recent files is shared.
+
+(in-package #:tuatara.defaults)
+
+(define-setting *remember-places* t
+  "Whether point's place in each file you visit is remembered and put back when
+you visit the file again, in this session or a later one.
+The places are the file places in $XDG_STATE_HOME/tuatara/
+(~/.local/state/tuatara/), readable by you alone.
+- t: remembered, as standard.
+- nil: files open at their top."
+  :values boolean)
+
+(define-setting *remembered-places-limit* 400
+  "How many files' places are kept, the latest first.
+Raise it to come back to the place in more files; lower it to forget sooner.
+- a whole number: the count, 400 as standard."
+  :values (integer 0 *))
+
+(defun parse-saved-place-line (line)
+  "The entry of the places LINE writes, (PATH . OFFSET): the octet point was
+at, then the file's path (STATE-LINE-PATH); NIL for a line that makes no
+sense."
+  (let ((space (position #\Space line)))
+    (when (and space (< 0 space 19) (every #'digit-char-p (subseq line 0 space)))
+      (let ((path (state-line-path line (1+ space))))
+        (and (plusp (length path)) (cons path (parse-integer line :end space)))))))
+
+(defun saved-place-line (entry)
+  "The line of the places for ENTRY, (PATH . OFFSET)."
+  (format nil "~d ~a" (cdr entry) (escape-path (car entry))))
+
+(define-state-list *saved-places* "places" 'parse-saved-place-line 'saved-place-line '*remembered-places-limit*
+  :header (format nil "# Where point was in the files Tuatara visited, the latest first: the octet,~%~
+                       # then the file's path (\\\\, \\n and \\r stand for \\, a newline and a return).~%")
+  :path-of #'car :line-key (spaced-line-key 1 #'digits-word-p))
+
+(defun read-saved-places ()
+  "The places: a list of (PATH . OFFSET), the latest first, OFFSET the octet
+point was at; empty when there are none (STATE-LIST-ENTRIES)."
+  (state-list-entries *saved-places*))
+
+(defun buffer-file-place (buffer)
+  "The file BUFFER visits and where its point is, as (PATH . OFFSET); NIL for
+a buffer with no file, a copy of a file on another machine (REMOTE-COPY-P), or
+one whose mode keeps no place (MODE-KEEPS-PLACE-P)."
+  (let ((file (tuatara.buffer:buffer-file buffer)))
+    (and file (live-buffer-p buffer) (mode-keeps-place-p (buffer-major-mode buffer))
+         (let ((path (tuatara.io:native file)))
+           (and path (not (remote-copy-p path)) (cons path (tuatara.buffer:buffer-point buffer)))))))
+
+(defun save-places (buffers)
+  "Put where point is in the files of BUFFERS first among the places, when
+*REMEMBER-PLACES* is true: written in the background, with what sessions side
+by side put there meanwhile (STATE-LIST-PUT)."
+  (when *remember-places*
+    (state-list-put *saved-places* (remove nil (mapcar #'buffer-file-place buffers)))))
+
+(defun save-place-of (buffer)
+  "Keep where point is in BUFFER's file: as it is killed, and after it is saved."
+  (save-places (list buffer)))
+
+(defun save-places-at-exit (editor)
+  "Keep where point is in every file open, as the editor stops."
+  (declare (ignore editor))
+  (save-places (remove-if-not #'tuatara.buffer:buffer-file tuatara.buffer:*buffers*)))
+
+(defun restore-place (buffer)
+  "Put point in BUFFER, a file just visited, where it was when the file was
+last left, when *REMEMBER-PLACES* is true, its mode keeps places
+\(MODE-KEEPS-PLACE-P) and nothing has moved it yet: at that octet or the
+file's end when it has shrunk, on the start of the character there, a fold
+around it opened."
+  (when (and *remember-places* (zerop (tuatara.buffer:buffer-point buffer))
+             (mode-keeps-place-p (buffer-major-mode buffer)))
+    (let* ((path (tuatara.io:native (tuatara.buffer:buffer-file buffer)))
+           (entry (and path (state-list-find *saved-places* path))))
+      (when (and entry (plusp (cdr entry)))
+        (let* ((rope (tuatara.buffer:buffer-text buffer))
+               (offset (min (cdr entry) (tuatara.buffer:buffer-size buffer)))
+               (offset (tuatara.text:rope-char-start rope offset)))
+          (goto-shown buffer offset))))))
+
+(defun install-places ()
+  "Remember where point is in files, and put it back when they are visited
+again: after each visit, as the last thing done (once a mode has folded the
+file); as a buffer is killed and after it is saved; as the editor stops."
+  (setf tuatara.buffer:*find-file-functions*
+        (append (remove 'restore-place tuatara.buffer:*find-file-functions*) (list 'restore-place)))
+  (pushnew 'save-place-of tuatara.buffer:*kill-buffer-functions*)
+  (pushnew 'save-place-of *after-save-functions*)
+  (pushnew 'save-places-at-exit *exit-functions*))

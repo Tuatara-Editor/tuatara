@@ -1,0 +1,25 @@
+#+BEGIN: clocktable :scope ("multi/a.org" "multi/b.org") :maxlevel 3
+#+CAPTION: Clock summary at [2026-10-02 Fri 20:20]
+| File  | Headline                                 | Time   |      |      |
+|-------+------------------------------------------+--------+------+------|
+|       | ALL *Total time*                         | *4:35* |      |      |
+|-------+------------------------------------------+--------+------+------|
+| a.org | *File time*                              | *2:15* |      |      |
+|       | Project A                                | 2:15   |      |      |
+|       | \_  Sub A with a rather long headline... |        | 0:45 |      |
+|-------+------------------------------------------+--------+------+------|
+| b.org | *File time*                              | *2:20* |      |      |
+|       | Project B                                | 2:20   |      |      |
+|       | \_  Task B1 [1/2]                        |        | 2:20 |      |
+|       | \_    Deep B                             |        |      | 0:20 |
+#+END:
+
+#+BEGIN: clocktable :scope ("multi/b.org") :maxlevel 1
+#+CAPTION: Clock summary at [2026-10-02 Fri 20:20]
+| File  | Headline         | Time   |
+|-------+------------------+--------|
+|       | ALL *Total time* | *2:20* |
+|-------+------------------+--------|
+| b.org | *File time*      | *2:20* |
+|       | Project B        | 2:20   |
+#+END:

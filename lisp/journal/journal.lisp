@@ -1,0 +1,295 @@
+;;;; lisp/journal/journal.lisp --- The journal: an entry a day (or week, month, year), opened or made.
+;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
+;;;;
+;;;; journal-new-or-existing-entry (C-x n j) opens today's entry, or makes
+;;;; it, a file with a formatted name in the journal's directory, titled with
+;;;; the day (Friday 20 March 2026), keyword journal, the header of its kind,
+;;;; saved at once. Several entries for the day are offered to choose from. Entries can be a week's, a month's or a year's
+;;;; instead. The calendar marks the days that have one, and n there opens or
+;;;; makes the entry of the day at point. Files with plain names
+;;;; (2026-03-20.org) can be the journal instead, for those who would rather.
+
+(in-package #:tuatara.defaults)
+
+(define-setting *journal-directory* nil
+  "The directory of your journal's entries.
+- nil: journal/ in *FORMATTED-FILE-DIRECTORY* (such as ~/notes/journal/),
+  as standard.
+- a directory's name: that directory, such as \"~/journal/\"."
+  :values (or (member nil) directory))
+
+(define-setting *journal-keyword* "journal"
+  "The keyword in the formatted name of each journal entry, by which entries
+are told from your other files.
+- text: the keyword, \"journal\" as standard."
+  :values string)
+
+(define-setting *journal-title-format* :day-date-month-year
+  "The title of a new journal entry.
+- :day: the day's name (Friday).
+- :day-date-month-year: Friday 20 March 2026, as standard.
+- :day-date-month-year-24h: Friday 20 March 2026 13:39.
+- :day-date-month-year-12h: Friday 20 March 2026 01:39 PM.
+- a pattern in the % specifiers of FORMAT-TIME: the time in that pattern,
+  (\"Week %V, %A\").
+- \"\": no title.
+- nil: you are asked each time."
+  :values (or (member nil :day :day-date-month-year :day-date-month-year-24h
+                      :day-date-month-year-12h)
+              string))
+
+(define-setting *journal-interval* :daily
+  "How long a journal entry lasts. An entry is opened while it lasts; after, a
+new one is made.
+- :daily: a day, as standard.
+- :weekly: the ISO week, from Monday.
+- :monthly: a month.
+- :yearly: a year."
+  :values (member :daily :weekly :monthly :yearly))
+
+(define-setting *journal-file-type* nil
+  "The kind of file a new journal entry is.
+- :org, :text or :markdown: that kind.
+- nil: the kind *FORMATTED-FILE-TYPE* gives."
+  :values (member nil :org :text :markdown))
+
+(define-setting *journal-file-name* nil
+  "How journal entries are named.
+- nil: formatted names (20260320T133958--friday-20-march-2026__journal.org),
+  with the header of their kind, as standard.
+- a pattern in the % specifiers of FORMAT-TIME: plain names, each the
+  entry's date in that pattern, such as \"%Y-%m-%d.org\" (2026-03-20.org) or
+  \"%G/week-%V.md\" (%G the year the week counts in, so that no week is split
+  at New Year). The file is then begun with its title alone (#+title: in
+  Org, # in Markdown)."
+  :values (or (member nil) string))
+
+(define-setting *journal-org-header* "#+title:      {title}
+#+date:       {date}
+#+filetags:   {keywords}
+#+identifier: {identifier}
+
+"
+  "The header a new journal entry in Org begins with, its name formatted:
+title, date, keywords and identifier lines. Entries in Markdown or plain
+text have the header of their kind there.
+- text: the header, {title}, {date}, {keywords} and {identifier} standing
+  for the entry's.
+- nil: the Org header of your other files with formatted names
+  (*FORMATTED-FILE-TYPES*)."
+  :values (or (member nil) string))
+
+(defun journal-directory ()
+  "The directory of the journal's entries, as a native name ending in /."
+  (directory-name (or *journal-directory*
+                      (concatenate 'string (directory-name *formatted-file-directory*) "journal/"))))
+
+(defun journal-title (time)
+  "The title of a new journal entry at TIME, as *JOURNAL-TITLE-FORMAT* says;
+asked for when it is NIL."
+  (let ((format *journal-title-format*))
+    (cond ((null format) (read-string "New journal entry TITLE: " :initial (format-time "%F" time)))
+          ((stringp format) (string-trim " " (format-time format time)))
+          (t (format-time (ecase format
+                                    (:day "%A")
+                                    (:day-date-month-year "%A %-e %B %Y")
+                                    (:day-date-month-year-24h "%A %-e %B %Y %H:%M")
+                                    (:day-date-month-year-12h "%A %-e %B %Y %I:%M %^p"))
+                                  time)))))
+
+;;; Which entries a day has
+
+(defun journal-same-interval-p (one other)
+  "True when the day numbers ONE and OTHER fall in one journal entry's time (*JOURNAL-INTERVAL*)."
+  (multiple-value-bind (y1 m1) (day-date one)
+    (multiple-value-bind (y2 m2) (day-date other)
+      (case *journal-interval*
+        (:weekly (= (week-start one 1) (week-start other 1)))
+        (:monthly (and (= y1 y2) (= m1 m2)))
+        (:yearly (= y1 y2))
+        (t (= one other))))))
+
+(defvar *journal-entries-kept* nil
+  "The journal's entries last listed (JOURNAL-ENTRIES): (KEY DIRECTORIES
+STAMPS ENTRIES), KEY its directory and keyword, DIRECTORIES those it and its
+subdirectories were, STAMPS their times then, so that the journal is listed
+again only when one of them changed.")
+
+(defun journal-directory-stamps (directories)
+  "The times the DIRECTORIES were last changed, each NIL for one not there."
+  (loop for directory in directories
+        collect (let ((stamp (tuatara.io:path-stamp directory :failure nil)))
+                  (and stamp (tuatara.io:stamp-mtime stamp)))))
+
+(defun journal-entries ()
+  "The journal's entries with formatted names, in its directory and under it:
+a list of (PATH . DAY), DAY the day number of the identifier's date, the
+latest first. Listed again only when the journal's directory or one under it
+changed (*JOURNAL-ENTRIES-KEPT*)."
+  (let ((key (list (journal-directory) *journal-keyword*))
+        (kept *journal-entries-kept*))
+    (if (and kept (equal (first kept) key) (equal (third kept) (journal-directory-stamps (second kept))))
+        (fourth kept)
+        (let ((entries '()) (directories (list (journal-directory))))
+          (dolist (file (ignoring-errors-reported ("listing the journal")
+                          (files-under (journal-directory) :directories :also)))
+            (let ((path (car file)))
+              (if (uiop:string-suffix-p path "/")
+                  (push path directories)
+                  (multiple-value-bind (identifier signature title keywords)
+                      (name-parts (tuatara.io:native-file-name path))
+                    (declare (ignore signature title))
+                    (let ((time (and identifier (identifier-at-start-p identifier) (identifier-time identifier))))
+                      (when (and time (or (null *journal-keyword*)
+                                          (member *journal-keyword* keywords :test #'string-equal)))
+                        (push (cons path (nth-value 0 (time-day time))) entries)))))))
+          (let ((entries (sort entries #'> :key #'cdr)))
+            (setf *journal-entries-kept* (list key directories (journal-directory-stamps directories) entries))
+            entries)))))
+
+(defun journal-plain-path (day)
+  "The path of the plain-named entry of the day DAY (*JOURNAL-FILE-NAME*)."
+  (concatenate 'string (journal-directory) (format-day *journal-file-name* day 12)))
+
+(defun journal-entries-of (day)
+  "The paths of the journal's entries for the day DAY, as *JOURNAL-INTERVAL* reckons them."
+  (if *journal-file-name*
+      (let ((path (journal-plain-path day)))
+        (and (tuatara.io:path-stamp path :failure nil) (list path)))
+      (loop for (path . entry-day) in (journal-entries)
+            when (journal-same-interval-p day entry-day) collect path)))
+
+;;; Opening and making entries
+
+(defun journal-time-of (day)
+  "A universal time on the day DAY at the time of day it is now."
+  (multiple-value-bind (today hour minute second) (time-day (org-now))
+    (declare (ignore today))
+    (day-universal-time day hour minute second)))
+
+(defun journal-plain-head (title path)
+  "What a new plain-named journal entry at PATH begins with: its TITLE, after
+#+title: in Org, after # in Markdown, alone in plain text, encrypted or not
+\(*FORMATTED-FILE-TYPES*), then an empty line; nothing for an empty TITLE."
+  (let ((style (third (formatted-file-type-for (name-extension (tuatara.io:native-file-name path))))))
+    (cond ((string= title "") "")
+          ((eq style :org) (format nil "#+title: ~a~%~%" title))
+          ((eq style :markdown) (format nil "# ~a~%~%" title))
+          (t (format nil "~a~%~%" title)))))
+
+(defun journal-make-entry (day)
+  "Make the journal's entry for the day DAY, save it, and return its buffer:
+with a formatted name and the header of its kind, or a plain name
+\(*JOURNAL-FILE-NAME*) and its title alone. A plain name taken already is
+visited as it is."
+  (let ((plain (and *journal-file-name* (journal-plain-path day))))
+    (if (and plain (tuatara.io:path-stamp plain :failure nil))
+        (visit-path plain)
+        (let* ((time (journal-time-of day))
+               (title (journal-title time))
+               (directory (journal-directory))
+               (buffer
+                 (if plain
+                     (let ((buffer (progn (tuatara.io:ensure-directories plain) (tuatara.io:visit-file plain)))
+                           (head (journal-plain-head title plain)))
+                       (when (plusp (length head))
+                         (tuatara.buffer:buffer-insert buffer 0 head)
+                         (setf (tuatara.buffer:buffer-point buffer) (tuatara.buffer:buffer-size buffer)))
+                       (show-buffer buffer)
+                       buffer)
+                     (let ((type (or (find (or *journal-file-type* *formatted-file-type*)
+                                           *formatted-file-types*
+                                           :key #'first)
+                                     (first *formatted-file-types*))))
+                       (tuatara.io:ensure-directories directory)
+                       (make-formatted-file directory title (and *journal-keyword* (list *journal-keyword*))
+                                            (second type) :time time
+                                            :header (and (eq (first type) :org) *journal-org-header*))))))
+          (when buffer
+            (save-buffer-with-care buffer))
+          buffer))))
+
+(defun journal-open-entry (day &key new)
+  "Open the journal's entry for the day DAY: the one there is, one chosen
+among several, or a new one made when there is none, or with NEW (with plain
+names, a day has one entry only)."
+  (let ((paths (and (or (not new) *journal-file-name*)
+                    (if *journal-file-name* (journal-entries-of day) (journal-entries-listed day)))))
+    (cond ((null paths) (journal-make-entry day))
+          ((null (rest paths)) (visit-path (first paths)))
+          (t (let* ((root (journal-directory))
+                    (relative (mapcar (lambda (path)
+                                        (if (uiop:string-prefix-p root path) (subseq path (length root)) path)) paths))
+                    (chosen (completing-read "Journal entry: " relative :require-match t)))
+               (when (member chosen relative :test #'string=)
+                 (visit-path (concatenate 'string root chosen))))))))
+
+(defparameter *journal-carried-settings*
+  '(*journal-directory* *formatted-file-directory* *journal-keyword* *journal-file-name* *journal-interval*)
+  "The settings that find the journal's entries, carried to the threads that
+list them (JOURNAL-ENTRIES-LISTED) and mark their days in the calendar as
+they are on the editor's when the work starts
+\(TUATARA.RUNTIME:CARRY-SETTINGS).")
+
+(defun journal-entries-listed (day)
+  "The paths of the journal's entries for the day DAY (JOURNAL-ENTRIES-OF),
+listed on a thread of its own, the editor reading keys meanwhile and saying
+\"Listing the journal...\" when it takes a while: \\`C-g' gives up the
+command, the listing going on, kept for next time."
+  (run-and-wait-interruptibly (tuatara.runtime:carry-settings *journal-carried-settings*
+                                                              (lambda () (journal-entries-of day)))
+                              :message "Listing the journal..." :name "tuatara journal entries"))
+
+(defun journal-read-day ()
+  "Ask for a date as Org's date prompt reads one (READ-ORG-DATE), the calendar below; its day number, or NIL."
+  (let ((ts (read-org-date "Journal entry for: ")))
+    (and ts (org-ts-day-number ts))))
+
+(defun journal-open-entry-asked (&key new)
+  "Open the journal's entry for today, or with a prefix argument for a date
+asked for (JOURNAL-OPEN-ENTRY, with NEW)."
+  (let ((day (if (prefix-argument) (journal-read-day) (org-today))))
+    (if day (journal-open-entry day :new new) (message "That is no date"))))
+
+(define-command journal-new-or-existing-entry ()
+  "Open today's journal entry, or make it when there is none: in *journal-directory*, named and
+titled as *journal-file-name* and *journal-title-format* say, saved at
+once; with several for today, the one chosen. *journal-interval* makes it a
+week's, a month's or a year's entry instead. With \\[universal-argument], for a date asked for."
+  (journal-open-entry-asked))
+
+(define-command journal-new-entry ()
+  "Make a new journal entry for today, whatever entries there are; with \\[universal-argument], for a date asked for.
+With plain names (*journal-file-name*) a day has one entry, which is opened."
+  (journal-open-entry-asked :new t))
+
+(define-command calendar-journal-entry ()
+  "Open the journal's entry for the calendar's day at point, or make it: the
+calendar leaves its window, the entry shown where you were."
+  (let ((day (calendar-cursor-date)))
+    (leave-window (current-window))
+    (journal-open-entry day)))
+
+;;; Marked in the calendar
+
+(defun journal-calendar-marks (first last)
+  "For the calendar (*CALENDAR-MARK-FUNCTIONS*): the function that, on a thread
+of its own, gives the days from FIRST to LAST with a journal entry, each
+\(DAY . :CALENDAR-JOURNAL)."
+  (tuatara.runtime:carry-settings
+   *journal-carried-settings*
+   (lambda ()
+     (if *journal-file-name*
+         (loop for day from first to last
+               when (tuatara.io:path-stamp (journal-plain-path day) :failure nil)
+                 collect (cons day :calendar-journal))
+         (loop for (nil . day) in (journal-entries)
+               when (<= first day last) collect (cons day :calendar-journal))))))
+
+(defun install-journal ()
+  "Mark the journal's days in the calendar, and bind n there for the entry of
+the day at point, which RET opens too on a day marked for it."
+  (pushnew 'journal-calendar-marks *calendar-mark-functions*)
+  (pushnew '(:calendar-journal calendar-journal-entry "journal entry") *calendar-day-openers* :test #'equal)
+  (define-key (mode-keymap 'calendar-mode) "n" 'calendar-journal-entry)
+  (commands-for-mode 'calendar-mode "the calendar (\\[calendar])" 'calendar-journal-entry))

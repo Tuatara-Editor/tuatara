@@ -1,0 +1,6 @@
+# name: Comment block
+# key: <C
+# --
+#+begin_comment
+$0
+#+end_comment

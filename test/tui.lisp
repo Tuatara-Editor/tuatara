@@ -1,0 +1,312 @@
+;;;; test/tui.lisp --- The terminal frontend and the program's start: names for shared pictures, the random numbers of
+;;;; each start.
+;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
+
+(in-package #:tuatara.tests)
+
+(define-test tui
+  :description "The terminal frontend and the program's start, as frontends/tui has them.")
+
+(define-test (tui random-numbers-new-at-each-start)
+  ;; two starts of one saved executable begin with the same state; each draws its own numbers
+  (let ((saved (make-random-state nil)))
+    (flet ((first-number ()
+             (let ((*random-state* (make-random-state saved)))
+               (tuatara.terminal::fresh-random-state)
+               (random (expt 2 64)))))
+      (isnt = (first-number) (first-number)))))
+
+(define-test (tui picture-names-new-at-each-start)
+  ;; the names of shared pictures do not repeat a state saved in the executable
+  (let ((saved (make-random-state nil)))
+    (flet ((name () (let ((*random-state* (make-random-state saved))) (tuatara.frontend.tui::shared-picture-name))))
+      (let ((one (name)) (two (name)))
+        (isnt string= one two)
+        (true (uiop:string-prefix-p (format nil "tuatara-~d-" (sb-posix:getpid)) one))))))
+
+(define-test (tui window-only-without-a-terminal)
+  ;; a window of its own only when neither the input nor the output is a terminal, on a desktop
+  (flet ((window (input output desktop)
+           (tuatara.terminal::window-wanted-p :input input :output output :desktop desktop)))
+    (true (window nil nil ":0"))
+    (false (window nil t ":0"))
+    (false (window t nil ":0"))
+    (false (window t t ":0"))
+    (false (window nil nil nil))))
+
+(define-test (tui first-line-of-a-closed-file)
+  ;; a file not there and one that may not be read both give no line; only the second is
+  ;; kept in the debug log, as a failure
+  (let ((path (namestring (merge-pathnames "first-line" *test-state-directory*))))
+    (with-open-file (out path :direction :output :if-exists :supersede) (format out "max~%"))
+    (drain-debug-reports)
+    (unwind-protect
+         (progn
+           (is string= "max" (tuatara.terminal::file-first-line path))
+           (sb-posix:chmod path 0)
+           (tuatara.runtime:set-debug t)
+           (false (tuatara.terminal::file-first-line (format nil "~a.missing" path)))
+           (true (sb-concurrency:queue-empty-p tuatara.runtime:*debug-reports*))
+           (false (tuatara.terminal::file-first-line path))
+           (let ((texts (loop for report = (sb-concurrency:dequeue tuatara.runtime:*debug-reports*)
+                              while report collect (princ-to-string (fourth report)))))
+             (true (find-if (lambda (text) (search (format nil "reading ~a failed" path) text)) texts) "~s" texts)))
+      (drain-debug-reports)
+      (delete-file path))))
+
+(define-test (tui input-pending-counts-what-is-kept)
+  ;; with nothing on the terminal's input, a resize kept to hand over and keys handed
+  ;; back to ncurses are input waiting all the same
+  (multiple-value-bind (empty writer) (sb-posix:pipe)
+    (let ((saved (sb-posix:dup 0))
+          (f (tuatara.frontend.tui:make-tui-frontend)))
+      (unwind-protect
+           (progn
+             (sb-posix:dup2 empty 0)
+             (let ((tuatara.frontend.tui::*keys-given-back* nil))
+               (false (tuatara.frontend:frontend-input-pending-p f))
+               (push (tuatara.frontend:make-event :resize :width 80 :height 24) (tuatara.frontend.tui::tui-pending f))
+               (true (tuatara.frontend:frontend-input-pending-p f))
+               (setf (tuatara.frontend.tui::tui-pending f) '()
+                     tuatara.frontend.tui::*keys-given-back* t)
+               (true (tuatara.frontend:frontend-input-pending-p f))))
+        (sb-posix:dup2 saved 0)
+        (mapc #'sb-posix:close (list saved empty writer))))))
+
+(define-test (tui file-names-not-utf-8-on-the-command-line)
+  ;; a file name that is not UTF-8 on the command line: every argument kept, that
+  ;; name's octets as its raw bytes' characters, the runtime's options left out
+  (with-test-directory (directory)
+    (let ((cmdline (merge-pathnames "cmdline" directory)))
+      (with-open-file (o cmdline :direction :output :element-type '(unsigned-byte 8))
+        (write-sequence (concatenate '(vector (unsigned-byte 8))
+                                     (sb-ext:string-to-octets "tuatara") #(0)
+                                     (sb-ext:string-to-octets "--dynamic-space-size")
+                                     #(0)
+                                     (sb-ext:string-to-octets "3GB")
+                                     #(0)
+                                     (sb-ext:string-to-octets "--gui") #(0)
+                                     (sb-ext:string-to-octets "bad")
+                                     #(255 254)
+                                     (sb-ext:string-to-octets "name.txt")
+                                     #(0)
+                                     (sb-ext:string-to-octets "a.txt") #(0))
+                        o))
+      (is equal (list "tuatara" "--gui" (format nil "bad~c~cname.txt" (code-char #xDCFF) (code-char #xDCFE)) "a.txt")
+          (tuatara.terminal::command-line-arguments :argv nil :from (uiop:native-namestring cmdline)))
+      (is equal '("tuatara" "x") (tuatara.terminal::command-line-arguments :argv '("tuatara" "x") :from "/nonexistent")))))
+
+(define-test (tui heap-restart-with-a-name-not-utf-8)
+  ;; such a name is handed on as its octets; with no program there to run, this
+  ;; start goes on with its heap
+  (let ((sb-ext:*posix-argv* (list "tuatara" (format nil "bad~cname" (code-char #xDCFF))))
+        (tuatara.io:*saved-program* "/nonexistent/tuatara"))
+    (unwind-protect (finish (tuatara.terminal::restart-with-heap 100))
+      (sb-posix:unsetenv "TUATARA_HEAP_DECIDED"))))
+
+(define-test (tui terminal-given-back-alike)
+  ;; stopping and lending the terminal give it back the same way, and a lent terminal is taken
+  ;; again as the editor had it: the kitty keyboard, the mouse, pastes, rows shown in the order sent, the
+  ;; screen painted whole
+  (let ((calls '()))
+    (with-functions-replaced ((tuatara.frontend.tui::%endwin (lambda () (push :endwin calls)))
+                              (tuatara.frontend.tui::%clearok (lambda (window on)
+                                                                (declare (ignore window on))
+                                                                (push :clearok calls)))
+                              (tuatara.frontend.tui::%wrefresh (lambda (window)
+                                                                 (declare (ignore window))
+                                                                 (push :refresh calls)))
+                              (tuatara.frontend.tui::forget-images (lambda (f all)
+                                                                     (declare (ignore f))
+                                                                     (push (list :forget all) calls))))
+      (flet ((sent (function)
+               (let ((f (tuatara.frontend.tui:make-tui-frontend))
+                     (tuatara.frontend.tui::*kitty-keyboard-on* t)
+                     (tuatara.frontend.tui::*kitty-flags* 31)
+                     (tuatara.frontend.tui::*altgr-held* t)
+                     (tuatara.frontend.tui::*shown-cursor-shape* :bar)
+                     (tuatara.frontend.tui::*shown-cursor-colour* "#123456")
+                     (tuatara.frontend.tui::*saved-stderr* nil)
+                     (tuatara.frontend.tui::*shared-pictures* '()))
+                 (setf (tuatara.frontend.tui::tui-window f) :window (tuatara.frontend.tui::tui-mouse f) t
+                       calls '())
+                 (values (with-output-to-string (*standard-output*) (funcall function f))
+                         (reverse calls)
+                         tuatara.frontend.tui::*kitty-keyboard-on*
+                         tuatara.frontend.tui::*shown-cursor-shape*
+                         tuatara.frontend.tui::*altgr-held*))))
+        (let* ((esc (string #\Escape))
+               (given-back (concatenate 'string esc "[0 q" esc "]112" (string (code-char 7)) esc "[<u"
+                                        esc "[?1004l" esc "[?1002l" esc "[?1006l" esc "[?2004l" esc "[8h")))
+          (multiple-value-bind (out calls kitty shape) (sent #'tuatara.frontend:frontend-stop)
+            (is string= given-back out)
+            (is equal '((:forget t) :endwin) calls)
+            (false kitty)
+            (false shape))
+          ;; AltGr held when the terminal was lent: not held when it comes back, its letting go unseen
+          (multiple-value-bind (out calls kitty shape held)
+              (sent (lambda (f) (tuatara.frontend:frontend-lend-terminal f (lambda () (write-string "program")))))
+            (is string= (concatenate 'string given-back "program" esc "[>31u" esc "[?1004h"
+                                     esc "[?1002h" esc "[?1006h" esc "[?2004h" esc "[8l")
+                out)
+            (is equal '((:forget t) :endwin :clearok :refresh) calls)
+            (true kitty)
+            (false shape)
+            (false held)))))))
+
+(define-test (tui row-written-without-garbage)
+  ;; a row's spans and the face painted past its text are written to the terminal from the row itself,
+  ;; no piece of it copied: little garbage for each span more (faces combined as they always are)
+  (let ((written (make-string-output-stream)) (recording t))
+    (with-functions-replaced ((tuatara.frontend.tui::%wmove (lambda (window y x) (declare (ignore window y x)) 0))
+                              (tuatara.frontend.tui::%getmaxx (lambda (window) (declare (ignore window)) 300))
+                              (tuatara.frontend.tui::%getmaxy (lambda (window) (declare (ignore window)) 50))
+                              (tuatara.frontend.tui::%getcurx (lambda (window) (declare (ignore window)) 200))
+                              (tuatara.frontend.tui::%wclrtoeol (lambda (window) (declare (ignore window)) 0))
+                              (tuatara.frontend.tui::attributes-on (lambda (window attrs)
+                                                                     (declare (ignore window attrs))))
+                              (tuatara.frontend.tui::attributes-off (lambda (window) (declare (ignore window))))
+                              (tuatara.frontend.tui::spec-attributes (lambda (spec) (declare (ignore spec)) 1))
+                              (tuatara.display:combine-faces (lambda (face base) (declare (ignore base)) face))
+                              (tuatara.frontend.tui::%waddstr-octets
+                               (lambda (window octets) (declare (ignore window))
+                                 (when recording (write-string (tuatara.io:sap-string octets) written))
+                                 0)))
+      (let ((f (tuatara.frontend.tui:make-tui-frontend))
+            (text (make-string 200 :initial-element #\x)))
+        (setf (tuatara.frontend.tui::tui-window f) :window)
+        (flet ((consed (count)
+                 (let ((spans (loop for k below count collect (list (* k 5) (+ (* k 5) 3) :bold))))
+                   (tuatara.frontend:frontend-put-row f 0 text :face :mode-line :spans spans)
+                   (let ((before (tuatara.bench::bytes-consed)))
+                     (dotimes (k 100) (tuatara.frontend:frontend-put-row f 0 text :face :mode-line :spans spans))
+                     (/ (- (tuatara.bench::bytes-consed) before) 100)))))
+          (tuatara.frontend:frontend-put-row f 0 text :face :mode-line :spans '((0 3 :bold)))
+          ;; the row's text, then spaces to the edge
+          (is string=
+              (concatenate 'string text (make-string 100 :initial-element #\Space))
+              (get-output-stream-string written))
+          (setf recording nil)
+          (let ((few (consed 2)) (many (consed 40)))
+            (true (< (/ (- many few) 38) 48) "~d octets of garbage for a row of 40 spans, ~d for one of 2" many few)))))))
+
+(define-test (tui frontends-call-c-one-way)
+  ;; the terminal and the window call their C libraries as the rest of the editor
+  ;; does, through SBCL's own foreign calls: no library of their own to do it
+  (let ((libraries '("cffi" "babel" "trivial-features")))
+    (labels ((needed (name)
+               (let ((system (asdf:find-system name nil)))
+                 (when system
+                   (cons (asdf:primary-system-name system)
+                         (loop for dependency in (asdf:system-depends-on system)
+                               when (stringp dependency) append (needed dependency)))))))
+      (dolist (system '("tuatara/terminal" "tuatara/frontend-tui" "tuatara/frontend-gtk"))
+        (is equal '() (intersection libraries (needed system) :test #'string=) "~a needs ~a" system
+            (intersection libraries (needed system) :test #'string=)))))
+  (dolist (file (directory (merge-pathnames "frontends/**/*.lisp" (asdf:system-source-directory :tuatara))))
+    (false (search "cffi:" (uiop:read-file-string file)) "~a calls C through cffi" (enough-namestring file))))
+
+(define-test (tui lent-terminal-words-written-out)
+  ;; the words shown on the terminal lent to a program have their control characters written out
+  (let ((f (tuatara.frontend.tui:make-tui-frontend))
+        (said (make-string-output-stream)))
+    (setf (tuatara.frontend.tui::tui-window f) t)
+    (sb-int:encapsulate 'tuatara.frontend.tui::give-terminal-back 'lending-nothing
+                        (lambda (function f) (declare (ignore function f))))
+    (sb-int:encapsulate 'tuatara.frontend.tui::take-terminal-again 'lending-nothing
+                        (lambda (function &rest arguments) (declare (ignore function arguments))))
+    (unwind-protect
+         (let ((*standard-output* said))
+           (tuatara.frontend:frontend-lend-terminal
+            f (constantly t) :words (format nil "decrypting a~c]0;owned~c.gpg" #\Esc (code-char 7))))
+      (sb-int:unencapsulate 'tuatara.frontend.tui::give-terminal-back 'lending-nothing)
+      (sb-int:unencapsulate 'tuatara.frontend.tui::take-terminal-again 'lending-nothing))
+    (let ((text (get-output-stream-string said)))
+      (true (search "decrypting a^[]0;owned^G.gpg" text) "~s" text)
+      (false (find #\Esc text)))))
+
+(define-test (tui terminal-resize-wakes-the-wait)
+  ;; a resize (SIGWINCH) wakes the wait for events, so that it needs no timeout to notice one
+  (let ((f (tuatara.frontend.tui:make-tui-frontend))
+        (wake (tuatara.io:make-wake-pipe)))
+    (setf (tuatara.frontend.tui::tui-wake f) wake)
+    (setf (car tuatara.frontend.tui::**terminal-resized**) nil)
+    (unwind-protect
+         (progn
+           (tuatara.frontend.tui::watch-terminal-size f)
+           (sb-posix:kill (sb-posix:getpid) sb-unix:sigwinch)
+           (true (consp (tuatara.io:wait-for-fds (list (car wake)) 5)) "the wake pipe was written")
+           (true (car tuatara.frontend.tui::**terminal-resized**)))
+      (sb-sys:enable-interrupt sb-unix:sigwinch :default)
+      (setf (car tuatara.frontend.tui::**terminal-resized**) nil
+            (tuatara.frontend.tui::tui-wake f) nil)
+      (tuatara.io:close-wake-pipe wake))))
+
+(define-test (tui wake-and-resize-drained-together-still-tick)
+  ;; a wake written beside a resize is not lost: the tick it asks for is given
+  (setf (car tuatara.frontend.tui::**frontend-woken**) nil
+        (car tuatara.frontend.tui::**terminal-resized**) t)
+  (unwind-protect
+       (progn
+         (false (tuatara.frontend.tui::wake-gives-tick-p) "a resize alone gives no tick")
+         (setf (car tuatara.frontend.tui::**frontend-woken**) t)
+         (true (tuatara.frontend.tui::wake-gives-tick-p) "a wake with a resize gives one")
+         (false (car tuatara.frontend.tui::**frontend-woken**)))
+    (setf (car tuatara.frontend.tui::**terminal-resized**) nil)))
+
+(define-test (tui frame-the-same-not-sent-again)
+  ;; a timer that wakes the editor with nothing changed (the mode line's signs fading) paints a frame the same as
+  ;; the one on the screen: it is not sent, so the terminal gets no empty frame half a second after each key
+  (let ((sent '()))
+    (with-functions-replaced ((tuatara.frontend.tui::%wmove (lambda (window y x) (declare (ignore window y x)) 0))
+                              (tuatara.frontend.tui::%getmaxx (lambda (window) (declare (ignore window)) 80))
+                              (tuatara.frontend.tui::%getmaxy (lambda (window) (declare (ignore window)) 24))
+                              (tuatara.frontend.tui::%getcurx (lambda (window) (declare (ignore window)) 5))
+                              (tuatara.frontend.tui::%wclrtoeol (lambda (window) (declare (ignore window)) 0))
+                              (tuatara.frontend.tui::%werase (lambda (window) (declare (ignore window)) 0))
+                              (tuatara.frontend.tui::%wbkgd (lambda (window ch) (declare (ignore window ch)) 0))
+                              (tuatara.frontend.tui::%wrefresh (lambda (window) (declare (ignore window)) 0))
+                              (tuatara.frontend.tui::%curs-set (lambda (visibility) (declare (ignore visibility)) 0))
+                              (tuatara.frontend.tui::%waddstr-octets (lambda (window octets)
+                                                                       (declare (ignore window octets))
+                                                                       0))
+                              (tuatara.frontend.tui::attributes-on (lambda (window attrs)
+                                                                     (declare (ignore window attrs))))
+                              (tuatara.frontend.tui::attributes-off (lambda (window) (declare (ignore window))))
+                              (tuatara.frontend.tui::spec-attributes (lambda (spec) (declare (ignore spec)) 1))
+                              (tuatara.frontend.tui::background-character (lambda (attrs) (declare (ignore attrs)) 32))
+                              (tuatara.frontend.tui::cursor-colour-code (lambda (colour) (declare (ignore colour))
+                                                                          :default))
+                              (tuatara.frontend.tui::forget-images (lambda (f all) (declare (ignore f all))))
+                              (tuatara.frontend.tui::terminal-control (lambda (control &rest arguments)
+                                                                        (declare (ignore arguments))
+                                                                        (push control sent))))
+      (let ((f (tuatara.frontend.tui:make-tui-frontend))
+            (tuatara.frontend.tui::*shown-frame* nil))
+        (setf (tuatara.frontend.tui::tui-window f) :window)
+        (flet ((frame (text column)
+                 (setf sent '())
+                 (tuatara.frontend:frontend-begin-frame f)
+                 (tuatara.frontend:frontend-put-row f 0 text :spans '((0 2 :bold)))
+                 (tuatara.frontend:frontend-set-cursor f 0 column :block)
+                 (tuatara.frontend:frontend-end-frame f)
+                 (and (member "[?2026h" sent :test #'string=) t)))
+          (true (frame "hello" 5) "the first frame is sent")
+          (false (frame "hello" 5) "the same frame again is not")
+          (true (frame "hullo" 5) "a row changed is sent")
+          (true (frame "hullo" 4) "the cursor moved is sent")
+          (false (frame "hullo" 4) "and the same again is not"))))))
+
+(define-test (tui kitty-key-past-the-last-character)
+  ;; a CSI u key whose code, shifted code, base or text is past the last character is no key, not an error
+  (dolist (parameters '("57;1;1114112u" "1114112;1" "97:1114112;2" "97::1114112;1" "97;;97:1114112"))
+    (false (tuatara.frontend.tui::kitty-key (string-right-trim "u" parameters)) "~a" parameters)))
+
+(define-test (tui frame-hash-reads-every-face-of-a-list)
+  ;; two rows whose spans differ only in a fifth face of a list hash apart, so the second is sent
+  (flet ((hash (fifth)
+           (tuatara.frontend.tui::frame-row-hash 0 0 "words" nil
+                                                 (list (list 0 5 (list :bold :italic :underline :region fifth))))))
+    (isnt = (hash :highlight) (hash :warning))
+    (isnt = (tuatara.frontend.tui::frame-row-hash 0 0 "words" '(:a :b :c :d :highlight) '())
+        (tuatara.frontend.tui::frame-row-hash 0 0 "words" '(:a :b :c :d :warning) '()))))

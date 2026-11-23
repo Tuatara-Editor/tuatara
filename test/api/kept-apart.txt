@@ -1,0 +1,90 @@
+;; Pairs of definitions that tools/possible-copies.sh --alike-meaning lists as alike by meaning and that were read
+;; and judged distinct, so they do not come back: NAME-A NAME-B reason, names as written in the code, either order.
+fold-from fold-before the two directions of one lookup
+docx-footnote org-latex-footnote each writes its format's footnote; the shared part is one hash lookup and the expanding guard, already a macro
+fd-xattr-names fd-xattr-value a list of names against one value: two system calls
+docx-element-itself org-html-element one case on the element type per output format; each arm writes that format
+docx-element-itself org-latex-element-itself one case on the element type per output format; each arm writes that format
+org-table-next-field org-table-next-row two different moves in a table; one goes along the row, the other down
+csv-scan csv-sparse-scan every column coloured against quoted fields and separators only
+synctex-fractions synctex-units the two directions of one conversion
+org-html-object org-latex-object one case on the object type per output format; each arm writes that format
+note-watch-event note-directory-event watched files against listed directories, with different timing rules
+docx-import-replace-fields docx-import-replace-simple-fields complex fields are runs paired by begin and end, simple ones one element; callers use either or both with different functions
+rope-find-octet rope-find-any-octet one octet scanned by leaf against a set by window; the first is the hot newline search
+pdf-view-image-cells image-cells a picture's size in cells at its own size against fitted into a given area
+odf-cell-value sheet-cell-value the cell as ODF writes it against as OOXML writes it
+org-agenda-list org-agenda-day the agenda view against the lines of one day
+lsp-servers-for lsp-installed-servers servers of one language, started if asked, against all installed ones of a buffer
+odf-slide-write-shapes slide-write-shapes the shapes of ODF and of OOXML are different trees; the heading and item writing are shared already
+calendar-read-day org-float-day reading a day in the calendar against a floating Org date
+process-stat process-group-and-session the general reader against an allocation-free one for the process scan
+docx-footnote org-html-footnote each writes its format's footnote; the shared part is one hash lookup and the expanding guard, already a macro
+kill-project-buffers-asked kill-project-buffers-of-every-client one client's buffers against every client's, asked differently
+office-file-format office-preview-format by a file's name and head against by contents already read
+buffer-tab-width host-tab-width the host method asks the buffer's setting; one call of the other
+gpg-decrypt-file rimu-decrypt-files one file asked for against the marked files, asked once
+org-agenda-now-time org-agenda-time-of-day a time of day from a universal time against from a text
+org-agenda-grid-items org-agenda-grid-pieces making the grid's items against drawing one item
+calendar-print-day-of-year day-number a command against the date function it uses
+org-html-element org-latex-element-itself one case on the element type per output format; each arm writes that format
+org-agenda-deadlines org-agenda-timestamps deadlines have warning days and moved times; timestamps do not
+line-text-ends-p line-text-end a test at one octet against the end found from a newline
+carried-line-number carried-line-start the two directions of one lookup
+mark-whole-buffer select-whole-buffer one command calls the other
+org-date-choosing-prompt org-date-choosing-end building the prompt against ending the choosing
+gpg-encrypt-file rimu-encrypt-files one file against the marked files, with one passphrase for all
+terminal-library-version terminal-version the version as text against the command saying it
+org-agenda-day-view org-agenda-day a command against the lines of one day
+tuatara.io:host-say-writing tell-writing the host's method and the function that calls it
+delete-window remove-window the command calls the function
+org-agenda-day-view org-agenda-deadlines a command against one kind of lines
+packages-sweep-ask packages-delete-ask unused sources found by a sweep against named packages, each with its own question and steps
+bookmark-sections bookmarks-delete building the sections against deleting
+decrypted-in gpg-decrypt-file showing text in a buffer against writing a file
+short-sha256 sha3-256 two different hashes
+pdf-objects-packed pdf-object-stream-named all object streams of a file against one by number, kept
+docx-picture-size inline-picture-size the size alone against the kind and size kept for a second
+display-buffer display-buffer-at placing by the rules against placing where it is told
+calendar-iso-print-date iso-week a command against the date function it uses
+take-picture take-picture-piece a whole picture against the next piece of a picture arriving
+buffer-tab-width tab-width-of the setting's default is 4 and the core's 8, each with its own bounds
+seconds-left milliseconds-to the syntax helper is its own program and does not load the runtime
+docx-elements org-latex-elements each walks the children and keeps its format's blank lines and state
+docx-elements org-html-elements each walks the children and keeps its format's blank lines and state
+rope-find-octet-backward rope-find-any-octet one octet searched with position, no table; kept for speed
+listed-faces theme-face-settings the faces a theme can colour against what a theme sets for one
+org-agenda-without-noted-times org-agenda-noted-lines taking lines out against making the lines of the noted times
+git-blame git-log-file two commands listing different things for a file
+git-log-branches git-show-refs a log of branches against the list of references
+parse-git-name-status parse-git-status two different git outputs
+parse-git-status parse-git-submodules two different git outputs
+org-agenda-goto-today org-agenda-deadlines a command against one kind of lines
+character-start-from rope-char-start the first start at or after against the start at or before
+org-agenda-check-dates org-agenda-date-check the command against the lines it shows
+calendar-print-day-of-year year-day a command against the date function it uses
+git-stage-file git-stage stage the file you are in against stage what the status line or hunks name
+odf-slide-write slide-write ODF and OOXML slides read from different trees; they share slide-write-as-note
+scan-bracket-at scan-next-bracket a bracket at a place against the next bracket from a place
+calendar-print-day-of-year day-date a command against the date function it uses
+git-worktree-status git-show-status the command asks for a worktree and calls the function
+count-progress hash-progress two job kinds with their own structures
+tuatara.syntax:host-user-grammar-allowed-p user-grammar-p the host's method and the core's test it uses
+repeat-ends repeat-arguments-of reading one menu argument against building all of them
+org-agenda-list org-agenda-deadlines the agenda view against one kind of lines
+set-window-size window-size-ioctl the terminal wrapper against the system call
+calendar-backward-day org-calendar-backward-day the calendar's own key against the one in Org's date prompt, an agreed exception
+calendar-open org-date-calendar-show one selects the calendar's window, the other keeps the prompt's window and reports a new one
+org-agenda-earlier org-agenda-deadlines a command against one kind of lines
+day-universal-time local-offset a time from a day against the zone offset it uses
+tuatara.display:host-text-direction text-direction-of the host's method and the function that calls it
+tuatara.runtime:job-take-in formatted-templates taking a job's result in against listing templates
+user-grammar-names user-grammar-file all added grammars against one by name
+org-agenda-month-view org-agenda-deadlines a command against one kind of lines
+index-progress job-percent one job kind's progress against the generic method
+know-language-tools language-tools-words recording tools against wording them
+todotxt-each todotxt-keys one task's parts against the keys of many tasks
+org-agenda-later org-agenda-deadlines a command against one kind of lines
+git-log-all git-show-refs a log of everything against the list of references
+import-on-server gpg-import-keys importing on a server against into the local keyring
+anchor-position anchor-move a position read against a position set

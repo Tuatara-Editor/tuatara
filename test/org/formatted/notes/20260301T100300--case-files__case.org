@@ -1,0 +1,15 @@
+#+title: Case files
+#+identifier: 20260301T100300
+
+* One file
+#+BEGIN: denote-files :regexp "epsilon"
+#+END:
+* Separated, front matter left out, with links
+#+BEGIN: denote-files :regexp "==1" :sort-by-component signature :file-separator t :no-front-matter t :add-links t
+#+END:
+* Two lines left out, a separator of its own, links of identifiers
+#+BEGIN: denote-files :regexp "beta\\|delta" :no-front-matter 2 :file-separator "\n===\n" :add-links id-only
+#+END:
+* Markdown and text
+#+BEGIN: denote-files :regexp "_md\\|_text"
+#+END:

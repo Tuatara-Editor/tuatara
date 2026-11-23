@@ -1,0 +1,15 @@
+diff --git a/grammar.js b/grammar.js
+index b2e70a2..2353c78 100644
+--- a/grammar.js
++++ b/grammar.js
+@@ -390,7 +390,9 @@ module.exports = grammar({
+         )
+       ),
+ 
+-    word: $ => /[^\s\\%\{\},\$\[\]\(\)=\#]+/,
++    // an ampersand is a word of its own, so that the one between the
++    // columns of a table is found even when written up against the text
++    word: $ => /[^\s\\%\{\},\$\[\]\(\)=\#&]+|&/,
+ 
+     placeholder: $ => /#\d/,
+ 

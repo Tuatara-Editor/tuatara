@@ -1,0 +1,401 @@
+#+title: Tuatara
+#+subtitle: An editor in Common Lisp, after the ideas of Emacs
+
+Read the manual: [[https://tuatara-editor.github.io/tuatara/][tuatara-editor.github.io/tuatara]].
+
+* What Tuatara is
+
+An editor built on Emacs's design: a small core with everything else built on
+it, buffers as the universal container, every key bound to a named command, and
+nothing off limits to the person using it. Unlike Emacs, whose core is written
+in C, Tuatara is Lisp throughout, the core included.
+
+It is *not* compatible with Emacs Lisp or Emacs packages. It keeps the ideas,
+not the code. In exchange it gets real parallel threads, a text model that
+handles files of many gigabytes and half a million cursors, and one language
+from the rope up to the init file.
+
+- Language :: Common Lisp, compiled by SBCL.
+- Platform :: Linux. A window of its own (GTK 4), or any terminal (ncurses).
+- Editing :: DONKEY modal editing on by default, on top of the standard
+  Emacs-style keys; =(setf *modal-editing* nil)= turns the modal layer off.
+
+* What it does
+
+- Files of any size: memory-mapped and indexed on nine cores in ten, nothing
+  read up front; any encoding and line ending; a hex view; a safe way to open
+  a file that must stay untouched (=M-x find-file-safely=).
+- Editing: undo groups, rectangles, multiple cursors, selections by the syntax,
+  input methods and digraphs, spell checking, sorting, filling, bracket pairs.
+- Searching: incremental search with regular expressions, replacing, search
+  across many files as you type, an outline of the buffer.
+- Languages: colouring, indentation and selections by tree-sitter for close to
+  300 languages, and Lisp in the running editor (completion, =M-.=, a REPL,
+  macro expansion, a debugger).
+- Org: the Org format read as Org itself reads it, folding, tables and their
+  formulas, the agenda, capture, clocking, links, tangling, dynamic blocks,
+  and export to PDF (through LaTeX) and to Word.
+- Files with formatted names, a journal and a calendar.
+- rimu, a directory editor, with the trash, a preview, and git status.
+- Viewers for PDFs, pictures, and Word, Excel and PowerPoint documents and
+  LibreOffice's own (OpenDocument, .odt, .ods, .odp), each drawn by a program
+  shut in a sandbox (bubblewrap), the Office ones also read as text by
+  Tuatara itself: nothing in a file is ever run.
+- Auto-save into a private directory of its own, never into the file itself
+  (only a save writes that); =M-x recover-file= takes the changes back after a
+  crash or a quit without saving (=M-x list-auto-saves= lists them all).
+  Nothing opened safely is ever copied.
+- Encrypted files (.gpg) opened decrypted and saved encrypted by GnuPG, their
+  text never written to disk (no auto-save, scratch file or clipboard but on
+  request); a file opened safely is never decrypted.
+- The session kept, as an option (=*keep-session*=): the files, directories and
+  windows opened again as they were at the next start.
+- =M-x show-file-metadata= shows what a file is and says of itself, read by
+  Tuatara alone (no other program): kind by contents, owner, permissions, its
+  four times, SHA-256, extended attributes (where a download came from); a
+  photograph's EXIF with its GPS position and thumbnail (JPEG, HEIC, PNG, WebP,
+  TIFF), XMP and its edit history, a PDF's information, saves and scripts, MP3
+  and FLAC tags, a video's times and place, an Office file's account of itself.
+- A terminal in a buffer (=M-x terminal=, on the terminal library of Ghostty),
+  with its history as text, the mouse, links and pictures.
+- Help over the live editor: every command, variable and face has its
+  documentation, and the source of anything is one key away.
+
+* Running it
+
+** Installing it, step by step
+
+1. *Download.* Open the releases page,
+   [[https://github.com/Tuatara-Editor/tuatara/releases]], and under the newest
+   release's /Assets/ download the file for your system (the table below) and
+   =SHA256SUMS=, into your Downloads directory.
+
+2. *Check the download.* In a terminal:
+
+   #+begin_example
+   cd ~/Downloads
+   sha256sum -c --ignore-missing SHA256SUMS
+   #+end_example
+
+   It must say =OK= after your file. If it says =FAILED=, download it again.
+
+3. *Install it* with your system's own package manager, which also brings
+   the libraries Tuatara needs:
+
+   | System                                  | Download                      | Install                                       |
+   |-----------------------------------------+-------------------------------+-----------------------------------------------|
+   | Fedora 40 and newer                     | =tuatara-….x86_64.rpm=        | =sudo dnf install ./tuatara-*.x86_64.rpm=     |
+   | Ubuntu 24.04 and newer, Debian 13       | =tuatara_…_amd64.deb=         | =sudo apt install ./tuatara_*_amd64.deb=      |
+   | Arch                                    | =tuatara-…-x86_64.pkg.tar.zst= | =sudo pacman -U tuatara-*-x86_64.pkg.tar.zst= |
+   | Omarchy                                 | =tuatara-…-x86_64.pkg.tar.zst= | =sudo pacman -U tuatara-*-x86_64.pkg.tar.zst= |
+   | Anything else, or nothing installed     | =Tuatara-x86_64.AppImage=     | see /The AppImages/ below                     |
+
+4. *Start it.* In a terminal, =tuatara= runs it in that terminal and
+   =tuatara --gui= in a window of its own; it is also among your desktop's
+   applications, as /Tuatara/.
+
+   The manual's chapter 9, /Starting Tuatara with files/, covers the rest:
+   starting on a line, comparing and merging files, opening them safely and
+   starting without your settings. =tuatara --help= lists them too.
+
+5. *First steps.* =M-x tuatara-tutor= teaches the keys by editing a text with
+   them (=M-x= is Alt and x). =M-x check-health= says which of the programs
+   in /What to install beside it/ are found. Your settings are in
+   =~/.config/tuatara/init.lisp=, written the first time Tuatara starts, every
+   setting in it explained and switched off (=;;= in front).
+
+To remove it again: =sudo dnf remove tuatara=, =sudo apt remove tuatara= or
+=sudo pacman -R tuatara=.
+
+*** On Omarchy
+
+Omarchy is Arch underneath, so Arch's package installs Tuatara as it is:
+
+#+begin_example
+cd ~/Downloads
+sha256sum -c --ignore-missing SHA256SUMS
+sudo pacman -U tuatara-*-x86_64.pkg.tar.zst
+#+end_example
+
+Then open the app launcher (=Super= + =Space=) and type /Tuatara/, or run
+=tuatara= in a terminal. The programs it uses beside it are Arch's too (see
+/What to install beside it/). To see pictures and PDF pages inside a
+terminal, use a terminal with the kitty graphics protocol, kitty or Ghostty
+(=sudo pacman -S kitty= or =sudo pacman -S ghostty=); in its own window
+(=tuatara --gui=) they are always shown. Using the AppImage instead, Omarchy
+needs FUSE 2 for it first: =sudo pacman -S fuse2=.
+
+** The AppImages
+
+One file, nothing installed, for a system the packages above do not cover.
+There are two; take the one your system's glibc fits (=ldd --version= says
+which glibc you have):
+
+- =Tuatara-x86_64.AppImage=, for glibc 2.43 or later (Ubuntu 26.04, Fedora
+  44 and newer). It brings GTK 4.20 or later, so its window follows the
+  desktop's light or dark style, in the Ao theme's light or dark colours,
+  unless your init file names a theme.
+- =Tuatara-legacy-x86_64.AppImage=, for glibc 2.39 to 2.42 (Ubuntu 24.04,
+  Debian 13, Fedora 40 to 43). Its GTK cannot learn the desktop's style, so
+  =--dark= and =--light= set the style of the window's title bar. Tuatara
+  0.90.40 is the last release with a legacy AppImage: later releases need
+  glibc 2.43 and GTK 4.20 or later.
+
+On Arch and Omarchy, install FUSE 2 first (=sudo pacman -S fuse2=).
+
+#+begin_example
+chmod +x Tuatara-x86_64.AppImage
+./Tuatara-x86_64.AppImage FILE          # in this terminal
+./Tuatara-x86_64.AppImage --gui FILE    # in a window of its own
+./Tuatara-x86_64.AppImage --install-desktop
+#+end_example
+
+=--install-desktop= copies it to =~/.local/bin/tuatara= and puts Tuatara in the
+desktop's applications; run it again from a new AppImage, and after moving
+from the legacy AppImage to the other. The manual's chapter 20 says more about
+the desktop entry and the window's title bar.
+
+The libraries the AppImage brings (GTK 4 and what it needs) are Ubuntu
+26.04's, the legacy AppImage's Ubuntu 24.04's, at their newest versions on the
+day it was built. Each release has =Tuatara-x86_64.AppImage.libraries.txt=,
+also inside the AppImage as =licenses/bundled-libraries.txt=: every bundled
+library with its package, exact version and SHA-256, so it can be checked
+against security advisories. The libraries come with their sources, as many of
+their licences (the LGPL among them) ask:
+=Tuatara-x86_64.AppImage.library-sources.tar.zst=, a file of the same release,
+holds the Ubuntu source package of each, at exactly the version bundled. The
+legacy AppImage's two files are named after it in the same way.
+
+** Building the files yourself
+
+=tools/appimage.sh= makes the AppImage (=tools/appimage.sh legacy= the legacy
+one), and =tools/distro-packages.sh= the
+packages for Fedora (40 and newer), Ubuntu (24.04 and newer) and Arch, in
+=build/packages/=.
+
+To build it from source, and to work on it, see
+[[file:HACKING.org][HACKING.org]]; to contribute,
+[[file:CONTRIBUTING.md][CONTRIBUTING.md]].
+
+** What to install beside it
+
+Tuatara edits text with nothing else installed. Some features use programs of
+the system, each for one thing; without one, that thing is only not there, and
+=M-x check-health= says what is found and what is missing.
+
+In the window and in a terminal alike:
+
+| Program                        | What it gives                                                        |
+|--------------------------------+----------------------------------------------------------------------|
+| bubblewrap                     | the sandbox every program reading a file for Tuatara runs in: without it no PDF, picture or Office document is shown |
+| poppler's tools                | PDFs as pages, their text and attachments                            |
+| ImageMagick                    | pictures of every kind, and their previews                           |
+| bsdtar (libarchive)            | zip, 7z, rar, ISO 9660 and cpio archives listed and extracted in rimu |
+| 7-Zip (7zz)                    | the best of archives: encrypted 7z and rar, more zip methods; used before bsdtar |
+| LibreOffice (Writer, Calc, Impress) | Word, Excel, PowerPoint and OpenDocument files shown as pages    |
+| enchant and a hunspell dictionary | spelling                                                          |
+| git                            | the git status (=C-x g=), and packages fetched                       |
+| GnuPG                          | =.gpg= files opened and saved encrypted                              |
+| OpenSSH and util-linux's setpriv | a daemon on another machine shown here (=--client=HOST:=), your ssh agent lent to it for each use you confirm; files on a server (=/ssh:HOST:/path=) |
+| xdg-utils                      | a file opened in the desktop's own program, a link in the browser    |
+| XeLaTeX or LuaLaTeX            | Org documents exported to PDF                                        |
+| a language's server and formatter | completion, errors and layout for that language; =M-x check-health= names the one each language looks for |
+
+In the window, Tuatara takes the desktop's monospaced font (=*gui-font*= sets
+another); one with ligatures shows them. In a terminal, more is up to the
+terminal:
+
+- 24-bit colour, which kitty, Ghostty, WezTerm, foot, Konsole and GNOME's
+  terminal have, for the theme's own colours;
+- the kitty keyboard protocol (kitty, Ghostty, WezTerm, foot), so that
+  Escape, Alt and Control keys arrive at once and whole;
+- the kitty graphics protocol (kitty, Ghostty), for pictures and PDF pages
+  shown in the terminal, not inside tmux or screen;
+- wl-clipboard on Wayland, or xclip or xsel on X11, to copy and paste with
+  other programs;
+- a Nerd Font, only for the signs the init file can give the mode line.
+
+To install them all:
+
+#+begin_example
+# Fedora
+sudo dnf install bubblewrap poppler-utils ImageMagick bsdtar 7zip libreoffice-writer libreoffice-calc \
+  libreoffice-impress enchant2 hunspell-en git gnupg2 xdg-utils wl-clipboard xclip \
+  texlive-xetex 'tex(amsmath.sty)' 'tex(amssymb.sty)' 'tex(booktabs.sty)' 'tex(capt-of.sty)' \
+  'tex(etoc.sty)' 'tex(fancyhdr.sty)' 'tex(float.sty)' 'tex(fontspec.sty)' 'tex(fvextra.sty)' \
+  'tex(geometry.sty)' 'tex(graphicx.sty)' 'tex(hyperref.sty)' 'tex(lastpage.sty)' 'tex(longtable.sty)' \
+  'tex(multicol.sty)' 'tex(rotating.sty)' 'tex(titlesec.sty)' 'tex(ulem.sty)' 'tex(wrapfig.sty)' \
+  'tex(xcolor.sty)' 'tex(xltabular.sty)'
+# Ubuntu
+sudo apt install bubblewrap poppler-utils imagemagick libarchive-tools 7zip libreoffice-writer libreoffice-calc \
+  libreoffice-impress libenchant-2-2 hunspell-en-us git gnupg xdg-utils wl-clipboard xclip \
+  texlive-xetex texlive-latex-extra texlive-plain-generic
+# Arch and Omarchy
+sudo pacman -S bubblewrap poppler imagemagick libarchive 7zip libreoffice-fresh enchant hunspell-en_us git \
+  gnupg xdg-utils wl-clipboard xclip texlive-xetex texlive-latexextra texlive-plaingeneric
+#+end_example
+
+The LaTeX lines give the export every LaTeX package it uses; a whole TeX Live
+from tug.org does too, found in =~/.texlive/=, =~/texlive/=,
+=/usr/local/texlive/= or =/opt/texlive/= with nothing set.
+
+* Configuration
+
+=~/.config/tuatara/init.lisp= (=XDG_CONFIG_HOME= respected) is loaded after the
+defaults. The first start writes one that lists every setting, commented out.
+Chapter 20 of the manual, /Making it your own/, shows how to change settings,
+keys, faces and themes.
+
+* Status
+
+Version 0.90.40, a pre-release: in daily use by its author, its parts tested
+(=tools/test.sh=, about 225,000 checks), its interfaces still changing until
+1.0.0, the first stable release.
+
+From 1.0.0 on, the version says what changed, as semantic versioning has it.
+What packages and init files are written against (the package API, the
+settings of the init file and the names of the commands) changes in a way
+that breaks them only in a new major version (2.0.0), and only after a
+release before it has marked the name obsolete; a minor version (1.1.0) adds,
+a patch (1.0.1) fixes.
+
+* The name
+
+Tuatara™ is the name of this editor. You may hand on Tuatara as it is
+released, package it for a distribution and name it in your own work; a
+changed version you hand on to others takes a name of its own. The GNU GPL
+gives no rights in the name; =TRADEMARKS.md= says what may be done with it.
+
+* Credits
+
+Tuatara says where its ideas come from:
+
+- GNU Emacs :: the five ideas above, the standard key bindings and the behaviour
+  of most base commands. Many test cases are Emacs's own (GPL-3.0-or-later),
+  written again for Common Lisp. The input methods' rules are Emacs's Quail
+  tables, written out as data (=lisp/selecting/input-method-table.lisp=). The
+  calendar is laid out as Emacs's, and dates by rule are written in its
+  diary's forms (=diary-float=, =diary-cyclic=, =diary-block=), read as data
+  (=lisp/org/dates.lisp=).
+- DONKEY :: the modal keys, from donkey.el (github.com/YardQuit/donkey), by the
+  same author.
+- Helix :: the rules that colour, indent and select in each language, and the
+  commits its grammars are pinned at (=syntax/=, under the MPL 2.0, each file
+  with its notice); the keys that select by the syntax, the health report, and
+  which language servers and formatters go with each language
+  (=lisp/lsp/usual-tools.lisp=, made from its languages.toml).
+- tree-sitter and the authors of its grammars :: parsing. Each grammar's licence
+  is named in =syntax/grammars.tsv=, and its text goes with every release.
+  Three of them (hare, gas and blueprint) are under the GNU GPL 3.0 only; they
+  run only in =tuatara-syntax-helper=, which loads the grammars and is spoken
+  to over a local socket, so that program is distributed under the GPL 3.0.
+- tree-sitter-prolog, by Stefano Volpe and Shane Brewer :: parsing Prolog.
+  It is under the GNU Affero General Public License 3.0 or later, Shane
+  Brewer's first part of it under the ISC licence; it is the only part of the
+  release under the Affero GPL.
+- Org mode :: the Org format and how Org files behave: the parse as
+  org-element makes it, folding and the indented view, links, tables and their
+  formulas (worked out as Calc works them out), the agenda, clocking and
+  logging, checkboxes and their cookies, source blocks and tangling, dynamic
+  blocks and the clock table, written as Org 9.7 writes it; and Org documents
+  written as LaTeX for a PDF as Org's LaTeX exporter (ox-latex) writes them
+  (=lisp/org/latex.lisp=). Many test cases are Org's own output, made in Emacs
+  by =tools/*-oracle.el=.
+- toc-org, by Sergei Nosov :: the tables of contents of Org and Markdown files,
+  ported line for line (=lisp/org/toc.lisp=).
+- markdown-mode, by Jason Blevins :: how a Markdown link is read, as toc-org
+  reads it.
+- org-bullets and org-superstar :: signs in place of headlines' stars and
+  lists' bullets.
+- Denote, by Protesilaos Stavrou :: the names of files with formatted names
+  (=C-x n f=, =C-x n n= and the rest under =C-x n=).
+- denote-org and denote-sequence, also by Protesilaos Stavrou :: the dynamic
+  blocks of files with formatted names, links, backlinks, their text and their
+  sequences, written as denote-org writes them
+  (=lisp/org/formatted-blocks.lisp=).
+- consult, vertico, orderless, marginalia and Corfu :: the look and feel of
+  completion, and the buffer's outline (=M-g o=).
+- eglot, Flymake and ElDoc :: how language servers look and feel: what they
+  find wrong, marked and shown under the resting cursor, and a call's
+  parameters or a thing's type in the echo area. The servers are spoken to by
+  the Language Server Protocol, whose snippet syntax Tuatara's snippets share.
+- Magit :: the state of a git repository (=C-x g=): its files staged,
+  unstaged and not tracked, their changes, commits, the log.
+- compile and smerge-mode :: running a build or the tests and going from one
+  place in its messages to the next (=M-x compile=, =M-g n=, =M-g p=); the
+  conflicts a merge left in a file, shown and put right (=C-c ^=,
+  =lisp/editing/conflicts.lisp=).
+- EasyPG :: the GnuPG commands: files and regions encrypted, decrypted, signed
+  and verified, keys listed and managed, =.gpg= files opened and saved.
+- jinx, by Daniel Mendler :: the way of checking spelling: only the words
+  shown, with the enchant library called directly.
+- olivetti, by Paul W. Rankin, and visual-fill-column :: text centred in its
+  window, and soft wrap at the fill column.
+- use-package :: the keywords of =load-package= in the init file (=:init=,
+  =:config=, =:defer=, =:commands=, =:after=, =:if=, =:disabled=).
+- ibuffer :: the buffer list.
+- dired :: how Rimu lists a directory and acts on the entries marked: copied,
+  moved, linked, compared (=diff=), packed into an archive and unpacked.
+- dired-du, by Tino Calancha; dired-git-info, by Clemens Radermacher; and
+  dired-duplicates, by Harald Judt :: Rimu's sizes of directories (=S=), each
+  entry's last commit (=G=) and the files that are the same as another.
+- git-timemachine, by Peter Stiernström :: going back through a file's
+  history, a commit at a time (=C-x G=), which Rimu does for a directory too.
+- doc-view and pdf-tools, by Andreas Politz :: PDFs shown as pictures of
+  their pages.
+- SLIME :: the keys that expand Common Lisp's macros.
+- csv-mode, by Francis J. Wright :: CSV's colours, only the separators and
+  what is quoted.
+- Howard Hinnant's chrono algorithms :: days as numbers and back, for any date
+  of the Gregorian calendar (=src/dates/dates.lisp=).
+- The tz database (IANA), by Paul Eggert, Arthur David Olson and its
+  contributors, and RFC 8536 :: time zones by name, read from the system's
+  zoneinfo files (=src/dates/zones.lisp=).
+- Vim :: replacing typed at the search prompt, =pattern/replacement/flags=;
+  digraphs; the line selection and the cursor column.
+- Eugene W. Myers's difference algorithm :: what changed since the file was
+  saved or committed, for the gutter (=lisp/editing/diff.lisp=).
+- Unicode's text segmentation (UAX #29) :: a letter and its accents, or an
+  emoji and its modifiers, moved over and drawn as one character.
+- Unicode's bidirectional algorithm (UAX #9) :: right-to-left text shown in
+  the order it is read in (=src/display/bidi.lisp=), checked against Unicode's
+  own BidiTest.txt, BidiCharacterTest.txt and BidiBrackets.txt
+  (=tools/bidi-conformance.sh=; Unicode License v3).
+- freedesktop.org's trash specification :: the trash Rimu puts files in and
+  lists, yours and each drive's.
+- freedesktop.org's desktop notifications :: notifications told on the
+  desktop, the agenda's and packages', through libnotify's notify-send
+  (=lisp/help/notifications.lisp=).
+- The file program :: a file's kind told by its first octets, never by its
+  name (=src/io/kinds.lisp=).
+- PDF (ISO 32000) :: the structure of a PDF read by =M-x show-file-metadata=:
+  its objects, cross-reference tables, streams and filters, and page content
+  (=lisp/viewers/pdf-reader.lisp=).
+- RARLAB's RAR 5.0 format description :: the rar archives the tests make, laid
+  out as it describes (=test/rimu-operations.lisp=).
+- RFC 1345 :: the digraphs, as Emacs's rfc1345 input method has them.
+- RFC 3339 :: dates and times as the named date patterns read and compare them
+  (=src/syntax/named-patterns.lisp=).
+- NO_COLOR (no-color.org) :: no colours in the terminal where =NO_COLOR= is set
+  (=frontends/tui/tui.lisp=).
+- Ghostty, by Mitchell Hashimoto and its contributors :: the terminal library
+  (libghostty-vt, MIT) that =M-x terminal= keeps its screen with, built from the
+  commit =lisp/terminal/library.pin= names; its licence goes with it.
+- simdutf, Highway, Wuffs and uucode :: the libraries the terminal library is
+  built with: Unicode text checked and converted (simdutf, by Daniel Lemire and
+  its contributors), many characters worked on at once (Highway, by Google),
+  pictures' pixels (Wuffs, by Google) and the Unicode character properties
+  (uucode, by Jacob Sandlund); each one's licence goes with every release.
+- Zig and LLVM's libc++ :: the compiler the terminal library is built with,
+  whose standard library and C++ library are compiled into it; their licences
+  go with every release.
+- The Unicode Character Database :: the characters' properties the terminal
+  library knows them by, through uucode; its licence goes with every release.
+- kitty, by Kovid Goyal :: the graphics and keyboard protocols, and the table of
+  marks for pictures in text.
+- Ao :: the colour theme, by the same author (github.com/YardQuit/ao).
+- SBCL :: the Common Lisp Tuatara is written in and runs on.
+- alexandria, cl-ppcre, ASDF and Quicklisp :: the Common Lisp libraries Tuatara
+  is built with, compiled into its program; each one's licence goes with every
+  release.
+

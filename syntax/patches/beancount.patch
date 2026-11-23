@@ -1,0 +1,18 @@
+diff --git a/src/scanner.cc b/src/scanner.cc
+index f2f520e..2b73142 100644
+--- a/src/scanner.cc
++++ b/src/scanner.cc
+@@ -76,6 +76,13 @@ struct Scanner {
+     }
+ 
+     bool scan(TSLexer *lexer, const bool *valid_symbols) {
++        // every symbol is valid while the parser recovers from an error; the
++        // tokens here take no text, and taken then they are taken again and
++        // again without end (a headline's stars, its section's end, stars...)
++        if (valid_symbols[HL_STARS] && valid_symbols[SECTIONEND] && valid_symbols[END_OF_FILE]) {
++            return false;
++        }
++
+ 
+         // - Section ends
+         int16_t indent_length = 0;

@@ -1,0 +1,14 @@
+diff --git a/src/scanner.c b/src/scanner.c
+index 627f864..cc55901 100644
+--- a/src/scanner.c
++++ b/src/scanner.c
+@@ -125,6 +125,9 @@ static void skip_string(TSLexer* lexer, bool multiline) {
+   const char end = lexer->lookahead;
+   advance(lexer);
+   while (true) {
++    if (lexer->eof(lexer)) {
++      return;
++    }
+     const char next = lexer->lookahead;
+ 
+     switch (next) {

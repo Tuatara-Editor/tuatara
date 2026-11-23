@@ -1,0 +1,43 @@
+* Writing the report [2/3]
+:LOGBOOK:
+CLOCK: [2026-09-28 Mon 13:00]--[2026-09-28 Mon 15:10] =>  2:10
+:END:
+** Figures
+:LOGBOOK:
+CLOCK: [2026-09-29 Tue 10:00]--[2026-09-29 Tue 11:00] =>  1:00
+:END:
+
+#+BEGIN: clocktable :maxlevel 2 :lang "de"
+#+CAPTION: Erstellt am [2026-10-03 Sat 02:41]
+| Kopfzeile                | Dauer  |      |
+|--------------------------+--------+------|
+| *Gesamtdauer*            | *3:10* |      |
+|--------------------------+--------+------|
+| Writing the report [2/3] | 3:10   |      |
+| \_  Figures              |        | 1:00 |
+#+END:
+
+#+BEGIN: clocktable :maxlevel 2 :lang "fr" :scope agenda :fileskip0 t :level t :timestamp t
+#+CAPTION: Horodatage sommaire à [2026-10-03 Sat 02:41]
+| Fichier |    N | Horodatage       | En-tête                                  | Durée  |      |
+|---------+------+------------------+------------------------------------------+--------+------|
+|         | TOUT |                  | *Durée totale*                           | *4:35* |      |
+|---------+------+------------------+------------------------------------------+--------+------|
+| a.org   |      |                  | *Durée fichier*                          | *2:15* |      |
+|         |    1 |                  | Project A                                | 2:15   |      |
+|         |    2 |                  | \_  Sub A with a rather long headline... |        | 0:45 |
+|---------+------+------------------+------------------------------------------+--------+------|
+| b.org   |      |                  | *Durée fichier*                          | *2:20* |      |
+|         |    1 |                  | Project B                                | 2:20   |      |
+|         |    2 | <2026-10-06 Tue> | \_  Task B1 [1/2]                        |        | 2:20 |
+#+END:
+
+#+BEGIN: clocktable :maxlevel 2 :lang "xx"
+#+CAPTION: Clock summary at [2026-10-03 Sat 02:41]
+| Headline                 | Time   |      |
+|--------------------------+--------+------|
+| *Total time*             | *3:10* |      |
+|--------------------------+--------+------|
+| Writing the report [2/3] | 3:10   |      |
+| \_  Figures              |        | 1:00 |
+#+END:

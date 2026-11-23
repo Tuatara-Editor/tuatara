@@ -1,0 +1,74 @@
+* Scheduled task
+SCHEDULED: <2026-10-05 Mon>
+:LOGBOOK:
+CLOCK: [2026-09-28 Mon 09:00]--[2026-09-28 Mon 10:00] =>  1:00
+:END:
+* Deadline task <2026-11-01 Sun>
+DEADLINE: <2026-10-20 Tue>
+:LOGBOOK:
+CLOCK: [2026-09-28 Mon 10:00]--[2026-09-28 Mon 10:30] =>  0:30
+:END:
+* Free active in text
+Some text <2026-10-10 Sat 10:00-11:00> here, and [2026-09-09 Wed] too.
+:LOGBOOK:
+CLOCK: [2026-09-28 Mon 10:30]--[2026-09-28 Mon 10:50] =>  0:20
+:END:
+* Inactive only
+Note taken [2026-09-01 Tue].
+:LOGBOOK:
+CLOCK: [2026-09-02 Wed 08:00]--[2026-09-02 Wed 08:10] =>  0:10
+:END:
+* In headline <2026-12-24 Thu>
+:LOGBOOK:
+CLOCK: [2026-09-28 Mon 11:00]--[2026-09-28 Mon 11:05] =>  0:05
+:END:
+* Closed only
+CLOSED: [2026-09-03 Thu 10:00]
+:LOGBOOK:
+CLOCK: [2026-09-03 Thu 09:00]--[2026-09-03 Thu 09:05] =>  0:05
+:END:
+* Range <2026-10-15 Thu>--<2026-10-16 Fri>
+:LOGBOOK:
+CLOCK: [2026-09-28 Mon 11:05]--[2026-09-28 Mon 11:10] =>  0:05
+:END:
+* Property stamp
+:PROPERTIES:
+:CREATED:  [2026-08-01 Sat]
+:END:
+:LOGBOOK:
+CLOCK: [2026-09-28 Mon 11:10]--[2026-09-28 Mon 11:15] =>  0:05
+:END:
+
+* Blocks, with no time of their own
+
+#+BEGIN: clocktable :maxlevel 2 :timestamp t
+#+CAPTION: Clock summary at [2026-10-02 Fri 20:49]
+| Timestamp                          | Headline                                 |   Time |
+|------------------------------------+------------------------------------------+--------|
+|                                    | *Total time*                             | *2:20* |
+|------------------------------------+------------------------------------------+--------|
+| <2026-10-05 Mon>                   | Scheduled task                           |   1:00 |
+| <2026-10-20 Tue>                   | Deadline task <2026-11-01 Sun>           |   0:30 |
+| <2026-10-10 Sat 10:00-11:00>       | Free active in text                      |   0:20 |
+| [2026-09-01 Tue]                   | Inactive only                            |   0:10 |
+| <2026-12-24 Thu>                   | In headline <2026-12-24 Thu>             |   0:05 |
+|                                    | Closed only                              |   0:05 |
+| <2026-10-15 Thu>--<2026-10-16 Fri> | Range <2026-10-15 Thu>--<2026-10-16 Fri> |   0:05 |
+|                                    | Property stamp                           |   0:05 |
+#+END:
+
+#+BEGIN: clocktable :maxlevel 2 :timestamp t :level t :tags t
+#+CAPTION: Clock summary at [2026-10-02 Fri 20:49]
+| L | Timestamp                          | Tags | Headline                                 |   Time |
+|---+------------------------------------+------+------------------------------------------+--------|
+|   |                                    |      | *Total time*                             | *2:20* |
+|---+------------------------------------+------+------------------------------------------+--------|
+| 1 | <2026-10-05 Mon>                   |      | Scheduled task                           |   1:00 |
+| 1 | <2026-10-20 Tue>                   |      | Deadline task <2026-11-01 Sun>           |   0:30 |
+| 1 | <2026-10-10 Sat 10:00-11:00>       |      | Free active in text                      |   0:20 |
+| 1 | [2026-09-01 Tue]                   |      | Inactive only                            |   0:10 |
+| 1 | <2026-12-24 Thu>                   |      | In headline <2026-12-24 Thu>             |   0:05 |
+| 1 |                                    |      | Closed only                              |   0:05 |
+| 1 | <2026-10-15 Thu>--<2026-10-16 Fri> |      | Range <2026-10-15 Thu>--<2026-10-16 Fri> |   0:05 |
+| 1 |                                    |      | Property stamp                           |   0:05 |
+#+END:

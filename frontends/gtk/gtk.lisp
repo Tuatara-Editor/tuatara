@@ -1,0 +1,678 @@
+;;;; frontends/gtk/gtk.lisp --- Tuatara in a window of its own: GTK4, painted with Pango and Cairo.
+;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
+;;;;
+;;;; GTK runs on the main thread and the editor on a thread of its own. Each of
+;;;; the editor's frames is a window of its own, painted through a frontend of
+;;;; its own; their callbacks put keys, resizes, the focus and the close button
+;;;; in the editor's one queue of events (TUATARA.FRONTEND:EVENT-QUEUE), each
+;;;; naming its frame. A callback finds its window's frontend by the number GTK
+;;;; hands it (WINDOW-DATA). Each frame the editor finishes is handed to the
+;;;; main thread, which paints it on the window's drawing area: the rows as the
+;;;; editor laid them out, in the faces' colours, on a grid of the font's cells.
+;;;;
+;;;; This file holds the frontend and what passes between the threads;
+;;;; input.lisp the keys and the mouse, paint.lisp the painting, window.lisp
+;;;; the window itself.
+
+(defpackage #:tuatara.frontend.gtk
+  (:use #:cl #:tuatara.gtk)
+  (:import-from #:tuatara.io #:null-pointer #:null-pointer-p #:sap-string)
+  (:import-from #:tuatara.frontend #:make-event-queue #:queue-push #:queue-pop #:queue-empty-p)
+  (:import-from #:tuatara.runtime #:define-record #:define-setting)
+  (:import-from #:tuatara-user #:*gui-font* #:*gui-renderer* #:*gui-padding* #:*window-colours-from-desktop*)
+  (:documentation "The GTK4 frontend: Tuatara in a window of its own, one drawing area painted with Pango and Cairo.")
+  (:export #:gtk-frontend #:make-gtk-frontend #:run-in-window #:run-window-client #:show-in-window #:gdk-key
+           #:call-with-painted-frame #:pixel-colour
+           #:make-frame #:frame-rows #:colour-rgb))
+
+(in-package #:tuatara.frontend.gtk)
+
+(define-setting *gui-font* nil
+  "The font of Tuatara's window.
+Set it in the init file.
+- nil: the desktop's monospace font (the standard).
+- a font's name, as Pango reads it: that font, \"Adwaita Mono 12\" for one."
+  :values (or (member nil) string))
+
+(define-setting *gui-padding* 8
+  "The room, in pixels, between the edges of Tuatara's window and its text.
+It is in the ground's colour. Set it in the init file, or try values with
+\\[eval-expression] (setf *gui-padding* 12), which the window follows at once.
+- a whole number: that room on all four sides (8 as standard).
+- a list of two: the top and bottom, then the right and left ((4 12) is 4
+  above and below, 12 at the sides).
+- a list of three: the top, the right and left, the bottom.
+- a list of four: the top, right, bottom and left, clockwise."
+  :values (or (integer 0 *) (list-of (integer 0 *))))
+
+(define-setting *window-colours-from-desktop* nil
+  "Whether the window paints text and ground the theme leaves without a colour
+in the colours of the desktop's GTK theme.
+That is the terminal and plain themes in a window; the colours follow the
+theme's light or dark style as it changes. Themes that give their own
+colours (ao-dark, ao-light) are not changed. Set it in the init file.
+- t: the desktop's colours are used.
+- nil: black text on a white ground, as a window with no theme shows it (the
+  standard)."
+  :values boolean)
+
+(define-setting *gui-renderer* :gl
+  "How Tuatara's window is drawn.
+Which is faster depends on the machine: \\[check-health], in the window,
+measures both and says which to use. Set it in the init file: when it asks
+for another way than the window opened with, Tuatara starts again at once,
+drawn that way; set later, from the next start. GSK_RENDERER in the
+environment, GTK's own name for it (gl, vulkan, cairo), goes before it.
+- :gl: by the graphics card through OpenGL (the standard).
+- :vulkan: by the graphics card through Vulkan.
+- :cairo: by the processor alone.
+- nil: as GTK chooses."
+  :values (member :gl :vulkan :cairo nil))
+
+(defvar *window-renderer* nil
+  "The way the window was opened to be drawn, as GSK_RENDERER names it (gl,
+vulkan, cairo), NIL for GTK's own choice, :ENVIRONMENT when GSK_RENDERER was
+set before Tuatara started.")
+
+(defun renderer-name (renderer)
+  "GTK's name (GSK_RENDERER) for RENDERER, a value of *GUI-RENDERER*; NIL for GTK's own choice."
+  (case renderer (:gl "gl") (:vulkan "vulkan") (:cairo "cairo") (t nil)))
+
+(defun window-renderer-name (window)
+  "The renderer drawing WINDOW, realised, as GTK names its type (GskGLRenderer,
+GskVulkanRenderer, GskCairoRenderer), or NIL when it has none."
+  (let ((renderer (gtk-native-get-renderer window)))
+    (unless (null-pointer-p renderer) (g-type-name-from-instance renderer))))
+
+(defvar *desktop-colours* nil
+  "The desktop's text and ground colours as GTK's theme last gave them, a list
+of two lists of three numbers from 0 to 1, or NIL; kept by GTK's thread.")
+
+;;; Frames from the editor to GTK
+
+(define-record (frame (:constructor make-frame (rows)) (:copier nil))
+  "What the window shows: ROWS, a vector with each row's (STRING FACE SPANS
+SCALES OVER PARTS) or NIL, the cursor at CURSOR-ROW and CURSOR-COLUMN, CURSOR-SHAPE :block, :bar
+or :underline, in CURSOR-COLOUR (as faces take colours; NIL for the text's),
+and IMAGES, the pictures over the rows, each (IMAGE ROW COLUMN COLUMNS ROWS
+OFFSET), as TUATARA.FRONTEND:FRONTEND-PUT-IMAGE takes them."
+  (rows #() :type simple-vector :documentation "The rows of FRAME, each (STRING FACE SPANS SCALES OVER PARTS) or NIL.")
+  (cursor-row 0 :documentation "The row FRAME's cursor is on.")
+  (cursor-column 0 :documentation "The column FRAME's cursor is at.")
+  (cursor-shape :block :documentation "The shape of FRAME's cursor, :block, :bar or :underline.")
+  (cursor-colour nil :documentation "The colour of FRAME's cursor, as faces take
+colours, or NIL for the text's.")
+  (images '() :documentation "The pictures over FRAME's rows, each (IMAGE ROW
+COLUMN COLUMNS ROWS OFFSET)."))
+
+(setf (documentation 'make-frame 'function) "A FRAME showing ROWS, its cursor at the top left.")
+
+;;; The frontend
+
+(defclass gtk-frontend ()
+  ((window :initform nil :accessor gtk-window :documentation "The GTK window.")
+   (area :initform nil :accessor gtk-area :documentation "The drawing area the window holds.")
+   (im :initform nil :accessor gtk-im :documentation "The input method context keys pass through.")
+   (fonts :initform nil :accessor gtk-fonts :documentation "The font descriptions: upright, bold, italic, bold italic.")
+   (cell-width :initform 8 :accessor cell-width :documentation "The width of a cell in pixels.")
+   (cell-height :initform 16 :accessor cell-height :documentation "The height of a cell in pixels.")
+   (baseline :initform 12 :accessor cell-baseline :documentation "How far below a cell's top its
+text's baseline is, in pixels.")
+   (columns :initform 80 :accessor gtk-columns :documentation "The width of the window in cells.")
+   (rows :initform 24 :accessor gtk-rows :documentation "The height of the window in cells.")
+   (lock :initform (sb-thread:make-mutex :name "window") :reader gtk-lock
+         :documentation "Guards what both threads read.")
+   (changed :initform (sb-thread:make-waitqueue :name "window") :reader gtk-changed
+            :documentation "Where the editor waits for the window's size or the clipboard.")
+   (sized :initform nil :accessor gtk-sized :documentation "True once the window knows its size.")
+   (queue :initarg :queue :initform (make-event-queue) :reader gtk-queue
+          :documentation "Events for the editor, the queue every window of one editor shares.")
+   (owner :initform nil :accessor gtk-owner :documentation "The editor's frame the window shows,
+named in the events it hands on.")
+   (handle :initform nil :accessor gtk-handle :documentation "The number GTK's callbacks find the
+window by (WINDOW-DATA), or NIL.")
+   (signals :initform '() :accessor gtk-signals :documentation "The handlers the window connected to
+what outlives it, the clipboard and GTK's settings, each (INSTANCE . NUMBER).")
+   (desktop-settings :initform nil :accessor gtk-desktop-settings :documentation "The desktop's
+settings the window follows the monospace font of, or NIL when the desktop has none.")
+   (frame :initform nil :accessor gtk-frame :documentation "The frame the editor is painting.")
+   (shown :initform nil :accessor gtk-shown :documentation "The frame the window shows.")
+   (draw-pending :initform nil :accessor gtk-draw-pending :documentation "True while a redraw is
+asked for and not yet made.")
+   (done :initform nil :accessor gtk-done :documentation "True once the editor has ended.")
+   (focused :initform t :accessor gtk-focused :documentation "True while the window has the keyboard focus.")
+   (clipboard-out :initform nil :accessor gtk-clipboard-out :documentation "Text on its way to the clipboard.")
+   (primary-out :initform nil :accessor gtk-primary-out :documentation "Text on its way to the primary selection.")
+   (clipboard-in :initform nil :accessor gtk-clipboard-in :documentation "The text of the clipboard or
+primary selection as last read for a paste: :WAITING while the read is under way, :NONE when it held no
+text, NIL when no read is wanted.")
+   (clipboard-kept :initform nil :accessor gtk-clipboard-kept
+                   :documentation "The clipboard's text, read in the background each time it
+changes once a paste has asked for it; NIL until it is watched.")
+   (clipboard-reads :initform nil :accessor gtk-clipboard-reads
+                    :documentation "How many reads of the changed clipboard are under way, or NIL
+while it is not watched.")
+   (scroll :initform 0d0 :accessor gtk-scroll :documentation "Wheel movement not yet turned into whole turns.")
+   (pointer :initform nil :accessor gtk-pointer :documentation "Where the pointer last was over the
+window, (X . Y) in pixels, or NIL.")
+   (drag :initform nil :accessor gtk-drag :documentation "Where the first mouse button went down, (X
+. Y) in pixels, while it is held.")
+   (drag-cell :initform nil :accessor gtk-drag-cell :documentation "The cell the editor was last
+told a drag reached, (COLUMN . ROW).")
+   (drag-repeating :initform nil :accessor gtk-drag-repeating :documentation "True while a drag held
+past the text is told again and again, to scroll.")
+   (title :initform nil :accessor gtk-title :documentation "The title the editor last gave the window.")
+   (preedit :initform nil :accessor gtk-preedit :documentation "What the input method is composing,
+shown at the cursor until it is typed, or NIL.")
+   (font-steps :initform 0 :accessor gtk-font-steps :documentation "The steps the font is scaled by
+from its size, each 1.2 times the last.")
+   (pointer-shape :initform "text" :accessor gtk-pointer-shape
+                  :documentation "The name of the pointer's shape over the window now.")
+   (toggles :initform '() :accessor gtk-toggles :documentation "The window states the editor asked
+to turn to or from, not yet done, oldest first.")
+   (face-fonts :initform (make-hash-table :test 'equal) :reader gtk-face-fonts :documentation "The
+font descriptions of faces that name a font of their own (FACE-FONT), by name,
+at the window's size.")
+   (layouts :initform nil :accessor gtk-layouts :documentation "The layouts painting keeps from one
+frame to the next (MAKE-LAYOUTS), or NIL; let go of when the fonts change.")
+   (room-height :initform nil :accessor gtk-room-height :documentation "The height in pixels the
+grid of cells has inside the padding, as last fitted, or NIL before then.")
+   (padding :initform '(0 0 0 0) :accessor gtk-padding :documentation "The room in pixels round the
+grid of cells, as the grid was last fitted: top, right, bottom and left.")
+   (font-in-use :initform nil :accessor gtk-font-in-use :documentation "The name of the font the
+window's fonts were last made from.")
+   (renderer-checked :initform nil :accessor gtk-renderer-checked :documentation "True once
+*GUI-RENDERER* has been looked at as the editor started
+(FOLLOW-RENDERER-SETTING).")
+   (renderer-said :initform nil :accessor gtk-renderer-said :documentation "The way of drawing last
+said to be taken from the next start.")
+   (measured :initform nil :accessor gtk-measured :documentation "While the drawing is measured
+(MEASURE-DRAWING): when each key went in, each frame was finished and each was
+painted, three vectors of microseconds (MEASURE-CLOCK).")
+   (drawn-by :initform nil :accessor gtk-drawn-by :documentation "The renderer drawing the window,
+as GTK names its type (GskGLRenderer), once it is realised.")
+   (settings-pending :initform nil :accessor gtk-settings-pending :documentation "True while the
+window is yet to take in changed settings.")
+   (desktop-style :initform nil :accessor gtk-desktop-style :documentation "The desktop's style as
+GTK last told it, :dark or :light, or NIL.")
+   (display-scale :initform 1 :accessor gtk-display-scale :documentation "How many of the display's
+own pixels each of the window's pixels takes across, as the window last painted:
+2 on a screen scaled to 200 per cent.")
+   (kept-rows :initform nil :accessor gtk-kept-rows :documentation "The rows as last painted, kept
+from one frame to the next (KEEP-ROWS), or NIL.")
+   (grid :initform nil :accessor gtk-grid :documentation "The widget over the drawing area that
+holds the pictures of the rows' parts, drawn by the graphics card
+(PLACE-PIECES).")
+   (pictures-layer :initform nil :accessor gtk-pictures-layer :documentation "The widget over the
+grid, under the cursor, that holds the frame's pictures (PLACE-IMAGES).")
+   (shown-images :initform (make-hash-table :test 'eq) :reader gtk-shown-images :documentation "For
+each image shown on the pictures layer, by the IMAGE: (TEXTURE COUNT (PICTURE
+PLACE)...), one picture for each place it is shown, PLACE how that picture was
+last placed, COUNT how many are in use.")
+   (above :initform nil :accessor gtk-above :documentation "The widget over the grid that holds the
+cursor's own drawing area.")
+   (cursor-area :initform nil :accessor gtk-cursor-area :documentation "The drawing area the cursor
+and what the input method composes are painted in, as large as they are.")
+   (cursor-at :initform '(0 . 0) :accessor gtk-cursor-at :documentation "Where the cursor's drawing
+area stands on the grid, (X . Y) in pixels.")
+   (ground :initform nil :accessor gtk-ground :documentation "The picture of the window's ground
+colour, stretched across it, under the rows.")
+   (ground-colour :initform nil :accessor gtk-ground-colour :documentation "The colour GTK-GROUND
+shows, three numbers from 0 to 1, or NIL before it shows one.")
+   (pictures :initform (make-array 0 :adjustable t :fill-pointer 0) :reader gtk-pictures
+             :documentation "The pictures on the grid, each (PICTURE X Y TEXTURE WIDTH HEIGHT) as it was last
+placed (PLACE-PICTURE).")
+   (on-card :initform nil :accessor gtk-on-card :documentation "True while the rows are shown as
+pictures the graphics card draws, NIL while the drawing area paints the whole
+frame.")
+   (surfaces :initform (make-hash-table :test 'eq) :reader gtk-surfaces :documentation "The cairo
+surfaces of the pictures the window shows, by their IMAGE; used and let go of on
+the window's own thread."))
+  (:documentation "Tuatara's window: a GTK4 window with one drawing area."))
+
+(defun make-gtk-frontend (&key queue)
+  "A frontend for a window of Tuatara's own, its events going into QUEUE, the
+queue of the editor's other windows, or a queue of its own."
+  (if queue (make-instance 'gtk-frontend :queue queue) (make-instance 'gtk-frontend)))
+
+(defvar *windows* (make-hash-table :synchronized t)
+  "The frontends GTK's callbacks reach, by the number each is given (WINDOW-DATA).")
+
+(defvar *window-count* (list 0)
+  "A list holding the last number given to a frontend for GTK's callbacks.")
+
+(defun window-data (f)
+  "The data GTK hands F's callbacks: a number standing for F, given the first
+time it is asked for, by which they find F again (DATA-WINDOW)."
+  (sb-sys:int-sap (or (gtk-handle f)
+                      (let ((handle (1+ (sb-ext:atomic-incf (car *window-count*)))))
+                        (setf (gethash handle *windows*) f
+                              (gtk-handle f) handle)))))
+
+(defun data-window (data)
+  "The frontend whose number GTK handed a callback as DATA (WINDOW-DATA), or
+NIL once its window has gone."
+  (values (gethash (sb-sys:sap-int data) *windows*)))
+
+(defun forget-window (f)
+  "Have GTK's callbacks no longer find F (WINDOW-DATA)."
+  (let ((handle (gtk-handle f)))
+    (when handle (remhash handle *windows*))))
+
+(defun open-windows ()
+  "The frontends whose windows are open, the oldest first."
+  (sort (sb-ext:with-locked-hash-table (*windows*)
+          (loop for f being the hash-values of *windows* when (gtk-window f) collect f))
+        #'< :key #'gtk-handle))
+
+(defun push-event (f kind &rest arguments)
+  "Hand the editor an event of KIND, with ARGUMENTS as MAKE-EVENT takes them,
+from F's window: naming the frame F shows."
+  (declare (dynamic-extent arguments))
+  (queue-push (gtk-queue f) (apply #'tuatara.frontend:make-event kind :frame (gtk-owner f) arguments)))
+
+(defun callback-failed (name condition)
+  "Report on the error output that the window's callback NAME failed with CONDITION."
+  (tuatara.runtime:ignoring-errors-reported ("saying the window's ~(~a~) failed" name)
+    (format *error-output* "~&Tuatara: the window's ~(~a~) failed: ~a~%" name condition)
+    (finish-output *error-output*)))
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defun remove-ignored (declarations)
+    "DECLARATIONS, DECLARE forms, without what they say of variables not used."
+    (loop for (nil . specifiers) in declarations
+          for kept = (remove-if (lambda (s) (member (first s) '(ignore ignorable))) specifiers)
+          when kept collect `(declare ,@kept))))
+
+(defmacro define-callback (name-and-options return-type (&rest arguments) &body body)
+  "Define a function for GTK to call, whose C function pointer (CALLBACK NAME)
+is given to GTK. NAME-AND-OPTIONS is its name, or a list of its name and
+:FAILED FORM. RETURN-TYPE and each of ARGUMENTS, (ARGUMENT TYPE), are of the
+types TUATARA.IO:C-TYPE knows: a :string argument is read as text, a :boolean
+result given as GLib's truth value. An error in BODY is reported on the error
+output and answered with the value of FORM (NIL by default) rather than
+taking the editor down with GTK's thread, never unwinding through GTK."
+  (destructuring-bind (name &key failed) (if (listp name-and-options) name-and-options (list name-and-options))
+    (multiple-value-bind (forms declarations) (alexandria:parse-body body)
+      (let ((names (mapcar #'first arguments))
+            (texts (loop for (argument type) in arguments when (eq type :string) collect argument))
+            (result (gensym "RESULT")))
+        `(sb-alien:define-alien-callable ,name ,(tuatara.io:c-type (if (eq return-type :boolean) :int return-type))
+             ,(loop for (argument type) in arguments
+                    collect (list argument (tuatara.io:c-type (if (eq type :string) :pointer type))))
+           ;; each argument named, used or not: a callable's body takes no declarations
+           ,@names
+           (let ((,result (tuatara.runtime:handling-errors-reported ("the window's ~(~a~)" ',name)
+                              (let (,@(loop for text in texts collect `(,text (sap-string ,text))))
+                                (locally ,@(remove-ignored declarations) ,@forms))
+                            (serious-condition (condition)
+                              (callback-failed ',name condition)
+                              ,failed))))
+             ,(if (eq return-type :boolean) `(if ,result 1 0) result)))))))
+
+(defun request-draw (f)
+  "Have the window painted again soon, from GTK's thread; any thread may ask."
+  (unless (sb-thread:with-mutex ((gtk-lock f)) (shiftf (gtk-draw-pending f) t))
+    (g-idle-add (callback on-draw-request) (window-data f))))
+
+(defmethod tuatara.frontend:frontend-start ((f gtk-frontend))
+  ;; the window is opened on GTK's thread, the first before the editor starts, another now that
+  ;; it knows its frame; wait for it to know its size
+  (unless (gtk-window f)
+    (g-idle-add (callback on-open-window) (window-data f)))
+  (sb-thread:with-mutex ((gtk-lock f))
+    (tuatara.runtime:wait-on-until (gtk-changed f) (gtk-lock f) (lambda () (gtk-sized f)) nil))
+  (unless (gtk-window f)
+    (error "The window could not be opened"))
+  ;; rows drawn large where a face asks for it (:height)
+  (setf tuatara.display:*row-scaling* t))
+
+(defmethod tuatara.frontend:frontend-stop ((f gtk-frontend))
+  (setf (gtk-done f) t)
+  (unless (find-if-not #'gtk-done (open-windows))
+    (setf tuatara.display:*row-scaling* nil))
+  (g-idle-add (callback on-close-window) (window-data f)))
+
+(defmethod tuatara.frontend:frontend-another ((f gtk-frontend))
+  ;; a window beside F's, sharing its queue, opened as it is started; the way of drawing was
+  ;; decided as F's opened
+  (let ((another (make-gtk-frontend :queue (gtk-queue f))))
+    (setf (gtk-renderer-checked another) t
+          (gtk-renderer-said another) (gtk-renderer-said f))
+    another))
+
+(defmethod tuatara.frontend:frontend-frame ((f gtk-frontend))
+  (gtk-owner f))
+
+(defmethod (setf tuatara.frontend:frontend-frame) (frame (f gtk-frontend))
+  (setf (gtk-owner f) frame))
+
+(defmethod tuatara.frontend:frontend-raise ((f gtk-frontend))
+  (g-idle-add (callback on-raise) (window-data f)))
+
+(defmethod tuatara.frontend:frontend-scales-rows-p ((f gtk-frontend))
+  t)
+
+(defmethod tuatara.frontend:frontend-size ((f gtk-frontend))
+  (sb-thread:with-mutex ((gtk-lock f)) (values (gtk-columns f) (gtk-rows f))))
+
+(defmethod tuatara.frontend:frontend-read-event ((f gtk-frontend))
+  (queue-pop (gtk-queue f) nil))
+
+(defmethod tuatara.frontend:frontend-read-event-timeout ((f gtk-frontend) seconds)
+  (or (queue-pop (gtk-queue f) seconds) (tuatara.frontend:make-event :tick)))
+
+(defmethod tuatara.frontend:frontend-wake ((f gtk-frontend))
+  (queue-push (gtk-queue f) (tuatara.frontend:make-event :tick)))
+
+(defmethod tuatara.frontend:frontend-input-pending-p ((f gtk-frontend))
+  (tuatara.frontend:queue-input-p (gtk-queue f)))
+
+(defmethod tuatara.frontend:frontend-description ((f gtk-frontend))
+  (format nil "in a GTK ~d.~d window"
+          (gtk-get-major-version) (gtk-get-minor-version)))
+
+(defun gtk-follows-colour-scheme-p (major minor)
+  "True when GTK of version MAJOR.MINOR tells the desktop's light or dark
+style (GTK 4.20 and later, from the desktop's settings portal), so that the
+window's theme can follow it (*FOLLOW-DESKTOP-STYLE*)."
+  (or (> major 4) (and (= major 4) (>= minor 20))))
+
+(defun display-words (major minor)
+  "What \\[check-health] says of the window, drawn by GTK of version
+MAJOR.MINOR: the version, the colours and whether the theme can follow the
+desktop's light or dark style."
+  (format nil "a window of its own (GTK ~d.~d), 24-bit colour, ~:[the desktop's light or dark style not known ~
+\(GTK 4.20 or later tells it)~;light or dark as the desktop is~]"
+          major minor (gtk-follows-colour-scheme-p major minor)))
+
+(defmethod tuatara.frontend:frontend-health ((f gtk-frontend))
+  (list (cons "Display" (display-words (gtk-get-major-version) (gtk-get-minor-version)))
+        (cons "Drawing" (format nil "~a~:[~;, as GSK_RENDERER in the environment says~]"
+                                (or (gtk-drawn-by f) "not yet") (eq *window-renderer* :environment)))
+        (cons "Clipboard" "the desktop's, through GTK")))
+
+(defmethod tuatara.frontend:frontend-set-clipboard ((f gtk-frontend) text)
+  (sb-thread:with-mutex ((gtk-lock f)) (setf (gtk-clipboard-out f) text))
+  (g-idle-add (callback on-set-clipboard) (window-data f))
+  t)
+
+(defmethod tuatara.frontend:frontend-set-primary-selection ((f gtk-frontend) text)
+  (sb-thread:with-mutex ((gtk-lock f)) (setf (gtk-primary-out f) text))
+  (g-idle-add (callback on-set-clipboard) (window-data f))
+  t)
+
+(defmethod tuatara.frontend:frontend-font-steps ((f gtk-frontend))
+  (sb-thread:with-mutex ((gtk-lock f)) (gtk-font-steps f)))
+
+(defmethod (setf tuatara.frontend:frontend-font-steps) (steps (f gtk-frontend))
+  (let ((steps (sb-thread:with-mutex ((gtk-lock f))
+                 (setf (gtk-font-steps f) (font-steps-fitting f steps)))))
+    (g-idle-add (callback on-rescale-font) (window-data f))
+    steps))
+
+(defun call-with-font-families (function)
+  "Call FUNCTION with each font family installed, a Pango font family."
+  (load-gtk-libraries)
+  (with-gtk-float-traps
+    (sb-alien:with-alien ((families sb-sys:system-area-pointer (null-pointer)) (found sb-alien:int 0))
+      (pango-font-map-list-families (pango-cairo-font-map-get-default)
+                                    (sb-alien:alien-sap (sb-alien:addr families))
+                                    (sb-alien:alien-sap (sb-alien:addr found)))
+      (unwind-protect
+           (dotimes (i found)
+             (funcall function (sb-sys:sap-ref-sap families (* sb-vm:n-word-bytes i))))
+        (g-free families)))))
+
+(defun font-families (&key monospace)
+  "The names of the font families installed, sorted; with MONOSPACE, only those
+whose characters all have one width."
+  (let ((names '()))
+    (call-with-font-families
+     (lambda (family)
+       (when (or (not monospace) (pango-font-family-is-monospace family))
+         (push (pango-font-family-get-name family) names))))
+    (sort names #'string-lessp)))
+
+(defun font-family-installed-p (name)
+  "True when a font family called NAME is installed, whatever the case of its
+letters. The font map is asked for the name as it is first; every family is
+listed only when it has none of that name."
+  (load-gtk-libraries)
+  (with-gtk-float-traps
+    (or (not (null-pointer-p (pango-font-map-get-family (pango-cairo-font-map-get-default) name)))
+        (member name (font-families) :test #'string-equal))))
+
+(defmethod tuatara.frontend:frontend-fonts ((f gtk-frontend))
+  (font-families :monospace t))
+
+(defun font-description-size (description)
+  "The size of the Pango font DESCRIPTION, in Pango units; 11 points when it
+names none."
+  (let ((size (pango-font-description-get-size description)))
+    (if (zerop size) (* 11 +pango-scale+) size)))
+
+(defun font-size-in-use ()
+  "The size of the window's font as it started, in Pango units: *GUI-FONT*'s, or
+the desktop's monospace font's; 11 points when neither names one."
+  (let ((description (pango-font-description-from-string (font-name))))
+    (unwind-protect (font-description-size description)
+      (pango-font-description-free description))))
+
+(defun family-variants (family size)
+  "The variants of the Pango font FAMILY drawn as themselves, as (NAME FONT)
+with FONT the full name that chooses each at SIZE (Pango units), sorted by name."
+  (sb-alien:with-alien ((faces sb-sys:system-area-pointer (null-pointer)) (found sb-alien:int 0))
+    (pango-font-family-list-faces family
+                                  (sb-alien:alien-sap (sb-alien:addr faces))
+                                  (sb-alien:alien-sap (sb-alien:addr found)))
+    (let ((array faces))
+      (unwind-protect
+           (sort (loop for i below found
+                       for face = (sb-sys:sap-ref-sap array (* sb-vm:n-word-bytes i))
+                       unless (pango-font-face-is-synthesized face)
+                         collect (let ((description (pango-font-face-describe face)))
+                                   (unwind-protect
+                                        (progn (pango-font-description-set-size description size)
+                                               (list (pango-font-face-get-face-name face)
+                                                     (pango-font-description-to-string description)))
+                                     (pango-font-description-free description))))
+                 #'string-lessp :key #'first)
+        (g-free array)))))
+
+(defmethod tuatara.frontend:frontend-font-faces ((f gtk-frontend))
+  (let ((size (with-gtk-float-traps (load-gtk-libraries) (font-size-in-use))) (all '()))
+    (call-with-font-families
+     (lambda (family)
+       (let ((variants (family-variants family size)))
+         (when variants
+           (push (list (pango-font-family-get-name family) (pango-font-family-is-monospace family) variants)
+                 all)))))
+    (sort all (lambda (a b)
+                (if (eq (second a) (second b))
+                    (string-lessp (first a) (first b))
+                    (second a))))))
+
+(defmethod tuatara.frontend:frontend-set-font ((f gtk-frontend) name)
+  (with-gtk-float-traps
+    (let* ((description (pango-font-description-from-string name))
+           (family (pango-font-description-get-family description)))
+      (unwind-protect
+           (when (and family (font-family-installed-p family))
+             (when (zerop (pango-font-description-get-size description))
+               (pango-font-description-set-size description (font-size-in-use)))
+             (let ((full (pango-font-description-to-string description)))
+               (setf *gui-font* full)
+               ;; every window takes it, each at its own font steps
+               (dolist (window (adjoin f (open-windows)))
+                 (follow-font-setting window))
+               full))
+        (pango-font-description-free description)))))
+
+(define-callback on-toggle-state :boolean ((data :pointer))
+  (let* ((f (data-window data))
+         (states (and f (sb-thread:with-mutex ((gtk-lock f)) (shiftf (gtk-toggles f) '()))))
+         (window (and f (gtk-window f))))
+    (when window
+      (dolist (state states)
+        (ecase state
+          (:fullscreen (if (gtk-window-is-fullscreen window)
+                           (gtk-window-unfullscreen window)
+                           (gtk-window-fullscreen window)))
+          (:maximised (if (gtk-window-is-maximized window)
+                          (gtk-window-unmaximize window)
+                          (gtk-window-maximize window)))))))
+  nil)
+
+(defmethod tuatara.frontend:frontend-toggle-state ((f gtk-frontend) state)
+  (sb-thread:with-mutex ((gtk-lock f))
+    (setf (gtk-toggles f) (append (gtk-toggles f) (list state))))
+  (g-idle-add (callback on-toggle-state) (window-data f))
+  t)
+
+(defun settings-desktop-style ()
+  "The desktop's style as GTK's settings have it (GTK 4.20 on), :dark or
+:light; NIL when GTK cannot tell. On GTK's thread."
+  (let ((settings (gtk-settings-get-default)))
+    (when (and (not (null-pointer-p settings))
+               (not (null-pointer-p
+                     ;; the settings' class, which the object's first field points at
+                     (g-object-class-find-property (sb-sys:sap-ref-sap settings 0) "gtk-interface-color-scheme"))))
+      (colour-scheme-style (g-object-get-int settings "gtk-interface-color-scheme")))))
+
+(defun colour-scheme-style (scheme)
+  "The desktop's style, :dark or :light, for SCHEME, the number GTK's setting
+gtk-interface-color-scheme holds: 1, no preference, which desktops show light,
+2 dark and 3 light; NIL for any other."
+  (case scheme
+    (2 :dark)
+    ((1 3) :light)
+    (t nil)))
+
+(defun read-desktop-colours (widget)
+  "Keep the desktop's text and ground colours for WIDGET in *DESKTOP-COLOURS*:
+those the desktop's theme names for windows, else GTK's own. On GTK's thread."
+  (let ((fg (widget-theme-colour widget "window_fg_color" "theme_fg_color"))
+        (bg (widget-theme-colour widget "window_bg_color" "theme_bg_color")))
+    (setf *desktop-colours* (and fg bg (list fg bg)))))
+
+(define-callback on-style-changed :void ((settings :pointer) (spec :pointer) (data :pointer))
+  (declare (ignore settings spec))
+  (let ((f (data-window data)))
+    (when f
+      (let ((style (settings-desktop-style)))
+        (sb-thread:with-mutex ((gtk-lock f)) (setf (gtk-desktop-style f) style))
+        (when (gtk-area f)
+          (read-desktop-colours (gtk-area f))
+          (redraw f))
+        (queue-push (gtk-queue f) (tuatara.frontend:make-event :tick))))))
+
+(define-callback on-desktop-font-changed :void ((settings :pointer) (key :pointer) (data :pointer))
+  (declare (ignore settings key))
+  (let ((f (data-window data)))
+    (when f (follow-font-setting f))))
+
+(defmethod tuatara.frontend:frontend-settings-changed ((f gtk-frontend))
+  (follow-renderer-setting f)
+  (follow-font-setting f))
+
+(defun follow-font-setting (f)
+  "Have F's window made again with the font and the padding asked for
+\(*GUI-FONT*, *GUI-PADDING*), on GTK's thread, when they are not the ones in
+use; nothing is done while they are."
+  (let ((font (font-name))
+        (padding (multiple-value-list (tuatara.frontend:padding-sides *gui-padding*))))
+    (when (sb-thread:with-mutex ((gtk-lock f))
+            (and (not (gtk-settings-pending f))
+                 (not (and (equal font (gtk-font-in-use f)) (equal padding (gtk-padding f))))
+                 (setf (gtk-settings-pending f) t)))
+      (g-idle-add (callback on-rescale-font) (window-data f)))))
+
+(defmethod tuatara.frontend:frontend-desktop-style ((f gtk-frontend))
+  (sb-thread:with-mutex ((gtk-lock f)) (gtk-desktop-style f)))
+
+(defmethod tuatara.frontend:frontend-set-title ((f gtk-frontend) title)
+  (sb-thread:with-mutex ((gtk-lock f))
+    (setf (gtk-title f) title))
+  (g-idle-add (callback on-set-title) (window-data f)))
+
+(defmethod tuatara.frontend:frontend-clipboard ((f gtk-frontend))
+  (read-clipboard-now f nil))
+
+(defmethod tuatara.frontend:frontend-primary-selection ((f gtk-frontend))
+  (read-clipboard-now f t))
+
+(defun wait-for-clipboard (f ready-p)
+  "Wait for READY-P, a function of no arguments called with F's lock held, to
+be true, a second at most, while the editor keeps reading keys (\\`C-g' gives
+up). True when it was ready, or the second ran out; NIL when C-g stopped the
+waiting."
+  (let ((deadline (tuatara.runtime:deadline-in 1)))
+    (tuatara.command:wait-until-interruptibly
+     (lambda ()
+       (or (sb-thread:with-mutex ((gtk-lock f)) (funcall ready-p))
+           (not (plusp (tuatara.runtime:seconds-left deadline)))))
+     :message "Waiting for the clipboard..." :grace 1/5)))
+
+(defun read-clipboard-now (f primary)
+  "The text of F's clipboard, or with PRIMARY its primary selection: as kept
+when it is watched (the clipboard), once a change being read is in, or, a
+second gone, as it was before it; else read on GTK's thread, a second at
+most, and the clipboard watched from then on; NIL when there is none or
+\\`C-g' gave up on waiting for it."
+  ;; watched: the text kept, once a change being read is in (a second at most)
+  (when (and (not primary) (sb-thread:with-mutex ((gtk-lock f)) (gtk-clipboard-reads f)))
+    (unless (wait-for-clipboard f (lambda () (zerop (gtk-clipboard-reads f))))
+      (return-from read-clipboard-now nil))
+    ;; or, the change still not in, the text kept before it
+    (return-from read-clipboard-now (sb-thread:with-mutex ((gtk-lock f)) (gtk-clipboard-kept f))))
+  (sb-thread:with-mutex ((gtk-lock f))
+    (setf (gtk-clipboard-in f) :waiting)
+    (g-idle-add (if primary (callback on-read-primary) (callback on-read-clipboard)) (window-data f)))
+  ;; a clipboard that does not answer within a second counts as none
+  (let ((answered (wait-for-clipboard f (lambda () (not (eq (gtk-clipboard-in f) :waiting))))))
+    (sb-thread:with-mutex ((gtk-lock f))
+      (let ((text (gtk-clipboard-in f)))
+        (setf (gtk-clipboard-in f) nil)
+        ;; the first paste starts the watch, as the terminal does: what is copied is kept only for an editor that pastes
+        (when (and answered (not primary) (not (gtk-clipboard-reads f)))
+          (setf (gtk-clipboard-reads f) 0)
+          (g-idle-add (callback on-watch-clipboard) (window-data f)))
+        (and answered (stringp text) text)))))
+
+(defmethod tuatara.frontend:frontend-begin-frame ((f gtk-frontend))
+  (setf (gtk-frame f)
+        (make-frame (make-array (sb-thread:with-mutex ((gtk-lock f)) (gtk-rows f)) :initial-element nil))))
+
+(defmethod tuatara.frontend:frontend-put-row ((f gtk-frontend) row string &key face spans scales over parts)
+  (let ((rows (frame-rows (gtk-frame f))))
+    (when (< -1 row (length rows))
+      (setf (aref rows row)
+            (list string face spans scales over parts)))))
+
+(defmethod tuatara.frontend:frontend-focused-p ((f gtk-frontend))
+  "True while the window has the keyboard."
+  (gtk-focused f))
+
+(defmethod tuatara.frontend:frontend-images-p ((f gtk-frontend))
+  t)
+
+(defmethod tuatara.frontend:frontend-cell-pixels ((f gtk-frontend))
+  ;; in the display's own pixels: a picture made that large is drawn sharp on a scaled screen
+  (sb-thread:with-mutex ((gtk-lock f))
+    (let ((scale (gtk-display-scale f)))
+      (values (* scale (cell-width f)) (* scale (cell-height f))))))
+
+(defmethod tuatara.frontend:frontend-put-image ((f gtk-frontend) image row column columns rows &optional offset)
+  (push (list image row column columns rows offset) (frame-images (gtk-frame f))))
+
+(defmethod tuatara.frontend:frontend-set-cursor ((f gtk-frontend) row column shape &optional colour)
+  (let ((frame (gtk-frame f)))
+    (setf (frame-cursor-row frame) row (frame-cursor-column frame) column
+          (frame-cursor-shape frame) shape (frame-cursor-colour frame) colour)))
+
+(defmethod tuatara.frontend:frontend-end-frame ((f gtk-frontend))
+  (sb-thread:with-mutex ((gtk-lock f))
+    (setf (gtk-shown f) (gtk-frame f))
+    (when (gtk-measured f) (vector-push-extend (measure-clock) (aref (gtk-measured f) 1))))
+  (request-draw f))

@@ -1,0 +1,15 @@
+diff --git a/src/scanner.c b/src/scanner.c
+index 066d149..aa098ed 100644
+--- a/src/scanner.c
++++ b/src/scanner.c
+@@ -115,6 +115,10 @@ static bool preproc_arg(TSLexer *lexer)
+         bool end = false;
+         while (!end)
+         {
++          if (lexer->eof(lexer))
++          {
++            break;
++          }
+           if (lexer->lookahead == '\n' && !is_escaped)
+           {
+             // EOL reached without any line continuation.

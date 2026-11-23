@@ -1,0 +1,7 @@
+#+title:   Gamma, the second child   
+#+date: [2026-01-03 Sat 09:00]
+#+filetags: :gamma:
+#+identifier: 20260103T090000
+
+Only an identifier: [[denote:20260101T090000]].
+And the case of backlinks: [[denote:20260301T100200][Case]].

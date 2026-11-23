@@ -1,0 +1,170 @@
+#+FILETAGS: :file:
+* Work :work:
+:LOGBOOK:
+CLOCK: [2026-09-28 Mon 09:00]--[2026-09-28 Mon 10:00] =>  1:00
+:END:
+** Sub :urgent:
+:LOGBOOK:
+CLOCK: [2026-09-28 Mon 10:00]--[2026-09-28 Mon 10:30] =>  0:30
+:END:
+** Other
+:LOGBOOK:
+CLOCK: [2026-09-28 Mon 10:30]--[2026-09-28 Mon 10:45] =>  0:15
+:END:
+* Home :home:
+:LOGBOOK:
+CLOCK: [2026-09-29 Tue 09:00]--[2026-09-29 Tue 11:00] =>  2:00
+:END:
+** Work at home :work:
+:LOGBOOK:
+CLOCK: [2026-09-29 Tue 11:00]--[2026-09-29 Tue 11:10] =>  0:10
+:END:
+* TODO Task :work:home:
+:LOGBOOK:
+CLOCK: [2026-09-30 Wed 09:00]--[2026-09-30 Wed 09:05] =>  0:05
+:END:
+* Plain
+:LOGBOOK:
+CLOCK: [2026-09-30 Wed 09:05]--[2026-09-30 Wed 09:06] =>  0:01
+:END:
+
+#+BEGIN: clocktable :maxlevel 2 :tags t
+#+CAPTION: Clock summary at [2026-10-03 Sat 02:02]
+| Tags               | Headline         |   Time |      |
+|--------------------+------------------+--------+------|
+|                    | *Total time*     | *4:01* |      |
+|--------------------+------------------+--------+------|
+| file, work         | Work             |   1:45 |      |
+| file, work, urgent | \_  Sub          |        | 0:30 |
+| file, work         | \_  Other        |        | 0:15 |
+| file, home         | Home             |   2:10 |      |
+| file, home, work   | \_  Work at home |        | 0:10 |
+| file, work, home   | Task             |   0:05 |      |
+| file               | Plain            |   0:01 |      |
+#+END:
+
+#+BEGIN: clocktable :maxlevel 2 :match "work"
+#+CAPTION: Clock summary at [2026-10-03 Sat 02:02]
+| Headline         |   Time |      |
+|------------------+--------+------|
+| *Total time*     | *2:00* |      |
+|------------------+--------+------|
+| Work             |   1:45 |      |
+| \_  Sub          |        | 0:30 |
+| \_  Other        |        | 0:15 |
+| Home             |   0:10 |      |
+| \_  Work at home |        | 0:10 |
+| Task             |   0:05 |      |
+#+END:
+
+#+BEGIN: clocktable :maxlevel 2 :match "-work"
+#+CAPTION: Clock summary at [2026-10-03 Sat 02:02]
+| Headline     |   Time |
+|--------------+--------|
+| *Total time* | *2:01* |
+|--------------+--------|
+| Home         |   2:00 |
+| Plain        |   0:01 |
+#+END:
+
+#+BEGIN: clocktable :maxlevel 2 :match "work|home"
+#+CAPTION: Clock summary at [2026-10-03 Sat 02:02]
+| Headline         |   Time |      |
+|------------------+--------+------|
+| *Total time*     | *4:00* |      |
+|------------------+--------+------|
+| Work             |   1:45 |      |
+| \_  Sub          |        | 0:30 |
+| \_  Other        |        | 0:15 |
+| Home             |   2:10 |      |
+| \_  Work at home |        | 0:10 |
+| Task             |   0:05 |      |
+#+END:
+
+#+BEGIN: clocktable :maxlevel 2 :match "work-urgent"
+#+CAPTION: Clock summary at [2026-10-03 Sat 02:02]
+| Headline         |   Time |      |
+|------------------+--------+------|
+| *Total time*     | *1:30* |      |
+|------------------+--------+------|
+| Work             |   1:15 |      |
+| \_  Other        |        | 0:15 |
+| Home             |   0:10 |      |
+| \_  Work at home |        | 0:10 |
+| Task             |   0:05 |      |
+#+END:
+
+#+BEGIN: clocktable :maxlevel 2 :match "home/TODO"
+#+CAPTION: Clock summary at [2026-10-03 Sat 02:02]
+| Headline     | Time   |
+|--------------+--------|
+| *Total time* | *0:05* |
+|--------------+--------|
+| Task         | 0:05   |
+#+END:
+
+#+BEGIN: clocktable :maxlevel 2 :match "LEVEL=2"
+#+CAPTION: Clock summary at [2026-10-03 Sat 02:02]
+| Headline         |   Time |      |
+|------------------+--------+------|
+| *Total time*     | *0:55* |      |
+|------------------+--------+------|
+| Work             |   0:45 |      |
+| \_  Sub          |        | 0:30 |
+| \_  Other        |        | 0:15 |
+| Home             |   0:10 |      |
+| \_  Work at home |        | 0:10 |
+#+END:
+
+#+BEGIN: clocktable :maxlevel 2 :match "file"
+#+CAPTION: Clock summary at [2026-10-03 Sat 02:02]
+| Headline         |   Time |      |
+|------------------+--------+------|
+| *Total time*     | *4:01* |      |
+|------------------+--------+------|
+| Work             |   1:45 |      |
+| \_  Sub          |        | 0:30 |
+| \_  Other        |        | 0:15 |
+| Home             |   2:10 |      |
+| \_  Work at home |        | 0:10 |
+| Task             |   0:05 |      |
+| Plain            |   0:01 |      |
+#+END:
+
+#+BEGIN: clocktable :maxlevel 2 :match "work" :tags t
+#+CAPTION: Clock summary at [2026-10-03 Sat 02:02]
+| Tags               | Headline         |   Time |      |
+|--------------------+------------------+--------+------|
+|                    | *Total time*     | *2:00* |      |
+|--------------------+------------------+--------+------|
+| file, work         | Work             |   1:45 |      |
+| file, work, urgent | \_  Sub          |        | 0:30 |
+| file, work         | \_  Other        |        | 0:15 |
+| file, home         | Home             |   0:10 |      |
+| file, home, work   | \_  Work at home |        | 0:10 |
+| file, work, home   | Task             |   0:05 |      |
+#+END:
+
+#+BEGIN: clocktable :maxlevel 2 :match "TODO=\"TODO\""
+#+CAPTION: Clock summary at [2026-10-03 Sat 02:02]
+| Headline     | Time   |
+|--------------+--------|
+| *Total time* | *0:05* |
+|--------------+--------|
+| Task         | 0:05   |
+#+END:
+
+#+BEGIN: clocktable :scope agenda :maxlevel 2 :tags t :fileskip0 t
+#+CAPTION: Clock summary at [2026-10-03 Sat 02:02]
+| File  | Tags | Headline                                 | Time   |      |
+|-------+------+------------------------------------------+--------+------|
+|       | ALL  | *Total time*                             | *4:35* |      |
+|-------+------+------------------------------------------+--------+------|
+| a.org |      | *File time*                              | *2:15* |      |
+|       | work | Project A                                | 2:15   |      |
+|       | work | \_  Sub A with a rather long headline... |        | 0:45 |
+|-------+------+------------------------------------------+--------+------|
+| b.org |      | *File time*                              | *2:20* |      |
+|       |      | Project B                                | 2:20   |      |
+|       |      | \_  Task B1 [1/2]                        |        | 2:20 |
+#+END:

@@ -1,0 +1,7 @@
+#+title: Beta child
+#+date: [2026-01-02 Fri 09:00]
+#+filetags: :alpha:beta:
+#+identifier: 20260102T090000
+
+Back to [[denote:20260101T090000][Alpha root]], and to its
+[[denote:20260101T090000::*Section one][Alpha root::Section one]].

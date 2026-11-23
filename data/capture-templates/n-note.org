@@ -1,0 +1,8 @@
+# name: Note
+# key: n
+# file: *org-agenda-files*
+# heading: Inbox
+# --
+* %?
+%U
+%a

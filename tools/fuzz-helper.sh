@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# tools/fuzz-helper.sh --- Fuzz the syntax helper's requests.
+# Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
+# Builds the program that parses for the editor (syntax/helper.c, with
+# tree-sitter as tools/grammars.sh patched it) with AddressSanitizer and
+# UndefinedBehaviorSanitizer, and sends it ROUNDS requests (20,000 by default)
+# of every kind it takes and some it does not, well made and spoilt
+# (tools/fuzz-helper.py), from SEED (the time unless given, or $FUZZ_SEED),
+# said with the result, so that a failure is made again with --seed: over
+# one connection, then over two, the second letting go of, editing and using
+# what the first is using while a parse there waits for its text. Fails
+# (exit 1) on the first report of a sanitizer, the helper ending, or a reply
+# that answers another request. The run is held to 30 minutes of the
+# processor, 4 GB of memory as the sanitizer counts it and an hour in all, at
+# a low priority, in the container $FUZZ_CONTAINER (tuatara-langs unless
+# given), whose compiler has the sanitizers' libraries. Needs tools/grammars.sh
+# run first. The log is build/fuzz/helper.log.
+# Usage: tools/fuzz-helper.sh [-n ROUNDS] [--seed SEED]
+set -euo pipefail
+cd "$(dirname "$0")/.."
+rounds=20000 seed="${FUZZ_SEED:-$(date +%s)}"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -n) rounds=$2; shift 2 ;;
+    --seed) seed=$2; shift 2 ;;
+    *) echo "Usage: tools/fuzz-helper.sh [-n ROUNDS] [--seed SEED]" >&2; exit 2 ;;
+  esac
+done
+ts="$PWD/build/grammar-sources/tree-sitter"
+if [ ! -d "$ts/lib/src" ] || [ ! -d build/grammars ]; then
+  echo "tools/fuzz-helper.sh: no tree-sitter sources or grammars: run tools/grammars.sh first." >&2
+  exit 2
+fi
+work="$PWD/build/fuzz/helper"
+log="$PWD/build/fuzz/helper.log"
+mkdir -p "$work"
+: > "$log"
+. tools/inside.sh
+export TUATARA_CONTAINER="${FUZZ_CONTAINER:-tuatara-langs}"
+inside bash -euo pipefail tools/fuzz-helper-inside.sh build "$ts" "$PWD" "$work"
+for connections in one two; do
+  start=$(date +%s)
+  if inside bash -euo pipefail tools/fuzz-helper-inside.sh fuzz "$work/tuatara-syntax-helper" "$PWD/build/grammars" \
+     "$rounds" "$seed" "$log" "$PWD/tools/fuzz-helper.py" "$connections" >> "$log.summary" 2>&1; then
+    status=0
+  else
+    status=$?
+  fi
+  said=$(tail -1 "$log.summary" 2>/dev/null || true)
+  rm -f "$log.summary"
+  why=$(grep -a -m1 -E "ERROR: AddressSanitizer|runtime error:|SUMMARY:" "$log" || true)
+  if [ "$status" -ne 0 ] || [ -n "$why" ]; then
+    echo "helper, $connections connection(s): FAILED with seed $seed ($([ "$status" -eq 124 ] && echo "no end in an hour" \
+      || echo "exit $status")${why:+: $why}; $said), see $log"
+    exit 1
+  fi
+  echo "helper, $connections connection(s): passed, $said ($(( $(date +%s) - start )) s)"
+done

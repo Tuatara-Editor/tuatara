@@ -1,0 +1,18 @@
+% A template for the tests alone: the least a report template needs, so
+% that the tests can see each kind of place filled. No design of anyone's.
+\documentclass{article}
+{{{packages}}}{{{latex_header}}}{{{font_fallbacks}}}
+\newenvironment{signature}{\par}{\par}
+\renewcommand{\appendix}{\clearpage\addtocontents{toc}{\protect\contentsline{section}{Appendices}{}{}}\setcounter{section}{0}}
+\begin{document}
+{{{#logo}}}\includegraphics{{{{logo:path}}}}
+{{{/logo}}}{{{organisation}}}
+\MakeUppercase{{{{#front_title}}}{{{front_title}}}{{{/front_title}}}{{{^front_title}}}{{{title}}}{{{/front_title}}}}
+\tableofcontents
+\addtocontents{toc}{\protect\contentsline{section}{{{{title}}}}{}{}}
+\begin{tabular}{lll}
+Title & {{{#front_title}}}{{{front_title}}}{{{/front_title}}}{{{^front_title}}}{{{title}}}{{{/front_title}}}{{{#reference}}} {{{reference}}}{{{/reference}}} & \textbf{{{{status}}}}\\
+{{{#copy_to}}}Copies to & {{{copy_to}}}\\
+{{{/copy_to}}}\end{tabular}
+{{{body}}}
+\end{document}

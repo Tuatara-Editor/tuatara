@@ -1,0 +1,36 @@
+#+TITLE: Clocks before 1900
+
+* Voyage
+:LOGBOOK:
+CLOCK: [1850-03-04 Mon 09:00]--[1850-03-04 Mon 11:30] =>  2:30
+CLOCK: [1899-12-31 Sun 23:00]--[1900-01-01 Mon 01:00] =>  2:00
+:END:
+** Landing
+:LOGBOOK:
+CLOCK: [1850-03-05 Tue 08:00]--[1850-03-05 Tue 08:45] =>  0:45
+:END:
+* Later
+:LOGBOOK:
+CLOCK: [2026-10-01 Thu 10:00]--[2026-10-01 Thu 11:00] =>  1:00
+:END:
+
+#+BEGIN: clocktable :maxlevel 2 :block 1850
+#+END:
+
+#+BEGIN: clocktable :maxlevel 2 :block 1850-03
+#+END:
+
+#+BEGIN: clocktable :maxlevel 2 :block 1850-W10
+#+END:
+
+#+BEGIN: clocktable :maxlevel 2 :tstart "<1899-12-31 Sun>" :tend "<1900-01-02 Tue>"
+#+END:
+
+#+BEGIN: clocktable :maxlevel 2 :tstart "<1899-12-31 Sun 23:30>" :tend "<1900-01-01 Mon 00:30>"
+#+END:
+
+#+BEGIN: clocktable :maxlevel 2 :block 1850-03 :step day :stepskip0 t
+#+END:
+
+#+BEGIN: clocktable :maxlevel 2
+#+END:

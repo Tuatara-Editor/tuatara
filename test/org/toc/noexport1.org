@@ -1,0 +1,6 @@
+* A :noexport_1:
+** hidden child
+*** deeper
+* B
+** visible
+* Contents :TOC:

@@ -1,0 +1,62 @@
+#+FILETAGS: :file:
+* Work :work:
+:LOGBOOK:
+CLOCK: [2026-09-28 Mon 09:00]--[2026-09-28 Mon 10:00] =>  1:00
+:END:
+** Sub :urgent:
+:LOGBOOK:
+CLOCK: [2026-09-28 Mon 10:00]--[2026-09-28 Mon 10:30] =>  0:30
+:END:
+** Other
+:LOGBOOK:
+CLOCK: [2026-09-28 Mon 10:30]--[2026-09-28 Mon 10:45] =>  0:15
+:END:
+* Home :home:
+:LOGBOOK:
+CLOCK: [2026-09-29 Tue 09:00]--[2026-09-29 Tue 11:00] =>  2:00
+:END:
+** Work at home :work:
+:LOGBOOK:
+CLOCK: [2026-09-29 Tue 11:00]--[2026-09-29 Tue 11:10] =>  0:10
+:END:
+* TODO Task :work:home:
+:LOGBOOK:
+CLOCK: [2026-09-30 Wed 09:00]--[2026-09-30 Wed 09:05] =>  0:05
+:END:
+* Plain
+:LOGBOOK:
+CLOCK: [2026-09-30 Wed 09:05]--[2026-09-30 Wed 09:06] =>  0:01
+:END:
+
+#+BEGIN: clocktable :maxlevel 2 :tags t
+#+END:
+
+#+BEGIN: clocktable :maxlevel 2 :match "work"
+#+END:
+
+#+BEGIN: clocktable :maxlevel 2 :match "-work"
+#+END:
+
+#+BEGIN: clocktable :maxlevel 2 :match "work|home"
+#+END:
+
+#+BEGIN: clocktable :maxlevel 2 :match "work-urgent"
+#+END:
+
+#+BEGIN: clocktable :maxlevel 2 :match "home/TODO"
+#+END:
+
+#+BEGIN: clocktable :maxlevel 2 :match "LEVEL=2"
+#+END:
+
+#+BEGIN: clocktable :maxlevel 2 :match "file"
+#+END:
+
+#+BEGIN: clocktable :maxlevel 2 :match "work" :tags t
+#+END:
+
+#+BEGIN: clocktable :maxlevel 2 :match "TODO=\"TODO\""
+#+END:
+
+#+BEGIN: clocktable :scope agenda :maxlevel 2 :tags t :fileskip0 t
+#+END:

@@ -1,0 +1,6 @@
+# name: Source block
+# key: <s
+# --
+#+begin_src ${1|shell,python,rust,lisp,emacs-lisp,c,go,lua,latex,conf|}
+$0
+#+end_src

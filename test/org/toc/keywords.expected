@@ -1,0 +1,11 @@
+#+TODO: NEXT(n) WAIT(w@/!) | DONE(d)
+* Top :toc:
+- [[#task][Task]]
+- [[#other][Other]]
+- [[#todo-lower][todo lower]]
+- [[#finished][Finished]]
+
+* NEXT Task
+* WAIT [#B] Other :tag:
+* todo lower
+* DONE Finished

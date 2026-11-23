@@ -1,0 +1,14 @@
+#+title: Alpha root
+#+date: [2026-01-01 Thu 09:00]
+#+filetags: :alpha:meta:
+#+identifier: 20260101T090000
+
+Body of the alpha root, linking to [[denote:20260102T090000][Beta child]].
+
+* Section one
+Some text under it.
+** Sub section
+#+begin_src sh
+echo hi
+#+end_src
+  #+caption: indented keyword

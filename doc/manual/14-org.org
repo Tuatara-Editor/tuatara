@@ -1,0 +1,2258 @@
+#+title: Org
+#+language: en
+
+* Org
+
+Notes, lists, tasks, dates, tables and documents, all in plain text.
+
+Org is a way of writing plain text so that a program can help you with it. A
+line that begins with a star is a heading. A line that begins with a hyphen is
+an item of a list. A heading with the word =TODO= in front is a task. From a
+handful of marks like these, Tuatara can fold a long note down to its
+headings, tick off a shopping list, show you what is due this week, add up a
+column of numbers and turn the whole note into a PDF or a Word document.
+
+The file stays plain text throughout. You can read it in any program, send it
+to anyone and keep it for decades. Org began in the editor Emacs, and files
+written there open in Tuatara as they are. Tuatara's Org is its own, written
+for Tuatara, so nothing in this chapter needs Emacs.
+
+This is a long chapter because Org does a lot. You do not need all of it. The
+first three sections are enough to keep notes and lists. Read about tasks,
+dates and the agenda when you want Tuatara to remind you what to do. Read
+about tables when you have numbers, and about exporting when a note must
+become a document for someone else.
+
+One reminder about the state keys. ~i~ starts INSERT state, and ~C-g~ or ~ESC~
+returns to NORMAL state. Keys that start with ~C-c~, ~C-x~ or ~M-~ work in
+both. Where this chapter says "type", do it in INSERT state.
+
+** An Org file
+
+A file whose name ends in =.org= opens in Org mode, and the mode line says
+Org. Any other buffer becomes an Org buffer with ~M-x org-mode~. The scratch
+buffer =*org-scratch*= of chapter 7 is one already, and is a good place to try
+things.
+
+Here is a small note as you type it:
+
+#+begin_example
+,#+title: My garden
+
+,* Vegetables
+The beds by the fence get the most sun.
+,** Tomatoes
+Water *every* morning, /not/ at noon.
+,** Beans
+,* Fruit
+#+end_example
+
+The first line gives the note a title. Lines that begin with =#+= tell Org
+something about the note and are not part of its text. One star makes a
+heading of the first level and two stars make a heading under it. There must
+be a space after the stars. The text below a heading belongs to it, down to
+the next heading.
+
+Within the text a few marks change how words look, and how they come out in
+an exported document.
+
+| You type       | It means                                      |
+|----------------+-----------------------------------------------|
+| =*bold*=       | Bold                                          |
+| =/italic/=     | Italic                                        |
+| =_underlined_= | Underlined                                    |
+| =~code~=       | Code, such as a command's name                |
+| ==verbatim==   | Text shown exactly as written                 |
+| =[fn:1]=       | A footnote, its text on a line beginning with the same mark |
+
+*** How a note is shown
+
+Tuatara shows an Org file a little tidier than it is written. A heading shows
+a round sign in place of its last star and the stars before it are hidden.
+Each line is set in by the level of the heading it is under. None of this
+changes the file, which still holds the stars at the left edge. This is the
+indented view. ~M-x org-indent-mode~ turns it off for the buffer, so that you
+see the file as it is, and on again.
+
+If you would rather see the stars always, set =*org-startup-indented*= to
+=nil= in your init file. It is =t= as standard, which opens every Org file in
+the indented view; at =nil= a file opens as it is written, and ~M-x
+org-indent-mode~ still turns the indented view on for a buffer. A single note
+can say so for itself with the line =#+STARTUP: noindent=, and =#+STARTUP:
+indent= asks for the indented view. The line wins over the setting.
+
+#+begin_example
+ t (standard)        nil
+
+ ◉ Garden            * Garden
+   ○ Beds            ** Beds
+     ○ Tomatoes      *** Tomatoes
+#+end_example
+
+=*org-bullets*= holds the signs that stand for the stars, one for each level.
+As standard it is =("◉" "○" "✸" "✿")=: a first-level heading shows =◉=, a
+second-level one =○=, a third-level one =✸=, a fourth-level one =✿=, and the
+fifth starts the round again with =◉=. Any list of signs works, of any length,
+and =nil= shows the stars themselves. To have a plain dot for the first
+three levels:
+
+#+begin_example
+(setf *org-bullets* '("•" "◦" "▪"))
+#+end_example
+
+Lines like =#+STARTUP:= are read when the file is opened. After you change
+one, kill the buffer with ~C-x k~ and open the file again.
+
+With the indented view or =*org-bullets*=, the stars before the last one of
+a heading are hidden, and that is =*org-hide-leading-stars*=, =t= as
+standard. Set it to =nil= and they are shown, faint, in front of the sign:
+
+#+begin_example
+ t (standard)        nil
+
+ ◉ Garden            ◉ Garden
+ ○ Beds              * ○ Beds
+ ○ Tomatoes          ** ○ Tomatoes
+#+end_example
+
+The init-file line is =(setf *org-hide-leading-stars* nil)=. It helps when
+you count levels by the stars. A note that is shown with the stars as they
+are written (=#+STARTUP: noindent= with =*org-bullets*= =nil=) shows all of
+them either way.
+
+Org text can nest: a list in a list in a quote block, emphasis inside a link
+label. The parser follows that down only as far as =*org-depth-limit*=,
+200 as standard. Text nested deeper is read as plain words, so that a file
+made of nothing but nesting cannot bring the editor to a stop. No real note
+comes near it. A lower number such as =(setf *org-depth-limit* 50)= is for
+someone who opens files from strangers and wants the parser held tighter.
+
+#+table: commands org-mode org-indent-mode
+
+#+table: settings *org-startup-indented* *org-bullets* *org-hide-leading-stars* *org-depth-limit*
+
+#+table: faces :org-document-title :org-document-info :org-document-info-keyword :org-meta-line :org-bold :org-italic :org-underline :org-code :org-verbatim :org-footnote :org-cite :org-latex-and-related
+
+** Headings and folding
+
+Headings are what make a long note manageable. You can hide everything under
+a heading, move a heading with all that belongs to it, and jump to one by
+name. A heading together with everything under it, its text and its own
+headings, is called a subtree.
+
+*** Folding
+
+Folding hides text without changing it. Press ~TAB~ on a heading and
+everything under it is hidden. Three dots after the heading say there is
+more. Press ~TAB~ again and you see the headings directly under it, each
+still folded. A third press shows all of it, and a fourth folds it again.
+The echo area names each step. Figure 14.1 shows the three.
+
+#+caption: Figure 14.1. What TAB shows on the heading Vegetables, step by step.
+#+name: fig-org-folding
+#+begin_example
+ Folded                 Children                    Subtree
+
+ ◉ Vegetables...        ◉ Vegetables                ◉ Vegetables
+ ◉ Fruit                  The beds by the fence       The beds by the fence
+                          get the most sun.           get the most sun.
+                          ○ Tomatoes...               ○ Tomatoes
+                          ○ Beans                       Water every morning.
+                        ◉ Fruit                       ○ Beans
+                                                    ◉ Fruit
+#+end_example
+
+~S-TAB~ does the same for the whole note at once, wherever the cursor is. The
+first press shows only the headings of the first level, which the echo area
+calls Overview. The second shows every heading and no text, called Contents.
+The third shows everything.
+
+A folded part counts as one line. The cursor steps over it and never stands
+inside it.
+
+A note can say how it wants to open. =#+STARTUP: overview= near the top opens
+it folded to its first-level headings, and =#+STARTUP: content= opens it with
+every heading and no text. This is worth doing for a long file you open often.
+
+Under a task Org keeps some records of its own, in blocks called drawers that
+begin with a line such as =:LOGBOOK:= and end with =:END:=. They are folded
+to one line when a file opens, because you seldom want to read them. ~TAB~ on
+a drawer's first line opens it.
+
+*** New headings
+
+~M-RET~ makes a new heading of the same level, after the subtree the cursor
+is in. You can press it anywhere under a heading. It leaves you in NORMAL
+state with the cursor after the new stars, so press ~i~ and type the heading.
+~M-S-RET~ does the same and writes =TODO= for you, which starts a task.
+
+*** Moving and changing level
+
+The keys that move the cursor, held with Alt, move headings.
+
+| Modal | Non-modal     | What it does to the heading the cursor is in             |
+|-------+---------------+----------------------------------------------------------|
+| none  | ~M-j~ / ~M-k~ | Moves its subtree down or up, past the next heading of its level |
+| none  | ~M-h~ / ~M-l~ | Takes away or adds a star, on this heading alone         |
+| none  | ~M-H~ / ~M-L~ | Takes away or adds a star on it and on every heading under it |
+
+Taking a star away is called promoting, and adding one is called demoting.
+The arrow keys with Alt do the same as the letters. Each move is one step
+for undo.
+
+To jump to a heading by name, press ~M-g o~, which chapter 13 describes. It
+lists every heading of the note, and typing a few letters narrows the list.
+To work on one heading without seeing the others, ~C-x x s~ narrows the
+buffer to its subtree, as chapter 7 explains.
+
+#+begin_try Try it, with notes about a garden
+1. Press ~C-x C-f~, type =~/garden.org= and press ~RET~. Press ~i~ and type
+   the note shown at the start of this chapter, eight lines from =#+title:=
+   to =* Fruit=. Press ~C-g~ and save with ~C-x C-s~.
+2. Move to the line =Vegetables= and press ~TAB~. Its text and its two
+   headings are hidden. Press ~TAB~ twice more to see the other two steps.
+3. Press ~S-TAB~ three times and watch the echo area say Overview, Contents
+   and Show all.
+4. With the cursor on =Vegetables=, press ~M-j~. The heading moves below
+   =Fruit= and takes Tomatoes and Beans with it. Press ~M-k~ to move it back.
+5. Move to =Beans= and press ~M-l~. It gets a third star and is now under
+   Tomatoes. Press ~M-h~ to put it back.
+6. Press ~M-RET~, then ~i~, and type =Carrots=. Press ~C-g~.
+#+end_try
+
+The records Org keeps are the drawers and the notes it writes under a task
+(=- State "DONE" ...=, =- Note taken on ...= and =CLOCK:= lines), under
+headings and list items alike. Three settings say how they are folded.
+
+=*org-fold-metadata*= is =t= as standard: a file opens with each of these
+folded to one line, so a task shows its title, its =SCHEDULED:= and
+=DEADLINE:= lines (those are always shown) and a single line with dots for
+the rest. ~TAB~ on that line opens it. With =nil= every file opens with them
+all shown, which is what you want when you are reading the log of a project
+rather than its tasks. A note can decide for itself: =#+STARTUP: showdrawers=
+opens them whatever the setting says, and =#+STARTUP: hidedrawers= folds
+them.
+
+#+begin_example
+ t (standard)                    nil
+
+ ◉ TODO Paint the fence          ◉ TODO Paint the fence
+   SCHEDULED: <2026-11-14 Sat>     SCHEDULED: <2026-11-14 Sat>
+   :LOGBOOK:...                    :LOGBOOK:
+                                   - Note taken on [2026-11-10 Tue 09:12]
+                                     Bought the paint.
+                                   :END:
+#+end_example
+
+=*org-cycle-hide-drawers*= is about ~TAB~ on a heading or an item. At =t=,
+the standard, the second and third press show the headings and text but
+leave the drawers and notes folded, so cycling does not unfold the log of
+every task under it. =(setf *org-cycle-hide-drawers* nil)= makes ~TAB~ show
+them with the rest.
+
+=*org-cycle-include-plain-lists*= is =t= as standard, and ~TAB~ on a list
+item that has sub-items or more lines folds it, as on a heading: folded,
+then its sub-items, then all. At =nil= ~TAB~ on an item indents it, as in a
+plain text file, and an item is folded only as part of its heading.
+
+#+table: commands org-cycle org-global-cycle org-meta-return org-insert-todo-heading org-metadown org-metaup org-metaleft org-metaright org-shiftmetaleft org-shiftmetaright org-move-subtree-down org-move-subtree-up org-do-promote org-do-demote org-promote-subtree org-demote-subtree
+
+#+table: settings *org-cycle-hide-drawers* *org-fold-metadata* *org-cycle-include-plain-lists*
+
+#+table: faces :org-level-1 :org-level-2 :org-level-3 :org-level-4 :org-level-5 :org-level-6 :org-level-7 :org-level-8 :org-hide :org-leading-stars :org-archived :org-drawer :org-property-value
+
+** Lists and checkboxes
+
+A list is for things that do not each need a heading: what to buy, the steps
+of a recipe, points to raise at a meeting.
+
+A line that begins with a hyphen and a space is an item. A line that begins
+with =1.= and a space is an item of a numbered list. An item set in further
+than the one above it is a sub-item of that one. A line written as
+=- term :: what it means= is an item of a description list, useful for a
+short glossary.
+
+#+begin_example
+- Weed the beds
+- Mulch the feijoas
+  - Bark, if there is any left
+1. Soak the seeds overnight
+2. Plant them a finger deep
+#+end_example
+
+~M-RET~ on an item makes the next item of the same kind after it. In a
+numbered list the items after it are numbered again. ~C-c -~ changes the
+bullet of every item in the list to the next kind. The kinds are a hyphen, a
+plus, a star, =1.= and =1)=, and a list at the left edge skips the star. That
+is the quick way to turn a plain list into a numbered one.
+~TAB~ on an item that has sub-items or more lines under it folds it, as on a
+heading.
+
+*** Checkboxes
+
+An item that starts with =[ ]= has a checkbox, something to tick off. You do
+not have to type all of it. Type the hyphen, a space and =[=, and Tuatara
+completes the box and leaves the cursor after it.
+
+=*org-complete-checkboxes*= is the setting behind that. At =t=, the standard,
+typing =[= right after the bullet and its space (=- [=) makes the whole box,
+=- [ ]=, and leaves the cursor after it, ready for the words. At =nil= the
+bracket is typed like any other character and you write the box yourself.
+
+~C-c C-c~ on the item's line ticks the box, which then reads =[X]=, or clears
+it again. In NORMAL state ~RET~ on the line goes round three states: empty,
+=[-]= for half done, and ticked.
+
+=*org-return-cycles-checkboxes*= is the setting for ~RET~. At =t=, the
+standard, ~RET~ in NORMAL state on an item with a box goes round the three
+states and brings the counts above it up to date. A link under the cursor is
+followed first. Set it to =nil= with =(setf *org-return-cycles-checkboxes*
+nil)= and ~RET~ does not touch the box, and ~C-c C-c~ is the one way to tick
+it. That suits you if you press ~RET~ in lists mainly to follow links or to
+move down.
+
+Put =[/]= at the end of the heading above the list, or at the end of an item
+that has sub-items, and Org counts for you. It shows how many boxes are
+ticked out of how many there are, such as =[2/5]=, and keeps the count
+current as you tick. =[%]= shows a percentage instead.
+
+When you tick a box, Tuatara notes the time in a small drawer under the item.
+That lets the agenda show later what you finished on which day. If you do not
+want these notes, set =*org-log-checkboxes*= to =nil=. It is =t= as standard.
+At =t= the note is the same kind of line a task's change of state leaves, the
+old and the new state with the time; at =nil= the box changes and nothing is
+written. With =(setf *org-log-checkboxes* nil)=, ticking =bread= leaves:
+
+#+begin_example
+ t (standard)                      nil
+
+ - [X] bread                       - [X] bread
+   :LOGBOOK:
+   - State "DONE" from "TODO"
+     [2026-10-13 Tue 10:00]
+   :END:
+#+end_example
+
+#+begin_try Try it, with a shopping list
+1. Press ~C-x C-f~, type =~/shopping.org= and press ~RET~. Press ~i~ and type
+   =* Shopping [/]=, then ~RET~.
+2. Type a hyphen, a space and =[=. The box completes itself. Type =eggs= and
+   press ~RET~. Do the same for =bread= and for =milk=.
+3. Press ~C-g~. Move to the line =bread= and press ~C-c C-c~. The box reads
+   =[X]= and the heading says =[1/3]=. A drawer under the item holds the
+   time. It is shown open now and is folded when you open the file again.
+4. Move to =eggs= and press ~RET~ twice. The box goes to =[-]= and then to
+   =[X]=, and the heading says =[2/3]=.
+5. Still on =eggs=, press ~M-RET~, then ~i~, and type =butter=. The new item
+   has a box of its own. The count in the heading stays =[2/3]= until you next
+   tick or clear a box. Press ~C-g~.
+6. Press ~C-c -~ a few times and watch the bullets change. Stop when they
+   are hyphens again. Save with ~C-x C-s~.
+#+end_try
+
+The signs can be prettier than the plain text. =*org-list-bullets*= and
+=*org-checkbox-signs*= name a character to show for each bullet and each
+state of a box. The file itself keeps the plain marks.
+
+=*org-list-bullets*= is =nil= as standard, and the bullets are shown as
+written. Give it a list of pairs, a bullet and the sign to show for it.
+Numbered items keep their numbers. =*org-checkbox-signs*= is the same for the
+three boxes, =[ ]=, =[-]= and =[X]=, and it is =nil= as standard too. A sign is
+shown with a space after it, so that one drawn wider than a column is not cut.
+~C-c C-c~ ticks the box as before, and ~C-c -~ still changes the bullet. With
+
+#+begin_example
+(setf *org-list-bullets* '(("-" . "•") ("+" . "◦"))
+      *org-checkbox-signs* '(("[ ]" . "☐") ("[-]" . "◐") ("[X]" . "☑")))
+#+end_example
+
+the list of the shopping note reads:
+
+#+begin_example
+ as written            shown
+
+ - [X] bread           • ☑ bread
+ - [ ] eggs            • ☐ eggs
+ + [-] milk            ◦ ◐ milk
+#+end_example
+
+#+table: commands org-ctrl-c-ctrl-c org-ctrl-c-minus org-cycle-list-bullet org-return
+
+#+table: settings *org-complete-checkboxes* *org-return-cycles-checkboxes* *org-log-checkboxes* *org-todo-follows-checkboxes* *org-list-bullets* *org-checkbox-signs*
+
+#+table: faces :org-list-bullet :org-list-dt :org-checkbox
+
+** Tasks
+
+A checkbox is enough for a shopping list. A task is for work that takes
+longer, that may have to wait for someone, or that has a date. A task is a
+heading with a keyword after its stars:
+
+#+begin_example
+,* TODO Paint the fence
+,* WAIT Quote from the plumber
+,* DONE Ring the council
+#+end_example
+
+Four keywords come as standard. =TODO= is for something still to do. =WAIT=
+is for something that is waiting on a person or an event. =DONE= is for
+something finished, and =CANCELLED= for something you gave up. The first two
+count as open and the last two as closed.
+
+~C-c C-t~ gives the heading the next keyword: none, =TODO=, =WAIT=, =DONE=
+and none again. ~S-<right>~ and ~S-<left>~ go forward and back through the
+same round. In NORMAL state ~RET~ on a task's line also moves it to the next
+keyword, and never leaves it without one. =CANCELLED= is left out of the
+round so that you do not cancel something by pressing a key once too often.
+~C-c C-x C~ cancels the task the cursor is in.
+
+When a task becomes =DONE=, Tuatara writes a line under it that says when:
+
+#+begin_example
+,* DONE Paint the fence
+  CLOSED: [2026-10-13 Tue 10:00]
+#+end_example
+
+The agenda can list what you closed on each day from these lines. Taking
+=DONE= away again removes the line. Set =*org-log-done*= to =nil= if you want
+nothing written. It is =:time= as standard, the line with the time, and =nil=
+is the only other value; =(setf *org-log-done* nil)= leaves a closed task
+without it, so the agenda's log mode does not list it.
+
+*** Tasks with parts
+
+A task can have smaller tasks under it, or a list of checkboxes. Put =[/]=
+at the end of its heading and it counts them. When the last one is done, the
+task becomes =DONE= by itself, and it becomes =TODO= again if you reopen one.
+While a part is still open, ~RET~ passes over the closed keywords, so a task
+is not marked done by accident with work left under it. ~C-c C-t~ still lets
+you close it if you mean to.
+
+The task follows its parts by =*org-todo-follows-checkboxes*=, =t= as
+standard. It applies to a =TODO= heading with a count, =[2/3]= or =[66%]=, and
+the count is its sub-tasks, or, when it has none, the checkboxes right under
+it. When everything counted is done, the heading becomes =DONE= and gets its
+=CLOSED:= line. When you reopen one part it goes back to =TODO=. A task above
+it that has a count follows in turn. A task whose keyword is one of those
+left out of the round (=CANCELLED=) is not changed.
+
+#+begin_example
+,* TODO Pack for the trip [2/3]        ,* DONE Pack for the trip [3/3]
+  CLOSED: ...                            CLOSED: [2026-11-11 Wed 18:20]
+- [X] Tent                             - [X] Tent
+- [X] Stove                            - [X] Stove
+- [ ] Torch                            - [X] Torch
+#+end_example
+
+The counts keep up to date either way. If you want to close a task yourself
+whatever its parts say, set =(setf *org-todo-follows-checkboxes* nil)=.
+
+*** Notes on a task
+
+~C-c C-z~ asks for a note and files it under the task with the date and time.
+Use it for what you would otherwise forget: "rang twice, no answer", "the
+paint is in the shed". Notes go into the task's =:LOGBOOK:= drawer, the
+newest first, with the other records Tuatara keeps of the task. Open the
+drawer with ~TAB~ on its first line.
+
+*** Keywords of your own
+
+A note can name its own keywords on a line near the top. Those before the
+bar are open and those after it are closed:
+
+#+begin_example
+,#+TODO: TODO NEXT WAIT | DONE CANCELLED
+#+end_example
+
+Two settings shape the round that ~C-c C-t~, ~S-<right>~ and ~RET~ make.
+=*org-todo-keywords-not-cycled*= lists the keywords the round passes over.
+Its standard is =("CANCELLED" "CANCELED")=, which is why the round is none,
+=TODO=, =WAIT=, =DONE= and none again, and why ~C-c C-x C~ is the way to
+cancel. It applies to the keywords of a file's own =#+TODO:= line too, and
+to the agenda's key for a task. With =(setf *org-todo-keywords-not-cycled*
+'("CANCELLED" "SOMEDAY"))=, a note with =#+TODO: TODO NEXT | DONE SOMEDAY
+CANCELLED= goes TODO, NEXT, DONE and round, and =SOMEDAY= is only set by hand.
+With =nil= every keyword takes its turn.
+
+=*org-return-cycles-todo*= is =t= as standard: ~RET~ in NORMAL state on a
+task's headline gives it the next keyword in that round, never none. Where
+the date of a task repeats, making it done leaves it open with its next date.
+While a checkbox right under the task is not ticked or a task under it is
+not done, the done keywords are passed over, so that ~RET~ does not close
+work that is still open; with nothing else to go to, the echo area says what
+is open, and ~C-c C-t~ still closes it. With =nil=, ~RET~ leaves the
+keyword alone and ~C-c C-t~ is the way to change it.
+
+To change the keywords for every file that has no such line, set
+=*org-standard-todo-keywords*= in your init file. It is a pair, the keywords
+of tasks still open and then those of tasks closed. The standard is
+=(("TODO" "WAIT") "DONE" "CANCELLED")=: =TODO= and =WAIT= are open, =DONE=
+and =CANCELLED= are closed. A file's own =#+TODO:= line takes its place for
+that file. For keywords like those of the example above everywhere:
+
+#+begin_example
+(setf *org-standard-todo-keywords* '(("TODO" "NEXT" "WAIT") "DONE" "CANCELLED"))
+#+end_example
+
+=*org-todo-keyword-faces*= gives a keyword a face of its own, in the headlines
+and in the agenda. It is a list of pairs, a keyword and a face. As standard
+=WAIT= has =:org-wait= and =CANCELLED= has =:org-cancelled=, and the standard
+spelling =CANCELED= too. A keyword not in the list is shown in =:org-todo=
+while its task is open and in =:org-done= once it is closed. To give =NEXT=
+the look of =WAIT=:
+
+#+begin_example
+(push '("NEXT" . :org-wait) *org-todo-keyword-faces*)
+#+end_example
+
+The colours of the faces come from your theme, chapter 2.
+
+*** Priorities
+
+A task can carry a priority, written by hand after its keyword as =[#A]=,
+=[#B]= or =[#C]=. It is shown in its own colour, here and in the agenda, so
+that the important tasks stand out.
+
+#+table: commands org-todo org-shiftright org-shiftleft org-cancel-task org-add-note
+
+#+table: settings *org-standard-todo-keywords* *org-todo-keywords-not-cycled* *org-todo-keyword-faces* *org-return-cycles-todo* *org-log-done* *org-log-into-drawer* *org-log-repeat* *org-log-reschedule* *org-log-redeadline*
+
+#+table: faces :org-todo :org-wait :org-done :org-cancelled :org-headline-done :org-priority :org-log-note :org-special-keyword
+
+** Tags
+
+A tag is a word at the end of a heading, between colons, that says what the
+heading is about:
+
+#+begin_example
+,* TODO Mow the lawn :outside:weekend:
+#+end_example
+
+Tags cut across the outline. A note about the house and a note about work can
+both hold headings tagged =phone=, and the agenda can list every one of them
+when you sit down to make calls. A heading also has the tags of the headings
+above it, so tagging a whole project once is enough.
+
+~C-c C-q~ sets the tags of the heading the cursor is under. It offers the
+tags the heading has. Type the words with spaces between them, or nothing to
+remove them all. You can also type tags by hand. The tags of your agenda
+files are offered too. When those files are large and have changed since
+they were last read, the question opens at once with the tags known so far,
+and the files are read in the background for the next time.
+
+As standard the tags sit one space after the heading's text. If you like them
+lined up at the right, set =*org-tags-column*= to a negative number, such as
+=-77= for tags that end at column 77. ~M-x org-align-tags~ then puts the tags
+of one heading in place, and ~M-x org-align-all-tags~ those of every heading
+in the buffer.
+
+Two tags have a meaning to Tuatara. A heading tagged =notify= is announced on
+your desktop when its time comes, as the next section explains. A heading
+tagged =TOC= holds a table of contents, described under code blocks.
+
+#+table: commands org-set-tags-command org-align-tags org-align-all-tags
+
+#+table: settings *org-tags-column*
+
+#+table: faces :org-tag
+
+** Dates and scheduling
+
+A date in an Org file is written in angle brackets, as =<2026-12-24 Thu>=,
+or with a time, as =<2026-12-24 Thu 14:00>=. You never have to type one out.
+The commands of this section ask for a date and write it for you, weekday
+and all.
+
+There are three ways to put a date on something, and they mean different
+things.
+
+| What you want to say                | How                 | Modal | Non-modal |
+|-------------------------------------+---------------------+-------+-----------|
+| I plan to work on this that day     | Schedule the task   | none  | ~C-c C-s~ |
+| This must be finished by that day   | Give it a deadline  | none  | ~C-c C-d~ |
+| This happens then, whatever I do    | A date in the text  | none  | ~C-c .~   |
+
+Scheduling and deadlines are for tasks. They are written on a line of their
+own right under the heading, beginning =SCHEDULED:= or =DEADLINE:=. A
+scheduled task that you do not finish is carried forward in the agenda day
+after day until you do. A deadline shows up in the agenda some days ahead,
+14 unless you change =*org-deadline-warning-days*=, so that it does not take
+you by surprise.
+
+A date in the text is for an event such as a flight, a birthday or a meeting.
+~C-c .~ puts one where the cursor is. The agenda shows it on its day and
+nowhere else.
+
+~C-c !~ writes a date in square brackets, as =[2026-12-24 Thu]=. Such a date
+is only a record. The agenda leaves it out. Use it to note when something
+happened.
+
+*** Answering the date question
+
+Every command that needs a date asks in the same way. A calendar of three
+months opens below, with the cursor on today, and you can answer in either
+of two ways.
+
+You can point. Before you have typed anything, ~l~ and ~h~ move a day
+forward and back and ~j~ and ~k~ move a week. ~RET~ writes the day at the
+prompt, and a second ~RET~ accepts it. Between the two you can add a time,
+such as =14:00=.
+
+Two settings change this. =*org-read-date-in-calendar*= is =t= as it comes:
+the question begins in the calendar, so that ~h~, ~l~, ~j~ and ~k~ move at
+once. Set it to =nil= and the question begins at the prompt, as if you had
+already typed; every letter you type is then part of the date.
+=*org-read-date-popup-calendar*= is also =t=. It keeps the calendar below
+while you type, with the day you have written marked, and ~S-<left>~ and
+~S-<right>~ move that day by one while the prompt stays yours. Set it to
+=nil= to be asked with no calendar at all.
+
+#+begin_example
+(setf *org-read-date-in-calendar* nil)
+(setf *org-read-date-popup-calendar* nil)
+#+end_example
+
+With both set to =nil=, ~C-c C-d~ shows only the prompt, and you answer with
+words such as =+3d=.
+
+Or you can type, and Tuatara reads what you mean. The day it has understood
+is shown as you type, so you can see that it is right before you press
+~RET~.
+
+| You type                 | It is read as                                  |
+|--------------------------+------------------------------------------------|
+| nothing, only ~RET~      | Today                                          |
+| =fri=                    | The next Friday                                |
+| =+3d=, =+2w=, =+1m=      | Three days, two weeks or a month from today    |
+| =24=                     | The 24th of this month, or of the next once it is past |
+| =dec 24=, =2026-12-24=   | That date                                      |
+| =fri 9am=, =+2d 14:00=   | A day with a time                              |
+| =10:00-11:30=            | Today, from then until then                    |
+| =every week 10:00=       | Each week at that time, starting today         |
+| =every second day=       | Every other day                                |
+| =first monday every month= | That day of each month                       |
+
+*** Things that come round again
+
+The last rows of the table make a date that repeats. A repeating date is
+written with a mark after it, as in =<2026-10-13 Tue +1w>= for every week.
+When you mark a repeating task =DONE=, it is not closed. Its date moves on to
+the next time, it becomes =TODO= again, and a note of when you last did it is
+kept under it. This is the way to keep track of the rubbish day, the rent
+and watering the lemon tree.
+
+Tuatara can also keep a record of each time a task is moved on. These
+settings take =:time= or =nil=. =*org-log-repeat*= is =:time= as it comes: a
+repeating task marked =DONE= gets a note of the change and a =LAST_REPEAT=
+property with the time. Set it to =nil= and the date moves on with no
+record. =*org-log-reschedule*= and =*org-log-redeadline*= are =nil=, so
+changing a scheduled date or a deadline leaves nothing behind. With =:time=
+the old date is written down, with the time you changed it:
+
+#+begin_example
+(setf *org-log-reschedule* :time)
+(setf *org-log-redeadline* :time)
+#+end_example
+
+#+begin_example
+,** TODO Clean the gutters
+   SCHEDULED: <2026-10-16 Fri>
+   :LOGBOOK:
+   - Rescheduled from "[2026-10-14 Wed]" on [2026-10-13 Tue 10:00]
+   :END:
+#+end_example
+
+A deadline puts =New deadline from= in the same place, and taking a date
+away puts =Not scheduled, was= or =Removed deadline, was=. Where all these
+notes go, and the notes of a change of state and of ~C-c C-z~, is said by
+=*org-log-into-drawer*=. As it comes, =t=, they go into the =:LOGBOOK:=
+drawer and fold away with it. With =nil= they are written right under the
+heading's planning line and properties, in plain sight.
+
+If you cannot remember how to say a repeat in words, press ~C-r~ at the date
+prompt; the prompt itself says so, as =Schedule (C-r repeats):=. A menu opens
+where you choose the start, the time, how often and when it ends, and it
+shows in plain words what your choices come to. ~RET~ writes it. The menu
+opens only from a date prompt, so ~M-x~ does not offer it.
+
+*** Being told on the desktop
+
+Give a heading the tag =notify= and Tuatara shows a notification on your
+desktop as its time comes, for as long as Tuatara is running. It tells you
+ten minutes before and again at the time. An entry with a date and no time is
+announced at eight in the morning. =*org-notify-before*= and
+=*org-notify-day-time*= change both. =*org-notify-before*= is the number of
+minutes, 10 as standard; =0= or =nil= tells only when the time comes, and a
+=NOTIFY_BEFORE= property on one entry says otherwise for it.
+=*org-notify-day-time*= is the time of day as text, ="08:00"= as standard, as
+in =(setf *org-notify-day-time* "07:30")=; =nil= means an entry with a date
+and no time is never announced. The tag itself is
+=*org-notify-tag*=: with =(setf *org-notify-tag* "remind")= it is the tag
+=remind= that Tuatara watches for, and =nil= turns the notifications off. The notification is shown by the program
+=notify-send=, which chapter 8 mentions with the other notifications.
+
+#+begin_try Try it, with a holiday plan
+1. Open =~/holiday.org= with ~C-x C-f~. Press ~i~ and type these four lines,
+   then press ~C-g~:
+   #+begin_example
+   ,* Holiday in Nelson
+   ,** TODO Book the ferry
+   ,** TODO Book the bach at Kaiteriteri
+   ,** Walk the Abel Tasman track
+   #+end_example
+2. Move to =Book the ferry= and press ~C-c C-d~. Type =+3d= and watch the
+   calendar move three days on. Press ~RET~. A line beginning =DEADLINE:=
+   appears under the heading.
+3. Move to =Book the bach= and press ~C-c C-s~. Press ~l~ twice and ~j~ once,
+   which is nine days from today. Press ~RET~ twice. The line under the
+   heading begins =SCHEDULED:=.
+4. Move to =Walk the Abel Tasman track= and press ~o~ to open a line under
+   it. Press ~C-c .~, type =dec 28 9am= and press ~RET~. A date with a time
+   is written into the text. Press ~C-g~.
+5. Move back to =Book the ferry= and press ~C-c C-t~ until it says =DONE=.
+   A =CLOSED:= line joins the deadline. Save with ~C-x C-s~.
+#+end_try
+
+~M-x describe-timestamp-settings~ lists what a timestamp may hold that
+Tuatara reads: active and inactive, times and ranges, repeaters, warnings and
+delays, the =SCHEDULED=, =DEADLINE= and =CLOSED= lines, and dates by rule.
+
+#+table: commands org-schedule org-deadline org-time-stamp org-time-stamp-inactive describe-timestamp-settings
+
+These commands work only while a date is being asked for. You will seldom
+call them by name, but they are what the keys above run.
+
+#+table: commands org-calendar-forward-day org-calendar-backward-day org-calendar-forward-week org-calendar-backward-week org-calendar-forward-month org-calendar-backward-month org-calendar-forward-year org-calendar-backward-year org-calendar-goto-today org-date-choose-mark org-date-choose-unmark org-date-choose-write
+
+#+table: settings *org-read-date-in-calendar* *org-read-date-popup-calendar* *org-deadline-warning-days* *org-notify-tag* *org-notify-before* *org-notify-day-time*
+
+#+table: faces :org-date :org-scheduled-keyword :org-deadline-keyword :calendar-chosen
+
+** The agenda
+
+Dates scattered over a dozen files are of little use unless something
+gathers them. The agenda does that. It reads your agenda files, finds every
+task and every date in them, and shows them in one list in the order of the
+calendar. You look at it in the morning to see what the day holds.
+
+*** Telling Tuatara which files to read
+
+The agenda reads the files named in =*org-agenda-files*=. As it comes, that is
+the one file =~/org/agenda.org=. Set it in your init file to the files or
+directories where you keep tasks. A directory stands for every =.org= file in
+it.
+
+#+begin_example
+(setf *org-agenda-files* '("~/org/" "~/holiday.org"))
+#+end_example
+
+*** Opening it
+
+~C-x a a~ asks which view you want and waits for one more key.
+
+| Modal | Non-modal | View                                                              |
+|-------+-----------+-------------------------------------------------------------------|
+| none  | ~a~       | The week, day by day                                              |
+| none  | ~t~       | Every task that is still open, dated or not, with unticked checkboxes |
+| none  | ~m~       | The headings that match tags you type, such as =phone= or =work+urgent= |
+| none  | ~u~       | The open tasks that have no tag                                   |
+| none  | ~c~       | The entries whose dates look wrong, each with the reason          |
+
+A match is read whole: a =|= inside ={a|b}= or ="a|b"= belongs to it, and a
+match with anything that is not a tag, a comparison or a ={pattern}= is
+refused with a message, not read in part. The same matches work in a clock
+table's =:match=, except a pattern that repeats a repeated part, which could
+take for ever; such a =:match= is left out and said to be.
+
+~C-x a w~, ~C-x a m~ and ~C-x a y~ open the week, the month or the year
+without asking. Figure 14.2 shows a week.
+
+#+caption: Figure 14.2. The agenda of a week, seen on the Tuesday.
+#+name: fig-org-agenda
+#+begin_example
+Week-agenda (W42):
+Monday     12 October 2026 W42
+Tuesday    13 October 2026
+  chores:     all day     Scheduled:  TODO Mow the lawn          :outside:
+  chores:     all day     In   3 d.:  TODO Clean the gutters     :outside:
+Wednesday  14 October 2026
+Thursday   15 October 2026
+  chores:      9:00 ┄┄┄┄┄ Scheduled:  TODO Fix the gate
+  holiday:    14:00 ┄┄┄┄┄ Event:      Dentist in Motueka
+Friday     16 October 2026
+  chores:     all day     Deadline:   TODO Clean the gutters     :outside:
+Saturday   17 October 2026
+Sunday     18 October 2026
+#+end_example
+
+Each line starts with the name of the file the entry is in, then its time or
+=all day=, then what kind of line it is. =Scheduled:= is a task planned for
+that day. =Deadline:= is a task due that day, and =In 3 d.:= on today is the
+early warning of a deadline three days off. =Event:= is a date in the text.
+The tags are at the right. In the figure, cleaning the gutters appears twice:
+on Friday when it is due and on today as a warning.
+
+On today the agenda also draws a time grid when something has a time, with a
+line for the hour it is now, so that you see what is still ahead.
+
+*** What the agenda shows
+
+Several settings decide how much the agenda shows and how it looks.
+=*org-agenda-span*= is =:week= as it comes. It takes =:day=, =:week=,
+=:month=, =:year= or a number of days, so =(setf *org-agenda-span* 3)= opens
+on today and the two days after it. A week starts on the day
+=*org-agenda-start-on-weekday*= says: =1= for Monday as it comes, up to =6=
+for Saturday, =7= or =0= for Sunday, and =nil= for today, so that the week
+shown is the next seven days and not the calendar week.
+
+=*org-agenda-log-mode*= is what ~L~ turns on and off, and =nil= as it comes.
+With =(setf *org-agenda-log-mode* t)= every agenda opens with the tasks you
+closed and the time you clocked already listed.
+
+=*org-agenda-refresh-minutes*= is =10=, the ten minutes of the paragraph
+above. =(setf *org-agenda-refresh-minutes* 1)= keeps the clock line of the
+time grid close to true; =nil= draws the agenda again only after midnight and
+when a file changes.
+
+=*org-agenda-time-grid*= holds the lines drawn at the hours of the day. It is
+a list of four things: when to draw them, the times, the text that follows
+each time, and the line itself. As it comes, the grid is drawn for today and
+on a day's agenda, and only when that day has an entry with a time. The times
+are =800= to =2000= every two hours. Put =:weekly= in the first list to draw
+it on every day of a week, and take =:require-timed= out to draw it on days
+with nothing timed. =nil= draws no grid:
+
+#+begin_example
+(setf *org-agenda-time-grid* nil)
+#+end_example
+
+=*org-agenda-current-time-string*= is the line that marks the time now in the
+grid, =← now ───...= as it comes, after the time it is. Give it other text,
+or =nil= for no such line. With this line in your init file,
+=(setf *org-agenda-current-time-string* "now")=, at half past two it reads:
+
+#+begin_example
+  holiday:    14:00 ┄┄┄┄┄ Event:      Dentist in Motueka
+              14:30 ┄┄┄┄┄ now
+#+end_example
+
+The columns of a line can be changed too. =*org-agenda-category-width*= is
+the width of the first column, twelve as it comes; a longer file name is cut
+with =…=. =*org-agenda-untimed-text*= is what the time column says when an
+entry has no time, =all day= as it comes. =*org-agenda-event-kind-text*= is
+what the column of kinds says for a date in the text of a heading with no
+keyword, =Event:=, and =*org-agenda-task-kind-text*= the same for a date in
+the text of a task, =Task:=. For these three, a text is shown, =""= leaves
+the column empty but keeps the lines level, and =nil= leaves the column out
+altogether, so the heading moves left. If you want a compact agenda:
+
+#+begin_example
+(setf *org-agenda-category-width* 8
+      *org-agenda-untimed-text* nil
+      *org-agenda-event-kind-text* nil)
+#+end_example
+
+The agenda is a list, so ~C-x / s~ keeps the lines that hold a pattern, and
+~C-x / f~ and ~C-x / h~ keep or hide the entries whose one column holds it.
+The columns are =category=, =time=, =kind=, =keyword=, =priority=,
+=heading=, =tags=, =date= and =file=. =date= is the day the entry is listed
+under, written =2026-10-01 Thu=, and =file= is the path of the note it comes
+from. A pattern is a regular expression, or literal text after ~M-r~. Typing
+=2026-10-01= under =date= keeps the entries of that day, and under =heading=
+it keeps none, whatever the date line says.
+
+=*org-agenda-date-in-title*= is =nil=: a date written in a heading, such as
+=Dentist <2026-10-15 Thu 14:00>=, is taken out of the title on the agenda,
+because the day and the time column already say it. =t= leaves it in.
+
+*** Moving about
+
+~j~ and ~k~ move from line to line. ~l~ or ~C-f~ shows the next week, and ~h~
+or ~C-b~ the one before. ~g h~ comes back to today. ~D~, ~w~, ~m~ and ~Y~
+change the span to a day, a week, a month or a year, and ~g l~ returns to the
+view you had before.
+~RET~ opens the entry on the line in its file, and ~TAB~ shows it in another
+window while you stay in the agenda. ~c~ opens the calendar on the line's
+day, and ~a~ in the calendar shows the agenda of the week of the day the
+cursor is on. ~q~ closes the agenda.
+
+The agenda keeps itself current. It is drawn again when one of its files
+changes, every ten minutes and just after midnight. ~r~ draws it again at
+once.
+
+*** Changing tasks from the agenda
+
+You do not have to open a file to deal with a task. The keys below act on
+the entry of the line the cursor is on, and change it in its file.
+
+| Modal | Non-modal | What it does to the entry                               |
+|-------+-----------+---------------------------------------------------------|
+| none  | ~C-c C-t~ | Gives it the next keyword, as in the file               |
+| none  | ~C-c C-s~ | Schedules it for another day                            |
+| none  | ~C-c C-d~ | Gives it a deadline                                     |
+| none  | ~C-c C-q~ | Sets its tags                                           |
+| none  | ~C-c C-z~ | Adds a note to it                                       |
+| none  | ~I~ / ~O~ | Starts and stops the clock on it                        |
+| none  | ~u~       | Undoes the last change made from this agenda            |
+| none  | ~s~       | Saves every agenda file that has changes                |
+
+These are the keys of the file itself. Changes made from the agenda are in the
+files' buffers and are not on disk until you press ~s~. If you want them saved as they are made, name the
+files in =*org-agenda-autosave-files*=. It is =nil= as standard, no file. =t=
+saves every agenda file at once, and a list names some, as =*org-agenda-files*=
+does, files, directories or patterns. A change is a keyword, a date, tags, a
+note or the clock. For one file:
+
+#+begin_example
+(setf *org-agenda-autosave-files* '("~/notes/agenda.org"))
+#+end_example
+
+~L~ turns on log mode. The agenda then also lists, on each day, the tasks you
+closed and the time you clocked. It is a pleasant way to see on a Friday
+what the week went on.
+
+~i~ takes down something new for the day the cursor is on, with capture,
+which is described below.
+
+#+begin_try Try it, with the holiday plan
+1. Tell the agenda about the holiday file for this session. Press ~M-:~,
+   type =(push "~/holiday.org" *org-agenda-files*)= and press ~RET~.
+2. Press ~C-x a a~ and then ~a~. The week is shown with the cursor on today.
+   If booking the bach falls in the coming week, press ~l~ to see it there.
+3. Press ~g h~ to come back. Press ~C-x a a~ and then ~t~. Every open task is
+   listed, =Book the bach at Kaiteriteri= among them.
+4. Move to that line and press ~C-c C-t~. It becomes =WAIT=. Press ~u~ to take the
+   change back.
+5. Press ~TAB~. The task is shown in its file in another window.
+6. Press ~s~ to save, and ~q~ to close the agenda.
+#+end_try
+
+*** Views of your own
+
+=*org-agenda-custom-commands*= adds views under keys of your own to the
+question ~C-x a a~ asks. Each has a key, a description and a match, such as
+every open task tagged =phone=. The view under ~u~ is made this way, and its
+entry in the setting is a pattern to copy.
+
+#+table: commands org-agenda org-agenda-list org-todo-list org-tags-view org-agenda-check-dates org-agenda-day-view org-agenda-week-view org-agenda-month-view org-agenda-year-view org-agenda-later org-agenda-earlier org-agenda-goto-today org-agenda-previous-view org-agenda-log-mode org-agenda-goto-calendar org-calendar-goto-agenda
+
+#+table: commands org-agenda-switch-to org-agenda-goto org-agenda-todo org-agenda-cancel-task org-agenda-schedule org-agenda-deadline org-agenda-set-tags org-agenda-add-note org-agenda-refile org-agenda-clock-in org-agenda-clock-out org-agenda-clock-cancel org-agenda-undo org-agenda-save-all-buffers org-save-all-org-buffers org-capture-on-day
+
+#+table: settings *org-agenda-files* *org-agenda-span* *org-agenda-start-on-weekday* *org-agenda-log-mode* *org-agenda-refresh-minutes* *org-agenda-autosave-files* *org-agenda-custom-commands* *org-agenda-time-grid* *org-agenda-current-time-string* *org-agenda-category-width* *org-agenda-untimed-text* *org-agenda-event-kind-text* *org-agenda-task-kind-text* *org-agenda-reminder-kind-text* *org-reminder-tag* *org-agenda-date-in-title*
+
+#+table: faces :org-agenda-structure :org-agenda-date :org-agenda-date-today :org-agenda-date-weekend :org-agenda-date-weekend-today :org-agenda-category :org-agenda-time :org-agenda-untimed :org-agenda-event-kind :org-agenda-calendar-event :org-agenda-tags :org-agenda-done :org-agenda-current-time :org-time-grid :org-scheduled :org-scheduled-today :org-scheduled-previously :org-upcoming-distant-deadline :org-upcoming-deadline :org-imminent-deadline :org-checkbox-todo
+
+*** Reminders
+
+A reminder is a heading tagged =reminder= with one date: a timestamp in its
+text, or =SCHEDULED:=. It has a time and no duration, so a range of times
+(=14:00-15:00=) or of days is shown at its start only. The agenda says
+=Reminder:= in the column of kinds, and once the time has passed the line
+turns faint, as an event's does; a reminder with a date and no time is over
+at the end of its day. A scheduled reminder is not carried forward to later
+days as an undone task is: it stays on its day, faint.
+
+~M-x org-make-reminder~ turns the heading the cursor is on into a reminder:
+it adds the tags =reminder= and =notify=, so that Tuatara tells you on the
+desktop when the time comes (the section on being told above), and asks for
+a date, as ~C-c C-s~ does, when the heading has none; that date is written as
+=SCHEDULED:=. It has no key of its own. Capture with ~r~ makes a new one
+(under Capture). A reminder whose =notify= tag is taken away is
+listed but not told.
+
+=*org-agenda-reminder-kind-text*= is the text of the column of kinds,
+=Reminder:= as it comes, with =""= leaving the column empty and =nil= using
+the event's text. =*org-reminder-tag*= is the tag that makes a heading a
+reminder; =nil= turns reminders off.
+
+#+table: commands org-make-reminder
+
+** Capture
+
+A thought arrives while you are in the middle of something else: ring the
+plumber, an idea for the letter, a book someone recommended. Capture takes it
+down without making you leave what you are doing. You press a key, type the
+thought in a small window, press another key, and you are back where you
+were. The thought has been filed in the right place.
+
+~C-x a c~ starts it and shows the templates to choose from. A template says
+what kind of entry to make and where to file it. Six come with Tuatara.
+
+| Modal | Non-modal | Makes                                      | Files it                       |
+|-------+-----------+--------------------------------------------+--------------------------------|
+| none  | ~t~       | A task, after asking for its tags          | Under Tasks in your agenda file |
+| none  | ~n~       | A quick note                               | Under Inbox in your agenda file |
+| none  | ~m~       | A meeting planned, after asking its time   | Under Meetings in your agenda file |
+| none  | ~M~       | Notes of a meeting, with the clock running | Under Meetings in your agenda file |
+| none  | ~j~       | An entry in your journal                   | In today's journal entry       |
+| none  | ~r~       | A reminder, after asking what and when     | Under Reminders in your agenda file |
+
+"Your agenda file" is the first file named in =*org-agenda-files*=. After
+you choose a template, a window called =*Capture*= opens below, in INSERT
+state, with the template filled in. Its top line tells you the keys. Write
+what you have to say and finish with one of them.
+
+| Modal | Non-modal | What it does                                            |
+|-------+-----------+---------------------------------------------------------|
+| none  | ~C-c C-c~ | Files the entry where the template says                 |
+| none  | ~C-c C-w~ | Files it under a heading you choose instead             |
+| none  | ~C-c C-k~ | Throws it away                                          |
+
+The reminder template writes the heading with the tags =reminder= and
+=notify= and one date with a time, so the agenda lists it and Tuatara tells
+you when it comes (see Reminders, in the agenda part of this chapter).
+
+A captured task or note carries the time you wrote it and a link back to
+where you were, so that "check this paragraph" still makes sense a week
+later.
+
+In the calendar and in the agenda, ~i~ captures for the day the cursor is on
+and not for today. The entry gets that day's date, so the agenda lists it
+there. That is how you write down a dentist's appointment three weeks away:
+go to the day and press ~i~.
+
+#+begin_try Try it, with something to remember
+1. From any buffer, press ~C-x a c~ and then ~t~.
+2. The echo area asks for tags. Type =phone= and press ~RET~.
+3. In the window that opens, type =Ring Wanaka Plumbing about the tap=.
+4. Press ~C-c C-c~. The echo area says where it was filed and you are back
+   where you started. If the directory =~/org/= does not exist yet, Tuatara
+   asks whether to make it.
+5. Press ~C-x a a~ and then ~t~. The new task is in the list.
+#+end_try
+
+*** Templates of your own
+
+A template is a small file. The part above the line =# --= says what it is
+called, which key chooses it and where its entries go. The part below is the
+entry, with marks that are filled in when you capture.
+
+#+begin_example
+# name: Book to read
+# key: b
+# file: ~/org/reading.org
+# heading: To read
+# --
+,* %?
+Recommended by %^{Who recommended it}
+%U
+#+end_example
+
+| Mark         | Is filled with                                        |
+|--------------+-------------------------------------------------------|
+| =%?=         | Nothing. The cursor is left here for you to write     |
+| =%U=, =%u=   | Now, or today, as a record the agenda leaves out      |
+| =%T=, =%t=   | Now, or today, as a date the agenda shows             |
+| =%^T=, =%^t= | A date that you are asked for                         |
+| =%^{Words}=  | What you type when asked the words                    |
+| =%^g=        | Tags that you are asked for                           |
+| =%a=         | A link to where you were                              |
+| =%i=         | The text that was selected                            |
+
+Your templates live in the directory =capture-templates= in your configuration
+directory, one file each. The easy way to start is ~M-x
+org-capture-template-copy~, which copies one of Tuatara's there for you to
+change. A template of yours with the same key as one of Tuatara's replaces
+it; the others stay, so the reminder template is there whatever else you add.
+If you have a template under the key =r= of your own, copy the reminder one
+with another key: its file is a heading =* %^{What}  :reminder:notify:=
+followed by a line =%^T=, filed under =Reminders=.
+
+=*capture-template-directories*= says where those directories are. It is =nil=
+as it comes, which means =capture-templates= in your configuration directory.
+Give it a list to read the templates from other directories, such as one you
+share with others:
+
+#+begin_example
+(setf *capture-template-directories* '("~/org/templates/"))
+#+end_example
+
+The templates are then read from there, and Tuatara's four are still offered.
+
+~M-x describe-capture-template-settings~ lists the lines a template's head
+holds, where it can file its text, and every =%= placeholder its text takes.
+
+#+table: commands org-capture org-capture-finalize org-capture-refile org-capture-kill org-capture-template-copy describe-capture-template-settings
+
+#+table: settings *capture-template-directories*
+
+** Moving an entry to another place
+
+An inbox fills up. Refiling moves a heading, with everything under it, to
+its proper home. ~C-c C-w~ on a heading asks where it should go and lists
+the headings of your agenda files and of the file you are in, each written
+as a path such as =house.org/Garden/Fruit=. Type a few letters to narrow the
+list and press ~RET~. The heading is put at the end of what is under the one
+you chose, one level below it.
+
+With ~C-u~ first, the command goes to the heading you choose and moves
+nothing. That makes it a quick way to get anywhere in your agenda files.
+The same key works on a line in the agenda. =*org-refile-targets*= says
+which files are offered and how deep their headings go. It is a list of
+pairs, where to look and how many levels. Where is =:agenda-files=, the files
+of =*org-agenda-files*=, =:this-file=, the file of the entry, or the name of
+a file. The standard is =((:agenda-files . 3) (:this-file . 3))=, headings
+down to =***= in both. To offer another file, and only the top two levels of
+the agenda files:
+
+#+begin_example
+(setf *org-refile-targets* '((:agenda-files . 2) ("~/notes/archive.org" . 3)))
+#+end_example
+
+#+table: commands org-refile
+
+#+table: settings *org-refile-targets*
+
+** Clocking
+
+The clock records how long you spend on a task. It is for anyone who bills
+by the hour, and for anyone curious where a day went.
+
+~C-c C-x C-i~ starts the clock on the task the cursor is under. A line
+beginning =CLOCK:= is written in the task's =:LOGBOOK:= drawer with the time
+you started. While the clock runs, the mode line of every window shows the
+time so far and the task's name, so you cannot forget it. Starting the clock
+on another task stops the first. A terminal sends =C-i= as =TAB=, so there
+the same keys arrive as ~C-c C-x TAB~, which starts the clock too.
+
+~C-x a o~ stops the clock from any buffer. The line is finished with the
+time you stopped and how long that was. With no clock running, it looks in
+your agenda files for one left running, as after a restart. When the files
+to read are large, it looks in the background and says so; the clock it
+finds runs again, and ~C-x a o~ then stops it:
+
+#+begin_example
+CLOCK: [2026-10-13 Tue 10:00]--[2026-10-13 Tue 10:45] =>  0:45
+#+end_example
+
+=*org-clock-into-drawer*= is =t=, so the lines are kept in the =:LOGBOOK:=
+drawer and fold away with it. With =(setf *org-clock-into-drawer* nil)= the
+=CLOCK:= lines are written right under the heading instead.
+
+~C-x a j~ takes you to the task that is being clocked, from wherever you
+are. ~C-c C-x C-q~ stops the clock and removes its line, for when you
+started it by mistake. In the agenda, ~I~ and ~O~ start and stop the clock
+on the line's entry. Large agenda files changed since they were last read are
+read in the background, as for tags, and their headings are offered once read.
+
+If you leave Tuatara while the clock runs, it asks whether to stop it. If
+you say no, the clock is found again at the next start and goes on counting.
+
+To add the time up, run ~M-x org-clock-report~. It writes a table of the
+time spent on each heading, with a total, for the subtree the cursor is in
+or for the whole file when the cursor is above the first heading. Run it
+again later, or press ~C-c C-c~ on the table's first line, to bring it up to
+date.
+
+#+begin_example
+,#+BEGIN: clocktable :scope file :maxlevel 2
+| Headline          |   Time |
+|-------------------+--------|
+| *Total time*      | *1:05* |
+|-------------------+--------|
+| Clean the gutters |   0:20 |
+| Water the lemon   |   0:45 |
+,#+END:
+#+end_example
+
+#+table: commands org-clock-in org-clock-out org-clock-goto org-clock-cancel org-clock-report
+
+#+table: settings *org-clock-into-drawer*
+
+#+table: faces :org-mode-line-clock
+
+** Tables and formulas
+
+A table in Org is made of lines that begin with a bar, with a bar between
+each field. You type it roughly and Tuatara lines it up.
+
+#+begin_example
+| Item  | Cost |
+|-------+------|
+| Rent  |  450 |
+| Food  |  180 |
+| Power |   95 |
+#+end_example
+
+*** Making a table
+
+Type a bar, the first field, a bar, the next field, and so on. Then press
+~TAB~. The table is aligned, each column as wide as its widest field, and
+the cursor goes to the next field. At the end of a row ~TAB~ starts a new
+row. So filling in a table is typing a field, ~TAB~, a field, ~TAB~. Numbers
+are set to the right of their column and words to the left.
+
+| Modal | Non-modal                 | What it does in a table                      |
+|-------+---------------------------+----------------------------------------------|
+| none  | ~TAB~ / ~S-TAB~           | Aligns, and goes to the next or the previous field |
+| none  | ~RET~ while typing        | Goes to the same field of the row below      |
+| none  | ~C-c C-c~                 | Aligns                                       |
+| none  | ~C-c -~                   | Puts a rule below this row                   |
+| none  | ~M-j~ / ~M-k~             | Moves the row down or up                     |
+| none  | ~M-h~ / ~M-l~             | Moves the column left or right               |
+| none  | ~M-L~ / ~M-H~             | Puts in an empty column, or deletes this one |
+| none  | ~M-S-<down>~ / ~M-S-<up>~ | Puts in an empty row above, or deletes this one |
+
+These are the keys that move headings, doing the matching thing to rows and
+columns when the cursor is in a table. The rows above the first rule are the
+table's header.
+
+*** Formulas
+
+A table can do sums. Its formulas are written on a line right under it that
+begins =#+TBLFM:=. A formula names a place in the table, an equals sign, and
+how to work the value out.
+
+#+begin_example
+| Crop     | Kg | Price | Value |
+|----------+----+-------+-------|
+| Tomatoes | 12 |  4.50 |   54. |
+| Beans    |  3 |     6 |    18 |
+| Total    |    |       |   72. |
+,#+TBLFM: $4=$2*$3::@>$4=vsum(@2..@-1)
+#+end_example
+
+There are two formulas here, with =::= between them. The first says that
+column four is column two times column three, in every row below the rule.
+The second says that the last row of column four is the sum of the rows
+above it.
+
+| In a formula               | Means                                        |
+|----------------------------+----------------------------------------------|
+| =$2=                       | The second column                            |
+| =@3=                       | The third row, with rules not counted        |
+| =@>=, =$>=                 | The last row, the last column                |
+| =@-1=                      | The row above                                |
+| =@2..@-1=                  | A range, here from the second row to the row above |
+| =vsum=, =vmean=            | The sum and the mean of a range              |
+| =vmax=, =vmin=, =vcount=   | The largest, the smallest, and how many      |
+| =;%.2f= after the formula  | Write the answer with two decimals           |
+
+The numbers do not change by themselves when you change a field. Press
+~C-c *~ anywhere in the table to work the formulas out again, or ~C-c C-c~
+on the =#+TBLFM:= line.
+
+~M-x describe-table-formula-settings~ lists what a formula may say: the
+references, operators, functions and flags, with small examples.
+
+You do not have to write that line by hand. ~C-c =~ asks for the formula of
+the column the cursor is in and adds it to the line for you. With ~C-u~
+first, it asks for a formula for the one field.
+
+A field that cannot be worked out shows =#ERROR=. Usually a field the
+formula reads holds a word where a number should be, or the formula names a
+column the table does not have.
+
+#+begin_try Try it, with a small budget
+1. Open =~/budget.org= with ~C-x C-f~. Press ~i~ and type =|Item|Cost=, then
+   press ~TAB~. The line becomes a tidy row and a second row starts.
+2. Type =Rent=, ~TAB~, =450=, ~TAB~, =Food=, ~TAB~, =180=, ~TAB~, =Power=,
+   ~TAB~, =95=, ~TAB~, =Total=. Press ~C-g~.
+3. Move to the row =Item= and press ~C-c -~. A rule is drawn under it.
+4. Move to the row =Total= and press ~o~ to open a line under the table.
+   Type =#+TBLFM: @>$2=vsum(@2..@-1)= and press ~C-g~.
+5. Press ~C-c C-c~ on that line. The field beside =Total= shows 725.
+6. Move to the =180= of the Food row and change it to =200=. Press ~C-c *~.
+   The total becomes 745. Save with ~C-x C-s~.
+#+end_try
+
+A formula can contain brackets inside brackets, signs and powers.
+=*org-formula-depth-limit*= is how deep they may nest, 200 as standard. A
+formula nested deeper is refused and its field shows =#ERROR=, rather than
+the editor following it down without end. You will not meet it in a budget;
+lowering it, =(setf *org-formula-depth-limit* 20)=, only matters for tables
+from people you do not trust.
+
+#+table: commands org-table-align org-table-insert-hline org-shiftmetadown org-shiftmetaup org-table-recalculate org-table-eval-formula
+
+#+table: settings *org-formula-depth-limit*
+
+#+table: faces :org-table :org-formula
+
+** Links
+
+A link leads from one place to another: to a heading further down, to
+another file, to a web page. It is written in double square brackets, with
+the place it leads to first and the words to show second:
+
+#+begin_example
+[[file:holiday.org][the holiday plan]]
+#+end_example
+
+Tuatara shows only the words, in the colour of a link. ~C-c C-x L~ shows
+every link of the buffer as it is written, and the same key hides them again.
+
+| Written                           | Leads to                              |
+|-----------------------------------+---------------------------------------|
+| =[[*Vegetables]]=                 | The heading with that title, in this file |
+| =[[shed key]]=                    | The place marked =<<shed key>>= in this file |
+| =[[#beds]]=                       | The heading whose =CUSTOM_ID= property is =beds= |
+| =[[file:chores.org]]=             | Another file                          |
+| =[[file:chores.org::*Mow the lawn]]= | A heading in another file          |
+| =[[https://orgmode.org][Org]]=    | A web page                            |
+
+*** Making and following links
+
+You seldom write a link by hand. The usual way has two steps. Go to the
+place you want to link to and press ~C-x a l~, which remembers a link to it.
+Then go to where the link should be and press ~C-c C-l~. It offers the links
+you have remembered, the latest first, and then asks for the words to show.
+If you have text selected, that text becomes the words. With ~C-u~ first,
+~C-c C-l~ asks for a file to link to. On a link that is already there, it
+lets you change it.
+
+~C-x a l~ works in any file. Under an Org heading it remembers the heading.
+In a file that is not Org it remembers the line.
+
+~C-c C-l~ (=insert-link=) works the same way in Markdown and LaTeX files,
+and writes the link as each of them does:
+
+| File     | ~C-c C-l~ writes                   | With no words          |
+|----------+------------------------------------+------------------------|
+| Org      | =[[file:plan.org][the plan]]=      | =[[file:plan.org]]=    |
+| Markdown | =[the plan](plan.md)=              | =[plan.md](plan.md)=   |
+| LaTeX    | =\href{plan.pdf}{the plan}=        | =\url{plan.pdf}=       |
+
+In Markdown and LaTeX a link to a file is the file's path alone, from the
+file's own directory when it is there or below it, else the whole path.
+Square brackets in the words of a Markdown link are written =\[= and =\]=,
+and a LaTeX link whose braces do not pair is refused.
+
+=*org-link-descriptive*= is the setting for what is shown. At =t=, the
+standard, =[[target][words]]= shows as the words and =[[target]]= as its
+target. Entities show as their characters, =\dollar{}= as =$=. At =nil=
+every link is shown as written. ~C-c C-x L~ switches it for the buffer you are
+in. To have links as written whenever a file opens, put
+=(setf *org-link-descriptive* nil)= in your init file; a note can also say
+=#+STARTUP: literallinks=.
+
+#+begin_example
+ t (standard)            nil
+
+ the holiday plan        [[file:holiday.org][the holiday plan]]
+#+end_example
+
+To follow a link, press ~RET~ on it in NORMAL state, or ~C-c C-o~ in either
+state. A link to a web page or a mail address opens in your desktop's
+program, and Tuatara asks before it does that. If you would rather ~RET~ did
+not follow links, set =*org-return-follows-link*= to =nil=. It is =t= as
+standard. At =nil=, ~RET~ on a link does what it does anywhere else, breaking
+the line, or going to the next row in a table, and ~C-c C-o~ is the way to
+follow it. =(setf *org-return-follows-link* nil)= in your init file does it.
+
+A link to a file can name a place in it after two colons. In an Org note that
+is a heading, a custom ID or a target. In any other file it is text, and the
+link leads to the first place that text is written, exactly as written. ~M-x
+org-store-link~ on a line of a text file keeps a link of that kind to the
+line. When the text is no longer there, Tuatara says so.
+
+Two more commands write a link that stands for a set of notes, the files
+with formatted names of chapter 9 whose names match a pattern. Following
+such a link lists the matching notes so that you can open one. ~M-x
+match-formatted-files-link~ writes Tuatara's own kind, and ~M-x
+match-denote-files-link~ writes the kind that the Emacs package Denote
+understands as well.
+
+#+table: commands org-store-link insert-link org-open-at-point org-toggle-link-display match-formatted-files-link match-denote-files-link
+
+#+table: settings *org-link-descriptive* *org-return-follows-link*
+
+#+table: faces :org-link :org-target
+
+*** Pictures among the lines
+
+A link to a picture that stands alone on its line, with no words of its own,
+can be shown as the picture itself:
+
+#+begin_example
+The garden as it was in March:
+
+#+ATTR_ORG: :width 400 :align center
+[[file:garden.jpg]]
+#+end_example
+
+~C-x T p~ switches this on and off for the buffer you are in. It is off as
+standard. It does what ~C-c C-x C-v~ does in Emacs's Org, and sits with the
+other display switches under ~C-x T~. The picture takes rows of its own, as many as its height needs,
+and the lines after it move down to make room. The text itself does not
+change: saving, searching, copying and undo all see the link. Move the
+cursor onto the picture's line and the link shows again, so that you can
+change it; move off and the picture comes back.
+
+Pictures are drawn in the background, only those you can see, by the same
+program that draws a picture you open, shut in the sandbox. The size is read
+from the file first, so the rows are held at once and the text does not jump
+when the picture arrives. A file opened safely never shows its pictures.
+
+The =#+ATTR_ORG:= line above the link says how large the picture is and
+where it stands, as Org reads it:
+
+| Written              | Means                                                  |
+|----------------------+--------------------------------------------------------|
+| =:width 400=         | 400 pixels wide; =400px= is the same                   |
+| =:width 50%=         | half the width of the text; =0.5= is the same          |
+| =:width t=           | its own width                                          |
+| =:align center=      | in the middle of the text; =right= at its right edge   |
+| =:center t=          | in the middle, as =:align center=                      |
+
+The width of the text is the window's, or the fill column (~C-x f~) where
+that is narrower, so a picture stays inside the column your lines are
+filled to. The height follows the width, the picture's proportions kept,
+and a picture is never wider than the text. A width given as a share
+follows the window as it is split or resized. Where the
+=#+ATTR_ORG:= line gives no width, the width on another =#+ATTR_...:= line
+is used, such as =#+ATTR_HTML: :width 300=, and where none does,
+=*inline-picture-width*= says: =t=, the standard, for the picture's own
+width, or a number of pixels. Alignment counts only for a picture that is
+alone in its paragraph.
+
+A picture can also stand to one side with the text going round it, as a
+picture in a printed page does:
+
+#+begin_example
+#+ATTR_ORG: :float left :width 200
+[[file:garden.jpg]]
+The beds along the south wall were dug in February, and the ...
+#+end_example
+
+| Written                       | Means                                       |
+|-------------------------------+---------------------------------------------|
+| =:float left=                 | at the left, the text going round its right |
+| =:float right=                | at the right, the text ending short of it   |
+| =:float wrap= (on any line)   | at the left, as LaTeX's export places it    |
+| =:placement {r}= with =wrap=  | at the right                                |
+
+The picture's own line takes no row while the cursor is elsewhere: the
+picture's top is beside the line after it, and the rows from there are
+narrower for as far down as the picture reaches; after that the text has the
+whole width again, also in the middle of a paragraph. A picture on rows of
+its own that comes while a floated one still reaches down begins below it. A
+long line wraps in the narrower rows when lines wrap (~C-x T l~), and is cut
+short there when they do not, the window scrolling sideways to keep the
+cursor in sight beside the picture. The cursor, moving by rows, scrolling
+and clicking all follow the narrower rows, and a window that begins beside
+the picture shows the part of it that is left. A floated picture is never
+wider than two thirds of the text, so that some room is left for the words.
+Where pictures cannot be drawn, its line names it as any other picture's
+does, and nothing is narrower. =#+ATTR_LATEX: :float wrap= is read as well,
+so a note written for LaTeX's export looks the same here.
+
+To change the width as you look, put the cursor on the picture's line or on
+its =#+ATTR_ORG:= line and press ~C-c C-x w~. The picture shows, and the
+echo row says its width. Then ~+~ or ~=~ makes it a fifth wider, ~-~ narrower,
+and ~0~ takes the width away, back to the size it has when none is written.
+These keys go on working by themselves until you press another, as the keys
+that size a window do. Each change is written as =:width= on the
+=#+ATTR_ORG:= line, which is made when there is none and taken away when
+nothing is left on it. A width written as a share of the window stays a
+share.
+
+In a terminal that can draw pictures (kitty, Ghostty), the pictures are
+drawn there too, each taking whole rows and columns. Inside tmux, or in a
+terminal that cannot, each picture's line shows its name and size instead:
+
+#+begin_example
+[picture: garden.jpg, 1600×1200]
+#+end_example
+
+To have pictures shown whenever an Org file opens, set
+=(setf *inline-pictures-modes* '((org-mode . t)))= in your init file, or
+=*global-inline-pictures-mode*= to =t= for every buffer. A note can say it
+for itself: =#+STARTUP: noinlineimages= keeps its pictures hidden, whatever
+the settings say. =#+STARTUP: inlineimages= shows them only when
+=*org-startup-shows-pictures*= is =t=, and only in a note visited as usual,
+not safely or read-only.
+
+#+begin_try Try it, with a picture beside a note
+1. Copy a photo into the directory of an Org note, and call it =garden.jpg=.
+2. In the note, write =[[file:garden.jpg]]= on a line of its own and move
+   the cursor to another line.
+3. Press ~C-x T p~. The photo is drawn where the link was.
+4. Move the cursor onto the photo's line. The link shows again. Press
+   ~C-c C-x w~ and then ~-~ three times. The photo grows narrower, and a line
+   =#+ATTR_ORG: :width ...= appears above it.
+5. Press ~0~. The width is gone and so is the line.
+6. Write a line =#+ATTR_ORG: :float left= above the link, and a few long
+   lines of words below it. Move off the photo's line. The words now go round
+   the photo on its right, and widen again below it.
+7. Press ~C-x T p~ again to show the link as written.
+#+end_try
+
+~M-x describe-inline-picture-settings~ lists what a note writes to size and
+place its pictures, which links and formulas are shown, and the keys and
+settings that change them.
+
+#+table: commands inline-pictures-mode org-resize-picture describe-inline-picture-settings
+
+#+table: settings *global-inline-pictures-mode* *inline-pictures-modes* *inline-picture-width* *org-startup-shows-pictures*
+
+*** Adding a picture
+
+~C-c C-x p~ (=inline-add-picture=) asks for a picture, as ~C-x C-f~ asks for
+a file, and offers only pictures and directories. The picture selected is
+shown in the window while you choose. The link is written on lines of its
+own, with the properties a picture takes written out at their standard
+values, ready to be changed where they stand:
+
+#+begin_example
+#+CAPTION:
+#+NAME: fig:garden
+#+ATTR_ORG: :width t
+#+ATTR_LATEX: :width .9\linewidth
+[[file:garden.jpg]]
+#+end_example
+
+Write the caption after =#+CAPTION:=. =:width t= shows the picture at its
+own width among the lines, and =.9\linewidth= is the width the export to
+LaTeX gives a picture when nothing else is said. The name is made from the
+picture's file name, for the export to refer to it by.
+
+The same key works in Markdown and LaTeX files:
+
+#+begin_example
+![](garden.jpg){width=100%}
+
+\begin{figure}[tbp]
+    \centering
+    \includegraphics[width=.9\linewidth]{garden.jpg}
+    \caption{}
+    \label{fig:garden}
+\end{figure}
+#+end_example
+
+In Markdown the alt text goes between the square brackets; the width is
+read by programs that take attributes, such as Pandoc. In LaTeX the figure
+is indented as the mode indents.
+
+The picture is linked where it is: it is never copied, moved or opened for
+writing, so choosing one leaves it as it was. The path is written from the
+file's directory when the picture is there or below it, else whole (with
+=~= for your home directory in Org only). Adding a picture does not switch
+on pictures among the lines; ~C-x T p~ does that.
+
+#+table: commands inline-add-picture
+
+*** Formulas as pictures
+
+The same switch, ~C-x T p~, shows the note's formulas as LaTeX sets them:
+
+| Written                          | Shown                                    |
+|----------------------------------+------------------------------------------|
+| =$x^2$= or =\(x^2\)= in a line   | in the line, in the columns it stands in |
+| =\[ ... \]= or =$$ ... $$= alone | centred on rows of its own               |
+| =\begin{align} ... \end{align}=  | centred, all its lines in one picture    |
+
+A formula in a line is never taller than a row: a tall one, a fraction, is
+drawn smaller to fit. Put it on a line of its own to see it at full size.
+Move the cursor into a formula and it shows as written, to be changed.
+
+The formulas are drawn by the first LaTeX program of =*latex-engines*=
+found, in the background, those asked for together in one run, in the
+colour of your text. The program is shut in the sandbox: it sees TeX's own
+files and your fonts and nothing else, and it never runs without the
+sandbox. Until a formula is drawn, and where pictures cannot be shown (in
+tmux, or a terminal without them), it shows as written; so does one LaTeX
+cannot set.
+
+Each formula is drawn after =*formula-preamble*= (amsmath and amssymb as
+standard) and the note's =#+LATEX_HEADER:= lines above its first heading,
+so a macro the note defines there can be used in its formulas. When
+nothing can be drawn after those lines, the formulas are drawn after
+=*formula-preamble*= alone. =#+STARTUP: latexpreview= shows a note's
+formulas as it opens, as =inlineimages= does, and =nolatexpreview= does not.
+
+#+begin_try Try it
+1. In an Org note write a line =The area is $\pi r^2$.= and below it a
+   line =\[ \int_0^1 x^2\,dx = \frac{1}{3} \]=.
+2. Move the cursor to another line and press ~C-x T p~. After a moment
+   both formulas are drawn, the second centred on rows of its own.
+3. Move the cursor into the first. It shows as written; change =r^2= to
+   =r^3= and move off. It is drawn again.
+#+end_try
+
+#+table: settings *formula-preamble*
+
+** Blocks and code
+
+A block is a stretch of text set apart between a line that begins =#+begin_=
+and one that begins =#+end_=. The word after the underscore says what kind of
+block it is.
+
+| Block     | Is for                                                    |
+|-----------+-----------------------------------------------------------|
+| =src=     | Code, coloured as its language is                         |
+| =example= | Text shown exactly as typed, such as what a program printed |
+| =quote=   | Words quoted from someone                                 |
+| =verse=   | Poetry, where the line breaks matter                      |
+| =center=  | Lines set in the middle                                   |
+
+You do not type the two lines yourself. Type =<s= and press ~TAB~, and a
+source block is written around the cursor with a list of languages to pick
+from. =<e=, =<q=, =<v= and =<c= do the same for the other four. These are
+snippets, which chapter 13 describes.
+
+#+begin_example
+,#+begin_src shell
+echo "Water the beds at dawn"
+,#+end_src
+#+end_example
+
+The code in a source block is coloured as it would be in a file of that
+language. Org's name for a language is sometimes different from Tuatara's.
+=*org-src-languages*= maps one to the other, and you can add your own. It is a
+list of pairs, the name written after =#+begin_src= and the language it
+means. As standard it holds =emacs-lisp= for =elisp=, =C++= for =cpp=,
+=sqlite= for =sql=, =ksh= and the other shells for =bash=, =conf= and
+=desktop= for =ini=, and a few more. Three are paired with =nil=, =text=,
+=fundamental= and =calc=: those blocks are not coloured. A name that is not in
+the list is looked up as a language of that name, and failing that as the
+language of a file ending in that name, so that =#+begin_src toml= needs no
+entry. If you write =kitty= for the configuration of a terminal that is
+really =ini=, add it to your init file:
+
+#+begin_example
+(push '("kitty" . "ini") *org-src-languages*)
+#+end_example
+
+A block begun =#+begin_src kitty= is then coloured as =ini=.
+
+*** Writing the code out to files
+
+A note can hold the code of a program or of your configuration, with the
+explanation around it, and write the code out to the files that need it.
+Give a source block the words =:tangle= and a file name on its first line:
+
+#+begin_example
+,#+begin_src shell :tangle water.sh
+echo "Water the beds at dawn"
+,#+end_src
+#+end_example
+
+~C-c C-v t~ then writes every such block to its file. Blocks that name the
+same file go into it in order. Before anything is written, Tuatara lists the
+files and says which are new and which would change, and asks. The files are
+worked out and compared with those on disk in the background, so a large note
+never holds up typing; the list comes up once that is done. This suits
+settings files well: the note says why each setting is there, and the file
+the program reads is made from it.
+
+A file name with directories in it, such as =:tangle ~/.config/foot/foot.ini=,
+needs the directories to exist. A block with =:mkdirp yes= makes them as it is
+written, and one with =:mkdirp no= never does. For a block that says nothing,
+=*code-files-make-directories*= decides: =nil=, the standard, makes none, so a
+note writes the same on every machine and a mistyped directory is an error and
+not a new directory; =t= makes them for every block. A tangled note that always
+writes into directories you want made takes =(setf *code-files-make-directories*
+t)=.
+
+*** A table of contents
+
+Tag a heading =TOC= and Tuatara keeps a table of contents under it, a list
+of links to the note's headings. It is made again each time you save. The
+tag can say more: =TOC_3= lists headings three levels deep. ~M-x
+org-update-toc~ makes it at any other time.
+
+*** Blocks that write themselves
+
+A dynamic block is a block whose contents Tuatara writes. The clock table of
+the section on clocking is one. ~C-c C-x x~ puts in a new one and asks which
+kind. Apart from the clock table, the kinds list or include your files with
+formatted names: links to those that match a pattern, links to the notes
+that link to this one, or the text of the matching files themselves. ~C-c
+C-c~ on a block's first line, or ~C-c C-x C-u~ anywhere in it, writes it
+again from how things stand now. ~M-x org-update-all-dblocks~ does that for
+every such block in the buffer.
+
+The tag has three parts, each of which can be left out. =TOC_3= says how
+deep. Without a number in the tag, a number after =toc:= on the note's
+=#+options:= line says it, so that =#+options: toc:3= gives a plain =TOC= tag
+headings of one to three stars, as in the exported document. Without either
+it is =*org-toc-max-depth*=, 2 as standard. The part after the number says
+how the links are written, and without it that is
+=*org-toc-style*=, ="gh"= as standard. =TOC_2_org= is a table two levels
+deep in the =org= style. =*org-toc-on-save*= is =t= as standard, so the table
+is made again as the note is saved. At =nil= it is made only by ~M-x
+org-update-toc~.
+
+A note can ask for several tables, and each number is for its own:
+
+| What                  | The table                                           |
+|-----------------------+-----------------------------------------------------|
+| =#+options: toc:N=    | The one at the top of an export                     |
+| =#+toc: headlines N=  | One where the line stands, in an export only        |
+| =:TOC_N:= on a heading | The one under that heading, in the note            |
+| =:TOC:= on a heading  | The same, with N from =toc:N=, else =*org-toc-max-depth*= |
+
+None wins over another. With =toc:t= and a =#+toc:= line an export has two
+tables, and =toc:nil= keeps only the =#+toc:= one. ~M-x
+describe-org-keyword-settings~ shows the table with the depth now in force.
+
+The two styles write the same list with different links. Take this note:
+
+#+begin_example
+,* Contents :TOC:
+,* Garden plan
+,** Vegetables
+,** Fruit & nuts
+,* Tools
+#+end_example
+
+With the =gh= style (=:TOC:=, or =:TOC_2_gh:=) the table under =Contents= is
+
+#+begin_example
+- [[#garden-plan][Garden plan]]
+  - [[#vegetables][Vegetables]]
+  - [[#fruit--nuts][Fruit & nuts]]
+- [[#tools][Tools]]
+#+end_example
+
+and with the =org= style (=:TOC_2_org:=)
+
+#+begin_example
+- [[Garden plan][Garden plan]]
+  - [[Vegetables][Vegetables]]
+  - [[Fruit & nuts][Fruit & nuts]]
+- [[Tools][Tools]]
+#+end_example
+
+Choose =gh= for a file that is also read on GitHub, a README above all.
+GitHub makes the anchor of a heading by a fixed rule (lower case, spaces
+as dashes, other signs dropped, =-1= for a second heading of the same name),
+and the =gh= links follow that rule, so they work on the web page as well as
+in Tuatara. Choose =org= for a note that stays in Org: the link is the
+heading's title, as you would write one yourself, it reads the same in the
+file, and it needs no anchor rule to be right. Two headings with one title
+lead to the first with =org=, where =gh= keeps them apart. To use =org=
+everywhere, =(setf *org-toc-style* "org")=; for one table, name it in its tag.
+Both follow ~RET~ on the link. Headings tagged =noexport=, those under a
+=COMMENT= heading, and keywords, priorities and tags in the titles are left
+out of either.
+
+#+table: commands tangle-code-files org-update-toc org-dynamic-block-insert-dblock org-dblock-update org-update-all-dblocks insert-formatted-links-block insert-formatted-missing-links-block insert-formatted-backlinks-block insert-formatted-files-block insert-formatted-files-as-headings-block insert-formatted-sequence-block
+
+#+table: settings *org-src-languages* *code-files-make-directories* *org-toc-on-save* *org-toc-max-depth* *org-toc-style*
+
+#+table: faces :org-block :org-block-begin-line :org-block-end-line :org-quote :org-verse
+
+** Exporting
+
+A note is for you. A letter, a report or a set of minutes is for someone
+else, who wants a PDF or a Word document. Exporting makes one from the note.
+The headings become numbered sections, the lists become lists, the tables
+become tables, and the marks for bold and italic become bold and italic.
+
+Tuatara makes a PDF by way of LaTeX, a typesetting system that produces
+handsome pages. You do not need to know LaTeX, but it must be installed: the
+program =xelatex= or =lualatex=, from the collection called TeX Live. ~M-x
+check-health~ tells you whether Tuatara found one. A Word document needs
+nothing else installed.
+
+The export commands have no keys. Run them with ~M-x~. The command you ran
+last is offered first there, so exporting again after a change is ~M-x RET~.
+
+*** What goes at the top of the note
+
+A few lines at the top say what the document is.
+
+#+begin_example
+,#+title: The fence between our sections
+,#+author: Aroha Ngata
+,#+date: 14 October 2026
+,#+options: toc:nil num:nil
+#+end_example
+
+The title, author and date are printed at the head of the document. Without
+an =#+author:= line, the name in =*user-full-name*= is used. It is =nil= as
+standard, and the document then has no author. Give it your name as you want
+it printed, =(setf *user-full-name* "Aroha Ngata")=. The same name fills
+=%author%= in a note template and =$AUTHOR= in a snippet. The =#+options:=
+line here leaves out the table of contents and the numbers before headings,
+which suits a letter. Leave the line out and a report gets both. A heading
+tagged =noexport= is left out of the document with everything under it,
+which is handy for notes to yourself.
+
+With =toc:3= in place of =toc:nil= the table of contents lists headings of one
+to three stars, counted from the highest heading in the note. A line
+=#+toc: headlines 3= puts such a table where it stands. Each number is for its
+own table: =toc:4= and a later =#+toc: headlines 2= give a table four levels
+deep at the top and one two levels deep at that line (in the PDF by the LaTeX
+package etoc; a web page writes the first such line only). Without a number the
+table of a PDF or a Word document goes three levels deep, or as many as =H:= on
+the =#+options:= line says; a web page's lists every heading. A heading deeper
+than =H:= is printed as an item of a list in the PDF, and its table leaves it
+out. =num:3= numbers headings to the same depth. The numbers count headings in a
+report or a book too (=#+latex_class: report=), where the highest headings are
+parts and the next chapters.
+
+*** Making a PDF
+
+~M-x org-export-latex-pdf-enhanced-buffer~ makes the PDF and shows it beside
+your note. The work is done in the background, so you can go on writing. The
+mode line shows that a job is running and the echo area says when the file
+is written and how long it took. The PDF is put beside the note with the
+same name, =letter.pdf= for =letter.org=. If you change the note and export
+again, the PDF on the screen is read again at the page you were on.
+
+Two more commands do the same and differ only in what happens afterwards.
+~M-x org-export-latex-pdf-enhanced~ makes the PDF and shows nothing. ~M-x
+org-export-latex-pdf-enhanced-xdg~ opens it in your desktop's PDF reader.
+
+The export takes the note as the buffer has it, saved or not. To export only
+part of a note, select the lines first.
+
+If LaTeX fails, the echo area names the line of your note where it went
+wrong, and a buffer called =*LaTeX errors*= lists each error. ~RET~ on one
+shows that line of the note. The list is also a list of places (chapter 2):
+~M-g n~ and ~M-g p~ go from error to error from any buffer, showing each line
+of the note in turn. An export is a background job like any other, so
+chapter 11 applies to it. ~C-x j~ lists what is running and ~C-x J~ stops it.
+
+*** Bibliographies and indexes
+
+A note cites its sources the way Org does. Name a bibliography file and the
+LaTeX package that sets it, then cite by key and say where the list goes:
+
+#+begin_example
+,#+cite_export: biblatex authoryear
+,#+bibliography: sources.bib
+,* Findings
+The fence line was moved in 1998 [cite:@surveyor1998].
+
+,#+print_bibliography:
+#+end_example
+
+=#+cite_export:= takes =biblatex= with a style (two styles, for the
+bibliography and the citations, as =authoryear/numeric=), =natbib=, or
+=bibtex= with a style (=plain= unless you name one). A citation
+=[cite:@key]= becomes =\autocite{key}= for biblatex, =[cite/t:@key]= names
+the author in the sentence, and =[cite/t/c:@key]= does so with a capital
+letter. Text before and after a key, =[cite:see @key p. 4]=, is printed
+around that reference, and text before the first key and after the last,
+set off by =;=, around them all. The =#+bibliography:= file is taken from
+the note's directory, so the PDF finds it wherever =#+export_file_name= puts
+the LaTeX. A LaTeX file of your own that uses biblatex, =\bibliography= or
+=\makeindex= is handled the same way.
+
+When LaTeX leaves a bibliography or an index to make, the export runs biber
+(for biblatex), bibtex (for =\bibliography=) or makeindex (for an index),
+then LaTeX again, and the status of the job says which is running. Each runs
+only when what it reads has changed: the citations, the =.bib= files and a
+bibtex style, found where TeX finds them. When one of those cannot be looked
+for, it runs every time to be safe. Making the PDF again after a small change
+otherwise takes one run of LaTeX, and a bibliography made after the last run
+LaTeX is allowed gets one run more to take it in. biber unpacks itself once
+into a directory kept beside the export's working directory, not on every
+run. If one of them finds a fault, the PDF is made all the same and
+=*LaTeX errors*= lists what it said under its name, each error with the line
+of the =.bib= file where there is one; ~M-g n~ takes you there. A program that is not
+installed is mentioned once in the echo area when the PDF is written, and
+the bibliography or index is left out.
+
+They run as LaTeX does, shut in the sandbox (chapter 12): they read the
+document's directory and the TeX installation, and write only in the export's
+own working directory. Keep the =.bib= file beside the note, or name it from a
+trusted note by its path, so that they can read it. What they leave in that working directory is read
+back only when it is a file of its own: a symbolic link there, which a
+document could make to lead to any file of yours, is never followed.
+
+*** Making a Word document
+
+~M-x org-export-docx~ writes the note as a Word document beside it, and
+~M-x org-export-docx-xdg~ also opens it in your desktop's word processor. The
+document is laid out as the enhanced PDF is, with the same numbering and the
+same tables, so you can send whichever the other person prefers.
+
+#+begin_try Try it, with a letter
+1. Open =~/letter.org= with ~C-x C-f~. Press ~i~ and type the four lines
+   shown under "What goes at the top of the note", with your own name.
+2. Leave an empty line and type the letter:
+   #+begin_example
+   Dear Mr Tane,
+
+   Thank you for offering to share the cost of the new fence. The quote
+   from Motueka Fencing is *$1,840* for the whole length.
+
+   - Posts and rails: $1,100
+   - Labour: $740
+
+   Yours sincerely,
+
+   Aroha Ngata
+   #+end_example
+3. Press ~C-g~ and save with ~C-x C-s~.
+4. Press ~M-x~, type =org-export-latex-pdf-enhanced-buffer= and press ~RET~.
+   After a few seconds the letter is shown as a PDF at the right, with the
+   title at the top, the sum in bold and the two costs as a list. On a narrow
+   screen the PDF takes the whole window instead. Press ~C-x k~ to close it
+   and return to the note before the next step.
+5. Press ~M-x~, type =org-export-docx= and press ~RET~. The echo area says
+   that =~/letter.docx= was written.
+#+end_try
+
+*** Two kinds of export
+
+The commands above all have "enhanced" in their name or, for Word, behave
+that way. There is a second, plainer family without the word.
+
+| Family   | Commands begin               | What you get                        |
+|----------+------------------------------+-------------------------------------|
+| Plain    | =org-export-latex-pdf=       | The PDF that Emacs's Org would make from the same note |
+| Enhanced | =org-export-latex-pdf-enhanced= | Tuatara's own layout, with the additions below |
+
+Use the plain export for a note that must come out exactly as it did in
+Emacs. Use the enhanced export for everything else. It adds four things:
+tables that are fitted to the page, layout settings written in plain words,
+templates that give a document your own look, and a way to black out names.
+
+Each family also has a command that stops at the LaTeX file and makes no
+PDF, ~M-x org-export-latex~ and ~M-x org-export-latex-enhanced~, for people
+who want to work on the LaTeX themselves. If you have a LaTeX file of your
+own, ~M-x export-latex-compile-pdf~ and its two companions make a PDF from
+it in the same three ways.
+
+*** From a line to the PDF and back
+
+A PDF made by ~M-x export-latex-compile-pdf-buffer~ or one of its companions
+comes with a note of where each line of the LaTeX went on the pages. In the
+LaTeX file, ~C-c C-v~ shows the line the cursor is on in the PDF: the PDF
+opens beside the file if it is not shown, turns to the page the line is on,
+scrolls it into sight and marks it for a moment. In the PDF, ~C-c C-v~ goes the
+other way. It opens the LaTeX file in the other window at the line that made
+the part of the page you see, the place last marked or the middle of the
+window. In the window of the desktop version, a double click on a page goes to
+the line of that point.
+
+When there is no PDF yet, or the file has changed since it was made, ~C-c C-v~
+saves the file and makes the PDF again first, in the background, and shows
+the line once the new PDF is there. So after an edit, ~C-c C-v~ shows the text
+as it is now.
+
+From an Org file, ~M-x show-line-in-pdf~ does the same for a PDF exported in
+this session, exporting it again the same way when the note has changed, and
+~C-c C-v~ in the PDF then opens the Org file, not the LaTeX written from it.
+There is no key for it in Org files.
+
+When the PDF was made some other way, without the note of where the lines
+went, Tuatara says so and names the command that makes the PDF again.
+In a terminal, where pages are shown as their text, the text is turned to the
+page and the place is not marked.
+
+Going back from the PDF opens only files in the directory of the LaTeX file,
+or the Org file it was written from. A line that comes from any other file
+(a class or package of TeX's own, or a file a document read from elsewhere)
+is named in the echo area instead.
+
+*** Layout in plain words
+
+In the enhanced export a wide table is made to fit. Columns of sentences
+wrap, numbers go to the right, and the header row is repeated when the table
+runs on to another page. Most tables need nothing from you.
+
+When you do want to change how something is set, you say so in a drawer
+called =:EXPORT:=, in words. Put it right under a heading to affect the
+heading and all under it, or just above a table, list, block or picture to
+affect that.
+
+#+begin_example
+,* Costs
+:EXPORT:
+new page: before
+spacing: 1.5
+:END:
+#+end_example
+
+This starts the section on a new page and sets its lines one and a half
+apart. The drawer itself is never printed. You do not need to remember the
+settings. ~M-x org-insert-export-drawer~ writes a drawer for whatever the
+cursor is on, holding every setting that fits it, each set to =auto= for you
+to change. ~M-x describe-export-settings~ explains them all, with examples.
+A word in a drawer that is not a setting is shown in the colour of an error
+as you type it.
+
+*** Your own look
+
+A template gives a document its look: the fonts, the margins, a header with
+a logo. A note chooses one with a line at the top, =#+template:= and the
+template's name. Templates are kept in your configuration directory.
+
+The simplest start is ~M-x export-latex-template-copy~. It copies one of the
+built-in templates to your directory and opens it for you to change. If someone
+gives you a Word or LaTeX document and asks for reports that look like it,
+~M-x export-template-from-docx~ and ~M-x export-template-from-latex~ make a
+template from that document.
+
+A note template is the other half: the lines a new note of some kind starts
+with, such as the =#+template:= line and the headings every report has.
+~C-x i~ reads one into the buffer.
+
+The programs that make the PDF are in =*latex-engines*=, which is
+=("xelatex" "lualatex")= as standard. They are tried in that order, and when
+one fails the next is tried. A name is looked for on the PATH and then in
+TeX Live's own directories; a full path, =~/texlive/bin/xelatex= for one
+installed elsewhere, works too. A note or a LaTeX file that names its program
+in its first line (=#+latex_compiler: lualatex= in Org, or =%!TEX program =
+lualatex= in LaTeX) has that one tried first when it is in the list.
+=(setf *latex-engines* '("lualatex"))= tries only that one.
+
+The fonts of the enhanced export are =*latex-main-font*= for the text,
+=*latex-sans-font*= and =*latex-mono-font*=. Each is the name of a font
+family installed on your machine, as the system's font list gives it, or
+=nil=, the standard. At =nil= Tuatara picks the first of a list that is
+installed. For the text that is Libertinus Serif, Noto Serif, Source Serif 4,
+Liberation Serif, DejaVu Serif. For the sans-serif it is Libertinus Sans, Noto
+Sans, Source Sans 3, Liberation Sans, DejaVu Sans. For code it is the font of
+your window, =*gui-font*=, when it is installed, else JetBrains Mono, Cascadia
+Code, Noto Sans Mono, Source Code Pro, Liberation Mono, DejaVu Sans Mono. The
+styles that ask for chosen fonts, the standard one among them, use these
+three. To set a document in Noto Serif with code in Cascadia Code:
+
+#+begin_example
+(setf *latex-main-font* "Noto Serif"
+      *latex-mono-font* "Cascadia Code")
+#+end_example
+
+The text of the PDF is then in Noto Serif, its headings (in the sans-serif
+face) are as before, and a source block is in Cascadia Code.
+
+A template that shows a logo gets it from the directory =*logos-directory*=
+names. At =nil=, the standard, that is =logos/= in your configuration directory,
+=~/.config/tuatara/logos/=. A note's =#+logo: firm.pdf= line is looked for
+there. If your pictures are kept elsewhere,
+=(setf *logos-directory* "~/Pictures/logos")=.
+
+*** Hiding names
+
+Sometimes a document must go out with a name blacked out. Select the name,
+or put the cursor on it, press ~C-c m~ and choose =R=. The name is wrapped
+in a mark and shown in its own colour. In the PDF and in the Word document
+a black box stands where the name was, and the name is nowhere in the file.
+~C-c M~ takes the mark away again.
+
+The mark is =R= for a name. In your own LaTeX files the commands that hide
+their argument are those in =*latex-redaction-commands*=, ="R"=, ="D"= and
+="redact"= as standard, written without the backslash, so that =\R{John
+Otago}= is hidden text. =export-check-redactions= and the PDF export look
+for them in a LaTeX file just as they do for the marks of a note. If your
+templates call it =\hide{...}=, add it:
+=(setf *latex-redaction-commands* '("R" "D" "redact" "hide"))=.
+
+A box is of little use if the same name stands in plain text two pages
+later. ~M-x export-check-redactions~ looks for every hidden text that also
+appears unhidden and lists the places. The export runs the same check in
+the background before it writes anything, and when it finds such a place
+it lists them and asks whether to go on. Only the enhanced export hides
+text. The plain export refuses a note that asks for it.
+
+*** Notes from other people
+
+An exported note can pull in other files: pictures it shows, setup files and
+templates it names. A note that someone sent you could name files of yours that
+way. So a note in an untrusted directory (=*untrusted-directories*=: your
+downloads, as standard, and the evidence directories) takes files only from its
+own directory and the directories in it, and your note templates' directory,
+and the export says what it left out. A note anywhere else is yours, and takes
+them from anywhere: a note in =~/notes/work/= that says =#+SETUPFILE:
+~/notes/latex/house.org= is exported with that file. Chapter 12 has more on
+files you do not trust.
+
+The setting =*export-trusted-directories*= of earlier releases is gone. An
+untrusted note that should take files from elsewhere can be moved out of the
+untrusted directory once you have read it.
+
+Each setup file is read once for an export, the first time it is named. A
+setup file named again, by the note or by another setup file, adds nothing the
+second time, so setup files that name each other cannot make an export read
+them over and over. Bibliography files are held to the same directories, and
+one named without an ending is looked for with =.bib= added, as BibTeX looks
+for it.
+
+#+table: commands org-export-latex-pdf-enhanced org-export-latex-pdf-enhanced-buffer org-export-latex-pdf-enhanced-xdg org-export-latex-enhanced org-export-docx org-export-docx-xdg org-export-html
+
+#+table: commands org-export-latex-pdf org-export-latex-pdf-buffer org-export-latex-pdf-xdg org-export-latex export-latex-compile-pdf export-latex-compile-pdf-buffer export-latex-compile-pdf-xdg
+
+#+table: commands show-line-in-pdf pdf-view-show-source pdf-view-show-source-at-click
+
+#+table: commands org-insert-export-drawer describe-export-settings describe-org-keyword-settings export-latex-template-copy export-template-from-docx export-template-from-latex insert-formatted-note-template org-macro-wrap org-macro-unwrap export-check-redactions
+
+#+table: settings *latex-engines* *latex-main-font* *latex-sans-font* *latex-mono-font* *logos-directory* *latex-redaction-commands*
+
+#+table: faces :org-macro :org-macro-text
+
+** How Tuatara's Org differs from Emacs's
+
+Many people use Tuatara and Emacs on the same notes. This section says what
+works in each, what one keeps but does not act on, and what to leave out of a
+file that both must read. The Emacs side was checked against the Org manual
+and against Org 9.8.7, by exporting small notes.
+
+Neither program changes a line it does not understand, so a note can be opened
+in both. What differs is what each does with a line the other wrote. It may be
+kept as text, so that the export prints it. It may be ignored: Org reads the
+line and does nothing with it. Or both may act on it, but not alike. The
+tables below say which, line by line.
+
+*** What Org has that Tuatara has not
+
+These are the features of Org that Tuatara lacks, or has in part. The last
+column says what to use in Tuatara. The lines stay in the file whatever
+Tuatara does with them, so Emacs still has them when the note goes back.
+
+| Org                       | Tuatara                                 | Use instead |
+|---------------------------+-----------------------------------------+-------------|
+| Running code (Babel): ~C-c C-c~ on a source block, =#+CALL:=, =src_sh{...}= in a line, =#+RESULTS:= | Nothing in a note is run. The lines are kept; a block is coloured and tangled | Run the code in the terminal (chapter 17) and paste the answer |
+| Formulas in Emacs Lisp, =;L= or ='(...)= | Not run | A formula in Calc's style |
+| A macro whose text begins =(eval= | Not run; the macro gives nothing | A macro that is plain text |
+| Calc functions in a formula | Some: =vsum=, =vmean=, =vmedian=, =vmax=, =vmin=, =vcount=, =vprod=, =abs=, =round=, =floor=, =ceil=, =sqrt=, =exp=, =ln=, =log10=, =sin=, =cos=, =tan= | Not checked what else is missing |
+| =#+CONSTANTS:= and =remote()= in a formula | Not read | Write the number in the formula |
+| =#+INCLUDE:= | Not read; the exports leave the line out | Copy the text |
+| Attachments (~C-c C-a~), the =attachment:= link | Not built; the link is not followed | A =file:= link |
+| Links of type =shell:=, =elisp:=, =help:=, =info:=, =irc:=, =docview:= | Not followed; the echo area says so | Web, file, ID and heading links |
+| =#+LINK:= abbreviations | Not read | The whole address |
+| Effort estimates, column view, =#+COLUMNS:=, =#+BEGIN: columnview=, habits | Not built; =Effort= and =STYLE= are ordinary properties | Not replaced |
+| =#+TAGS:= lists and groups, =#+PRIORITIES:= | Not read | Tags and priorities written on the headings |
+| Archiving a subtree (~C-c C-x C-a~) | No command. =#+ARCHIVE:= and =:ARCHIVE:= are read, only to find archive files for the clock table | Refile, ~C-c C-w~ |
+| Agenda dispatcher: search (=s=), text search (=/=), stuck projects (=#=, =!=) | Offers =a=, =t=, =m=, =c= and views of your own | A match under =m=; the filter of the agenda |
+| Custom agenda commands of other kinds | =:tags-todo=, =:tags= and =:todo= only | Not replaced |
+| =#+STARTUP:= words other than those listed below | Ignored | Settings in your init file |
+| Fast keys and logging marks in a =#+todo:= line, =TODO(t)= | The part in brackets is dropped | ~C-c C-t~; the log settings |
+| Several =#+TODO:= lines as sets cycled one at a time | The lines are joined into one set | One line |
+| Other exporters: ASCII, Beamer, iCalendar, Markdown, ODT, Texinfo, man page | Not built. There is no export menu; the commands are run with ~M-x~ | PDF, Word or HTML |
+
+Some of these are left out on purpose. A note from someone else can hold code,
+a macro or a formula that Emacs would run when it opened the file. Tuatara
+reads such a note as text only.
+
+*** What Tuatara adds to Org
+
+~M-x describe-org-keyword-settings~ lists every =#+KEYWORD:= line Tuatara
+reads and the words of =#+OPTIONS:= and =#+STARTUP:=, and marks the lines
+that only Tuatara reads. After =Not set:= each row says what holds when the
+note does not give it. A default a setting decides is shown as that setting
+has it now.
+
+These are the names that only Tuatara acts on. Each can be written in a note
+that Emacs opens too. The last column is what Org 9.8.7 does with the line.
+
+| Name                       | In Tuatara                              | In Emacs Org |
+|----------------------------+-----------------------------------------+--------------|
+| =:EXPORT:= drawer          | Layout settings, in words, for a heading, table, list, block or picture | Kept as text; an export prints its lines |
+| =#+template: NAME=         | The template that gives a PDF or Word document its look. =#+latex_template:= and =#+latex_style:= are older names for it | Ignored |
+| =#+logo: FILE=             | The picture a template's logo takes, from =*logos-directory*= | Ignored |
+| A line =#+KEY:= that a template names | What the template puts in its place | Ignored |
+| =#+export_select_tags:=, =#+export_exclude_tags:= | Keep or leave out headings by tag; Org's =#+select_tags:= and =#+exclude_tags:= are read as well | Ignored. Org's keywords are =#+select_tags:= and =#+exclude_tags:= |
+| The macros =redact(TEXT)=, =R(TEXT)=, =protect(TEXT)= and =P(TEXT)=, each written in triple curly braces | Hide the text in the enhanced PDF, the Word document and the web page | An error, =Undefined Org macro: redact; aborting=, and no export |
+| =#+options: redact:nil= and =protect:t= | Print the redacted text; hide the protected | Ignored |
+| =:appendix:= tag; =annex: yes= in a drawer | Begins the annexes in the enhanced export | Kept as a tag, printed after the title |
+| =:TOC:= tag, =:TOC_3_gh:= | A table of contents kept under the heading | Kept as a tag, printed after the title. The Emacs package toc-org reads it as Tuatara does |
+| =#+BEGIN: formatted-links= and the other =formatted-= blocks | Lists of files with formatted names. The names =denote-links= and the rest make the same blocks | An error, =void-function org-dblock-write:formatted-links=, and the block is left as it was. With the Denote package, the =denote-= names work |
+| =define-dblock-writer= in the init file | A dynamic block of your own | Emacs defines one with =org-dblock-write:NAME= in Emacs Lisp |
+| =NOTIFY_BEFORE= property, =:notify:= tag | Minutes before an entry is told on the desktop; which entries | An ordinary property and tag |
+| =#+ATTR_ORG: :float left= or =right= | A picture with the text going round it | Ignored: the Org manual lists no =:float= for this line |
+| =#+STARTUP: inlineimages=, =latexpreview= | Show pictures and formulas, only when =*org-startup-shows-pictures*= is =t= and the note was not opened safely | Show them |
+
+Three of these need a longer word.
+
+*** The :EXPORT: drawer
+
+A drawer such as
+
+#+begin_example
+,* Costs
+:EXPORT:
+new page: before
+:END:
+#+end_example
+
+is how Tuatara is told to set a part of the document. Tuatara never prints it,
+and never prints a =LOGBOOK= drawer either. Emacs prints every drawer unless
+the note's options leave it out, so a note exported there carries =new page:
+before= into the document as text. Add the line
+
+#+begin_example
+,#+options: d:(not "EXPORT" "LOGBOOK")
+#+end_example
+
+to a note that has such drawers and goes to Emacs. ~M-x
+org-insert-export-drawer~ adds it with the drawer. Both read =d:= alike: =t=
+prints every drawer but =LOGBOOK=, =nil= none, =d:(not "NOTES")= all but those
+named and =d:("NOTES")= only those. Tuatara never prints the =EXPORT= drawer.
+
+Emacs reads a =:PROPERTIES:= drawer only straight under its heading. In a test
+a property drawer put under an =:EXPORT:= drawer was printed as text. Put
+=:PROPERTIES:= first, and the =:EXPORT:= drawer after it, as Tuatara writes
+them.
+
+*** Hidden text
+
+Text inside =redact= or =protect= is a black box in the PDF that the enhanced
+export makes, and in the Word and web page exports. Org has no such macro.
+Emacs stops at the first call, with an error and no file. To export the same
+note in Emacs, give it a macro of that name:
+
+#+begin_example
+,#+macro: redact $1
+#+end_example
+
+Emacs then prints the text in plain words. For a note whose names must stay
+hidden, export only from Tuatara.
+
+*** Tags that choose what is exported
+
+Both programs leave out a heading tagged =noexport= and everything under a
+=COMMENT= heading. The keywords that change which tags those are differ.
+Emacs reads =#+exclude_tags:= and =#+select_tags:=. Tuatara reads those and
+also =#+export_exclude_tags:= and =#+export_select_tags:=. For a note read by
+both, write Org's own forms.
+
+*** Where both read a line, but not alike
+
+| Line                       | In Tuatara                              | In Emacs Org |
+|----------------------------+-----------------------------------------+--------------|
+| =#+options:=               | The options =-=, =<=, =^=, =\n=, =f=, =e=, =d=, =todo=, =pri=, =tags=, =num=, =toc=, =H=, =arch=, =author=, =date=, =title=, =redact= and =protect=; not every export reads every one. A value is one word, or a list in parentheses such as =d:(not "EXPORT" "LOGBOOK")= | Many more |
+| =#+setupfile:=             | From anywhere for a trusted note; only from the note's directory for an untrusted one (=*untrusted-directories*=) | A file or a web address |
+| =#+toc:=                   | =headlines= with a depth, =tables=, =figures= | Also =listings= and =local= |
+| =#+macro:=                 | Text with =$1= to =$9=. A value that begins =(eval= gives nothing | The same, and the value is run |
+| =#+startup:=               | =overview=, =fold=, =content=, =showall=, =nofold=, =hidedrawers=, =showdrawers=, =indent=, =noindent=, =literallinks=, =descriptivelinks=, =inlineimages=, =noinlineimages=, =latexpreview=, =nolatexpreview= | Many more |
+| =#+HTML:= and raw HTML    | Left out of the web page, and the export says so | Written as they are |
+| =#+todo:= and =#+seq_todo:=, =#+typ_todo:= | All three are one kind | Not checked for =#+typ_todo:= |
+| The round of =C-c C-t=     | Skips =CANCELLED= and =CANCELED= (=*org-todo-keywords-not-cycled*=) | Not checked |
+| =:tangle= into a directory that is not there | An error, unless =:mkdirp yes= or =*code-files-make-directories*= says to make it | Made with =:mkdirp= non-nil |
+| Tangling, ~C-c C-v t~      | Lists the files and asks before it writes | Not checked |
+
+The settings are different, too. Org's are variables of Emacs set in its init
+file, and Tuatara reads only its own, with names of its own. A setting such as
+=org-capture-templates= is not read here. Capture templates are files in a
+directory (=*capture-template-directories*=).
+
+*** A note for both programs
+
+What follows from the tables:
+
+- Names that only Tuatara reads do no harm in Emacs: =#+template:=, =#+logo:=,
+  =#+export_...tags:=, =NOTIFY_BEFORE=, =#+ATTR_ORG: :float=, and the tags
+  =:appendix:= and =:TOC:= (they are printed as tags).
+- Put =#+options: d:(not "EXPORT" "LOGBOOK")= in a note with =:EXPORT:=
+  drawers that Emacs exports.
+- Leave =redact= and =protect= out of such a note, or give Emacs a macro of
+  that name.
+- Leave the =formatted-= blocks out, or write the =denote-= names, if Emacs
+  has no Denote.
+- Write =#+select_tags:= and =#+exclude_tags:= beside the =export_= forms.
+- Do not count on code, Lisp formulas or =(eval= macros: Emacs runs them and
+  Tuatara does not.
+
+Not checked: other versions of Org than 9.8.7, the exporters of Emacs
+packages outside Org, and these features of Org: inline tasks, radio targets,
+sparse trees, narrowing, sorting, encrypted entries and the mobile
+application.
+
+** Where to go from here
+
+Org rewards starting small. Keep one file of notes and fold it. Add a list
+with checkboxes when you next go shopping. When the tasks pile up, give them
+dates and open the agenda each morning. The rest of this chapter will still
+be here when you need a table or a PDF.
+
+Many people keep their Org files under version control, so that every change
+to their notes is kept and can be taken back. That is the subject of the
+next chapter.

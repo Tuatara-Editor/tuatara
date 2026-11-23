@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+# tools/install-desktop.sh --- Put Tuatara in the desktop's list of applications.
+# Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
+# Put Tuatara in the desktop's list of applications: writes
+# ~/.local/share/applications/tuatara.desktop, which starts the window
+# (tools/tuatara-tui.sh --gui) on the files given, and offers Tuatara in "Open
+# With" for text, and tuatara-client.desktop beside it, "Tuatara (client)",
+# which opens them in a window of the daemon (--client --fallback, an editor of
+# its own when none runs); and puts its icon, in every size there is, under
+# ~/.local/share/icons/hicolor/, and the completion of its options for bash as
+# ~/.local/share/bash-completion/completions/tuatara. The desktop matches the
+# window to it by the name "tuatara". The program writes the entries itself,
+# from the templates in data/, asked by TUATARA_DESKTOP_ENTRIES in its
+# environment. Run it again after moving the project;
+# tools/install-desktop.sh --remove takes them away.
+#
+# tools/install-desktop.sh --appimage FILE installs the AppImage FILE instead:
+# copied to ~/.local/bin/tuatara (tuatara in a terminal starts it there), the
+# entry and the icons taken from inside it, so that this script and the
+# AppImage are all another computer needs. --remove takes that copy away too.
+# The AppImage runs this itself: Tuatara-x86_64.AppImage --install-desktop, or
+# --remove-desktop. Run so by the legacy AppImage (TUATARA_APPIMAGE=legacy),
+# --dark or --light after FILE has the entry start it so, as
+# Tuatara-legacy-x86_64.AppImage --install-desktop --dark does.
+set -euo pipefail
+root="$(cd "$(dirname "$0")/.." && pwd)"
+data="${XDG_DATA_HOME:-$HOME/.local/share}"
+applications="$data/applications"
+icons="$data/icons/hicolor"
+completions="$data/bash-completion/completions"
+installed="$HOME/.local/bin/tuatara"
+# true when the file $1 is an AppImage: an ELF program with the AppImage type 2 mark
+is_appimage() { [ "$(od -An -tx1 -j8 -N3 "$1" 2>/dev/null | tr -d ' \n')" = "414902" ]; }
+if [ "${1:-}" = "--remove" ]; then
+  rm -f "$applications/tuatara.desktop" "$applications/tuatara-client.desktop"
+  rm -f "$icons"/*/apps/tuatara.*
+  rm -f "$completions/tuatara"
+  # only the AppImage this script put there, never a program of another kind
+  if [ -f "$installed" ] && is_appimage "$installed"; then
+    rm -f "$installed"
+    echo "Removed $installed"
+  fi
+  echo "Removed $applications/tuatara.desktop, tuatara-client.desktop, the icon and the bash completion"
+  exit 0
+fi
+unpacked=""
+trap 'if [ -n "$unpacked" ]; then rm -rf "$unpacked"; fi' EXIT
+if [ "${1:-}" = "--appimage" ]; then
+  appimage="${2:?--appimage needs the AppImage file}"
+  case "${3:-}" in
+    "") style="" ;;
+    --dark|--light)
+      if [ "${TUATARA_APPIMAGE:-}" != legacy ]; then
+        echo "$3 is taken by the legacy AppImage alone: this window follows the desktop's light or dark style" >&2
+        exit 1
+      fi
+      style="$3" ;;
+    *) echo "$3 is neither --dark nor --light" >&2; exit 1 ;;
+  esac
+  if ! is_appimage "$appimage"; then
+    echo "$appimage is no AppImage" >&2
+    exit 1
+  fi
+  mkdir -p "$(dirname "$installed")"
+  # a copy beside it first, renamed over the old one: a running Tuatara keeps its own
+  cp "$appimage" "$installed.new"
+  chmod 755 "$installed.new"
+  mv -f "$installed.new" "$installed"
+  # the icons it holds: where it is mounted when it runs this (--install-desktop),
+  # else unpacked where nothing else is; the entries are written by the copy
+  # installed (it takes the request only for itself), run unpacked when FUSE
+  # may be missing
+  if [ -n "${APPDIR:-}" ] && [ -d "$APPDIR/tuatara/icons" ]; then
+    inside="$APPDIR"
+    unpack=""
+  else
+    unpacked="$(mktemp -d)"
+    (cd "$unpacked" && "$installed" --appimage-extract 'tuatara/icons/*' >/dev/null &&
+     "$installed" --appimage-extract 'tuatara/completion/*' >/dev/null)
+    inside="$unpacked/squashfs-root"
+    unpack=1
+  fi
+  entries() {
+    env TUATARA_DESKTOP_ENTRIES="$applications" ${unpack:+APPIMAGE_EXTRACT_AND_RUN=1} \
+      "$installed" "$installed" ${style:+"$style"}
+  }
+  source_icons="$inside/tuatara/icons/hicolor"
+  source_completion="$inside/tuatara/completion/tuatara"
+else
+  source_icons="$root/data/icons/hicolor"
+  source_completion="$root/build/completion/tuatara"
+  # the entries started by tools/tuatara-tui.sh, which runs build/tuatara
+  entries() { TUATARA_DESKTOP_ENTRIES="$applications" "$root/tools/tuatara-tui.sh" "$root/tools/tuatara-tui.sh"; }
+fi
+# the icon, where the desktop looks icons up by name; an earlier one taken away
+# first, so that a size or drawing no longer made is not shown in its place
+rm -f "$icons"/*/apps/tuatara.*
+for f in "$source_icons"/*/apps/tuatara.*; do
+  dest="$icons/${f#"$source_icons/"}"
+  mkdir -p "$(dirname "$dest")"
+  cp "$f" "$dest"
+done
+# the entries come first: from a fresh checkout they build the program that writes the completion
+entries >/dev/null
+# the completion of the options for bash, where bash-completion looks for your own
+completion_copied=no
+if [ -f "$source_completion" ]; then
+  mkdir -p "$completions"
+  cp "$source_completion" "$completions/tuatara"
+  completion_copied=yes
+fi
+# a desktop that keeps a cache of the icons sees the new one at once
+if command -v gtk-update-icon-cache >/dev/null && [ -f "$icons/index.theme" ]; then
+  gtk-update-icon-cache -q -t "$icons" || true
+fi
+if command -v update-desktop-database >/dev/null; then
+  update-desktop-database -q "$applications" || true
+fi
+[ -n "${appimage:-}" ] && echo "Installed $installed"
+echo "Wrote $applications/tuatara.desktop, tuatara-client.desktop, the icon under $icons"
+if [ "$completion_copied" = yes ]; then echo "and the bash completion $completions/tuatara"; fi

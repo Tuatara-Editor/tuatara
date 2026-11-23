@@ -1,0 +1,85 @@
+#+title: Case files
+#+identifier: 20260301T100300
+
+* One file
+#+BEGIN: denote-files :regexp "epsilon"
+A note with no front matter at all.
+* Its only headline :here:
+Text.
+#+END:
+* Separated, front matter left out, with links
+#+BEGIN: denote-files :regexp "==1" :sort-by-component signature :file-separator t :no-front-matter t :add-links t
+- [[denote:20260101T090000][1  Alpha root]]
+
+  Body of the alpha root, linking to [[denote:20260102T090000][Beta child]].
+
+  * Section one
+  Some text under it.
+  ** Sub section
+  ​#+begin_src sh
+  echo hi
+  ​#+end_src
+  ​#+caption: indented keyword
+
+
+--------------------------------------------------
+
+
+- [[denote:20260102T090000][1=1  Beta child]]
+
+  Back to [[denote:20260101T090000][Alpha root]], and to its
+  [[denote:20260101T090000::*Section one][Alpha root::Section one]].
+
+
+--------------------------------------------------
+
+
+- [[denote:20260104T090000][1=1=1  Delta grandchild]]
+
+  No links here.
+
+
+--------------------------------------------------
+
+
+- [[denote:20260103T090000][1=2  Gamma, the second child]]
+
+  Only an identifier: [[denote:20260101T090000]].
+  And the case of backlinks: [[denote:20260301T100200][Case]].
+#+END:
+* Two lines left out, a separator of its own, links of identifiers
+#+BEGIN: denote-files :regexp "beta\\|delta" :no-front-matter 2 :file-separator "\n===\n" :add-links id-only
+- [[denote:20260102T090000]]
+
+  ​#+filetags: :alpha:beta:
+  ​#+identifier: 20260102T090000
+
+  Back to [[denote:20260101T090000][Alpha root]], and to its
+  [[denote:20260101T090000::*Section one][Alpha root::Section one]].
+
+===
+- [[denote:20260104T090000]]
+
+  ​#+filetags: :delta:
+  ​#+identifier: 20260104T090000
+
+  No links here.
+#+END:
+* Markdown and text
+#+BEGIN: denote-files :regexp "_md\\|_text"
+---
+title:      "Zeta markdown"
+date:       2026-01-06T09:00:00+01:00
+tags:       ["alpha", "md"]
+identifier: "20260106T090000"
+---
+
+Links to [Alpha root](denote:20260101T090000) and [the case](denote:20260301T100200).
+title:      Eta text
+date:       2026-01-07
+tags:       text
+identifier: 20260107T090000
+---------------------------
+
+Links [[denote:20260101T090000][Alpha root]] and [[denote:20260301T100200][the case]].
+#+END:
