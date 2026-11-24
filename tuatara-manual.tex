@@ -1,4 +1,4 @@
-% Created 2026-11-23 Mon 07:54 with Tuatara, template article
+% Created 2026-11-23 Mon 20:47 with Tuatara, template article
 % Intended LaTeX compiler: xelatex
 %
 % The enhanced export's own look, for a note that sets none of its own
@@ -11292,7 +11292,8 @@ none & \texttt{M-H} / \texttt{M-L} & Takes away or adds a star on it and on ever
 
 Taking a star away is called promoting, and adding one is called demoting.
 The arrow keys with Alt do the same as the letters. Each move is one step
-for undo.
+for undo. On a list item \texttt{M-h} and \texttt{M-l} move the item instead, as the
+next section shows, and in a table they move a column.
 
 To jump to a heading by name, press \texttt{M-g o}, which chapter 13 describes. It
 lists every heading of the note, and typing a few letters narrows the list.
@@ -11364,10 +11365,10 @@ none & \texttt{M-RET} & \texttt{org-\codebreak{}meta-\codebreak{}return} & A new
 none & \texttt{M-S-\codebreak{}RET} & \texttt{org-\codebreak{}insert-\codebreak{}todo-\codebreak{}heading} & A new TODO headline of this level after this subtree.\\
 none & \texttt{M-j}, \texttt{M-<down>} & \texttt{org-\codebreak{}metadown} & In an Org table, move the row down; else move the subtree down (M-j).\\
 none & \texttt{M-k}, \texttt{M-<up>} & \texttt{org-\codebreak{}metaup} & In an Org table, move the row up; else move the subtree up (M-k).\\
-none & \texttt{M-h}, \texttt{M-<left>} & \texttt{org-\codebreak{}metaleft} & In an Org table, move the column left; else promote the headline (M-h).\\
-none & \texttt{M-l}, \texttt{M-<right>} & \texttt{org-\codebreak{}metaright} & In an Org table, move the column right; else demote the headline (M-l).\\
-none & \texttt{M-H}, \texttt{M-S-<left>} & \texttt{org-\codebreak{}shiftmetaleft} & In an Org table, delete the column; else promote the subtree (M-H).\\
-none & \texttt{M-L}, \texttt{M-S-<right>} & \texttt{org-\codebreak{}shiftmetaright} & In an Org table, put an empty column before this one; else demote the subtree (M-L).\\
+none & \texttt{M-h}, \texttt{M-<left>} & \texttt{org-\codebreak{}metaleft} & In an Org table, move the column left; on a list item, set it out a level, or every item the selection’s lines begin; else promote the headline (M-h).\\
+none & \texttt{M-l}, \texttt{M-<right>} & \texttt{org-\codebreak{}metaright} & In an Org table, move the column right; on a list item, set it in a level under the item before it, or every item the selection’s lines begin; else demote the headline (M-l).\\
+none & \texttt{M-H}, \texttt{M-S-<left>} & \texttt{org-\codebreak{}shiftmetaleft} & In an Org table, delete the column; on a list item, set it out a level with the items under it; else promote the subtree (M-H).\\
+none & \texttt{M-L}, \texttt{M-S-<right>} & \texttt{org-\codebreak{}shiftmetaright} & In an Org table, put an empty column before this one; on a list item, set it in a level with the items under it; else demote the subtree (M-L).\\
 none & \texttt{M-x org-\codebreak{}move-\codebreak{}subtree-\codebreak{}down} & \texttt{org-\codebreak{}move-\codebreak{}subtree-\codebreak{}down} & Move the subtree point is in down, past its next sibling.\\
 none & \texttt{M-x org-\codebreak{}move-\codebreak{}subtree-up} & \texttt{org-\codebreak{}move-\codebreak{}subtree-up} & Move the subtree point is in up, before its sibling above.\\
 none & \texttt{M-x org-\codebreak{}do-\codebreak{}promote} & \texttt{org-\codebreak{}do-\codebreak{}promote} & Promote the headline point is in a level, its subtree’s other headlines as they are.\\
@@ -11436,6 +11437,32 @@ plus, a star, \texttt{1.} and \texttt{1)}, and a list at the left edge skips the
 is the quick way to turn a plain list into a numbered one.
 \texttt{TAB} on an item that has sub-items or more lines under it folds it, as on a
 heading.
+
+The keys that change a heading’s level move items too, when the cursor is on
+one.
+
+\begin{xltabular}{\textwidth}{@{}l l >{\raggedright\arraybackslash\hsize=1.000\hsize}X@{}}
+\toprule
+\textbf{Modal} & \textbf{Non-modal} & \textbf{What it does to the item the cursor is on}\\
+\midrule
+\endhead
+none & \texttt{M-l} / \texttt{M-h} & Sets it in under the item above it, or out a level\\
+none & \texttt{M-L} / \texttt{M-H} & The same, with the sub-items under it\\
+none & \texttt{TAB} & On an empty item, sets it in, and in or out on each press\\
+\bottomrule
+\end{xltabular}
+
+An item set in goes where the text of the item above it begins, and becomes
+its last sub-item. Select lines with \texttt{V} and \texttt{J} first, and \texttt{M-l} or \texttt{M-h}
+moves every item that begins on them. The first item of a list cannot be
+set in alone, as there is nothing above it to go under; \texttt{M-L} and \texttt{M-H} on
+it move the whole list a column. An item with sub-items is set out with
+\texttt{M-H}, which takes them along. Numbered items are numbered again.
+
+\texttt{TAB} on an item with nothing after its bullet, the one \texttt{M-RET} has just
+made, sets it in a level. Each \texttt{TAB} after it sets it further in while it can
+go, then out a level at a time, and at the end puts it back where it was.
+On an item with words in it, \texttt{TAB} folds as before.
 
 \subsubsection{Checkboxes}
 \label{sec:366}
@@ -19309,7 +19336,8 @@ its \texttt{--help} lists them. \texttt{--dark} before the rest shows the title 
 in \texttt{./Tuatara-\codebreak{}legacy-\codebreak{}x86\_64.\codebreak{}AppImage --dark --gui FILE}, and \texttt{--install-\codebreak{}desktop
 --dark} starts it so from the desktop’s applications. Programs started from
 Tuatara are shown dark too. The editor’s own colours are its theme’s.
-Tuatara 0.90.40 is the last release with a legacy AppImage.
+Tuatara 0.90.40 was the last release with a legacy AppImage; later
+releases build none.
 
 A package puts Tuatara in \texttt{/usr/\codebreak{}lib/\codebreak{}tuatara/} and it uses the system’s GTK and
 libraries. With a GTK older than 4.20, \texttt{GTK\_\codebreak{}THEME=\codebreak{}Adwaita:\codebreak{}dark tuatara --gui}
@@ -21449,8 +21477,8 @@ none & \texttt{C-c m} & \texttt{org-\codebreak{}macro-\codebreak{}wrap} & In an 
 none & \texttt{M-x org-\codebreak{}make-\codebreak{}reminder} & \texttt{org-\codebreak{}make-\codebreak{}reminder} & Make the heading point is under a reminder: it takes the tags \textbf{ORG-REMINDER-TAG} and \textbf{ORG-NOTIFY-TAG}, so that the agenda lists it on its day and it is told on the desktop when its time comes.\\
 none & \texttt{M-RET} & \texttt{org-\codebreak{}meta-\codebreak{}return} & A new item or headline after what point is in and all under it: in a list, an item of the same kind after the one point is in and all under it (its bullet, the next number, [ ] when it has a checkbox).\\
 none & \texttt{M-j}, \texttt{M-<down>} & \texttt{org-\codebreak{}metadown} & In an Org table, move the row down; else move the subtree down (M-j).\\
-none & \texttt{M-h}, \texttt{M-<left>} & \texttt{org-\codebreak{}metaleft} & In an Org table, move the column left; else promote the headline (M-h).\\
-none & \texttt{M-l}, \texttt{M-<rig\codebreak{}ht>} & \texttt{org-\codebreak{}metari\codebreak{}ght} & In an Org table, move the column right; else demote the headline (M-l).\\
+none & \texttt{M-h}, \texttt{M-<left>} & \texttt{org-\codebreak{}metaleft} & In an Org table, move the column left; on a list item, set it out a level, or every item the selection’s lines begin; else promote the headline (M-h).\\
+none & \texttt{M-l}, \texttt{M-<rig\codebreak{}ht>} & \texttt{org-\codebreak{}metari\codebreak{}ght} & In an Org table, move the column right; on a list item, set it in a level under the item before it, or every item the selection’s lines begin; else demote the headline (M-l).\\
 none & \texttt{M-k}, \texttt{M-<up>} & \texttt{org-\codebreak{}metaup} & In an Org table, move the row up; else move the subtree up (M-k).\\
 none & \texttt{M-x org-\codebreak{}move-\codebreak{}subtre\codebreak{}e-\codebreak{}down} & \texttt{org-\codebreak{}move-\codebreak{}subtre\codebreak{}e-\codebreak{}down} & Move the subtree point is in down, past its next sibling.\\
 none & \texttt{M-x org-\codebreak{}move-\codebreak{}subtre\codebreak{}e-up} & \texttt{org-\codebreak{}move-\codebreak{}subtre\codebreak{}e-up} & Move the subtree point is in up, before its sibling above.\\
@@ -21465,8 +21493,8 @@ none & \texttt{M-x org-\codebreak{}scratch} & \texttt{org-\codebreak{}scratch} &
 none & \texttt{C-c C-q} & \texttt{org-\codebreak{}set-\codebreak{}tags-\codebreak{}command} & Set the tags of the headline point is under (C-c C-q): asked for with its tags offered, work urgent or :work:urgent:, nothing for none; they go at the end of its line, where \textbf{ORG-TAGS-COLUMN} says, by default one space after its text.\\
 none & \texttt{S-<left>} & \texttt{org-\codebreak{}shiftl\codebreak{}eft} & On a headline, its TODO keyword before, none before the first.\\
 none & \texttt{M-S-<d\codebreak{}own>} & \texttt{org-\codebreak{}shiftm\codebreak{}etadown} & In an Org table, put an empty row above this one (M-S-<down>).\\
-none & \texttt{M-H}, \texttt{M-S-<l\codebreak{}eft>} & \texttt{org-\codebreak{}shiftm\codebreak{}etaleft} & In an Org table, delete the column; else promote the subtree (M-H).\\
-none & \texttt{M-L}, \texttt{M-S-<r\codebreak{}ight>} & \texttt{org-\codebreak{}shiftm\codebreak{}etaright} & In an Org table, put an empty column before this one; else demote the subtree (M-L).\\
+none & \texttt{M-H}, \texttt{M-S-<l\codebreak{}eft>} & \texttt{org-\codebreak{}shiftm\codebreak{}etaleft} & In an Org table, delete the column; on a list item, set it out a level with the items under it; else promote the subtree (M-H).\\
+none & \texttt{M-L}, \texttt{M-S-<r\codebreak{}ight>} & \texttt{org-\codebreak{}shiftm\codebreak{}etaright} & In an Org table, put an empty column before this one; on a list item, set it in a level with the items under it; else demote the subtree (M-L).\\
 none & \texttt{M-S-<up>} & \texttt{org-\codebreak{}shiftm\codebreak{}etaup} & In an Org table, delete the row point is in (M-S-<up>).\\
 none & \texttt{S-<rig\codebreak{}ht>} & \texttt{org-\codebreak{}shiftr\codebreak{}ight} & On a headline, its next TODO keyword, as M-x org-todo does.\\
 none & \texttt{C-x a l} & \texttt{org-\codebreak{}store-\codebreak{}link} & Keep a link to where point is, for insert-link (M-x insert-link) to offer.\\

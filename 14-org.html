@@ -13,7 +13,7 @@
 <div class="site">
 <nav class="toc" id="contents" aria-label="Contents">
 <strong>Tuatara Manual</strong>
-<small>for version 0.90.42</small>
+<small>for version 0.90.43</small>
 <p class="tools"><a href="all.html">All on one page</a>
 <button type="button" class="theme" hidden>Dark</button></p>
 <input type="search" placeholder="Search the manual" aria-label="Search the manual">
@@ -481,7 +481,7 @@ and none again. <kbd>S-&lt;right&gt;</kbd> and <kbd>S-&lt;left&gt;</kbd> go forw
 same round. In NORMAL state <kbd>RET</kbd> on a task's line also moves it to the next
 keyword, and never leaves it without one. <code>CANCELLED</code> is left out of the
 round so that you do not cancel something by pressing a key once too often.
-<kbd>C-c C-x C</kbd> cancels the task the cursor is in.</p>
+<kbd>C-c X</kbd> cancels the task the cursor is in.</p>
 <p>When a task becomes <code>DONE</code>, Tuatara writes a line under it that says when:</p>
 <pre class="ex">* DONE Paint the fence
   CLOSED: [2026-10-13 Tue 10:00]
@@ -527,7 +527,7 @@ bar are open and those after it are closed:</p>
 <p>Two settings shape the round that <kbd>C-c C-t</kbd>, <kbd>S-&lt;right&gt;</kbd> and <kbd>RET</kbd> make.
 <code>*org-todo-keywords-not-cycled*</code> lists the keywords the round passes over.
 Its standard is <code>(&quot;CANCELLED&quot; &quot;CANCELED&quot;)</code>, which is why the round is none,
-<code>TODO</code>, <code>WAIT</code>, <code>DONE</code> and none again, and why <kbd>C-c C-x C</kbd> is the way to
+<code>TODO</code>, <code>WAIT</code>, <code>DONE</code> and none again, and why <kbd>C-c X</kbd> is the way to
 cancel. It applies to the keywords of a file's own <code>#+TODO:</code> line too, and
 to the agenda's key for a task. With <code>(setf *org-todo-keywords-not-cycled*
 '(&quot;CANCELLED&quot; &quot;SOMEDAY&quot;))</code>, a note with <code>#+TODO: TODO NEXT | DONE SOMEDAY
@@ -570,7 +570,7 @@ that the important tasks stand out.</p>
 <tr><td>none</td><td><kbd>C-c C-t</kbd></td><td><code>org-todo</code></td><td>Change the TODO keyword of the headline point is in to the next of the document's (#+TODO:, else TODO, WAIT and DONE), none after the last, those of <strong>org-todo-keywords-not-cycled</strong> passed over (CANCELLED, which M-x org-cancel-task sets); a task done is noted with CLOSED: and when.</td></tr>
 <tr><td>none</td><td><kbd>S-&lt;right&gt;</kbd></td><td><code>org-shiftright</code></td><td>On a headline, its next TODO keyword, as M-x org-todo does.</td></tr>
 <tr><td>none</td><td><kbd>S-&lt;left&gt;</kbd></td><td><code>org-shiftleft</code></td><td>On a headline, its TODO keyword before, none before the first.</td></tr>
-<tr><td>none</td><td><kbd>C-c C-x C</kbd></td><td><code>org-cancel-task</code></td><td>Cancel the task of the headline point is in: its keyword made CANCELLED, a done keyword that M-x org-todo and the other keys that go round the keywords pass over, noted with CLOSED: and when as a task done is.</td></tr>
+<tr><td>none</td><td><kbd>C-c X</kbd></td><td><code>org-cancel-task</code></td><td>Cancel the task of the headline point is in: its keyword made CANCELLED, a done keyword that M-x org-todo and the other keys that go round the keywords pass over, noted with CLOSED: and when as a task done is.</td></tr>
 <tr><td>none</td><td><kbd>C-c C-z</kbd></td><td><code>org-add-note</code></td><td>Add a note to the entry point is under (C-c C-z): the note is asked for, and logged where Org logs notes, at the top of its :LOGBOOK: drawer with <strong>ORG-LOG-INTO-DRAWER</strong>, else after its planning line and properties, in the form - Note taken on <span class="timestamp">[2026-10-01 Thu 18:00]</span> \\ and the note under it.</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
@@ -958,7 +958,7 @@ it keeps none, whatever the date line says.</p>
 because the day and the time column already say it. <code>t</code> leaves it in.</p>
 <h3 id="moving-about"><span class="num">14.7.4</span> Moving about</h3>
 <p><kbd>j</kbd> and <kbd>k</kbd> move from line to line. <kbd>l</kbd> or <kbd>C-f</kbd> shows the next week, and <kbd>h</kbd>
-or <kbd>C-b</kbd> the one before. <kbd>g h</kbd> comes back to today. <kbd>D</kbd>, <kbd>w</kbd>, <kbd>m</kbd> and <kbd>Y</kbd>
+or <kbd>C-b</kbd> the one before. <kbd>g h</kbd> comes back to today. <kbd>C-c D</kbd>, <kbd>C-c W</kbd>, <kbd>C-c M</kbd> and <kbd>C-c Y</kbd>
 change the span to a day, a week, a month or a year, and <kbd>g l</kbd> returns to the
 view you had before.
 <kbd>RET</kbd> opens the entry on the line in its file, and <kbd>TAB</kbd> shows it in another
@@ -981,7 +981,9 @@ the entry of the line the cursor is on, and change it in its file.</p>
 <tr><td>none</td><td><kbd>C-c C-d</kbd></td><td>Gives it a deadline</td></tr>
 <tr><td>none</td><td><kbd>C-c C-q</kbd></td><td>Sets its tags</td></tr>
 <tr><td>none</td><td><kbd>C-c C-z</kbd></td><td>Adds a note to it</td></tr>
-<tr><td>none</td><td><kbd>I</kbd> / <kbd>O</kbd></td><td>Starts and stops the clock on it</td></tr>
+<tr><td>none</td><td><kbd>C-c I</kbd> / <kbd>C-c O</kbd></td><td>Starts and stops the clock on it</td></tr>
+<tr><td>none</td><td><kbd>C-c C</kbd></td><td>Cancels the clock, taking its line away</td></tr>
+<tr><td>none</td><td><kbd>C-c X</kbd></td><td>Cancels the task</td></tr>
 <tr><td>none</td><td><kbd>u</kbd></td><td>Undoes the last change made from this agenda</td></tr>
 <tr><td>none</td><td><kbd>s</kbd></td><td>Saves every agenda file that has changes</td></tr>
 </tbody></table></div>
@@ -1028,10 +1030,10 @@ entry in the setting is a pattern to copy.</p>
 <tr><td>none</td><td><kbd>M-x org-todo-list</kbd></td><td><code>org-todo-list</code></td><td>Show the TODO list: every task not done in <strong>ORG-AGENDA-FILES</strong>.</td></tr>
 <tr><td>none</td><td><kbd>M-x org-tags-view</kbd></td><td><code>org-tags-view</code></td><td>Show the headlines of <strong>ORG-AGENDA-FILES</strong> an Org match selects, read in the minibuffer: work, +work-home, work|proj, TODO=&quot;NEXT&quot;, LEVEL&gt;1, -{.*} for those with no tag.</td></tr>
 <tr><td>none</td><td><kbd>M-x org-agenda-check-dates</kbd></td><td><code>org-agenda-check-dates</code></td><td>Show the entries of <strong>ORG-AGENDA-FILES</strong> whose dates look wrong, each with what is wrong (ORG-ENTRY-DATE-PROBLEM).</td></tr>
-<tr><td>none</td><td><kbd>D</kbd>, <kbd>C-c D</kbd></td><td><code>org-agenda-day-view</code></td><td>Show the agenda of one day: the day at point in the agenda, else today.</td></tr>
-<tr><td>none</td><td><kbd>w</kbd>, <kbd>C-c w</kbd>, <kbd>C-x a w</kbd></td><td><code>org-agenda-week-view</code></td><td>Show the agenda of a week: the week of the day at point in the agenda, else this week.</td></tr>
-<tr><td>none</td><td><kbd>m</kbd>, <kbd>C-c m</kbd>, <kbd>C-x a m</kbd></td><td><code>org-agenda-month-view</code></td><td>Show the agenda of a month: the month of the day at point in the agenda, else this month.</td></tr>
-<tr><td>none</td><td><kbd>Y</kbd>, <kbd>C-c Y</kbd>, <kbd>C-x a y</kbd></td><td><code>org-agenda-year-view</code></td><td>Show the agenda of a year: the year of the day at point in the agenda, else this year.</td></tr>
+<tr><td>none</td><td><kbd>C-c D</kbd></td><td><code>org-agenda-day-view</code></td><td>Show the agenda of one day: the day at point in the agenda, else today.</td></tr>
+<tr><td>none</td><td><kbd>C-c W</kbd>, <kbd>C-x a w</kbd></td><td><code>org-agenda-week-view</code></td><td>Show the agenda of a week: the week of the day at point in the agenda, else this week.</td></tr>
+<tr><td>none</td><td><kbd>C-c M</kbd>, <kbd>C-x a m</kbd></td><td><code>org-agenda-month-view</code></td><td>Show the agenda of a month: the month of the day at point in the agenda, else this month.</td></tr>
+<tr><td>none</td><td><kbd>C-c Y</kbd>, <kbd>C-x a y</kbd></td><td><code>org-agenda-year-view</code></td><td>Show the agenda of a year: the year of the day at point in the agenda, else this year.</td></tr>
 <tr><td>none</td><td><kbd>l</kbd>, <kbd>C-f</kbd>, <kbd>C-c l</kbd></td><td><code>org-agenda-later</code></td><td>Show the agenda's next span: the next week in a week's agenda, the next day in a day's.</td></tr>
 <tr><td>none</td><td><kbd>h</kbd>, <kbd>C-b</kbd>, <kbd>C-c h</kbd></td><td><code>org-agenda-earlier</code></td><td>Show the agenda's previous span: the previous week in a week's agenda, the previous day in a day's.</td></tr>
 <tr><td>none</td><td><kbd>g h</kbd></td><td><code>org-agenda-goto-today</code></td><td>Show the agenda's span holding today, point on today's date.</td></tr>
@@ -1048,15 +1050,16 @@ entry in the setting is a pattern to copy.</p>
 <tr><td>none</td><td><kbd>RET</kbd></td><td><code>org-agenda-switch-to</code></td><td>Open the entry on the agenda's line in this window, point on its headline.</td></tr>
 <tr><td>none</td><td><kbd>TAB</kbd></td><td><code>org-agenda-goto</code></td><td>Show the entry on the agenda's line in the other window and go there.</td></tr>
 <tr><td>none</td><td><kbd>C-c C-t</kbd></td><td><code>org-agenda-todo</code></td><td>Change the TODO keyword of the entry on the agenda's line to its next, as C-c C-t does in its file: a task done is noted with CLOSED:, one that repeats moves on to its next date.</td></tr>
-<tr><td>none</td><td><kbd>C-c C-x C</kbd></td><td><code>org-agenda-cancel-task</code></td><td>Cancel the task on the agenda's line, as C-c C-x C does in its file: its keyword made CANCELLED and noted with CLOSED:.</td></tr>
+<tr><td>none</td><td><kbd>C-c X</kbd></td><td><code>org-agenda-cancel-task</code></td><td>Cancel the task on the agenda's line, as C-c X does in its file: its keyword made CANCELLED and noted with CLOSED:.</td></tr>
 <tr><td>none</td><td><kbd>C-c C-s</kbd></td><td><code>org-agenda-schedule</code></td><td>Schedule the entry on the agenda's line, the date asked for as C-c C-s asks it; with C-u, take its scheduling away.</td></tr>
 <tr><td>none</td><td><kbd>C-c C-d</kbd></td><td><code>org-agenda-deadline</code></td><td>Give the entry on the agenda's line a deadline, the date asked for as C-c C-d asks it; with C-u, take it away.</td></tr>
 <tr><td>none</td><td><kbd>C-c C-q</kbd></td><td><code>org-agenda-set-tags</code></td><td>Set the tags of the entry on the agenda's line, asked for as C-c C-q asks them.</td></tr>
 <tr><td>none</td><td><kbd>C-c C-z</kbd></td><td><code>org-agenda-add-note</code></td><td>Add a note to the entry on the agenda's line, as C-c C-z adds one.</td></tr>
 <tr><td>none</td><td><kbd>C-c C-w</kbd></td><td><code>org-agenda-refile</code></td><td>Move the entry on the agenda's line under another heading, as C-c C-w moves one.</td></tr>
-<tr><td>none</td><td><kbd>I</kbd>, <kbd>C-c I</kbd></td><td><code>org-agenda-clock-in</code></td><td>Clock in on the entry on the agenda's line, as M-x org-clock-in does: a clock running is clocked out first.</td></tr>
-<tr><td>none</td><td><kbd>O</kbd>, <kbd>C-c O</kbd></td><td><code>org-agenda-clock-out</code></td><td>Clock out, as C-c C-x C-o does, from the agenda: the clock's file saved at once when it is one of <strong>ORG-AGENDA-AUTOSAVE-FILES</strong>.</td></tr>
-<tr><td>none</td><td><kbd>C</kbd>, <kbd>C-c C</kbd></td><td><code>org-agenda-clock-cancel</code></td><td>Cancel the clock, as C-c C-x C-q does, from the agenda: the clock's file saved at once when it is one of <strong>ORG-AGENDA-AUTOSAVE-FILES</strong>.</td></tr>
+<tr><td>none</td><td><kbd>C-c I</kbd></td><td><code>org-agenda-clock-in</code></td><td>Clock in on the entry on the agenda's line, as M-x org-clock-in does: a clock running is clocked out first.</td></tr>
+<tr><td>none</td><td><kbd>C-c O</kbd></td><td><code>org-agenda-clock-out</code></td><td>Clock out, as C-c C-x O does, from the agenda: the clock's file saved at once when it is one of <strong>ORG-AGENDA-AUTOSAVE-FILES</strong>.</td></tr>
+<tr><td>none</td><td><kbd>C-c C</kbd></td><td><code>org-agenda-clock-cancel</code></td><td>Cancel the clock, as C-c C-x C does, from the agenda: the clock's file saved at once when it is one of <strong>ORG-AGENDA-AUTOSAVE-FILES</strong>.</td></tr>
+<tr><td>none</td><td><kbd>C-c J</kbd>, <kbd>C-x a j</kbd>, <kbd>C-c C-x J</kbd></td><td><code>org-clock-goto</code></td><td>Go to the task the clock runs on (C-c C-x J, in the agenda C-c J, from any buffer C-x a j): its file opened again when its buffer was killed; with none running, one left open in the agenda files, as after a restart, runs again (ORG-CLOCK-RUNNING).</td></tr>
 <tr><td>none</td><td><kbd>u</kbd>, <kbd>C-/</kbd>, <kbd>C-_</kbd></td><td><code>org-agenda-undo</code></td><td>Undo the last change made from this agenda, in the file it was made in, and draw the agenda again; when the file was changed there since, nothing is undone and you are told to undo in the file first.</td></tr>
 <tr><td>none</td><td><kbd>s</kbd></td><td><code>org-agenda-save-all-buffers</code></td><td>Save the buffers of the agenda files (<strong>org-agenda-files</strong>, and those added to them) with changes not saved, those the agenda changed among them; other Org buffers are left as they are (M-x org-save-all-org-buffers saves them all).</td></tr>
 <tr><td>none</td><td><kbd>M-x org-save-all-org-buffers</kbd></td><td><code>org-save-all-org-buffers</code></td><td>Save every Org buffer with changes not saved: those the agenda changed among them, and any other.</td></tr>
@@ -1290,13 +1293,12 @@ the agenda files:</p>
 <h2 id="clocking"><span class="num">14.10</span> Clocking</h2>
 <p>The clock records how long you spend on a task. It is for anyone who bills
 by the hour, and for anyone curious where a day went.</p>
-<p><kbd>C-c C-x C-i</kbd> starts the clock on the task the cursor is under. A line
+<p><kbd>C-c C-x I</kbd> starts the clock on the task the cursor is under. A line
 beginning <code>CLOCK:</code> is written in the task's <code>:LOGBOOK:</code> drawer with the time
 you started. While the clock runs, the mode line of every window shows the
 time so far and the task's name, so you cannot forget it. Starting the clock
-on another task stops the first. A terminal sends <code>C-i</code> as <code>TAB</code>, so there
-the same keys arrive as <kbd>C-c C-x TAB</kbd>, which starts the clock too.</p>
-<p><kbd>C-x a o</kbd> stops the clock from any buffer. The line is finished with the
+on another task stops the first.</p>
+<p><kbd>C-x a o</kbd> stops the clock from any buffer, and <kbd>C-c C-x O</kbd> in an Org file. The line is finished with the
 time you stopped and how long that was. With no clock running, it looks in
 your agenda files for one left running, as after a restart. When the files
 to read are large, it looks in the background and says so; the clock it
@@ -1307,9 +1309,10 @@ finds runs again, and <kbd>C-x a o</kbd> then stops it:</p>
 drawer and fold away with it. With <code>(setf *org-clock-into-drawer* nil)</code> the
 <code>CLOCK:</code> lines are written right under the heading instead.</p>
 <p><kbd>C-x a j</kbd> takes you to the task that is being clocked, from wherever you
-are. <kbd>C-c C-x C-q</kbd> stops the clock and removes its line, for when you
-started it by mistake. In the agenda, <kbd>I</kbd> and <kbd>O</kbd> start and stop the clock
-on the line's entry. Large agenda files changed since they were last read are
+are, and <kbd>C-c C-x J</kbd> does the same in an Org file, <kbd>C-c J</kbd> in the agenda. <kbd>C-c C-x C</kbd> stops the clock and removes its line, for when you
+started it by mistake. In the agenda, <kbd>C-c I</kbd>, <kbd>C-c O</kbd> and <kbd>C-c C</kbd>
+start, stop and cancel the clock on the line's entry, the same letters
+as in an Org file, where they come after <kbd>C-c C-x</kbd>. Large agenda files changed since they were last read are
 read in the background, as for tags, and their headings are offered once read.</p>
 <p>If you leave Tuatara while the clock runs, it asks whether to stop it. If
 you say no, the clock is found again at the next start and goes on counting.</p>
@@ -1332,10 +1335,10 @@ date.</p>
 <tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td>none</td><td><kbd>C-c C-x C-i</kbd>, <kbd>C-c C-x TAB</kbd></td><td><code>org-clock-in</code></td><td>Clock in on the task point is under (C-c C-x C-i): CLOCK: and the time go into its :LOGBOOK: drawer, made when it has none, after its planning line and properties; a clock running is clocked out first.</td></tr>
-<tr><td>none</td><td><kbd>C-x a o</kbd>, <kbd>C-c C-x C-o</kbd></td><td><code>org-clock-out</code></td><td>Clock out (C-c C-x C-o, from any buffer C-x a o): the clock's line finished with the time it ended and how long it ran; with none running, of the one left open in the agenda files (ORG-CLOCK-RUNNING).</td></tr>
-<tr><td>none</td><td><kbd>C-x a j</kbd>, <kbd>C-c C-x C-j</kbd></td><td><code>org-clock-goto</code></td><td>Go to the task the clock runs on (C-c C-x C-j, from any buffer C-x a j): its file opened again when its buffer was killed; with none running, one left open in the agenda files, as after a restart, runs again (ORG-CLOCK-RUNNING).</td></tr>
-<tr><td>none</td><td><kbd>C-c C-x C-q</kbd></td><td><code>org-clock-cancel</code></td><td>Stop the clock running and take its line away (C-c C-x C-q): its :LOGBOOK: drawer too, when nothing else is in it; saved when that is its buffer's only change, as C-x a o does.</td></tr>
+<tr><td>none</td><td><kbd>C-c C-x I</kbd></td><td><code>org-clock-in</code></td><td>Clock in on the task point is under (C-c C-x I): CLOCK: and the time go into its :LOGBOOK: drawer, made when it has none, after its planning line and properties; a clock running is clocked out first.</td></tr>
+<tr><td>none</td><td><kbd>C-x a o</kbd>, <kbd>C-c C-x O</kbd></td><td><code>org-clock-out</code></td><td>Clock out (C-c C-x O, from any buffer C-x a o): the clock's line finished with the time it ended and how long it ran; with none running, of the one left open in the agenda files (ORG-CLOCK-RUNNING).</td></tr>
+<tr><td>none</td><td><kbd>C-c J</kbd>, <kbd>C-x a j</kbd>, <kbd>C-c C-x J</kbd></td><td><code>org-clock-goto</code></td><td>Go to the task the clock runs on (C-c C-x J, in the agenda C-c J, from any buffer C-x a j): its file opened again when its buffer was killed; with none running, one left open in the agenda files, as after a restart, runs again (ORG-CLOCK-RUNNING).</td></tr>
+<tr><td>none</td><td><kbd>C-c C-x C</kbd></td><td><code>org-clock-cancel</code></td><td>Stop the clock running and take its line away (C-c C-x C): its :LOGBOOK: drawer too, when nothing else is in it; saved when that is its buffer's only change, as C-x a o does.</td></tr>
 <tr><td>none</td><td><kbd>M-x org-clock-report</kbd></td><td><code>org-clock-report</code></td><td>Make the clock table point is in again, or put a new one in: its scope the subtree point is in, or the file before the first headline, its depth two levels.</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
