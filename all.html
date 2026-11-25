@@ -13,7 +13,7 @@
 <div class="site">
 <nav class="toc" id="contents" aria-label="Contents">
 <strong>Tuatara Manual</strong>
-<small>for version 0.90.44</small>
+<small>for version 0.90.46</small>
 <p class="tools"><a href="index.html">By chapter</a>
 <button type="button" class="theme" hidden>Dark</button></p>
 <input type="search" placeholder="Search the manual" aria-label="Search the manual">
@@ -22,7 +22,7 @@
 <main>
 <article>
 <h1>Tuatara Manual</h1>
-<p class="lead">for version 0.90.44, every chapter on one page</p>
+<p class="lead">for version 0.90.46, every chapter on one page</p>
 <p>This manual is written with modal editing on, first and foremost. Where a command also has a key that works with modal editing off, it is given as well, as the non-modal key.</p>
 <section class="chapter" id="01-the-screen">
 <h1 id="01-the-screen--the-screen">The screen</h1>
@@ -14100,8 +14100,10 @@ saved stay as they are, ready for the next client. To end the daemon itself,
 use <code>daemon-quit</code> or <code>tuatara --stop</code>.</p>
 <p>A client also closes when its last buffer is closed. If you press <kbd>C-x k</kbd> on
 the only buffer a client has, the client ends as if you had pressed <kbd>C-x C-c</kbd>.
-The scratch buffer that every new client starts with does not count while you
-have typed nothing in it.</p>
+The scratch buffer that every new client starts with (<code>*lisp-scratch*&lt;2&gt;</code>
+and so on, or those <code>*auto-scratch-buffers*</code> names) counts as one of its
+buffers: a client started on a file stays on its scratch buffer when the file
+is closed, and ends when that is closed too.</p>
 <p>Two clients can have the same buffer, when both opened the same file. <kbd>C-x k</kbd>
 in one of them only takes the buffer from that client: its windows show
 another of its own buffers, and the other client keeps the buffer with any
