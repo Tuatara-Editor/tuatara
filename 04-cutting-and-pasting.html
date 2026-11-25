@@ -13,7 +13,7 @@
 <div class="site">
 <nav class="toc" id="contents" aria-label="Contents">
 <strong>Tuatara Manual</strong>
-<small>for version 0.90.43</small>
+<small>for version 0.90.44</small>
 <p class="tools"><a href="all.html">All on one page</a>
 <button type="button" class="theme" hidden>Dark</button></p>
 <input type="search" placeholder="Search the manual" aria-label="Search the manual">
@@ -161,7 +161,7 @@ not sent, and neither is any text from an encrypted file, and with
 <tbody>
 <tr><td>none</td><td><kbd>&lt;mouse-2&gt;</kbd></td><td><code>mouse-yank-primary</code></td><td>Pastes the primary selection where the middle button was pressed.</td></tr>
 <tr><td>none</td><td><kbd>M-x gpg-copy-to-clipboard</kbd></td><td><code>gpg-copy-to-clipboard</code></td><td>Puts the text copied last on the system clipboard even when it came from an encrypted file. Other programs, a clipboard manager among them, can then read and keep it.</td></tr>
-<tr><td>none</td><td><kbd>C</kbd>, <kbd>C-c C</kbd></td><td><code>server-toggle-clipboard</code></td><td>In the list of servers, shares the clipboard with the server on the line, or stops sharing it. See chapter 18.</td></tr>
+<tr><td>none</td><td><kbd>C-c C</kbd></td><td><code>server-toggle-clipboard</code></td><td>In the list of servers, shares the clipboard with the server on the line, or stops sharing it. See chapter 18.</td></tr>
 </tbody></table></div>
 <h3 id="settings"><span class="num">4.4.1</span> Settings</h3>
 <div class="tablewrap"><table>
@@ -213,7 +213,7 @@ gives up. Keeping again under the same character replaces what was there.</p>
 <tr><td>none</td><td><kbd>M-x register-prepend</kbd></td><td><code>register-prepend</code></td><td>Puts the selected text before the text a register keeps.</td></tr>
 <tr><td>none</td><td><kbd>C-x r i</kbd></td><td><code>register-insert</code></td><td>Writes what a register keeps at the cursor. Text goes in as it was, with the mark before it. A block goes in as a block, each row as many times as the number you gave first. A number goes in as digits.</td></tr>
 <tr><td>none</td><td><kbd>C-x r j</kbd></td><td><code>register-jump</code></td><td>Goes to the place a register keeps.</td></tr>
-<tr><td>none</td><td><kbd>C-x r l</kbd></td><td><code>register-list</code></td><td>Lists the registers in a buffer, one per line. <kbd>RET</kbd> on a place goes there, and <kbd>q</kbd> closes the list.</td></tr>
+<tr><td>none</td><td><kbd>C-x r l</kbd></td><td><code>register-manager</code></td><td>Lists the registers in a buffer, one per line, in a section for each kind they keep. <kbd>RET</kbd> or <kbd>l</kbd> on a place goes there, <kbd>h</kbd> folds a section, and <kbd>q</kbd> closes the list.</td></tr>
 </tbody></table></div>
 <p>A register that keeps something that is not the right kind says what it
 keeps instead. A place worth keeping beyond this session is a bookmark rather

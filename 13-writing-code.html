@@ -13,7 +13,7 @@
 <div class="site">
 <nav class="toc" id="contents" aria-label="Contents">
 <strong>Tuatara Manual</strong>
-<small>for version 0.90.43</small>
+<small>for version 0.90.44</small>
 <p class="tools"><a href="all.html">All on one page</a>
 <button type="button" class="theme" hidden>Dark</button></p>
 <input type="search" placeholder="Search the manual" aria-label="Search the manual">
@@ -682,8 +682,8 @@ init file. <code>*format-on-save*</code> names the languages formatted before ea
 <code>t</code> for every language with a formatter installed. A formatter that takes longer
 than <code>*format-seconds*</code> is stopped and nothing changes. <code>*format-in-sandbox*</code>
 turns off the sandbox for a formatter that cannot work shut in. A file larger
-than 8 MiB, as large as a language server is given, is not given to a
-formatter, and the echo area says so.</p>
+than <code>*lsp-largest-document*</code> (8 MB), the most a language server is given, is
+not given to a formatter either, and the echo area says so.</p>
 <h3 id="settings-of-your-own"><span class="num">13.7.6</span> Settings of your own</h3>
 <p><code>*lsp-languages*</code> lists the languages whose servers are used.
 <code>*language-servers*</code> names a server of your own choice for a language in place
@@ -772,7 +772,7 @@ the steps still show what Tuatara says.</p>
 <tr><td><code>*lsp-code-lenses*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether what language servers say of lines (3 references, Run test) is shown faint at each line's end.</td></tr>
 <tr><td><code>*lsp-outline*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether M-x buffer-outline lists a file's names as its language server knows them (functions, types, their fields and methods, nested), where it has one that does.</td></tr>
 <tr><td><code>*lsp-wait*</code></td><td><code>2</code></td><td>a number of seconds, 0 or more, or a time in words such as 500ms, 90s, 30m or 2h, at most a hundred years</td><td>How long a language server's answer is waited for before the question is given up (a completion, a definition, a rename); work goes on meanwhile.</td></tr>
-<tr><td><code>*lsp-largest-document*</code></td><td><code>8388608</code></td><td>a whole number of octets, 1 or more, or a size in words such as 512M, 1.5G or 20 GB (in 1024s: 1K is 1024 octets), at most 4E</td><td>The largest document, in octets, given to a language server: a file's whole text, or the code of a note's source blocks of one language, however large the note.</td></tr>
+<tr><td><code>*lsp-largest-document*</code></td><td><code>8388608</code></td><td>a whole number of octets, 1 or more, or a size in words such as 512M, 1.5G or 20 GB (in 1024s: 1K is 1024 octets), at most 4E</td><td>The largest document, in octets, given to a language server or a formatter: a file's whole text, or the code of a note's source blocks of one language, however large the note.</td></tr>
 <tr><td><code>*lsp-largest-message*</code></td><td><code>33554432</code></td><td>a whole number of octets, 1 or more, or a size in words such as 512M, 1.5G or 20 GB (in 1024s: 1K is 1024 octets), at most 4E</td><td>The largest message read from a language server, in octets: a larger one is let go unread, said so.</td></tr>
 <tr><td><code>*lsp-watch-files*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether language servers that ask to be told of their project's files changed on disk, made or deleted, by programs other than the editor, are told.</td></tr>
 <tr><td><code>*lsp-watch-skipped*</code></td><td><code>(&quot;target&quot; &quot;node_modules&quot; &quot;__pycache__&quot; &quot;...</code></td><td>a list, each text</td><td>The directories of a project whose files are never watched for its language servers (hidden directories, whose names begin with a dot, never are): what a build makes.</td></tr>
@@ -823,10 +823,10 @@ for today, <code>$TM_FILENAME</code> for the file, <code>$AUTHOR</code> for the 
 <code>*user-full-name*</code>.</p>
 <p>Type the key and press <kbd>TAB</kbd>, and the text goes in with the cursor in the first
 place. <kbd>TAB</kbd> moves on to the next place and <kbd>S-TAB</kbd> back to the one before.
-After the last place the cursor goes to <code>$0</code>. <kbd>C-c y</kbd> (<code>insert-snippet</code>), in
+After the last place the cursor goes to <code>$0</code>. <kbd>C-c y</kbd> (<code>snippet-insert</code>), in
 buffers of text and of code, chooses a snippet from a list by name, each with
 its key, and with text selected the selection goes where the snippet has
-<code>$TM_SELECTED_TEXT</code>. <kbd>M-x copy-snippet</kbd> copies one of Tuatara's own into your
+<code>$TM_SELECTED_TEXT</code>. <kbd>M-x snippet-copy</kbd> copies one of Tuatara's own into your
 directory so that you can change it, and yours takes the place of Tuatara's.</p>
 <div class="try">
 <h3>Try it, with a Python script header</h3>
@@ -850,8 +850,8 @@ directory so that you can change it, and yours takes the place of Tuatara's.</p>
 <tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td>none</td><td><kbd>C-c y</kbd></td><td><code>insert-snippet</code></td><td>Put in a snippet chosen by its name among those of the current buffer's mode (each listed with its key), at point; with the selection active, in its place, the selected text where it has $TM_SELECTED_TEXT.</td></tr>
-<tr><td>none</td><td><kbd>M-x copy-snippet</kbd></td><td><code>copy-snippet</code></td><td>Copy one of Tuatara's own snippets, chosen by its name, into your snippets directory (the first of <strong>snippet-directories</strong>, in the directory of its mode) and visit it: your copy, changed as you like, takes the place of Tuatara's.</td></tr>
+<tr><td>none</td><td><kbd>C-c y</kbd></td><td><code>snippet-insert</code></td><td>Put in a snippet chosen by its name among those of the current buffer's mode (each listed with its key), at point; with the selection active, in its place, the selected text where it has $TM_SELECTED_TEXT.</td></tr>
+<tr><td>none</td><td><kbd>M-x snippet-copy</kbd></td><td><code>snippet-copy</code></td><td>Copy one of Tuatara's own snippets, chosen by its name, into your snippets directory (the first of <strong>snippet-directories</strong>, in the directory of its mode) and visit it: your copy, changed as you like, takes the place of Tuatara's.</td></tr>
 <tr><td>none</td><td><kbd>M-x snippet-next-field</kbd></td><td><code>snippet-next-field</code></td><td>Go to the next field of the snippet being filled in; past the last, end it where it puts the cursor.</td></tr>
 <tr><td>none</td><td><kbd>M-x snippet-previous-field</kbd></td><td><code>snippet-previous-field</code></td><td>Go back to the field of the snippet before the one the cursor is in.</td></tr>
 </tbody></table></div>

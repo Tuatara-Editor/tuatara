@@ -13,7 +13,7 @@
 <div class="site">
 <nav class="toc" id="contents" aria-label="Contents">
 <strong>Tuatara Manual</strong>
-<small>for version 0.90.43</small>
+<small>for version 0.90.44</small>
 <p class="tools"><a href="all.html">All on one page</a>
 <button type="button" class="theme" hidden>Dark</button></p>
 <input type="search" placeholder="Search the manual" aria-label="Search the manual">
@@ -214,7 +214,9 @@ many records are left, as in <code>Filtered by kiwi: 12 of 1,000 records</code>.
 filter narrows what the first left, so you can ask for Wanaka and then, of
 those, for 2023. <kbd>C-x / l</kbd> lists the filters, and <kbd>d</kbd> on a line there takes
 that one away. <kbd>C-x / r</kbd> takes them all away and shows the whole table. The
-header is shown whatever the filters say.</p>
+header is shown whatever the filters say. A record longer than 16 MiB has its
+column tried on its first 16 MiB alone, and the mode line counts such records
+after the rest: <code>1 line longer than 16.0 MiB tried on their start</code>.</p>
 <p>You can edit the records you see. A change that would reach into a hidden
 record is refused, so a filter never changes what you cannot see.</p>
 <h3 id="deleting-records-for-good"><span class="num">16.2.1</span> Deleting records for good</h3>
@@ -373,7 +375,9 @@ file opens at once.</p>
 for octets in hex, with or without spaces between them, and goes to the next
 place after the cursor that holds them. <code>ff d8 ff</code> finds the start of a JPEG
 photo, for example, and <code>25 50 44 46</code> finds <code>%PDF</code>, the first four octets of a
-PDF. The echo area says where it was found, in hex and in decimal.
+PDF. The octets are found exactly as typed, wherever they stand: <code>0a</code> is the
+line feed alone, never a carriage return, and <code>c3 a9</code> finds the é that is
+made of them. The echo area says where it was found, in hex and in decimal.
 <kbd>M-x hex-search-backward</kbd> looks before the cursor.</p>
 <h3 id="changing-octets"><span class="num">16.4.2</span> Changing octets</h3>
 <p>The hex view can change a file, one octet over another. In INSERT state, with
@@ -608,9 +612,11 @@ forms or scripts. This is useful when you wonder where a document came from.
 <p>A PDF can carry other files inside it, as an email carries attachments. An
 invoice may hold its own figures as a spreadsheet, for example. <kbd>a</kbd> lists the
 files embedded in the PDF in a buffer beside it. There, <kbd>n</kbd> and <kbd>p</kbd> move from
-one to the next, and <kbd>RET</kbd> or <kbd>s</kbd> saves the one on the line. Tuatara asks where
-to put it and writes it there as it is. It never opens or runs an embedded
-file. If the PDF has none, the echo area says so.</p>
+one to the next, and <kbd>RET</kbd>, <kbd>l</kbd>, <kbd>o</kbd> or <kbd>s</kbd> saves the one on the line. Tuatara
+asks where to put it and writes it there as it is. It never opens or runs an
+embedded file. If the PDF has none, the echo area says so. A PDF from outside
+that was replaced on disk since you opened it is not read again: the saving
+is refused.</p>
 <p>A PDF saved by Illustrator, Photoshop or InDesign with their editing kept can
 hold more than its pages: the program's own data, so that it can open the
 file again as it was. Illustrator keeps a whole Illustrator file in it,
@@ -694,7 +700,7 @@ A double click on the page goes to the line of the point you clicked. Chapter
 <tr><td>none</td><td><kbd>T</kbd>, <kbd>C-c T</kbd></td><td><code>pdf-view-toggle-text</code></td><td>Switch the PDF's view between its pages and its text, to read, search and copy; the text opens at the page shown, and the pages at the page point is on.</td></tr>
 <tr><td>none</td><td><kbd>i</kbd>, <kbd>C-c i</kbd></td><td><code>pdf-view-facts</code></td><td>Show what the PDF says of itself, as help: title, subject, author, the programs that made it (creator and producer), when it was made and changed, its version, encryption and what it allows, JavaScript, forms, pages and their size, as its program reads them in the sandbox; the file's own name and size first.</td></tr>
 <tr><td>none</td><td><kbd>a</kbd>, <kbd>C-c a</kbd></td><td><code>pdf-view-attachments</code></td><td>List the files embedded in the PDF, in a buffer beside it, as its program reads them in the sandbox; there, s saves one.</td></tr>
-<tr><td>none</td><td><kbd>s</kbd>, <kbd>RET</kbd></td><td><code>pdf-attachment-save</code></td><td>Save the embedded file on the current line where you say, a new file, or one there after asking: taken out of the PDF in the sandbox, as its program reads it, and written as it is, never opened.</td></tr>
+<tr><td>none</td><td><kbd>s</kbd>, <kbd>C-c s</kbd></td><td><code>pdf-attachment-save</code></td><td>Save the embedded file on the current line where you say, a new file, or one there after asking: taken out of the PDF in the sandbox, as its program reads it, and written as it is, never opened.</td></tr>
 <tr><td>none</td><td><kbd>C-c C-v</kbd></td><td><code>pdf-view-show-source</code></td><td>Show the line of the LaTeX file that made the part of the page shown, in the other window: the spot M-x show-line-in-pdf marked or a double click chose when it is on the page in sight, else the middle of the window; in the PDF's text, the place of point.</td></tr>
 <tr><td>none</td><td><kbd>&lt;double-mouse-1&gt;</kbd></td><td><code>pdf-view-show-source-at-click</code></td><td>Show the line of the LaTeX file that made the point of the page double clicked, in the other window, as M-x pdf-view-show-source does for the part shown.</td></tr>
 </tbody></table></div>
@@ -816,9 +822,11 @@ a document to a customer, check whose name is in it as the author. When two
 dates disagree, the file's own record of when it was made is often the one to
 trust over the date in a directory listing, which changes each time the file is
 copied.</p>
-<p>The file is read in the background by Tuatara alone. Nothing in it is run, and
-the time your computer keeps for when the file was last read is left as it
-was.</p>
+<p>The file is read in the background by Tuatara alone. A Word, Excel,
+PowerPoint or OpenDocument file is read by a second Tuatara shut in by the
+sandbox, from the file as it was when the report began, so a file put in its
+place meanwhile is never read. Nothing in it is run, and the time your
+computer keeps for when the file was last read is left as it was.</p>
 <p>For an encrypted file, the report can also say whose the keys are, by looking
 them up in your own keyring. That runs the gpg program, so Tuatara asks first.
 The setting <code>*metadata-look-up-key-owners*</code> says whether it asks every time

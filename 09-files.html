@@ -13,7 +13,7 @@
 <div class="site">
 <nav class="toc" id="contents" aria-label="Contents">
 <strong>Tuatara Manual</strong>
-<small>for version 0.90.43</small>
+<small>for version 0.90.44</small>
 <p class="tools"><a href="all.html">All on one page</a>
 <button type="button" class="theme" hidden>Dark</button></p>
 <input type="search" placeholder="Search the manual" aria-label="Search the manual">
@@ -606,7 +606,7 @@ so that opening the file again need not fetch it again (see &quot;The cache&quot
 A file on another machine has no git marks, no language server, no auto-saved
 copy and no build, since those would read what is around the file, and what is
 around it is not here. A file's own settings are taken only from a machine you
-trust, listed by <code>M-x server-list</code>, chapter 18. Each request has
+trust, listed by <code>M-x server-manager</code>, chapter 18. Each request has
 <code>*remote-seconds*</code> to be answered, 30 as standard. Past that, the work in hand
 fails and says so.</p>
 <h3 id="the-first-time-you-meet-a-machine"><span class="num">9.9.2</span> The first time you meet a machine</h3>
@@ -810,11 +810,13 @@ that it has not been changed since.</p>
 <h3 id="a-file-that-ends-in-gpg"><span class="num">9.10.1</span> A file that ends in .gpg</h3>
 <p>A file whose name ends in <code>.gpg</code> opens decrypted. The text on disk stays
 encrypted. The decrypted text lives in memory only. It is never auto-saved, and
-it is not placed on the system clipboard unless you ask for that. Each save
-encrypts it again. If the file is encrypted to a passphrase and not to a key,
-gpg-agent's prompt asks at once. When the minibuffer is what asks (next
-section), the buffer waits until you press <kbd>RET</kbd> first.
-<kbd>M-x gpg-decrypt-with-passphrase</kbd> is the same.</p>
+it is not placed on the system clipboard unless you ask for that. When you close
+the buffer, what you cut or copied from it goes too: its kills leave the kill
+ring, its registers are emptied, and the rectangle store lets go of a block
+taken from it. Each save encrypts it again. If the file is encrypted to a
+passphrase and not to a key, gpg-agent's prompt asks at once. When the
+minibuffer is what asks (next section), the buffer waits until you press <kbd>RET</kbd>
+first. <kbd>M-x gpg-decrypt-with-passphrase</kbd> is the same.</p>
 <p>Whom a file is encrypted to is a choice for each save.
 <kbd>M-x gpg-choose-encryption-keys</kbd> chooses again, between keys and a passphrase,
 and the next save uses the new choice. <kbd>M-x gpg-lock</kbd> makes gpg-agent forget
@@ -879,9 +881,10 @@ a signature. They say who signed, when, and how far that key is trusted.</p>
 changed since that key signed it. It does not tell you the text is safe, and it
 tells you who signed only as far as you trust the key.</p>
 <h3 id="keys"><span class="num">9.10.5</span> Keys</h3>
-<p><kbd>M-x gpg-list-keys</kbd> opens a list of your keys and those you have of others. The
-list fills in as gpg answers. <kbd>M-x gpg-keys-details</kbd> shows one key's
-fingerprint, names and expiry. <kbd>M-x gpg-import-keys</kbd> and
+<p><kbd>M-x gpg-keys-manager</kbd> opens a list of your keys and those you have of others,
+each in a section of its own. The list fills in as gpg answers. <kbd>RET</kbd> or <kbd>l</kbd>
+shows the fingerprint, names and expiry of the key on the line, and <kbd>h</kbd> folds
+a section. <kbd>M-x gpg-import-keys</kbd> and
 <kbd>M-x gpg-import-keys-region</kbd> add keys from a file or from selected text.
 <kbd>M-x gpg-keys-export</kbd> writes the public part of marked keys to a file, and
 <kbd>M-x gpg-keys-insert</kbd> puts it at the cursor in the buffer the list was opened
@@ -928,8 +931,7 @@ from. The directory list (chapter 10) has keys for the same jobs on files.</p>
 <tr><td>none</td><td><kbd>M-x gpg-verify-region</kbd></td><td><code>gpg-verify-region</code></td><td>Check the signature of the clear-signed block (—–BEGIN PGP SIGNED MESSAGE—–) in the text selected, or without a selection the one point is in, else the one nearest to point: who signed it, when, and how far that key is trusted.</td></tr>
 <tr><td>none</td><td><kbd>M-x gpg-import-keys</kbd></td><td><code>gpg-import-keys</code></td><td>Import the keys in a file asked for (armoured or not) into your keyring; say what was imported.</td></tr>
 <tr><td>none</td><td><kbd>M-x gpg-import-keys-region</kbd></td><td><code>gpg-import-keys-region</code></td><td>Import the keys in the text selected (an armoured —–BEGIN PGP PUBLIC KEY BLOCK—–) into your keyring.</td></tr>
-<tr><td>none</td><td><kbd>M-x gpg-list-keys</kbd></td><td><code>gpg-list-keys</code></td><td>List your GnuPG keys and those you have of others: there m marks one, M-x gpg-keys-details shows its details, M-x gpg-import-keys imports keys from a file, M-x gpg-keys-export exports, M-x gpg-keys-insert inserts and D deletes those marked.</td></tr>
-<tr><td>none</td><td><kbd>M-x gpg-keys-details</kbd></td><td><code>gpg-keys-details</code></td><td>Show the details of the key at the cursor: its fingerprint, its names, its subkeys and what they can do, when they expire.</td></tr>
+<tr><td>none</td><td><kbd>M-x gpg-keys-manager</kbd></td><td><code>gpg-keys-manager</code></td><td>List your GnuPG keys and those you have of others, in a section each: there m marks one, l shows its details, M-x gpg-import-keys imports keys from a file, M-x gpg-keys-export exports, M-x gpg-keys-insert inserts and D deletes those marked.</td></tr>
 <tr><td>none</td><td><kbd>M-x gpg-keys-export</kbd></td><td><code>gpg-keys-export</code></td><td>Export the public part of the keys marked (or the one at the cursor), armoured, to a file asked for.</td></tr>
 <tr><td>none</td><td><kbd>M-x gpg-keys-insert</kbd></td><td><code>gpg-keys-insert</code></td><td>Put the public part of the keys marked (or the one at the cursor), armoured, at point in the buffer the list was opened from.</td></tr>
 </tbody></table></div>
@@ -959,7 +961,9 @@ drives and the temporary directories as standard, or when it is a copy
 Tuatara made of an outside file or a file marked as come from outside
 (chapter 12). Links are followed first: a link in your notes that leads into
 your downloads is untrusted too. Tuatara asks before opening an untrusted file,
-and the answer is typed and ended with <kbd>RET</kbd>:</p>
+such as <code>Open photo.png in the desktop's program?</code>, with the file's kind and
+what each answer does shown below the question. The answer is typed and ended
+with <kbd>RET</kbd>:</p>
 <ul>
 <li><code>y</code> opens a copy of the file that only you can read and nobody can change.
   Tuatara looks at what the file is, not what its name says, and only the kinds
@@ -1072,7 +1076,7 @@ them are explained in chapters 15 and 18.</p>
 </thead>
 <tbody>
 <tr><td><code>--gui</code></td><td>Open a window of its own instead (as when started with no terminal). Use it when the terminal is the limit: the window draws pictures and PDFs itself, shows 24-bit colour whatever TERM says, and takes the desktop's clipboard through GTK. It needs a graphical session (WAYLAND_DISPLAY or DISPLAY), which a console or an ssh login has not. How the window is drawn is the setting <strong>gui-renderer</strong>.</td></tr>
-<tr><td><code>--frames N</code></td><td>Open N frames, from 1 to 16: with –gui each a window of its own, in the terminal screens shown one at a time (C-x 5 o goes to the next); the files named are shown one in each frame in turn, those left over open behind the first; –frames=N does as well. Use it to start with several views of the same buffers. With –gui they are windows you can put on different screens. In a terminal only one frame shows at a time, so more than one is for C-x 5 o; to see two views at once, split the window (C-x 2, C-x 3). The cost is small: measured once here, 16 frames on a small file added about 30 ms to the first screen and no memory worth naming.</td></tr>
+<tr><td><code>--frames N</code></td><td>Open N frames, from 1 to 16: with –gui each a window of its own, in the terminal screens shown one at a time (C-x 5 o goes to the next); the files named are shown one in each frame in turn, those left over open behind the first; –frames=N does as well. Use it to start with several views of the same buffers. With –gui they are windows you can put on different screens. In a terminal only one frame shows at a time, so more than one is for C-x 5 o; to see two views at once, split the window (C-x 2, C-x 3). The cost is small: a frame more adds little to the first screen and takes little memory.</td></tr>
 <tr><td><code>-c INIT-FILE, --config INIT-FILE</code></td><td>Read INIT-FILE as the init file instead of ~/.config/tuatara/init.lisp; –config=INIT-FILE does as well. Use it to keep several setups (one for writing, one for a work machine), to try a changed init file without touching the one you rely on, or to start from a file kept elsewhere. The file is read as the usual one is, so the packages it names are loaded. A file that is not there ends the start with status 2; the usual init file is not used in its place.</td></tr>
 <tr><td><code>+LINE[:COLUMN]</code></td><td>Before a file: open it with the cursor on that line (from 1; the last line when the file has fewer) and column (from 1; the C in the mode line counts from 0), as in tuatara +120:8 main.lisp +3 notes.org.</td></tr>
 <tr><td><code>--diff OLD NEW</code></td><td>Open the differences between the two files, or two directories, as M-x diff-files shows them, and exit when you quit; for git, as git config difftool.tuatara.cmd 'tuatara –diff &quot;$LOCAL&quot; &quot;$REMOTE&quot;'.</td></tr>
@@ -1081,9 +1085,9 @@ them are explained in chapters 15 and 18.</p>
 <tr><td><code>--hex</code></td><td>Open the files in the hex view, never first as text. Use it for a file that is not text (a program, an image, a database), or for text whose bytes you must read as stored, where the text view could hide a stray byte or a different line ending. A byte takes more room on the screen than a character. Measured once here, a 1 GB file showed its first screen in the same time as hex or as text (about 0.35 s).</td></tr>
 <tr><td><code>-</code></td><td>As a file: read standard input into a buffer, <strong>stdin</strong>, opened safely (tuatara - &lt; data, or … | tuatara -); the terminal stays the keyboard. Use it to look at what another program writes, in a pipe, before it goes on. The buffer is opened safely, as –safe does, so it is for reading and for taking parts of out.</td></tr>
 <tr><td><code>--tutor</code></td><td>Start in the tutor.</td></tr>
-<tr><td><code>--daemon[=NAME]</code></td><td>Run one editor in the background, with no screen, for tuatara –client to show in terminals, and return once it is ready; it reads the init file and loads the packages as Tuatara does, and runs until M-x daemon-quit or tuatara –stop, or until it is sent SIGTERM, as at logout, which keeps the changes not saved as auto-saved copies and asks nothing; NAME, default when none is given, tells several apart; its log is ~/.cache/tuatara/daemon-NAME.log, its session ~/.local/state/tuatara/session-daemon-NAME. Use it for an editor that is already there when you want one: a client (tuatara –client) shows a frame in about 0.23 s, against about 0.32 s to start an editor of its own (measured once here, on a small file), and the buffers stay open when a terminal closes. Several names keep several separate sessions. The cost is a process that stays in memory until it is stopped, with whatever it has open: a large file stays held. It needs XDG_RUNTIME_DIR, where its socket is.</td></tr>
-<tr><td><code>--client[=NAME]</code></td><td>Show the daemon NAME in this terminal, or with –gui in a window of its own (C-x 5 2 opens another), a frame of its own, the files named opened in it, with +LINE, –safe, –hex, - and –frames as for Tuatara itself; –diff and –merge as well, with their exit codes; C-x C-c closes this client alone, its buffers kept in the daemon, and the daemon goes on; as git's editor (GIT_EDITOR='tuatara –client') the commit is made when the message is finished; exits 1 when no daemon of that name runs, or when it ends. Use it for the quicker start a daemon gives (about 0.23 s against about 0.32 s here) and one set of buffers in every terminal. In return, a change to the init file or a package reaches the daemon only when it is stopped and started again, and every client works in the one editor. As git's editor, add –start so that it works when no daemon runs.</td></tr>
-<tr><td><code>--client=HOST[:NAME]</code></td><td>Show the daemon NAME running on the machine HOST, reached with the system's ssh, as –client shows one here: HOST as ssh takes it (build.example, me@build.example), a name from ~/.ssh/config written with a colon after it (build: or build:work); its host key must be known already; the files named are that machine's, a relative name from your home directory there; - is not taken, and pictures stay on each side, the clipboard, dropped files and your agents too unless HOST is trusted with them (M-x server-list); with –start, the daemon there is started first when none runs; –stop=HOST[:NAME] stops it. Use it to work on the machine that has the files, a build server or a remote box, with your own screen and keys. Tuatara must be installed there, and the system's ssh is all it needs here. The editor runs there, so files are read at the speed of its disks, and each key crosses the network: a slow link shows as lag. The clipboard, dropped files and pictures stay on each side unless HOST is trusted with them, so a copy made there does not reach this machine's clipboard by itself.</td></tr>
+<tr><td><code>--daemon[=NAME]</code></td><td>Run one editor in the background, with no screen, for tuatara –client to show in terminals, and return once it is ready; it reads the init file and loads the packages as Tuatara does, and runs until M-x daemon-quit or tuatara –stop, or until it is sent SIGTERM, as at logout, which keeps the changes not saved as auto-saved copies and asks nothing; NAME, default when none is given, tells several apart; its log is ~/.cache/tuatara/daemon-NAME.log, its session ~/.local/state/tuatara/session-daemon-NAME. Use it for an editor that is already there when you want one: a client (tuatara –client) shows a frame sooner than an editor of its own starts, as nothing is loaded or read for it, and the buffers stay open when a terminal closes. Several names keep several separate sessions. The cost is a process that stays in memory until it is stopped, with whatever it has open: a large file stays held. It needs XDG_RUNTIME_DIR, where its socket is.</td></tr>
+<tr><td><code>--client[=NAME]</code></td><td>Show the daemon NAME in this terminal, or with –gui in a window of its own (C-x 5 2 opens another), a frame of its own, the files named opened in it, with +LINE, –safe, –hex, - and –frames as for Tuatara itself; –diff and –merge as well, with their exit codes; C-x C-c closes this client alone, its buffers kept in the daemon, and the daemon goes on; as git's editor (GIT_EDITOR='tuatara –client') the commit is made when the message is finished; exits 1 when no daemon of that name runs, or when it ends. Use it for the quicker start a daemon gives and one set of buffers in every terminal. In return, a change to the init file or a package reaches the daemon only when it is stopped and started again, and every client works in the one editor. As git's editor, add –start so that it works when no daemon runs.</td></tr>
+<tr><td><code>--client=HOST[:NAME]</code></td><td>Show the daemon NAME running on the machine HOST, reached with the system's ssh, as –client shows one here: HOST as ssh takes it (build.example, me@build.example), a name from ~/.ssh/config written with a colon after it (build: or build:work); its host key must be known already; the files named are that machine's, a relative name from your home directory there; - is not taken, and pictures stay on each side, the clipboard, dropped files and your agents too unless HOST is trusted with them (M-x server-manager); with –start, the daemon there is started first when none runs; –stop=HOST[:NAME] stops it. Use it to work on the machine that has the files, a build server or a remote box, with your own screen and keys. Tuatara must be installed there, and the system's ssh is all it needs here. The editor runs there, so files are read at the speed of its disks, and each key crosses the network: a slow link shows as lag. The clipboard, dropped files and pictures stay on each side unless HOST is trusted with them, so a copy made there does not reach this machine's clipboard by itself.</td></tr>
 <tr><td><code>--daemon-socket[=NAME]</code></td><td>Say where the daemon NAME listens, which Tuatara this is and whether it runs, in lines a client on another machine reads over ssh, with where gpg here looks for its agent, and exit; with –start, start it first when none runs.</td></tr>
 <tr><td><code>--receive-file PATH</code></td><td>Write standard input, a file dropped on the window of a client on another machine, at PATH, from your home directory unless it begins with /, for you alone and under a name nothing has yet; say where, and exit.</td></tr>
 <tr><td><code>--start</code></td><td>With –client: start the daemon first when none runs. Use it in a script or as git's editor, where there may be no daemon yet: the first call starts one and later calls find it. Without it, a client with no daemon exits 1.</td></tr>

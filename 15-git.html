@@ -13,7 +13,7 @@
 <div class="site">
 <nav class="toc" id="contents" aria-label="Contents">
 <strong>Tuatara Manual</strong>
-<small>for version 0.90.43</small>
+<small>for version 0.90.44</small>
 <p class="tools"><a href="all.html">All on one page</a>
 <button type="button" class="theme" hidden>Dark</button></p>
 <input type="search" placeholder="Search the manual" aria-label="Search the manual">
@@ -205,9 +205,9 @@ would sooner add one or two than see them all.</p>
 </thead>
 <tbody>
 <tr><td>none</td><td><kbd>C-x g</kbd></td><td><code>git</code></td><td>Show the state of the git repository the current file (or directory) is in: the branch, the files not tracked, changed and staged, the latest commits; C-h b there lists its keys.</td></tr>
-<tr><td>none</td><td><kbd>s</kbd></td><td><code>git-stage</code></td><td>Stage the file on the line of the status, or on a section's title all of its files; on a hunk, the hunk; with lines selected in hunks, those lines.</td></tr>
+<tr><td>none</td><td><kbd>s</kbd>, <kbd>C-c s</kbd></td><td><code>git-stage</code></td><td>Stage the file on the line of the status, or on a section's title all of its files; on a hunk, the hunk; with lines selected in hunks, those lines.</td></tr>
 <tr><td>none</td><td><kbd>u</kbd>, <kbd>C-c u</kbd></td><td><code>git-unstage</code></td><td>Unstage the file on the line of the status, or on a section's title all of its files, a rename by both its names; on a hunk, the hunk; with lines selected in hunks, those lines.</td></tr>
-<tr><td>none</td><td><kbd>x</kbd></td><td><code>git-reverse</code></td><td>Reverse the changes of the file on the line of the status (on a section's title, of all its files), after asking, which says it cannot be undone: git kept no copy of them.</td></tr>
+<tr><td>none</td><td><kbd>x</kbd>, <kbd>C-c x</kbd></td><td><code>git-reverse</code></td><td>Reverse the changes of the file on the line of the status (on a section's title, of all its files), after asking, which says it cannot be undone: git kept no copy of them.</td></tr>
 <tr><td>none</td><td><kbd>TAB</kbd></td><td><code>git-toggle-diff</code></td><td>Show the changes of the file on the line of the status under it, in hunks, the first <strong>GIT-DIFF-LINES</strong> of them, or no longer.</td></tr>
 <tr><td>none</td><td><kbd>l</kbd>, <kbd>C-f</kbd>, <kbd>RET</kbd></td><td><code>git-visit</code></td><td>Visit the file on the line of the status, at the line of the hunk's line point is on, a file in conflict at its first conflict, its conflicts shown (M-x conflict-markers-mode); or show the commit or the stash on it, or a submodule's status; a file deleted is said to be.</td></tr>
 <tr><td>none</td><td><kbd>n</kbd>, <kbd>C-c n</kbd></td><td><code>git-next-section</code></td><td>Go to the next file or hunk of the status, or the next title.</td></tr>
@@ -603,7 +603,7 @@ them: <kbd>P t</kbd> every tag, <kbd>P T</kbd> one.</p>
 <tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td>none</td><td><kbd>t</kbd></td><td><code>git-tag-menu</code></td><td>Open the tag menu: tag a revision, or delete a tag; P t and P T in the push menu send tags.</td></tr>
+<tr><td>none</td><td><kbd>t</kbd>, <kbd>C-c t</kbd></td><td><code>git-tag-menu</code></td><td>Open the tag menu: tag a revision, or delete a tag; P t and P T in the push menu send tags.</td></tr>
 <tr><td>none</td><td><kbd>M-x git-tag-create</kbd></td><td><code>git-tag-create</code></td><td>Tag a revision asked for (the commit on point's line first, else HEAD) with a name asked for; the tag menu's -a makes it annotated with a message asked for, -s signed (with a message too), -f moves a tag of that name.</td></tr>
 <tr><td>none</td><td><kbd>M-x git-tag-delete</kbd></td><td><code>git-tag-delete</code></td><td>Delete a tag, asked for, here (not on any remote), after asking.</td></tr>
 </tbody></table></div>
@@ -904,7 +904,10 @@ server whose key it does not know is refused, and the echo area names it:
 Tuatara shows git's own words.</p>
 <p>The remote menu looks after the remotes themselves: <kbd>M a</kbd> adds one and <kbd>M u</kbd>
 gives one a new address. The full menu also renames, removes, and forgets
-branches that the remote has deleted.</p>
+branches that the remote has deleted. Git reaches a remote only over https,
+ssh or git's own protocol, or in a directory on your computer. An address
+such as <code>ext::...</code> or <code>NAME::...</code>, which would have git run a program, is
+refused.</p>
 <div class="try">
 <h3>Try it, with a directory standing in for a server</h3>
 <ol>
@@ -1031,7 +1034,9 @@ such as <code>3/5</code>. You cannot mistake the old text for the file as it is 
 <p>The text is read-only, but you can select and copy from it as from any
 buffer (chapter 4) and paste into the real file. The history follows the file
 back through a rename. Changes you have not committed are not part of it,
-since they are in no commit.</p>
+since they are in no commit. A file that would open safely, such as one among
+evidence (chapter 9), is rewound as plain text, in no mode its name or first
+line asks for.</p>
 <p>Rewind works on directories too. Press <kbd>C-x G</kbd> in a directory listing (chapter</p>
 <ol>
 <li>and the listing shows the directory as its latest commit left it, with files</li>

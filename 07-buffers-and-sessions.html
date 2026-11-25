@@ -13,7 +13,7 @@
 <div class="site">
 <nav class="toc" id="contents" aria-label="Contents">
 <strong>Tuatara Manual</strong>
-<small>for version 0.90.43</small>
+<small>for version 0.90.44</small>
 <p class="tools"><a href="all.html">All on one page</a>
 <button type="button" class="theme" hidden>Dark</button></p>
 <input type="search" placeholder="Search the manual" aria-label="Search the manual">
@@ -90,6 +90,10 @@ in, or opens it again if it was folded. <kbd>S-TAB</kbd> folds every section, or
 them all if every one is folded. On a heading, <kbd>l</kbd> and <kbd>RET</kbd> open the section,
 and <kbd>h</kbd> folds it. On any other line <kbd>h</kbd> does nothing, so a stray press does
 not close the list; <kbd>q</kbd> does that.</p>
+<p>A fold hides lines, never marks. A marked entry in a folded section stays
+marked, and a command on the marked entries acts on it too. Its question says
+how many of them a fold hides, as in <code>Kill the 3 buffers (1 in a folded
+section)?</code>.</p>
 <h3 id="marks"><span class="num">7.1.3</span> Marks</h3>
 <p>The list works on one buffer at a time, or on several if you mark them.
 Marking is how you say &quot;these ones&quot;. <kbd>m</kbd> puts a <code>&gt;</code> on the buffer the cursor
@@ -97,7 +101,8 @@ is on and moves down a line, so you can mark a run of buffers by pressing <kbd>m
 over and over. A number before the key marks that many lines. <kbd>u</kbd> takes a mark
 off the line and moves down, and <kbd>U</kbd> takes every mark off. <kbd>t</kbd> swaps the two
 states: what was marked becomes unmarked and the other way round. That is a
-quick way to say &quot;everything except these&quot;.</p>
+quick way to say &quot;everything except these&quot;. It leaves the entries of a folded
+section as they are, and the number it says counts every mark, theirs too.</p>
 <p>While any entry is marked, the mode line of the list says how many, for
 example &quot;3 marked, 1 for deletion&quot;. It changes with each mark you put or take
 off, and goes when none is left. Every list with marks does this, rimu too.</p>
@@ -117,11 +122,11 @@ and <kbd>p</kbd> move to the next and the previous buffer, skipping the headings
 again. You rarely need that, because the list updates itself while it is on the
 screen, and your marks stay.</p>
 <p>When Tuatara runs in the background, serving several windows of its own (a
-daemon, described in chapter 18), each of those windows is a client and the
-list has a section for each client instead. <kbd>K</kbd> on a client's section makes
-that client the one that stays when its last buffer is closed. The setting
-<code>*client-kept-without-buffers*</code> says which one stays when you do not choose.
-You can skip this until chapter 18.</p>
+daemon, described in chapter 18), each of those windows is a client and the list
+has a section for each client instead. <kbd>C-c K</kbd> on a client's section makes that
+client the one that stays when its last buffer is closed. The setting
+<code>*client-kept-without-buffers*</code> says which one stays when you do not choose. You
+can skip this until chapter 18.</p>
 <div class="try">
 <h3>Try it, with a letter and a shopping list</h3>
 <ol>
@@ -146,8 +151,8 @@ You can skip this until chapter 18.</p>
 <tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td>none</td><td><kbd>s</kbd></td><td><code>buffers-save</code></td><td>Save the marked buffers (&gt;) that have a file, or with none marked the buffer on the current line.</td></tr>
-<tr><td>none</td><td><kbd>K</kbd>, <kbd>C-c K</kbd></td><td><code>buffers-keep-client</code></td><td>Make the client whose group the cursor is in, in the buffer list, the one that stays when its last buffer is closed, in place of the one <strong>CLIENT-KEPT-WITHOUT-BUFFERS</strong> names, until it ends.</td></tr>
+<tr><td>none</td><td><kbd>s</kbd>, <kbd>C-c s</kbd></td><td><code>buffers-save</code></td><td>Save the marked buffers (&gt;) that have a file, or with none marked the buffer on the current line.</td></tr>
+<tr><td>none</td><td><kbd>C-c K</kbd></td><td><code>buffers-keep-client</code></td><td>Make the client whose group the cursor is in, in the buffer list, the one that stays when its last buffer is closed, in place of the one <strong>CLIENT-KEPT-WITHOUT-BUFFERS</strong> names, until it ends.</td></tr>
 <tr><td>none</td><td><kbd>l</kbd>, <kbd>C-f</kbd>, <kbd>RET</kbd></td><td><code>list-visit</code></td><td>Open the entry on the current line of the list: the buffer, the bookmark's place, the file; on a section's heading, fold or unfold the section.</td></tr>
 <tr><td>none</td><td><kbd>o</kbd>, <kbd>C-c o</kbd></td><td><code>list-visit-other</code></td><td>Open the entry on the current line of the list in another window; on a section's heading, fold or unfold the section.</td></tr>
 <tr><td>none</td><td><kbd>n</kbd>, <kbd>C-c n</kbd></td><td><code>list-next-entry</code></td><td>Go to the next entry of the list, the start of its first line, passing over the headings of its sections.</td></tr>
@@ -156,8 +161,8 @@ You can skip this until chapter 18.</p>
 <tr><td>none</td><td><kbd>d</kbd>, <kbd>C-c d</kbd></td><td><code>list-mark-for-deletion</code></td><td>Mark the entry on the current line of the list for deletion (D), for the list's command that deletes them, and move down; with a count, as many entries, up the list for a negative one.</td></tr>
 <tr><td>none</td><td><kbd>u</kbd>, <kbd>C-c u</kbd></td><td><code>list-unmark-entry</code></td><td>Take the mark off the entry on the current line of the list, of any kind, and move down; with a count, off as many entries, up the list for a negative one.</td></tr>
 <tr><td>none</td><td><kbd>U</kbd>, <kbd>C-c U</kbd></td><td><code>list-unmark-all</code></td><td>Take every mark off the entries of the list, of any kind; in rimu, those of the files marked in other directories too.</td></tr>
-<tr><td>none</td><td><kbd>t</kbd></td><td><code>list-toggle-marks</code></td><td>Mark the entries the list shows that are not marked and take the mark off those marked; those marked for deletion (D), or given a mark of another kind, stay so, as do the entries a filter or a folded section hides.</td></tr>
-<tr><td>none</td><td><kbd>x</kbd></td><td><code>list-execute</code></td><td>Delete the entries of the list marked for deletion (D), after asking, as the list deletes: the buffer list kills its buffers, rimu puts files in the trash, the list of jobs drops those waiting and stops those running.</td></tr>
+<tr><td>none</td><td><kbd>t</kbd>, <kbd>C-c t</kbd></td><td><code>list-toggle-marks</code></td><td>Mark the entries the list shows that are not marked and take the mark off those marked; those marked for deletion (D), or given a mark of another kind, stay so, as do the entries a filter or a folded section hides.</td></tr>
+<tr><td>none</td><td><kbd>x</kbd>, <kbd>C-c x</kbd></td><td><code>list-execute</code></td><td>Delete the entries of the list marked for deletion (D), after asking, as the list deletes: the buffer list kills its buffers, rimu puts files in the trash, the list of jobs drops those waiting and stops those running.</td></tr>
 <tr><td>none</td><td><kbd>D</kbd>, <kbd>C-c D</kbd></td><td><code>list-delete-marked</code></td><td>Delete the marked entries of the list (&gt;), or with none marked the one on the current line, after asking, as the list deletes, as M-x list-execute does those marked for deletion; in rimu, with C-u, for good rather than to the trash.</td></tr>
 <tr><td>none</td><td><kbd>TAB</kbd></td><td><code>list-toggle-fold</code></td><td>Fold the section of the list the current line is in, its heading left showing, or unfold it when it is folded.</td></tr>
 <tr><td>none</td><td><kbd>S-TAB</kbd></td><td><code>list-toggle-all-folds</code></td><td>Fold every section of the list, or unfold them all when every one is folded; a section not in the list now keeps its fold for when it comes back.</td></tr>
@@ -254,7 +259,7 @@ that are not saved.</p>
 <tbody>
 <tr><td>none</td><td><kbd>C-x k</kbd></td><td><code>kill-buffer</code></td><td>Kill the current buffer, asking first when it has changes not saved.</td></tr>
 <tr><td>none</td><td><kbd>C-x p k</kbd></td><td><code>kill-project-buffers</code></td><td>Kill every buffer of the project the current buffer is in (a directory above it holding one of <strong>PROJECT-ROOT-MARKERS</strong>, .git or .project), its files, its directories listed (C-x d), and the buffers standing in them; after asking, saying how many are modified, each modified one asked about as it goes.</td></tr>
-<tr><td>none</td><td><kbd>C-x s</kbd></td><td><code>save-some-buffers</code></td><td>Save every buffer visiting a file with changes not saved, after asking once, the files named: the files a rename across a project changed, say.</td></tr>
+<tr><td>none</td><td><kbd>C-x s</kbd></td><td><code>save-some-buffers</code></td><td>Save every buffer visiting a file with changes not saved, after asking once, the files named beside the question: the files a rename across a project changed, say.</td></tr>
 <tr><td>none</td><td><kbd>C-x C-c</kbd></td><td><code>save-buffers-kill-editor</code></td><td>Exit the editor, asking first if a buffer visiting a file, or one made by C-x n e, has unsaved changes.</td></tr>
 </tbody></table></div>
 <h2 id="recent-files-and-places"><span class="num">7.4</span> Recent files and places</h2>
@@ -326,6 +331,13 @@ bookmark under the cursor another name and <kbd>c</kbd> changes its categories. 
 bookmark whose file has gone is shown faint.</p>
 <p>A bookmark on a directory listing keeps the directory and the entry the cursor
 is on, so you can bookmark a directory you visit often.</p>
+<p>A bookmark can keep a place on another machine, such as
+<code>/ssh:server:/home/me/notes.txt</code> or a directory listed there. Going to it
+connects again when the connection has been closed, and the cursor goes to the
+place once the file has been read. The manager shows such a bookmark as
+<code>remote</code> at once, without connecting. The others are looked at in the
+background, and until that ends the last line says <code>looking for those gone</code>
+in place of how many are gone.</p>
 <div class="try">
 <h3>Try it, with some notes</h3>
 <ol>
@@ -430,11 +442,13 @@ tells you it holds changes that are newer than the file. <kbd>M-x recover-file</
 takes them into the buffer, after asking. They arrive as one edit. <kbd>C-/</kbd> (modal:
 <kbd>u</kbd>) takes it back if you change your mind, and <kbd>C-x C-s</kbd> writes it to the file
 if you do not.</p>
-<p>You can also see every copy that is waiting with <kbd>M-x list-auto-saves</kbd>. The
-list shows when each copy was written, how big it is and which file it
-belongs to, with the newest first. It marks and acts as the buffer list
-does: <kbd>RET</kbd> recovers the copy on the line, after asking, and <kbd>x</kbd> and <kbd>D</kbd> delete
-copies.</p>
+<p>You can also see every copy that is waiting with <kbd>M-x auto-saves-manager</kbd>. The
+copies newer than their file, the ones worth taking back, come first in a
+section of their own; those older than their file, and those whose file is
+gone, follow in sections of theirs. Each line shows when the copy was written,
+how big it is and which file it belongs to, the newest first. It marks and
+acts as the buffer list does: <kbd>RET</kbd> or <kbd>l</kbd> recovers the copy on the line, after
+asking, <kbd>h</kbd> folds a section, and <kbd>x</kbd> and <kbd>D</kbd> delete copies.</p>
 <p>Auto-save is on as standard, through <code>*auto-save*</code>. With <code>t</code> the changes of
 every buffer that visits a file are written now and then to a copy of their
 own, never to the file. If you want no copies at all, put this in your init
@@ -464,7 +478,7 @@ you can point it at a directory on another drive. <code>*auto-save-idle*</code> 
 <tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td>none</td><td><kbd>M-x list-auto-saves</kbd></td><td><code>list-auto-saves</code></td><td>List the auto-saved copies of changes not saved (<strong>AUTO-SAVE-DIRECTORY</strong>), the newest first: after a crash or a quit without saving, what can be taken back.</td></tr>
+<tr><td>none</td><td><kbd>M-x auto-saves-manager</kbd></td><td><code>auto-saves-manager</code></td><td>List the auto-saved copies of changes not saved (<strong>AUTO-SAVE-DIRECTORY</strong>), the newest first, those newer than their file in a section before the rest: after a crash or a quit without saving, what can be taken back.</td></tr>
 <tr><td>none</td><td><kbd>M-x recover-file</kbd></td><td><code>recover-file</code></td><td>Take into the current buffer the changes auto-saved for its file (<strong>AUTO-SAVE</strong>) after asking, as one edit: C-/ takes it back, a save writes it to the file.</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>

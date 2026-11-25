@@ -13,7 +13,7 @@
 <div class="site">
 <nav class="toc" id="contents" aria-label="Contents">
 <strong>Tuatara Manual</strong>
-<small>for version 0.90.43</small>
+<small>for version 0.90.44</small>
 <p class="tools"><a href="all.html">All on one page</a>
 <button type="button" class="theme" hidden>Dark</button></p>
 <input type="search" placeholder="Search the manual" aria-label="Search the manual">
@@ -201,7 +201,7 @@ name. The settings below change the standard for every list.</p>
 <tbody>
 <tr><td>none</td><td><kbd>I</kbd>, <kbd>C-c I</kbd></td><td><code>rimu-toggle-details</code></td><td>Show or hide the details before each name in this list: its inode number, as ls -i shows it, then its permissions, links, owner, group, size and when it last changed, as ls -l shows them, and where a symbolic link leads.</td></tr>
 <tr><td>none</td><td><kbd>H</kbd>, <kbd>C-c H</kbd></td><td><code>rimu-toggle-dotfiles</code></td><td>Show or hide the entries of this list whose names start with a dot, .</td></tr>
-<tr><td>none</td><td><kbd>s</kbd></td><td><code>rimu-toggle-sort</code></td><td>Order this list by name or by time, those changed last first; the mode line says which.</td></tr>
+<tr><td>none</td><td><kbd>s</kbd>, <kbd>C-c s</kbd></td><td><code>rimu-toggle-sort</code></td><td>Order this list by name or by time, those changed last first; the mode line says which.</td></tr>
 <tr><td>none</td><td><kbd>S</kbd>, <kbd>C-c S</kbd></td><td><code>rimu-toggle-sizes</code></td><td>Show or hide, before each name in this list, how much it takes: a file its size, a directory the size of everything in it and under it, hidden files too, directories of another drive mounted in it left out, worked out in the background while the list shows it.</td></tr>
 <tr><td>none</td><td><kbd>G</kbd>, <kbd>C-c G</kbd></td><td><code>rimu-toggle-git</code></td><td>Show or hide, after each name in this list, the entry's last commit in git's history: when it was made and the first line of its message.</td></tr>
 </tbody></table></div>
@@ -421,10 +421,10 @@ that column matches. Chapter 6 describes the pattern language.</p>
 <tr><td>none</td><td><kbd>m</kbd>, <kbd>C-c m</kbd></td><td><code>list-mark-entry</code></td><td>Mark the entry on the current line of the list (&gt;), for the list's commands that act on those marked, and move down; with a count, as many entries, up the list for a negative one.</td></tr>
 <tr><td>none</td><td><kbd>u</kbd>, <kbd>C-c u</kbd></td><td><code>list-unmark-entry</code></td><td>Take the mark off the entry on the current line of the list, of any kind, and move down; with a count, off as many entries, up the list for a negative one.</td></tr>
 <tr><td>none</td><td><kbd>U</kbd>, <kbd>C-c U</kbd></td><td><code>list-unmark-all</code></td><td>Take every mark off the entries of the list, of any kind; in rimu, those of the files marked in other directories too.</td></tr>
-<tr><td>none</td><td><kbd>t</kbd></td><td><code>list-toggle-marks</code></td><td>Mark the entries the list shows that are not marked and take the mark off those marked; those marked for deletion (D), or given a mark of another kind, stay so, as do the entries a filter or a folded section hides.</td></tr>
+<tr><td>none</td><td><kbd>t</kbd>, <kbd>C-c t</kbd></td><td><code>list-toggle-marks</code></td><td>Mark the entries the list shows that are not marked and take the mark off those marked; those marked for deletion (D), or given a mark of another kind, stay so, as do the entries a filter or a folded section hides.</td></tr>
 <tr><td>none</td><td><kbd>d</kbd>, <kbd>C-c d</kbd></td><td><code>list-mark-for-deletion</code></td><td>Mark the entry on the current line of the list for deletion (D), for the list's command that deletes them, and move down; with a count, as many entries, up the list for a negative one.</td></tr>
 <tr><td>none</td><td><kbd>K</kbd>, <kbd>C-c K</kbd></td><td><code>rimu-take-out-lines</code></td><td>Take the lines of the entries marked in this directory out of this list, or with none marked here the line point is on, their marks taken away: the files stay as they are, only the list shows fewer, to look at what is left.</td></tr>
-<tr><td>none</td><td><kbd>C-c f m</kbd></td><td><code>rimu-mark-master</code></td><td>Mark the file on the line of this rimu list as a master (M), a file that the files marked (m) are compared with by the commands that compare files, a photo of the person looked for among photos, and go to the next line; u takes the mark away.</td></tr>
+<tr><td>none</td><td><kbd>g m</kbd></td><td><code>rimu-mark-master</code></td><td>Mark the file on the line of this rimu list as a master (M), a file that the files marked (m) are compared with by the commands that compare files, a photo of the person looked for among photos, and go to the next line; u takes the mark away.</td></tr>
 <tr><td>none</td><td><kbd>C-x / s</kbd></td><td><code>search-filter-regex</code></td><td>Narrow the list here to the entries a regular expression matches, as it is typed: those whose line matches, or what more the list holds of them (a mailbox the headers and contents of its messages).</td></tr>
 <tr><td>none</td><td><kbd>C-x / l</kbd></td><td><code>search-filter-list</code></td><td>List the search filters narrowing the list here (C-x / s) in a buffer of their own, each with how many entries it leaves; there d takes away the filter on the line and D all of them.</td></tr>
 <tr><td>none</td><td><kbd>D</kbd>, <kbd>C-c D</kbd>, <kbd>C-x / r</kbd></td><td><code>search-filter-remove-all</code></td><td>Take away every search filter narrowing the list here, or the list the list of filters here is for: the whole list is shown again.</td></tr>
@@ -577,7 +577,8 @@ drive. When you pull the stick out, its trash goes with it.</p>
 <p>The trash only moves a file. The bytes stay on the drive until the space is
 used again. If you really want a file's contents gone, <kbd>g w</kbd> wipes the marked
 files: it writes over them and then deletes them. This is slow, and it asks
-once.</p>
+once, with the files' names and what wiping cannot promise shown below the
+question.</p>
 <div class="try">
 <h3>Try it, with some letters</h3>
 <ol>
@@ -599,9 +600,9 @@ what you put there.</p>
 <tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td>none</td><td><kbd>x</kbd></td><td><code>list-execute</code></td><td>Delete the entries of the list marked for deletion (D), after asking, as the list deletes: the buffer list kills its buffers, rimu puts files in the trash, the list of jobs drops those waiting and stops those running.</td></tr>
+<tr><td>none</td><td><kbd>x</kbd>, <kbd>C-c x</kbd></td><td><code>list-execute</code></td><td>Delete the entries of the list marked for deletion (D), after asking, as the list deletes: the buffer list kills its buffers, rimu puts files in the trash, the list of jobs drops those waiting and stops those running.</td></tr>
 <tr><td>none</td><td><kbd>D</kbd>, <kbd>C-c D</kbd></td><td><code>list-delete-marked</code></td><td>Delete the marked entries of the list (&gt;), or with none marked the one on the current line, after asking, as the list deletes, as M-x list-execute does those marked for deletion; in rimu, with C-u, for good rather than to the trash.</td></tr>
-<tr><td>none</td><td><kbd>g t</kbd></td><td><code>rimu-trash</code></td><td>List what is in the trash, as the buffer list (C-x C-b) lists buffers: a section for your own trash and one for each drive's, the last to go there first, each thing's name, when it went and where it was.</td></tr>
+<tr><td>none</td><td><kbd>g t</kbd></td><td><code>trash-manager</code></td><td>List what is in the trash, as the buffer list (C-x C-b) lists buffers: a section for your own trash and one for each drive's, the last to go there first, each thing's name, when it went and where it was.</td></tr>
 <tr><td>none</td><td><kbd>R</kbd>, <kbd>C-c R</kbd></td><td><code>rimu-trash-restore</code></td><td>Put the marked things (&gt;), or with none marked the one on the current line, back where they were, after asking, where they go said; another name asked for when one's is taken, the directories above it made again when they are gone.</td></tr>
 <tr><td>none</td><td><kbd>X</kbd>, <kbd>C-c X</kbd></td><td><code>rimu-trash-empty</code></td><td>Empty the trash: everything the list of the trash shows deleted for good, after asking twice, in the background.</td></tr>
 <tr><td>none</td><td><kbd>g w</kbd></td><td><code>rimu-wipe-files</code></td><td>Wipe the files marked (or the one on the line) as M-x wipe-file does, asked once: overwritten, then deleted.</td></tr>
@@ -883,7 +884,7 @@ a face.</p>
 <tr><td><code>:list-marked</code></td><td>An entry marked (&gt;) in any list whose entries are marked, rimu's too, for the commands that act on those marked: the mark and the name, in the colour of warnings.</td></tr>
 <tr><td><code>:list-marked-other</code></td><td>An entry given a mark of another kind in a rimu list (a master's M, RIMU-MARK-MASTER): the mark and the name.</td></tr>
 <tr><td><code>:list-deletion</code></td><td>An entry marked for deletion (D) in any list whose entries are marked, rimu's too: the mark and the name, in the colour of errors.</td></tr>
-<tr><td><code>:list-directory</code></td><td>The names of directories in a list: in rimu (C-x d) and where a link to a directory leads, in the trash (M-x rimu-trash) and among bookmarks (C-x m l).</td></tr>
+<tr><td><code>:list-directory</code></td><td>The names of directories in a list: in rimu (C-x d) and where a link to a directory leads, in the trash (M-x trash-manager) and among bookmarks (C-x m l).</td></tr>
 <tr><td><code>:list-size</code></td><td>Sizes in a list or beside completion candidates: of files and buffers, and a rimu list's sizes column (S).</td></tr>
 <tr><td><code>:list-date</code></td><td>Dates and times in a list or beside completion candidates: when a file last changed, the date in a formatted name, a rimu list's last commits (G), when a message was sent.</td></tr>
 <tr><td><code>:list-note</code></td><td>What is said of an entry beside it in a list: the first line of a rimu list's last commit messages, the first sentence of a face's description in M-x list-faces, the details under a finding in a report.</td></tr>

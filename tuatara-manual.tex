@@ -1,4 +1,4 @@
-% Created 2026-11-23 Mon 20:47 with Tuatara, template article
+% Created 2026-11-24 Tue 08:52 with Tuatara, template article
 % Intended LaTeX compiler: xelatex
 %
 % The enhanced export's own look, for a note that sets none of its own
@@ -11616,7 +11616,7 @@ and none again. \texttt{S-<right>} and \texttt{S-<left>} go forward and back thr
 same round. In NORMAL state \texttt{RET} on a task’s line also moves it to the next
 keyword, and never leaves it without one. \texttt{CANCELLED} is left out of the
 round so that you do not cancel something by pressing a key once too often.
-\texttt{C-c C-x C} cancels the task the cursor is in.
+\texttt{C-c X} cancels the task the cursor is in.
 
 When a task becomes \texttt{DONE}, Tuatara writes a line under it that says when:
 
@@ -11679,7 +11679,7 @@ bar are open and those after it are closed:
 Two settings shape the round that \texttt{C-c C-t}, \texttt{S-<right>} and \texttt{RET} make.
 \texttt{*org-\codebreak{}todo-\codebreak{}keywords-\codebreak{}not-\codebreak{}cycled*} lists the keywords the round passes over.
 Its standard is \texttt{("CANCELLED" "CANCELED")}, which is why the round is none,
-\texttt{TODO}, \texttt{WAIT}, \texttt{DONE} and none again, and why \texttt{C-c C-x C} is the way to
+\texttt{TODO}, \texttt{WAIT}, \texttt{DONE} and none again, and why \texttt{C-c X} is the way to
 cancel. It applies to the keywords of a file’s own \texttt{\#+TODO:} line too, and
 to the agenda’s key for a task. With \texttt{(setf *org-\codebreak{}todo-\codebreak{}keywords-\codebreak{}not-\codebreak{}cycled*
 '("CANCELLED" "SOMEDAY"))}, a note with \texttt{\#+TODO: TODO NEXT | DONE SOMEDAY
@@ -11733,7 +11733,7 @@ that the important tasks stand out.
 none & \texttt{C-c C-t} & \texttt{org-\codebreak{}todo} & Change the TODO keyword of the headline point is in to the next of the document’s (\#+TODO:, else TODO, WAIT and DONE), none after the last, those of \textbf{org-todo-keywords-not-cycled} passed over (CANCELLED, which M-x org-cancel-task sets); a task done is noted with CLOSED: and when.\\
 none & \texttt{S-<right>} & \texttt{org-\codebreak{}shiftright} & On a headline, its next TODO keyword, as M-x org-todo does.\\
 none & \texttt{S-<left>} & \texttt{org-\codebreak{}shiftleft} & On a headline, its TODO keyword before, none before the first.\\
-none & \texttt{C-c C-x C} & \texttt{org-\codebreak{}cancel-\codebreak{}task} & Cancel the task of the headline point is in: its keyword made CANCELLED, a done keyword that M-x org-todo and the other keys that go round the keywords pass over, noted with CLOSED: and when as a task done is.\\
+none & \texttt{C-c X} & \texttt{org-\codebreak{}cancel-\codebreak{}task} & Cancel the task of the headline point is in: its keyword made CANCELLED, a done keyword that M-x org-todo and the other keys that go round the keywords pass over, noted with CLOSED: and when as a task done is.\\
 none & \texttt{C-c C-z} & \texttt{org-\codebreak{}add-\codebreak{}note} & Add a note to the entry point is under (C-c C-z): the note is asked for, and logged where Org logs notes, at the top of its :LOGBOOK: drawer with \textbf{ORG-LOG-INTO-DRAWER}, else after its planning line and properties, in the form - Note taken on \textit{[2026-10-01 Thu 18:00]} \textbackslash{}\textbackslash{} and the note under it.\\
 \bottomrule
 \end{xltabular}
@@ -12221,7 +12221,7 @@ because the day and the time column already say it. \texttt{t} leaves it in.
 \subsubsection{Moving about}
 \label{sec:382}
 \texttt{j} and \texttt{k} move from line to line. \texttt{l} or \texttt{C-f} shows the next week, and \texttt{h}
-or \texttt{C-b} the one before. \texttt{g h} comes back to today. \texttt{D}, \texttt{w}, \texttt{m} and \texttt{Y}
+or \texttt{C-b} the one before. \texttt{g h} comes back to today. \texttt{C-c D}, \texttt{C-c W}, \texttt{C-c M} and \texttt{C-c Y}
 change the span to a day, a week, a month or a year, and \texttt{g l} returns to the
 view you had before.
 \texttt{RET} opens the entry on the line in its file, and \texttt{TAB} shows it in another
@@ -12238,7 +12238,7 @@ once.
 You do not have to open a file to deal with a task. The keys below act on
 the entry of the line the cursor is on, and change it in its file.
 
-\begin{longtable}{@{}l l l@{}}
+\begin{xltabular}{\textwidth}{@{}l l >{\raggedright\arraybackslash\hsize=1.000\hsize}X@{}}
 \toprule
 \textbf{Modal} & \textbf{Non-modal} & \textbf{What it does to the entry}\\
 \midrule
@@ -12248,11 +12248,13 @@ none & \texttt{C-c C-s} & Schedules it for another day\\
 none & \texttt{C-c C-d} & Gives it a deadline\\
 none & \texttt{C-c C-q} & Sets its tags\\
 none & \texttt{C-c C-z} & Adds a note to it\\
-none & \texttt{I} / \texttt{O} & Starts and stops the clock on it\\
+none & \texttt{C-c I} / \texttt{C-c O} & Starts and stops the clock on it\\
+none & \texttt{C-c C} & Cancels the clock, taking its line away\\
+none & \texttt{C-c X} & Cancels the task\\
 none & \texttt{u} & Undoes the last change made from this agenda\\
 none & \texttt{s} & Saves every agenda file that has changes\\
 \bottomrule
-\end{longtable}
+\end{xltabular}
 
 These are the keys of the file itself. Changes made from the agenda are in the
 files’ buffers and are not on disk until you press \texttt{s}. If you want them saved as they are made, name the
@@ -12306,10 +12308,10 @@ none & \texttt{M-x org-\codebreak{}agenda-\codebreak{}list} & \texttt{org-\codeb
 none & \texttt{M-x org-\codebreak{}todo-\codebreak{}list} & \texttt{org-\codebreak{}todo-\codebreak{}list} & Show the TODO list: every task not done in \textbf{ORG-AGENDA-FILES}.\\
 none & \texttt{M-x org-\codebreak{}tags-\codebreak{}view} & \texttt{org-\codebreak{}tags-\codebreak{}view} & Show the headlines of \textbf{ORG-AGENDA-FILES} an Org match selects, read in the minibuffer: work, +work-home, work\(\vert{}\)proj, TODO=”NEXT”, LEVEL>1, -\{.*\} for those with no tag.\\
 none & \texttt{M-x org-\codebreak{}agenda-\codebreak{}check-\codebreak{}dates} & \texttt{org-\codebreak{}agenda-\codebreak{}check-\codebreak{}dates} & Show the entries of \textbf{ORG-AGENDA-FILES} whose dates look wrong, each with what is wrong (ORG-ENTRY-DATE-PROBLEM).\\
-none & \texttt{D}, \texttt{C-c D} & \texttt{org-\codebreak{}agenda-\codebreak{}day-\codebreak{}view} & Show the agenda of one day: the day at point in the agenda, else today.\\
-none & \texttt{w}, \texttt{C-c w}, \texttt{C-x a w} & \texttt{org-\codebreak{}agenda-\codebreak{}week-\codebreak{}view} & Show the agenda of a week: the week of the day at point in the agenda, else this week.\\
-none & \texttt{m}, \texttt{C-c m}, \texttt{C-x a m} & \texttt{org-\codebreak{}agenda-\codebreak{}month-\codebreak{}view} & Show the agenda of a month: the month of the day at point in the agenda, else this month.\\
-none & \texttt{Y}, \texttt{C-c Y}, \texttt{C-x a y} & \texttt{org-\codebreak{}agenda-\codebreak{}year-\codebreak{}view} & Show the agenda of a year: the year of the day at point in the agenda, else this year.\\
+none & \texttt{C-c D} & \texttt{org-\codebreak{}agenda-\codebreak{}day-\codebreak{}view} & Show the agenda of one day: the day at point in the agenda, else today.\\
+none & \texttt{C-c W}, \texttt{C-x a w} & \texttt{org-\codebreak{}agenda-\codebreak{}week-\codebreak{}view} & Show the agenda of a week: the week of the day at point in the agenda, else this week.\\
+none & \texttt{C-c M}, \texttt{C-x a m} & \texttt{org-\codebreak{}agenda-\codebreak{}month-\codebreak{}view} & Show the agenda of a month: the month of the day at point in the agenda, else this month.\\
+none & \texttt{C-c Y}, \texttt{C-x a y} & \texttt{org-\codebreak{}agenda-\codebreak{}year-\codebreak{}view} & Show the agenda of a year: the year of the day at point in the agenda, else this year.\\
 none & \texttt{l}, \texttt{C-f}, \texttt{C-c l} & \texttt{org-\codebreak{}agenda-\codebreak{}later} & Show the agenda’s next span: the next week in a week’s agenda, the next day in a day’s.\\
 none & \texttt{h}, \texttt{C-b}, \texttt{C-c h} & \texttt{org-\codebreak{}agenda-\codebreak{}earlier} & Show the agenda’s previous span: the previous week in a week’s agenda, the previous day in a day’s.\\
 none & \texttt{g h} & \texttt{org-\codebreak{}agenda-\codebreak{}goto-\codebreak{}today} & Show the agenda’s span holding today, point on today’s date.\\
@@ -12330,15 +12332,16 @@ none & \texttt{a}, \texttt{C-c a} & \texttt{org-\codebreak{}calendar-\codebreak{
 none & \texttt{RET} & \texttt{org-\codebreak{}agenda-\codebreak{}switch-to} & Open the entry on the agenda’s line in this window, point on its headline.\\
 none & \texttt{TAB} & \texttt{org-\codebreak{}agenda-\codebreak{}goto} & Show the entry on the agenda’s line in the other window and go there.\\
 none & \texttt{C-c C-t} & \texttt{org-\codebreak{}agenda-\codebreak{}todo} & Change the TODO keyword of the entry on the agenda’s line to its next, as C-c C-t does in its file: a task done is noted with CLOSED:, one that repeats moves on to its next date.\\
-none & \texttt{C-c C-x C} & \texttt{org-\codebreak{}agenda-\codebreak{}cancel-\codebreak{}task} & Cancel the task on the agenda’s line, as C-c C-x C does in its file: its keyword made CANCELLED and noted with CLOSED:.\\
+none & \texttt{C-c X} & \texttt{org-\codebreak{}agenda-\codebreak{}cancel-\codebreak{}task} & Cancel the task on the agenda’s line, as C-c X does in its file: its keyword made CANCELLED and noted with CLOSED:.\\
 none & \texttt{C-c C-s} & \texttt{org-\codebreak{}agenda-\codebreak{}schedule} & Schedule the entry on the agenda’s line, the date asked for as C-c C-s asks it; with C-u, take its scheduling away.\\
 none & \texttt{C-c C-d} & \texttt{org-\codebreak{}agenda-\codebreak{}deadline} & Give the entry on the agenda’s line a deadline, the date asked for as C-c C-d asks it; with C-u, take it away.\\
 none & \texttt{C-c C-q} & \texttt{org-\codebreak{}agenda-\codebreak{}set-\codebreak{}tags} & Set the tags of the entry on the agenda’s line, asked for as C-c C-q asks them.\\
 none & \texttt{C-c C-z} & \texttt{org-\codebreak{}agenda-\codebreak{}add-\codebreak{}note} & Add a note to the entry on the agenda’s line, as C-c C-z adds one.\\
 none & \texttt{C-c C-w} & \texttt{org-\codebreak{}agenda-\codebreak{}refile} & Move the entry on the agenda’s line under another heading, as C-c C-w moves one.\\
-none & \texttt{I}, \texttt{C-c I} & \texttt{org-\codebreak{}agenda-\codebreak{}clock-in} & Clock in on the entry on the agenda’s line, as M-x org-clock-in does: a clock running is clocked out first.\\
-none & \texttt{O}, \texttt{C-c O} & \texttt{org-\codebreak{}agenda-\codebreak{}clock-\codebreak{}out} & Clock out, as C-c C-x C-o does, from the agenda: the clock’s file saved at once when it is one of \textbf{ORG-AGENDA-AUTOSAVE-FILES}.\\
-none & \texttt{C}, \texttt{C-c C} & \texttt{org-\codebreak{}agenda-\codebreak{}clock-\codebreak{}cancel} & Cancel the clock, as C-c C-x C-q does, from the agenda: the clock’s file saved at once when it is one of \textbf{ORG-AGENDA-AUTOSAVE-FILES}.\\
+none & \texttt{C-c I} & \texttt{org-\codebreak{}agenda-\codebreak{}clock-in} & Clock in on the entry on the agenda’s line, as M-x org-clock-in does: a clock running is clocked out first.\\
+none & \texttt{C-c O} & \texttt{org-\codebreak{}agenda-\codebreak{}clock-\codebreak{}out} & Clock out, as C-c C-x O does, from the agenda: the clock’s file saved at once when it is one of \textbf{ORG-AGENDA-AUTOSAVE-FILES}.\\
+none & \texttt{C-c C} & \texttt{org-\codebreak{}agenda-\codebreak{}clock-\codebreak{}cancel} & Cancel the clock, as C-c C-x C does, from the agenda: the clock’s file saved at once when it is one of \textbf{ORG-AGENDA-AUTOSAVE-FILES}.\\
+none & \texttt{C-c J}, \texttt{C-x a j}, \texttt{C-c C-x J} & \texttt{org-\codebreak{}clock-\codebreak{}goto} & Go to the task the clock runs on (C-c C-x J, in the agenda C-c J, from any buffer C-x a j): its file opened again when its buffer was killed; with none running, one left open in the agenda files, as after a restart, runs again (ORG-CLOCK-RUNNING).\\
 none & \texttt{u}, \texttt{C-/}, \texttt{C-\_} & \texttt{org-\codebreak{}agenda-\codebreak{}undo} & Undo the last change made from this agenda, in the file it was made in, and draw the agenda again; when the file was changed there since, nothing is undone and you are told to undo in the file first.\\
 none & \texttt{s} & \texttt{org-\codebreak{}agenda-\codebreak{}save-\codebreak{}all-\codebreak{}buffers} & Save the buffers of the agenda files (\textbf{org-agenda-files}, and those added to them) with changes not saved, those the agenda changed among them; other Org buffers are left as they are (M-x org-save-all-org-buffers saves them all).\\
 none & \texttt{M-x org-\codebreak{}save-\codebreak{}all-\codebreak{}org-\codebreak{}buffers} & \texttt{org-\codebreak{}save-\codebreak{}all-\codebreak{}org-\codebreak{}buffers} & Save every Org buffer with changes not saved: those the agenda changed among them, and any other.\\
@@ -12630,14 +12633,13 @@ none & \texttt{C-c C-w} & \texttt{org-\codebreak{}refile} & Move the heading poi
 The clock records how long you spend on a task. It is for anyone who bills
 by the hour, and for anyone curious where a day went.
 
-\texttt{C-c C-x C-i} starts the clock on the task the cursor is under. A line
+\texttt{C-c C-x I} starts the clock on the task the cursor is under. A line
 beginning \texttt{CLOCK:} is written in the task’s \texttt{:LOGBOOK:} drawer with the time
 you started. While the clock runs, the mode line of every window shows the
 time so far and the task’s name, so you cannot forget it. Starting the clock
-on another task stops the first. A terminal sends \texttt{C-i} as \texttt{TAB}, so there
-the same keys arrive as \texttt{C-c C-x TAB}, which starts the clock too.
+on another task stops the first.
 
-\texttt{C-x a o} stops the clock from any buffer. The line is finished with the
+\texttt{C-x a o} stops the clock from any buffer, and \texttt{C-c C-x O} in an Org file. The line is finished with the
 time you stopped and how long that was. With no clock running, it looks in
 your agenda files for one left running, as after a restart. When the files
 to read are large, it looks in the background and says so; the clock it
@@ -12652,9 +12654,10 @@ drawer and fold away with it. With \texttt{(setf *org-\codebreak{}clock-\codebre
 \texttt{CLOCK:} lines are written right under the heading instead.
 
 \texttt{C-x a j} takes you to the task that is being clocked, from wherever you
-are. \texttt{C-c C-x C-q} stops the clock and removes its line, for when you
-started it by mistake. In the agenda, \texttt{I} and \texttt{O} start and stop the clock
-on the line’s entry. Large agenda files changed since they were last read are
+are, and \texttt{C-c C-x J} does the same in an Org file, \texttt{C-c J} in the agenda. \texttt{C-c C-x C} stops the clock and removes its line, for when you
+started it by mistake. In the agenda, \texttt{C-c I}, \texttt{C-c O} and \texttt{C-c C}
+start, stop and cancel the clock on the line’s entry, the same letters
+as in an Org file, where they come after \texttt{C-c C-x}. Large agenda files changed since they were last read are
 read in the background, as for tags, and their headings are offered once read.
 
 If you leave Tuatara while the clock runs, it asks whether to stop it. If
@@ -12682,10 +12685,10 @@ date.
 \textbf{Modal} & \textbf{Non-modal} & \textbf{Command} & \textbf{What it does}\\
 \midrule
 \endhead
-none & \texttt{C-c C-x C-i}, \texttt{C-c C-x TAB} & \texttt{org-\codebreak{}clock-in} & Clock in on the task point is under (C-c C-x C-i): CLOCK: and the time go into its :LOGBOOK: drawer, made when it has none, after its planning line and properties; a clock running is clocked out first.\\
-none & \texttt{C-x a o}, \texttt{C-c C-x C-o} & \texttt{org-\codebreak{}clock-\codebreak{}out} & Clock out (C-c C-x C-o, from any buffer C-x a o): the clock’s line finished with the time it ended and how long it ran; with none running, of the one left open in the agenda files (ORG-CLOCK-RUNNING).\\
-none & \texttt{C-x a j}, \texttt{C-c C-x C-j} & \texttt{org-\codebreak{}clock-\codebreak{}goto} & Go to the task the clock runs on (C-c C-x C-j, from any buffer C-x a j): its file opened again when its buffer was killed; with none running, one left open in the agenda files, as after a restart, runs again (ORG-CLOCK-RUNNING).\\
-none & \texttt{C-c C-x C-q} & \texttt{org-\codebreak{}clock-\codebreak{}cancel} & Stop the clock running and take its line away (C-c C-x C-q): its :LOGBOOK: drawer too, when nothing else is in it; saved when that is its buffer’s only change, as C-x a o does.\\
+none & \texttt{C-c C-x I} & \texttt{org-\codebreak{}clock-in} & Clock in on the task point is under (C-c C-x I): CLOCK: and the time go into its :LOGBOOK: drawer, made when it has none, after its planning line and properties; a clock running is clocked out first.\\
+none & \texttt{C-x a o}, \texttt{C-c C-x O} & \texttt{org-\codebreak{}clock-\codebreak{}out} & Clock out (C-c C-x O, from any buffer C-x a o): the clock’s line finished with the time it ended and how long it ran; with none running, of the one left open in the agenda files (ORG-CLOCK-RUNNING).\\
+none & \texttt{C-c J}, \texttt{C-x a j}, \texttt{C-c C-x J} & \texttt{org-\codebreak{}clock-\codebreak{}goto} & Go to the task the clock runs on (C-c C-x J, in the agenda C-c J, from any buffer C-x a j): its file opened again when its buffer was killed; with none running, one left open in the agenda files, as after a restart, runs again (ORG-CLOCK-RUNNING).\\
+none & \texttt{C-c C-x C} & \texttt{org-\codebreak{}clock-\codebreak{}cancel} & Stop the clock running and take its line away (C-c C-x C): its :LOGBOOK: drawer too, when nothing else is in it; saved when that is its buffer’s only change, as C-x a o does.\\
 none & \texttt{M-x org-\codebreak{}clock-\codebreak{}report} & \texttt{org-\codebreak{}clock-\codebreak{}report} & Make the clock table point is in again, or put a new one in: its scope the subtree point is in, or the file before the first headline, its depth two levels.\\
 \bottomrule
 \end{xltabular}
@@ -21375,12 +21378,12 @@ none & \texttt{C-x C-p} & \texttt{open-\codebreak{}path-\codebreak{}at-\codebrea
 none & \texttt{C-c C-z} & \texttt{org-\codebreak{}add-\codebreak{}note} & Add a note to the entry point is under (C-c C-z): the note is asked for, and logged where Org logs notes, at the top of its :LOGBOOK: drawer with \textbf{ORG-LOG-INTO-DRAWER}, else after its planning line and properties, in the form - Note taken on \textit{[2026-10-01 Thu 18:00]} \textbackslash{}\textbackslash{} and the note under it.\\
 none & \texttt{a}, \texttt{C-c a}, \texttt{C-x a a} & \texttt{org-\codebreak{}agenda} & Show the agenda, asking which view: a the agenda of the week (or \textbf{ORG-AGENDA-SPAN}), t the TODO list, m the headlines a match selects (work+urgent-home, TODO=”NEXT”), or a view of your own (\textbf{ORG-AGENDA-CUSTOM-COMMANDS}, u the tasks with no tag), or c the entries whose dates look wrong (M-x org-agenda-check-dates), read from \textbf{ORG-AGENDA-FILES}.\\
 none & \texttt{C-c C-z} & \texttt{org-\codebreak{}agenda-\codebreak{}add-\codebreak{}note} & Add a note to the entry on the agenda’s line, as C-c C-z adds one.\\
-none & \texttt{C-c C-x C} & \texttt{org-\codebreak{}agenda-\codebreak{}cancel-\codebreak{}task} & Cancel the task on the agenda’s line, as C-c C-x C does in its file: its keyword made CANCELLED and noted with CLOSED:.\\
+none & \texttt{C-c X} & \texttt{org-\codebreak{}agenda-\codebreak{}cancel-\codebreak{}task} & Cancel the task on the agenda’s line, as C-c X does in its file: its keyword made CANCELLED and noted with CLOSED:.\\
 none & \texttt{M-x org-\codebreak{}agenda-\codebreak{}check-\codebreak{}dates} & \texttt{org-\codebreak{}agenda-\codebreak{}check-\codebreak{}dates} & Show the entries of \textbf{ORG-AGENDA-FILES} whose dates look wrong, each with what is wrong (ORG-ENTRY-DATE-PROBLEM).\\
-none & \texttt{C}, \texttt{C-c C} & \texttt{org-\codebreak{}agenda-\codebreak{}clock-\codebreak{}cancel} & Cancel the clock, as C-c C-x C-q does, from the agenda: the clock’s file saved at once when it is one of \textbf{ORG-AGENDA-AUTOSAVE-FILES}.\\
-none & \texttt{I}, \texttt{C-c I} & \texttt{org-\codebreak{}agenda-\codebreak{}clock-in} & Clock in on the entry on the agenda’s line, as M-x org-clock-in does: a clock running is clocked out first.\\
-none & \texttt{O}, \texttt{C-c O} & \texttt{org-\codebreak{}agenda-\codebreak{}clock-\codebreak{}out} & Clock out, as C-c C-x C-o does, from the agenda: the clock’s file saved at once when it is one of \textbf{ORG-AGENDA-AUTOSAVE-FILES}.\\
-none & \texttt{D}, \texttt{C-c D} & \texttt{org-\codebreak{}agenda-\codebreak{}day-\codebreak{}view} & Show the agenda of one day: the day at point in the agenda, else today.\\
+none & \texttt{C-c C} & \texttt{org-\codebreak{}agenda-\codebreak{}clock-\codebreak{}cancel} & Cancel the clock, as C-c C-x C does, from the agenda: the clock’s file saved at once when it is one of \textbf{ORG-AGENDA-AUTOSAVE-FILES}.\\
+none & \texttt{C-c I} & \texttt{org-\codebreak{}agenda-\codebreak{}clock-in} & Clock in on the entry on the agenda’s line, as M-x org-clock-in does: a clock running is clocked out first.\\
+none & \texttt{C-c O} & \texttt{org-\codebreak{}agenda-\codebreak{}clock-\codebreak{}out} & Clock out, as C-c C-x O does, from the agenda: the clock’s file saved at once when it is one of \textbf{ORG-AGENDA-AUTOSAVE-FILES}.\\
+none & \texttt{C-c D} & \texttt{org-\codebreak{}agenda-\codebreak{}day-\codebreak{}view} & Show the agenda of one day: the day at point in the agenda, else today.\\
 none & \texttt{C-c C-d} & \texttt{org-\codebreak{}agenda-\codebreak{}deadline} & Give the entry on the agenda’s line a deadline, the date asked for as C-c C-d asks it; with C-u, take it away.\\
 none & \texttt{h}, \texttt{C-b}, \texttt{C-c h} & \texttt{org-\codebreak{}agenda-\codebreak{}earlier} & Show the agenda’s previous span: the previous week in a week’s agenda, the previous day in a day’s.\\
 none & \texttt{TAB} & \texttt{org-\codebreak{}agenda-\codebreak{}goto} & Show the entry on the agenda’s line in the other window and go there.\\
@@ -21389,7 +21392,7 @@ none & \texttt{g h} & \texttt{org-\codebreak{}agenda-\codebreak{}goto-\codebreak
 none & \texttt{l}, \texttt{C-f}, \texttt{C-c l} & \texttt{org-\codebreak{}agenda-\codebreak{}later} & Show the agenda’s next span: the next week in a week’s agenda, the next day in a day’s.\\
 none & \texttt{M-x org-\codebreak{}agenda-\codebreak{}list} & \texttt{org-\codebreak{}agenda-\codebreak{}list} & Show the agenda of this week (or \textbf{ORG-AGENDA-SPAN}): each day with its scheduled tasks, deadlines and timestamps.\\
 none & \texttt{L}, \texttt{C-c L} & \texttt{org-\codebreak{}agenda-\codebreak{}log-\codebreak{}mode} & List what was closed and clocked on each day too, or no longer; \textbf{ORG-AGENDA-LOG-MODE} says how the agenda starts.\\
-none & \texttt{m}, \texttt{C-c m}, \texttt{C-x a m} & \texttt{org-\codebreak{}agenda-\codebreak{}month-\codebreak{}view} & Show the agenda of a month: the month of the day at point in the agenda, else this month.\\
+none & \texttt{C-c M}, \texttt{C-x a m} & \texttt{org-\codebreak{}agenda-\codebreak{}month-\codebreak{}view} & Show the agenda of a month: the month of the day at point in the agenda, else this month.\\
 none & \texttt{g l} & \texttt{org-\codebreak{}agenda-\codebreak{}previous-\codebreak{}view} & Go back to the view or span the agenda showed before this one, point on the line it was on, as cd - goes back to the directory before: pressed again, return.\\
 none & \texttt{C-c C-w} & \texttt{org-\codebreak{}agenda-\codebreak{}refile} & Move the entry on the agenda’s line under another heading, as C-c C-w moves one.\\
 none & \texttt{s} & \texttt{org-\codebreak{}agenda-\codebreak{}save-\codebreak{}all-\codebreak{}buffers} & Save the buffers of the agenda files (\textbf{org-agenda-files}, and those added to them) with changes not saved, those the agenda changed among them; other Org buffers are left as they are (M-x org-save-all-org-buffers saves them all).\\
@@ -21408,8 +21411,8 @@ none & \texttt{u}, \texttt{C-/}, \texttt{C-\_} & \texttt{org-\codebreak{}agenda-
 \textbf{Modal} & \textbf{Non-modal} & \textbf{Command} & \textbf{What it does}\\
 \midrule
 \endhead
-none & \texttt{w}, \texttt{C-c w}, \texttt{C-x a w} & \texttt{org-\codebreak{}agenda-\codebreak{}week-\codebreak{}view} & Show the agenda of a week: the week of the day at point in the agenda, else this week.\\
-none & \texttt{Y}, \texttt{C-c Y}, \texttt{C-x a y} & \texttt{org-\codebreak{}agenda-\codebreak{}year-\codebreak{}view} & Show the agenda of a year: the year of the day at point in the agenda, else this year.\\
+none & \texttt{C-c W}, \texttt{C-x a w} & \texttt{org-\codebreak{}agenda-\codebreak{}week-\codebreak{}view} & Show the agenda of a week: the week of the day at point in the agenda, else this week.\\
+none & \texttt{C-c Y}, \texttt{C-x a y} & \texttt{org-\codebreak{}agenda-\codebreak{}year-\codebreak{}view} & Show the agenda of a year: the year of the day at point in the agenda, else this year.\\
 none & \texttt{M-x org-\codebreak{}align-\codebreak{}all-\codebreak{}tags} & \texttt{org-\codebreak{}align-\codebreak{}all-\codebreak{}tags} & Put the tags of every headline of the buffer where \textbf{ORG-TAGS-COLUMN} says: by default one space after each one’s text, in one step to undo.\\
 none & \texttt{M-x org-\codebreak{}align-\codebreak{}tags} & \texttt{org-\codebreak{}align-\codebreak{}tags} & Put the tags of the headline point is under where \textbf{ORG-TAGS-COLUMN} says: by default one space after its text.\\
 none & \texttt{M-x org-\codebreak{}calendar-\codebreak{}backward-\codebreak{}day} & \texttt{org-\codebreak{}calendar-\codebreak{}backward-\codebreak{}day} & In Org’s date prompt: the calendar’s day a day back, written at the prompt.\\
@@ -21422,17 +21425,17 @@ none & \texttt{M-x org-\codebreak{}calendar-\codebreak{}forward-\codebreak{}week
 none & \texttt{M-x org-\codebreak{}calendar-\codebreak{}forward-\codebreak{}year} & \texttt{org-\codebreak{}calendar-\codebreak{}forward-\codebreak{}year} & In Org’s date prompt: the calendar’s day a year on, written at the prompt, so 29 February a year on is 28 February, as the calendar moves; +1y typed is 1 March.\\
 none & \texttt{a}, \texttt{C-c a} & \texttt{org-\codebreak{}calendar-\codebreak{}goto-\codebreak{}agenda} & Show the agenda of the week holding the calendar’s day at point, point on that day.\\
 none & \texttt{M-x org-\codebreak{}calendar-\codebreak{}goto-\codebreak{}today} & \texttt{org-\codebreak{}calendar-\codebreak{}goto-\codebreak{}today} & In Org’s date prompt: the calendar on today, written at the prompt.\\
-none & \texttt{C-c C-x C} & \texttt{org-\codebreak{}cancel-\codebreak{}task} & Cancel the task of the headline point is in: its keyword made CANCELLED, a done keyword that M-x org-todo and the other keys that go round the keywords pass over, noted with CLOSED: and when as a task done is.\\
+none & \texttt{C-c X} & \texttt{org-\codebreak{}cancel-\codebreak{}task} & Cancel the task of the headline point is in: its keyword made CANCELLED, a done keyword that M-x org-todo and the other keys that go round the keywords pass over, noted with CLOSED: and when as a task done is.\\
 none & \texttt{C-x a c} & \texttt{org-\codebreak{}capture} & Take a note, a task or a journal entry down from wherever you are: press the key of one of the capture templates (Tuatara’s and yours, in \textbf{CAPTURE-TEMPLATE-DIRECTORIES}), answer what it asks, write in the \textbf{Capture} buffer and file it with C-c C-c (or throw it away with C-c C-k); you are back where you were.\\
 none & \texttt{C-c C-c} & \texttt{org-\codebreak{}capture-\codebreak{}finalize} & File the text of this \textbf{Capture} buffer where its template says, and go back to where you were; with its template’s clock, clock it.\\
 none & \texttt{C-c C-k} & \texttt{org-\codebreak{}capture-\codebreak{}kill} & Throw away what this \textbf{Capture} buffer holds, and go back to where you were.\\
 none & \texttt{i}, \texttt{C-c i} & \texttt{org-\codebreak{}capture-\codebreak{}on-\codebreak{}day} & Capture, as C-x a c does, for the day at point in the calendar or on the agenda (the day of its line, or of the date above it), so that the agenda lists the entry that day: the template’s \%t and \%T are that day’s date, and a template with neither gets that date on the line after its heading.\\
 none & \texttt{C-c C-w} & \texttt{org-\codebreak{}capture-\codebreak{}refile} & File the text of this \textbf{Capture} buffer under a heading chosen as C-c C-w chooses one, instead of where its template says.\\
 none & \texttt{M-x org-\codebreak{}capture-\codebreak{}template-\codebreak{}copy} & \texttt{org-\codebreak{}capture-\codebreak{}template-\codebreak{}copy} & Copy one of Tuatara’s own capture templates, chosen by its name, into your capture templates directory (the first of \textbf{CAPTURE-TEMPLATE-DIRECTORIES}) and visit it: your copy, changed as you like (where it files, its text), takes the place of Tuatara’s on the same key.\\
-none & \texttt{C-c C-x C-q} & \texttt{org-\codebreak{}clock-\codebreak{}cancel} & Stop the clock running and take its line away (C-c C-x C-q): its :LOGBOOK: drawer too, when nothing else is in it; saved when that is its buffer’s only change, as C-x a o does.\\
-none & \texttt{C-x a j}, \texttt{C-c C-x C-j} & \texttt{org-\codebreak{}clock-\codebreak{}goto} & Go to the task the clock runs on (C-c C-x C-j, from any buffer C-x a j): its file opened again when its buffer was killed; with none running, one left open in the agenda files, as after a restart, runs again (ORG-CLOCK-RUNNING).\\
-none & \texttt{C-c C-x C-i}, \texttt{C-c C-x TAB} & \texttt{org-\codebreak{}clock-in} & Clock in on the task point is under (C-c C-x C-i): CLOCK: and the time go into its :LOGBOOK: drawer, made when it has none, after its planning line and properties; a clock running is clocked out first.\\
-none & \texttt{C-x a o}, \texttt{C-c C-x C-o} & \texttt{org-\codebreak{}clock-\codebreak{}out} & Clock out (C-c C-x C-o, from any buffer C-x a o): the clock’s line finished with the time it ended and how long it ran; with none running, of the one left open in the agenda files (ORG-CLOCK-RUNNING).\\
+none & \texttt{C-c C-x C} & \texttt{org-\codebreak{}clock-\codebreak{}cancel} & Stop the clock running and take its line away (C-c C-x C): its :LOGBOOK: drawer too, when nothing else is in it; saved when that is its buffer’s only change, as C-x a o does.\\
+none & \texttt{C-c J}, \texttt{C-x a j}, \texttt{C-c C-x J} & \texttt{org-\codebreak{}clock-\codebreak{}goto} & Go to the task the clock runs on (C-c C-x J, in the agenda C-c J, from any buffer C-x a j): its file opened again when its buffer was killed; with none running, one left open in the agenda files, as after a restart, runs again (ORG-CLOCK-RUNNING).\\
+none & \texttt{C-c C-x I} & \texttt{org-\codebreak{}clock-in} & Clock in on the task point is under (C-c C-x I): CLOCK: and the time go into its :LOGBOOK: drawer, made when it has none, after its planning line and properties; a clock running is clocked out first.\\
+none & \texttt{C-x a o}, \texttt{C-c C-x O} & \texttt{org-\codebreak{}clock-\codebreak{}out} & Clock out (C-c C-x O, from any buffer C-x a o): the clock’s line finished with the time it ended and how long it ran; with none running, of the one left open in the agenda files (ORG-CLOCK-RUNNING).\\
 none & \texttt{M-x org-\codebreak{}clock-\codebreak{}report} & \texttt{org-\codebreak{}clock-\codebreak{}report} & Make the clock table point is in again, or put a new one in: its scope the subtree point is in, or the file before the first headline, its depth two levels.\\
 none & \texttt{C-c C-c} & \texttt{org-\codebreak{}ctrl-\codebreak{}c-\codebreak{}ctrl-c} & Do what Org’s C-c C-c does where point is: on a dynamic block’s \#+BEGIN: line, make the block again (M-x org-dblock-update).\\
 none & \texttt{C-c -} & \texttt{org-\codebreak{}ctrl-\codebreak{}c-\codebreak{}minus} & Do what Org’s C-c - does where point is: in a table, a rule line below the row (org-table-insert-hline); in a list, the next kind of bullet (org-cycle-list-bullet).\\

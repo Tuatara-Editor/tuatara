@@ -13,7 +13,7 @@
 <div class="site">
 <nav class="toc" id="contents" aria-label="Contents">
 <strong>Tuatara Manual</strong>
-<small>for version 0.90.43</small>
+<small>for version 0.90.44</small>
 <p class="tools"><a href="all.html">All on one page</a>
 <button type="button" class="theme" hidden>Dark</button></p>
 <input type="search" placeholder="Search the manual" aria-label="Search the manual">
@@ -185,7 +185,8 @@ typed it. A replacement that reaches a line you changed meanwhile leaves your
 change alone and says so when it ends.</p>
 <p>A sort and a filter are different, because they move whole lines about and
 an edit in the middle would spoil the result. If you try to change text they
-are working on, Tuatara asks whether to stop the job. Answer <code>y</code> to stop it
+are working on, Tuatara asks whether to stop the job, as in <code>Stop sorting to
+change this text?</code>, with how far it has got shown below. Answer <code>y</code> to stop it
 and make your change, or <code>n</code> to let it finish.</p>
 <h3 id="undo-and-jobs"><span class="num">11.2.6</span> Undo and jobs</h3>
 <p>Each job is one step to undo, however much it changed. One <kbd>u</kbd> takes back a
@@ -201,41 +202,49 @@ where it is. You are not thrown to the last line the job touched.</p>
 you wonder what is going on, when a job takes longer than you expected, or
 when you gave a command by mistake and want to drop it before its turn comes.</p>
 <figure id="fig-jobs">
-<pre class="ex">  Buffer        State                    Job
-  ------        -----                    ---
-  sales.csv     Replacing 12%            Replacing kereru with kea in the buffer
-  sales.csv     waiting, first in line   Sorting the buffer
-  access.log    Saving 60%               Saving access.log
+<pre class="ex">     State                      Job
+     -----                      ---
+▾ sales.csv (2)
+     Replacing 12%              Replacing kereru with kea in the buffer
+     waiting, first in line     Sorting the buffer
+
+▾ access.log (1)
+     Saving 60%                 Saving access.log
 </pre>
 <figcaption>Figure 11.2. The list of jobs: one runs, one waits.</figcaption>
 </figure>
-<p>Each line is a job. The first column names the buffer it works in. The second
-says what it is doing and how far it has got, or that it waits and where it
-stands in the line. The third says in words what the job is. Jobs are listed
-buffer by buffer, the running one first and those waiting below it in the
-order they will run. The list keeps itself up to date while it is on the
-screen.</p>
-<p>The list works like the buffer list of chapter 7. <kbd>d</kbd> marks the job on the
-cursor's line with a <code>D</code>, and <kbd>x</kbd> carries it out after asking: a job that
-waits is dropped, and one that runs is stopped. <kbd>m</kbd> marks a job and <kbd>u</kbd> takes
-the mark off. <kbd>D</kbd> drops or stops the marked jobs, or the one on the line if
-none is marked. <kbd>q</kbd> closes the list.</p>
+<p>Each buffer with work has a section, its heading the buffer's name. A job whose
+buffer was closed while it ends has a section apart from a new buffer of the
+same name, and one with no buffer is under No buffer. Each line under it is a
+job. The list opens with the cursor on the first job. The first column says what
+the job is doing and how far it has got, or that it waits and where it stands in
+the line. The second says in words what the job is. The running job comes first
+and those waiting below it, in the order they will run. The list keeps itself up
+to date while it is on the screen.</p>
+<p>The list works like the buffer list of chapter 7. <kbd>RET</kbd> or <kbd>l</kbd> goes to the
+buffer of the job on the line, and on a heading folds or unfolds its section;
+<kbd>h</kbd> folds it. <kbd>d</kbd> marks the job on the cursor's line with a <code>D</code>, and <kbd>x</kbd>
+carries it out after asking: a job that waits is dropped, and one that runs is
+stopped. <kbd>m</kbd> marks a job and <kbd>u</kbd> takes the mark off. <kbd>D</kbd> drops or stops the
+marked jobs, or the one on the line if none is marked. <kbd>q</kbd> closes the list.</p>
 <div class="tablewrap"><table>
 <thead>
 <tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td>none</td><td><kbd>C-x j</kbd></td><td><code>list-jobs</code></td><td>List the jobs in the background in <strong>Jobs</strong>: in each buffer those running, with how far they have got, and those waiting their turn, in the order they will run, their text painted in the buffer meanwhile.</td></tr>
+<tr><td>none</td><td><kbd>C-x j</kbd></td><td><code>jobs-manager</code></td><td>List the jobs in the background in <strong>Jobs</strong>, a section for each buffer: the job running there, with how far it has got, and those waiting their turn, in the order they will run, their text painted in the buffer meanwhile.</td></tr>
 <tr><td>none</td><td><kbd>d</kbd>, <kbd>C-c d</kbd></td><td><code>list-mark-for-deletion</code></td><td>Mark the entry on the current line of the list for deletion (D), for the list's command that deletes them, and move down; with a count, as many entries, up the list for a negative one.</td></tr>
-<tr><td>none</td><td><kbd>x</kbd></td><td><code>list-execute</code></td><td>Delete the entries of the list marked for deletion (D), after asking, as the list deletes: the buffer list kills its buffers, rimu puts files in the trash, the list of jobs drops those waiting and stops those running.</td></tr>
+<tr><td>none</td><td><kbd>x</kbd>, <kbd>C-c x</kbd></td><td><code>list-execute</code></td><td>Delete the entries of the list marked for deletion (D), after asking, as the list deletes: the buffer list kills its buffers, rimu puts files in the trash, the list of jobs drops those waiting and stops those running.</td></tr>
 <tr><td>none</td><td><kbd>m</kbd>, <kbd>C-c m</kbd></td><td><code>list-mark-entry</code></td><td>Mark the entry on the current line of the list (&gt;), for the list's commands that act on those marked, and move down; with a count, as many entries, up the list for a negative one.</td></tr>
 <tr><td>none</td><td><kbd>u</kbd>, <kbd>C-c u</kbd></td><td><code>list-unmark-entry</code></td><td>Take the mark off the entry on the current line of the list, of any kind, and move down; with a count, off as many entries, up the list for a negative one.</td></tr>
 <tr><td>none</td><td><kbd>D</kbd>, <kbd>C-c D</kbd></td><td><code>list-delete-marked</code></td><td>Delete the marked entries of the list (&gt;), or with none marked the one on the current line, after asking, as the list deletes, as M-x list-execute does those marked for deletion; in rimu, with C-u, for good rather than to the trash.</td></tr>
 </tbody></table></div>
 <h3 id="stopping-a-job"><span class="num">11.3.1</span> Stopping a job</h3>
 <p><kbd>C-x J</kbd>, with a capital J, stops the job running in the buffer you are in.
-It asks first, so a slip of the finger costs nothing. The buffer is left as
-it is, and a file that was being saved is left as it was before the save. A
+It asks first, as in <code>Stop saving at 60%?</code>, so a slip of the finger costs
+nothing; what stopping leaves, when the job can say, is shown below the
+question. The buffer is left as it is, and a file that was being saved is left
+as it was before the save. A
 program the job runs is asked to end, and killed if it has not ended two
 seconds later, with every program it started. If other jobs wait behind the
 one you stopped, they start one after another. To get rid of those as well,

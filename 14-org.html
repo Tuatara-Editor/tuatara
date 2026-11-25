@@ -13,7 +13,7 @@
 <div class="site">
 <nav class="toc" id="contents" aria-label="Contents">
 <strong>Tuatara Manual</strong>
-<small>for version 0.90.43</small>
+<small>for version 0.90.44</small>
 <p class="tools"><a href="all.html">All on one page</a>
 <button type="button" class="theme" hidden>Dark</button></p>
 <input type="search" placeholder="Search the manual" aria-label="Search the manual">
@@ -215,8 +215,8 @@ state with the cursor after the new stars, so press <kbd>i</kbd> and type the he
 </tbody></table></div>
 <p>Taking a star away is called promoting, and adding one is called demoting.
 The arrow keys with Alt do the same as the letters. Each move is one step
-for undo. On a list item <kbd>M-h</kbd> and <kbd>M-l</kbd> move the item instead, as the
-next section shows, and in a table they move a column.</p>
+for undo. On a list item all four move the item instead, as the next
+section shows, and in a table they move a row or a column.</p>
 <p>To jump to a heading by name, press <kbd>M-g o</kbd>, which chapter 13 describes. It
 lists every heading of the note, and typing a few letters narrows the list.
 To work on one heading without seeing the others, <kbd>C-x x s</kbd> narrows the
@@ -276,8 +276,8 @@ plain text file, and an item is folded only as part of its heading.</p>
 <tr><td>none</td><td><kbd>S-TAB</kbd></td><td><code>org-global-cycle</code></td><td>Cycle the whole buffer: its overview (the headlines of the first level), then its contents (every headline), then everything, and the overview again.</td></tr>
 <tr><td>none</td><td><kbd>M-RET</kbd></td><td><code>org-meta-return</code></td><td>A new item or headline after what point is in and all under it: in a list, an item of the same kind after the one point is in and all under it (its bullet, the next number, [ ] when it has a checkbox).</td></tr>
 <tr><td>none</td><td><kbd>M-S-RET</kbd></td><td><code>org-insert-todo-heading</code></td><td>A new TODO headline of this level after this subtree.</td></tr>
-<tr><td>none</td><td><kbd>M-j</kbd>, <kbd>M-&lt;down&gt;</kbd></td><td><code>org-metadown</code></td><td>In an Org table, move the row down; else move the subtree down (M-j).</td></tr>
-<tr><td>none</td><td><kbd>M-k</kbd>, <kbd>M-&lt;up&gt;</kbd></td><td><code>org-metaup</code></td><td>In an Org table, move the row up; else move the subtree up (M-k).</td></tr>
+<tr><td>none</td><td><kbd>M-j</kbd>, <kbd>M-&lt;down&gt;</kbd></td><td><code>org-metadown</code></td><td>In an Org table, move the row down; on a list item, move it with its sub-items below the item after it; else move the subtree down (M-j).</td></tr>
+<tr><td>none</td><td><kbd>M-k</kbd>, <kbd>M-&lt;up&gt;</kbd></td><td><code>org-metaup</code></td><td>In an Org table, move the row up; on a list item, move it with its sub-items above the item before it; else move the subtree up (M-k).</td></tr>
 <tr><td>none</td><td><kbd>M-h</kbd>, <kbd>M-&lt;left&gt;</kbd></td><td><code>org-metaleft</code></td><td>In an Org table, move the column left; on a list item, set it out a level, or every item the selection's lines begin; else promote the headline (M-h).</td></tr>
 <tr><td>none</td><td><kbd>M-l</kbd>, <kbd>M-&lt;right&gt;</kbd></td><td><code>org-metaright</code></td><td>In an Org table, move the column right; on a list item, set it in a level under the item before it, or every item the selection's lines begin; else demote the headline (M-l).</td></tr>
 <tr><td>none</td><td><kbd>M-H</kbd>, <kbd>M-S-&lt;left&gt;</kbd></td><td><code>org-shiftmetaleft</code></td><td>In an Org table, delete the column; on a list item, set it out a level with the items under it; else promote the subtree (M-H).</td></tr>
@@ -338,13 +338,14 @@ plus, a star, <code>1.</code> and <code>1)</code>, and a list at the left edge s
 is the quick way to turn a plain list into a numbered one.
 <kbd>TAB</kbd> on an item that has sub-items or more lines under it folds it, as on a
 heading.</p>
-<p>The keys that change a heading's level move items too, when the cursor is on
-one.</p>
+<p>The keys that move a heading or change its level move items too, when the
+cursor is on one.</p>
 <div class="tablewrap"><table>
 <thead>
 <tr><th>Modal</th><th>Non-modal</th><th>What it does to the item the cursor is on</th></tr>
 </thead>
 <tbody>
+<tr><td>none</td><td><kbd>M-j</kbd> / <kbd>M-k</kbd></td><td>Moves it with its sub-items past the next item or the one above</td></tr>
 <tr><td>none</td><td><kbd>M-l</kbd> / <kbd>M-h</kbd></td><td>Sets it in under the item above it, or out a level</td></tr>
 <tr><td>none</td><td><kbd>M-L</kbd> / <kbd>M-H</kbd></td><td>The same, with the sub-items under it</td></tr>
 <tr><td>none</td><td><kbd>TAB</kbd></td><td>On an empty item, sets it in, and in or out on each press</td></tr>
@@ -354,7 +355,8 @@ its last sub-item. Select lines with <kbd>V</kbd> and <kbd>J</kbd> first, and <k
 moves every item that begins on them. The first item of a list cannot be
 set in alone, as there is nothing above it to go under; <kbd>M-L</kbd> and <kbd>M-H</kbd> on
 it move the whole list a column. An item with sub-items is set out with
-<kbd>M-H</kbd>, which takes them along. Numbered items are numbered again.</p>
+<kbd>M-H</kbd>, which takes them along. Numbered items are numbered again, and an
+item moved with <kbd>M-j</kbd> or <kbd>M-k</kbd> takes the number of the place it moves to.</p>
 <p><kbd>TAB</kbd> on an item with nothing after its bullet, the one <kbd>M-RET</kbd> has just
 made, sets it in a level. Each <kbd>TAB</kbd> after it sets it further in while it can
 go, then out a level at a time, and at the end puts it back where it was.
@@ -683,7 +685,7 @@ of two ways.</p>
 <p>You can point. Before you have typed anything, <kbd>l</kbd> and <kbd>h</kbd> move a day
 forward and back and <kbd>j</kbd> and <kbd>k</kbd> move a week. <kbd>RET</kbd> writes the day at the
 prompt, and a second <kbd>RET</kbd> accepts it. Between the two you can add a time,
-such as <code>14:00</code>.</p>
+such as <code>14:00</code>. These keys are written under the prompt while they work.</p>
 <p>Two settings change this. <code>*org-read-date-in-calendar*</code> is <code>t</code> as it comes:
 the question begins in the calendar, so that <kbd>h</kbd>, <kbd>l</kbd>, <kbd>j</kbd> and <kbd>k</kbd> move at
 once. Set it to <code>nil</code> and the question begins at the prompt, as if you had
@@ -746,7 +748,7 @@ notes go, and the notes of a change of state and of <kbd>C-c C-z</kbd>, is said 
 drawer and fold away with it. With <code>nil</code> they are written right under the
 heading's planning line and properties, in plain sight.</p>
 <p>If you cannot remember how to say a repeat in words, press <kbd>C-r</kbd> at the date
-prompt; the prompt itself says so, as <code>Schedule (C-r repeats):</code>. A menu opens
+prompt; the lines shown under the prompt say so. A menu opens
 where you choose the start, the time, how often and when it ends, and it
 shows in plain words what your choices come to. <kbd>RET</kbd> writes it. The menu
 opens only from a date prompt, so <kbd>M-x</kbd> does not offer it.</p>
@@ -857,7 +859,8 @@ it.</p>
 <pre class="ex">(setf *org-agenda-files* '(&quot;~/org/&quot; &quot;~/holiday.org&quot;))
 </pre>
 <h3 id="opening-it"><span class="num">14.7.2</span> Opening it</h3>
-<p><kbd>C-x a a</kbd> asks which view you want and waits for one more key.</p>
+<p><kbd>C-x a a</kbd> asks which view you want and waits for one more key. The prompt
+lists the keys, and what each one shows is written under it.</p>
 <div class="tablewrap"><table>
 <thead>
 <tr><th>Modal</th><th>Non-modal</th><th>View</th></tr>
@@ -872,8 +875,10 @@ it.</p>
 <p>A match is read whole: a <code>|</code> inside <code>{a|b}</code> or <code>&quot;a|b&quot;</code> belongs to it, and a
 match with anything that is not a tag, a comparison or a <code>{pattern}</code> is
 refused with a message, not read in part. The same matches work in a clock
-table's <code>:match</code>, except a pattern that repeats a repeated part, which could
-take for ever; such a <code>:match</code> is left out and said to be.</p>
+table's <code>:match</code>, except a pattern that repeats a part that can match in more
+than one way (a part that repeats, a choice whose choices may start alike, or a
+back-reference to a group that repeats), which could take for ever; such a
+<code>:match</code> is left out and said to be, with the reason.</p>
 <p><kbd>C-x a w</kbd>, <kbd>C-x a m</kbd> and <kbd>C-x a y</kbd> open the week, the month or the year
 without asking. Figure 14.2 shows a week.</p>
 <figure id="fig-org-agenda">
@@ -1061,7 +1066,7 @@ entry in the setting is a pattern to copy.</p>
 <tr><td>none</td><td><kbd>C-c C</kbd></td><td><code>org-agenda-clock-cancel</code></td><td>Cancel the clock, as C-c C-x C does, from the agenda: the clock's file saved at once when it is one of <strong>ORG-AGENDA-AUTOSAVE-FILES</strong>.</td></tr>
 <tr><td>none</td><td><kbd>C-c J</kbd>, <kbd>C-x a j</kbd>, <kbd>C-c C-x J</kbd></td><td><code>org-clock-goto</code></td><td>Go to the task the clock runs on (C-c C-x J, in the agenda C-c J, from any buffer C-x a j): its file opened again when its buffer was killed; with none running, one left open in the agenda files, as after a restart, runs again (ORG-CLOCK-RUNNING).</td></tr>
 <tr><td>none</td><td><kbd>u</kbd>, <kbd>C-/</kbd>, <kbd>C-_</kbd></td><td><code>org-agenda-undo</code></td><td>Undo the last change made from this agenda, in the file it was made in, and draw the agenda again; when the file was changed there since, nothing is undone and you are told to undo in the file first.</td></tr>
-<tr><td>none</td><td><kbd>s</kbd></td><td><code>org-agenda-save-all-buffers</code></td><td>Save the buffers of the agenda files (<strong>org-agenda-files</strong>, and those added to them) with changes not saved, those the agenda changed among them; other Org buffers are left as they are (M-x org-save-all-org-buffers saves them all).</td></tr>
+<tr><td>none</td><td><kbd>s</kbd>, <kbd>C-c s</kbd></td><td><code>org-agenda-save-all-buffers</code></td><td>Save the buffers of the agenda files (<strong>org-agenda-files</strong>, and those added to them) with changes not saved, those the agenda changed among them; other Org buffers are left as they are (M-x org-save-all-org-buffers saves them all).</td></tr>
 <tr><td>none</td><td><kbd>M-x org-save-all-org-buffers</kbd></td><td><code>org-save-all-org-buffers</code></td><td>Save every Org buffer with changes not saved: those the agenda changed among them, and any other.</td></tr>
 <tr><td>none</td><td><kbd>i</kbd>, <kbd>C-c i</kbd></td><td><code>org-capture-on-day</code></td><td>Capture, as C-x a c does, for the day at point in the calendar or on the agenda (the day of its line, or of the date above it), so that the agenda lists the entry that day: the template's %t and %T are that day's date, and a template with neither gets that date on the line after its heading.</td></tr>
 </tbody></table></div>
@@ -1074,7 +1079,7 @@ entry in the setting is a pattern to copy.</p>
 <tr><td><code>*org-agenda-span*</code></td><td><code>:week</code></td><td>:day, :week, :month, :year, or a whole number, 1 or more</td><td>How many days M-x org-agenda's agenda shows.</td></tr>
 <tr><td><code>*org-agenda-start-on-weekday*</code></td><td><code>1</code></td><td>nil, or a whole number from 0 to 7</td><td>The day a week's agenda starts on.</td></tr>
 <tr><td><code>*org-agenda-log-mode*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether the agenda lists what was closed and clocked on each day too.</td></tr>
-<tr><td><code>*org-agenda-refresh-minutes*</code></td><td><code>10</code></td><td>nil, or a number of minutes, 0 or more, or a time in words such as 500ms, 90s, 30m or 2h, at most a hundred years</td><td>How often an agenda shown is drawn again by itself, in minutes.</td></tr>
+<tr><td><code>*org-agenda-refresh-minutes*</code></td><td><code>10</code></td><td>nil, or a number of minutes, 1 or more, or a time in words such as 500ms, 90s, 30m or 2h, at most a hundred years</td><td>How often an agenda shown is drawn again by itself, in minutes.</td></tr>
 <tr><td><code>*org-agenda-autosave-files*</code></td><td><code>nil</code></td><td>t, nil, or a list, each a file's name</td><td>The agenda files saved as soon as a change made from the agenda changes them.</td></tr>
 <tr><td><code>*org-agenda-custom-commands*</code></td><td><code>((&quot;u&quot; &quot;Untagged tasks&quot; :tags-todo &quot;-{.*}...</code></td><td>a list, each (KEY DESCRIPTION TYPE MATCH :header HEADER)</td><td>Views of your own that M-x org-agenda offers beside its own.</td></tr>
 <tr><td><code>*org-agenda-time-grid*</code></td><td><code>((:daily :today :require-timed) (800 100...</code></td><td>nil, or a list</td><td>Today's time grid in the agenda, lines at set times of the day.</td></tr>
@@ -1146,8 +1151,9 @@ plumber, an idea for the letter, a book someone recommended. Capture takes it
 down without making you leave what you are doing. You press a key, type the
 thought in a small window, press another key, and you are back where you
 were. The thought has been filed in the right place.</p>
-<p><kbd>C-x a c</kbd> starts it and shows the templates to choose from. A template says
-what kind of entry to make and where to file it. Six come with Tuatara.</p>
+<p><kbd>C-x a c</kbd> starts it and asks for a template, the keys on the prompt and each
+template's name under it. A template says what kind of entry to make and
+where to file it. Six come with Tuatara.</p>
 <div class="tablewrap"><table>
 <thead>
 <tr><th>Modal</th><th>Non-modal</th><th>Makes</th><th>Files it</th></tr>
@@ -1841,13 +1847,18 @@ Give a source block the words <code>:tangle</code> and a file name on its first 
 echo &quot;Water the beds at dawn&quot;
 #+end_src
 </pre>
-<p><kbd>C-c C-v t</kbd> then writes every such block to its file. Blocks that name the
-same file go into it in order. Before anything is written, Tuatara lists the
-files and says which are new and which would change, and asks. The files are
+<p><kbd>C-c C-v t</kbd> (<code>tangle-all-code-blocks</code>) then writes every such block to its file.
+Blocks that name the same file go into it in order. <kbd>C-c C-v b</kbd>
+(<code>tangle-this-code-block</code>) writes only the file of the block the cursor is in.
+When other blocks of the note go to that file, it is made from all of them, so
+no block's code is cut out, and the list says how many blocks it is made from.
+With the cursor in no source block, or in one with no <code>:tangle</code> (or <code>:tangle
+no</code>), it says so and writes nothing. Before anything is written, Tuatara lists
+the files and says which are new and which would change, and asks. The files are
 worked out and compared with those on disk in the background, so a large note
-never holds up typing; the list comes up once that is done. This suits
-settings files well: the note says why each setting is there, and the file
-the program reads is made from it.</p>
+never holds up typing; the list comes up once that is done. This suits settings
+files well: the note says why each setting is there, and the file the program
+reads is made from it.</p>
 <p>A file name with directories in it, such as <code>:tangle ~/.config/foot/foot.ini</code>,
 needs the directories to exist. A block with <code>:mkdirp yes</code> makes them as it is
 written, and one with <code>:mkdirp no</code> never does. For a block that says nothing,
@@ -1930,7 +1941,8 @@ out of either.</p>
 <tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td>none</td><td><kbd>C-c C-v t</kbd></td><td><code>tangle-code-files</code></td><td>Write the code files of this Org file's source blocks (C-c C-v t), each block with :tangle FILE (on its #+begin_src line, in a subtree's property :header-args: or :header-args:LANGUAGE:, or in #+PROPERTY: header-args for the file) goes to FILE.</td></tr>
+<tr><td>none</td><td><kbd>C-c C-v t</kbd></td><td><code>tangle-all-code-blocks</code></td><td>Write the code files of this Org file's source blocks (C-c C-v t), each block with :tangle FILE (on its #+begin_src line, in a subtree's property :header-args: or :header-args:LANGUAGE:, or in #+PROPERTY: header-args for the file) goes to FILE.</td></tr>
+<tr><td>none</td><td><kbd>C-c C-v b</kbd></td><td><code>tangle-this-code-block</code></td><td>Write the code file the source block at the cursor goes to (C-c C-v b), as tangle-all-code-blocks writes it: the file its :tangle names, worked out from the block's line, its subtree's :header-args: and the file's.</td></tr>
 <tr><td>none</td><td><kbd>M-x org-update-toc</kbd></td><td><code>org-update-toc</code></td><td>Make the table of contents of the current Org file again, under its first headline tagged :TOC: (as saving does, with <strong>org-toc-on-save</strong>), a list of links to its headlines, two levels deep unless the tag says how deep (:TOC_3:), to GitHub's anchors unless it says :TOC_2_org: for their titles; :TOC:QUOTE: puts it in a quote block.</td></tr>
 <tr><td>none</td><td><kbd>C-c C-x x</kbd></td><td><code>org-dynamic-block-insert-dblock</code></td><td>Put a new dynamic block in (C-c C-x x): its kind asked for among those that can be (a clock table, links to files with formatted names…), then what that kind asks.</td></tr>
 <tr><td>none</td><td><kbd>C-c C-x C-u</kbd></td><td><code>org-dblock-update</code></td><td>Make the dynamic block point is in again (C-c C-x C-u): the text between #+BEGIN: and #+END: written anew by the writer #+BEGIN: names, in the background, the editor free meanwhile.</td></tr>
@@ -1948,7 +1960,7 @@ out of either.</p>
 </thead>
 <tbody>
 <tr><td><code>*org-src-languages*</code></td><td><code>((&quot;emacs-lisp&quot; . &quot;elisp&quot;) (&quot;C++&quot; . &quot;cpp&quot;...</code></td><td>a list, each a pair (A . B), A text and B nil, or text</td><td>The language each name a source block is given means, each (NAME .</td></tr>
-<tr><td><code>*code-files-make-directories*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether tangle-code-files makes the directories a file goes in.</td></tr>
+<tr><td><code>*code-files-make-directories*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether tangle-all-code-blocks makes the directories a file goes in.</td></tr>
 <tr><td><code>*org-toc-on-save*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether an Org file's table of contents is made again each time it is saved.</td></tr>
 <tr><td><code>*org-toc-max-depth*</code></td><td><code>2</code></td><td>a whole number, 1 or more</td><td>How deep the headlines of a table of contents go when neither its tag nor #+OPTIONS: toc:N gives a depth.</td></tr>
 <tr><td><code>*org-toc-style*</code></td><td><code>&quot;gh&quot;</code></td><td>&quot;gh&quot;, &quot;org&quot;</td><td>How a table of contents links to its headlines when its tag says nothing.</td></tr>
@@ -2204,7 +2216,10 @@ face) are as before, and a source block is in Cascadia Code.</p>
 names. At <code>nil</code>, the standard, that is <code>logos/</code> in your configuration directory,
 <code>~/.config/tuatara/logos/</code>. A note's <code>#+logo: firm.pdf</code> line is looked for
 there. If your pictures are kept elsewhere,
-<code>(setf *logos-directory* &quot;~/Pictures/logos&quot;)</code>.</p>
+<code>(setf *logos-directory* &quot;~/Pictures/logos&quot;)</code>. To keep them in more than one
+place, give a list: <code>(setf *logos-directory* '(&quot;~/.config/tuatara/logos/&quot;
+&quot;~/Pictures/logos/&quot;))</code>. A name is looked for in each in turn, and the first
+directory that has it gives the picture.</p>
 <h3 id="hiding-names"><span class="num">14.14.9</span> Hiding names</h3>
 <p>Sometimes a document must go out with a name blacked out. Select the name,
 or put the cursor on it, press <kbd>C-c m</kbd> and choose <code>R</code>. The name is wrapped
@@ -2303,7 +2318,7 @@ for it.</p>
 <tr><td><code>*latex-main-font*</code></td><td><code>nil</code></td><td>nil, or text</td><td>The font the enhanced export sets a document's text in.</td></tr>
 <tr><td><code>*latex-sans-font*</code></td><td><code>nil</code></td><td>nil, or text</td><td>The sans-serif font of the enhanced export.</td></tr>
 <tr><td><code>*latex-mono-font*</code></td><td><code>nil</code></td><td>nil, or text</td><td>The fixed-width font the enhanced export sets code in.</td></tr>
-<tr><td><code>*logos-directory*</code></td><td><code>nil</code></td><td>nil, or a directory's name</td><td>The directory of the pictures your templates ask a note for.</td></tr>
+<tr><td><code>*logos-directory*</code></td><td><code>nil</code></td><td>nil, or a directory's name, or a list, each a directory's name</td><td>The directory, or directories, of the pictures your templates ask a note for.</td></tr>
 <tr><td><code>*latex-redaction-commands*</code></td><td><code>(&quot;R&quot; &quot;D&quot; &quot;redact&quot;)</code></td><td>a list, each text</td><td>The LaTeX commands that hide their argument in your LaTeX files, <code>\R{John</code> Otago} for one.</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>

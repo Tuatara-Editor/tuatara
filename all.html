@@ -13,7 +13,7 @@
 <div class="site">
 <nav class="toc" id="contents" aria-label="Contents">
 <strong>Tuatara Manual</strong>
-<small>for version 0.90.43</small>
+<small>for version 0.90.44</small>
 <p class="tools"><a href="index.html">By chapter</a>
 <button type="button" class="theme" hidden>Dark</button></p>
 <input type="search" placeholder="Search the manual" aria-label="Search the manual">
@@ -22,7 +22,7 @@
 <main>
 <article>
 <h1>Tuatara Manual</h1>
-<p class="lead">for version 0.90.43, every chapter on one page</p>
+<p class="lead">for version 0.90.44, every chapter on one page</p>
 <p>This manual is written with modal editing on, first and foremost. Where a command also has a key that works with modal editing off, it is given as well, as the non-modal key.</p>
 <section class="chapter" id="01-the-screen">
 <h1 id="01-the-screen--the-screen">The screen</h1>
@@ -477,7 +477,7 @@ show their <code>/ssh:pinetree:</code> path.</p>
 <tbody>
 <tr><td>none</td><td><kbd>C-x T t</kbd></td><td><code>toggle-mode-line-tuatara</code></td><td>Writes TUATARA before the modal state, or only the state.</td></tr>
 <tr><td>none</td><td><kbd>C-x C-q</kbd></td><td><code>read-only-mode</code></td><td>Makes the buffer read-only, or editable again.</td></tr>
-<tr><td>none</td><td><kbd>C-x j</kbd></td><td><code>list-jobs</code></td><td>Lists the jobs running or waiting, which P stands for.</td></tr>
+<tr><td>none</td><td><kbd>C-x j</kbd></td><td><code>jobs-manager</code></td><td>Lists the jobs running or waiting, which P stands for.</td></tr>
 <tr><td>none</td><td><kbd>C-x J</kbd></td><td><code>stop-job</code></td><td>Stops the job running in this buffer, after asking.</td></tr>
 </tbody></table></div>
 <p>Clicking a window's mode line with the mouse selects that window.</p>
@@ -1639,7 +1639,8 @@ Tuatara never waits on it. With a number, a sort runs in descending order.</p>
 <p>None of these has a key. Run them with <kbd>M-x</kbd>. <code>flush-lines</code> and <code>keep-lines</code> use
 the same pattern rules as search, which chapter 6 describes. In a CSV file or a
 log they first ask which column to try the pattern on, and a header line always
-stays.</p>
+stays. A line longer than 16 MiB would have its column tried on its first
+16 MiB alone, so then nothing is deleted, and the echo area says so.</p>
 <p>A selection of any size can be sorted by line, reversed or cleared of duplicate
 lines: past 32 MB or about four million lines the work goes to disk in pieces.
 <code>sort-paragraphs</code>, <code>sort-pages</code>, <code>sort-regexp-fields</code> and the sorts of records
@@ -1846,7 +1847,7 @@ not sent, and neither is any text from an encrypted file, and with
 <tbody>
 <tr><td>none</td><td><kbd>&lt;mouse-2&gt;</kbd></td><td><code>mouse-yank-primary</code></td><td>Pastes the primary selection where the middle button was pressed.</td></tr>
 <tr><td>none</td><td><kbd>M-x gpg-copy-to-clipboard</kbd></td><td><code>gpg-copy-to-clipboard</code></td><td>Puts the text copied last on the system clipboard even when it came from an encrypted file. Other programs, a clipboard manager among them, can then read and keep it.</td></tr>
-<tr><td>none</td><td><kbd>C</kbd>, <kbd>C-c C</kbd></td><td><code>server-toggle-clipboard</code></td><td>In the list of servers, shares the clipboard with the server on the line, or stops sharing it. See chapter 18.</td></tr>
+<tr><td>none</td><td><kbd>C-c C</kbd></td><td><code>server-toggle-clipboard</code></td><td>In the list of servers, shares the clipboard with the server on the line, or stops sharing it. See chapter 18.</td></tr>
 </tbody></table></div>
 <h3 id="04-cutting-and-pasting--settings"><span class="num">4.4.1</span> Settings</h3>
 <div class="tablewrap"><table>
@@ -1898,7 +1899,7 @@ gives up. Keeping again under the same character replaces what was there.</p>
 <tr><td>none</td><td><kbd>M-x register-prepend</kbd></td><td><code>register-prepend</code></td><td>Puts the selected text before the text a register keeps.</td></tr>
 <tr><td>none</td><td><kbd>C-x r i</kbd></td><td><code>register-insert</code></td><td>Writes what a register keeps at the cursor. Text goes in as it was, with the mark before it. A block goes in as a block, each row as many times as the number you gave first. A number goes in as digits.</td></tr>
 <tr><td>none</td><td><kbd>C-x r j</kbd></td><td><code>register-jump</code></td><td>Goes to the place a register keeps.</td></tr>
-<tr><td>none</td><td><kbd>C-x r l</kbd></td><td><code>register-list</code></td><td>Lists the registers in a buffer, one per line. <kbd>RET</kbd> on a place goes there, and <kbd>q</kbd> closes the list.</td></tr>
+<tr><td>none</td><td><kbd>C-x r l</kbd></td><td><code>register-manager</code></td><td>Lists the registers in a buffer, one per line, in a section for each kind they keep. <kbd>RET</kbd> or <kbd>l</kbd> on a place goes there, <kbd>h</kbd> folds a section, and <kbd>q</kbd> closes the list.</td></tr>
 </tbody></table></div>
 <p>A register that keeps something that is not the right kind says what it
 keeps instead. A place worth keeping beyond this session is a bookmark rather
@@ -3279,6 +3280,10 @@ in, or opens it again if it was folded. <kbd>S-TAB</kbd> folds every section, or
 them all if every one is folded. On a heading, <kbd>l</kbd> and <kbd>RET</kbd> open the section,
 and <kbd>h</kbd> folds it. On any other line <kbd>h</kbd> does nothing, so a stray press does
 not close the list; <kbd>q</kbd> does that.</p>
+<p>A fold hides lines, never marks. A marked entry in a folded section stays
+marked, and a command on the marked entries acts on it too. Its question says
+how many of them a fold hides, as in <code>Kill the 3 buffers (1 in a folded
+section)?</code>.</p>
 <h3 id="07-buffers-and-sessions--marks"><span class="num">7.1.3</span> Marks</h3>
 <p>The list works on one buffer at a time, or on several if you mark them.
 Marking is how you say &quot;these ones&quot;. <kbd>m</kbd> puts a <code>&gt;</code> on the buffer the cursor
@@ -3286,7 +3291,8 @@ is on and moves down a line, so you can mark a run of buffers by pressing <kbd>m
 over and over. A number before the key marks that many lines. <kbd>u</kbd> takes a mark
 off the line and moves down, and <kbd>U</kbd> takes every mark off. <kbd>t</kbd> swaps the two
 states: what was marked becomes unmarked and the other way round. That is a
-quick way to say &quot;everything except these&quot;.</p>
+quick way to say &quot;everything except these&quot;. It leaves the entries of a folded
+section as they are, and the number it says counts every mark, theirs too.</p>
 <p>While any entry is marked, the mode line of the list says how many, for
 example &quot;3 marked, 1 for deletion&quot;. It changes with each mark you put or take
 off, and goes when none is left. Every list with marks does this, rimu too.</p>
@@ -3306,11 +3312,11 @@ and <kbd>p</kbd> move to the next and the previous buffer, skipping the headings
 again. You rarely need that, because the list updates itself while it is on the
 screen, and your marks stay.</p>
 <p>When Tuatara runs in the background, serving several windows of its own (a
-daemon, described in chapter 18), each of those windows is a client and the
-list has a section for each client instead. <kbd>K</kbd> on a client's section makes
-that client the one that stays when its last buffer is closed. The setting
-<code>*client-kept-without-buffers*</code> says which one stays when you do not choose.
-You can skip this until chapter 18.</p>
+daemon, described in chapter 18), each of those windows is a client and the list
+has a section for each client instead. <kbd>C-c K</kbd> on a client's section makes that
+client the one that stays when its last buffer is closed. The setting
+<code>*client-kept-without-buffers*</code> says which one stays when you do not choose. You
+can skip this until chapter 18.</p>
 <div class="try">
 <h3>Try it, with a letter and a shopping list</h3>
 <ol>
@@ -3335,8 +3341,8 @@ You can skip this until chapter 18.</p>
 <tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td>none</td><td><kbd>s</kbd></td><td><code>buffers-save</code></td><td>Save the marked buffers (&gt;) that have a file, or with none marked the buffer on the current line.</td></tr>
-<tr><td>none</td><td><kbd>K</kbd>, <kbd>C-c K</kbd></td><td><code>buffers-keep-client</code></td><td>Make the client whose group the cursor is in, in the buffer list, the one that stays when its last buffer is closed, in place of the one <strong>CLIENT-KEPT-WITHOUT-BUFFERS</strong> names, until it ends.</td></tr>
+<tr><td>none</td><td><kbd>s</kbd>, <kbd>C-c s</kbd></td><td><code>buffers-save</code></td><td>Save the marked buffers (&gt;) that have a file, or with none marked the buffer on the current line.</td></tr>
+<tr><td>none</td><td><kbd>C-c K</kbd></td><td><code>buffers-keep-client</code></td><td>Make the client whose group the cursor is in, in the buffer list, the one that stays when its last buffer is closed, in place of the one <strong>CLIENT-KEPT-WITHOUT-BUFFERS</strong> names, until it ends.</td></tr>
 <tr><td>none</td><td><kbd>l</kbd>, <kbd>C-f</kbd>, <kbd>RET</kbd></td><td><code>list-visit</code></td><td>Open the entry on the current line of the list: the buffer, the bookmark's place, the file; on a section's heading, fold or unfold the section.</td></tr>
 <tr><td>none</td><td><kbd>o</kbd>, <kbd>C-c o</kbd></td><td><code>list-visit-other</code></td><td>Open the entry on the current line of the list in another window; on a section's heading, fold or unfold the section.</td></tr>
 <tr><td>none</td><td><kbd>n</kbd>, <kbd>C-c n</kbd></td><td><code>list-next-entry</code></td><td>Go to the next entry of the list, the start of its first line, passing over the headings of its sections.</td></tr>
@@ -3345,8 +3351,8 @@ You can skip this until chapter 18.</p>
 <tr><td>none</td><td><kbd>d</kbd>, <kbd>C-c d</kbd></td><td><code>list-mark-for-deletion</code></td><td>Mark the entry on the current line of the list for deletion (D), for the list's command that deletes them, and move down; with a count, as many entries, up the list for a negative one.</td></tr>
 <tr><td>none</td><td><kbd>u</kbd>, <kbd>C-c u</kbd></td><td><code>list-unmark-entry</code></td><td>Take the mark off the entry on the current line of the list, of any kind, and move down; with a count, off as many entries, up the list for a negative one.</td></tr>
 <tr><td>none</td><td><kbd>U</kbd>, <kbd>C-c U</kbd></td><td><code>list-unmark-all</code></td><td>Take every mark off the entries of the list, of any kind; in rimu, those of the files marked in other directories too.</td></tr>
-<tr><td>none</td><td><kbd>t</kbd></td><td><code>list-toggle-marks</code></td><td>Mark the entries the list shows that are not marked and take the mark off those marked; those marked for deletion (D), or given a mark of another kind, stay so, as do the entries a filter or a folded section hides.</td></tr>
-<tr><td>none</td><td><kbd>x</kbd></td><td><code>list-execute</code></td><td>Delete the entries of the list marked for deletion (D), after asking, as the list deletes: the buffer list kills its buffers, rimu puts files in the trash, the list of jobs drops those waiting and stops those running.</td></tr>
+<tr><td>none</td><td><kbd>t</kbd>, <kbd>C-c t</kbd></td><td><code>list-toggle-marks</code></td><td>Mark the entries the list shows that are not marked and take the mark off those marked; those marked for deletion (D), or given a mark of another kind, stay so, as do the entries a filter or a folded section hides.</td></tr>
+<tr><td>none</td><td><kbd>x</kbd>, <kbd>C-c x</kbd></td><td><code>list-execute</code></td><td>Delete the entries of the list marked for deletion (D), after asking, as the list deletes: the buffer list kills its buffers, rimu puts files in the trash, the list of jobs drops those waiting and stops those running.</td></tr>
 <tr><td>none</td><td><kbd>D</kbd>, <kbd>C-c D</kbd></td><td><code>list-delete-marked</code></td><td>Delete the marked entries of the list (&gt;), or with none marked the one on the current line, after asking, as the list deletes, as M-x list-execute does those marked for deletion; in rimu, with C-u, for good rather than to the trash.</td></tr>
 <tr><td>none</td><td><kbd>TAB</kbd></td><td><code>list-toggle-fold</code></td><td>Fold the section of the list the current line is in, its heading left showing, or unfold it when it is folded.</td></tr>
 <tr><td>none</td><td><kbd>S-TAB</kbd></td><td><code>list-toggle-all-folds</code></td><td>Fold every section of the list, or unfold them all when every one is folded; a section not in the list now keeps its fold for when it comes back.</td></tr>
@@ -3443,7 +3449,7 @@ that are not saved.</p>
 <tbody>
 <tr><td>none</td><td><kbd>C-x k</kbd></td><td><code>kill-buffer</code></td><td>Kill the current buffer, asking first when it has changes not saved.</td></tr>
 <tr><td>none</td><td><kbd>C-x p k</kbd></td><td><code>kill-project-buffers</code></td><td>Kill every buffer of the project the current buffer is in (a directory above it holding one of <strong>PROJECT-ROOT-MARKERS</strong>, .git or .project), its files, its directories listed (C-x d), and the buffers standing in them; after asking, saying how many are modified, each modified one asked about as it goes.</td></tr>
-<tr><td>none</td><td><kbd>C-x s</kbd></td><td><code>save-some-buffers</code></td><td>Save every buffer visiting a file with changes not saved, after asking once, the files named: the files a rename across a project changed, say.</td></tr>
+<tr><td>none</td><td><kbd>C-x s</kbd></td><td><code>save-some-buffers</code></td><td>Save every buffer visiting a file with changes not saved, after asking once, the files named beside the question: the files a rename across a project changed, say.</td></tr>
 <tr><td>none</td><td><kbd>C-x C-c</kbd></td><td><code>save-buffers-kill-editor</code></td><td>Exit the editor, asking first if a buffer visiting a file, or one made by C-x n e, has unsaved changes.</td></tr>
 </tbody></table></div>
 <h2 id="07-buffers-and-sessions--recent-files-and-places"><span class="num">7.4</span> Recent files and places</h2>
@@ -3515,6 +3521,13 @@ bookmark under the cursor another name and <kbd>c</kbd> changes its categories. 
 bookmark whose file has gone is shown faint.</p>
 <p>A bookmark on a directory listing keeps the directory and the entry the cursor
 is on, so you can bookmark a directory you visit often.</p>
+<p>A bookmark can keep a place on another machine, such as
+<code>/ssh:server:/home/me/notes.txt</code> or a directory listed there. Going to it
+connects again when the connection has been closed, and the cursor goes to the
+place once the file has been read. The manager shows such a bookmark as
+<code>remote</code> at once, without connecting. The others are looked at in the
+background, and until that ends the last line says <code>looking for those gone</code>
+in place of how many are gone.</p>
 <div class="try">
 <h3>Try it, with some notes</h3>
 <ol>
@@ -3619,11 +3632,13 @@ tells you it holds changes that are newer than the file. <kbd>M-x recover-file</
 takes them into the buffer, after asking. They arrive as one edit. <kbd>C-/</kbd> (modal:
 <kbd>u</kbd>) takes it back if you change your mind, and <kbd>C-x C-s</kbd> writes it to the file
 if you do not.</p>
-<p>You can also see every copy that is waiting with <kbd>M-x list-auto-saves</kbd>. The
-list shows when each copy was written, how big it is and which file it
-belongs to, with the newest first. It marks and acts as the buffer list
-does: <kbd>RET</kbd> recovers the copy on the line, after asking, and <kbd>x</kbd> and <kbd>D</kbd> delete
-copies.</p>
+<p>You can also see every copy that is waiting with <kbd>M-x auto-saves-manager</kbd>. The
+copies newer than their file, the ones worth taking back, come first in a
+section of their own; those older than their file, and those whose file is
+gone, follow in sections of theirs. Each line shows when the copy was written,
+how big it is and which file it belongs to, the newest first. It marks and
+acts as the buffer list does: <kbd>RET</kbd> or <kbd>l</kbd> recovers the copy on the line, after
+asking, <kbd>h</kbd> folds a section, and <kbd>x</kbd> and <kbd>D</kbd> delete copies.</p>
 <p>Auto-save is on as standard, through <code>*auto-save*</code>. With <code>t</code> the changes of
 every buffer that visits a file are written now and then to a copy of their
 own, never to the file. If you want no copies at all, put this in your init
@@ -3653,7 +3668,7 @@ you can point it at a directory on another drive. <code>*auto-save-idle*</code> 
 <tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td>none</td><td><kbd>M-x list-auto-saves</kbd></td><td><code>list-auto-saves</code></td><td>List the auto-saved copies of changes not saved (<strong>AUTO-SAVE-DIRECTORY</strong>), the newest first: after a crash or a quit without saving, what can be taken back.</td></tr>
+<tr><td>none</td><td><kbd>M-x auto-saves-manager</kbd></td><td><code>auto-saves-manager</code></td><td>List the auto-saved copies of changes not saved (<strong>AUTO-SAVE-DIRECTORY</strong>), the newest first, those newer than their file in a section before the rest: after a crash or a quit without saving, what can be taken back.</td></tr>
 <tr><td>none</td><td><kbd>M-x recover-file</kbd></td><td><code>recover-file</code></td><td>Take into the current buffer the changes auto-saved for its file (<strong>AUTO-SAVE</strong>) after asking, as one edit: C-/ takes it back, a save writes it to the file.</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
@@ -4927,7 +4942,7 @@ so that opening the file again need not fetch it again (see &quot;The cache&quot
 A file on another machine has no git marks, no language server, no auto-saved
 copy and no build, since those would read what is around the file, and what is
 around it is not here. A file's own settings are taken only from a machine you
-trust, listed by <code>M-x server-list</code>, chapter 18. Each request has
+trust, listed by <code>M-x server-manager</code>, chapter 18. Each request has
 <code>*remote-seconds*</code> to be answered, 30 as standard. Past that, the work in hand
 fails and says so.</p>
 <h3 id="09-files--the-first-time-you-meet-a-machine"><span class="num">9.9.2</span> The first time you meet a machine</h3>
@@ -5131,11 +5146,13 @@ that it has not been changed since.</p>
 <h3 id="09-files--a-file-that-ends-in-gpg"><span class="num">9.10.1</span> A file that ends in .gpg</h3>
 <p>A file whose name ends in <code>.gpg</code> opens decrypted. The text on disk stays
 encrypted. The decrypted text lives in memory only. It is never auto-saved, and
-it is not placed on the system clipboard unless you ask for that. Each save
-encrypts it again. If the file is encrypted to a passphrase and not to a key,
-gpg-agent's prompt asks at once. When the minibuffer is what asks (next
-section), the buffer waits until you press <kbd>RET</kbd> first.
-<kbd>M-x gpg-decrypt-with-passphrase</kbd> is the same.</p>
+it is not placed on the system clipboard unless you ask for that. When you close
+the buffer, what you cut or copied from it goes too: its kills leave the kill
+ring, its registers are emptied, and the rectangle store lets go of a block
+taken from it. Each save encrypts it again. If the file is encrypted to a
+passphrase and not to a key, gpg-agent's prompt asks at once. When the
+minibuffer is what asks (next section), the buffer waits until you press <kbd>RET</kbd>
+first. <kbd>M-x gpg-decrypt-with-passphrase</kbd> is the same.</p>
 <p>Whom a file is encrypted to is a choice for each save.
 <kbd>M-x gpg-choose-encryption-keys</kbd> chooses again, between keys and a passphrase,
 and the next save uses the new choice. <kbd>M-x gpg-lock</kbd> makes gpg-agent forget
@@ -5200,9 +5217,10 @@ a signature. They say who signed, when, and how far that key is trusted.</p>
 changed since that key signed it. It does not tell you the text is safe, and it
 tells you who signed only as far as you trust the key.</p>
 <h3 id="09-files--keys"><span class="num">9.10.5</span> Keys</h3>
-<p><kbd>M-x gpg-list-keys</kbd> opens a list of your keys and those you have of others. The
-list fills in as gpg answers. <kbd>M-x gpg-keys-details</kbd> shows one key's
-fingerprint, names and expiry. <kbd>M-x gpg-import-keys</kbd> and
+<p><kbd>M-x gpg-keys-manager</kbd> opens a list of your keys and those you have of others,
+each in a section of its own. The list fills in as gpg answers. <kbd>RET</kbd> or <kbd>l</kbd>
+shows the fingerprint, names and expiry of the key on the line, and <kbd>h</kbd> folds
+a section. <kbd>M-x gpg-import-keys</kbd> and
 <kbd>M-x gpg-import-keys-region</kbd> add keys from a file or from selected text.
 <kbd>M-x gpg-keys-export</kbd> writes the public part of marked keys to a file, and
 <kbd>M-x gpg-keys-insert</kbd> puts it at the cursor in the buffer the list was opened
@@ -5249,8 +5267,7 @@ from. The directory list (chapter 10) has keys for the same jobs on files.</p>
 <tr><td>none</td><td><kbd>M-x gpg-verify-region</kbd></td><td><code>gpg-verify-region</code></td><td>Check the signature of the clear-signed block (—–BEGIN PGP SIGNED MESSAGE—–) in the text selected, or without a selection the one point is in, else the one nearest to point: who signed it, when, and how far that key is trusted.</td></tr>
 <tr><td>none</td><td><kbd>M-x gpg-import-keys</kbd></td><td><code>gpg-import-keys</code></td><td>Import the keys in a file asked for (armoured or not) into your keyring; say what was imported.</td></tr>
 <tr><td>none</td><td><kbd>M-x gpg-import-keys-region</kbd></td><td><code>gpg-import-keys-region</code></td><td>Import the keys in the text selected (an armoured —–BEGIN PGP PUBLIC KEY BLOCK—–) into your keyring.</td></tr>
-<tr><td>none</td><td><kbd>M-x gpg-list-keys</kbd></td><td><code>gpg-list-keys</code></td><td>List your GnuPG keys and those you have of others: there m marks one, M-x gpg-keys-details shows its details, M-x gpg-import-keys imports keys from a file, M-x gpg-keys-export exports, M-x gpg-keys-insert inserts and D deletes those marked.</td></tr>
-<tr><td>none</td><td><kbd>M-x gpg-keys-details</kbd></td><td><code>gpg-keys-details</code></td><td>Show the details of the key at the cursor: its fingerprint, its names, its subkeys and what they can do, when they expire.</td></tr>
+<tr><td>none</td><td><kbd>M-x gpg-keys-manager</kbd></td><td><code>gpg-keys-manager</code></td><td>List your GnuPG keys and those you have of others, in a section each: there m marks one, l shows its details, M-x gpg-import-keys imports keys from a file, M-x gpg-keys-export exports, M-x gpg-keys-insert inserts and D deletes those marked.</td></tr>
 <tr><td>none</td><td><kbd>M-x gpg-keys-export</kbd></td><td><code>gpg-keys-export</code></td><td>Export the public part of the keys marked (or the one at the cursor), armoured, to a file asked for.</td></tr>
 <tr><td>none</td><td><kbd>M-x gpg-keys-insert</kbd></td><td><code>gpg-keys-insert</code></td><td>Put the public part of the keys marked (or the one at the cursor), armoured, at point in the buffer the list was opened from.</td></tr>
 </tbody></table></div>
@@ -5280,7 +5297,9 @@ drives and the temporary directories as standard, or when it is a copy
 Tuatara made of an outside file or a file marked as come from outside
 (chapter 12). Links are followed first: a link in your notes that leads into
 your downloads is untrusted too. Tuatara asks before opening an untrusted file,
-and the answer is typed and ended with <kbd>RET</kbd>:</p>
+such as <code>Open photo.png in the desktop's program?</code>, with the file's kind and
+what each answer does shown below the question. The answer is typed and ended
+with <kbd>RET</kbd>:</p>
 <ul>
 <li><code>y</code> opens a copy of the file that only you can read and nobody can change.
   Tuatara looks at what the file is, not what its name says, and only the kinds
@@ -5393,7 +5412,7 @@ them are explained in chapters 15 and 18.</p>
 </thead>
 <tbody>
 <tr><td><code>--gui</code></td><td>Open a window of its own instead (as when started with no terminal). Use it when the terminal is the limit: the window draws pictures and PDFs itself, shows 24-bit colour whatever TERM says, and takes the desktop's clipboard through GTK. It needs a graphical session (WAYLAND_DISPLAY or DISPLAY), which a console or an ssh login has not. How the window is drawn is the setting <strong>gui-renderer</strong>.</td></tr>
-<tr><td><code>--frames N</code></td><td>Open N frames, from 1 to 16: with –gui each a window of its own, in the terminal screens shown one at a time (C-x 5 o goes to the next); the files named are shown one in each frame in turn, those left over open behind the first; –frames=N does as well. Use it to start with several views of the same buffers. With –gui they are windows you can put on different screens. In a terminal only one frame shows at a time, so more than one is for C-x 5 o; to see two views at once, split the window (C-x 2, C-x 3). The cost is small: measured once here, 16 frames on a small file added about 30 ms to the first screen and no memory worth naming.</td></tr>
+<tr><td><code>--frames N</code></td><td>Open N frames, from 1 to 16: with –gui each a window of its own, in the terminal screens shown one at a time (C-x 5 o goes to the next); the files named are shown one in each frame in turn, those left over open behind the first; –frames=N does as well. Use it to start with several views of the same buffers. With –gui they are windows you can put on different screens. In a terminal only one frame shows at a time, so more than one is for C-x 5 o; to see two views at once, split the window (C-x 2, C-x 3). The cost is small: a frame more adds little to the first screen and takes little memory.</td></tr>
 <tr><td><code>-c INIT-FILE, --config INIT-FILE</code></td><td>Read INIT-FILE as the init file instead of ~/.config/tuatara/init.lisp; –config=INIT-FILE does as well. Use it to keep several setups (one for writing, one for a work machine), to try a changed init file without touching the one you rely on, or to start from a file kept elsewhere. The file is read as the usual one is, so the packages it names are loaded. A file that is not there ends the start with status 2; the usual init file is not used in its place.</td></tr>
 <tr><td><code>+LINE[:COLUMN]</code></td><td>Before a file: open it with the cursor on that line (from 1; the last line when the file has fewer) and column (from 1; the C in the mode line counts from 0), as in tuatara +120:8 main.lisp +3 notes.org.</td></tr>
 <tr><td><code>--diff OLD NEW</code></td><td>Open the differences between the two files, or two directories, as M-x diff-files shows them, and exit when you quit; for git, as git config difftool.tuatara.cmd 'tuatara –diff &quot;$LOCAL&quot; &quot;$REMOTE&quot;'.</td></tr>
@@ -5402,9 +5421,9 @@ them are explained in chapters 15 and 18.</p>
 <tr><td><code>--hex</code></td><td>Open the files in the hex view, never first as text. Use it for a file that is not text (a program, an image, a database), or for text whose bytes you must read as stored, where the text view could hide a stray byte or a different line ending. A byte takes more room on the screen than a character. Measured once here, a 1 GB file showed its first screen in the same time as hex or as text (about 0.35 s).</td></tr>
 <tr><td><code>-</code></td><td>As a file: read standard input into a buffer, <strong>stdin</strong>, opened safely (tuatara - &lt; data, or … | tuatara -); the terminal stays the keyboard. Use it to look at what another program writes, in a pipe, before it goes on. The buffer is opened safely, as –safe does, so it is for reading and for taking parts of out.</td></tr>
 <tr><td><code>--tutor</code></td><td>Start in the tutor.</td></tr>
-<tr><td><code>--daemon[=NAME]</code></td><td>Run one editor in the background, with no screen, for tuatara –client to show in terminals, and return once it is ready; it reads the init file and loads the packages as Tuatara does, and runs until M-x daemon-quit or tuatara –stop, or until it is sent SIGTERM, as at logout, which keeps the changes not saved as auto-saved copies and asks nothing; NAME, default when none is given, tells several apart; its log is ~/.cache/tuatara/daemon-NAME.log, its session ~/.local/state/tuatara/session-daemon-NAME. Use it for an editor that is already there when you want one: a client (tuatara –client) shows a frame in about 0.23 s, against about 0.32 s to start an editor of its own (measured once here, on a small file), and the buffers stay open when a terminal closes. Several names keep several separate sessions. The cost is a process that stays in memory until it is stopped, with whatever it has open: a large file stays held. It needs XDG_RUNTIME_DIR, where its socket is.</td></tr>
-<tr><td><code>--client[=NAME]</code></td><td>Show the daemon NAME in this terminal, or with –gui in a window of its own (C-x 5 2 opens another), a frame of its own, the files named opened in it, with +LINE, –safe, –hex, - and –frames as for Tuatara itself; –diff and –merge as well, with their exit codes; C-x C-c closes this client alone, its buffers kept in the daemon, and the daemon goes on; as git's editor (GIT_EDITOR='tuatara –client') the commit is made when the message is finished; exits 1 when no daemon of that name runs, or when it ends. Use it for the quicker start a daemon gives (about 0.23 s against about 0.32 s here) and one set of buffers in every terminal. In return, a change to the init file or a package reaches the daemon only when it is stopped and started again, and every client works in the one editor. As git's editor, add –start so that it works when no daemon runs.</td></tr>
-<tr><td><code>--client=HOST[:NAME]</code></td><td>Show the daemon NAME running on the machine HOST, reached with the system's ssh, as –client shows one here: HOST as ssh takes it (build.example, me@build.example), a name from ~/.ssh/config written with a colon after it (build: or build:work); its host key must be known already; the files named are that machine's, a relative name from your home directory there; - is not taken, and pictures stay on each side, the clipboard, dropped files and your agents too unless HOST is trusted with them (M-x server-list); with –start, the daemon there is started first when none runs; –stop=HOST[:NAME] stops it. Use it to work on the machine that has the files, a build server or a remote box, with your own screen and keys. Tuatara must be installed there, and the system's ssh is all it needs here. The editor runs there, so files are read at the speed of its disks, and each key crosses the network: a slow link shows as lag. The clipboard, dropped files and pictures stay on each side unless HOST is trusted with them, so a copy made there does not reach this machine's clipboard by itself.</td></tr>
+<tr><td><code>--daemon[=NAME]</code></td><td>Run one editor in the background, with no screen, for tuatara –client to show in terminals, and return once it is ready; it reads the init file and loads the packages as Tuatara does, and runs until M-x daemon-quit or tuatara –stop, or until it is sent SIGTERM, as at logout, which keeps the changes not saved as auto-saved copies and asks nothing; NAME, default when none is given, tells several apart; its log is ~/.cache/tuatara/daemon-NAME.log, its session ~/.local/state/tuatara/session-daemon-NAME. Use it for an editor that is already there when you want one: a client (tuatara –client) shows a frame sooner than an editor of its own starts, as nothing is loaded or read for it, and the buffers stay open when a terminal closes. Several names keep several separate sessions. The cost is a process that stays in memory until it is stopped, with whatever it has open: a large file stays held. It needs XDG_RUNTIME_DIR, where its socket is.</td></tr>
+<tr><td><code>--client[=NAME]</code></td><td>Show the daemon NAME in this terminal, or with –gui in a window of its own (C-x 5 2 opens another), a frame of its own, the files named opened in it, with +LINE, –safe, –hex, - and –frames as for Tuatara itself; –diff and –merge as well, with their exit codes; C-x C-c closes this client alone, its buffers kept in the daemon, and the daemon goes on; as git's editor (GIT_EDITOR='tuatara –client') the commit is made when the message is finished; exits 1 when no daemon of that name runs, or when it ends. Use it for the quicker start a daemon gives and one set of buffers in every terminal. In return, a change to the init file or a package reaches the daemon only when it is stopped and started again, and every client works in the one editor. As git's editor, add –start so that it works when no daemon runs.</td></tr>
+<tr><td><code>--client=HOST[:NAME]</code></td><td>Show the daemon NAME running on the machine HOST, reached with the system's ssh, as –client shows one here: HOST as ssh takes it (build.example, me@build.example), a name from ~/.ssh/config written with a colon after it (build: or build:work); its host key must be known already; the files named are that machine's, a relative name from your home directory there; - is not taken, and pictures stay on each side, the clipboard, dropped files and your agents too unless HOST is trusted with them (M-x server-manager); with –start, the daemon there is started first when none runs; –stop=HOST[:NAME] stops it. Use it to work on the machine that has the files, a build server or a remote box, with your own screen and keys. Tuatara must be installed there, and the system's ssh is all it needs here. The editor runs there, so files are read at the speed of its disks, and each key crosses the network: a slow link shows as lag. The clipboard, dropped files and pictures stay on each side unless HOST is trusted with them, so a copy made there does not reach this machine's clipboard by itself.</td></tr>
 <tr><td><code>--daemon-socket[=NAME]</code></td><td>Say where the daemon NAME listens, which Tuatara this is and whether it runs, in lines a client on another machine reads over ssh, with where gpg here looks for its agent, and exit; with –start, start it first when none runs.</td></tr>
 <tr><td><code>--receive-file PATH</code></td><td>Write standard input, a file dropped on the window of a client on another machine, at PATH, from your home directory unless it begins with /, for you alone and under a name nothing has yet; say where, and exit.</td></tr>
 <tr><td><code>--start</code></td><td>With –client: start the daemon first when none runs. Use it in a script or as git's editor, where there may be no daemon yet: the first call starts one and later calls find it. Without it, a client with no daemon exits 1.</td></tr>
@@ -5602,7 +5621,7 @@ name. The settings below change the standard for every list.</p>
 <tbody>
 <tr><td>none</td><td><kbd>I</kbd>, <kbd>C-c I</kbd></td><td><code>rimu-toggle-details</code></td><td>Show or hide the details before each name in this list: its inode number, as ls -i shows it, then its permissions, links, owner, group, size and when it last changed, as ls -l shows them, and where a symbolic link leads.</td></tr>
 <tr><td>none</td><td><kbd>H</kbd>, <kbd>C-c H</kbd></td><td><code>rimu-toggle-dotfiles</code></td><td>Show or hide the entries of this list whose names start with a dot, .</td></tr>
-<tr><td>none</td><td><kbd>s</kbd></td><td><code>rimu-toggle-sort</code></td><td>Order this list by name or by time, those changed last first; the mode line says which.</td></tr>
+<tr><td>none</td><td><kbd>s</kbd>, <kbd>C-c s</kbd></td><td><code>rimu-toggle-sort</code></td><td>Order this list by name or by time, those changed last first; the mode line says which.</td></tr>
 <tr><td>none</td><td><kbd>S</kbd>, <kbd>C-c S</kbd></td><td><code>rimu-toggle-sizes</code></td><td>Show or hide, before each name in this list, how much it takes: a file its size, a directory the size of everything in it and under it, hidden files too, directories of another drive mounted in it left out, worked out in the background while the list shows it.</td></tr>
 <tr><td>none</td><td><kbd>G</kbd>, <kbd>C-c G</kbd></td><td><code>rimu-toggle-git</code></td><td>Show or hide, after each name in this list, the entry's last commit in git's history: when it was made and the first line of its message.</td></tr>
 </tbody></table></div>
@@ -5822,10 +5841,10 @@ that column matches. Chapter 6 describes the pattern language.</p>
 <tr><td>none</td><td><kbd>m</kbd>, <kbd>C-c m</kbd></td><td><code>list-mark-entry</code></td><td>Mark the entry on the current line of the list (&gt;), for the list's commands that act on those marked, and move down; with a count, as many entries, up the list for a negative one.</td></tr>
 <tr><td>none</td><td><kbd>u</kbd>, <kbd>C-c u</kbd></td><td><code>list-unmark-entry</code></td><td>Take the mark off the entry on the current line of the list, of any kind, and move down; with a count, off as many entries, up the list for a negative one.</td></tr>
 <tr><td>none</td><td><kbd>U</kbd>, <kbd>C-c U</kbd></td><td><code>list-unmark-all</code></td><td>Take every mark off the entries of the list, of any kind; in rimu, those of the files marked in other directories too.</td></tr>
-<tr><td>none</td><td><kbd>t</kbd></td><td><code>list-toggle-marks</code></td><td>Mark the entries the list shows that are not marked and take the mark off those marked; those marked for deletion (D), or given a mark of another kind, stay so, as do the entries a filter or a folded section hides.</td></tr>
+<tr><td>none</td><td><kbd>t</kbd>, <kbd>C-c t</kbd></td><td><code>list-toggle-marks</code></td><td>Mark the entries the list shows that are not marked and take the mark off those marked; those marked for deletion (D), or given a mark of another kind, stay so, as do the entries a filter or a folded section hides.</td></tr>
 <tr><td>none</td><td><kbd>d</kbd>, <kbd>C-c d</kbd></td><td><code>list-mark-for-deletion</code></td><td>Mark the entry on the current line of the list for deletion (D), for the list's command that deletes them, and move down; with a count, as many entries, up the list for a negative one.</td></tr>
 <tr><td>none</td><td><kbd>K</kbd>, <kbd>C-c K</kbd></td><td><code>rimu-take-out-lines</code></td><td>Take the lines of the entries marked in this directory out of this list, or with none marked here the line point is on, their marks taken away: the files stay as they are, only the list shows fewer, to look at what is left.</td></tr>
-<tr><td>none</td><td><kbd>C-c f m</kbd></td><td><code>rimu-mark-master</code></td><td>Mark the file on the line of this rimu list as a master (M), a file that the files marked (m) are compared with by the commands that compare files, a photo of the person looked for among photos, and go to the next line; u takes the mark away.</td></tr>
+<tr><td>none</td><td><kbd>g m</kbd></td><td><code>rimu-mark-master</code></td><td>Mark the file on the line of this rimu list as a master (M), a file that the files marked (m) are compared with by the commands that compare files, a photo of the person looked for among photos, and go to the next line; u takes the mark away.</td></tr>
 <tr><td>none</td><td><kbd>C-x / s</kbd></td><td><code>search-filter-regex</code></td><td>Narrow the list here to the entries a regular expression matches, as it is typed: those whose line matches, or what more the list holds of them (a mailbox the headers and contents of its messages).</td></tr>
 <tr><td>none</td><td><kbd>C-x / l</kbd></td><td><code>search-filter-list</code></td><td>List the search filters narrowing the list here (C-x / s) in a buffer of their own, each with how many entries it leaves; there d takes away the filter on the line and D all of them.</td></tr>
 <tr><td>none</td><td><kbd>D</kbd>, <kbd>C-c D</kbd>, <kbd>C-x / r</kbd></td><td><code>search-filter-remove-all</code></td><td>Take away every search filter narrowing the list here, or the list the list of filters here is for: the whole list is shown again.</td></tr>
@@ -5978,7 +5997,8 @@ drive. When you pull the stick out, its trash goes with it.</p>
 <p>The trash only moves a file. The bytes stay on the drive until the space is
 used again. If you really want a file's contents gone, <kbd>g w</kbd> wipes the marked
 files: it writes over them and then deletes them. This is slow, and it asks
-once.</p>
+once, with the files' names and what wiping cannot promise shown below the
+question.</p>
 <div class="try">
 <h3>Try it, with some letters</h3>
 <ol>
@@ -6000,9 +6020,9 @@ what you put there.</p>
 <tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td>none</td><td><kbd>x</kbd></td><td><code>list-execute</code></td><td>Delete the entries of the list marked for deletion (D), after asking, as the list deletes: the buffer list kills its buffers, rimu puts files in the trash, the list of jobs drops those waiting and stops those running.</td></tr>
+<tr><td>none</td><td><kbd>x</kbd>, <kbd>C-c x</kbd></td><td><code>list-execute</code></td><td>Delete the entries of the list marked for deletion (D), after asking, as the list deletes: the buffer list kills its buffers, rimu puts files in the trash, the list of jobs drops those waiting and stops those running.</td></tr>
 <tr><td>none</td><td><kbd>D</kbd>, <kbd>C-c D</kbd></td><td><code>list-delete-marked</code></td><td>Delete the marked entries of the list (&gt;), or with none marked the one on the current line, after asking, as the list deletes, as M-x list-execute does those marked for deletion; in rimu, with C-u, for good rather than to the trash.</td></tr>
-<tr><td>none</td><td><kbd>g t</kbd></td><td><code>rimu-trash</code></td><td>List what is in the trash, as the buffer list (C-x C-b) lists buffers: a section for your own trash and one for each drive's, the last to go there first, each thing's name, when it went and where it was.</td></tr>
+<tr><td>none</td><td><kbd>g t</kbd></td><td><code>trash-manager</code></td><td>List what is in the trash, as the buffer list (C-x C-b) lists buffers: a section for your own trash and one for each drive's, the last to go there first, each thing's name, when it went and where it was.</td></tr>
 <tr><td>none</td><td><kbd>R</kbd>, <kbd>C-c R</kbd></td><td><code>rimu-trash-restore</code></td><td>Put the marked things (&gt;), or with none marked the one on the current line, back where they were, after asking, where they go said; another name asked for when one's is taken, the directories above it made again when they are gone.</td></tr>
 <tr><td>none</td><td><kbd>X</kbd>, <kbd>C-c X</kbd></td><td><code>rimu-trash-empty</code></td><td>Empty the trash: everything the list of the trash shows deleted for good, after asking twice, in the background.</td></tr>
 <tr><td>none</td><td><kbd>g w</kbd></td><td><code>rimu-wipe-files</code></td><td>Wipe the files marked (or the one on the line) as M-x wipe-file does, asked once: overwritten, then deleted.</td></tr>
@@ -6284,7 +6304,7 @@ a face.</p>
 <tr><td><code>:list-marked</code></td><td>An entry marked (&gt;) in any list whose entries are marked, rimu's too, for the commands that act on those marked: the mark and the name, in the colour of warnings.</td></tr>
 <tr><td><code>:list-marked-other</code></td><td>An entry given a mark of another kind in a rimu list (a master's M, RIMU-MARK-MASTER): the mark and the name.</td></tr>
 <tr><td><code>:list-deletion</code></td><td>An entry marked for deletion (D) in any list whose entries are marked, rimu's too: the mark and the name, in the colour of errors.</td></tr>
-<tr><td><code>:list-directory</code></td><td>The names of directories in a list: in rimu (C-x d) and where a link to a directory leads, in the trash (M-x rimu-trash) and among bookmarks (C-x m l).</td></tr>
+<tr><td><code>:list-directory</code></td><td>The names of directories in a list: in rimu (C-x d) and where a link to a directory leads, in the trash (M-x trash-manager) and among bookmarks (C-x m l).</td></tr>
 <tr><td><code>:list-size</code></td><td>Sizes in a list or beside completion candidates: of files and buffers, and a rimu list's sizes column (S).</td></tr>
 <tr><td><code>:list-date</code></td><td>Dates and times in a list or beside completion candidates: when a file last changed, the date in a formatted name, a rimu list's last commits (G), when a message was sent.</td></tr>
 <tr><td><code>:list-note</code></td><td>What is said of an entry beside it in a list: the first line of a rimu list's last commit messages, the first sentence of a face's description in M-x list-faces, the details under a finding in a report.</td></tr>
@@ -6461,7 +6481,8 @@ typed it. A replacement that reaches a line you changed meanwhile leaves your
 change alone and says so when it ends.</p>
 <p>A sort and a filter are different, because they move whole lines about and
 an edit in the middle would spoil the result. If you try to change text they
-are working on, Tuatara asks whether to stop the job. Answer <code>y</code> to stop it
+are working on, Tuatara asks whether to stop the job, as in <code>Stop sorting to
+change this text?</code>, with how far it has got shown below. Answer <code>y</code> to stop it
 and make your change, or <code>n</code> to let it finish.</p>
 <h3 id="11-large-files-and-background-work--undo-and-jobs"><span class="num">11.2.6</span> Undo and jobs</h3>
 <p>Each job is one step to undo, however much it changed. One <kbd>u</kbd> takes back a
@@ -6477,41 +6498,49 @@ where it is. You are not thrown to the last line the job touched.</p>
 you wonder what is going on, when a job takes longer than you expected, or
 when you gave a command by mistake and want to drop it before its turn comes.</p>
 <figure id="11-large-files-and-background-work--fig-jobs">
-<pre class="ex">  Buffer        State                    Job
-  ------        -----                    ---
-  sales.csv     Replacing 12%            Replacing kereru with kea in the buffer
-  sales.csv     waiting, first in line   Sorting the buffer
-  access.log    Saving 60%               Saving access.log
+<pre class="ex">     State                      Job
+     -----                      ---
+▾ sales.csv (2)
+     Replacing 12%              Replacing kereru with kea in the buffer
+     waiting, first in line     Sorting the buffer
+
+▾ access.log (1)
+     Saving 60%                 Saving access.log
 </pre>
 <figcaption>Figure 11.2. The list of jobs: one runs, one waits.</figcaption>
 </figure>
-<p>Each line is a job. The first column names the buffer it works in. The second
-says what it is doing and how far it has got, or that it waits and where it
-stands in the line. The third says in words what the job is. Jobs are listed
-buffer by buffer, the running one first and those waiting below it in the
-order they will run. The list keeps itself up to date while it is on the
-screen.</p>
-<p>The list works like the buffer list of chapter 7. <kbd>d</kbd> marks the job on the
-cursor's line with a <code>D</code>, and <kbd>x</kbd> carries it out after asking: a job that
-waits is dropped, and one that runs is stopped. <kbd>m</kbd> marks a job and <kbd>u</kbd> takes
-the mark off. <kbd>D</kbd> drops or stops the marked jobs, or the one on the line if
-none is marked. <kbd>q</kbd> closes the list.</p>
+<p>Each buffer with work has a section, its heading the buffer's name. A job whose
+buffer was closed while it ends has a section apart from a new buffer of the
+same name, and one with no buffer is under No buffer. Each line under it is a
+job. The list opens with the cursor on the first job. The first column says what
+the job is doing and how far it has got, or that it waits and where it stands in
+the line. The second says in words what the job is. The running job comes first
+and those waiting below it, in the order they will run. The list keeps itself up
+to date while it is on the screen.</p>
+<p>The list works like the buffer list of chapter 7. <kbd>RET</kbd> or <kbd>l</kbd> goes to the
+buffer of the job on the line, and on a heading folds or unfolds its section;
+<kbd>h</kbd> folds it. <kbd>d</kbd> marks the job on the cursor's line with a <code>D</code>, and <kbd>x</kbd>
+carries it out after asking: a job that waits is dropped, and one that runs is
+stopped. <kbd>m</kbd> marks a job and <kbd>u</kbd> takes the mark off. <kbd>D</kbd> drops or stops the
+marked jobs, or the one on the line if none is marked. <kbd>q</kbd> closes the list.</p>
 <div class="tablewrap"><table>
 <thead>
 <tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td>none</td><td><kbd>C-x j</kbd></td><td><code>list-jobs</code></td><td>List the jobs in the background in <strong>Jobs</strong>: in each buffer those running, with how far they have got, and those waiting their turn, in the order they will run, their text painted in the buffer meanwhile.</td></tr>
+<tr><td>none</td><td><kbd>C-x j</kbd></td><td><code>jobs-manager</code></td><td>List the jobs in the background in <strong>Jobs</strong>, a section for each buffer: the job running there, with how far it has got, and those waiting their turn, in the order they will run, their text painted in the buffer meanwhile.</td></tr>
 <tr><td>none</td><td><kbd>d</kbd>, <kbd>C-c d</kbd></td><td><code>list-mark-for-deletion</code></td><td>Mark the entry on the current line of the list for deletion (D), for the list's command that deletes them, and move down; with a count, as many entries, up the list for a negative one.</td></tr>
-<tr><td>none</td><td><kbd>x</kbd></td><td><code>list-execute</code></td><td>Delete the entries of the list marked for deletion (D), after asking, as the list deletes: the buffer list kills its buffers, rimu puts files in the trash, the list of jobs drops those waiting and stops those running.</td></tr>
+<tr><td>none</td><td><kbd>x</kbd>, <kbd>C-c x</kbd></td><td><code>list-execute</code></td><td>Delete the entries of the list marked for deletion (D), after asking, as the list deletes: the buffer list kills its buffers, rimu puts files in the trash, the list of jobs drops those waiting and stops those running.</td></tr>
 <tr><td>none</td><td><kbd>m</kbd>, <kbd>C-c m</kbd></td><td><code>list-mark-entry</code></td><td>Mark the entry on the current line of the list (&gt;), for the list's commands that act on those marked, and move down; with a count, as many entries, up the list for a negative one.</td></tr>
 <tr><td>none</td><td><kbd>u</kbd>, <kbd>C-c u</kbd></td><td><code>list-unmark-entry</code></td><td>Take the mark off the entry on the current line of the list, of any kind, and move down; with a count, off as many entries, up the list for a negative one.</td></tr>
 <tr><td>none</td><td><kbd>D</kbd>, <kbd>C-c D</kbd></td><td><code>list-delete-marked</code></td><td>Delete the marked entries of the list (&gt;), or with none marked the one on the current line, after asking, as the list deletes, as M-x list-execute does those marked for deletion; in rimu, with C-u, for good rather than to the trash.</td></tr>
 </tbody></table></div>
 <h3 id="11-large-files-and-background-work--stopping-a-job"><span class="num">11.3.1</span> Stopping a job</h3>
 <p><kbd>C-x J</kbd>, with a capital J, stops the job running in the buffer you are in.
-It asks first, so a slip of the finger costs nothing. The buffer is left as
-it is, and a file that was being saved is left as it was before the save. A
+It asks first, as in <code>Stop saving at 60%?</code>, so a slip of the finger costs
+nothing; what stopping leaves, when the job can say, is shown below the
+question. The buffer is left as it is, and a file that was being saved is left
+as it was before the save. A
 program the job runs is asked to end, and killed if it has not ended two
 seconds later, with every program it started. If other jobs wait behind the
 one you stopped, they start one after another. To get rid of those as well,
@@ -7390,7 +7419,7 @@ decoded. It opens as bytes, and the echo area says how much room is needed,
 where, and that <code>*cache-directory*</code> moves the copies to another drive. A file
 that claims a huge size with almost nothing in it is caught in the same way.
 Copying a file of many gigabytes takes a while. It is done in the background,
-while you go on working, and a job listed by <kbd>M-x list-jobs</kbd> that is stopped
+while you go on working, and a job listed by <kbd>M-x jobs-manager</kbd> that is stopped
 stops its copy too.</p>
 <p>There is no largest file as standard. Set <code>*sandbox-input-limit*</code> to a size,
 such as <code>&quot;20G&quot;</code>, to have larger files open as bytes; the echo area then says
@@ -8178,8 +8207,8 @@ init file. <code>*format-on-save*</code> names the languages formatted before ea
 <code>t</code> for every language with a formatter installed. A formatter that takes longer
 than <code>*format-seconds*</code> is stopped and nothing changes. <code>*format-in-sandbox*</code>
 turns off the sandbox for a formatter that cannot work shut in. A file larger
-than 8 MiB, as large as a language server is given, is not given to a
-formatter, and the echo area says so.</p>
+than <code>*lsp-largest-document*</code> (8 MB), the most a language server is given, is
+not given to a formatter either, and the echo area says so.</p>
 <h3 id="13-writing-code--settings-of-your-own"><span class="num">13.7.6</span> Settings of your own</h3>
 <p><code>*lsp-languages*</code> lists the languages whose servers are used.
 <code>*language-servers*</code> names a server of your own choice for a language in place
@@ -8268,7 +8297,7 @@ the steps still show what Tuatara says.</p>
 <tr><td><code>*lsp-code-lenses*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether what language servers say of lines (3 references, Run test) is shown faint at each line's end.</td></tr>
 <tr><td><code>*lsp-outline*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether M-x buffer-outline lists a file's names as its language server knows them (functions, types, their fields and methods, nested), where it has one that does.</td></tr>
 <tr><td><code>*lsp-wait*</code></td><td><code>2</code></td><td>a number of seconds, 0 or more, or a time in words such as 500ms, 90s, 30m or 2h, at most a hundred years</td><td>How long a language server's answer is waited for before the question is given up (a completion, a definition, a rename); work goes on meanwhile.</td></tr>
-<tr><td><code>*lsp-largest-document*</code></td><td><code>8388608</code></td><td>a whole number of octets, 1 or more, or a size in words such as 512M, 1.5G or 20 GB (in 1024s: 1K is 1024 octets), at most 4E</td><td>The largest document, in octets, given to a language server: a file's whole text, or the code of a note's source blocks of one language, however large the note.</td></tr>
+<tr><td><code>*lsp-largest-document*</code></td><td><code>8388608</code></td><td>a whole number of octets, 1 or more, or a size in words such as 512M, 1.5G or 20 GB (in 1024s: 1K is 1024 octets), at most 4E</td><td>The largest document, in octets, given to a language server or a formatter: a file's whole text, or the code of a note's source blocks of one language, however large the note.</td></tr>
 <tr><td><code>*lsp-largest-message*</code></td><td><code>33554432</code></td><td>a whole number of octets, 1 or more, or a size in words such as 512M, 1.5G or 20 GB (in 1024s: 1K is 1024 octets), at most 4E</td><td>The largest message read from a language server, in octets: a larger one is let go unread, said so.</td></tr>
 <tr><td><code>*lsp-watch-files*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether language servers that ask to be told of their project's files changed on disk, made or deleted, by programs other than the editor, are told.</td></tr>
 <tr><td><code>*lsp-watch-skipped*</code></td><td><code>(&quot;target&quot; &quot;node_modules&quot; &quot;__pycache__&quot; &quot;...</code></td><td>a list, each text</td><td>The directories of a project whose files are never watched for its language servers (hidden directories, whose names begin with a dot, never are): what a build makes.</td></tr>
@@ -8319,10 +8348,10 @@ for today, <code>$TM_FILENAME</code> for the file, <code>$AUTHOR</code> for the 
 <code>*user-full-name*</code>.</p>
 <p>Type the key and press <kbd>TAB</kbd>, and the text goes in with the cursor in the first
 place. <kbd>TAB</kbd> moves on to the next place and <kbd>S-TAB</kbd> back to the one before.
-After the last place the cursor goes to <code>$0</code>. <kbd>C-c y</kbd> (<code>insert-snippet</code>), in
+After the last place the cursor goes to <code>$0</code>. <kbd>C-c y</kbd> (<code>snippet-insert</code>), in
 buffers of text and of code, chooses a snippet from a list by name, each with
 its key, and with text selected the selection goes where the snippet has
-<code>$TM_SELECTED_TEXT</code>. <kbd>M-x copy-snippet</kbd> copies one of Tuatara's own into your
+<code>$TM_SELECTED_TEXT</code>. <kbd>M-x snippet-copy</kbd> copies one of Tuatara's own into your
 directory so that you can change it, and yours takes the place of Tuatara's.</p>
 <div class="try">
 <h3>Try it, with a Python script header</h3>
@@ -8346,8 +8375,8 @@ directory so that you can change it, and yours takes the place of Tuatara's.</p>
 <tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td>none</td><td><kbd>C-c y</kbd></td><td><code>insert-snippet</code></td><td>Put in a snippet chosen by its name among those of the current buffer's mode (each listed with its key), at point; with the selection active, in its place, the selected text where it has $TM_SELECTED_TEXT.</td></tr>
-<tr><td>none</td><td><kbd>M-x copy-snippet</kbd></td><td><code>copy-snippet</code></td><td>Copy one of Tuatara's own snippets, chosen by its name, into your snippets directory (the first of <strong>snippet-directories</strong>, in the directory of its mode) and visit it: your copy, changed as you like, takes the place of Tuatara's.</td></tr>
+<tr><td>none</td><td><kbd>C-c y</kbd></td><td><code>snippet-insert</code></td><td>Put in a snippet chosen by its name among those of the current buffer's mode (each listed with its key), at point; with the selection active, in its place, the selected text where it has $TM_SELECTED_TEXT.</td></tr>
+<tr><td>none</td><td><kbd>M-x snippet-copy</kbd></td><td><code>snippet-copy</code></td><td>Copy one of Tuatara's own snippets, chosen by its name, into your snippets directory (the first of <strong>snippet-directories</strong>, in the directory of its mode) and visit it: your copy, changed as you like, takes the place of Tuatara's.</td></tr>
 <tr><td>none</td><td><kbd>M-x snippet-next-field</kbd></td><td><code>snippet-next-field</code></td><td>Go to the next field of the snippet being filled in; past the last, end it where it puts the cursor.</td></tr>
 <tr><td>none</td><td><kbd>M-x snippet-previous-field</kbd></td><td><code>snippet-previous-field</code></td><td>Go back to the field of the snippet before the one the cursor is in.</td></tr>
 </tbody></table></div>
@@ -9135,8 +9164,8 @@ state with the cursor after the new stars, so press <kbd>i</kbd> and type the he
 </tbody></table></div>
 <p>Taking a star away is called promoting, and adding one is called demoting.
 The arrow keys with Alt do the same as the letters. Each move is one step
-for undo. On a list item <kbd>M-h</kbd> and <kbd>M-l</kbd> move the item instead, as the
-next section shows, and in a table they move a column.</p>
+for undo. On a list item all four move the item instead, as the next
+section shows, and in a table they move a row or a column.</p>
 <p>To jump to a heading by name, press <kbd>M-g o</kbd>, which chapter 13 describes. It
 lists every heading of the note, and typing a few letters narrows the list.
 To work on one heading without seeing the others, <kbd>C-x x s</kbd> narrows the
@@ -9196,8 +9225,8 @@ plain text file, and an item is folded only as part of its heading.</p>
 <tr><td>none</td><td><kbd>S-TAB</kbd></td><td><code>org-global-cycle</code></td><td>Cycle the whole buffer: its overview (the headlines of the first level), then its contents (every headline), then everything, and the overview again.</td></tr>
 <tr><td>none</td><td><kbd>M-RET</kbd></td><td><code>org-meta-return</code></td><td>A new item or headline after what point is in and all under it: in a list, an item of the same kind after the one point is in and all under it (its bullet, the next number, [ ] when it has a checkbox).</td></tr>
 <tr><td>none</td><td><kbd>M-S-RET</kbd></td><td><code>org-insert-todo-heading</code></td><td>A new TODO headline of this level after this subtree.</td></tr>
-<tr><td>none</td><td><kbd>M-j</kbd>, <kbd>M-&lt;down&gt;</kbd></td><td><code>org-metadown</code></td><td>In an Org table, move the row down; else move the subtree down (M-j).</td></tr>
-<tr><td>none</td><td><kbd>M-k</kbd>, <kbd>M-&lt;up&gt;</kbd></td><td><code>org-metaup</code></td><td>In an Org table, move the row up; else move the subtree up (M-k).</td></tr>
+<tr><td>none</td><td><kbd>M-j</kbd>, <kbd>M-&lt;down&gt;</kbd></td><td><code>org-metadown</code></td><td>In an Org table, move the row down; on a list item, move it with its sub-items below the item after it; else move the subtree down (M-j).</td></tr>
+<tr><td>none</td><td><kbd>M-k</kbd>, <kbd>M-&lt;up&gt;</kbd></td><td><code>org-metaup</code></td><td>In an Org table, move the row up; on a list item, move it with its sub-items above the item before it; else move the subtree up (M-k).</td></tr>
 <tr><td>none</td><td><kbd>M-h</kbd>, <kbd>M-&lt;left&gt;</kbd></td><td><code>org-metaleft</code></td><td>In an Org table, move the column left; on a list item, set it out a level, or every item the selection's lines begin; else promote the headline (M-h).</td></tr>
 <tr><td>none</td><td><kbd>M-l</kbd>, <kbd>M-&lt;right&gt;</kbd></td><td><code>org-metaright</code></td><td>In an Org table, move the column right; on a list item, set it in a level under the item before it, or every item the selection's lines begin; else demote the headline (M-l).</td></tr>
 <tr><td>none</td><td><kbd>M-H</kbd>, <kbd>M-S-&lt;left&gt;</kbd></td><td><code>org-shiftmetaleft</code></td><td>In an Org table, delete the column; on a list item, set it out a level with the items under it; else promote the subtree (M-H).</td></tr>
@@ -9258,13 +9287,14 @@ plus, a star, <code>1.</code> and <code>1)</code>, and a list at the left edge s
 is the quick way to turn a plain list into a numbered one.
 <kbd>TAB</kbd> on an item that has sub-items or more lines under it folds it, as on a
 heading.</p>
-<p>The keys that change a heading's level move items too, when the cursor is on
-one.</p>
+<p>The keys that move a heading or change its level move items too, when the
+cursor is on one.</p>
 <div class="tablewrap"><table>
 <thead>
 <tr><th>Modal</th><th>Non-modal</th><th>What it does to the item the cursor is on</th></tr>
 </thead>
 <tbody>
+<tr><td>none</td><td><kbd>M-j</kbd> / <kbd>M-k</kbd></td><td>Moves it with its sub-items past the next item or the one above</td></tr>
 <tr><td>none</td><td><kbd>M-l</kbd> / <kbd>M-h</kbd></td><td>Sets it in under the item above it, or out a level</td></tr>
 <tr><td>none</td><td><kbd>M-L</kbd> / <kbd>M-H</kbd></td><td>The same, with the sub-items under it</td></tr>
 <tr><td>none</td><td><kbd>TAB</kbd></td><td>On an empty item, sets it in, and in or out on each press</td></tr>
@@ -9274,7 +9304,8 @@ its last sub-item. Select lines with <kbd>V</kbd> and <kbd>J</kbd> first, and <k
 moves every item that begins on them. The first item of a list cannot be
 set in alone, as there is nothing above it to go under; <kbd>M-L</kbd> and <kbd>M-H</kbd> on
 it move the whole list a column. An item with sub-items is set out with
-<kbd>M-H</kbd>, which takes them along. Numbered items are numbered again.</p>
+<kbd>M-H</kbd>, which takes them along. Numbered items are numbered again, and an
+item moved with <kbd>M-j</kbd> or <kbd>M-k</kbd> takes the number of the place it moves to.</p>
 <p><kbd>TAB</kbd> on an item with nothing after its bullet, the one <kbd>M-RET</kbd> has just
 made, sets it in a level. Each <kbd>TAB</kbd> after it sets it further in while it can
 go, then out a level at a time, and at the end puts it back where it was.
@@ -9603,7 +9634,7 @@ of two ways.</p>
 <p>You can point. Before you have typed anything, <kbd>l</kbd> and <kbd>h</kbd> move a day
 forward and back and <kbd>j</kbd> and <kbd>k</kbd> move a week. <kbd>RET</kbd> writes the day at the
 prompt, and a second <kbd>RET</kbd> accepts it. Between the two you can add a time,
-such as <code>14:00</code>.</p>
+such as <code>14:00</code>. These keys are written under the prompt while they work.</p>
 <p>Two settings change this. <code>*org-read-date-in-calendar*</code> is <code>t</code> as it comes:
 the question begins in the calendar, so that <kbd>h</kbd>, <kbd>l</kbd>, <kbd>j</kbd> and <kbd>k</kbd> move at
 once. Set it to <code>nil</code> and the question begins at the prompt, as if you had
@@ -9666,7 +9697,7 @@ notes go, and the notes of a change of state and of <kbd>C-c C-z</kbd>, is said 
 drawer and fold away with it. With <code>nil</code> they are written right under the
 heading's planning line and properties, in plain sight.</p>
 <p>If you cannot remember how to say a repeat in words, press <kbd>C-r</kbd> at the date
-prompt; the prompt itself says so, as <code>Schedule (C-r repeats):</code>. A menu opens
+prompt; the lines shown under the prompt say so. A menu opens
 where you choose the start, the time, how often and when it ends, and it
 shows in plain words what your choices come to. <kbd>RET</kbd> writes it. The menu
 opens only from a date prompt, so <kbd>M-x</kbd> does not offer it.</p>
@@ -9777,7 +9808,8 @@ it.</p>
 <pre class="ex">(setf *org-agenda-files* '(&quot;~/org/&quot; &quot;~/holiday.org&quot;))
 </pre>
 <h3 id="14-org--opening-it"><span class="num">14.7.2</span> Opening it</h3>
-<p><kbd>C-x a a</kbd> asks which view you want and waits for one more key.</p>
+<p><kbd>C-x a a</kbd> asks which view you want and waits for one more key. The prompt
+lists the keys, and what each one shows is written under it.</p>
 <div class="tablewrap"><table>
 <thead>
 <tr><th>Modal</th><th>Non-modal</th><th>View</th></tr>
@@ -9792,8 +9824,10 @@ it.</p>
 <p>A match is read whole: a <code>|</code> inside <code>{a|b}</code> or <code>&quot;a|b&quot;</code> belongs to it, and a
 match with anything that is not a tag, a comparison or a <code>{pattern}</code> is
 refused with a message, not read in part. The same matches work in a clock
-table's <code>:match</code>, except a pattern that repeats a repeated part, which could
-take for ever; such a <code>:match</code> is left out and said to be.</p>
+table's <code>:match</code>, except a pattern that repeats a part that can match in more
+than one way (a part that repeats, a choice whose choices may start alike, or a
+back-reference to a group that repeats), which could take for ever; such a
+<code>:match</code> is left out and said to be, with the reason.</p>
 <p><kbd>C-x a w</kbd>, <kbd>C-x a m</kbd> and <kbd>C-x a y</kbd> open the week, the month or the year
 without asking. Figure 14.2 shows a week.</p>
 <figure id="14-org--fig-org-agenda">
@@ -9981,7 +10015,7 @@ entry in the setting is a pattern to copy.</p>
 <tr><td>none</td><td><kbd>C-c C</kbd></td><td><code>org-agenda-clock-cancel</code></td><td>Cancel the clock, as C-c C-x C does, from the agenda: the clock's file saved at once when it is one of <strong>ORG-AGENDA-AUTOSAVE-FILES</strong>.</td></tr>
 <tr><td>none</td><td><kbd>C-c J</kbd>, <kbd>C-x a j</kbd>, <kbd>C-c C-x J</kbd></td><td><code>org-clock-goto</code></td><td>Go to the task the clock runs on (C-c C-x J, in the agenda C-c J, from any buffer C-x a j): its file opened again when its buffer was killed; with none running, one left open in the agenda files, as after a restart, runs again (ORG-CLOCK-RUNNING).</td></tr>
 <tr><td>none</td><td><kbd>u</kbd>, <kbd>C-/</kbd>, <kbd>C-_</kbd></td><td><code>org-agenda-undo</code></td><td>Undo the last change made from this agenda, in the file it was made in, and draw the agenda again; when the file was changed there since, nothing is undone and you are told to undo in the file first.</td></tr>
-<tr><td>none</td><td><kbd>s</kbd></td><td><code>org-agenda-save-all-buffers</code></td><td>Save the buffers of the agenda files (<strong>org-agenda-files</strong>, and those added to them) with changes not saved, those the agenda changed among them; other Org buffers are left as they are (M-x org-save-all-org-buffers saves them all).</td></tr>
+<tr><td>none</td><td><kbd>s</kbd>, <kbd>C-c s</kbd></td><td><code>org-agenda-save-all-buffers</code></td><td>Save the buffers of the agenda files (<strong>org-agenda-files</strong>, and those added to them) with changes not saved, those the agenda changed among them; other Org buffers are left as they are (M-x org-save-all-org-buffers saves them all).</td></tr>
 <tr><td>none</td><td><kbd>M-x org-save-all-org-buffers</kbd></td><td><code>org-save-all-org-buffers</code></td><td>Save every Org buffer with changes not saved: those the agenda changed among them, and any other.</td></tr>
 <tr><td>none</td><td><kbd>i</kbd>, <kbd>C-c i</kbd></td><td><code>org-capture-on-day</code></td><td>Capture, as C-x a c does, for the day at point in the calendar or on the agenda (the day of its line, or of the date above it), so that the agenda lists the entry that day: the template's %t and %T are that day's date, and a template with neither gets that date on the line after its heading.</td></tr>
 </tbody></table></div>
@@ -9994,7 +10028,7 @@ entry in the setting is a pattern to copy.</p>
 <tr><td><code>*org-agenda-span*</code></td><td><code>:week</code></td><td>:day, :week, :month, :year, or a whole number, 1 or more</td><td>How many days M-x org-agenda's agenda shows.</td></tr>
 <tr><td><code>*org-agenda-start-on-weekday*</code></td><td><code>1</code></td><td>nil, or a whole number from 0 to 7</td><td>The day a week's agenda starts on.</td></tr>
 <tr><td><code>*org-agenda-log-mode*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether the agenda lists what was closed and clocked on each day too.</td></tr>
-<tr><td><code>*org-agenda-refresh-minutes*</code></td><td><code>10</code></td><td>nil, or a number of minutes, 0 or more, or a time in words such as 500ms, 90s, 30m or 2h, at most a hundred years</td><td>How often an agenda shown is drawn again by itself, in minutes.</td></tr>
+<tr><td><code>*org-agenda-refresh-minutes*</code></td><td><code>10</code></td><td>nil, or a number of minutes, 1 or more, or a time in words such as 500ms, 90s, 30m or 2h, at most a hundred years</td><td>How often an agenda shown is drawn again by itself, in minutes.</td></tr>
 <tr><td><code>*org-agenda-autosave-files*</code></td><td><code>nil</code></td><td>t, nil, or a list, each a file's name</td><td>The agenda files saved as soon as a change made from the agenda changes them.</td></tr>
 <tr><td><code>*org-agenda-custom-commands*</code></td><td><code>((&quot;u&quot; &quot;Untagged tasks&quot; :tags-todo &quot;-{.*}...</code></td><td>a list, each (KEY DESCRIPTION TYPE MATCH :header HEADER)</td><td>Views of your own that M-x org-agenda offers beside its own.</td></tr>
 <tr><td><code>*org-agenda-time-grid*</code></td><td><code>((:daily :today :require-timed) (800 100...</code></td><td>nil, or a list</td><td>Today's time grid in the agenda, lines at set times of the day.</td></tr>
@@ -10066,8 +10100,9 @@ plumber, an idea for the letter, a book someone recommended. Capture takes it
 down without making you leave what you are doing. You press a key, type the
 thought in a small window, press another key, and you are back where you
 were. The thought has been filed in the right place.</p>
-<p><kbd>C-x a c</kbd> starts it and shows the templates to choose from. A template says
-what kind of entry to make and where to file it. Six come with Tuatara.</p>
+<p><kbd>C-x a c</kbd> starts it and asks for a template, the keys on the prompt and each
+template's name under it. A template says what kind of entry to make and
+where to file it. Six come with Tuatara.</p>
 <div class="tablewrap"><table>
 <thead>
 <tr><th>Modal</th><th>Non-modal</th><th>Makes</th><th>Files it</th></tr>
@@ -10761,13 +10796,18 @@ Give a source block the words <code>:tangle</code> and a file name on its first 
 echo &quot;Water the beds at dawn&quot;
 #+end_src
 </pre>
-<p><kbd>C-c C-v t</kbd> then writes every such block to its file. Blocks that name the
-same file go into it in order. Before anything is written, Tuatara lists the
-files and says which are new and which would change, and asks. The files are
+<p><kbd>C-c C-v t</kbd> (<code>tangle-all-code-blocks</code>) then writes every such block to its file.
+Blocks that name the same file go into it in order. <kbd>C-c C-v b</kbd>
+(<code>tangle-this-code-block</code>) writes only the file of the block the cursor is in.
+When other blocks of the note go to that file, it is made from all of them, so
+no block's code is cut out, and the list says how many blocks it is made from.
+With the cursor in no source block, or in one with no <code>:tangle</code> (or <code>:tangle
+no</code>), it says so and writes nothing. Before anything is written, Tuatara lists
+the files and says which are new and which would change, and asks. The files are
 worked out and compared with those on disk in the background, so a large note
-never holds up typing; the list comes up once that is done. This suits
-settings files well: the note says why each setting is there, and the file
-the program reads is made from it.</p>
+never holds up typing; the list comes up once that is done. This suits settings
+files well: the note says why each setting is there, and the file the program
+reads is made from it.</p>
 <p>A file name with directories in it, such as <code>:tangle ~/.config/foot/foot.ini</code>,
 needs the directories to exist. A block with <code>:mkdirp yes</code> makes them as it is
 written, and one with <code>:mkdirp no</code> never does. For a block that says nothing,
@@ -10850,7 +10890,8 @@ out of either.</p>
 <tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td>none</td><td><kbd>C-c C-v t</kbd></td><td><code>tangle-code-files</code></td><td>Write the code files of this Org file's source blocks (C-c C-v t), each block with :tangle FILE (on its #+begin_src line, in a subtree's property :header-args: or :header-args:LANGUAGE:, or in #+PROPERTY: header-args for the file) goes to FILE.</td></tr>
+<tr><td>none</td><td><kbd>C-c C-v t</kbd></td><td><code>tangle-all-code-blocks</code></td><td>Write the code files of this Org file's source blocks (C-c C-v t), each block with :tangle FILE (on its #+begin_src line, in a subtree's property :header-args: or :header-args:LANGUAGE:, or in #+PROPERTY: header-args for the file) goes to FILE.</td></tr>
+<tr><td>none</td><td><kbd>C-c C-v b</kbd></td><td><code>tangle-this-code-block</code></td><td>Write the code file the source block at the cursor goes to (C-c C-v b), as tangle-all-code-blocks writes it: the file its :tangle names, worked out from the block's line, its subtree's :header-args: and the file's.</td></tr>
 <tr><td>none</td><td><kbd>M-x org-update-toc</kbd></td><td><code>org-update-toc</code></td><td>Make the table of contents of the current Org file again, under its first headline tagged :TOC: (as saving does, with <strong>org-toc-on-save</strong>), a list of links to its headlines, two levels deep unless the tag says how deep (:TOC_3:), to GitHub's anchors unless it says :TOC_2_org: for their titles; :TOC:QUOTE: puts it in a quote block.</td></tr>
 <tr><td>none</td><td><kbd>C-c C-x x</kbd></td><td><code>org-dynamic-block-insert-dblock</code></td><td>Put a new dynamic block in (C-c C-x x): its kind asked for among those that can be (a clock table, links to files with formatted names…), then what that kind asks.</td></tr>
 <tr><td>none</td><td><kbd>C-c C-x C-u</kbd></td><td><code>org-dblock-update</code></td><td>Make the dynamic block point is in again (C-c C-x C-u): the text between #+BEGIN: and #+END: written anew by the writer #+BEGIN: names, in the background, the editor free meanwhile.</td></tr>
@@ -10868,7 +10909,7 @@ out of either.</p>
 </thead>
 <tbody>
 <tr><td><code>*org-src-languages*</code></td><td><code>((&quot;emacs-lisp&quot; . &quot;elisp&quot;) (&quot;C++&quot; . &quot;cpp&quot;...</code></td><td>a list, each a pair (A . B), A text and B nil, or text</td><td>The language each name a source block is given means, each (NAME .</td></tr>
-<tr><td><code>*code-files-make-directories*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether tangle-code-files makes the directories a file goes in.</td></tr>
+<tr><td><code>*code-files-make-directories*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether tangle-all-code-blocks makes the directories a file goes in.</td></tr>
 <tr><td><code>*org-toc-on-save*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether an Org file's table of contents is made again each time it is saved.</td></tr>
 <tr><td><code>*org-toc-max-depth*</code></td><td><code>2</code></td><td>a whole number, 1 or more</td><td>How deep the headlines of a table of contents go when neither its tag nor #+OPTIONS: toc:N gives a depth.</td></tr>
 <tr><td><code>*org-toc-style*</code></td><td><code>&quot;gh&quot;</code></td><td>&quot;gh&quot;, &quot;org&quot;</td><td>How a table of contents links to its headlines when its tag says nothing.</td></tr>
@@ -11124,7 +11165,10 @@ face) are as before, and a source block is in Cascadia Code.</p>
 names. At <code>nil</code>, the standard, that is <code>logos/</code> in your configuration directory,
 <code>~/.config/tuatara/logos/</code>. A note's <code>#+logo: firm.pdf</code> line is looked for
 there. If your pictures are kept elsewhere,
-<code>(setf *logos-directory* &quot;~/Pictures/logos&quot;)</code>.</p>
+<code>(setf *logos-directory* &quot;~/Pictures/logos&quot;)</code>. To keep them in more than one
+place, give a list: <code>(setf *logos-directory* '(&quot;~/.config/tuatara/logos/&quot;
+&quot;~/Pictures/logos/&quot;))</code>. A name is looked for in each in turn, and the first
+directory that has it gives the picture.</p>
 <h3 id="14-org--hiding-names"><span class="num">14.14.9</span> Hiding names</h3>
 <p>Sometimes a document must go out with a name blacked out. Select the name,
 or put the cursor on it, press <kbd>C-c m</kbd> and choose <code>R</code>. The name is wrapped
@@ -11223,7 +11267,7 @@ for it.</p>
 <tr><td><code>*latex-main-font*</code></td><td><code>nil</code></td><td>nil, or text</td><td>The font the enhanced export sets a document's text in.</td></tr>
 <tr><td><code>*latex-sans-font*</code></td><td><code>nil</code></td><td>nil, or text</td><td>The sans-serif font of the enhanced export.</td></tr>
 <tr><td><code>*latex-mono-font*</code></td><td><code>nil</code></td><td>nil, or text</td><td>The fixed-width font the enhanced export sets code in.</td></tr>
-<tr><td><code>*logos-directory*</code></td><td><code>nil</code></td><td>nil, or a directory's name</td><td>The directory of the pictures your templates ask a note for.</td></tr>
+<tr><td><code>*logos-directory*</code></td><td><code>nil</code></td><td>nil, or a directory's name, or a list, each a directory's name</td><td>The directory, or directories, of the pictures your templates ask a note for.</td></tr>
 <tr><td><code>*latex-redaction-commands*</code></td><td><code>(&quot;R&quot; &quot;D&quot; &quot;redact&quot;)</code></td><td>a list, each text</td><td>The LaTeX commands that hide their argument in your LaTeX files, <code>\R{John</code> Otago} for one.</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
@@ -11577,9 +11621,9 @@ would sooner add one or two than see them all.</p>
 </thead>
 <tbody>
 <tr><td>none</td><td><kbd>C-x g</kbd></td><td><code>git</code></td><td>Show the state of the git repository the current file (or directory) is in: the branch, the files not tracked, changed and staged, the latest commits; C-h b there lists its keys.</td></tr>
-<tr><td>none</td><td><kbd>s</kbd></td><td><code>git-stage</code></td><td>Stage the file on the line of the status, or on a section's title all of its files; on a hunk, the hunk; with lines selected in hunks, those lines.</td></tr>
+<tr><td>none</td><td><kbd>s</kbd>, <kbd>C-c s</kbd></td><td><code>git-stage</code></td><td>Stage the file on the line of the status, or on a section's title all of its files; on a hunk, the hunk; with lines selected in hunks, those lines.</td></tr>
 <tr><td>none</td><td><kbd>u</kbd>, <kbd>C-c u</kbd></td><td><code>git-unstage</code></td><td>Unstage the file on the line of the status, or on a section's title all of its files, a rename by both its names; on a hunk, the hunk; with lines selected in hunks, those lines.</td></tr>
-<tr><td>none</td><td><kbd>x</kbd></td><td><code>git-reverse</code></td><td>Reverse the changes of the file on the line of the status (on a section's title, of all its files), after asking, which says it cannot be undone: git kept no copy of them.</td></tr>
+<tr><td>none</td><td><kbd>x</kbd>, <kbd>C-c x</kbd></td><td><code>git-reverse</code></td><td>Reverse the changes of the file on the line of the status (on a section's title, of all its files), after asking, which says it cannot be undone: git kept no copy of them.</td></tr>
 <tr><td>none</td><td><kbd>TAB</kbd></td><td><code>git-toggle-diff</code></td><td>Show the changes of the file on the line of the status under it, in hunks, the first <strong>GIT-DIFF-LINES</strong> of them, or no longer.</td></tr>
 <tr><td>none</td><td><kbd>l</kbd>, <kbd>C-f</kbd>, <kbd>RET</kbd></td><td><code>git-visit</code></td><td>Visit the file on the line of the status, at the line of the hunk's line point is on, a file in conflict at its first conflict, its conflicts shown (M-x conflict-markers-mode); or show the commit or the stash on it, or a submodule's status; a file deleted is said to be.</td></tr>
 <tr><td>none</td><td><kbd>n</kbd>, <kbd>C-c n</kbd></td><td><code>git-next-section</code></td><td>Go to the next file or hunk of the status, or the next title.</td></tr>
@@ -11975,7 +12019,7 @@ them: <kbd>P t</kbd> every tag, <kbd>P T</kbd> one.</p>
 <tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td>none</td><td><kbd>t</kbd></td><td><code>git-tag-menu</code></td><td>Open the tag menu: tag a revision, or delete a tag; P t and P T in the push menu send tags.</td></tr>
+<tr><td>none</td><td><kbd>t</kbd>, <kbd>C-c t</kbd></td><td><code>git-tag-menu</code></td><td>Open the tag menu: tag a revision, or delete a tag; P t and P T in the push menu send tags.</td></tr>
 <tr><td>none</td><td><kbd>M-x git-tag-create</kbd></td><td><code>git-tag-create</code></td><td>Tag a revision asked for (the commit on point's line first, else HEAD) with a name asked for; the tag menu's -a makes it annotated with a message asked for, -s signed (with a message too), -f moves a tag of that name.</td></tr>
 <tr><td>none</td><td><kbd>M-x git-tag-delete</kbd></td><td><code>git-tag-delete</code></td><td>Delete a tag, asked for, here (not on any remote), after asking.</td></tr>
 </tbody></table></div>
@@ -12276,7 +12320,10 @@ server whose key it does not know is refused, and the echo area names it:
 Tuatara shows git's own words.</p>
 <p>The remote menu looks after the remotes themselves: <kbd>M a</kbd> adds one and <kbd>M u</kbd>
 gives one a new address. The full menu also renames, removes, and forgets
-branches that the remote has deleted.</p>
+branches that the remote has deleted. Git reaches a remote only over https,
+ssh or git's own protocol, or in a directory on your computer. An address
+such as <code>ext::...</code> or <code>NAME::...</code>, which would have git run a program, is
+refused.</p>
 <div class="try">
 <h3>Try it, with a directory standing in for a server</h3>
 <ol>
@@ -12403,7 +12450,9 @@ such as <code>3/5</code>. You cannot mistake the old text for the file as it is 
 <p>The text is read-only, but you can select and copy from it as from any
 buffer (chapter 4) and paste into the real file. The history follows the file
 back through a rename. Changes you have not committed are not part of it,
-since they are in no commit.</p>
+since they are in no commit. A file that would open safely, such as one among
+evidence (chapter 9), is rewound as plain text, in no mode its name or first
+line asks for.</p>
 <p>Rewind works on directories too. Press <kbd>C-x G</kbd> in a directory listing (chapter</p>
 <ol>
 <li>and the listing shows the directory as its latest commit left it, with files</li>
@@ -12820,7 +12869,9 @@ many records are left, as in <code>Filtered by kiwi: 12 of 1,000 records</code>.
 filter narrows what the first left, so you can ask for Wanaka and then, of
 those, for 2023. <kbd>C-x / l</kbd> lists the filters, and <kbd>d</kbd> on a line there takes
 that one away. <kbd>C-x / r</kbd> takes them all away and shows the whole table. The
-header is shown whatever the filters say.</p>
+header is shown whatever the filters say. A record longer than 16 MiB has its
+column tried on its first 16 MiB alone, and the mode line counts such records
+after the rest: <code>1 line longer than 16.0 MiB tried on their start</code>.</p>
 <p>You can edit the records you see. A change that would reach into a hidden
 record is refused, so a filter never changes what you cannot see.</p>
 <h3 id="16-data-pictures-and-pdfs--deleting-records-for-good"><span class="num">16.2.1</span> Deleting records for good</h3>
@@ -12979,7 +13030,9 @@ file opens at once.</p>
 for octets in hex, with or without spaces between them, and goes to the next
 place after the cursor that holds them. <code>ff d8 ff</code> finds the start of a JPEG
 photo, for example, and <code>25 50 44 46</code> finds <code>%PDF</code>, the first four octets of a
-PDF. The echo area says where it was found, in hex and in decimal.
+PDF. The octets are found exactly as typed, wherever they stand: <code>0a</code> is the
+line feed alone, never a carriage return, and <code>c3 a9</code> finds the é that is
+made of them. The echo area says where it was found, in hex and in decimal.
 <kbd>M-x hex-search-backward</kbd> looks before the cursor.</p>
 <h3 id="16-data-pictures-and-pdfs--changing-octets"><span class="num">16.4.2</span> Changing octets</h3>
 <p>The hex view can change a file, one octet over another. In INSERT state, with
@@ -13214,9 +13267,11 @@ forms or scripts. This is useful when you wonder where a document came from.
 <p>A PDF can carry other files inside it, as an email carries attachments. An
 invoice may hold its own figures as a spreadsheet, for example. <kbd>a</kbd> lists the
 files embedded in the PDF in a buffer beside it. There, <kbd>n</kbd> and <kbd>p</kbd> move from
-one to the next, and <kbd>RET</kbd> or <kbd>s</kbd> saves the one on the line. Tuatara asks where
-to put it and writes it there as it is. It never opens or runs an embedded
-file. If the PDF has none, the echo area says so.</p>
+one to the next, and <kbd>RET</kbd>, <kbd>l</kbd>, <kbd>o</kbd> or <kbd>s</kbd> saves the one on the line. Tuatara
+asks where to put it and writes it there as it is. It never opens or runs an
+embedded file. If the PDF has none, the echo area says so. A PDF from outside
+that was replaced on disk since you opened it is not read again: the saving
+is refused.</p>
 <p>A PDF saved by Illustrator, Photoshop or InDesign with their editing kept can
 hold more than its pages: the program's own data, so that it can open the
 file again as it was. Illustrator keeps a whole Illustrator file in it,
@@ -13300,7 +13355,7 @@ A double click on the page goes to the line of the point you clicked. Chapter
 <tr><td>none</td><td><kbd>T</kbd>, <kbd>C-c T</kbd></td><td><code>pdf-view-toggle-text</code></td><td>Switch the PDF's view between its pages and its text, to read, search and copy; the text opens at the page shown, and the pages at the page point is on.</td></tr>
 <tr><td>none</td><td><kbd>i</kbd>, <kbd>C-c i</kbd></td><td><code>pdf-view-facts</code></td><td>Show what the PDF says of itself, as help: title, subject, author, the programs that made it (creator and producer), when it was made and changed, its version, encryption and what it allows, JavaScript, forms, pages and their size, as its program reads them in the sandbox; the file's own name and size first.</td></tr>
 <tr><td>none</td><td><kbd>a</kbd>, <kbd>C-c a</kbd></td><td><code>pdf-view-attachments</code></td><td>List the files embedded in the PDF, in a buffer beside it, as its program reads them in the sandbox; there, s saves one.</td></tr>
-<tr><td>none</td><td><kbd>s</kbd>, <kbd>RET</kbd></td><td><code>pdf-attachment-save</code></td><td>Save the embedded file on the current line where you say, a new file, or one there after asking: taken out of the PDF in the sandbox, as its program reads it, and written as it is, never opened.</td></tr>
+<tr><td>none</td><td><kbd>s</kbd>, <kbd>C-c s</kbd></td><td><code>pdf-attachment-save</code></td><td>Save the embedded file on the current line where you say, a new file, or one there after asking: taken out of the PDF in the sandbox, as its program reads it, and written as it is, never opened.</td></tr>
 <tr><td>none</td><td><kbd>C-c C-v</kbd></td><td><code>pdf-view-show-source</code></td><td>Show the line of the LaTeX file that made the part of the page shown, in the other window: the spot M-x show-line-in-pdf marked or a double click chose when it is on the page in sight, else the middle of the window; in the PDF's text, the place of point.</td></tr>
 <tr><td>none</td><td><kbd>&lt;double-mouse-1&gt;</kbd></td><td><code>pdf-view-show-source-at-click</code></td><td>Show the line of the LaTeX file that made the point of the page double clicked, in the other window, as M-x pdf-view-show-source does for the part shown.</td></tr>
 </tbody></table></div>
@@ -13422,9 +13477,11 @@ a document to a customer, check whose name is in it as the author. When two
 dates disagree, the file's own record of when it was made is often the one to
 trust over the date in a directory listing, which changes each time the file is
 copied.</p>
-<p>The file is read in the background by Tuatara alone. Nothing in it is run, and
-the time your computer keeps for when the file was last read is left as it
-was.</p>
+<p>The file is read in the background by Tuatara alone. A Word, Excel,
+PowerPoint or OpenDocument file is read by a second Tuatara shut in by the
+sandbox, from the file as it was when the report began, so a file put in its
+place meanwhile is never read. Nothing in it is run, and the time your
+computer keeps for when the file was last read is left as it was.</p>
 <p>For an encrypted file, the report can also say whose the keys are, by looking
 them up in your own keyring. That runs the gpg program, so Tuatara asks first.
 The setting <code>*metadata-look-up-key-owners*</code> says whether it asks every time
@@ -13894,7 +13951,7 @@ add it to the list of editor keys and bind it for terminals:</p>
 <tr><th>Setting</th><th>Default</th><th>Values</th><th>What it changes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>*terminal-send-escape*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether Escape goes to a full-screen program in a terminal (one on the alternate screen: nvim, less, htop) even while <strong>ESCAPE-QUITS</strong> is on.</td></tr>
+<tr><td><code>*terminal-send-escape*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether Escape goes to a full-screen program in a terminal (one on the alternate screen: less, htop, top) even while <strong>ESCAPE-QUITS</strong> is on.</td></tr>
 </tbody></table></div>
 <div class="try">
 <h3>Try it, with a program like top</h3>
@@ -14160,9 +14217,9 @@ a buffer of another client or of the group <code>Every client's</code>. The sett
 <tr><td><code>:all</code></td><td>every client</td></tr>
 <tr><td><code>nil</code></td><td>none; every client closes with its last buffer</td></tr>
 </tbody></table></div>
-<p>The heading of the client that stays says <code>(persistent)</code>, as in Figure 18.1.
-To choose another, put the cursor in that client's section of the buffer list
-and press <kbd>K</kbd>. That client stays until it ends. With <code>:all</code> there is nothing to
+<p>The heading of the client that stays says <code>(persistent)</code>, as in Figure 18.1. To
+choose another, put the cursor in that client's section of the buffer list and
+press <kbd>C-c K</kbd>. That client stays until it ends. With <code>:all</code> there is nothing to
 choose.</p>
 <p>The buffers of encrypted files are an exception. They close with their client,
 and what was copied from them goes too, so that their text does not outlive
@@ -14173,7 +14230,7 @@ the person who opened them.</p>
 <tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td>none</td><td><kbd>K</kbd>, <kbd>C-c K</kbd></td><td><code>buffers-keep-client</code></td><td>Make the client whose group the cursor is in, in the buffer list, the one that stays when its last buffer is closed, in place of the one <strong>CLIENT-KEPT-WITHOUT-BUFFERS</strong> names, until it ends.</td></tr>
+<tr><td>none</td><td><kbd>C-c K</kbd></td><td><code>buffers-keep-client</code></td><td>Make the client whose group the cursor is in, in the buffer list, the one that stays when its last buffer is closed, in place of the one <strong>CLIENT-KEPT-WITHOUT-BUFFERS</strong> names, until it ends.</td></tr>
 </tbody></table></div>
 <div class="tablewrap"><table>
 <thead>
@@ -14292,7 +14349,7 @@ package, which ties the connection to the client so that it ends when the
 client does, even if the client is killed.</p>
 <p>On the server you need the same build of Tuatara. If it is older, or not
 there, the client tells you and exits. If Tuatara is not on the server's
-<code>PATH</code>, name it in <code>M-x server-list</code> with <kbd>T</kbd>, as shown below.</p>
+<code>PATH</code>, name it in <code>M-x server-manager</code> with <kbd>C-c T</kbd>, as shown below.</p>
 <p>The server has to run OpenSSH. A daemon takes a client from another machine
 only when OpenSSH's own server carries the connection. It refuses a
 connection through any other ssh server. The daemon must run under an ordinary
@@ -14318,7 +14375,7 @@ with it.</p>
 <h2 id="18-the-daemon-and-other-machines--the-trusted-servers"><span class="num">18.6</span> The trusted servers</h2>
 <p>Some things are useful across the connection: the clipboard, your keys for
 signing, files dropped on the window. Each is off until you trust a server
-with it. <kbd>M-x server-list</kbd> shows the trusted servers in a buffer called
+with it. <kbd>M-x server-manager</kbd> shows the trusted servers in a buffer called
 <code>*Servers*</code>, a line for each. A server not on the list is given nothing.</p>
 <p><kbd>M-x server-trust</kbd> adds a machine, written as <code>--client</code> takes it. Note that
 <code>pinetree.example</code> and <code>aroha@pinetree.example</code> are two entries. A new entry
@@ -14353,28 +14410,28 @@ when none is marked.</p>
 <tr><th>Modal</th><th>Non-modal</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td>none</td><td><kbd>+</kbd></td><td>trust another machine, with nothing turned on</td></tr>
-<tr><td>none</td><td><kbd>A</kbd></td><td>forward the ssh agent, or stop</td></tr>
-<tr><td>none</td><td><kbd>H</kbd></td><td>name the machines the agent's keys may be used for from there</td></tr>
-<tr><td>none</td><td><kbd>G</kbd></td><td>forward gpg-agent, or stop</td></tr>
-<tr><td>none</td><td><kbd>C</kbd></td><td>share the clipboard, or stop</td></tr>
-<tr><td>none</td><td><kbd>F</kbd></td><td>send dropped files to a directory there, or stop</td></tr>
-<tr><td>none</td><td><kbd>T</kbd></td><td>name the tuatara to run there</td></tr>
+<tr><td>none</td><td><kbd>C-c +</kbd></td><td>trust another machine, with nothing turned on</td></tr>
+<tr><td>none</td><td><kbd>C-c A</kbd></td><td>forward the ssh agent, or stop</td></tr>
+<tr><td>none</td><td><kbd>C-c H</kbd></td><td>name the machines the agent's keys may be used for from there</td></tr>
+<tr><td>none</td><td><kbd>C-c G</kbd></td><td>forward gpg-agent, or stop</td></tr>
+<tr><td>none</td><td><kbd>C-c C</kbd></td><td>share the clipboard, or stop</td></tr>
+<tr><td>none</td><td><kbd>C-c F</kbd></td><td>send dropped files to a directory there, or stop</td></tr>
+<tr><td>none</td><td><kbd>C-c T</kbd></td><td>name the tuatara to run there</td></tr>
 <tr><td>none</td><td><kbd>D</kbd></td><td>forget the server, after asking</td></tr>
 </tbody></table></div>
 <p>The list is kept in a file named <code>ssh-servers</code> in Tuatara's state directory. A
 line it cannot read gives its server nothing.</p>
 <h3 id="18-the-daemon-and-other-machines--the-ssh-agent"><span class="num">18.6.3</span> The ssh agent</h3>
-<p>An ssh agent holds your private keys and signs for you, so a program that
-needs to log in somewhere does not have to ask for your passphrase. With <kbd>A</kbd> on
-for a server, the programs there, git for example, can sign with your keys
-while a client shows that daemon. Tuatara does not hand over the agent you
-keep your keys in. The client starts an agent of its own for this connection
-and puts in it only the keys your ssh configuration names for that server. Each
-key is added so that every use of it brings up a question on your screen, and
-nothing is signed until you say yes. If there is no program to ask the
-question, the client says so and does not connect.</p>
-<p><kbd>H</kbd> limits where the keys may be used from the server. With <code>github.com</code>
+<p>An ssh agent holds your private keys and signs for you, so a program that needs
+to log in somewhere does not have to ask for your passphrase. With <kbd>C-c A</kbd> on
+for a server, the programs there, git for example, can sign with your keys while
+a client shows that daemon. Tuatara does not hand over the agent you keep your
+keys in. The client starts an agent of its own for this connection and puts in
+it only the keys your ssh configuration names for that server. Each key is added
+so that every use of it brings up a question on your screen, and nothing is
+signed until you say yes. If there is no program to ask the question, the client
+says so and does not connect.</p>
+<p><kbd>C-c H</kbd> limits where the keys may be used from the server. With <code>github.com</code>
 named, the server can use them for github.com and nothing else. Write the
 names as they appear in your <code>known_hosts</code> file. This needs OpenSSH 8.9 or
 later on both machines. If the limit cannot be applied, the client refuses to
@@ -14383,10 +14440,11 @@ connect. To forward the agent with no limit, name no machine.</p>
 of the same daemon sees none of it, and it ends with the connection.</p>
 <h3 id="18-the-daemon-and-other-machines--the-gpg-agent"><span class="num">18.6.4</span> The gpg agent</h3>
 <p>GnuPG is a program for signing and encrypting, and gpg-agent holds its keys.
-With <kbd>G</kbd> on, gpg on the server signs and decrypts with your keys, which stay on
-your computer. The passphrase is asked here. The forwarded socket cannot export
-or change your keys, so nothing on the server can take them. While gpg-agent
-here keeps the passphrase, the server can use that key without asking again.</p>
+With <kbd>C-c G</kbd> on, gpg on the server signs and decrypts with your keys, which stay
+on your computer. The passphrase is asked here. The forwarded socket cannot
+export or change your keys, so nothing on the server can take them. While
+gpg-agent here keeps the passphrase, the server can use that key without asking
+again.</p>
 <p>Two things need setting on the server. gpg there must not start an agent of
 its own, so put the line <code>no-autostart</code> in <code>gpg.conf</code> in GnuPG's directory there
 (<code>gpgconf --list-dirs homedir</code> says where it is, usually <code>~/.gnupg</code>). And the
@@ -14394,20 +14452,20 @@ ssh server should remove a leftover socket before forwarding a new one, which
 means adding <code>StreamLocalBindUnlink yes</code> to <code>/etc/ssh/sshd_config</code> as root.
 When the client cannot tell whether that is set, it says what to add.</p>
 <p>To encrypt a file on the server to someone else, gpg there needs their public
-key. In the list of your keys (<code>M-x gpg-list-keys</code>), mark the keys with <kbd>m</kbd> and
-run <code>M-x server-copy-keys</code>. It asks for the trusted server and sends the public
-keys over ssh in the background. Nothing secret is sent.</p>
+key. In the list of your keys (<code>M-x gpg-keys-manager</code>), mark the keys with <kbd>m</kbd>
+and run <code>M-x server-copy-keys</code>. It asks for the trusted server and sends the
+public keys over ssh in the background. Nothing secret is sent.</p>
 <h3 id="18-the-daemon-and-other-machines--the-clipboard-and-dropped-files"><span class="num">18.6.5</span> The clipboard and dropped files</h3>
-<p>With <kbd>C</kbd> on, the clipboard goes both ways while the client's window has the
+<p>With <kbd>C-c C</kbd> on, the clipboard goes both ways while the client's window has the
 keyboard. What you copy in the daemon reaches the clipboard on your computer,
 and the daemon may read what you copied here. Text that comes from the server
-loses its control characters, so that pasting it into a terminal cannot carry
-a hidden escape sequence. Without <kbd>C</kbd>, nothing of the clipboard crosses.</p>
-<p>With <kbd>F</kbd> on, a file you drop onto the window showing the server's daemon is sent
-into a directory there, <code>Dropped</code> in your home directory unless you give another
-name. A name beginning with <code>/</code> is taken from the root. The file is written for
-you alone under a name nothing else has, and nothing in it is run. Only files
-are sent, at most 100 MB each.</p>
+loses its control characters, so that pasting it into a terminal cannot carry a
+hidden escape sequence. Without <kbd>C-c C</kbd>, nothing of the clipboard crosses.</p>
+<p>With <kbd>C-c F</kbd> on, a file you drop onto the window showing the server's daemon is
+sent into a directory there, <code>Dropped</code> in your home directory unless you give
+another name. A name beginning with <code>/</code> is taken from the root. The file is
+written for you alone under a name nothing else has, and nothing in it is run.
+Only files are sent, at most 100 MB each.</p>
 <h3 id="18-the-daemon-and-other-machines--a-language-server-for-a-server"><span class="num">18.6.6</span> A language server for a server</h3>
 <p>A language server runs where the daemon runs. If pinetree has none installed
 and you cannot install one, <code>M-x server-bring-language-server</code> copies one from
@@ -14424,17 +14482,17 @@ after the directories of your <code>PATH</code>.</p>
 <tr><th>Modal</th><th>Non-modal</th><th>Command</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td>none</td><td><kbd>M-x server-list</kbd></td><td><code>server-list</code></td><td>List the trusted servers, the machines whose daemons a client here (tuatara –client=HOST) may give more than the keys typed and the size of the screen, each with what it is given: the ssh agent, with the machines its keys may be used for from there; gpg-agent; the clipboard; files dropped on the window, sent to a directory there.</td></tr>
-<tr><td>none</td><td><kbd>+</kbd>, <kbd>C-c +</kbd></td><td><code>server-trust</code></td><td>Trust a machine asked for in the minibuffer, as tuatara –client= names it (build.example, me@build.example, or an alias of ~/.ssh/config): it goes on the list of trusted servers (M-x server-list) with nothing given yet, each thing then turned on there by itself.</td></tr>
-<tr><td>none</td><td><kbd>A</kbd>, <kbd>C-c A</kbd></td><td><code>server-toggle-agent</code></td><td>Forward your ssh agent to the server on the line, or those marked, or no longer: on, the programs there can sign with your keys while a client shows its daemon, each use asked about here, and only for the machines named by H where OpenSSH can limit them.</td></tr>
-<tr><td>none</td><td><kbd>H</kbd>, <kbd>C-c H</kbd></td><td><code>server-agent-destinations</code></td><td>Name, in the minibuffer, the machines the keys of your ssh agent may be used for from the server on the line, or those marked, commas between them (github.com, me@git.example); none for any.</td></tr>
-<tr><td>none</td><td><kbd>G</kbd>, <kbd>C-c G</kbd></td><td><code>server-toggle-gpg</code></td><td>Forward gpg-agent to the server on the line, or those marked, or no longer: on, gpg there signs and decrypts with your keys, which stay here, and cannot export or change them.</td></tr>
-<tr><td>none</td><td><kbd>C</kbd>, <kbd>C-c C</kbd></td><td><code>server-toggle-clipboard</code></td><td>Share the clipboard with the server on the line, or those marked, or no longer: on, what is copied there reaches the clipboard here, as text with no control characters, and the daemon there may read what is copied here.</td></tr>
-<tr><td>none</td><td><kbd>F</kbd>, <kbd>C-c F</kbd></td><td><code>server-toggle-files</code></td><td>Send the files dropped on a window showing the daemon of the server on the line, or those marked, to a directory there, asked for (from the home directory there unless it begins with /), or no longer: on, a file dropped is copied there, its size checked first, and nothing of it run.</td></tr>
-<tr><td>none</td><td><kbd>T</kbd>, <kbd>C-c T</kbd></td><td><code>server-tuatara-program</code></td><td>Name, in the minibuffer, the tuatara to run on the server on the line, or those marked, when it is not the one on the PATH of the commands ssh runs there: /opt/tuatara/bin/tuatara, or a name found on that PATH; empty for the one on that PATH.</td></tr>
+<tr><td>none</td><td><kbd>M-x server-manager</kbd></td><td><code>server-manager</code></td><td>List the trusted servers, the machines whose daemons a client here (tuatara –client=HOST) may give more than the keys typed and the size of the screen, each with what it is given: the ssh agent, with the machines its keys may be used for from there; gpg-agent; the clipboard; files dropped on the window, sent to a directory there.</td></tr>
+<tr><td>none</td><td><kbd>C-c +</kbd></td><td><code>server-trust</code></td><td>Trust a machine asked for in the minibuffer, as tuatara –client= names it (build.example, me@build.example, or an alias of ~/.ssh/config): it goes on the list of trusted servers (M-x server-manager) with nothing given yet, each thing then turned on there by itself.</td></tr>
+<tr><td>none</td><td><kbd>C-c A</kbd></td><td><code>server-toggle-agent</code></td><td>Forward your ssh agent to the server on the line, or those marked, or no longer: on, the programs there can sign with your keys while a client shows its daemon, each use asked about here, and only for the machines named by C-c H where OpenSSH can limit them.</td></tr>
+<tr><td>none</td><td><kbd>C-c H</kbd></td><td><code>server-agent-destinations</code></td><td>Name, in the minibuffer, the machines the keys of your ssh agent may be used for from the server on the line, or those marked, commas between them (github.com, me@git.example); none for any.</td></tr>
+<tr><td>none</td><td><kbd>C-c G</kbd></td><td><code>server-toggle-gpg</code></td><td>Forward gpg-agent to the server on the line, or those marked, or no longer: on, gpg there signs and decrypts with your keys, which stay here, and cannot export or change them.</td></tr>
+<tr><td>none</td><td><kbd>C-c C</kbd></td><td><code>server-toggle-clipboard</code></td><td>Share the clipboard with the server on the line, or those marked, or no longer: on, what is copied there reaches the clipboard here, as text with no control characters, and the daemon there may read what is copied here.</td></tr>
+<tr><td>none</td><td><kbd>C-c F</kbd></td><td><code>server-toggle-files</code></td><td>Send the files dropped on a window showing the daemon of the server on the line, or those marked, to a directory there, asked for (from the home directory there unless it begins with /), or no longer: on, a file dropped is copied there, its size checked first, and nothing of it run.</td></tr>
+<tr><td>none</td><td><kbd>C-c T</kbd></td><td><code>server-tuatara-program</code></td><td>Name, in the minibuffer, the tuatara to run on the server on the line, or those marked, when it is not the one on the PATH of the commands ssh runs there: /opt/tuatara/bin/tuatara, or a name found on that PATH; empty for the one on that PATH.</td></tr>
 <tr><td>none</td><td><kbd>M-x server-bring-language-server</kbd></td><td><code>server-bring-language-server</code></td><td>Copy a language server installed on this machine to the server on the line of the list of trusted servers, or those marked, chosen in the minibuffer among those the editor knows that are here: nothing is fetched from anywhere.</td></tr>
 <tr><td>none</td><td><kbd>M-x server-remove-language-server</kbd></td><td><code>server-remove-language-server</code></td><td>Take away a language server M-x server-bring-language-server brought to the server on the line of the list of trusted servers, or those marked, chosen in the minibuffer among those it lists there.</td></tr>
-<tr><td>none</td><td><kbd>M-x server-copy-keys</kbd></td><td><code>server-copy-keys</code></td><td>Copy the public keys marked in the list of GnuPG keys (M-x gpg-list-keys), or the one at the cursor, into gpg's keyring on a trusted server asked for, so that M-x gpg-encrypt-file there can encrypt to them: exported here and imported there over ssh, in the background.</td></tr>
+<tr><td>none</td><td><kbd>M-x server-copy-keys</kbd></td><td><code>server-copy-keys</code></td><td>Copy the public keys marked in the list of GnuPG keys (M-x gpg-keys-manager), or the one at the cursor, into gpg's keyring on a trusted server asked for, so that M-x gpg-encrypt-file there can encrypt to them: exported here and imported there over ssh, in the background.</td></tr>
 </tbody></table></div>
 <div class="try">
 <h3>Try it, with a daemon on pinetree</h3>
@@ -14445,8 +14503,8 @@ after the directories of your <code>PATH</code>.</p>
    The file opens, in the home directory on pinetree. The mode line shows <code>D</code>.</li>
 <li>Press <kbd>C-x C-b</kbd>. The client is listed with the directory it started in.</li>
 <li>Press <kbd>M-x</kbd>, type <code>server-trust</code>, press <kbd>RET</kbd>, type <code>pinetree</code> and press
-   <kbd>RET</kbd>. Answer the question. Press <kbd>M-x</kbd> and type <code>server-list</code>.</li>
-<li>Put the cursor on the <code>pinetree</code> line and press <kbd>C</kbd>. Answer <code>y</code>. The
+   <kbd>RET</kbd>. Answer the question. Press <kbd>M-x</kbd> and type <code>server-manager</code>.</li>
+<li>Put the cursor on the <code>pinetree</code> line and press <kbd>C-c C</kbd>. Answer <code>y</code>. The
    Clipboard column now says <code>yes</code>. Copy a line in the daemon with <kbd>M-w</kbd> and
    paste it into a program of your own computer.</li>
 <li>Press <kbd>C-x C-c</kbd>. The daemon on pinetree is still running. Type <code>tuatara
@@ -14456,9 +14514,10 @@ after the directories of your <code>PATH</code>.</p>
 <div class="try">
 <h3>Try it, with a key that may be used for one place only</h3>
 <ol>
-<li>Open <code>M-x server-list</code>, put the cursor on a trusted server and press <kbd>H</kbd>.</li>
+<li>Open <code>M-x server-manager</code>, put the cursor on a trusted server and press
+   <kbd>C-c H</kbd>.</li>
 <li>Type <code>github.com</code> and press <kbd>RET</kbd>. The Keys used for column shows it.</li>
-<li>Press <kbd>A</kbd> and answer <code>y</code>. The next client of that server forwards your
+<li>Press <kbd>C-c A</kbd> and answer <code>y</code>. The next client of that server forwards your
    agent, each use confirmed on your screen, for github.com alone.</li>
 </ol>
 </div>
@@ -14985,8 +15044,11 @@ own, <code>https://github.com/Tuatara-Editor/tuatara-NAME</code>, for the name o
 package. You load one with its address as the source, no <code>package-source</code>
 line needed. Each package's README, in its repository, says what the package
 is and how to install it. Its manual, on the project's site, gives the rest,
-and its settings show in <code>C-h v</code> once it is loaded. Every package
-puts its commands under a prefix of its own, <kbd>C-c</kbd> and a letter.</p>
+and its settings show in <code>C-h v</code> once it is loaded. A package's commands are
+on <kbd>C-c</kbd> keys: straight after <kbd>C-c</kbd> in a mode of its own, such as palimpsest's
+report, and after a letter of its own in a mode it shares, such as facematch's
+<kbd>C-c f</kbd> in rimu. No package binds a key of one character; its README gives the
+lines for your init file that bind them, if you want them.</p>
 <h3 id="19-packages--palimpsest"><span class="num">19.8.1</span> palimpsest</h3>
 <p>A PDF can be saved over and over, and each save can leave the earlier text in
 the file. palimpsest takes a PDF apart into every save it holds, from the
@@ -14994,8 +15056,8 @@ original to the latest edit, and looks for the signs of editing that examiners
 of documents know. It reads the file's own bytes and runs nothing in it, and it
 never changes the file. <kbd>M-x palimpsest</kbd> examines the PDF you are looking at,
 or asks for one. The report is made in the background and lists findings with
-the strongest first. In the report, <kbd>C-c p</kbd> is the prefix for its other
-commands, such as saving a revision as a PDF of its own.
+the strongest first. In the report, its other commands are a letter after
+<kbd>C-c</kbd>, such as <kbd>C-c w</kbd> to save a revision as a PDF of its own.
 Its manual is at
 <a href="https://tuatara-editor.github.io/tuatara-palimpsest/">tuatara-editor.github.io/tuatara-palimpsest</a>.</p>
 <h3 id="19-packages--csvdt"><span class="num">19.8.2</span> csvdt</h3>
@@ -15043,9 +15105,9 @@ Its manual is at
 <p>outlook opens Outlook items (<code>.msg</code>), saved mail (<code>.eml</code>) and mailboxes
 (<code>.pst</code>, <code>.ost</code>) as messages, read only. It was made for looking at mail as
 evidence: nothing in a message runs, and attachments open only when you ask,
-from private copies. In a message, <kbd>P</kbd> shows it as it looks, <kbd>O</kbd> opens an
-attachment in the desktop's own program after asking, and <kbd>C-c o</kbd> is the
-prefix for the same commands. In a mailbox, <kbd>C</kbd> copies messages out. A
+from private copies. In a message, <kbd>C-c p</kbd> shows it as it looks and <kbd>C-c o</kbd>
+opens an attachment in the desktop's own program after asking. In a mailbox,
+<kbd>C-c c</kbd> copies messages out. A
 mailbox is read by the package itself, shut in the sandbox (chapter 12), and
 what it wrote stays in Tuatara's cache (chapter 9, &quot;The cache&quot;), so the same
 mailbox opens again without being read. It needs WeasyPrint.
@@ -15730,8 +15792,8 @@ text that goes in. In the text, <code>$1</code>, <code>$2</code> and so on are p
 through, <code>$0</code> is where the cursor ends, and <code>${1:text}</code> is a place that begins
 with text you can type over. <code>$AUTHOR</code> is your name, and <code>$CURRENT_DATE</code>,
 <code>$CURRENT_MONTH</code> and <code>$CURRENT_YEAR</code> are today's date.</p>
-<p><kbd>C-c y</kbd> (<code>insert-snippet</code>) chooses one from a list by name, in buffers of
-text and of code. <kbd>M-x copy-snippet</kbd>
+<p><kbd>C-c y</kbd> (<code>snippet-insert</code>) chooses one from a list by name, in buffers of
+text and of code. <kbd>M-x snippet-copy</kbd>
 copies one of Tuatara's own into your directory, so that you can change it.
 Yours then takes its place.</p>
 <div class="try">
@@ -16302,7 +16364,7 @@ type the word.</p>
 <tr><td><code>*centred-text-width*</code></td><td><code>80</code></td><td>a whole number, 1 or more</td><td>How many columns of text a buffer shows when its text is centred with M-x centred-text-mode.</td></tr>
 <tr><td><code>*client-kept-without-buffers*</code></td><td><code>:first</code></td><td>:first, :last, :all, nil</td><td>Which clients of a daemon stay when their last buffer is closed.</td></tr>
 <tr><td><code>*clipboard-size-limit*</code></td><td><code>8388608</code></td><td>a whole number, 0 or more</td><td>The most characters a kill may have and still go on the system clipboard.</td></tr>
-<tr><td><code>*code-files-make-directories*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether tangle-code-files makes the directories a file goes in.</td></tr>
+<tr><td><code>*code-files-make-directories*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether tangle-all-code-blocks makes the directories a file goes in.</td></tr>
 <tr><td><code>*comment-column*</code></td><td><code>40</code></td><td>a whole number, 0 or more</td><td>The column a comment at the end of a line of code goes to: where M-x comment-dwim begins one, and, in Lisp, where indenting puts a line holding only a comment begun with one semicolon.</td></tr>
 <tr><td><code>*compile-command*</code></td><td><code>&quot;make -k &quot;</code></td><td>text</td><td>The command M-x compile offers the first time, before you have typed one; after that it offers the one typed last.</td></tr>
 <tr><td><code>*compile-output-limit*</code></td><td><code>268435456</code></td><td>nil, or a whole number of octets, 0 or more, or a size in words such as 512M, 1.5G or 20 GB (in 1024s: 1K is 1024 octets), at most 4E</td><td>The most octets of a command's output M-x compile keeps in <strong>compile</strong>.</td></tr>
@@ -16416,7 +16478,7 @@ type the word.</p>
 <tr><td><code>*line-numbers-modes*</code></td><td><code>nil</code></td><td>a list, each a pair (A . B), A a symbol and B nil, :absolute, :relative</td><td>Major modes whose buffers show line numbers in the gutter, or not: a list of (MODE .</td></tr>
 <tr><td><code>*line-record-modes*</code></td><td><code>(tuatara.defaults::log-mode tuatara.defa...</code></td><td>a list, each a symbol</td><td>The major modes whose files hold a record a line, as a log does.</td></tr>
 <tr><td><code>*list-header-lock*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether the header of a file of records stays at the top of the window as the rest scrolls under it, wherever there is one: a CSV's first line, a log's once M-x list-toggle-header makes it a header.</td></tr>
-<tr><td><code>*logos-directory*</code></td><td><code>nil</code></td><td>nil, or a directory's name</td><td>The directory of the pictures your templates ask a note for.</td></tr>
+<tr><td><code>*logos-directory*</code></td><td><code>nil</code></td><td>nil, or a directory's name, or a list, each a directory's name</td><td>The directory, or directories, of the pictures your templates ask a note for.</td></tr>
 <tr><td><code>*lsp-code-lenses*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether what language servers say of lines (3 references, Run test) is shown faint at each line's end.</td></tr>
 <tr><td><code>*lsp-diagnostics-display*</code></td><td><code>:box</code></td><td>:box, :echo, nil</td><td>How what a language server found where the cursor rests is said.</td></tr>
 <tr><td><code>*lsp-diagnostics-style*</code></td><td><code>:wave</code></td><td>:wave, :dotted, :line, :background</td><td>How the text a language server finds something wrong in is marked.</td></tr>
@@ -16425,7 +16487,7 @@ type the word.</p>
 <tr><td><code>*lsp-idle-delay*</code></td><td><code>0.5</code></td><td>a number of seconds, 0 or more, or a time in words such as 500ms, 90s, 30m or 2h, at most a hundred years</td><td>How long the cursor rests before what is known of where it stands is shown: what a server found wrong there, the parameters of the call, what the thing is.</td></tr>
 <tr><td><code>*lsp-inlay-hints*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether language servers' inlay hints are shown within the code: the types of bindings, the names of the parameters arguments go to.</td></tr>
 <tr><td><code>*lsp-languages*</code></td><td><code>t</code></td><td>t, or a list, each a language's name, or :not first</td><td>The languages whose language servers are used.</td></tr>
-<tr><td><code>*lsp-largest-document*</code></td><td><code>8388608</code></td><td>a whole number of octets, 1 or more, or a size in words such as 512M, 1.5G or 20 GB (in 1024s: 1K is 1024 octets), at most 4E</td><td>The largest document, in octets, given to a language server: a file's whole text, or the code of a note's source blocks of one language, however large the note.</td></tr>
+<tr><td><code>*lsp-largest-document*</code></td><td><code>8388608</code></td><td>a whole number of octets, 1 or more, or a size in words such as 512M, 1.5G or 20 GB (in 1024s: 1K is 1024 octets), at most 4E</td><td>The largest document, in octets, given to a language server or a formatter: a file's whole text, or the code of a note's source blocks of one language, however large the note.</td></tr>
 <tr><td><code>*lsp-largest-message*</code></td><td><code>33554432</code></td><td>a whole number of octets, 1 or more, or a size in words such as 512M, 1.5G or 20 GB (in 1024s: 1K is 1024 octets), at most 4E</td><td>The largest message read from a language server, in octets: a larger one is let go unread, said so.</td></tr>
 <tr><td><code>*lsp-outline*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether M-x buffer-outline lists a file's names as its language server knows them (functions, types, their fields and methods, nested), where it has one that does.</td></tr>
 <tr><td><code>*lsp-semantic-faces*</code></td><td><code>((&quot;namespace&quot; . :namespace) (&quot;type&quot; . :t...</code></td><td>a list, each (KIND . FACE)</td><td>The face each kind of name a language server tells apart is coloured in; a kind not listed keeps the mode's colour.</td></tr>
@@ -16459,7 +16521,7 @@ type the word.</p>
 <tr><td><code>*org-agenda-event-kind-text*</code></td><td><code>&quot;Event:&quot;</code></td><td>nil, or text</td><td>What the agenda's column of kinds says on the line of an event.</td></tr>
 <tr><td><code>*org-agenda-files*</code></td><td><code>(&quot;~/org/agenda.org&quot;)</code></td><td>a list, each a file's name</td><td>The files the agenda reads.</td></tr>
 <tr><td><code>*org-agenda-log-mode*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether the agenda lists what was closed and clocked on each day too.</td></tr>
-<tr><td><code>*org-agenda-refresh-minutes*</code></td><td><code>10</code></td><td>nil, or a number of minutes, 0 or more, or a time in words such as 500ms, 90s, 30m or 2h, at most a hundred years</td><td>How often an agenda shown is drawn again by itself, in minutes.</td></tr>
+<tr><td><code>*org-agenda-refresh-minutes*</code></td><td><code>10</code></td><td>nil, or a number of minutes, 1 or more, or a time in words such as 500ms, 90s, 30m or 2h, at most a hundred years</td><td>How often an agenda shown is drawn again by itself, in minutes.</td></tr>
 <tr><td><code>*org-agenda-reminder-kind-text*</code></td><td><code>&quot;Reminder:&quot;</code></td><td>nil, or text</td><td>What the agenda's column of kinds says on the line of a reminder.</td></tr>
 <tr><td><code>*org-agenda-span*</code></td><td><code>:week</code></td><td>:day, :week, :month, :year, or a whole number, 1 or more</td><td>How many days M-x org-agenda's agenda shows.</td></tr>
 <tr><td><code>*org-agenda-start-on-weekday*</code></td><td><code>1</code></td><td>nil, or a whole number from 0 to 7</td><td>The day a week's agenda starts on.</td></tr>
@@ -16595,7 +16657,7 @@ type the word.</p>
 <tr><td><code>*terminal-place*</code></td><td><code>:bottom</code></td><td>:bottom, :top, :left, :right, :full</td><td>Where a terminal shows (M-x terminal, M-x terminal-toggle).</td></tr>
 <tr><td><code>*terminal-program*</code></td><td><code>nil</code></td><td>nil, or a list, each text</td><td>The program M-x terminal runs.</td></tr>
 <tr><td><code>*terminal-scrollback*</code></td><td><code>100000</code></td><td>a whole number, 0 or more</td><td>How many lines a terminal (M-x terminal) keeps that have gone up off its screen.</td></tr>
-<tr><td><code>*terminal-send-escape*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether Escape goes to a full-screen program in a terminal (one on the alternate screen: nvim, less, htop) even while <strong>ESCAPE-QUITS</strong> is on.</td></tr>
+<tr><td><code>*terminal-send-escape*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether Escape goes to a full-screen program in a terminal (one on the alternate screen: less, htop, top) even while <strong>ESCAPE-QUITS</strong> is on.</td></tr>
 <tr><td><code>*terminal-size*</code></td><td><code>0.3</code></td><td>a number, 0 or more</td><td>How high a terminal's window is at the bottom or top of the screen (<strong>TERMINAL-PLACE</strong>, M-x terminal-bottom, M-x terminal-top).</td></tr>
 <tr><td><code>*terminal-title-limit*</code></td><td><code>40</code></td><td>nil, or a whole number, 0 or more</td><td>The most columns of a terminal's title (as the shell gives it, user@host:~/dir in many) the mode line shows.</td></tr>
 <tr><td><code>*terminal-width*</code></td><td><code>0.5</code></td><td>a number, 0 or more</td><td>How wide a terminal's window is at the left or right of the screen (<strong>TERMINAL-PLACE</strong>, M-x terminal-left, M-x terminal-right).</td></tr>
@@ -16657,6 +16719,7 @@ the commands that mention a word, press <kbd>C-h a</kbd> and type the word.</p>
 <tr><td><kbd>t</kbd></td><td><kbd>C-z t</kbd></td><td><code>add-cursor-below</code></td><td>Add a cursor on the line below, at the same column.</td></tr>
 <tr><td>none</td><td><kbd>M-x align-cursors</kbd></td><td><code>align-cursors</code></td><td>Put every cursor at the real cursor's column, or its line's end where the line is shorter; with cursors selecting, wrap the selections in = as any delimiter does.</td></tr>
 <tr><td>none</td><td><kbd>C-h a</kbd></td><td><code>apropos-command</code></td><td>List the commands and variables whose names or documentation match the words typed, in <strong>Apropos</strong>.</td></tr>
+<tr><td>none</td><td><kbd>M-x auto-saves-manager</kbd></td><td><code>auto-saves-manager</code></td><td>List the auto-saved copies of changes not saved (<strong>AUTO-SAVE-DIRECTORY</strong>), the newest first, those newer than their file in a section before the rest: after a crash or a quit without saving, what can be taken back.</td></tr>
 <tr><td>none</td><td><kbd>M-m</kbd></td><td><code>back-to-indentation</code></td><td>Move point to the first character of its line that is not a space or a tab.</td></tr>
 <tr><td>none</td><td><kbd>S-TAB</kbd></td><td><code>backward-button</code></td><td>Move point to the button before, from the first round to the last.</td></tr>
 <tr><td><kbd>h</kbd></td><td><kbd>C-b</kbd>, <kbd>&lt;left&gt;</kbd></td><td><code>backward-char</code></td><td>Move point backward one character (or the prefix argument's worth); in the hex view, one octet.</td></tr>
@@ -16683,8 +16746,8 @@ the commands that mention a word, press <kbd>C-h a</kbd> and type the word.</p>
 <tr><td>none</td><td><kbd>c</kbd>, <kbd>C-c c</kbd></td><td><code>bookmark-set-categories</code></td><td>Say which categories the bookmark on the current line is in, or the marked ones (&gt;) are, the sections holding them unfolded first: those used already offered, new ones typed, several apart by commas; the bookmark's own written in first, to change.</td></tr>
 <tr><td>none</td><td><kbd>C-x C-b</kbd></td><td><code>buffer-manager</code></td><td>List every live buffer in <strong>Buffers</strong>, those used most recently first, in a section for each project (a directory holding .git or .project, <strong>PROJECT-ROOT-MARKERS</strong>), the project of the buffer used last first, then one for those in none.</td></tr>
 <tr><td>none</td><td><kbd>M-g o</kbd></td><td><code>buffer-outline</code></td><td>Go to a heading of the current buffer, chosen from a list of them: Org's headings, Lisp's comments of three semicolons and top-level forms, and in a language parsed with tree-sitter its definitions and headings (a function, a type, a Markdown heading), each shown as its line after its number, in the order of the text.</td></tr>
-<tr><td>none</td><td><kbd>K</kbd>, <kbd>C-c K</kbd></td><td><code>buffers-keep-client</code></td><td>Make the client whose group the cursor is in, in the buffer list, the one that stays when its last buffer is closed, in place of the one <strong>CLIENT-KEPT-WITHOUT-BUFFERS</strong> names, until it ends.</td></tr>
-<tr><td>none</td><td><kbd>s</kbd></td><td><code>buffers-save</code></td><td>Save the marked buffers (&gt;) that have a file, or with none marked the buffer on the current line.</td></tr>
+<tr><td>none</td><td><kbd>C-c K</kbd></td><td><code>buffers-keep-client</code></td><td>Make the client whose group the cursor is in, in the buffer list, the one that stays when its last buffer is closed, in place of the one <strong>CLIENT-KEPT-WITHOUT-BUFFERS</strong> names, until it ends.</td></tr>
+<tr><td>none</td><td><kbd>s</kbd>, <kbd>C-c s</kbd></td><td><code>buffers-save</code></td><td>Save the marked buffers (&gt;) that have a file, or with none marked the buffer on the current line.</td></tr>
 <tr><td>none</td><td><kbd>M-x cache-manager</kbd></td><td><code>cache-manager</code></td><td>List what the cache directory keeps to save time, by kind: copies of files read from other machines, mailboxes read by readpst, search indexes, pictures of formulas and the rest (the logs and the compiled packages left out), with their sizes, when they were made and last used, whether they are pinned or when they are cleared (<strong>CACHE-KEEP</strong>), and whether they are in use.</td></tr>
 <tr><td>none</td><td><kbd>P</kbd>, <kbd>C-c P</kbd></td><td><code>cache-toggle-pin</code></td><td>Pin the marked entries of the list of the cache, or the one on the line, so that they are never cleared by themselves (<strong>CACHE-KEEP</strong>); entries all pinned already are unpinned.</td></tr>
 <tr><td>none</td><td><kbd>C-x n a</kbd></td><td><code>calendar</code></td><td>Show the calendar: the month of today and the months either side, below the window you are in, point on today.</td></tr>
@@ -16738,7 +16801,6 @@ the commands that mention a word, press <kbd>C-h a</kbd> and type the word.</p>
 <tr><td>none</td><td><kbd>M-x copy-from-evidence</kbd></td><td><code>copy-from-evidence</code></td><td>Copy files out of an evidence directory (<strong>EVIDENCE-DIRECTORIES</strong>) to a directory asked for, which may not be in one: in a rimu list the marked files, or the one on the line; elsewhere the file at point or the buffer's file, each of them in an evidence directory.</td></tr>
 <tr><td>none</td><td><kbd>C-x r M-w</kbd></td><td><code>copy-rectangle-as-kill</code></td><td>Copy the rectangle between the mark and point to the rectangle store that C-x r y pastes from, the text staying as it is.</td></tr>
 <tr><td><kbd>y</kbd></td><td>none</td><td><code>copy-selection-or-char</code></td><td>Copy the selection, or COUNT characters at point when nothing is selected.</td></tr>
-<tr><td>none</td><td><kbd>M-x copy-snippet</kbd></td><td><code>copy-snippet</code></td><td>Copy one of Tuatara's own snippets, chosen by its name, into your snippets directory (the first of <strong>snippet-directories</strong>, in the directory of its mode) and visit it: your copy, changed as you like, takes the place of Tuatara's.</td></tr>
 <tr><td>none</td><td><kbd>M-=</kbd></td><td><code>count-words</code></td><td>Say how many lines, sentences, words and characters the selection has, or the whole buffer without one (the part shown of a narrowed one): &quot;Region has 2 lines, 2 sentences, 9 words, and 48 characters&quot;.</td></tr>
 <tr><td>none</td><td><kbd>M-x credits</kbd></td><td><code>credits</code></td><td>Show where Tuatara's ideas come from: the projects it owes, and what it took from each.</td></tr>
 <tr><td>none</td><td><kbd>C-c C-s</kbd></td><td><code>csv-define-separator</code></td><td>Ask for the character that separates the fields of this buffer and show them separated by it.</td></tr>
@@ -16977,7 +17039,7 @@ the commands that mention a word, press <kbd>C-h a</kbd> and type the word.</p>
 <tr><td>none</td><td><kbd>X</kbd>, <kbd>C-c X</kbd></td><td><code>git-reset-menu</code></td><td>Open the reset menu: move the branch to a revision, keeping what is staged, the files, or changes not committed, or nothing; or put a file back to a revision.</td></tr>
 <tr><td>none</td><td><kbd>M-x git-reset-mixed</kbd></td><td><code>git-reset-mixed</code></td><td>Move the branch checked out to a revision asked for, what is staged put back to it too, the files as they are (their changes shown as not staged).</td></tr>
 <tr><td>none</td><td><kbd>M-x git-reset-soft</kbd></td><td><code>git-reset-soft</code></td><td>Move the branch checked out to a revision asked for, what is staged and the files as they are (the commits' changes shown as staged).</td></tr>
-<tr><td>none</td><td><kbd>x</kbd></td><td><code>git-reverse</code></td><td>Reverse the changes of the file on the line of the status (on a section's title, of all its files), after asking, which says it cannot be undone: git kept no copy of them.</td></tr>
+<tr><td>none</td><td><kbd>x</kbd>, <kbd>C-c x</kbd></td><td><code>git-reverse</code></td><td>Reverse the changes of the file on the line of the status (on a section's title, of all its files), after asking, which says it cannot be undone: git kept no copy of them.</td></tr>
 <tr><td>none</td><td><kbd>M-x git-revert</kbd></td><td><code>git-revert</code></td><td>Make a commit undoing a commit asked for (the one on point's line of a status or a log first), with git's message saying so.</td></tr>
 <tr><td>none</td><td><kbd>M-x git-revert-abort</kbd></td><td><code>git-revert-abort</code></td><td>Stop the revert, after asking: the branch and the files go back to where they were before it began.</td></tr>
 <tr><td>none</td><td><kbd>M-x git-revert-continue</kbd></td><td><code>git-revert-continue</code></td><td>Go on with the revert stopped half way, once the files git could not join are put right and staged.</td></tr>
@@ -16998,7 +17060,7 @@ the commands that mention a word, press <kbd>C-h a</kbd> and type the word.</p>
 <tr><td>none</td><td><kbd>&gt;</kbd>, <kbd>C-c &gt;</kbd></td><td><code>git-sparse-menu</code></td><td>Open the sparse checkout menu: check out only some directories, more of them, everything again, or narrow it again.</td></tr>
 <tr><td>none</td><td><kbd>M-x git-sparse-reapply</kbd></td><td><code>git-sparse-reapply</code></td><td>Keep out of the files again what the sparse checkout leaves out, after a merge or a rebase brought some in.</td></tr>
 <tr><td>none</td><td><kbd>M-x git-sparse-set</kbd></td><td><code>git-sparse-set</code></td><td>Check out only directories asked for (and the files at the top), the rest of the repository kept out of the files.</td></tr>
-<tr><td>none</td><td><kbd>s</kbd></td><td><code>git-stage</code></td><td>Stage the file on the line of the status, or on a section's title all of its files; on a hunk, the hunk; with lines selected in hunks, those lines.</td></tr>
+<tr><td>none</td><td><kbd>s</kbd>, <kbd>C-c s</kbd></td><td><code>git-stage</code></td><td>Stage the file on the line of the status, or on a section's title all of its files; on a hunk, the hunk; with lines selected in hunks, those lines.</td></tr>
 <tr><td>none</td><td><kbd>M-x git-stage-file</kbd></td><td><code>git-stage-file</code></td><td>Stage the file you are in (as saved), or the one on point's line of a status.</td></tr>
 <tr><td>none</td><td><kbd>M-x git-stage-hunk</kbd></td><td><code>git-stage-hunk</code></td><td>Stage the hunk at point: in the status (C-x g) the one on point's line, as s does; in a file's own buffer, saved, the change git sees at point's line, as the file is on disk.</td></tr>
 <tr><td>none</td><td><kbd>M-x git-stash</kbd></td><td><code>git-stash</code></td><td>Put every change aside as a stash, staged or not, with a message asked for; the files go back to the last commit.</td></tr>
@@ -17023,7 +17085,7 @@ the commands that mention a word, press <kbd>C-h a</kbd> and type the word.</p>
 <tr><td>none</td><td><kbd>M-x git-subtree-split</kbd></td><td><code>git-subtree-split</code></td><td>Make a history of the commits that changed a directory asked for, as if it were a repository of its own, and say the commit it ends at (a branch of it with =b in the subtree menu).</td></tr>
 <tr><td>none</td><td><kbd>M-x git-tag-create</kbd></td><td><code>git-tag-create</code></td><td>Tag a revision asked for (the commit on point's line first, else HEAD) with a name asked for; the tag menu's -a makes it annotated with a message asked for, -s signed (with a message too), -f moves a tag of that name.</td></tr>
 <tr><td>none</td><td><kbd>M-x git-tag-delete</kbd></td><td><code>git-tag-delete</code></td><td>Delete a tag, asked for, here (not on any remote), after asking.</td></tr>
-<tr><td>none</td><td><kbd>t</kbd></td><td><code>git-tag-menu</code></td><td>Open the tag menu: tag a revision, or delete a tag; P t and P T in the push menu send tags.</td></tr>
+<tr><td>none</td><td><kbd>t</kbd>, <kbd>C-c t</kbd></td><td><code>git-tag-menu</code></td><td>Open the tag menu: tag a revision, or delete a tag; P t and P T in the push menu send tags.</td></tr>
 <tr><td>none</td><td><kbd>TAB</kbd></td><td><code>git-toggle-diff</code></td><td>Show the changes of the file on the line of the status under it, in hunks, the first <strong>GIT-DIFF-LINES</strong> of them, or no longer.</td></tr>
 <tr><td>none</td><td>~, C-c ~</td><td><code>git-toggle-full-menus</code></td><td>Make the git menus of this status show every action, or only the ones most used again (<strong>GIT-MENUS</strong>, <strong>GIT-SLIM-ACTIONS</strong>).</td></tr>
 <tr><td>none</td><td><kbd>u</kbd>, <kbd>C-c u</kbd></td><td><code>git-unstage</code></td><td>Unstage the file on the line of the status, or on a section's title all of its files, a rename by both its names; on a hunk, the hunk; with lines selected in hunks, those lines.</td></tr>
@@ -17056,10 +17118,9 @@ the commands that mention a word, press <kbd>C-h a</kbd> and type the word.</p>
 <tr><td>none</td><td><kbd>M-x gpg-encrypt-region</kbd></td><td><code>gpg-encrypt-region</code></td><td>Encrypt the text selected in place, as an armoured block (—–BEGIN PGP MESSAGE—–), to the keys or with a passphrase chosen in the minibuffer.</td></tr>
 <tr><td>none</td><td><kbd>M-x gpg-import-keys</kbd></td><td><code>gpg-import-keys</code></td><td>Import the keys in a file asked for (armoured or not) into your keyring; say what was imported.</td></tr>
 <tr><td>none</td><td><kbd>M-x gpg-import-keys-region</kbd></td><td><code>gpg-import-keys-region</code></td><td>Import the keys in the text selected (an armoured —–BEGIN PGP PUBLIC KEY BLOCK—–) into your keyring.</td></tr>
-<tr><td>none</td><td><kbd>M-x gpg-keys-details</kbd></td><td><code>gpg-keys-details</code></td><td>Show the details of the key at the cursor: its fingerprint, its names, its subkeys and what they can do, when they expire.</td></tr>
 <tr><td>none</td><td><kbd>M-x gpg-keys-export</kbd></td><td><code>gpg-keys-export</code></td><td>Export the public part of the keys marked (or the one at the cursor), armoured, to a file asked for.</td></tr>
 <tr><td>none</td><td><kbd>M-x gpg-keys-insert</kbd></td><td><code>gpg-keys-insert</code></td><td>Put the public part of the keys marked (or the one at the cursor), armoured, at point in the buffer the list was opened from.</td></tr>
-<tr><td>none</td><td><kbd>M-x gpg-list-keys</kbd></td><td><code>gpg-list-keys</code></td><td>List your GnuPG keys and those you have of others: there m marks one, M-x gpg-keys-details shows its details, M-x gpg-import-keys imports keys from a file, M-x gpg-keys-export exports, M-x gpg-keys-insert inserts and D deletes those marked.</td></tr>
+<tr><td>none</td><td><kbd>M-x gpg-keys-manager</kbd></td><td><code>gpg-keys-manager</code></td><td>List your GnuPG keys and those you have of others, in a section each: there m marks one, l shows its details, M-x gpg-import-keys imports keys from a file, M-x gpg-keys-export exports, M-x gpg-keys-insert inserts and D deletes those marked.</td></tr>
 <tr><td>none</td><td><kbd>M-x gpg-lock</kbd></td><td><code>gpg-lock</code></td><td>Make gpg-agent forget every passphrase it keeps for a while (ten minutes, as it comes, its default-cache-ttl), of encrypted files and of your keys: the next to open one asks again.</td></tr>
 <tr><td>none</td><td><kbd>M-x gpg-sign-file</kbd></td><td><code>gpg-sign-file</code></td><td>Sign the file shown (in a list of a directory, the one on the line) with your key: a detached signature (FILE.sig, the file left as it is), clear-signed text (FILE.asc) or a signed file (FILE.gpg), asked which.</td></tr>
 <tr><td>none</td><td><kbd>M-x gpg-sign-region</kbd></td><td><code>gpg-sign-region</code></td><td>Clear-sign the text selected in place (—–BEGIN PGP SIGNED MESSAGE—–), with your key.</td></tr>
@@ -17101,11 +17162,11 @@ the commands that mention a word, press <kbd>C-h a</kbd> and type the word.</p>
 <tr><td>none</td><td><kbd>M-(</kbd></td><td><code>insert-pair</code></td><td>Put the pair of the delimiter of the key pressed around the region (M-( for parentheses), point on the first character inside; when the pair stands just outside the region already, take it off.</td></tr>
 <tr><td>none</td><td><kbd>M-x insert-pasted-text</kbd></td><td><code>insert-pasted-text</code></td><td>Put in the text just pasted into the terminal Tuatara runs in, as text: none of it is taken for keys or commands, whatever it holds, in any editing state.</td></tr>
 <tr><td>none</td><td><kbd>M-x insert-recorded-keys-definition</kbd></td><td><code>insert-recorded-keys-definition</code></td><td>Insert at point the Lisp text that makes the keys recorded last a command again and binds it to a key, both asked for, for an init file: a name (the one M-x name-recorded-keys gave, as standard) and a key (nothing typed for none).</td></tr>
-<tr><td>none</td><td><kbd>C-c y</kbd></td><td><code>insert-snippet</code></td><td>Put in a snippet chosen by its name among those of the current buffer's mode (each listed with its key), at point; with the selection active, in its place, the selected text where it has $TM_SELECTED_TEXT.</td></tr>
 <tr><td>none</td><td><kbd>M-x insert-tab</kbd></td><td><code>insert-tab</code></td><td>Insert a tab character at point, whatever the tab settings say; C-z TAB (tab-to-tab-stop) goes on to the next tab stop as they say.</td></tr>
 <tr><td>none</td><td><kbd>C-x T i</kbd></td><td><code>invisible-characters-mode</code></td><td>Show the characters that draw nothing in the current buffer as their codes, or stop: the byte-order mark as &lt;FEFF&gt;, a zero-width space as &lt;200B&gt;, the soft hyphen, the joiners, the word joiner, the marks that set the direction text is drawn in and the tags the same way, in the :invisible-character face, each taking the columns its code takes.</td></tr>
+<tr><td>none</td><td><kbd>C-x j</kbd></td><td><code>jobs-manager</code></td><td>List the jobs in the background in <strong>Jobs</strong>, a section for each buffer: the job running there, with how far it has got, and those waiting their turn, in the order they will run, their text painted in the buffer meanwhile.</td></tr>
 <tr><td>none</td><td><kbd>M-^</kbd></td><td><code>join-line</code></td><td>Join this line to the one before it: the line end between them goes, and the spaces about it become one space, or none where a line begins or ends, before a closing bracket or after an opening one.</td></tr>
-<tr><td><kbd>g j</kbd></td><td>none</td><td><code>join-selected-lines</code></td><td>Pull the following line up onto this one, COUNT times; with a selection, join the lines it touches into one, in the background when it holds more than 32 MB.</td></tr>
+<tr><td><kbd>g j</kbd></td><td>none</td><td><code>join-selected-lines</code></td><td>Pull the following line up onto this one, COUNT times; with a selection, join the lines it touches into one, or the line it touches and the next.</td></tr>
 <tr><td>none</td><td><kbd>M-x journal-new-entry</kbd></td><td><code>journal-new-entry</code></td><td>Make a new journal entry for today, whatever entries there are; with C-u, for a date asked for.</td></tr>
 <tr><td>none</td><td><kbd>C-x n j</kbd></td><td><code>journal-new-or-existing-entry</code></td><td>Open today's journal entry, or make it when there is none: in <strong>journal-directory</strong>, named and titled as <strong>journal-file-name</strong> and <strong>journal-title-format</strong> say, saved at once; with several for today, the one chosen.</td></tr>
 <tr><td><kbd>S</kbd></td><td><kbd>C-z S</kbd></td><td><code>jump-back</code></td><td>Rotate to the next stored position in the ring and jump there; press again to cycle.</td></tr>
@@ -17124,13 +17185,11 @@ the commands that mention a word, press <kbd>C-h a</kbd> and type the word.</p>
 <tr><td>none</td><td><kbd>C-c ]</kbd></td><td><code>latex-close-environment</code></td><td>Write <code>\end{NAME}</code> for the nearest <code>\begin{NAME}</code> before point that no <code>\end{NAME}</code> closes yet, on a line of its own when the line has text, indented as that <code>\begin</code> is.</td></tr>
 <tr><td>none</td><td><kbd>C-c C-e</kbd></td><td><code>latex-insert-environment</code></td><td>Ask for the name of an environment and write its <code>\begin{NAME}</code> and <code>\end{NAME}</code> on lines of their own, indented as the mode indents them, with point on an empty line between.</td></tr>
 <tr><td>none</td><td><kbd>M-x lisp-scratch</kbd></td><td><code>lisp-scratch</code></td><td>Show <strong>lisp-scratch</strong>, the Lisp buffer that is not saved, where C-x C-e evaluates in the running editor and C-j puts what the expression before point printed and its value on the lines after it; when it was killed, a new one.</td></tr>
-<tr><td>none</td><td><kbd>M-x list-auto-saves</kbd></td><td><code>list-auto-saves</code></td><td>List the auto-saved copies of changes not saved (<strong>AUTO-SAVE-DIRECTORY</strong>), the newest first: after a crash or a quit without saving, what can be taken back.</td></tr>
 <tr><td>none</td><td><kbd>D</kbd>, <kbd>C-c D</kbd></td><td><code>list-delete-marked</code></td><td>Delete the marked entries of the list (&gt;), or with none marked the one on the current line, after asking, as the list deletes, as M-x list-execute does those marked for deletion; in rimu, with C-u, for good rather than to the trash.</td></tr>
 <tr><td>none</td><td><kbd>C-x / d</kbd></td><td><code>list-delete-records</code></td><td>Delete the records whose line a regular expression matches, keeping the rest: asked for as C-x / k asks, in the same files.</td></tr>
 <tr><td>none</td><td><kbd>M-x list-digraphs</kbd></td><td><code>list-digraphs</code></td><td>Show every digraph: the keys that type a character a keyboard lacks, those English text wants most first, then all of them by script, with the code point and name of each, and how to type them.</td></tr>
-<tr><td>none</td><td><kbd>x</kbd></td><td><code>list-execute</code></td><td>Delete the entries of the list marked for deletion (D), after asking, as the list deletes: the buffer list kills its buffers, rimu puts files in the trash, the list of jobs drops those waiting and stops those running.</td></tr>
+<tr><td>none</td><td><kbd>x</kbd>, <kbd>C-c x</kbd></td><td><code>list-execute</code></td><td>Delete the entries of the list marked for deletion (D), after asking, as the list deletes: the buffer list kills its buffers, rimu puts files in the trash, the list of jobs drops those waiting and stops those running.</td></tr>
 <tr><td>none</td><td><kbd>M-x list-faces</kbd></td><td><code>list-faces</code></td><td>List every face a theme can colour in <strong>Faces</strong>, in sections by the first word of their names: each face's name, a sample drawn in it as the theme in force draws it, and the first sentence of what it colours.</td></tr>
-<tr><td>none</td><td><kbd>C-x j</kbd></td><td><code>list-jobs</code></td><td>List the jobs in the background in <strong>Jobs</strong>: in each buffer those running, with how far they have got, and those waiting their turn, in the order they will run, their text painted in the buffer meanwhile.</td></tr>
 <tr><td>none</td><td><kbd>C-x / k</kbd></td><td><code>list-keep-records</code></td><td>Keep the records whose line a regular expression matches and delete the rest, in a file of records, a line each: a CSV or TSV, a log, a JSON Lines file, todo.txt and the others <strong>LINE-RECORD-MODES</strong> names, the column asked for first as C-x / f asks.</td></tr>
 <tr><td>none</td><td><kbd>m</kbd>, <kbd>C-c m</kbd></td><td><code>list-mark-entry</code></td><td>Mark the entry on the current line of the list (&gt;), for the list's commands that act on those marked, and move down; with a count, as many entries, up the list for a negative one.</td></tr>
 <tr><td>none</td><td><kbd>d</kbd>, <kbd>C-c d</kbd></td><td><code>list-mark-for-deletion</code></td><td>Mark the entry on the current line of the list for deletion (D), for the list's command that deletes them, and move down; with a count, as many entries, up the list for a negative one.</td></tr>
@@ -17140,7 +17199,7 @@ the commands that mention a word, press <kbd>C-h a</kbd> and type the word.</p>
 <tr><td>none</td><td><kbd>TAB</kbd></td><td><code>list-toggle-fold</code></td><td>Fold the section of the list the current line is in, its heading left showing, or unfold it when it is folded.</td></tr>
 <tr><td>none</td><td><kbd>C-x / t</kbd></td><td><code>list-toggle-header</code></td><td>Take the first line of a file of records as its header, or as a record like the rest; the same again switches back; with a count, a header when it is positive, a record when it is zero or less.</td></tr>
 <tr><td>none</td><td><kbd>C-x / L</kbd></td><td><code>list-toggle-header-lock</code></td><td>Keep the first line of a file of records, its header, at the top of the window as the rest scrolls under it, coloured as it is below; the same again lets it scroll away; with a count, kept when it is positive, let go when it is zero or less.</td></tr>
-<tr><td>none</td><td><kbd>t</kbd></td><td><code>list-toggle-marks</code></td><td>Mark the entries the list shows that are not marked and take the mark off those marked; those marked for deletion (D), or given a mark of another kind, stay so, as do the entries a filter or a folded section hides.</td></tr>
+<tr><td>none</td><td><kbd>t</kbd>, <kbd>C-c t</kbd></td><td><code>list-toggle-marks</code></td><td>Mark the entries the list shows that are not marked and take the mark off those marked; those marked for deletion (D), or given a mark of another kind, stay so, as do the entries a filter or a folded section hides.</td></tr>
 <tr><td>none</td><td><kbd>P</kbd>, <kbd>C-c P</kbd></td><td><code>list-toggle-preview</code></td><td>Turn the preview beside this list on or off: the entry on the current line shown in a window beside the list, on its right when there is room, else below it, following the cursor from line to line.</td></tr>
 <tr><td>none</td><td><kbd>U</kbd>, <kbd>C-c U</kbd></td><td><code>list-unmark-all</code></td><td>Take every mark off the entries of the list, of any kind; in rimu, those of the files marked in other directories too.</td></tr>
 <tr><td>none</td><td><kbd>u</kbd>, <kbd>C-c u</kbd></td><td><code>list-unmark-entry</code></td><td>Take the mark off the entry on the current line of the list, of any kind, and move down; with a count, off as many entries, up the list for a negative one.</td></tr>
@@ -17246,7 +17305,7 @@ the commands that mention a word, press <kbd>C-h a</kbd> and type the word.</p>
 <tr><td>none</td><td><kbd>C-c M</kbd>, <kbd>C-x a m</kbd></td><td><code>org-agenda-month-view</code></td><td>Show the agenda of a month: the month of the day at point in the agenda, else this month.</td></tr>
 <tr><td>none</td><td><kbd>g l</kbd></td><td><code>org-agenda-previous-view</code></td><td>Go back to the view or span the agenda showed before this one, point on the line it was on, as cd - goes back to the directory before: pressed again, return.</td></tr>
 <tr><td>none</td><td><kbd>C-c C-w</kbd></td><td><code>org-agenda-refile</code></td><td>Move the entry on the agenda's line under another heading, as C-c C-w moves one.</td></tr>
-<tr><td>none</td><td><kbd>s</kbd></td><td><code>org-agenda-save-all-buffers</code></td><td>Save the buffers of the agenda files (<strong>org-agenda-files</strong>, and those added to them) with changes not saved, those the agenda changed among them; other Org buffers are left as they are (M-x org-save-all-org-buffers saves them all).</td></tr>
+<tr><td>none</td><td><kbd>s</kbd>, <kbd>C-c s</kbd></td><td><code>org-agenda-save-all-buffers</code></td><td>Save the buffers of the agenda files (<strong>org-agenda-files</strong>, and those added to them) with changes not saved, those the agenda changed among them; other Org buffers are left as they are (M-x org-save-all-org-buffers saves them all).</td></tr>
 <tr><td>none</td><td><kbd>C-c C-s</kbd></td><td><code>org-agenda-schedule</code></td><td>Schedule the entry on the agenda's line, the date asked for as C-c C-s asks it; with C-u, take its scheduling away.</td></tr>
 <tr><td>none</td><td><kbd>C-c C-q</kbd></td><td><code>org-agenda-set-tags</code></td><td>Set the tags of the entry on the agenda's line, asked for as C-c C-q asks them.</td></tr>
 <tr><td>none</td><td><kbd>RET</kbd></td><td><code>org-agenda-switch-to</code></td><td>Open the entry on the agenda's line in this window, point on its headline.</td></tr>
@@ -17310,10 +17369,10 @@ the commands that mention a word, press <kbd>C-h a</kbd> and type the word.</p>
 <tr><td>none</td><td><kbd>C-c m</kbd></td><td><code>org-macro-wrap</code></td><td>In an Org note, wrap the selection, or the word at point, in a macro chosen from a list: R, <span class="redacted">██████████</span>, hidden in the enhanced export's PDF as a black box; P, hidden there only with #+options: protect:t; or one the note declares with a #+macro: line, what it stands for shown beside it.</td></tr>
 <tr><td>none</td><td><kbd>M-x org-make-reminder</kbd></td><td><code>org-make-reminder</code></td><td>Make the heading point is under a reminder: it takes the tags <strong>ORG-REMINDER-TAG</strong> and <strong>ORG-NOTIFY-TAG</strong>, so that the agenda lists it on its day and it is told on the desktop when its time comes.</td></tr>
 <tr><td>none</td><td><kbd>M-RET</kbd></td><td><code>org-meta-return</code></td><td>A new item or headline after what point is in and all under it: in a list, an item of the same kind after the one point is in and all under it (its bullet, the next number, [ ] when it has a checkbox).</td></tr>
-<tr><td>none</td><td><kbd>M-j</kbd>, <kbd>M-&lt;down&gt;</kbd></td><td><code>org-metadown</code></td><td>In an Org table, move the row down; else move the subtree down (M-j).</td></tr>
+<tr><td>none</td><td><kbd>M-j</kbd>, <kbd>M-&lt;down&gt;</kbd></td><td><code>org-metadown</code></td><td>In an Org table, move the row down; on a list item, move it with its sub-items below the item after it; else move the subtree down (M-j).</td></tr>
 <tr><td>none</td><td><kbd>M-h</kbd>, <kbd>M-&lt;left&gt;</kbd></td><td><code>org-metaleft</code></td><td>In an Org table, move the column left; on a list item, set it out a level, or every item the selection's lines begin; else promote the headline (M-h).</td></tr>
 <tr><td>none</td><td><kbd>M-l</kbd>, <kbd>M-&lt;right&gt;</kbd></td><td><code>org-metaright</code></td><td>In an Org table, move the column right; on a list item, set it in a level under the item before it, or every item the selection's lines begin; else demote the headline (M-l).</td></tr>
-<tr><td>none</td><td><kbd>M-k</kbd>, <kbd>M-&lt;up&gt;</kbd></td><td><code>org-metaup</code></td><td>In an Org table, move the row up; else move the subtree up (M-k).</td></tr>
+<tr><td>none</td><td><kbd>M-k</kbd>, <kbd>M-&lt;up&gt;</kbd></td><td><code>org-metaup</code></td><td>In an Org table, move the row up; on a list item, move it with its sub-items above the item before it; else move the subtree up (M-k).</td></tr>
 <tr><td>none</td><td><kbd>M-x org-move-subtree-down</kbd></td><td><code>org-move-subtree-down</code></td><td>Move the subtree point is in down, past its next sibling.</td></tr>
 <tr><td>none</td><td><kbd>M-x org-move-subtree-up</kbd></td><td><code>org-move-subtree-up</code></td><td>Move the subtree point is in up, before its sibling above.</td></tr>
 <tr><td>none</td><td><kbd>C-c C-o</kbd></td><td><code>org-open-at-point</code></td><td>Follow the link point is on (C-c C-o): to a headline, a custom ID or a target here, a file, an ID, a note by its identifier, or a web or mail address in the desktop's program, after asking.</td></tr>
@@ -17357,7 +17416,7 @@ the commands that mention a word, press <kbd>C-h a</kbd> and type the word.</p>
 <tr><td>none</td><td><kbd>M-x package-update</kbd></td><td><code>package-update</code></td><td>Fetch again each package load-package fetched (not the directories of your disk), in the background.</td></tr>
 <tr><td>none</td><td><kbd>f</kbd>, <kbd>C-c f</kbd></td><td><code>package-update-marked</code></td><td>Fetch again the marked packages (&gt;), or with none marked the one on the current line, as M-x package-update does them all.</td></tr>
 <tr><td>none</td><td><kbd>M-x pattern-finish</kbd></td><td><code>pattern-finish</code></td><td>In a question that takes a pattern: take what is typed, or when it cannot be used, say why in the prompt and wait for it to be mended (M-x minibuffer-cancel gives up).</td></tr>
-<tr><td>none</td><td><kbd>s</kbd>, <kbd>RET</kbd></td><td><code>pdf-attachment-save</code></td><td>Save the embedded file on the current line where you say, a new file, or one there after asking: taken out of the PDF in the sandbox, as its program reads it, and written as it is, never opened.</td></tr>
+<tr><td>none</td><td><kbd>s</kbd>, <kbd>C-c s</kbd></td><td><code>pdf-attachment-save</code></td><td>Save the embedded file on the current line where you say, a new file, or one there after asking: taken out of the PDF in the sandbox, as its program reads it, and written as it is, never opened.</td></tr>
 <tr><td>none</td><td><kbd>a</kbd>, <kbd>C-c a</kbd></td><td><code>pdf-view-attachments</code></td><td>List the files embedded in the PDF, in a buffer beside it, as its program reads them in the sandbox; there, s saves one.</td></tr>
 <tr><td>none</td><td><kbd>i</kbd>, <kbd>C-c i</kbd></td><td><code>pdf-view-facts</code></td><td>Show what the PDF says of itself, as help: title, subject, author, the programs that made it (creator and producer), when it was made and changed, its version, encryption and what it allows, JavaScript, forms, pages and their size, as its program reads them in the sandbox; the file's own name and size first.</td></tr>
 <tr><td>none</td><td><kbd>g h</kbd></td><td><code>pdf-view-first-page</code></td><td>Turn to the first page of the PDF.</td></tr>
@@ -17410,7 +17469,7 @@ the commands that mention a word, press <kbd>C-h a</kbd> and type the word.</p>
 <tr><td>none</td><td><kbd>C-x r s</kbd></td><td><code>register-copy</code></td><td>Keep the selection under a character you type, as long as the editor runs: the text between point and mark, or the block of columns when a rectangle is selected (C-x r SPC).</td></tr>
 <tr><td>none</td><td><kbd>C-x r i</kbd></td><td><code>register-insert</code></td><td>Put what a register keeps into the text at point, asked for by its character: text as it was, with point after it and the mark before; a block (C-x r s of a rectangle) as a block of columns, as C-x r y pastes one, with a prefix argument each row that many times across; a number as digits.</td></tr>
 <tr><td>none</td><td><kbd>C-x r j</kbd></td><td><code>register-jump</code></td><td>Go to the place a register keeps (C-x r p), asked for by its character: in its buffer, shown, point where it was set, moved with the text around it.</td></tr>
-<tr><td>none</td><td><kbd>C-x r l</kbd></td><td><code>register-list</code></td><td>List the registers in <strong>Registers</strong>: the character that names each, what it keeps (a place, text, a rectangle, a number) and a look at that.</td></tr>
+<tr><td>none</td><td><kbd>C-x r l</kbd></td><td><code>register-manager</code></td><td>List the registers in <strong>Registers</strong>, in a section for each kind they keep (a place, text, a rectangle, a number): the character that names each and a look at what it keeps.</td></tr>
 <tr><td>none</td><td><kbd>C-x r n</kbd></td><td><code>register-number</code></td><td>Keep a whole number under a character you type: the prefix argument, else one asked for.</td></tr>
 <tr><td>none</td><td><kbd>C-x r p</kbd></td><td><code>register-point</code></td><td>Keep where point is under a character you type, as long as the editor runs: C-x r j goes back there, the text above it changed or not, and even after the buffer is closed when it was a file.</td></tr>
 <tr><td>none</td><td><kbd>M-x register-prepend</kbd></td><td><code>register-prepend</code></td><td>Put the selected text before the text a register keeps, asked for by its character, as C-x r + puts it after.</td></tr>
@@ -17442,7 +17501,7 @@ the commands that mention a word, press <kbd>C-h a</kbd> and type the word.</p>
 <tr><td>none</td><td><kbd>g l</kbd></td><td><code>rimu-last-directory</code></td><td>List again the directory this list listed before, point on the entry it was on; again, back to this one, as cd - goes back and forth.</td></tr>
 <tr><td>none</td><td><kbd>+</kbd>, <kbd>C-c +</kbd></td><td><code>rimu-make-directory</code></td><td>Make a directory, asked for, in this list's directory unless given elsewhere, with those above it that are not there; the list shows it.</td></tr>
 <tr><td>none</td><td><kbd>A</kbd>, <kbd>C-c A</kbd></td><td><code>rimu-make-formatted-file</code></td><td>Make a new file with a formatted name in this list's directory, asking what new-file-formatted asks but the subdirectory (the title, the keywords, the kind and the template), with the header of its kind, saved at once; the list shows it, point on it.</td></tr>
-<tr><td>none</td><td><kbd>C-c f m</kbd></td><td><code>rimu-mark-master</code></td><td>Mark the file on the line of this rimu list as a master (M), a file that the files marked (m) are compared with by the commands that compare files, a photo of the person looked for among photos, and go to the next line; u takes the mark away.</td></tr>
+<tr><td>none</td><td><kbd>g m</kbd></td><td><code>rimu-mark-master</code></td><td>Mark the file on the line of this rimu list as a master (M), a file that the files marked (m) are compared with by the commands that compare files, a photo of the person looked for among photos, and go to the next line; u takes the mark away.</td></tr>
 <tr><td>none</td><td><kbd>M</kbd>, <kbd>C-c M</kbd></td><td><code>rimu-move</code></td><td>Move the marked entries, or the one on the line, into a directory asked for, navigating to it as C-x C-f does, only directories offered: the directory of the other list beside this one offered first.</td></tr>
 <tr><td>none</td><td><kbd>C-c C-k</kbd></td><td><code>rimu-names-cancel</code></td><td>Leave the names as they are, and go back to the list.</td></tr>
 <tr><td>none</td><td><kbd>C-c C-c</kbd></td><td><code>rimu-names-finish</code></td><td>Rename the entries whose line changed, and go back to the list: all or, when a line does not do, none, and why is said.</td></tr>
@@ -17461,9 +17520,8 @@ the commands that mention a word, press <kbd>C-h a</kbd> and type the word.</p>
 <tr><td>none</td><td><kbd>G</kbd>, <kbd>C-c G</kbd></td><td><code>rimu-toggle-git</code></td><td>Show or hide, after each name in this list, the entry's last commit in git's history: when it was made and the first line of its message.</td></tr>
 <tr><td>none</td><td><kbd>T</kbd>, <kbd>C-c T</kbd></td><td><code>rimu-toggle-picture</code></td><td>Switch the preview between the picture of a file and its text: the first page of a PDF or its text, an image or its octets in the hex view.</td></tr>
 <tr><td>none</td><td><kbd>S</kbd>, <kbd>C-c S</kbd></td><td><code>rimu-toggle-sizes</code></td><td>Show or hide, before each name in this list, how much it takes: a file its size, a directory the size of everything in it and under it, hidden files too, directories of another drive mounted in it left out, worked out in the background while the list shows it.</td></tr>
-<tr><td>none</td><td><kbd>s</kbd></td><td><code>rimu-toggle-sort</code></td><td>Order this list by name or by time, those changed last first; the mode line says which.</td></tr>
+<tr><td>none</td><td><kbd>s</kbd>, <kbd>C-c s</kbd></td><td><code>rimu-toggle-sort</code></td><td>Order this list by name or by time, those changed last first; the mode line says which.</td></tr>
 <tr><td>none</td><td><kbd>a</kbd>, <kbd>C-c a</kbd></td><td><code>rimu-touch</code></td><td>Touch a name asked for in this list's directory, as touch does: a name not there is made a new, empty file, the list on it for l to open it; a file or directory there has its times set to now (a link's own, not those of where it leads).</td></tr>
-<tr><td>none</td><td><kbd>g t</kbd></td><td><code>rimu-trash</code></td><td>List what is in the trash, as the buffer list (C-x C-b) lists buffers: a section for your own trash and one for each drive's, the last to go there first, each thing's name, when it went and where it was.</td></tr>
 <tr><td>none</td><td><kbd>X</kbd>, <kbd>C-c X</kbd></td><td><code>rimu-trash-empty</code></td><td>Empty the trash: everything the list of the trash shows deleted for good, after asking twice, in the background.</td></tr>
 <tr><td>none</td><td><kbd>R</kbd>, <kbd>C-c R</kbd></td><td><code>rimu-trash-restore</code></td><td>Put the marked things (&gt;), or with none marked the one on the current line, back where they were, after asking, where they go said; another name asked for when one's is taken, the directories above it made again when they are gone.</td></tr>
 <tr><td>none</td><td><kbd>h</kbd>, <kbd>C-b</kbd>, <kbd>C-c h</kbd></td><td><code>rimu-up</code></td><td>List the directory holding this one, in this list, point on the one left; in a list of files found, list the directory they were found in.</td></tr>
@@ -17477,7 +17535,7 @@ the commands that mention a word, press <kbd>C-h a</kbd> and type the word.</p>
 <tr><td>none</td><td><kbd>C-x C-s</kbd></td><td><code>save-buffer</code></td><td>Save the current buffer to its file, asking for one if it has none, as C-x C-f asks.</td></tr>
 <tr><td>none</td><td><kbd>C-x C-c</kbd></td><td><code>save-buffers-kill-editor</code></td><td>Exit the editor, asking first if a buffer visiting a file, or one made by C-x n e, has unsaved changes.</td></tr>
 <tr><td>none</td><td><kbd>M-x save-named-pattern</kbd></td><td><code>save-named-pattern</code></td><td>Save a pattern under a name, so that :NAME: stands for it in every regular expression searched for after, in this session and the next: the pattern is asked for as a filter's is, M-r switching between a regular expression and literal text, then its name, small letters and then digits too, and what it finds, in words.</td></tr>
-<tr><td>none</td><td><kbd>C-x s</kbd></td><td><code>save-some-buffers</code></td><td>Save every buffer visiting a file with changes not saved, after asking once, the files named: the files a rename across a project changed, say.</td></tr>
+<tr><td>none</td><td><kbd>C-x s</kbd></td><td><code>save-some-buffers</code></td><td>Save every buffer visiting a file with changes not saved, after asking once, the files named beside the question: the files a rename across a project changed, say.</td></tr>
 <tr><td>none</td><td><kbd>&lt;wheel-up&gt;</kbd>, <kbd>&lt;wheel-down&gt;</kbd></td><td><code>scroll-by-wheel</code></td><td>Scroll the window under the mouse, else the selected one, as the mouse wheel turned: <strong>WHEEL-SCROLL-LINES</strong> lines on for &lt;wheel-down&gt;, back for &lt;wheel-up&gt;; that window's point stays in view.</td></tr>
 <tr><td>none</td><td><kbd>M-v</kbd>, <kbd>&lt;prior&gt;</kbd></td><td><code>scroll-down-command</code></td><td>Scroll the window backward by nearly a screenful: by the rows it shows, where long lines wrap.</td></tr>
 <tr><td>none</td><td><kbd>C-M-v</kbd></td><td><code>scroll-other-window</code></td><td>Scroll the next window forward by nearly a screenful, leaving the selected one as it is.</td></tr>
@@ -17541,17 +17599,17 @@ the commands that mention a word, press <kbd>C-h a</kbd> and type the word.</p>
 <tr><td><kbd>m w</kbd></td><td><kbd>C-z m w</kbd></td><td><code>select-word</code></td><td>Select the word at point; from the gap between two words, the one ahead (the last one at the end of the text).</td></tr>
 <tr><td><kbd>m b</kbd></td><td><kbd>C-z m b</kbd></td><td><code>select-word-backward</code></td><td>Select the word at point, or grow a word selection backward, as select-word grows it forward: from the gap between two words, the one behind.</td></tr>
 <tr><td>none</td><td><kbd>M-x self-insert-command</kbd></td><td><code>self-insert-command</code></td><td>Insert the character that invoked this command, prefix-argument times.</td></tr>
-<tr><td>none</td><td><kbd>H</kbd>, <kbd>C-c H</kbd></td><td><code>server-agent-destinations</code></td><td>Name, in the minibuffer, the machines the keys of your ssh agent may be used for from the server on the line, or those marked, commas between them (github.com, me@git.example); none for any.</td></tr>
+<tr><td>none</td><td><kbd>C-c H</kbd></td><td><code>server-agent-destinations</code></td><td>Name, in the minibuffer, the machines the keys of your ssh agent may be used for from the server on the line, or those marked, commas between them (github.com, me@git.example); none for any.</td></tr>
 <tr><td>none</td><td><kbd>M-x server-bring-language-server</kbd></td><td><code>server-bring-language-server</code></td><td>Copy a language server installed on this machine to the server on the line of the list of trusted servers, or those marked, chosen in the minibuffer among those the editor knows that are here: nothing is fetched from anywhere.</td></tr>
-<tr><td>none</td><td><kbd>M-x server-copy-keys</kbd></td><td><code>server-copy-keys</code></td><td>Copy the public keys marked in the list of GnuPG keys (M-x gpg-list-keys), or the one at the cursor, into gpg's keyring on a trusted server asked for, so that M-x gpg-encrypt-file there can encrypt to them: exported here and imported there over ssh, in the background.</td></tr>
-<tr><td>none</td><td><kbd>M-x server-list</kbd></td><td><code>server-list</code></td><td>List the trusted servers, the machines whose daemons a client here (tuatara –client=HOST) may give more than the keys typed and the size of the screen, each with what it is given: the ssh agent, with the machines its keys may be used for from there; gpg-agent; the clipboard; files dropped on the window, sent to a directory there.</td></tr>
+<tr><td>none</td><td><kbd>M-x server-copy-keys</kbd></td><td><code>server-copy-keys</code></td><td>Copy the public keys marked in the list of GnuPG keys (M-x gpg-keys-manager), or the one at the cursor, into gpg's keyring on a trusted server asked for, so that M-x gpg-encrypt-file there can encrypt to them: exported here and imported there over ssh, in the background.</td></tr>
+<tr><td>none</td><td><kbd>M-x server-manager</kbd></td><td><code>server-manager</code></td><td>List the trusted servers, the machines whose daemons a client here (tuatara –client=HOST) may give more than the keys typed and the size of the screen, each with what it is given: the ssh agent, with the machines its keys may be used for from there; gpg-agent; the clipboard; files dropped on the window, sent to a directory there.</td></tr>
 <tr><td>none</td><td><kbd>M-x server-remove-language-server</kbd></td><td><code>server-remove-language-server</code></td><td>Take away a language server M-x server-bring-language-server brought to the server on the line of the list of trusted servers, or those marked, chosen in the minibuffer among those it lists there.</td></tr>
-<tr><td>none</td><td><kbd>A</kbd>, <kbd>C-c A</kbd></td><td><code>server-toggle-agent</code></td><td>Forward your ssh agent to the server on the line, or those marked, or no longer: on, the programs there can sign with your keys while a client shows its daemon, each use asked about here, and only for the machines named by H where OpenSSH can limit them.</td></tr>
-<tr><td>none</td><td><kbd>C</kbd>, <kbd>C-c C</kbd></td><td><code>server-toggle-clipboard</code></td><td>Share the clipboard with the server on the line, or those marked, or no longer: on, what is copied there reaches the clipboard here, as text with no control characters, and the daemon there may read what is copied here.</td></tr>
-<tr><td>none</td><td><kbd>F</kbd>, <kbd>C-c F</kbd></td><td><code>server-toggle-files</code></td><td>Send the files dropped on a window showing the daemon of the server on the line, or those marked, to a directory there, asked for (from the home directory there unless it begins with /), or no longer: on, a file dropped is copied there, its size checked first, and nothing of it run.</td></tr>
-<tr><td>none</td><td><kbd>G</kbd>, <kbd>C-c G</kbd></td><td><code>server-toggle-gpg</code></td><td>Forward gpg-agent to the server on the line, or those marked, or no longer: on, gpg there signs and decrypts with your keys, which stay here, and cannot export or change them.</td></tr>
-<tr><td>none</td><td><kbd>+</kbd>, <kbd>C-c +</kbd></td><td><code>server-trust</code></td><td>Trust a machine asked for in the minibuffer, as tuatara –client= names it (build.example, me@build.example, or an alias of ~/.ssh/config): it goes on the list of trusted servers (M-x server-list) with nothing given yet, each thing then turned on there by itself.</td></tr>
-<tr><td>none</td><td><kbd>T</kbd>, <kbd>C-c T</kbd></td><td><code>server-tuatara-program</code></td><td>Name, in the minibuffer, the tuatara to run on the server on the line, or those marked, when it is not the one on the PATH of the commands ssh runs there: /opt/tuatara/bin/tuatara, or a name found on that PATH; empty for the one on that PATH.</td></tr>
+<tr><td>none</td><td><kbd>C-c A</kbd></td><td><code>server-toggle-agent</code></td><td>Forward your ssh agent to the server on the line, or those marked, or no longer: on, the programs there can sign with your keys while a client shows its daemon, each use asked about here, and only for the machines named by C-c H where OpenSSH can limit them.</td></tr>
+<tr><td>none</td><td><kbd>C-c C</kbd></td><td><code>server-toggle-clipboard</code></td><td>Share the clipboard with the server on the line, or those marked, or no longer: on, what is copied there reaches the clipboard here, as text with no control characters, and the daemon there may read what is copied here.</td></tr>
+<tr><td>none</td><td><kbd>C-c F</kbd></td><td><code>server-toggle-files</code></td><td>Send the files dropped on a window showing the daemon of the server on the line, or those marked, to a directory there, asked for (from the home directory there unless it begins with /), or no longer: on, a file dropped is copied there, its size checked first, and nothing of it run.</td></tr>
+<tr><td>none</td><td><kbd>C-c G</kbd></td><td><code>server-toggle-gpg</code></td><td>Forward gpg-agent to the server on the line, or those marked, or no longer: on, gpg there signs and decrypts with your keys, which stay here, and cannot export or change them.</td></tr>
+<tr><td>none</td><td><kbd>C-c +</kbd></td><td><code>server-trust</code></td><td>Trust a machine asked for in the minibuffer, as tuatara –client= names it (build.example, me@build.example, or an alias of ~/.ssh/config): it goes on the list of trusted servers (M-x server-manager) with nothing given yet, each thing then turned on there by itself.</td></tr>
+<tr><td>none</td><td><kbd>C-c T</kbd></td><td><code>server-tuatara-program</code></td><td>Name, in the minibuffer, the tuatara to run on the server on the line, or those marked, when it is not the one on the PATH of the commands ssh runs there: /opt/tuatara/bin/tuatara, or a name found on that PATH; empty for the one on that PATH.</td></tr>
 <tr><td>none</td><td><kbd>C-x f</kbd></td><td><code>set-fill-column</code></td><td>Set the column the current buffer's lines are filled to by M-q and C-z g q, wrapped at by C-x T l and marked by C-x T v, while the editor runs: a count given first (C-u 72 C-x f), or else the column asked for, the buffer's offered, which M-x minibuffer-finish alone keeps.</td></tr>
 <tr><td>none</td><td><kbd>M-x set-frame-font</kbd></td><td><code>set-frame-font</code></td><td>Choose the window's font among the fixed-width fonts installed: a family, with any style and size typed after it (DejaVu Sans Mono Bold 12); without a size, the size in use stays, and so does any scaling by C-x C-+.</td></tr>
 <tr><td>none</td><td><kbd>C-x RET C-\</kbd></td><td><code>set-input-method</code></td><td>Choose an input method and turn it on in this buffer.</td></tr>
@@ -17567,6 +17625,8 @@ the commands that mention a word, press <kbd>C-h a</kbd> and type the word.</p>
 <tr><td>none</td><td><kbd>M-x shrink-window</kbd></td><td><code>shrink-window</code></td><td>Make the selected window a row shorter, or the prefix argument's rows; they go to the window below it, or above.</td></tr>
 <tr><td>none</td><td><kbd>C-x {</kbd></td><td><code>shrink-window-horizontally</code></td><td>Make the selected window a column narrower, or the prefix argument's columns; they go to the window to its right, or its left.</td></tr>
 <tr><td>none</td><td><kbd>C-x -</kbd></td><td><code>shrink-window-if-larger-than-buffer</code></td><td>Make the selected window as short as its buffer's lines need, when it is taller.</td></tr>
+<tr><td>none</td><td><kbd>M-x snippet-copy</kbd></td><td><code>snippet-copy</code></td><td>Copy one of Tuatara's own snippets, chosen by its name, into your snippets directory (the first of <strong>snippet-directories</strong>, in the directory of its mode) and visit it: your copy, changed as you like, takes the place of Tuatara's.</td></tr>
+<tr><td>none</td><td><kbd>C-c y</kbd></td><td><code>snippet-insert</code></td><td>Put in a snippet chosen by its name among those of the current buffer's mode (each listed with its key), at point; with the selection active, in its place, the selected text where it has $TM_SELECTED_TEXT.</td></tr>
 <tr><td>none</td><td><kbd>M-x snippet-next-field</kbd></td><td><code>snippet-next-field</code></td><td>Go to the next field of the snippet being filled in; past the last, end it where it puts the cursor.</td></tr>
 <tr><td>none</td><td><kbd>M-x snippet-previous-field</kbd></td><td><code>snippet-previous-field</code></td><td>Go back to the field of the snippet before the one the cursor is in.</td></tr>
 <tr><td>none</td><td><kbd>C-x T l</kbd></td><td><code>soft-wrap-mode</code></td><td>Wrap the long lines of the current buffer at a word's edge, or stop: a line longer than the window is shown on as many rows as it needs, at the fill column (C-x f), or the window's edge when that is nearer; the text is not changed.</td></tr>
@@ -17616,7 +17676,8 @@ the commands that mention a word, press <kbd>C-h a</kbd> and type the word.</p>
 <tr><td>none</td><td><kbd>C-x 5 b</kbd></td><td><code>switch-to-buffer-other-frame</code></td><td>Show a buffer in another frame and work in it, completing on the live buffers as C-x b does, the ones used lately first; a new name makes one.</td></tr>
 <tr><td>none</td><td><kbd>C-x 4 b</kbd></td><td><code>switch-to-buffer-other-window</code></td><td>Show a buffer in another window and select it, completing on the live buffers as C-x b does, the ones used lately first; a new name makes one.</td></tr>
 <tr><td>none</td><td><kbd>C-z TAB</kbd></td><td><code>tab-to-tab-stop</code></td><td>Go on to the next tab stop, putting spaces in up to it, or a tab character where the buffer wants tabs (<strong>indent-tabs-mode</strong>, set-indent-tabs-mode, M-x indent-tabs-mode); with a count, that many stops.</td></tr>
-<tr><td>none</td><td><kbd>C-c C-v t</kbd></td><td><code>tangle-code-files</code></td><td>Write the code files of this Org file's source blocks (C-c C-v t), each block with :tangle FILE (on its #+begin_src line, in a subtree's property :header-args: or :header-args:LANGUAGE:, or in #+PROPERTY: header-args for the file) goes to FILE.</td></tr>
+<tr><td>none</td><td><kbd>C-c C-v t</kbd></td><td><code>tangle-all-code-blocks</code></td><td>Write the code files of this Org file's source blocks (C-c C-v t), each block with :tangle FILE (on its #+begin_src line, in a subtree's property :header-args: or :header-args:LANGUAGE:, or in #+PROPERTY: header-args for the file) goes to FILE.</td></tr>
+<tr><td>none</td><td><kbd>C-c C-v b</kbd></td><td><code>tangle-this-code-block</code></td><td>Write the code file the source block at the cursor goes to (C-c C-v b), as tangle-all-code-blocks writes it: the file its :tangle names, worked out from the block's line, its subtree's :header-args: and the file's.</td></tr>
 <tr><td>none</td><td><kbd>M-x terminal</kbd></td><td><code>terminal</code></td><td>Open a terminal in a buffer of its own, where <strong>TERMINAL-PLACE</strong> says, as OPEN-TERMINAL does.</td></tr>
 <tr><td>none</td><td><kbd>M-x terminal-bottom</kbd></td><td><code>terminal-bottom</code></td><td>Open a new terminal in a window across the whole bottom, whatever <strong>TERMINAL-PLACE</strong> says, <strong>TERMINAL-SIZE</strong> high, as M-x terminal opens one.</td></tr>
 <tr><td>none</td><td><kbd>RET</kbd></td><td><code>terminal-copy-and-type</code></td><td>In a terminal's history view, copy what is selected (as M-w) and type into the terminal again; with nothing selected, type into it again.</td></tr>
@@ -17650,6 +17711,7 @@ the commands that mention a word, press <kbd>C-h a</kbd> and type the word.</p>
 <tr><td>none</td><td><kbd>C-M-t</kbd></td><td><code>transpose-sexps</code></td><td>Interchange the balanced expressions about point, point after them; with a count N, carry the expression before point past N expressions (back when N is negative); with 0, interchange the expressions at point and at the mark.</td></tr>
 <tr><td>none</td><td><kbd>C-x w t</kbd></td><td><code>transpose-window-layout</code></td><td>Make windows one above the other stand side by side, and windows side by side one above the other, each keeping its place in the order; again turns them back.</td></tr>
 <tr><td>none</td><td><kbd>M-t</kbd></td><td><code>transpose-words</code></td><td>Interchange the words about point, point after them; with a count N, carry the word before or around point past N words (back when N is negative); with 0, interchange the words at point and at the mark.</td></tr>
+<tr><td>none</td><td><kbd>g t</kbd></td><td><code>trash-manager</code></td><td>List what is in the trash, as the buffer list (C-x C-b) lists buffers: a section for your own trash and one for each drive's, the last to go there first, each thing's name, when it went and where it was.</td></tr>
 <tr><td>none</td><td><kbd>M-x trust-project</kbd></td><td><code>trust-project</code></td><td>Ask again whether you trust the project of the current buffer (the git repository its file or directory is in, else its project, or the repository a git buffer shows), whatever was answered before.</td></tr>
 <tr><td><kbd>c</kbd></td><td>none</td><td><code>tuatara-change</code></td><td>Delete the selection (into the kill ring) or the character at point (not saved) and enter INSERT state.</td></tr>
 <tr><td><kbd>i</kbd></td><td>none</td><td><code>tuatara-insert</code></td><td>Insert at point, and enter INSERT state.</td></tr>

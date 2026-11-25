@@ -13,7 +13,7 @@
 <div class="site">
 <nav class="toc" id="contents" aria-label="Contents">
 <strong>Tuatara Manual</strong>
-<small>for version 0.90.43</small>
+<small>for version 0.90.44</small>
 <p class="tools"><a href="all.html">All on one page</a>
 <button type="button" class="theme" hidden>Dark</button></p>
 <input type="search" placeholder="Search the manual" aria-label="Search the manual">
@@ -75,7 +75,7 @@ type the word.</p>
 <tr><td><code>*centred-text-width*</code></td><td><code>80</code></td><td>a whole number, 1 or more</td><td>How many columns of text a buffer shows when its text is centred with M-x centred-text-mode.</td></tr>
 <tr><td><code>*client-kept-without-buffers*</code></td><td><code>:first</code></td><td>:first, :last, :all, nil</td><td>Which clients of a daemon stay when their last buffer is closed.</td></tr>
 <tr><td><code>*clipboard-size-limit*</code></td><td><code>8388608</code></td><td>a whole number, 0 or more</td><td>The most characters a kill may have and still go on the system clipboard.</td></tr>
-<tr><td><code>*code-files-make-directories*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether tangle-code-files makes the directories a file goes in.</td></tr>
+<tr><td><code>*code-files-make-directories*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether tangle-all-code-blocks makes the directories a file goes in.</td></tr>
 <tr><td><code>*comment-column*</code></td><td><code>40</code></td><td>a whole number, 0 or more</td><td>The column a comment at the end of a line of code goes to: where M-x comment-dwim begins one, and, in Lisp, where indenting puts a line holding only a comment begun with one semicolon.</td></tr>
 <tr><td><code>*compile-command*</code></td><td><code>&quot;make -k &quot;</code></td><td>text</td><td>The command M-x compile offers the first time, before you have typed one; after that it offers the one typed last.</td></tr>
 <tr><td><code>*compile-output-limit*</code></td><td><code>268435456</code></td><td>nil, or a whole number of octets, 0 or more, or a size in words such as 512M, 1.5G or 20 GB (in 1024s: 1K is 1024 octets), at most 4E</td><td>The most octets of a command's output M-x compile keeps in <strong>compile</strong>.</td></tr>
@@ -189,7 +189,7 @@ type the word.</p>
 <tr><td><code>*line-numbers-modes*</code></td><td><code>nil</code></td><td>a list, each a pair (A . B), A a symbol and B nil, :absolute, :relative</td><td>Major modes whose buffers show line numbers in the gutter, or not: a list of (MODE .</td></tr>
 <tr><td><code>*line-record-modes*</code></td><td><code>(tuatara.defaults::log-mode tuatara.defa...</code></td><td>a list, each a symbol</td><td>The major modes whose files hold a record a line, as a log does.</td></tr>
 <tr><td><code>*list-header-lock*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether the header of a file of records stays at the top of the window as the rest scrolls under it, wherever there is one: a CSV's first line, a log's once M-x list-toggle-header makes it a header.</td></tr>
-<tr><td><code>*logos-directory*</code></td><td><code>nil</code></td><td>nil, or a directory's name</td><td>The directory of the pictures your templates ask a note for.</td></tr>
+<tr><td><code>*logos-directory*</code></td><td><code>nil</code></td><td>nil, or a directory's name, or a list, each a directory's name</td><td>The directory, or directories, of the pictures your templates ask a note for.</td></tr>
 <tr><td><code>*lsp-code-lenses*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether what language servers say of lines (3 references, Run test) is shown faint at each line's end.</td></tr>
 <tr><td><code>*lsp-diagnostics-display*</code></td><td><code>:box</code></td><td>:box, :echo, nil</td><td>How what a language server found where the cursor rests is said.</td></tr>
 <tr><td><code>*lsp-diagnostics-style*</code></td><td><code>:wave</code></td><td>:wave, :dotted, :line, :background</td><td>How the text a language server finds something wrong in is marked.</td></tr>
@@ -198,7 +198,7 @@ type the word.</p>
 <tr><td><code>*lsp-idle-delay*</code></td><td><code>0.5</code></td><td>a number of seconds, 0 or more, or a time in words such as 500ms, 90s, 30m or 2h, at most a hundred years</td><td>How long the cursor rests before what is known of where it stands is shown: what a server found wrong there, the parameters of the call, what the thing is.</td></tr>
 <tr><td><code>*lsp-inlay-hints*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether language servers' inlay hints are shown within the code: the types of bindings, the names of the parameters arguments go to.</td></tr>
 <tr><td><code>*lsp-languages*</code></td><td><code>t</code></td><td>t, or a list, each a language's name, or :not first</td><td>The languages whose language servers are used.</td></tr>
-<tr><td><code>*lsp-largest-document*</code></td><td><code>8388608</code></td><td>a whole number of octets, 1 or more, or a size in words such as 512M, 1.5G or 20 GB (in 1024s: 1K is 1024 octets), at most 4E</td><td>The largest document, in octets, given to a language server: a file's whole text, or the code of a note's source blocks of one language, however large the note.</td></tr>
+<tr><td><code>*lsp-largest-document*</code></td><td><code>8388608</code></td><td>a whole number of octets, 1 or more, or a size in words such as 512M, 1.5G or 20 GB (in 1024s: 1K is 1024 octets), at most 4E</td><td>The largest document, in octets, given to a language server or a formatter: a file's whole text, or the code of a note's source blocks of one language, however large the note.</td></tr>
 <tr><td><code>*lsp-largest-message*</code></td><td><code>33554432</code></td><td>a whole number of octets, 1 or more, or a size in words such as 512M, 1.5G or 20 GB (in 1024s: 1K is 1024 octets), at most 4E</td><td>The largest message read from a language server, in octets: a larger one is let go unread, said so.</td></tr>
 <tr><td><code>*lsp-outline*</code></td><td><code>t</code></td><td>t, nil</td><td>Whether M-x buffer-outline lists a file's names as its language server knows them (functions, types, their fields and methods, nested), where it has one that does.</td></tr>
 <tr><td><code>*lsp-semantic-faces*</code></td><td><code>((&quot;namespace&quot; . :namespace) (&quot;type&quot; . :t...</code></td><td>a list, each (KIND . FACE)</td><td>The face each kind of name a language server tells apart is coloured in; a kind not listed keeps the mode's colour.</td></tr>
@@ -232,7 +232,7 @@ type the word.</p>
 <tr><td><code>*org-agenda-event-kind-text*</code></td><td><code>&quot;Event:&quot;</code></td><td>nil, or text</td><td>What the agenda's column of kinds says on the line of an event.</td></tr>
 <tr><td><code>*org-agenda-files*</code></td><td><code>(&quot;~/org/agenda.org&quot;)</code></td><td>a list, each a file's name</td><td>The files the agenda reads.</td></tr>
 <tr><td><code>*org-agenda-log-mode*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether the agenda lists what was closed and clocked on each day too.</td></tr>
-<tr><td><code>*org-agenda-refresh-minutes*</code></td><td><code>10</code></td><td>nil, or a number of minutes, 0 or more, or a time in words such as 500ms, 90s, 30m or 2h, at most a hundred years</td><td>How often an agenda shown is drawn again by itself, in minutes.</td></tr>
+<tr><td><code>*org-agenda-refresh-minutes*</code></td><td><code>10</code></td><td>nil, or a number of minutes, 1 or more, or a time in words such as 500ms, 90s, 30m or 2h, at most a hundred years</td><td>How often an agenda shown is drawn again by itself, in minutes.</td></tr>
 <tr><td><code>*org-agenda-reminder-kind-text*</code></td><td><code>&quot;Reminder:&quot;</code></td><td>nil, or text</td><td>What the agenda's column of kinds says on the line of a reminder.</td></tr>
 <tr><td><code>*org-agenda-span*</code></td><td><code>:week</code></td><td>:day, :week, :month, :year, or a whole number, 1 or more</td><td>How many days M-x org-agenda's agenda shows.</td></tr>
 <tr><td><code>*org-agenda-start-on-weekday*</code></td><td><code>1</code></td><td>nil, or a whole number from 0 to 7</td><td>The day a week's agenda starts on.</td></tr>
@@ -368,7 +368,7 @@ type the word.</p>
 <tr><td><code>*terminal-place*</code></td><td><code>:bottom</code></td><td>:bottom, :top, :left, :right, :full</td><td>Where a terminal shows (M-x terminal, M-x terminal-toggle).</td></tr>
 <tr><td><code>*terminal-program*</code></td><td><code>nil</code></td><td>nil, or a list, each text</td><td>The program M-x terminal runs.</td></tr>
 <tr><td><code>*terminal-scrollback*</code></td><td><code>100000</code></td><td>a whole number, 0 or more</td><td>How many lines a terminal (M-x terminal) keeps that have gone up off its screen.</td></tr>
-<tr><td><code>*terminal-send-escape*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether Escape goes to a full-screen program in a terminal (one on the alternate screen: nvim, less, htop) even while <strong>ESCAPE-QUITS</strong> is on.</td></tr>
+<tr><td><code>*terminal-send-escape*</code></td><td><code>nil</code></td><td>t, nil</td><td>Whether Escape goes to a full-screen program in a terminal (one on the alternate screen: less, htop, top) even while <strong>ESCAPE-QUITS</strong> is on.</td></tr>
 <tr><td><code>*terminal-size*</code></td><td><code>0.3</code></td><td>a number, 0 or more</td><td>How high a terminal's window is at the bottom or top of the screen (<strong>TERMINAL-PLACE</strong>, M-x terminal-bottom, M-x terminal-top).</td></tr>
 <tr><td><code>*terminal-title-limit*</code></td><td><code>40</code></td><td>nil, or a whole number, 0 or more</td><td>The most columns of a terminal's title (as the shell gives it, user@host:~/dir in many) the mode line shows.</td></tr>
 <tr><td><code>*terminal-width*</code></td><td><code>0.5</code></td><td>a number, 0 or more</td><td>How wide a terminal's window is at the left or right of the screen (<strong>TERMINAL-PLACE</strong>, M-x terminal-left, M-x terminal-right).</td></tr>

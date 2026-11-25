@@ -13,7 +13,7 @@
 <div class="site">
 <nav class="toc" id="contents" aria-label="Contents">
 <strong>Tuatara Manual</strong>
-<small>for version 0.90.43</small>
+<small>for version 0.90.44</small>
 <p class="tools"><a href="all.html">All on one page</a>
 <button type="button" class="theme" hidden>Dark</button></p>
 <input type="search" placeholder="Search the manual" aria-label="Search the manual">
@@ -478,7 +478,8 @@ Tuatara never waits on it. With a number, a sort runs in descending order.</p>
 <p>None of these has a key. Run them with <kbd>M-x</kbd>. <code>flush-lines</code> and <code>keep-lines</code> use
 the same pattern rules as search, which chapter 6 describes. In a CSV file or a
 log they first ask which column to try the pattern on, and a header line always
-stays.</p>
+stays. A line longer than 16 MiB would have its column tried on its first
+16 MiB alone, so then nothing is deleted, and the echo area says so.</p>
 <p>A selection of any size can be sorted by line, reversed or cleared of duplicate
 lines: past 32 MB or about four million lines the work goes to disk in pieces.
 <code>sort-paragraphs</code>, <code>sort-pages</code>, <code>sort-regexp-fields</code> and the sorts of records

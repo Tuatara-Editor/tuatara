@@ -13,7 +13,7 @@
 <div class="site">
 <nav class="toc" id="contents" aria-label="Contents">
 <strong>Tuatara Manual</strong>
-<small>for version 0.90.43</small>
+<small>for version 0.90.44</small>
 <p class="tools"><a href="all.html">All on one page</a>
 <button type="button" class="theme" hidden>Dark</button></p>
 <input type="search" placeholder="Search the manual" aria-label="Search the manual">
@@ -543,8 +543,11 @@ own, <code>https://github.com/Tuatara-Editor/tuatara-NAME</code>, for the name o
 package. You load one with its address as the source, no <code>package-source</code>
 line needed. Each package's README, in its repository, says what the package
 is and how to install it. Its manual, on the project's site, gives the rest,
-and its settings show in <code>C-h v</code> once it is loaded. Every package
-puts its commands under a prefix of its own, <kbd>C-c</kbd> and a letter.</p>
+and its settings show in <code>C-h v</code> once it is loaded. A package's commands are
+on <kbd>C-c</kbd> keys: straight after <kbd>C-c</kbd> in a mode of its own, such as palimpsest's
+report, and after a letter of its own in a mode it shares, such as facematch's
+<kbd>C-c f</kbd> in rimu. No package binds a key of one character; its README gives the
+lines for your init file that bind them, if you want them.</p>
 <h3 id="palimpsest"><span class="num">19.8.1</span> palimpsest</h3>
 <p>A PDF can be saved over and over, and each save can leave the earlier text in
 the file. palimpsest takes a PDF apart into every save it holds, from the
@@ -552,8 +555,8 @@ original to the latest edit, and looks for the signs of editing that examiners
 of documents know. It reads the file's own bytes and runs nothing in it, and it
 never changes the file. <kbd>M-x palimpsest</kbd> examines the PDF you are looking at,
 or asks for one. The report is made in the background and lists findings with
-the strongest first. In the report, <kbd>C-c p</kbd> is the prefix for its other
-commands, such as saving a revision as a PDF of its own.
+the strongest first. In the report, its other commands are a letter after
+<kbd>C-c</kbd>, such as <kbd>C-c w</kbd> to save a revision as a PDF of its own.
 Its manual is at
 <a href="https://tuatara-editor.github.io/tuatara-palimpsest/">tuatara-editor.github.io/tuatara-palimpsest</a>.</p>
 <h3 id="csvdt"><span class="num">19.8.2</span> csvdt</h3>
@@ -601,9 +604,9 @@ Its manual is at
 <p>outlook opens Outlook items (<code>.msg</code>), saved mail (<code>.eml</code>) and mailboxes
 (<code>.pst</code>, <code>.ost</code>) as messages, read only. It was made for looking at mail as
 evidence: nothing in a message runs, and attachments open only when you ask,
-from private copies. In a message, <kbd>P</kbd> shows it as it looks, <kbd>O</kbd> opens an
-attachment in the desktop's own program after asking, and <kbd>C-c o</kbd> is the
-prefix for the same commands. In a mailbox, <kbd>C</kbd> copies messages out. A
+from private copies. In a message, <kbd>C-c p</kbd> shows it as it looks and <kbd>C-c o</kbd>
+opens an attachment in the desktop's own program after asking. In a mailbox,
+<kbd>C-c c</kbd> copies messages out. A
 mailbox is read by the package itself, shut in the sandbox (chapter 12), and
 what it wrote stays in Tuatara's cache (chapter 9, &quot;The cache&quot;), so the same
 mailbox opens again without being read. It needs WeasyPrint.
