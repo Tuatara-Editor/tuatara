@@ -243,7 +243,7 @@ keys, faces and themes.
 
 * Status
 
-Version 0.90.45, a pre-release: in daily use by its author, its parts tested
+Version 0.90.46, a pre-release: in daily use by its author, its parts tested
 (=tools/test.sh=, about 225,000 checks), its interfaces still changing until
 1.0.0, the first stable release.
 

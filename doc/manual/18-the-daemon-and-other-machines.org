@@ -85,8 +85,10 @@ use =daemon-quit= or =tuatara --stop=.
 
 A client also closes when its last buffer is closed. If you press ~C-x k~ on
 the only buffer a client has, the client ends as if you had pressed ~C-x C-c~.
-The scratch buffer that every new client starts with does not count while you
-have typed nothing in it.
+The scratch buffer that every new client starts with (=*lisp-scratch*<2>=
+and so on, or those =*auto-scratch-buffers*= names) counts as one of its
+buffers: a client started on a file stays on its scratch buffer when the file
+is closed, and ends when that is closed too.
 
 Two clients can have the same buffer, when both opened the same file. ~C-x k~
 in one of them only takes the buffer from that client: its windows show

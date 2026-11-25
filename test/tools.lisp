@@ -1805,6 +1805,23 @@ fifty) and each seed of the others to be spoilt a few times.")
           (true (search "nothing done" error) "~a" error)))
       (skip "the starters run in SBCL, not in Tuatara's own program" (true t))))
 
+(define-test (tools this-tree-through-a-link)
+  ;; the tree reached through a symbolic link, as /home is a link to /var/home on some systems, is the same tree
+  (if (string-equal "sbcl" (pathname-name sb-ext:*runtime-pathname*))
+      (with-test-directory (other)
+        (let ((link (concatenate 'string (namestring other) "tree")))
+          (sb-posix:symlink (string-right-trim "/" (namestring (asdf:system-source-directory :tuatara))) link)
+          (multiple-value-bind (output error code)
+              (uiop:run-program (list (namestring sb-ext:*runtime-pathname*) "--non-interactive" "--no-userinit"
+                                      "--no-sysinit" "--load" (tools-script "this-tree.lisp")
+                                      "--eval" (format nil "(tuatara.this-tree:load-this-tree '() :tree ~s)"
+                                                       (concatenate 'string link "/"))
+                                      "--eval" "(format t \"loaded~%\")")
+                                :output :string :error-output :string :ignore-error-status t)
+            (is eql 0 code "~a" error)
+            (true (search "loaded" output) "~a" error))))
+      (skip "the starters run in SBCL, not in Tuatara's own program" (true t))))
+
 (define-test (tools inside-scripts-in-files-of-their-own)
   ;; what the tools run inside the toolbox is a script of its own, run by its name with bash, never a program in
   ;; quotes given to bash -c, and each passes shellcheck where it is installed

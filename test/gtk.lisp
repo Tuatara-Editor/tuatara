@@ -408,6 +408,37 @@ Adwaita Mono 11 on ao-dark."
         (let ((kept (painted-pixels f (frame 4) width height)))
           (is equalp (with-painting-window (g) (painted-pixels g (frame 4) width height)) kept))))))
 
+(define-test (gtk rows-with-gaps-changed-painted-whole)
+  ;; rows whose gaps between sentences grew or shrank, one or more on a row, one growing as another shrinks:
+  ;; painted as when painted whole, the letter after each gap kept
+  ;; both windows made first: one made later would have the rows kept by the other painted afresh
+  (with-painting-window (f)
+    (with-painting-window (whole)
+      (flet ((frame (gap other)
+               (tuatara.frontend.gtk:make-frame
+                (coerce (loop for text in '("We reached the creek at six.~aThe mist was still low on"
+                                            "the water.~aAroha counted.~aKiri walked.~aBy nine"
+                                            "Dr. Rua joined us.~aBy nine we had logged.~aDusk.")
+                              collect (list (format nil text gap other gap) nil '()))
+                        'vector))))
+        (let ((width (+ 12 (* 60 (tuatara.frontend.gtk::cell-width f))))
+              (height (+ 8 (* 3 (tuatara.frontend.gtk::cell-height f))))
+              (in-part 0))
+          ;; the rows kept are painted again in part, not whole, or nothing is shown here
+          (sb-int:encapsulate 'tuatara.frontend.gtk::changed-columns 'counted
+                              (lambda (function &rest arguments)
+                                (let ((results (multiple-value-list (apply function arguments))))
+                                  (when (first results) (incf in-part))
+                                  (values-list results))))
+          (unwind-protect
+               (loop for (gap other) in '((" " " ") ("  " "  ") (" " " ") ("  " " ") (" " "  "))
+                     for kept = (painted-pixels f (frame gap other) width height)
+                     do (tuatara.frontend.gtk::forget-kept-rows whole)
+                        (is equalp (painted-pixels whole (frame gap other) width height) kept
+                            "gaps of ~d and ~d painted as when painted whole" (length gap) (length other)))
+            (sb-int:unencapsulate 'tuatara.frontend.gtk::changed-columns 'counted))
+          (true (<= 12 in-part) "~d rows painted again in part" in-part))))))
+
 (define-test (gtk rows-unchanged-make-nothing)
   ;; a frame the same as the one before, its rows made anew as the editor makes them, makes nothing of what its
   ;; rows show to compare, nor looks for the text moved; one row changed makes that row's alone

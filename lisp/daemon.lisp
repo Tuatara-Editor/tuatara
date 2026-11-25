@@ -580,25 +580,23 @@ Its other buffers stay, unsaved ones too, in a group of their own in
 ended (END-CLIENTS-WITHOUT-BUFFERS).")
 
 (defun client-has-work-in-p (client buffer)
-  "True when BUFFER is one of CLIENT's that holds something of its own: any
-but a scratch buffer of CLIENT's (CLIENT-SCRATCH) while nothing is typed in
-it. A buffer a client that ended had and another took up is the other's
+  "True when BUFFER is one of CLIENT's that keeps it running: any of its own,
+the scratch buffers it was given (CLIENT-SCRATCH) among them, typed in or
+not. A buffer a client that ended had and another took up is the other's
 alone (BUFFER-CLIENTS names the clients that have it); a buffer shown to
 everyone, as *Messages*, is no one's; and the buffer list holds nothing of its
 own, so that killing a client's last buffer from it ends that client as
 \\[kill-buffer] there would."
   (and (member client (buffer-clients buffer))
-       (not (typep (buffer-major-mode buffer) 'buffers-mode))
-       (not (and (tuatara.buffer:buffer-local buffer :client-scratch)
-                 (not (tuatara.buffer:buffer-modified-p buffer))))))
+       (not (typep (buffer-major-mode buffer) 'buffers-mode))))
 
 (defun note-client-without-buffers (buffer &optional (clients (buffer-clients buffer)))
   "Kill-buffer function: note each client that has BUFFER, about to be killed,
 and no other buffer holding something of its own (CLIENT-HAS-WORK-IN-P): its
 last is closed. CLIENTS are those losing BUFFER: by default all that have
-it, or the one that leaves it (LEAVE-SHARED-BUFFER). A client started with
-no files is not noted until a buffer of its own has been closed, its scratch
-buffer being all it has."
+it, or the one that leaves it (LEAVE-SHARED-BUFFER). Its scratch buffers
+count as its own: a client is noted only once every buffer it has, those
+included, is closed."
   (dolist (client clients)
     (when (and (client-remote client) (not (client-ended client))
                (notany (lambda (other) (and (not (eq other buffer)) (client-has-work-in-p client other)))
