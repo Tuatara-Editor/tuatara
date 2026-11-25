@@ -66,7 +66,7 @@ STRINGS, as a list of numbers, NIL when it wants none."
          (needs (elf-octets fd window start size name))
          (highest nil))
     (flet ((field (at bytes)
-             (if (<= 0 at (- window bytes)) (tuatara.io:octets-integer needs at bytes) 0)))
+             (if (<= 0 at (- window bytes)) (tuatara.text:octets-integer needs at bytes) 0)))
       (let ((at 0))
         (loop repeat (min count 256)
               do (tuatara.runtime:job-check-stop)
@@ -76,9 +76,9 @@ STRINGS, as a list of numbers, NIL when it wants none."
                            (when text
                              (let ((version (if (string= text "GLIBC_ABI_DT_RELR")
                                                 '(2 36)
-                                                (tuatara.io:software-version-numbers text "^GLIBC_"))))
+                                                (tuatara.text:software-version-numbers text "^GLIBC_"))))
                                (when (and version (or (null highest)
-                                                      (tuatara.io:software-version-at-least-p version highest)))
+                                                      (tuatara.text:software-version-at-least-p version highest)))
                                  (setf highest version)))))
                       (setf auxiliary (+ auxiliary (field (+ auxiliary 12) 4)))))
               (let ((next (field (+ at 12) 4)))
@@ -95,7 +95,7 @@ version of glibc it wants as a list of numbers, or NIL. It is refused with
 words saying why for anything but a 64-bit little-endian program, and for a
 script."
   (let ((head (tuatara.io:read-fd-exactly fd (min size 64) 0)))
-    (flet ((u (at bytes) (tuatara.io:octets-integer head at bytes)))
+    (flet ((u (at bytes) (tuatara.text:octets-integer head at bytes)))
       (cond ((or (null head) (< (length head) 64))
              (refuse "~a is too short to be a program" name))
             ((and (= (aref head 0) 35) (= (aref head 1) 33))
@@ -110,10 +110,10 @@ script."
                 (unless (and (= entry 56) (<= count 256)) (refuse "~a has a program table not understood" name))
                 (let ((octets (elf-octets fd (* 56 count) table size name)))
                   (loop for at from 0 below (* 56 count) by 56
-                        collect (list (tuatara.io:octets-integer octets at 4)
-                                      (tuatara.io:octets-integer octets (+ at 8) 8)
-                                      (tuatara.io:octets-integer octets (+ at 16) 8)
-                                      (tuatara.io:octets-integer octets (+ at 32) 8)))))))
+                        collect (list (tuatara.text:octets-integer octets at 4)
+                                      (tuatara.text:octets-integer octets (+ at 8) 8)
+                                      (tuatara.text:octets-integer octets (+ at 16) 8)
+                                      (tuatara.text:octets-integer octets (+ at 32) 8)))))))
         (flet ((segment (type) (find type segments :key #'first))
                (file-at (address)
                  (loop for (type offset start length) in segments
@@ -128,8 +128,8 @@ script."
               (when (> (fourth dynamic) (* 16 4096)) (refuse "~a has too large a table of what it needs" name))
               (let ((octets (elf-octets fd (fourth dynamic) (second dynamic) size name)))
                 (loop for at from 0 to (- (length octets) 16) by 16
-                      for tag = (tuatara.io:octets-integer octets at 8)
-                      for value = (tuatara.io:octets-integer octets (+ at 8) 8)
+                      for tag = (tuatara.text:octets-integer octets at 8)
+                      for value = (tuatara.text:octets-integer octets (+ at 8) 8)
                       until (zerop tag)
                       do (case tag
                            (1 (when (< (length needed) 256) (push value needed)))
@@ -170,7 +170,7 @@ be reached, is a kind not known or says no number for the account."
               (let ((version (third lines)))
                 (and version
                      (cl-ppcre:scan "^glibc \\d+\\.\\d+$" version)
-                     (tuatara.io:software-version-numbers version "^glibc ")))))))
+                     (tuatara.text:software-version-numbers version "^glibc ")))))))
 
 (defun refuse-unless-it-fits (needs name host machine glibc)
   "Refuse, saying why, when the program NAME, needing NEEDS (ELF-PROGRAM-NEEDS),
@@ -187,7 +187,7 @@ would not run on HOST, a server of the kind MACHINE with the glibc GLIBC."
       (refuse "~a is started by ~a, which ~a may not have: it needs a self-contained build" name
               (or loader "a loader of its own") host))
     (let ((wanted (getf needs :glibc)))
-      (when (and loader wanted (not (and glibc (tuatara.io:software-version-at-least-p glibc wanted))))
+      (when (and loader wanted (not (and glibc (tuatara.text:software-version-at-least-p glibc wanted))))
         (refuse "~a wants glibc ~{~a~^.~} or later and ~a has ~:[none that says so~;~:*~{~a~^.~}~]" name wanted host
                 glibc)))))
 

@@ -235,7 +235,8 @@ next shown, *LSP-LENS-RESOLVE-TRIES* times in all."
                            ;; asked again once the lines are shown anew
                            (setf (tuatara.buffer:buffer-local buffer 'lsp-lens-lines) nil))
                        (when (and (zerop (decf waiting)) resolved (doc-unchanged-p doc version))
-                         (show-lenses buffer doc server lenses))))))))
+                         (show-lenses buffer doc server lenses)))
+                     :seconds *lsp-wait*)))))
 
 (defun resolve-shown-lenses (buffer shown)
   "Have what the code lenses of BUFFER on the lines SHOWN, (FIRST . LAST),

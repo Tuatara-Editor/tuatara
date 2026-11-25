@@ -1068,7 +1068,7 @@ program writing as it goes makes them: each entry's sizes after its data."
 (define-test (rimu pictures-in-kitty)
   ;; base 64, as the terminal reads it
   (flet ((b64 (text) (let ((o (map '(simple-array (unsigned-byte 8) (*)) #'char-code text)))
-                       (tuatara.io:base64-string o))))
+                       (tuatara.text:base64-string o))))
     (is string= "TWFu" (b64 "Man"))
     (is string= "TWE=" (b64 "Ma"))
     (is string= "TQ==" (b64 "M"))
@@ -1079,9 +1079,9 @@ program writing as it goes makes them: each entry's sizes after its data."
                          :element-type '(unsigned-byte 8)
                          :initial-contents (loop for k below length collect (- 255 (* 37 k))))))
       (is equalp o
-          (tuatara.io:base64-octets (map '(vector (unsigned-byte 8)) #'char-code (tuatara.io:base64-string o))))))
+          (tuatara.text:base64-octets (map '(vector (unsigned-byte 8)) #'char-code (tuatara.text:base64-string o))))))
   (is string= "YW4"
-      (subseq (tuatara.io:base64-string (map '(vector (unsigned-byte 8)) #'char-code "xan") :start 1) 0 3))
+      (subseq (tuatara.text:base64-string (map '(vector (unsigned-byte 8)) #'char-code "xan") :start 1) 0 3))
   ;; a picture sent: its size and kind, in pieces of 4096 digits, the terminal to answer nothing
   (let* ((image (tuatara.frontend:make-image 40 40 4
                                              (make-array 6400 :element-type '(unsigned-byte 8) :initial-element 7)))
@@ -1469,12 +1469,12 @@ and the editor."
 (define-test (rimu texts)
   ;; sizes as ls -h writes them, every figure rounded up
   (is equal '("0" "1023" "1.0K" "4.1K" "10K" "24K" "1.0M" "1.5M" "12G")
-      (mapcar (lambda (n) (tuatara.io:octets-words n :compact t))
+      (mapcar (lambda (n) (tuatara.text:octets-words n :compact t))
               (list 0 1023 1024 4097 10239 24576 1048575 1572864 (* 12 1024 1024 1024))))
   ;; the room left on a disk in units of 1,024
-  (is string= "954.0 MiB" (tuatara.io:octets-words (* 954 1024 1024) :binary t))
-  (is string= "1.2 TiB" (tuatara.io:octets-words (round (* 1.2 (expt 1024 4))) :binary t))
-  (is string= "12.3 MB" (tuatara.io:octets-words 12300000))
+  (is string= "954.0 MiB" (tuatara.text:octets-words (* 954 1024 1024) :binary t))
+  (is string= "1.2 TiB" (tuatara.text:octets-words (round (* 1.2 (expt 1024 4))) :binary t))
+  (is string= "12.3 MB" (tuatara.text:octets-words 12300000))
   ;; the time within half a year, else the year
   (let* ((now (encode-universal-time 0 0 12 30 9 2026))
          (nanoseconds (lambda (universal) (* (- universal tuatara.dates:+unix-epoch+) 1000000000))))

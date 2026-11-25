@@ -234,10 +234,9 @@ prefixes."
                                       (setf value (+ (* value 10) (- (char-code (schar digits k)) 48)))))
                                   high)))))))
 
-(defun luhn-p (digits &optional (length (length digits)))
-  "True when the first LENGTH of DIGITS, a string of digits, pass the Luhn
-check (ISO/IEC 7812): every second digit from the last doubled, nine taken
-off a double past nine, the sum a multiple of ten."
+(defun luhn-sum-ok-p (digits length)
+  "True when the first LENGTH characters of DIGITS, known to be digits, pass
+the Luhn check (LUHN-P)."
   (let ((sum 0))
     (loop for i from (1- length) downto 0
           for count from 0
@@ -247,6 +246,15 @@ off a double past nine, the sum a multiple of ten."
                  (when (> digit 9) (decf digit 9)))
                (incf sum digit)))
     (zerop (mod sum 10))))
+
+(defun luhn-p (digits &optional (length (length digits)))
+  "True when the first LENGTH of DIGITS, a string of digits, pass the Luhn
+check (ISO/IEC 7812): every second digit from the last doubled, nine taken
+off a double past nine, the sum a multiple of ten. False for none, and for
+anything but digits."
+  (and (plusp length)
+       (loop for i below length always (char<= #\0 (char digits i) #\9))
+       (luhn-sum-ok-p digits length)))
 
 (defun card-end (text start end networks)
   "Where the card number that begins at START of TEXT (before END) ends, or
@@ -266,7 +274,7 @@ the Luhn check, and are followed by no digit."
                       (or (= length count) (find length gaps :end gap-count))
                       (grouped-in-fours-p gaps gap-count length (and (member length '(14 15)) '(4 10)))
                       (loop for network in networks thereis (card-network-p digits length network))
-                      (luhn-p digits length))
+                      (luhn-sum-ok-p digits length))
               return after))))
 
 (defun text-filter (function &rest arguments)
@@ -304,10 +312,9 @@ registry (SWIFT, for ISO 13616) lists them.")
 when the country has none."
   (cdr (assoc country *iban-lengths* :test #'string=)))
 
-(defun iban-check-p (iban &optional (length (length iban)))
-  "True when the first LENGTH characters of IBAN, without spaces, pass ISO
-7064 MOD 97-10: its first four put last, each letter written as its number
-\(A 10 to Z 35), the whole leaves 1 when divided by 97."
+(defun iban-sum-ok-p (iban length)
+  "True when the first LENGTH characters of IBAN, known to be letters and
+digits, pass the check of IBAN-CHECK-P."
   (let ((rest 0))
     (flet ((add (c)
              (let ((value (digit-char-p c 36)))
@@ -315,6 +322,17 @@ when the country has none."
       (loop for i from 4 below length do (add (char iban i)))
       (loop for i from 0 below 4 do (add (char iban i))))
     (= rest 1)))
+
+(defun iban-check-p (iban &optional (length (length iban)))
+  "True when the first LENGTH characters of IBAN, without spaces, pass ISO
+7064 MOD 97-10: its first four put last, each letter written as its number
+\(A 10 to Z 35), the whole leaves 1 when divided by 97. False for fewer than
+four characters, and for any but the letters A to Z and digits."
+  (and (>= length 4)
+       (loop for i below length
+             always (let ((c (char iban i)))
+                      (or (char<= #\0 c #\9) (char<= #\a c #\z) (char<= #\A c #\Z))))
+       (iban-sum-ok-p iban length)))
 
 (defun iban-end (text start end)
   "Where the IBAN that begins at START of TEXT (before END) ends, or NIL when
@@ -338,7 +356,7 @@ all small."
                  (grouped-in-fours-p gaps gap-count length)
                  (one-case-p iban length)
                  (char<= #\0 (schar iban 2) #\9) (char<= #\0 (schar iban 3) #\9)
-                 (iban-check-p iban length)
+                 (iban-sum-ok-p iban length)
                  after)))))))
 
 (defparameter *sha256-constants*

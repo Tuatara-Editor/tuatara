@@ -1,78 +1,51 @@
 #!/usr/bin/env python3
 # tools/long-prompts.py --- List the questions asked at a long prompt with no details beside it.
 # Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
-"""List the questions whose prompt is built from more than 80 columns of text and that give no :details.
+"""List the questions whose prompt is long or says more than what is asked, and that give no :details.
 
 Usage: tools/long-prompts.py [--summary] [--packages] [ROOT...]
 
 Each ROOT is a repository (the current directory when left out); with
 --packages the package repositories beside this one (../tuatara-packages/*/)
-are looked at as well. Test files are left out. A question is a call of one of
-the question functions (QUESTIONS), with or without a package name before it.
-Its prompt is its first argument, and the text it is built from is every
-string written in that argument (a format control string's line breaks after
-a tilde left out, and of branches such as an IF's or a format choice's only
-the longest). A prompt
+are looked at as well. Test files are left out. A question function is one
+the editor defines (this checkout's own sources are always read for them)
+with a required parameter called PROMPT or QUESTION, and a question is a call
+of one, with or without a package name before it, that argument being its
+prompt. The prompt's length is the text it is built from: every string
+written in it (a format control string's line breaks after a tilde left out,
+and of branches such as an IF's or a format choice's only the longest), each
+argument a format control writes counting ARGUMENT_WIDTH columns. A prompt
 that is a variable is measured by the form the nearest LET-style binding
-before the call gives it, and one that is a call of a function defined in the
-same file by the form that function returns. A variable in the prompt that
-a LET-style binding gives a call of such a function that returns a FORMAT counts
-that format control's text as well. A question asked at such
-a prompt should keep the prompt to the thing asked and its keys, the rest
-given as :details. Prints one line per question as FILE:LINE: NAME COLUMNS,
-then the total. With --summary it prints the count for each file instead. The
-list is for a reviewer to judge: it always exits with 0.
+before the call gives it, and one that is a call of a function the editor or
+the file defines by the form that function returns. A variable in the prompt
+that a LET-style binding gives a call of such a function that returns a
+FORMAT counts that format control's text as well. A prompt is listed when its
+text is more than LIMIT columns, or whatever its length when it formats a path
+(path), a list (list) or more than keys after its question mark (after ?).
+Such a question should keep the prompt to the thing asked and its keys, the
+rest given as :details. Prints one line per question as
+REPOSITORY/FILE:LINE: NAME COLUMNS and what else it does, with where the
+prompt is made when that is in another file, then the total. With --summary
+it prints the count for each file instead. The list is for a reviewer to
+judge: it always exits with 0.
 """
 import re
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from repositories import lisp_files, package_roots
+from lisp_text import Atom, Form, read_forms
+from repositories import lisp_files, report, report_roots
 
-QUESTIONS = {
-    "read-answer-key", "y-or-n-p*", "yes-or-no-p*", "read-string", "completing-read", "completing-read-value",
-    "read-password", "read-typed-answer", "read-whole-number", "read-decimal-number", "read-fraction",
-    "read-several", "read-path", "read-file-path", "read-directory-path", "read-native-path",
-    "read-new-native-path", "read-date",
-}
 LIMIT = 80
-TOKEN = re.compile(r'"(?:[^"\\]|\\.)*"|;[^\n]*|#\|.*?\|#|#\\.[^\s()]*|#\(|[()]|[^\s()";]+', re.S)
-
-
-class Form:
-    """A list read from the text: where it starts and what it holds (Forms, strings as str, atoms as Atom)."""
-
-    def __init__(self, start):
-        """A list begun at the offset START, empty so far."""
-        self.start = start
-        self.items = []
-
-
-class Atom(str):
-    """A symbol or number as written."""
-
-
-def read_forms(text):
-    """The top-level lists of TEXT, strings and comments read as Lisp reads them."""
-    top = Form(0)
-    stack = [top]
-    for match in TOKEN.finditer(text):
-        token = match.group()
-        if token in ("(", "#("):
-            form = Form(match.start())
-            stack[-1].items.append(form)
-            stack.append(form)
-        elif token == ")":
-            if len(stack) > 1:
-                stack.pop()
-        elif token.startswith(";") or token.startswith("#|"):
-            continue
-        elif token.startswith('"'):
-            stack[-1].items.append(re.sub(r"\\(.)", r"\1", token[1:-1], flags=re.S))
-        else:
-            stack[-1].items.append(Atom(token))
-    return [item for item in top.items if isinstance(item, Form)]
+ARGUMENT_WIDTH = 10
+# a directive of a format control that writes one argument (~a, ~:d, ~10s ...), and any directive
+ARGUMENT = re.compile(r"~(?:[0-9,#vV]|'.)*[:@]*[aAsSdDrRbBoOxXfFeEgGcC]")
+DIRECTIVE = re.compile(r"~(?:[0-9,#vV]|'.)*[:@]*.", re.S)
+PATH = re.compile(r"(^|-)(path|file|directory|filename|namestring)s?$")
+# after the last question mark keys are written in words of three letters at most: a longer word, or an argument
+# (CONTROL_TEXT's x), says more
+AFTER_QUESTION = re.compile(r"\?[^?]*[A-Za-z]{4}[^?]*$")
 
 
 BRANCHES = {"if": 2, "or": 1, "cond": 1, "case": 2, "ecase": 2, "typecase": 2, "etypecase": 2}
@@ -88,25 +61,57 @@ def longest_choices(control):
         control = cut
 
 
-def text_columns(item):
-    """How many columns of text ITEM is built from: the length of each string in it, a tilde and the line break and
-    spaces after it counting for nothing. Of the branches of an IF, OR, COND or CASE, and of the clauses of a
-    format choice, only the longest counts, as only one of them is the prompt; of an AND only the last."""
-    if isinstance(item, Form):
-        head = name_of(item.items[0]) if item.items and isinstance(item.items[0], Atom) else ""
-        if head == "and":
-            return text_columns(item.items[-1]) if len(item.items) > 1 else 0
-        if head in BRANCHES:
-            return max((text_columns(inner) for inner in item.items[BRANCHES[head]:]), default=0)
-        return sum(text_columns(inner) for inner in item.items)
-    if isinstance(item, Atom) or not isinstance(item, str):
-        return 0
-    return len(longest_choices(re.sub(r"~\n\s*", "", item)))
+def control_text(control):
+    """The text the format CONTROL string writes: its line breaks after a tilde left out, each choice cut to its
+    longest clause, each argument it writes ARGUMENT_WIDTH columns of x and its other directives nothing."""
+    control = longest_choices(re.sub(r"~\n\s*", "", control)).replace("~~", "\0")
+    return DIRECTIVE.sub("", ARGUMENT.sub("x" * ARGUMENT_WIDTH, control)).replace("\0", "~")
 
 
 def name_of(atom):
     """ATOM's symbol name in lower case, without a package name before it."""
     return atom.lower().rsplit(":", 1)[-1].lstrip("#'")
+
+
+def head_of(form):
+    """The name FORM, a list, starts with, or an empty string."""
+    return name_of(form.items[0]) if form.items and isinstance(form.items[0], Atom) else ""
+
+
+def path_like(item):
+    """Whether ITEM, an argument of a format, is a path: a variable named for one or a call that makes a name."""
+    if isinstance(item, Atom):
+        return bool(PATH.search(name_of(item)))
+    return isinstance(item, Form) and "namestring" in head_of(item)
+
+
+def measure(item):
+    """The (columns, reasons) of the prompt ITEM. COLUMNS is the length of each string in it, a format control's as
+    CONTROL_TEXT gives it; of the branches of an IF, OR, COND or CASE, and of the clauses of a format choice, only
+    the longest counts, as only one of them is the prompt; of an AND only the last. REASONS is the set of what
+    lists it whatever its length: path, list, after ?."""
+    if isinstance(item, Form):
+        head = head_of(item)
+        if head == "and":
+            return measure(item.items[-1]) if len(item.items) > 1 else (0, set())
+        if head in BRANCHES:
+            parts = [measure(inner) for inner in item.items[BRANCHES[head]:]] or [(0, set())]
+            return max(columns for columns, _ in parts), set().union(*(reasons for _, reasons in parts))
+        control = item.items[2] if head == "format" and len(item.items) > 2 else None
+        if isinstance(control, str) and not isinstance(control, Atom):
+            text = control_text(control)
+            reasons = {"list"} if "~{" in control else set()
+            if any(path_like(argument) for argument in item.items[3:]):
+                reasons.add("path")
+            if AFTER_QUESTION.search(text):
+                reasons.add("after ?")
+            return len(text), reasons
+        parts = [measure(inner) for inner in item.items]
+        return sum(columns for columns, _ in parts), set().union(set(), *(reasons for _, reasons in parts))
+    if isinstance(item, Atom) or not isinstance(item, str):
+        return 0, set()
+    text = longest_choices(re.sub(r"~\n\s*", "", item))
+    return len(text), {"after ?"} if AFTER_QUESTION.search(text) else set()
 
 
 def binding_before(forms, symbol, position):
@@ -140,85 +145,116 @@ def returned(form):
     return form
 
 
-def defined_bodies(tops):
-    """What the functions TOPS, top-level forms, define return, by name: the last form of each body, through the
-    LETs and the like around it (RETURNED)."""
-    bodies = {}
+def definitions(tops):
+    """The functions TOPS, top-level forms, define: a list of (name, required parameters, what it returns, offset).
+    What it returns is the last form of its body, through the LETs and the like around it (RETURNED)."""
+    found = []
     for top in tops:
         items = top.items
-        if len(items) > 3 and isinstance(items[0], Atom) and items[0].lower() == "defun" and isinstance(items[1], Atom):
+        if (len(items) > 3 and isinstance(items[0], Atom) and items[0].lower() == "defun"
+                and isinstance(items[1], Atom) and isinstance(items[2], Form)):
             body = items[3:]
             if len(body) > 1 and isinstance(body[0], str) and not isinstance(body[0], Atom):
                 body = body[1:]
-            bodies[name_of(items[1])] = returned(body[-1])
-    return bodies
+            required = []
+            for parameter in items[2].items:
+                if isinstance(parameter, Atom) and parameter.startswith("&"):
+                    break
+                required.append(name_of(parameter) if isinstance(parameter, Atom) else "")
+            found.append((name_of(items[1]), required, returned(body[-1]), top.start))
+    return found
 
 
-def bound_call_columns(prompt, forms, bodies, position):
+class Sources:
+    """What the files read define, for telling a question and where its prompt is made: the question functions,
+    by name, with the place of their prompt among the arguments, and what each function returns."""
+
+    def __init__(self):
+        """Nothing read yet."""
+        self.questions = {}
+        self.made = {}
+        self.forms = {}
+
+    def read(self, path, label, text):
+        """Take in the file at PATH, shown as LABEL, of TEXT."""
+        tops = read_forms(text)
+        self.forms[path] = tops
+        for name, required, made, start in definitions(tops):
+            for place, parameter in enumerate(required, 1):
+                if parameter in ("prompt", "question"):
+                    self.questions[name] = place
+                    break
+            self.made.setdefault(name, []).append((made, f"{label}:{text.count(chr(10), 0, start) + 1}", path))
+
+    def made_by(self, name, path):
+        """What the function NAME returns and where it is defined, for a call in the file at PATH: its definition
+        in that file, else its one definition elsewhere; (None, None) when there is neither."""
+        found = self.made.get(name, [])
+        mine = [(made, where) for made, where, at in found if at == path]
+        if mine:
+            return mine[-1][0], None
+        return (found[0][0], found[0][1]) if len(found) == 1 else (None, None)
+
+
+def bound_call_columns(prompt, forms, sources, path, position):
     """The columns of text a question's PROMPT gets from its variables: for each one that the nearest LET-style
-    binding before POSITION in FORMS gives a call of a function in BODIES that returns a FORMAT, that control string."""
+    binding before POSITION in FORMS gives a call of a function SOURCES knows that returns a FORMAT, that format's."""
     total = 0
     for inner in all_forms(prompt):
         for item in inner.items:
             if isinstance(item, Atom) and not item.startswith(":"):
                 bound = binding_before(forms, name_of(item), position)
-                if isinstance(bound, Form) and bound.items and isinstance(bound.items[0], Atom):
-                    made = bodies.get(name_of(bound.items[0]))
-                    if isinstance(made, Form) and len(made.items) > 2 and name_of(made.items[0]) == "format":
-                        total += text_columns(made.items[2])
+                if isinstance(bound, Form) and head_of(bound):
+                    made, _ = sources.made_by(head_of(bound), path)
+                    if isinstance(made, Form) and head_of(made) == "format":
+                        total += measure(made)[0]
     return total
 
 
-def long_prompts(text):
-    """The (line number, question name, columns) of each question in TEXT asked at a long prompt with no details."""
+def long_prompts(sources, path, text):
+    """The rows for each question in TEXT, the file at PATH, asked at a long prompt with no details, as
+    LINE: NAME COLUMNS, what else it does, and where the prompt is made when that is in another file."""
     found = []
-    tops = read_forms(text)
-    bodies = defined_bodies(tops)
-    for top in tops:
+    for top in sources.forms.get(path) or read_forms(text):
         forms = list(all_forms(top))
         for form in forms:
             items = form.items
             if len(items) < 2 or not isinstance(items[0], Atom) or items[0].startswith("#'"):
                 continue
             name = name_of(items[0])
-            if name not in QUESTIONS or any(isinstance(i, Atom) and i.lower() == ":details" for i in items[2:]):
+            place = sources.questions.get(name)
+            if (place is None or len(items) <= place
+                    or any(isinstance(i, Atom) and i.lower() == ":details" for i in items[place + 1:])):
                 continue
-            prompt = items[1]
+            prompt, elsewhere = items[place], None
             if isinstance(prompt, Atom) and not prompt.startswith(":"):
                 prompt = binding_before(forms, name_of(prompt), form.start)
-            if isinstance(prompt, Form) and prompt.items and isinstance(prompt.items[0], Atom):
-                prompt = bodies.get(name_of(prompt.items[0]), prompt)
-            columns = text_columns(prompt) if prompt is not None else 0
+            if isinstance(prompt, Form) and head_of(prompt):
+                made, where = sources.made_by(head_of(prompt), path)
+                if made is not None:
+                    prompt, elsewhere = made, where
+            columns, reasons = measure(prompt) if prompt is not None else (0, set())
             if isinstance(prompt, Form):
-                columns += bound_call_columns(prompt, forms, bodies, form.start)
-            if columns > LIMIT:
-                found.append((text.count("\n", 0, form.start) + 1, name, columns))
+                columns += bound_call_columns(prompt, forms, sources, path, form.start)
+            if columns > LIMIT or reasons:
+                row = f"{text.count(chr(10), 0, form.start) + 1}: {name} {columns}"
+                row += "".join(f", {reason}" for reason in sorted(reasons))
+                found.append(row + (f" (made at {elsewhere})" if elsewhere else ""))
     return found
 
 
 def main(argv):
     """Run the check for the command line ARGV; return the exit status."""
-    summary = "--summary" in argv
-    roots = [Path(a) for a in argv if not a.startswith("--")]
-    if "--packages" in argv:
-        roots = (roots or [Path(".")]) + package_roots()
-    roots = roots or [Path(".")]
-    total = 0
-    for root in roots:
+    sources = Sources()
+    roots = {Path(__file__).resolve().parent.parent, *(root.resolve() for root in report_roots(argv))}
+    for root in sorted(roots):
         for name in lisp_files(root):
             try:
-                text = (root / name).read_text(encoding="utf-8")
+                sources.read(root / name, f"{root.name}/{name}", (root / name).read_text(encoding="utf-8"))
             except (OSError, UnicodeDecodeError):
                 continue
-            found = long_prompts(text)
-            total += len(found)
-            if summary and found:
-                print(f"{len(found):6d} {root.resolve().name}/{name}")
-            elif not summary:
-                for number, question, columns in found:
-                    print(f"{root.resolve().name}/{name}:{number}: {question} {columns}")
-    print(f"{total} questions with a prompt of more than {LIMIT} columns of text and no details")
-    return 0
+    return report(argv, lisp_files, lambda path, text: long_prompts(sources, path.resolve(), text),
+                  "questions with a long prompt or more than keys after its question mark, and no details")
 
 
 if __name__ == "__main__":

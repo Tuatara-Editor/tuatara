@@ -556,8 +556,11 @@ own, =https://github.com/Tuatara-Editor/tuatara-NAME=, for the name of the
 package. You load one with its address as the source, no =package-source=
 line needed. Each package's README, in its repository, says what the package
 is and how to install it. Its manual, on the project's site, gives the rest,
-and its settings show in =C-h v= once it is loaded. Every package
-puts its commands under a prefix of its own, ~C-c~ and a letter.
+and its settings show in =C-h v= once it is loaded. A package's commands are
+on ~C-c~ keys: straight after ~C-c~ in a mode of its own, such as palimpsest's
+report, and after a letter of its own in a mode it shares, such as facematch's
+~C-c f~ in rimu. No package binds a key of one character; its README gives the
+lines for your init file that bind them, if you want them.
 
 *** palimpsest
 
@@ -567,8 +570,8 @@ original to the latest edit, and looks for the signs of editing that examiners
 of documents know. It reads the file's own bytes and runs nothing in it, and it
 never changes the file. ~M-x palimpsest~ examines the PDF you are looking at,
 or asks for one. The report is made in the background and lists findings with
-the strongest first. In the report, ~C-c p~ is the prefix for its other
-commands, such as saving a revision as a PDF of its own.
+the strongest first. In the report, its other commands are a letter after
+~C-c~, such as ~C-c w~ to save a revision as a PDF of its own.
 Its manual is at
 [[https://tuatara-editor.github.io/tuatara-palimpsest/][tuatara-editor.github.io/tuatara-palimpsest]].
 
@@ -628,9 +631,9 @@ Its manual is at
 outlook opens Outlook items (=.msg=), saved mail (=.eml=) and mailboxes
 (=.pst=, =.ost=) as messages, read only. It was made for looking at mail as
 evidence: nothing in a message runs, and attachments open only when you ask,
-from private copies. In a message, ~P~ shows it as it looks, ~O~ opens an
-attachment in the desktop's own program after asking, and ~C-c o~ is the
-prefix for the same commands. In a mailbox, ~C~ copies messages out. A
+from private copies. In a message, ~C-c p~ shows it as it looks and ~C-c o~
+opens an attachment in the desktop's own program after asking. In a mailbox,
+~C-c c~ copies messages out. A
 mailbox is read by the package itself, shut in the sandbox (chapter 12), and
 what it wrote stays in Tuatara's cache (chapter 9, "The cache"), so the same
 mailbox opens again without being read. It needs WeasyPrint.

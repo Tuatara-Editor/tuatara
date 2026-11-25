@@ -99,7 +99,7 @@ syntax error, for a pattern that cannot be used (REGEX-PROBLEM words why)."
                                      :shape shape :plain plain
                                      :prefix (and (or literal shape) prefix-p)
                                      :line-bound line-bound
-                                     :end-anchored (tree-has tree :modeless-end-anchor :modeless-end-anchor-no-newline)
+                                     :end-anchored (end-anchored-p tree)
                                      :context (max +regex-context+ (lookbehind-octets lines))
                                      :reach (let ((most (and thorough (not line-bound) (tree-max-octets tree))))
                                               (cond ((or (not thorough) line-bound) +regex-overlap+)
@@ -124,32 +124,128 @@ groups among them; 0 for a pattern that cannot be used."
   "The largest bound of a repeat taken as bounded by NESTED-REPEAT-TREE-P: a
 repeat up to more times counts as one without bound.")
 
+(defun class-matches-p (items inverted char)
+  "True when the set ITEMS of a parse tree's (:CHAR-CLASS ...), the whole set
+taken the other way round when INVERTED, matches CHAR in either case."
+  (flet ((one (c)
+           (some (lambda (item)
+                   (cond ((characterp item) (char= item c))
+                         ((symbolp item)
+                          (ecase item
+                            (:digit-class (char<= #\0 c #\9))
+                            (:non-digit-class (not (char<= #\0 c #\9)))
+                            (:whitespace-char-class (tuatara.text:blank-char-p c))
+                            (:non-whitespace-char-class (not (tuatara.text:blank-char-p c)))
+                            (:word-char-class (or (alphanumericp c) (char= c #\_)))
+                            (:non-word-char-class (not (or (alphanumericp c) (char= c #\_))))))
+                         ((eq (first item) :range) (char<= (second item) c (third item)))
+                         ((eq (first item) :property) (funcall (character-property (second item)) c))
+                         ((eq (first item) :inverted-property) (not (funcall (character-property (second item)) c)))))
+                 items)))
+    (let ((found (or (one char) (one (char-upcase char)) (one (char-downcase char)))))
+      (if inverted (not found) (and found t)))))
+
+(defun class-characters (items inverted)
+  "Every character the set ITEMS of a parse tree's (:CHAR-CLASS ...) matches,
+or :OPEN when there are too many to list: a set taken the other way round
+\(INVERTED), one naming a property or a class without end (\\w, \\D), or a
+range of more than 65536 characters."
+  (if inverted
+      :open
+      (let ((characters '()))
+        (dolist (item items characters)
+          (cond ((characterp item) (push item characters))
+                ((eq item :digit-class) (setf characters (append (coerce "0123456789" 'list) characters)))
+                ((eq item :whitespace-char-class) (setf characters (append tuatara.text:*blank-characters* characters)))
+                ((and (consp item) (eq (first item) :range)
+                      (<= (- (char-code (third item)) (char-code (second item))) 65536))
+                 (loop for code from (char-code (second item)) to (char-code (third item))
+                       do (push (code-char code) characters)))
+                (t (return :open)))))))
+
+(defun choices-apart-p (alternation)
+  "True when each choice of ALTERNATION, a parse tree's (:ALTERNATION ...),
+starts with a character, a set or a class (\\d, \\s) that no other choice's
+first one shares in either case, so that at any place one choice at most can
+match: (\\d|-) and (?:\\s|,) are, (a|ab) and (\\w|\\d) are not."
+  (labels ((first-set (x)
+             ;; the first character's set as (ITEMS . INVERTED), or NIL when it is not known
+             (cond ((characterp x) (list (list x)))
+                   ((stringp x) (and (plusp (length x)) (list (list (char x 0)))))
+                   ((member x '(:digit-class :non-digit-class :whitespace-char-class :non-whitespace-char-class
+                                :word-char-class :non-word-char-class))
+                    (list (list x)))
+                   ((atom x) nil)
+                   ((eq (first x) :char-class) (list (rest x)))
+                   ((eq (first x) :inverted-char-class) (cons (rest x) t))
+                   ((member (first x) '(:property :inverted-property)) (list (list x)))
+                   ((eq (first x) :sequence) (and (rest x) (first-set (second x))))
+                   ((member (first x) '(:group :register :named-register :standalone))
+                    (first-set (car (last x))))
+                   ((and (member (first x) '(:greedy-repetition :non-greedy-repetition)) (plusp (second x)))
+                    (first-set (fourth x)))
+                   (t nil)))
+           (apart-p (a b)
+             (let ((listed (class-characters (car a) (cdr a)))
+                   (other b))
+               (when (eq listed :open)
+                 (setf listed (class-characters (car b) (cdr b)) other a))
+               (and (listp listed)
+                    (notany (lambda (char) (class-matches-p (car other) (cdr other) char)) listed)))))
+    (let ((firsts (mapcar #'first-set (rest alternation))))
+      (and (every #'identity firsts)
+           (loop for (a . others) on firsts
+                 always (every (lambda (b) (apart-p a b)) others))))))
+
 (defun nested-repeat-tree-p (tree &key alternations)
   "True when TREE, a regular expression as CL-PPCRE:PARSE-STRING reads one,
 repeats without bound, or more than *REPEAT-BOUND-MOST* times, a part that
-itself repeats, as (a+)+ or (x*y){2,30} do, or with ALTERNATIONS one that
-holds a choice, as (a|a)* does: a scan of such a pattern can take time
-growing exponentially with the text it fails on. Repeats one after another,
-as .*.*.*x, take time growing as a power of the text's length, and are not
-refused."
-  (labels ((repeat-p (x) (and (consp x) (member (first x) '(:greedy-repetition :non-greedy-repetition))))
-           (holds-repeat-p (x)
-             (and (consp x)
-                  (or (and (repeat-p x) (not (eql (third x) 1)))
-                      (and alternations (eq (first x) :alternation))
-                      (some #'holds-repeat-p (rest x)))))
-           (walk (x)
-             (and (consp x)
-                  (or (and (repeat-p x) (or (null (third x)) (> (third x) *repeat-bound-most*))
-                           (holds-repeat-p (fourth x)))
-                      (some #'walk (rest x))))))
-    (walk tree)))
+itself repeats, as (a+)+ or (x*y){2,30} do, or a back-reference to a group
+that repeats, as (a*)\\1+ does; or with ALTERNATIONS one that holds a choice
+whose choices may start alike (CHOICES-APART-P), as (a|aa)* does: a scan of
+such a pattern can take time growing exponentially with the text it fails on.
+The true value says which: :REPEAT, :BACK-REFERENCE or :CHOICE. Repeats one
+after another, as .*.*.*x, take time growing as a power of the text's length,
+and are not refused."
+  (let ((groups '()))
+    (labels ((repeat-p (x) (and (consp x) (member (first x) '(:greedy-repetition :non-greedy-repetition))))
+             (find-groups (x)
+               (when (consp x)
+                 (when (member (first x) '(:register :named-register)) (push x groups))
+                 (mapc #'find-groups (rest x))))
+             (named-p (reference group)
+               (if (integerp reference)
+                   (eql reference (1+ (position group groups)))
+                   (and (eq (first group) :named-register) (equal reference (second group)))))
+             (holds-repeat-p (x seen)
+               (and (consp x)
+                    (cond ((and (repeat-p x) (not (eql (third x) 1))) :repeat)
+                          ((eq (first x) :back-reference)
+                           (and (not (member (second x) seen :test #'equal))
+                                (some (lambda (group)
+                                        (and (named-p (second x) group)
+                                             (holds-repeat-p (car (last group)) (cons (second x) seen))))
+                                      groups)
+                                :back-reference))
+                          ((and alternations (eq (first x) :alternation) (not (choices-apart-p x))) :choice)
+                          (t (some (lambda (part) (holds-repeat-p part seen)) (rest x))))))
+             (walk (x)
+               (and (consp x)
+                    (or (and (repeat-p x) (or (null (third x)) (> (third x) *repeat-bound-most*))
+                             (holds-repeat-p (fourth x) '()))
+                        (some #'walk (rest x))))))
+      (find-groups tree)
+      (setf groups (nreverse groups))
+      (walk tree))))
 
 (defun nested-repeat-p (pattern)
   "True when PATTERN, a regular expression as every search reads one, repeats
-without bound a part that itself repeats (NESTED-REPEAT-TREE-P)."
+without bound a part that itself repeats, a back-reference to a group that
+repeats or a choice whose choices may start alike; the true value says which,
+as NESTED-REPEAT-TREE-P's does."
   (nested-repeat-tree-p (handler-case (with-pattern-syntax (cl-ppcre:parse-string (engine-pattern pattern)))
-                          ((or cl-ppcre:ppcre-syntax-error pattern-refused) () nil))))
+                          ((or cl-ppcre:ppcre-syntax-error pattern-refused) () nil))
+                        :alternations t))
 
 (defun compile-pattern (pattern &key (regex t) (case-fold nil fold-given) or-text untrusted)
   "A scanner for PATTERN as every search reads it (COMPILE-REGEX): a regular
@@ -165,8 +261,13 @@ refused as one that is no regular expression is."
            (compile-regex (cl-ppcre:quote-meta-chars pattern)
                           :case-fold (if fold-given case-fold (case-fold-p pattern))))
          (regex ()
-           (when (and untrusted (nested-repeat-p pattern))
-             (refuse-pattern "not run from a file: a part repeated in a repeat, which can take for ever"))
+           (let ((cause (and untrusted (nested-repeat-p pattern))))
+             (when cause
+               (refuse-pattern (format nil "not run from a file: ~a, which can take for ever"
+                                       (ecase cause
+                                         (:repeat "a repeat of a part that itself repeats")
+                                         (:back-reference "a repeat of a back-reference to a group that repeats")
+                                         (:choice "a repeat of a choice whose choices may start alike"))))))
            (compile-regex pattern :case-fold (if fold-given case-fold (regex-case-fold-p pattern)))))
     (cond ((not regex) (text))
           (or-text (or (tuatara.runtime:ignoring-errors-reported ("reading ~s as a regular expression" pattern)

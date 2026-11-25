@@ -397,6 +397,18 @@ window draws them with (set-face :org-level-1 :height 2)."
          (is equal '("* One" "Text of one.")
              (subseq (org-screen "") 0 2)))))))
 
+(define-modal-test (org list-item-moved-among-siblings)
+  ;; M-j and M-k in a list move the item point is on past its sibling, its sub-items with it and point
+  ;; going along, the numbers those of the places; on a headline the subtree moves as before
+  (let ((list (format nil "1. a~%2. b~%   - b1~%3. c~%")))
+    (is string= (format nil "1. a~%2. c~%3. b~%   - b1~%") (org-text-after "j M-j" list))
+    (is string= (format nil "1. b~%   - b1~%2. a~%3. c~%") (org-text-after "j M-k" list))
+    (is string= list (org-text-after "j M-j M-k" list))
+    (is string= (format nil "1. b~%   - b1~%2. c~%3. a~%") (org-text-after "M-j M-j" list))
+    (is string= list (org-text-after "M-k" list))
+    (is string= (format nil "- b~%- a~%") (org-text-after "j M-k" (format nil "- a~%- b~%"))))
+  (is string= (format nil "* B~%* A~%- x~%- y~%") (org-text-after "M-j" (format nil "* A~%- x~%- y~%* B~%"))))
+
 (define-modal-test (org structure-editing)
   ;; the view as written, no signs, the indented one turned on by hand
   (let ((tuatara-user:*org-startup-indented* nil)
@@ -1001,7 +1013,7 @@ window draws them with (set-face :org-level-1 :height 2)."
   (let ((text (format nil "* Tasks [1/2]~%- [X] one~%- [ ] two~%")))
     ;; a new checkbox item counts at once, in the one step to undo
     (is string= (format nil "* Tasks [1/3]~%- [X] one~%- [ ] ~%- [ ] two~%") (org-text-after "j M-RET" text))
-    (is string= text (org-text-after "j M-RET M-j u" text))
+    (is string= text (org-text-after "j M-RET ESC u" text))
     ;; an item line killed leaves the count without it
     (is string= (format nil "* Tasks [1/1]~%- [X] one~%~%") (org-text-after "j j C-k" text))
     ;; the last box of a headline gone: nothing left to count
@@ -1134,3 +1146,43 @@ window draws them with (set-face :org-level-1 :height 2)."
     ;; an item with text keeps TAB's folding, as in Emacs
     (let ((text (format nil "* H~%- one~%- two")))
       (is string= text (after text 2 1)))))
+
+(define-modal-test (org item-cycled-back-numbers-the-list-again)
+  ;; TAB on an empty numbered item sets it in, the items after it numbered again; at the end of the
+  ;; cycle it goes back where it was and they take their numbers back
+  (let ((text (format nil "* H~%1. a~%2. ~%3. c~%")))
+    (is string= (format nil "* H~%1. a~%   1. ~%2. c~%") (org-text-after "j j A TAB" text))
+    (is string= text (org-text-after "j j A TAB TAB" text))))
+
+(define-modal-test (org todo-of-a-repeat-keeps-point-given)
+  ;; a repeating task done with point given apart from the buffer's: point where it was given
+  (let ((tuatara.defaults::*org-now* (encode-universal-time 0 0 9 27 10 2026)))
+    (multiple-value-bind (f editor)
+        (run-keys (list "M-x o r g - m o d e RET M->"
+                        (lambda ()
+                          (let* ((parse (tuatara.defaults::org-parse-now (tuatara.command:current-buffer)))
+                                 (headline (tuatara.defaults::org-current-headline (tuatara.defaults::org-parse-tree parse)
+                                                                                   0)))
+                            (tuatara.defaults::org-put-todo parse 3 headline "DONE"))))
+                  :text (format nil "* TODO Pay~%SCHEDULED: <2026-10-27 Tue +1d>~%") :width 60 :height 12)
+      (declare (ignore f))
+      (true (search "<2026-10-28 Wed +1d>" (session-text editor)) "~a" (session-text editor))
+      (is = 3 (session-point editor)))))
+
+(define-modal-test (org dblocks-without-a-writer-make-no-job)
+  ;; a block no writer makes is said and left; the count says the blocks made, and none made starts nothing
+  (let ((tuatara.defaults::*org-now* (encode-universal-time 0 40 15 2 10 2026))
+        (made (format nil "* A~%:LOGBOOK:~%CLOCK: [2026-10-02 Fri 08:00]--[2026-10-02 Fri 09:00] =>  1:00~%:END:~%~
+                           #+BEGIN: clocktable :block today~%#+END:~%"))
+        (unknown (format nil "#+BEGIN: nosuch-writer~%old~%#+END:~%")))
+    (let ((f (run-keys "M-x o r g - m o d e RET SPC O b" :text (concatenate 'string made unknown) :width 100 :height 20)))
+      (true (tuatara.frontend.fake:fake-frame-showing f "Made 1 dynamic block again")))
+    (let ((f (run-keys "M-x o r g - m o d e RET SPC O b" :text unknown :width 100 :height 20)))
+      (true (tuatara.frontend.fake:fake-frame-showing f "No writer for the dynamic block nosuch-writer"))
+      (false (tuatara.frontend.fake:fake-frame-showing f "No dynamic block here")))))
+
+(define-modal-test (org repeat-time-asked-with-its-forms-beside)
+  ;; the repeat menu's time is asked with a short prompt, the forms it takes shown beside it
+  (let ((f (run-keys "M-x o r g - m o d e RET C-c C-s C-r t" :text (format nil "* TODO Thing~%") :width 120 :height 24)))
+    (true (tuatara.frontend.fake:fake-frame-showing f "a time it begins and ends, 10:00-11:00"))
+    (false (tuatara.frontend.fake:fake-frame-showing f "(10:00 or 10:00-11:00)"))))

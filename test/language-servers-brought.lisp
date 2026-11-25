@@ -311,7 +311,7 @@ FAKES put first on their PATH; skipped when there is no sftp-server here."
         (unwind-protect
              (with-environment-variable ("PATH" (format nil "~ahere:~a" (namestring dir) (uiop:getenv "PATH")))
                (servers-session (typed-command "server-trust") (typed-keys "build.example") "RET" (list :wait 0.1))
-               (servers-session (typed-command "server-list") (list :wait 0.1)
+               (servers-session (typed-command "server-manager") (list :wait 0.1)
                                 (typed-command "server-bring-language-server") (typed-keys "gopls") "RET"
                                 (list :until (lambda () (probe-file there)))
                                 (list :until (lambda ()
@@ -327,7 +327,7 @@ FAKES put first on their PATH; skipped when there is no sftp-server here."
                (is string= (format nil "gopls ~a~%" sum) (uiop:read-file-string (brought-file dir ".manifest")))
                ;; another's file in the directory stays when ours is taken away
                (put-file (brought-file dir "taplo") (format nil "not ours~%"))
-               (servers-session (typed-command "server-list") (list :wait 0.1)
+               (servers-session (typed-command "server-manager") (list :wait 0.1)
                                 (typed-command "server-remove-language-server")
                                 (list :until (asking "Take away"))
                                 (typed-keys "gopls") "RET"

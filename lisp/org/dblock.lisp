@@ -323,14 +323,15 @@ are put in."
                                            (append (dblock-read-params params)
                                                    (list :name name :content (subseq text content end)))
                                            begin)))
-             (job (make-dblock-job buffer pieces words count)))
-        (let ((sources (dblock-snapshot-sources)))
+             (job (and pieces (make-dblock-job buffer pieces words (and count (length pieces))))))
+        (when job
+          (let ((sources (dblock-snapshot-sources)))
           (tuatara.runtime:start-job-thread job (tuatara.runtime:carry-settings
                                                  *dblock-carried-settings*
                                                  (lambda (job) (dblock-make job parse sources)))
                                             :name "tuatara dynamic blocks"
-                                            :details (format nil "~d block~:p" (length pieces)))
-          (take-in-soon job *dblock-wait*))))))
+                                              :details (format nil "~d block~:p" (length pieces)))
+            (take-in-soon job *dblock-wait*)))))))
 
 (defun dblock-start-queued (buffer offset count)
   "Make again, its turn come, the dynamic block of BUFFER whose #+BEGIN: line

@@ -114,23 +114,12 @@ a paste) is given back once it is empty.")
   (when (> (length (outbox-octets box)) +roomy-box+)
     (setf (outbox-octets box) (tuatara.text:make-octets 65536))))
 
-(defun store-number (octets at value count)
-  "Write the integer VALUE in COUNT octets of OCTETS from AT, least significant
-first, a negative one as two's complement."
-  (dotimes (k count)
-    (setf (aref octets (+ at k)) (ldb (byte 8 (* 8 k)) value))))
-
-(defun fetch-number (octets at count)
-  "The unsigned integer in COUNT octets of OCTETS from AT, least significant
-first."
-  (loop for k below count sum (ash (aref octets (+ at k)) (* 8 k))))
-
 (defun put-number (box value count)
   "Put the integer VALUE in COUNT octets of BOX, least significant first, a
 negative one as two's complement."
   (declare (type outbox box) (type integer value) (type (integer 1 4) count))
   (let ((at (outbox-room box count)))
-    (store-number (outbox-octets box) at value count)))
+    (tuatara.text:octets-put-integer (outbox-octets box) value count :at at)))
 
 (defun put-octets (box octets &optional (start 0) (end (length octets)))
   "Put OCTETS from START below END in BOX as they are."
@@ -144,7 +133,7 @@ more: a place on the screen or in a row, which the reading end holds to MOST."
 
 (defun patch-length (box at)
   "Write over the 4 octets of BOX at AT how many octets BOX holds after them."
-  (store-number (outbox-octets box) at (- (outbox-fill box) at 4) 4))
+  (tuatara.text:octets-put-integer (outbox-octets box) (- (outbox-fill box) at 4) 4 :at at))
 
 (defun put-text (box string &optional most)
   "Put STRING in BOX as UTF-8 after its length in octets, in 4 octets; with
@@ -274,7 +263,7 @@ of an unknown kind, of a kind never sent this way, or longer than its kind
 may be, is malformed."
   (unless (fill-inbox inbox 5) (return-from read-message nil))
   (let* ((octets (inbox-octets inbox)) (start (inbox-start inbox))
-         (length (fetch-number octets start 4))
+         (length (tuatara.text:octets-integer octets start 4))
          (code (aref octets (+ start 4)))
          (entry (find code *message-kinds* :key #'second))
          (most (and entry (if (eq (inbox-side inbox) :editor) (third entry) (fourth entry)))))
@@ -296,7 +285,7 @@ octets, taken; malformed when the message ends before them."
 (defun take-number (inbox count)
   "The unsigned integer in the next COUNT octets of the message being read
 from INBOX, least significant first."
-  (fetch-number (inbox-octets inbox) (take-place inbox count) count))
+  (tuatara.text:octets-integer (inbox-octets inbox) (take-place inbox count) count))
 
 (defun take-signed (inbox count)
   "The signed integer in the next COUNT octets of the message being read from
@@ -512,6 +501,14 @@ no control character in it."
   (and (stringp name) (<= (tuatara.text:string-octet-length name) 256)
        (notany (lambda (c) (tuatara.text:control-code-p (char-code c))) name)))
 
+(defun take-font-name (inbox)
+  "A font's name read from INBOX, or NIL for none; malformed when it holds a
+control character (FONT-NAME-P)."
+  (let ((font (take-text inbox 256)))
+    (unless (font-name-p font)
+      (malformed "a font named with a control character"))
+    (and (plusp (length font)) font)))
+
 (defun put-settings (box)
   "Put in BOX, as fields of a message, the values of *DISPLAY-SETTINGS* here;
 one unset, or of a value it may not take, is left as the client has it."
@@ -535,10 +532,7 @@ given as (NAME . VALUE), in the order of *DISPLAY-SETTINGS*."
                for value = (case kind
                              (:font (if (zerop (take-bounded inbox 1 0 1 "a setting's flag"))
                                         :unset
-                                        (let ((font (take-text inbox 256)))
-                                          (unless (font-name-p font)
-                                            (malformed "a font named with a control character"))
-                                          (and (plusp (length font)) font))))
+                                        (take-font-name inbox)))
                              (:padding (if (zerop (take-bounded inbox 1 0 1 "a setting's flag"))
                                            :unset
                                            (loop repeat 4 collect (take-bounded inbox 2 0 999 "padding"))))
@@ -1067,12 +1061,12 @@ attributes as SET-FACE-ATTRIBUTES takes them."
         (flags (take-bounded inbox 1 0 31 "a face's flags"))
         (underline (svref *underlines* (take-bounded inbox 1 0 (1- (length *underlines*)) "an underline")))
         (underline-colour (take-colour inbox))
-        (font (take-text inbox 256))
+        (font (take-font-name inbox))
         (height (take-proportion inbox 3))
         (inherit (take-face-name inbox names)))
     (list name :fg fg :bg bg :bold (logtest 1 flags) :italic (logtest 2 flags) :reverse (logtest 4 flags)
                :dim (logtest 8 flags) :extend (logtest 16 flags) :underline underline :underline-colour underline-colour
-               :font (and (plusp (length font)) font) :height (and (> height 1) (min height 3))
+               :font font :height (and (> height 1) (min height 3))
                :inherit (and (symbolp inherit) inherit))))
 
 ;;; A frame, painted: what the painter interface was called with between its beginning and its end

@@ -1257,7 +1257,7 @@ FAR is true when the editor is on another machine. Then nothing of this
 machine's clipboard is given it or taken from it, no terminal is lent and no
 dropped file is named to it, but what ALLOW lets through. ALLOW is a plist of
 :CLIPBOARD, true for the clipboard shared, as text with no control characters
-taken (FAR-TEXT), and :DROP, a function sending the files dropped to that
+taken (SHOWN-WORDS), and :DROP, a function sending the files dropped to that
 machine (see MAKE-REMOTE-CLIENT)."
   (fd -1 :type fixnum :read-only t :documentation "The socket to the editor, a file descriptor.")
   (frontend nil :read-only t :documentation "The frontend CLIENT paints on and reads events from.")
@@ -1753,7 +1753,7 @@ asked): frames are complete, so only the last of a run is drawn."
 done, and answer its questions, in the order they came. An editor on
 another machine puts nothing in the clipboard, unless it is shared with it
 and CLIENT's window has the keyboard, and then text with no control
-characters (FAR-TEXT), and is lent no
+characters (SHOWN-WORDS), and is lent no
 terminal; the files sent it are named to it once there."
   (let ((frontend (remote-client-frontend client))
         (far (remote-client-far client))

@@ -249,8 +249,14 @@ John Otago or by Otago written elsewhere. The enhanced export and
   (check-buffer-redactions (current-buffer)))
 
 (defparameter *export-kept-directories*
-  '(latex-templates-directory docx-templates-directory note-templates-directory logos-directory)
-  "Functions giving the directories of yours an export never writes in unasked.")
+  '(latex-templates-directory docx-templates-directory note-templates-directory logos-directories)
+  "Functions giving the directories of yours an export never writes in unasked, each one
+or a list of them (EXPORT-KEPT-PLACES).")
+
+(defun export-kept-places ()
+  "The directories of yours an export never writes in unasked, as a list: what
+each of *EXPORT-KEPT-DIRECTORIES* gives now."
+  (mapcan (lambda (f) (copy-list (alexandria:ensure-list (funcall f)))) *export-kept-directories*))
 
 (defun export-target-allowed-p (buffer types &key text)
   "True when exporting BUFFER's Org note, or TEXT, the part of it exported,
@@ -272,7 +278,7 @@ not encrypted. Never into an evidence directory
                      (ignoring-errors-reported ("naming the export of ~a" file)
                                                (org-export-file-name (or text (tuatara.buffer:buffer-string buffer))
                                                                      file))))
-         (kept (mapcar #'funcall *export-kept-directories*))
+         (kept (export-kept-places))
          ;; links followed: a directory in the note's that is a link to elsewhere is elsewhere
          (outside (and named (notevery (lambda (type)
                                          (let ((path (replaced-type named type)))

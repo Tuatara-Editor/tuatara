@@ -44,11 +44,11 @@ if ! command -v zig >/dev/null || [ "$(zig version)" != "$zig_wanted" ]; then
        "(have: $(zig version 2>/dev/null || echo none)); HACKING.org says where to get it" >&2
   exit 1
 fi
-if [ "$(git -C "$sources" rev-parse HEAD 2>/dev/null)" != "$commit" ]; then
+if [ "$(https_git -C "$sources" rev-parse HEAD 2>/dev/null)" != "$commit" ]; then
   rm -rf "$sources"; mkdir -p "$sources"
-  git -C "$sources" init -q
-  git -C "$sources" fetch -q --depth 1 "$repository" "$commit"
-  git -C "$sources" checkout -q FETCH_HEAD
+  https_git -C "$sources" init -q
+  https_git -C "$sources" fetch -q --depth 1 "$repository" "$commit"
+  https_git -C "$sources" checkout -q FETCH_HEAD
 fi
 rm -rf "$out.new"
 (cd "$sources" && zig build -Demit-lib-vt -Dlib-version-string="$version" -Doptimize=ReleaseSafe \

@@ -55,7 +55,7 @@ or to hold too many rules (GITIGNORE-RULES), each said once.")
   (multiple-value-bind (octets why) (read-text-file path :most *gitignore-most-octets*)
     (when (and (eq why :too-large) (not (shiftf (gethash path *gitignore-too-large-said*) t)))
       (message "~a is larger than ~a: its patterns are not read (*gitignore-most-octets*)"
-               (abbreviated-path path) (tuatara.io:octets-words *gitignore-most-octets*)))
+               (abbreviated-path path) (tuatara.text:octets-words *gitignore-most-octets*)))
     octets))
 
 (defun gitignore-rules (path base)

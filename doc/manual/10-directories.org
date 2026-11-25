@@ -544,7 +544,8 @@ drive. When you pull the stick out, its trash goes with it.
 The trash only moves a file. The bytes stay on the drive until the space is
 used again. If you really want a file's contents gone, ~g w~ wipes the marked
 files: it writes over them and then deletes them. This is slow, and it asks
-once.
+once, with the files' names and what wiping cannot promise shown below the
+question.
 
 #+begin_try Try it, with some letters
 1. Make two new files in a directory with ~a~: type =old-1.txt= and =RET=, then
@@ -562,7 +563,7 @@ what you put there.
 
 *** Commands for deleting and the trash
 
-#+table: commands list-execute list-delete-marked rimu-trash rimu-trash-restore rimu-trash-empty rimu-wipe-files
+#+table: commands list-execute list-delete-marked trash-manager rimu-trash-restore rimu-trash-empty rimu-wipe-files
 
 *** Settings for deleting
 

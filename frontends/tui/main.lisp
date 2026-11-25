@@ -57,9 +57,8 @@ License, version 3 or later.
      :why ("Use it to start with several views of the same buffers. With --gui they are"
            "windows you can put on different screens. In a terminal only one frame"
            "shows at a time, so more than one is for C-x 5 o; to see two views at once,"
-           "split the window (C-x 2, C-x 3). The cost is small: measured once here,"
-           "16 frames on a small file added about 30 ms to the first screen and no"
-           "memory worth naming."))
+           "split the window (C-x 2, C-x 3). The cost is small: a frame more adds"
+           "little to the first screen and takes little memory."))
     (:flags (("-c" "INIT-FILE") ("--config" "INIT-FILE"))
      :text ("read INIT-FILE as the init file instead of"
             "~/.config/tuatara/init.lisp; --config=INIT-FILE does as well")
@@ -118,9 +117,9 @@ License, version 3 or later.
             "~/.cache/tuatara/daemon-NAME.log, its session"
             "~/.local/state/tuatara/session-daemon-NAME")
      :why ("Use it for an editor that is already there when you want one: a client"
-           "(tuatara --client) shows a frame in about 0.23 s, against about 0.32 s to"
-           "start an editor of its own (measured once here, on a small file), and the"
-           "buffers stay open when a terminal closes. Several names keep several"
+           "(tuatara --client) shows a frame sooner than an editor of its own starts,"
+           "as nothing is loaded or read for it, and the buffers stay open when a"
+           "terminal closes. Several names keep several"
            "separate sessions. The cost is a process that stays in memory until it is"
            "stopped, with whatever it has open: a large file stays held. It needs"
            "XDG_RUNTIME_DIR, where its socket is."))
@@ -134,11 +133,11 @@ License, version 3 or later.
             "(GIT_EDITOR='tuatara --client') the commit is made when the"
             "message is finished; exits 1 when no daemon of that name runs, or"
             "when it ends")
-     :why ("Use it for the quicker start a daemon gives (about 0.23 s against about"
-           "0.32 s here) and one set of buffers in every terminal. In return, a change"
-           "to the init file or a package reaches the daemon only when it is stopped"
-           "and started again, and every client works in the one editor. As git's"
-           "editor, add --start so that it works when no daemon runs."))
+     :why ("Use it for the quicker start a daemon gives and one set of buffers in"
+           "every terminal. In return, a change to the init file or a package"
+           "reaches the daemon only when it is stopped and started again, and every"
+           "client works in the one editor. As git's editor, add --start so that it"
+           "works when no daemon runs."))
     (:flags (("--client=HOST[:NAME]"))
      :text ("show the daemon NAME running on the machine HOST, reached with"
             "the system's ssh, as --client shows one here: HOST as ssh takes"
@@ -148,7 +147,7 @@ License, version 3 or later.
             "a relative name from your home directory there; - is not taken,"
             "and pictures stay on each side, the clipboard, dropped files and"
             "your agents too unless HOST is trusted with them (M-x"
-            "server-list); with --start, the daemon there is started first"
+            "server-manager); with --start, the daemon there is started first"
             "when none runs; --stop=HOST[:NAME] stops it")
      :why ("Use it to work on the machine that has the files, a build server or a"
            "remote box, with your own screen and keys. Tuatara must be installed there,"
@@ -386,8 +385,9 @@ each flag with its argument, separated by commas."
   (format nil "~{~a~^, ~}" (mapcar (lambda (flag) (format nil "~{~a~^ ~}" flag)) flags)))
 
 (defun option-listed-p (entry)
-  "True when --help lists ENTRY of *OPTION-HELP*: every option, but those of
-the legacy AppImage's launcher only when Tuatara runs from that AppImage."
+  "True when ENTRY of *OPTION-HELP* is listed in --help, the manual page and
+the completion for bash: every option, but those of the legacy AppImage's
+launcher only when Tuatara runs from that AppImage."
   (or (not (eq (getf entry :only) :legacy-appimage))
       (equal tuatara.io:*appimage* "legacy")))
 

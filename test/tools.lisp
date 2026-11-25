@@ -516,7 +516,7 @@ syntax/grammars.tsv: its exit status, and its output and error output."
       (write-test-file directory file ""))
     (write-test-file directory "syntax/grammars.tsv" manifest)
     (multiple-value-bind (out error status)
-        (uiop:run-program (list "env" "TUATARA_CONTAINER=tuatara-none-such"
+        (uiop:run-program (list "env" "TUATARA_CONTAINER=tuatara-none-such" "GIT_ALLOW_PROTOCOL=file"
                                 "bash" (uiop:native-namestring (merge-pathnames "grammars.sh" tools)))
                           :output :string :error-output :string :ignore-error-status t)
       (values status (concatenate 'string out error)))))
@@ -634,45 +634,75 @@ and the Quicklisp directory."
           (true (search "one-1.tgz is not in" error)))
         (is = 1 (run "no-such-command"))))))
 
-(define-test (tools lisp-archives-prepared-for-a-release)
-  ;; a copy a release is compiled from keeps the listed archives only, nothing
-  ;; unpacked or of local-projects, and downloads nothing more; a changed
-  ;; archive stops it before anything is removed
+(define-test (tools lisp-archives-installed-for-a-release)
+  ;; the Quicklisp a release is compiled with is made new from the pinned client, index and listed archives, each
+  ;; checked by its hash: nothing of the developer's own Quicklisp reaches it (a file it loads at start, an archive
+  ;; not listed), it downloads nothing more, and a download kept with another hash stops it
   (with-test-directory (directory)
     (multiple-value-bind (script quicklisp) (archive-check-tree directory)
-      (flet ((path (name) (format nil "~a/~a" quicklisp name))
-             (run (&rest arguments)
-               (nth-value 2 (uiop:run-program (list* "bash" script arguments) :output nil :error-output nil
-                                                                              :ignore-error-status t))))
-        (ensure-directories-exist (path "dists/quicklisp/software/one-1/"))
-        (ensure-directories-exist (path "local-projects/shadow/"))
-        (with-open-file (o (path "dists/quicklisp/archives/one-1.tgz") :direction :output :if-exists :append)
-          (write-string "changed" o))
-        (is = 1 (run "prepare" quicklisp))
-        (true (probe-file (path "dists/quicklisp/software/one-1/")))
-        (true (probe-file (path "dists/quicklisp/archives/stray-1.tgz")))
-        (with-open-file (o (path "dists/quicklisp/archives/one-1.tgz") :direction :output :if-exists :supersede)
-          (write-string "first" o))
-        (is = 0 (run "prepare" quicklisp))
-        (false (probe-file (path "dists/quicklisp/software/one-1/")))
-        (false (probe-file (path "local-projects/shadow/")))
-        (false (probe-file (path "dists/quicklisp/archives/stray-1.tgz")))
-        (true (probe-file (path "dists/quicklisp/archives/two-1.tgz")))
-        (true (search "127.0.0.1" (uiop:read-file-string (path "config/proxy-url.txt"))))))))
+      (let ((cache (uiop:native-namestring (ensure-directories-exist (merge-pathnames "cache/" directory))))
+            (new (uiop:native-namestring (merge-pathnames "new-ql" directory))))
+        (flet ((file (name text)
+                 (with-open-file (o (format nil "~a~a" cache name) :direction :output :if-exists :supersede)
+                   (write-string text o)))
+               (install (where)
+                 (nth-value 2 (uiop:run-program (list "env" (format nil "QUICKLISP_SETUP=~a/setup.lisp" quicklisp)
+                                                      "bash" script "install" where cache)
+                                                :output nil :error-output nil :ignore-error-status t))))
+          (dolist (name '("one-1.tgz" "two-1.tgz"))
+            (uiop:copy-file (format nil "~a/dists/quicklisp/archives/~a" quicklisp name)
+                            (format nil "~a~a" cache name)))
+          (file "setup.lisp" "(setup)")
+          (file "asdf.lisp" "(asdf)")
+          (file "distinfo.txt" "name: quicklisp")
+          (file "systems.txt" "# systems")
+          (file "releases.txt" (format nil "one https://127.0.0.1:9/one-1.tgz 5 x x one-1 one.asd~%~
+                                            two https://127.0.0.1:9/two-1.tgz 6 x x two-1 two.asd~%"))
+          (bash-output "mkdir -p \"$1/client/quicklisp\" && echo 2021-02-13 > \"$1/client/quicklisp/version.txt\" &&
+                        tar -C \"$1/client\" -cf \"$1/quicklisp.tar\" quicklisp" cache)
+          ;; the copy of the script pins the made-up files
+          (bash-output "cd \"$1\" && h() { sha256sum \"$1\" | cut -c1-64; } &&
+                        for pin in client:quicklisp.tar setup:setup.lisp asdf:asdf.lisp; do
+                          sed -i \"s/^${pin%%:*}_sha256=.*/${pin%%:*}_sha256=$(h ${pin#*:})/\" \"$2\"
+                        done &&
+                        for f in distinfo systems releases; do
+                          sed -i \"s/\\\"$f.txt [0-9a-f]*\\\"/\\\"$f.txt $(h $f.txt)\\\"/\" \"$2\"
+                        done"
+                       cache script)
+          ;; the developer's Quicklisp has a file it loads at start and an archive not listed
+          (ensure-directories-exist (format nil "~a/local-init/" quicklisp))
+          (with-open-file (o (format nil "~a/local-init/stray.lisp" quicklisp) :direction :output)
+            (write-string "(error \"stray\")" o))
+          (with-open-file (o (format nil "~a/setup.lisp" quicklisp) :direction :output :if-exists :supersede)
+            (write-string "(developer)" o))
+          (is = 0 (install new))
+          (true (probe-file (format nil "~a/quicklisp/version.txt" new)))
+          (is string= "(setup)" (uiop:read-file-string (format nil "~a/setup.lisp" new)))
+          (true (probe-file (format nil "~a/dists/quicklisp/archives/one-1.tgz" new)))
+          (true (probe-file (format nil "~a/dists/quicklisp/archives/two-1.tgz" new)))
+          (true (probe-file (format nil "~a/dists/quicklisp/releases.txt" new)))
+          (false (probe-file (format nil "~a/dists/quicklisp/archives/stray-1.tgz" new)))
+          (false (probe-file (format nil "~a/local-init/" new)))
+          (true (search "127.0.0.1" (uiop:read-file-string (format nil "~a/config/proxy-url.txt" new))))
+          ;; made only in a new directory
+          (is = 1 (install new))
+          (file "two-1.tgz" "changed")
+          (is = 1 (install (format nil "~a-again" new))))))))
 
 (define-test (tools builds-check-the-archives-first)
-  ;; every path that compiles the libraries checks their archives before it does
+  ;; every path that compiles the libraries checks their archives before it does, and a release and the machine
+  ;; that builds one make their Quicklisp the one way: release.sh alone
   (let ((release (uiop:read-file-string (tools-script "release.sh")))
         (image (uiop:read-file-string (tools-script "build-image.sh")))
         (setup (uiop:read-file-string (tools-script "ci-setup.sh"))))
-    (let ((prepare (search "tools/lisp-archives.sh prepare \"$work/quicklisp\"" release)))
-      (true prepare)
-      (true (< (search "cp -a \"$quicklisp\" \"$work/quicklisp\"" release) prepare
-               (search "\"$work/src/tools/build-image.sh\"" release))))
+    (let ((install (search "tools/lisp-archives.sh install \"$work/quicklisp\"" release)))
+      (true install)
+      (true (< install (search "\"$work/src/tools/build-image.sh\"" release))))
+    (false (search "quicklisp_setup" release))
     (true (search "tools/lisp-archives.sh tools/lisp-archives.sha256" release))
     (true (< (search "tools/lisp-archives.sh check" image) (search "build-image.lisp" image :from-end t)))
-    (dolist (word '("index" "fetch" "check" "lock"))
-      (true (search (format nil "tools/lisp-archives.sh\" ~a \"$ql\"" word) setup) word))))
+    (false (search "lisp-archives.sh" setup))
+    (false (search "quicklisp.tar" setup))))
 
 (defun manifest-rows ()
   "The rows of syntax/grammars.tsv, each a list of its fields."
@@ -758,6 +788,7 @@ and the Quicklisp directory."
     (let* ((repo (merge-pathnames "repo/" directory))
            (out (grammar-build-output
                  (format nil "set -e
+export GIT_ALLOW_PROTOCOL=file
 git init -q '~a'; cd '~:*~a'
 git -c user.name=t -c user.email=t@example.invalid commit -q --allow-empty -m one
 git -c user.name=t -c user.email=t@example.invalid tag -a -m v1 v1
@@ -788,8 +819,8 @@ grammar_checked g \"$PWD/g\" \"$PWD/recorded\" y || echo refused-hash"
     (let ((repo (uiop:native-namestring (merge-pathnames "repo/" directory)))
           (tools (merge-pathnames "tools/" directory)))
       (ensure-directories-exist tools)
-      (uiop:copy-file (tools-script "check-grammar-sources.sh") (merge-pathnames "check-grammar-sources.sh" tools))
-      (uiop:copy-file (tools-script "grammar-build.sh") (merge-pathnames "grammar-build.sh" tools))
+      (dolist (script '("check-grammar-sources.sh" "grammar-build.sh" "fetch.sh"))
+        (uiop:copy-file (tools-script script) (merge-pathnames script tools)))
       (let ((commits (uiop:split-string
                       (string-trim '(#\Newline)
                                    (bash-output (format nil "set -e
@@ -803,7 +834,8 @@ git checkout -q main; git branch -q -D gone tagged" repo)))
         (flet ((check (commit)
                  (write-test-file directory "syntax/grammars.tsv" (format nil "g	file://~a	~a	MIT~%" repo commit))
                  (multiple-value-bind (out error status)
-                     (uiop:run-program (list "bash" (uiop:native-namestring (merge-pathnames "check-grammar-sources.sh" tools)))
+                     (uiop:run-program (list "env" "GIT_ALLOW_PROTOCOL=file"
+                                             "bash" (uiop:native-namestring (merge-pathnames "check-grammar-sources.sh" tools)))
                                        :output :string :error-output nil :ignore-error-status t)
                    (declare (ignore error))
                    (values status out))))
@@ -841,7 +873,7 @@ git init -q '~a'; cd '~:*~a'
 git -c user.name=t -c user.email=t@example.invalid commit -q --allow-empty -m one; git rev-parse HEAD" repo)))))
       (ensure-directories-exist tools)
       (ensure-directories-exist answers)
-      (dolist (script '("check-grammar-sources.sh" "grammar-build.sh"))
+      (dolist (script '("check-grammar-sources.sh" "grammar-build.sh" "fetch.sh"))
         (uiop:copy-file (tools-script script) (merge-pathnames script tools)))
       (write-test-file directory "syntax/grammar-reviews.tsv" (format nil "g	2026-10-01~%"))
       ;; curl answers from answers/, a file named after the address asked, and
@@ -859,7 +891,7 @@ cat \"$file\"~%" (uiop:native-namestring answers)))
                (multiple-value-bind (out error status)
                    (uiop:run-program (list* "env"
                                             (format nil "PATH=~a:~a" (uiop:native-namestring bin) (uiop:getenv "PATH"))
-                                            "GIT_CONFIG_COUNT=3"
+                                            "GIT_CONFIG_COUNT=3" "GIT_ALLOW_PROTOCOL=file"
                                             (append
                                              (loop for from in (list url "https://tangled.org/owner.example/g"
                                                                      "https://tangled.org/did:web:owner.example/g")
@@ -1217,7 +1249,7 @@ printf 'Source: foo\\nChecksums-Sha256:\\n %s 4 foo_1.0.orig.tar.xz\\nFiles:\\n 
       (ensure-directories-exist (merge-pathnames "tools/" directory))
       (ensure-directories-exist (merge-pathnames "test/api/" directory))
       (ensure-directories-exist (merge-pathnames "lisp/" directory))
-      (dolist (name '("possible-copies.sh" "possible-copies.py" "meaning.py"))
+      (dolist (name '("possible-copies.sh" "possible-copies.py" "meaning.py" "lisp_text.py" "repositories.py"))
         (uiop:copy-file (tools-script name) (path (format nil "tools/~a" name))))
       (with-open-file (out (path "test/api/reuse-index.txt") :direction :output)
         (format out "~{~a~%~}"
@@ -1248,6 +1280,103 @@ printf 'Source: foo\\nChecksums-Sha256:\\n %s 4 foo_1.0.orig.tar.xz\\nFiles:\\n 
         (false (search "  load-bank-statement  lisp/new.lisp" out))
         (false (search "draw-the-moon" out))
         (false (search "zzz-quux" out))))))
+
+(define-test (tools possible-copies-reads-tracked-files-only)
+  ;; the whole-tree reports read the files git keeps: a file of the tree it does not keep (notes, a scratch copy)
+  ;; is not looked at
+  (with-test-directory (directory)
+    (write-test-file directory "r/lisp/a.lisp"
+                     (format nil "(in-package #:one)~%(defun tracked-one (x)~%  \"Do it.\"~%  (other-one x))~%"))
+    (write-test-file directory "r/test/api/reuse-index.txt" "")
+    (let ((r (uiop:native-namestring (merge-pathnames "r/" directory))))
+      (uiop:run-program (list "bash" "-c" "cd \"$1\" && git init -q && git add . &&
+                                           git -c user.name=t -c user.email=t@example.invalid commit -q -m x"
+                              "_" r))
+      (write-test-file directory "r/lisp/b.lisp"
+                       (format nil "(in-package #:one)~%(defun untracked-one (y)~%  \"Do it.\"~%  (other-two y))~%"))
+      (let ((out (uiop:run-program (list "python3" "-I" (tools-script "possible-copies.py") "--pass-through")
+                                   :directory r :output :string)))
+        (true (search "tracked-one  lisp/a.lisp" out) "~a" out)
+        (false (search "untracked-one" out) "~a" out)))))
+
+(define-test (tools benchmark-counts-a-one-octet-needle-once)
+  ;; the benchmark counts what a file holds chunk by chunk; a needle of one octet at the start of the first chunk is
+  ;; counted once, not again with the next chunk
+  (with-test-directory (directory)
+    (let ((file (uiop:native-namestring (merge-pathnames "needle" directory))))
+      (is string= "1"
+          (string-trim '(#\Newline)
+                       (uiop:run-program
+                        (list "python3" "-I" "-c"
+                              "import importlib.util, sys
+spec = importlib.util.spec_from_file_location('harness', sys.argv[1])
+harness = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(harness)
+with open(sys.argv[2], 'wb') as f:
+    f.write(b'a' + b'x' * (1 << 24))
+print(harness.count_text(sys.argv[2], b'a'))"
+                              (tools-script "benchmark/harness.py") file)
+                        :output :string))))))
+
+(define-test (tools fetched-git-takes-https-only)
+  ;; git run on what is fetched for a build takes a repository over HTTPS alone: one named by a path or file://
+  ;; is refused, which plain git would take
+  (with-test-directory (directory)
+    (let ((repository (uiop:native-namestring (merge-pathnames "repository/" directory))))
+      (uiop:run-program (list "git" "init" "-q" repository))
+      (flet ((listed (how)
+               (nth-value 2 (uiop:run-program
+                             (list "bash" "-c" (format nil ". \"$1\" && ~a ls-remote \"file://$2\" >/dev/null 2>&1" how)
+                                   "_" (tools-script "fetch.sh") repository)
+                             :ignore-error-status t))))
+        (is = 0 (listed "git"))
+        (false (eql 0 (listed "https_git")))))
+    (dolist (script '("grammar-build.sh" "terminal-library.sh" "check-grammar-sources.sh"))
+      (false (search " git -C \"$sources\" fetch" (tools-text script)) script)
+      (false (search "grammar_git" (tools-text script)) script))))
+
+(define-test (tools github-asked-one-way)
+  ;; the scripts that ask GitHub or fetch a page over HTTPS share fetch.sh's helpers, none of their own
+  (true (search "github_api() {" (tools-text "fetch.sh")))
+  (true (search "https_get() {" (tools-text "fetch.sh")))
+  (dolist (script '("check-updates.sh" "check-grammar-sources.sh"))
+    (let ((text (tools-text script)))
+      (false (search "github_api() {" text) script)
+      (false (search "github() {" text) script)
+      (false (search "https_get() {" text) script)
+      (false (search "curl -fsS" text) script))))
+
+(define-test (tools release-packs-ghostty-at-its-pin)
+  ;; Ghostty's sources go with a release only at the commit library.pin names and unchanged, and an SBCL newer
+  ;; than the one a release was built with makes it again
+  (let* ((release (tools-text "release.sh"))
+         (archive (search "archive --prefix=tuatara-sources/ghostty/" release)))
+    (true archive)
+    (true (< (search "lisp/terminal/library.pin" release) archive))
+    (true (< (search "https_git -C build/terminal-sources status --porcelain" release) archive))
+    (true (< (search "wanted=" release) (search "inside sbcl --version" release)
+             (search "[ \"$(cat \"$stamp\")\" = \"$wanted\" ]" release)))))
+
+(define-test (tools bidi-conformance-fails-on-a-failed-case)
+  ;; the conformance run ends with status 1 when a case fails, so that a script or a check that runs it stops
+  (true (search "(sb-ext:exit :code (if (tuatara.bidi-conformance:run-bidi-conformance"
+                (tools-text "bidi-conformance.sh"))))
+
+(define-test (tools line-check-reads-tuatara-c-in-syntax)
+  ;; Tuatara's own C under syntax/ is held to the column, the grammars' queries beside it are not
+  (with-test-directory (directory)
+    (let ((long (make-string 130 :initial-element #\x)))
+      (write-test-file directory "r/syntax/syntax.c" (format nil "/* ~a */~%" long))
+      (write-test-file directory "r/syntax/rules/lisp.scm" (format nil "; ~a~%" long))
+      (write-test-file directory "r/syntax/patches/lisp.patch" (format nil "~a~%" long)))
+    (let ((r (uiop:native-namestring (merge-pathnames "r/" directory))))
+      (uiop:run-program (list "bash" "-c" "cd \"$1\" && git init -q && git add . &&
+                                           git -c user.name=t -c user.email=t@example.invalid commit -q -m x"
+                              "_" r))
+      (let ((out (run-python-tool "line-check.py" r)))
+        (true (search "r/syntax/syntax.c:1: 136" out) "~a" out)
+        (false (search "rules" out) "~a" out)
+        (true (search "1 lines past the column" out) "~a" out)))))
 
 (define-test (tools possible-copies-alike-meaning-without-the-model)
   ;; with no model file the mode says so in one line and ends well, so a report can leave its section out
@@ -1343,7 +1472,10 @@ printf 'Source: foo\\nChecksums-Sha256:\\n %s 4 foo_1.0.orig.tar.xz\\nFiles:\\n 
 
 (define-test (tools health-lists-long-prompts)
   ;; a question asked at a prompt built from more than 80 columns of text with no details is listed, its prompt
-  ;; written there, bound before or made by a function of the file, even through a variable; one with details, or of short branches, is not
+  ;; written there, bound before or made by a function of the file, even through a variable; one with details, or of
+  ;; short branches, is not; a format's argument counts ten columns; a prompt that formats a list or says more than
+  ;; keys after its question mark is listed however short; a function taking a PROMPT asks a question, and a prompt
+  ;; made in another file is measured there
   (with-test-directory (directory)
     (let ((long (make-string 70 :initial-element #\x)))
       (write-test-file directory "r/a.lisp"
@@ -1356,18 +1488,26 @@ printf 'Source: foo\\nChecksums-Sha256:\\n %s 4 foo_1.0.orig.tar.xz\\nFiles:\\n 
                                     (defun k () (read-answer-key \"~a~a\" '(#\\y) :details \"why\"))~%~
                                     (defun m () (y-or-n-p* (if a \"~a\" \"~a\")))~%~
                                     (defun w (x) \"W.\" (format nil \"~a~a ~~a\" x))~%~
-                                    (defun n () (let ((words (w 1))) (yes-or-no-p* (format nil \"Run? ~~a\" words))))~%"
-                               long long long long long long long long long long long long long)))
+                                    (defun n () (let ((words (w 1))) (yes-or-no-p* (format nil \"Run? ~~a\" words))))~%~
+                                    (defun p () (ask-it (stop-words 1)))~%~
+                                    (defun q (names) (y-or-n-p* (format nil \"Save ~~{~~a~~^, ~~}?\" names)))~%"
+                               long long long long long long long long long long long long))
+      (write-test-file directory "r/b.lisp"
+                       (format nil "(in-package #:one)~%(defun ask-it (prompt) (read-string prompt))~%~
+                                    (defun stop-words (job) (format nil \"Stop ~~a?~~@[ ~~a~~]\" job nil))~%")))
     (uiop:run-program (list "bash" "-c" "cd \"$1\" && git init -q && git add . && git -c user.name=t -c user.email=t@example.invalid commit -q -m x"
                             "_" (uiop:native-namestring (merge-pathnames "r/" directory))))
     (let ((out (run-python-tool "long-prompts.py" (uiop:native-namestring (merge-pathnames "r/" directory)))))
-      (true (search "r/a.lisp:2: yes-or-no-p* 145" out) "~a" out)
+      (true (search "r/a.lisp:2: yes-or-no-p* 153" out) "~a" out)
       (true (search "r/a.lisp:5: read-string 140" out) "~a" out)
-      (true (search "r/a.lisp:7: y-or-n-p* 143" out) "~a" out)
+      (true (search "r/a.lisp:7: y-or-n-p* 151" out) "~a" out)
       (false (search "read-answer-key" out) "~a" out)
       (false (search "r/a.lisp:9:" out) "~a" out)
-      (true (search "r/a.lisp:11: yes-or-no-p* 150" out) "~a" out)
-      (true (search "4 questions" out) "~a" out))))
+      (true (search "r/a.lisp:11: yes-or-no-p* 166, after ?" out) "~a" out)
+      (true (search "r/a.lisp:12: ask-it 27, after ? (made at r/b.lisp:3)" out) "~a" out)
+      (true (search "r/a.lisp:13: y-or-n-p* 18, list" out) "~a" out)
+      (false (search (format nil "~%r/b.lisp") out) "~a" out)
+      (true (search "6 questions" out) "~a" out))))
 
 (defun tools-text (name)
   "The text of the file NAME in this repository's tools/."
@@ -1492,6 +1632,10 @@ case \"$url\" in
 esac
 ")
         (uiop:run-program (list "chmod" "+x" (concatenate 'string fakes "curl")))
+        ;; the copy of the script pins that made-up index
+        (bash-output "h=$(printf '%s\\n' \"$2\" | sha256sum | cut -c1-64) &&
+                      sed -i \"s/\\\"releases.txt [0-9a-f]*\\\"/\\\"releases.txt $h\\\"/\" \"$1\""
+                     script "proj https://example.org/proj-1.tgz 3 900150983cd24fb0d6963f7d28e17f72 0 0 proj-1")
         (multiple-value-bind (out error code)
             (uiop:run-program (list "env" (format nil "PATH=~a:/usr/bin:/bin" (string-right-trim "/" fakes))
                                     "bash" script "add" "proj" quicklisp)
@@ -1587,8 +1731,9 @@ echo \"$zig_url\"" (string-right-trim "/" (uiop:native-namestring directory)) (t
       (uiop:run-program
        (list "env" (format nil "RECORD=~a" record) "GITHUB_TOKEN=s3cret"
              "/usr/bin/bash" "-c"
-             "text=\"$(sed -n '/^https_only=/p;/^github() {/,/^}/p' \"$1\")\"; PATH=$2; eval \"$text\"; github repos/a/b"
-             "_" (tools-script "check-grammar-sources.sh") bin)
+             "text=\"$(sed -n '/^https_curl() {/,/^}/p;/^github_api() {/,/^}/p' \"$1\")\"; PATH=$2; eval \"$text\"
+              github_api repos/a/b"
+             "_" (tools-script "fetch.sh") bin)
        :output :string :ignore-error-status t)
       (let ((argv (uiop:read-file-string (concatenate 'string record ".argv")))
             (stdin (uiop:read-file-string (concatenate 'string record ".stdin"))))

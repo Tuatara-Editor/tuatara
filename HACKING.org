@@ -13,10 +13,13 @@
   Quicklisp set's index and the listed archives over HTTPS, checked against
   their hashes, and tell Quicklisp to download nothing more. Every build
   (=tools/build-image.sh=, =tools/release.sh=) checks the archives first and
-  stops on one that is missing or changed; a release is compiled from a copy
-  of your Quicklisp holding only the listed libraries, unpacked from those
-  archives. Libraries only the tests use (Parachute and the rest) are not
-  listed: install them once, before =lock=, or add them as below.
+  stops on one that is missing or changed. A release is compiled with a
+  Quicklisp of its own, nothing of yours in it: =tools/lisp-archives.sh
+  install= makes it from the pinned Quicklisp client, index and listed
+  archives, each checked by its SHA-256 (the downloads are kept in
+  =build/lisp-downloads/=). Libraries only the tests use (Parachute and the
+  rest) are not listed: install them once, before =lock=, or add them as
+  below.
 - A C and C++ compiler, git and make, for the tree-sitter grammars.
 - Zig 0.17.0, the version =lisp/terminal/library.pin= names, for the terminal
   library: =https://ziglang.org/download/0.17.0/zig-x86_64-linux-0.17.0.tar.xz=,
@@ -149,8 +152,9 @@ one with neither.
 A release is made on GitHub, from a version tag (=git tag -s VERSION=, pushed to
 =Tuatara-Editor/tuatara=): =.github/workflows/release.yml= checks that the tag
 is =tuatara.asd='s version and the README's, builds every file as the scripts
-above do (=tools/ci-setup.sh= installing SBCL, Zig and Quicklisp, each pinned
-and checked), installs and runs each package, and makes a draft release with
+above do (=tools/ci-setup.sh= installing SBCL and Zig, each pinned and
+checked; =tools/release.sh= makes its Quicklisp by =tools/lisp-archives.sh
+install=), installs and runs each package, and makes a draft release with
 =SHA256SUMS= and the notes of =.github/release-notes.md=; "What changed" is
 written there before it is published. Run by hand from the Actions tab, it
 builds the files of a branch without releasing them. The Lisp libraries are
@@ -339,8 +343,12 @@ questions built on them) and shows in the =*Question*= window at the bottom of
 the frame while it is asked. A question built of several (asked again, or a
 directory gone into) wraps them in =call-with-question-details= so that the
 window stays for all of them. =tools/long-prompts.py= lists each question
-whose prompt is built from more than 80 columns of text and gives no details,
-the package repositories too, and =tools/code-health.sh= adds that list as a
+that gives no details and whose prompt is built from more than 80 columns of
+text (each argument of a format counting ten), or formats a path or a list, or
+says more than keys after its question mark; a question is a call of any
+function taking a =prompt= or =question=, and a prompt made by a function of
+another file is measured there. It looks at the package repositories too,
+and =tools/code-health.sh= adds that list as a
 section, for a reviewer to judge; core should have none.
 
 * Working in a running editor
@@ -530,6 +538,8 @@ package most often needs:
   =string-octets=, =octets-string=, =utf-16-text=; =time-words=,
   =utc-time-words=, =iso-date-time=, =format-time=; =octets-hex= writes
   octets in hex, =shorten-string= cuts text to a length after a word.
+  =content-text-escaped= and =content-parameter-text= write a value of a
+  vCard or iCalendar line, =fold-content-line= folds the line.
 - PDF :: =pdf-header-at= tells a PDF by its first octets;
   =pdf-object-at= reads a value, =pdf-get=, =pdf-ref-p= and
   =pdf-array-items= look into it; =pdf-indirect-object-at= reads an object
@@ -586,7 +596,8 @@ package most often needs:
   =switched-by-count= any other on and off.
 - Questions :: =completing-read=, =completing-read-value=, =read-date= (a
   date as typed: tomorrow, fri, +3d, sep 30), =read-whole-number=,
-  =read-path=, =yes-or-no-p*=.
+  =read-path=, =yes-or-no-p*=. =read-key-choice= asks for one key of a few,
+  each with its words, shown beside the question.
 - Programs from outside :: =sandbox-run= and =run-on-copies= run a program
   shut in, on copies of the files, never on the files themselves;
   =run-on-copies-for-report= reads the JSON report such a program prints,

@@ -7,7 +7,8 @@
 ;;;; brought up to date; on a cookie it brings that one up to date. (The <s
 ;;;; TAB templates are snippets, fold.lisp.) Items are set in and out a level
 ;;;; as Org's org-indent-item and org-outdent-item set them, by M-l and M-h
-;;;; (tables.lisp), and by TAB on an empty item.
+;;;; (tables.lisp), and by TAB on an empty item; M-j and M-k move an item
+;;;; past its siblings.
 
 (in-package #:tuatara.defaults)
 
@@ -462,6 +463,45 @@ NIL elsewhere, for a headline's command to run."
           (org-apply-edits parse edits :point (org-parse-point parse))
           t)))))
 
+(defun org-move-item (direction)
+  "Move the list item point is in, with the items under it, over its sibling
+in DIRECTION, :up or :down, point going with it; numbered, the two keep the
+numbers of their places. True when point was in an item, whether it moved or
+why not was said; NIL elsewhere, for a headline's command to run."
+  (let* ((parse (org-parse-now (current-buffer)))
+         (text (and parse (org-parse-text parse)))
+         (item (and parse (org-current-item (org-parse-tree parse) text (org-parse-point parse)))))
+    (when item
+      (let* ((siblings (org-children-of (org-node-parent item) 'item))
+             (index (position item siblings))
+             (other (if (eq direction :down) (nth (1+ index) siblings) (and (plusp index) (nth (1- index) siblings)))))
+        (if (null other)
+            (message "Cannot move past the ~:[first~;last~] item of the list" (eq direction :down))
+            (let* ((first (if (eq direction :down) item other))
+                   (second (if (eq direction :down) other item))
+                   (numbered (every (lambda (node) (digit-char-p (char (org-item-bullet node) 0)))
+                                    (list first second))))
+              (labels ((end (node) (org-last-content-end text (org-node-begin node) (org-node-end node)))
+                       (written (node bullet)
+                         ;; NODE's text, its bullet BULLET when numbered
+                         (let* ((begin (org-node-begin node))
+                                (at (+ begin (org-leading-blanks text begin))))
+                           (concatenate 'string (subseq text begin at)
+                                        (if numbered bullet (org-item-bullet node))
+                                        (subseq text (+ at (length (org-item-bullet node))) (end node))))))
+                (check-writable (current-buffer))
+                (let* ((ahead (written second (org-item-bullet first)))
+                       (gap (subseq text (end first) (org-node-begin second)))
+                       (from (org-node-begin first))
+                       (offset (- (org-parse-point parse) (org-node-begin item))))
+                  (org-apply-edits parse
+                                   (list (list from (end second)
+                                               (concatenate 'string ahead gap
+                                                            (written first (org-item-bullet second)))))
+                                   :point (+ (if (eq item first) (+ from (length ahead) (length gap)) from) offset)
+                                   :final t)))))
+        t))))
+
 (defun org-item-may-go-out-p (item)
   "True when \\`TAB' may set the empty list ITEM out a level: it stands under
 an item, the last of its list, with no item under it."
@@ -472,13 +512,15 @@ an item, the last of its list, with no item under it."
 
 (defun org-shift-item (parse item by)
   "Set ITEM of PARSE (an ORG-PARSE) alone a level in, BY 1, or out, BY -1, in
-one step to undo, point kept on its character."
+one step to undo, point kept on its character; true when it could move."
   (let ((targets (make-hash-table :test 'eq)))
     (setf (gethash item targets) t)
-    (org-apply-edits parse (org-list-shift-edits (org-parse-text parse)
-                                                 (org-list-entries (org-children-of (org-outermost-list item) 'item))
-                                                 targets by)
-                     :point (org-parse-point parse))))
+    (let ((edits (org-list-shift-edits (org-parse-text parse)
+                                       (org-list-entries (org-children-of (org-outermost-list item) 'item))
+                                       targets by)))
+      (unless (stringp edits)
+        (org-apply-edits parse edits :point (org-parse-point parse))
+        t))))
 
 (defun org-cycle-item-indentation (parse)
   "\\`TAB' on an empty list item of PARSE, one with nothing after its bullet
@@ -494,7 +536,8 @@ True when point was on such an item."
          (going (and item state (eq (editor-last-command *editor*) 'org-cycle)
                      (eql (getf state :version) (tuatara.text:version-number (tuatara.buffer:buffer-version buffer))))))
     (when (and item (or going (and (cl-ppcre:scan *org-empty-item-scanner* text :start start :end end)
-                                   (string= "" (string-trim *org-blanks* (subseq text end (org-node-end item)))))))
+                                   (string= "" (string-trim '(#\Space #\Tab #\Newline)
+                                                            (subseq text end (org-node-end item)))))))
       (check-writable buffer)
       (let ((column (org-blank-columns text start))
             (first-p (eq item (first (org-children-of (org-node-parent item) 'item)))))
@@ -503,7 +546,7 @@ True when point was on such an item."
                  (setf (tuatara.buffer:buffer-local buffer 'org-item-cycle)
                        (list* :version (tuatara.text:version-number (tuatara.buffer:buffer-version buffer)) began))))
           (cond ((not going)
-                 (let ((began (list :column column :line (string-trim *org-blanks* (subseq text start end)))))
+                 (let ((began (list :column column)))
                    (cond ((not first-p) (move 1 began))
                          ((org-item-may-go-out-p item) (move -1 began))
                          (t (setf (tuatara.buffer:buffer-local buffer 'org-item-cycle) nil)
@@ -511,9 +554,14 @@ True when point was on such an item."
                 ((and (> column (getf state :column)) (not first-p)) (move 1))
                 ((and (< column (getf state :column)) (org-item-may-go-out-p item)) (move -1))
                 (t
-                 ;; back where it began; from there out a level when it was going in, else the cycle is over
-                 (let ((new (format nil "~a~a " (spaces (getf state :column)) (getf state :line))))
-                   (org-apply-edits parse (list (list start end new)) :point (+ start (length new)) :final t))
+                 ;; back where it began a level at a time, the list numbered again; from there out a level
+                 ;; when it was going in, else the cycle is over
+                 (loop with began = (getf state :column)
+                       repeat 16
+                       for now = parse then (org-parse-now buffer)
+                       for here = (org-item-on-line (org-parse-tree now) start)
+                       for at = (org-blank-columns (org-parse-text now) start)
+                       while (and here (/= at began) (org-shift-item now here (if (> at began) -1 1))))
                  (setf (tuatara.buffer:buffer-local buffer 'org-item-cycle) nil)
                  (let* ((again (and (> column (getf state :column)) (org-parse-now buffer)))
                         (back (and again (org-item-on-line (org-parse-tree again) start))))

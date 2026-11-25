@@ -171,7 +171,7 @@ filter, two saves, an object stream, predictors and pictures."
     (let* ((first (pdf-save page :trailer "/Root 1 0 R /Info 9 0 R"))
            (second (pdf-save (list "<< /Title (Saved again) /ModDate (D:20250101) >>") :first-number 9 :prefix first
                              :trailer (format nil "/Root 1 0 R /Info 9 0 R /Prev ~d"
-                                              (1+ (tuatara.io:octets-search (octets (format nil "~%xref~%")) first
+                                              (1+ (tuatara.text:octets-search (octets (format nil "~%xref~%")) first
                                                                             :from-end t))))))
       (list first
             second
@@ -271,8 +271,8 @@ leaves more than *HEAP-CAP* octets in use."
     (checked "map-pdf-cross-reference-table"
              (lambda ()
                (loop with mark = (tuatara.text:string-octets "xref")
-                     for at = (tuatara.io:octets-search mark octets)
-                       then (tuatara.io:octets-search mark octets :start (1+ at))
+                     for at = (tuatara.text:octets-search mark octets)
+                       then (tuatara.text:octets-search mark octets :start (1+ at))
                      while at
                      do (tuatara:map-pdf-cross-reference-table (constantly nil) octets at))))
     (checked "map-pdf-dictionary and pdf-object-at"

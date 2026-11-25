@@ -345,12 +345,12 @@ a moment.")
   ;; the problems with its value and what it takes, and keeps its value
   (let ((tuatara-user:*gui-padding* (list 4 12)))
     (setf (second tuatara-user:*gui-padding*) "wide")
-    (let ((problems (tuatara.defaults::health-problems (tuatara.defaults::make-health-check '() '()))))
+    (let ((problems (tuatara.defaults::health-problems (tuatara.defaults::make-health-check '()))))
       (true (find-if (lambda (problem) (search "*gui-padding* is (4 \"wide\"), but it takes" problem)) problems)
             "~s" problems))
     (is equal '(4 "wide") tuatara-user:*gui-padding*))
   (false (find-if (lambda (problem) (search "*gui-padding*" problem))
-                  (tuatara.defaults::health-problems (tuatara.defaults::make-health-check '() '())))))
+                  (tuatara.defaults::health-problems (tuatara.defaults::make-health-check '())))))
 
 (define-test (health grammars-looked-for-on-the-check-thread)
   ;; the report is written without looking for the grammars' program and directories again on the editor's

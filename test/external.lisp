@@ -37,9 +37,12 @@ DIRECTORY untrusted (*UNTRUSTED-DIRECTORIES*)."
       (alexandria:write-byte-vector-into-file *tiny-png* (merge-pathnames "photo.png" dir) :if-exists :supersede)
       ;; asked, and yes: a copy of it opened, yours alone and read only, the file itself never given
       (let ((f (rimu-session dir "g f p h o t o . p n g RET O y RET" :width 200)))
-        (true (tuatara.frontend.fake:fake-frame-showing f "Open photo.png (PNG image, 2 × 2"))
-        (true (tuatara.frontend.fake:fake-frame-showing f "outside the sandbox? Untrusted: y a copy, e the file"))
-        (true (tuatara.frontend.fake:fake-frame-showing f "which may run what it holds (y, n or e, then RET)"))
+        ;; a short prompt, what the answers do and the file's kind beside it
+        (true (tuatara.frontend.fake:fake-frame-showing f "Open photo.png in the desktop's program? (y, n or e, then RET)"))
+        (true (tuatara.frontend.fake:fake-frame-showing f "photo.png is untrusted, PNG image, 2 × 2"))
+        (true (tuatara.frontend.fake:fake-frame-showing f "outside the sandbox"))
+        (true (tuatara.frontend.fake:fake-frame-showing f "y: a copy, read only and yours alone."))
+        (true (tuatara.frontend.fake:fake-frame-showing f "e: the file itself, which may run what it holds."))
         (true (tuatara.frontend.fake:fake-frame-showing f "Opening photo.png in the desktop's program..."))
         (let ((opened (first (opened-names record))))
           (true (uiop:string-prefix-p (tuatara.defaults::opened-copies-directory) opened))
@@ -153,7 +156,8 @@ DOWNLOADS, the directory downloads/ in DIR, the download directory
            (sum (tuatara.defaults::file-sha256 real)))
       ;; not a kind a copy is opened of: n or e asked, and n opens nothing
       (let ((f (rimu-session downloads "g f p a g e . h t m l RET O n RET" :width 240)))
-        (true (tuatara.frontend.fake:fake-frame-showing f "may run what it holds (n or e, then RET)"))
+        (true (tuatara.frontend.fake:fake-frame-showing f "? (n or e, then RET)"))
+        (true (tuatara.frontend.fake:fake-frame-showing f "which may run what it holds."))
         (true (tuatara.frontend.fake:fake-frame-showing f "Not opened"))
         (false (probe-file record)))
       ;; e: the file itself
@@ -461,7 +465,8 @@ those that read in the sandbox too when SANDBOXED."
   (with-untrusted-places (dir record downloads)
     (flet ((asked (name keys)
              (let ((f (rimu-session dir (format nil "g f ~a RET O ~a" (rimu-typed name) keys) :width 240)))
-               (true (tuatara.frontend.fake:fake-frame-showing f "may run what it holds (n or e, then RET)")))))
+               (true (tuatara.frontend.fake:fake-frame-showing f "? (n or e, then RET)"))
+               (true (tuatara.frontend.fake:fake-frame-showing f "which may run what it holds.")))))
       (alexandria:write-byte-vector-into-file (kind-octets (list #x7F 69 76 70 2 1 1 0 0 0 0 0 0 0 0 0 2 0 62 0))
                                               (merge-pathnames "tool" dir))
       (asked "tool" "n RET")
@@ -591,7 +596,7 @@ those that read in the sandbox too when SANDBOXED."
                 (tuatara-user:*open-externally-programs* `(("image/png" . ,chooser))))
             (true (tuatara.frontend.fake:fake-frame-showing
                    (rimu-session dir "g f p h o t o . p n g RET O n RET" :width 200)
-                   "in stand-in-xdg-open, outside the sandbox?")))
+                   "in stand-in-xdg-open? (y, n or e, then RET)")))
           ;; not found, none for the type, and an entry that is no program: said, nothing opened
           (true (tuatara.frontend.fake:fake-frame-showing
                  (open-with '(("image/png" . "no-such-viewer")))

@@ -134,6 +134,18 @@ file of test/org/, the same nodes, positions and properties as tools/org-oracle.
     (tuatara.defaults::org-parse text)
     (true (< (- (get-internal-real-time) start) internal-time-units-per-second))))
 
+(define-test (org long-line-of-object-marks-parsed-in-time-with-its-length)
+  ;; a paragraph of one long line full of marks that may begin an object (_ ^ $ [) is parsed in time
+  ;; growing with its length alone: each mark looked for its line's end again, through the rest of the line
+  (flet ((seconds (pieces)
+           (let ((text (with-output-to-string (out) (loop repeat pieces do (write-string "a_ b^ c$ d[ e " out)))))
+             (loop repeat 2
+                   minimize (let ((start (thread-cpu-time)))
+                              (tuatara.defaults::org-parse text)
+                              (/ (- (thread-cpu-time) start) internal-time-units-per-second))))))
+    (let ((per-thousand (/ (- (seconds 16000) (seconds 4000)) 12)))
+      (true (< per-thousand 6/100) "~,1f ms for each thousand pieces more" (* 1000 per-thousand)))))
+
 (define-test (org list-items-parsed-in-time-with-their-number)
   ;; a long plain list is parsed in time growing with its items alone: each item was looked for through
   ;; all of them, 45 s for a list of 10 MB

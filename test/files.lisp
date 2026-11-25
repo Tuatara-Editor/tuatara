@@ -2387,3 +2387,54 @@ the old one put back after."
           (false (tuatara.frontend.fake:fake-frame-showing f "shown as its picture"))
           (tuatara.buffer:kill-buffer buffer)))
       (image-forget))))
+
+(define-test (visiting-and-saving owner-name-failure-not-kept)
+  ;; an account's name that could not be looked up (the directory service away) is looked up again
+  ;; next time, not kept as having none
+  (let ((uid (sb-posix:getuid)) (self sb-thread:*current-thread*))
+    (sb-thread:with-mutex (tuatara.io::*owner-names-lock*)
+      (remhash (cons :user uid) tuatara.io::*owner-names*))
+    (sb-int:encapsulate 'tuatara.io::system-owner-name 'failing
+                        (lambda (look kind number)
+                          (if (eq sb-thread:*current-thread* self)
+                              (values nil nil)
+                              (funcall look kind number))))
+    (unwind-protect (false (tuatara.io:owner-name uid))
+      (sb-int:unencapsulate 'tuatara.io::system-owner-name 'failing))
+    (is equal (sb-posix:passwd-name (sb-posix:getpwuid uid)) (tuatara.io:owner-name uid))))
+
+(define-test (visiting-and-saving backup-of-a-pipe-not-held-up)
+  ;; a file put aside for a named pipe just before its backup is made: the backup fails at once,
+  ;; never waiting in the open for a program to write to the pipe
+  (with-test-directory (dir)
+    (let ((path (tuatara.io:native (merge-pathnames "file.txt" dir))))
+      (put-file path "some text")
+      (let ((existing (tuatara.io:path-stamp path)))
+        (delete-file path)
+        (sb-posix:mkfifo path #o600)
+        (let* ((thread (sb-thread:make-thread (lambda ()
+                                                (handler-case (progn (tuatara.io::backup-copy path existing) :made)
+                                                  ((or tuatara.io:file-system-error tuatara.io:file-changed-on-disk) ()
+                                                    :refused)))
+                                              :name "tuatara test backup"))
+               (outcome (sb-thread:join-thread thread :timeout (* 5 (machine-slowdown)) :default :held-up)))
+          (when (eq outcome :held-up)
+            ;; a writer comes and goes, so that the open waiting for one returns
+            (sb-posix:close (sb-posix:open path (logior sb-posix:o-wronly sb-posix:o-nonblock)))
+            (sb-thread:join-thread thread :timeout 5 :default nil))
+          (is eq :refused outcome))))))
+
+(define-test (visiting-and-saving backup-of-a-swapped-file-refused)
+  ;; another file of the same size put at the path just before its backup is made is never
+  ;; copied as the backup: the save is refused as changed on disk, and no backup is left
+  (with-test-directory (dir)
+    (let ((path (tuatara.io:native (merge-pathnames "file.txt" dir)))
+          (other (tuatara.io:native (merge-pathnames "other.txt" dir))))
+      (put-file path "the old text")
+      (let ((existing (tuatara.io:path-stamp path)))
+        ;; the old file kept under another name, so that the new one cannot have its inode
+        (sb-posix:link path (tuatara.io:native (merge-pathnames "kept.txt" dir)))
+        (put-file other "the new text")
+        (sb-posix:rename other path)
+        (fail (tuatara.io::backup-copy path existing) tuatara.io:file-changed-on-disk)
+        (is equal '("file.txt" "kept.txt") (directory-names dir))))))

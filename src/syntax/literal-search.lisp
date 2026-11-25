@@ -15,12 +15,15 @@
   "Octets of overlap between regex chunks; the longest match found across a
 chunk edge.")
 
-(defun needle-octets (string case-fold)
-  "STRING as UTF-8 octets, folded when CASE-FOLD."
-  (let ((octets (tuatara.text:string-octets string)))
-    (when case-fold
-      (loop for i from 0 below (length octets) do (setf (aref octets i) (aref *fold-table* (aref octets i)))))
-    octets))
+(defun needle-octets (needle case-fold)
+  "NEEDLE as UTF-8 octets, folded when CASE-FOLD; octets given as NEEDLE are
+taken as they are."
+  (if (stringp needle)
+      (let ((octets (tuatara.text:string-octets needle)))
+        (when case-fold
+          (loop for i from 0 below (length octets) do (setf (aref octets i) (aref *fold-table* (aref octets i)))))
+        octets)
+      (coerce needle 'tuatara.text:octets)))
 
 (defun case-fold-p (string)
   "True when STRING has no upper-case letter, so a search for it ignores case."
@@ -29,9 +32,14 @@ chunk edge.")
 (defun by-pattern-p (string case-fold)
   "True when a search for STRING goes by the pattern of its text
 \(LITERAL-SCANNER), not by its octets alone: when, ignoring case (CASE-FOLD),
-it must fold letters past ASCII, as é with É; or when STRING holds a newline,
-which matches a line end of either kind, as \\n in a pattern does."
-  (some (lambda (c) (or (char= c #\Newline) (and case-fold (>= (char-code c) 128) (both-case-p c)))) string))
+it must fold letters past ASCII, as é with É; when STRING holds a newline,
+which matches a line end of either kind, as \\n in a pattern does; or when it
+holds a raw byte, which matches only a byte standing on its own, never one
+inside a character."
+  (some (lambda (c)
+          (or (char= c #\Newline) (tuatara.text:raw-byte-code-p (char-code c))
+              (and case-fold (>= (char-code c) 128) (both-case-p c))))
+        string))
 
 (defun character-start-from (rope byte)
   "The first character's start of ROPE at or after BYTE."
@@ -188,13 +196,17 @@ sets, stands whole, reading through CHUNK; NIL when none."
     (scan-chunks-forward rope start end chunk (length shape) #'look)))
 
 (defun search-forward (rope string &key (start 0) (end (tuatara.text:rope-octet-length rope))
-                                        (case-fold (case-fold-p string)) (threads (tuatara.runtime:cpu-count)) stop)
+                                        (case-fold (and (stringp string) (case-fold-p string)))
+                                        (threads (tuatara.runtime:cpu-count)) stop)
   "Byte offset of the first occurrence of STRING in ROPE starting at or after
 START and ending at or before END, and the offset after it, as two values; NIL
 when there is none. CASE-FOLD ignores case (the default when STRING has no
 upper-case letter): ASCII case on the octets, and for a STRING with letters
 past ASCII, case of every letter, through the pattern of its text. A newline
-in STRING matches a line end of either kind (BY-PATTERN-P). The first
+in STRING matches a line end of either kind, and a raw byte only a byte on
+its own (BY-PATTERN-P). STRING may instead be a vector of octets, found as
+exactly those octets wherever they are, case kept whatever CASE-FOLD
+says. The first
 *SERIAL-WINDOW* octets are scanned on the calling thread; beyond that the
 range is cut into pieces of *PARALLEL-PIECE* octets run in order on THREADS
 threads (DIRECTIONAL-SEARCH), so a rare needle costs O(distance / THREADS).
@@ -202,7 +214,8 @@ STOP, when given, is asked every megabyte or so (+HALT-CHUNKS+); when it
 answers true the search gives up and returns NIL and :STOPPED.
 Complexity: O(distance scanned)."
   (declare (type fixnum start end))
-  (when (by-pattern-p string case-fold)
+  (unless (stringp string) (setf case-fold nil))
+  (when (and (stringp string) (by-pattern-p string case-fold))
     (return-from search-forward
       (multiple-value-bind (found after)
           (regex-search-forward rope (literal-scanner string case-fold) :start (character-start-from rope start)
@@ -238,13 +251,15 @@ every +HALT-CHUNKS+ chunks, answers true."
                  (when (= pos end) (return nil)))))))
 
 (defun search-backward (rope string &key (start (tuatara.text:rope-octet-length rope)) (end 0)
-                                         (case-fold (case-fold-p string)) (threads (tuatara.runtime:cpu-count)) stop)
+                                         (case-fold (and (stringp string) (case-fold-p string)))
+                                         (threads (tuatara.runtime:cpu-count)) stop)
   "Byte offset of the last occurrence of STRING in ROPE that starts before START
 and at or after END, and the offset after it, as two values; NIL when none.
 Serial for the first *SERIAL-WINDOW* octets, then pieces going back, in
-parallel, case and STOP as for SEARCH-FORWARD."
+parallel; STRING, case and STOP as for SEARCH-FORWARD."
   (declare (type fixnum start end))
-  (when (by-pattern-p string case-fold)
+  (unless (stringp string) (setf case-fold nil))
+  (when (and (stringp string) (by-pattern-p string case-fold))
     (return-from search-backward
       (multiple-value-bind (found after)
           (regex-search-backward rope (literal-scanner string case-fold) :start start :end end

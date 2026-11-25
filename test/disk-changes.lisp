@@ -518,6 +518,29 @@ whose state changed, and those whose file changed again."
         (setf tuatara.io::*poll-interval* interval)
         (tuatara.io:watch-directories '())))))
 
+(define-test (files-changed-on-disk watcher-started-again-keeps-both)
+  ;; a watcher that ended and is started again by a request for files alone still watches the
+  ;; directories it watched before
+  (with-test-directory (dir)
+    (let ((watched (format nil "~awatched/" (namestring dir)))
+          (path (namestring (put-file (merge-pathnames "file.txt" dir) "text"))))
+      (ensure-directories-exist watched)
+      (let ((buffer (tuatara.io:visit-file path)))
+        (unwind-protect
+             (progn
+               (tuatara.io:watch-directories (list watched))
+               (directory-news-within 0.5)
+               (let ((old tuatara.io::*watcher*))
+                 (sb-thread:terminate-thread old)
+                 (sb-thread:join-thread old :default nil :timeout 5))
+               (tuatara.io:watch-files (list buffer))
+               (directory-news-within 0.5)
+               (alexandria:write-string-into-file "x" (format nil "~anew.txt" watched))
+               (true (member watched (directory-news-within 1.5) :test #'string=)))
+          (tuatara.io:watch-files '())
+          (tuatara.io:watch-directories '())
+          (tuatara.buffer:kill-buffer buffer))))))
+
 (define-test (files-changed-on-disk read-again-away-from-the-editor)
   ;; a file rewritten on disk is read again on a thread of its own: catching up returns before the read is done,
   ;; the text comes in as the job is taken in, and an edit made meanwhile is kept and said

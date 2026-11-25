@@ -21,21 +21,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from repositories import lisp_files, package_roots
+from lisp_text import code_only
+from repositories import lisp_files, report
 
 OWN = re.compile(r"\(in-package\s+#?:?([^\s)]+)", re.I)
 REACH = re.compile(r"(?<![\w:.-])#?:?([A-Za-z][\w.-]*)::([^\s()'`,\"]+)")
-# what Lisp text is made of, as far as telling code from the rest: a string, a line comment, a block comment
-# (not nested), a character such as #\" or #\;
-LEXEME = re.compile(r'"(?:[^"\\]|\\.)*"|;[^\n]*|#\|.*?\|#|#\\.', re.S)
-
-
-def code_only(text):
-    """TEXT with every string, comment and character blanked (line ends kept, so line numbers stay), leaving the code
-    alone, where a double colon is a reference."""
-    return LEXEME.sub(lambda match: re.sub(r"[^\n]", " ", match.group()), text)
-
-
 def reaches(text):
     """The (line number, reference) pairs in TEXT that name a package other than the file's own."""
     own = OWN.search(text)
@@ -50,27 +40,8 @@ def reaches(text):
 
 def main(argv):
     """Run the check for the command line ARGV; return the exit status."""
-    summary = "--summary" in argv
-    roots = [Path(a) for a in argv if not a.startswith("--")]
-    if "--packages" in argv:
-        roots = (roots or [Path(".")]) + package_roots()
-    roots = roots or [Path(".")]
-    total = 0
-    for root in roots:
-        for name in lisp_files(root):
-            try:
-                text = (root / name).read_text(encoding="utf-8")
-            except (OSError, UnicodeDecodeError):
-                continue
-            found = reaches(text)
-            total += len(found)
-            if summary and found:
-                print(f"{len(found):6d} {root.resolve().name}/{name}")
-            elif not summary:
-                for number, reference in found:
-                    print(f"{root.resolve().name}/{name}:{number}: {reference}")
-    print(f"{total} references past a package boundary with two colons")
-    return 0
+    return report(argv, lisp_files, lambda _, text: [f"{n}: {reference}" for n, reference in reaches(text)],
+                  "references past a package boundary with two colons")
 
 
 if __name__ == "__main__":

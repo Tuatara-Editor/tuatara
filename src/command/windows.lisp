@@ -265,10 +265,10 @@ WHICH is a buffer's name (\"*Messages*\"), a kind of buffer (:help for help,
 too), or a list of those.
 
 PLACE is one of these. :here is the selected window. :other is a window
-already showing the buffer, else a new one split off a big window: beside it
-when it has *SPLIT-WIDTH-THRESHOLD* columns, below it when it has
-*SPLIT-HEIGHT-THRESHOLD* rows, below a lone window; else the window used least
-lately. :below or :beside is a new window below or right of the selected one.
+already showing the buffer, else a new one split off a big window: below it
+when it has *SPLIT-HEIGHT-THRESHOLD* rows, beside it when it has
+*SPLIT-WIDTH-THRESHOLD* columns, below a lone window; else the window used
+least lately. :below or :beside is a new window below or right of the selected one.
 :bottom, :top, :left or :right is a new window across the whole bottom or top,
 or down the whole left or right side. :right-or-alone is down the whole right
 side when the screen has *SPLIT-WIDTH-THRESHOLD* columns, else the only window

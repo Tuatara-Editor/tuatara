@@ -100,17 +100,36 @@ for up to SECONDS; NIL when it is not called."
              (false (eq thread sb-thread:*current-thread*)))
         (tuatara.buffer:kill-buffer buffer)))))
 
-(define-test (files-and-lists auto-saves-latest-listing-wins)
-  ;; of two listings of the copies that overlap, the one begun first and ended last is let go
-  (let ((buffer (tuatara.defaults::buffer-in-mode "*Auto-saves*" 'tuatara.defaults::auto-saves-mode)))
+(define-test (files-and-lists list-from-thread-latest-wins)
+  ;; of two listings of a list that overlap, the one begun first and ended last is let go, and told so while
+  ;; it works; the list says what it is doing until one ends
+  (let ((buffer (tuatara.defaults::buffer-in-mode "*Listed twice*" 'tuatara.defaults::special-mode))
+        (gate (sb-thread:make-semaphore)) (taken (sb-thread:make-semaphore))
+        (filled '()) (first-wanted :unasked))
+    (sb-int:encapsulate 'tuatara.command:defer-action 'list-from-thread
+                        (lambda (function action &rest options)
+                          (declare (ignore function options))
+                          (funcall action)
+                          (sb-thread:signal-semaphore taken)))
     (unwind-protect
-         (progn
-           (setf (tuatara.buffer:buffer-local buffer 'tuatara.defaults::auto-saves-listing) 2)
-           (tuatara.defaults::auto-saves-take buffer 2 '() 2)
-           (let ((filled (tuatara.buffer:buffer-string buffer)))
-             (tuatara.defaults::auto-saves-take
-              buffer 1 (list (list :copy "/x/old" :file "/x/stale.txt" :time 0 :size 1 :state :older)) 2)
-             (is string= filled (tuatara.buffer:buffer-string buffer))))
+         (flet ((take (found) (push found filled)))
+           (tuatara.defaults::show-list-from-thread buffer "Listing them..."
+                                                     (lambda (wanted)
+                                                       (sb-thread:wait-on-semaphore gate :timeout 10)
+                                                       (setf first-wanted (funcall wanted))
+                                                       :first)
+                                                     #'take)
+           (is string= (format nil "Listing them...~%") (tuatara.buffer:buffer-string buffer))
+           (tuatara.defaults::show-list-from-thread buffer "Listing them..."
+                                                     (lambda (wanted) (declare (ignore wanted)) :second)
+                                                     #'take)
+           (true (sb-thread:wait-on-semaphore taken :timeout 10))
+           (sb-thread:signal-semaphore gate)
+           (true (sb-thread:wait-on-semaphore taken :timeout 10))
+           (is equal '(:second) filled)
+           (false first-wanted))
+      (sb-int:unencapsulate 'tuatara.command:defer-action 'list-from-thread)
+      (sb-thread:signal-semaphore gate)
       (tuatara.buffer:kill-buffer buffer))))
 
 (define-test (files-and-lists bookmark-manager-key-cheap)

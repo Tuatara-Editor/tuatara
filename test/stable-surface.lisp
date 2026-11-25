@@ -205,3 +205,19 @@ keyword no longer taken."
         (let ((breaks (surface-breaks pinned (stable-surface))))
           (is equal '() breaks
               "Breaking changes within ~d.x (a major release is the place for them): ~s" now-major breaks))))))
+
+(define-test (stable-surface octet-helpers-named-by-their-home)
+  ;; the helpers tuatara.io borrows from tuatara.text are written tuatara.text: in the API and no longer
+  ;; exported by tuatara.io; names the API holds for one reason or another are exported by TUATARA
+  (dolist (name '("OCTETS-AT-P" "OCTETS-SEARCH" "OCTETS-INTEGER" "OCTETS-SIGNED" "OCTETS-PUT-INTEGER" "OCTET-AT"
+                  "OCTETS-ASCII" "BASE64-OCTETS" "BASE64-STRING" "COMMAND-WORDS" "OCTETS-WORDS"
+                  "SOFTWARE-VERSION-NUMBERS" "SOFTWARE-VERSION-AT-LEAST-P"))
+    (let ((symbol (find-symbol name "TUATARA.TEXT")))
+      (true symbol name)
+      (is eq :external (nth-value 1 (find-symbol name "TUATARA.TEXT")) name)
+      (isnt eq :external (nth-value 1 (find-symbol name "TUATARA.IO")) name)
+      (is eq symbol (find-symbol name "TUATARA.IO") name)))
+  (dolist (name '("READ-KEY-CHOICE" "CONTENT-TEXT-ESCAPED" "CONTENT-PARAMETER-TEXT" "OCTETS-PICTURE-SIZE"
+                  "VISIT-SECTION" "*MONTH-NAMES*" "*WEEKDAY-NAMES*"))
+    (is eq :external (nth-value 1 (find-symbol name "TUATARA")) name))
+  (false (find-symbol "FIRST-LINE" "TUATARA") "removed from the API"))

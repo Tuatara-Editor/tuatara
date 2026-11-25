@@ -18,7 +18,7 @@ batches, versions and anchors.")
    #:+near-octets+
    #:command-words #:shell-quoted #:software-version-numbers #:software-version-at-least-p #:search-count #:spaces
    #:octets-words
-   #:utf-16-text #:octets-text #:make-octet-counter #:fold-content-line
+   #:utf-16-text #:octets-text #:make-octet-counter #:fold-content-line #:content-text-escaped #:content-parameter-text
    #:parse-decimal #:whole-number #:split-words #:number-formatter #:merge-ranges
    #:*blank-characters* #:blank-char-p #:lowercase-hex-p #:+fnv-offset+ #:+fnv-prime+ #:octets-hash #:rope-hash #:string-hash #:nul-fields
    ;; JSON

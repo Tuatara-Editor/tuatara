@@ -49,10 +49,9 @@ opens what was made; gpg-lock makes gpg-agent forget its passphrases.")
           (auto-save-session (list (format nil "M-x w i p e - f i l e RET C-a C-k ~a C-j" (rimu-typed plain))
                                    (list :wait 0.2) "n RET"))
         (declare (ignore editor))
-        (true (tuatara.frontend.fake:fake-frame-showing f
-                                                        (format nil
-                                                                "Wipe notes.txt for good? (~a)"
-                                                                (tuatara.defaults::wipe-caveat (list plain))))))
+        (true (tuatara.frontend.fake:fake-frame-showing f "Wipe notes.txt for good? (y or n, then RET)"))
+        (true (tuatara.frontend.fake:fake-frame-showing
+               f (format nil "Wiping cannot promise all is gone: ~a." (tuatara.defaults::wipe-caveat (list plain))))))
       (true (probe-file plain))
       ;; yes: gone
       (multiple-value-bind (f editor)
@@ -61,6 +60,20 @@ opens what was made; gpg-lock makes gpg-agent forget its passphrases.")
         (declare (ignore editor))
         (true (tuatara.frontend.fake:fake-frame-showing f "Wiped: notes.txt")))
       (false (probe-file plain)))))
+
+(define-test (wipe many-asked-in-short)
+  ;; ten files marked in a list: the question names how many, the names and the caveat are beside it
+  (with-test-directory (dir)
+    (dotimes (i 10)
+      (alexandria:write-string-into-file "x" (merge-pathnames (format nil "file-~d.txt" i) dir)))
+    (let ((f (rimu-session dir "t g w n RET" :width 120 :height 40)))
+      (true (tuatara.frontend.fake:fake-frame-showing f "Wipe 10 files for good? (y or n, then RET)"))
+      (true (tuatara.frontend.fake:fake-frame-showing f "file-7.txt"))
+      (true (tuatara.frontend.fake:fake-frame-showing f "Wiping cannot promise all is gone"))
+      (false (tuatara.frontend.fake:fake-frame-showing f "for good? (an SSD"))
+      (dotimes (i 10)
+        (true (probe-file (merge-pathnames (format nil "file-~d.txt" i) dir)))))
+    (rimu-forget)))
 
 (define-test (wipe wiping-in-rimu)
   ;; g w on a file of a list: asked, then wiped

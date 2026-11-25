@@ -1134,6 +1134,27 @@ tiny pieces, a few lines each, so that a small text exercises it."
   ;; one step to undo
   (is string= *list-records-sample* (list-records-after "C-x / d 1 RET a u c k RET u" *list-records-sample*)))
 
+(define-test (search-filters column-past-the-line-limit-said)
+  ;; a record longer than the limit has its column tried on its start alone: a filter
+  ;; counts it where it says what it leaves, and keep-lines by a column deletes nothing
+  (let ((limit tuatara.defaults::*rewrite-line-limit*)
+        (text (format nil "NAME,NOTE~%Ann,kiwi~%Bob,~a kiwi~%Cat,tui~%" (make-string 30 :initial-element #\x))))
+    (unwind-protect
+         (progn
+           (setf tuatara.defaults::*rewrite-line-limit* 20)
+           (with-records (f buffer path) ('("C-x / f N O T E RET k i w i RET") :text text)
+             (is equal '("NAME,NOTE" "Ann,kiwi") (records-shown buffer))
+             (let ((words (tuatara.defaults::filters-mode-line nil buffer)))
+               (true (search "1 of 3 records; 1 line longer than 20 B tried on their start" (or words ""))
+                     "the mode line says ~s" words)))
+           (multiple-value-bind (f editor)
+               (run-keys-in-turns
+                (list "M-x c s v - m o d e RET C-x h M-x k e e p - l i n e s RET N O T E RET k i w i RET" "")
+                :text text :width 160)
+             (is string= text (session-text editor))
+             (true (tuatara.frontend.fake:fake-frame-showing f "Nothing deleted: 1 line longer than 20 B"))))
+      (setf tuatara.defaults::*rewrite-line-limit* limit))))
+
 (define-test (search-filters records-shown-and-hidden)
   ;; shown by a column, the others hidden, nothing deleted; the filter kept with the others
   (with-records (f buffer path) ((list "C-x / f C I T Y RET ^ a u c k RET" :tick) :text *list-records-sample*)
@@ -1532,6 +1553,24 @@ for, anchors, empty matches, line ends, and matches running over them.")
           (is eq t (filter-scan-agrees text pattern :crlf crlf :ends ends))
           (is eq t (filter-scan-agrees text pattern :crlf crlf :ends ends :hide t))
           (is eq t (filter-scan-agrees text pattern :crlf crlf :ends ends :everywhere t)))))))
+
+(define-test (search-filters match-carried-into-a-touching-stretch)
+  ;; stretches that touch, the second the last line with no line end of its own: a match
+  ;; running from the one into the other leaves the lines one scan of the whole text finds,
+  ;; whether the lines are taken in pieces or not
+  (dotimes (before 3)
+    (let* ((text (format nil "~{~a~%~}x~%y" (make-list before :initial-element "a")))
+           (rope (tuatara.text:string->rope text))
+           (cut (1- (length text)))
+           (filter (tuatara.defaults::make-search-filter "x\\ny"))
+           (oracle (scan-kept-starts rope (tuatara.defaults::search-filter-matcher filter) nil)))
+      (true oracle)
+      (dolist (most '(nil 1000))
+        (multiple-value-bind (runs count)
+            (tuatara.defaults::lines-matching (list filter) rope (runs-of (list (list 0 cut) (list cut (length text))))
+                                              nil :most most)
+          (is equal oracle (runs-starts rope runs nil nil) "after ~d lines, most ~a" before most)
+          (is = (length oracle) count "counted after ~d lines, most ~a" before most))))))
 
 (define-test (search-filters filter-pieces-bounded-by-lines)
   ;; pieces of short lines for the workers end at the line limit however few octets they hold

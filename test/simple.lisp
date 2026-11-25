@@ -1158,3 +1158,30 @@ stands around takes it off).")
   (multiple-value-bind (f editor) (run-keys "C-e C-n" :text (format nil "日本~%abcdef"))
     (declare (ignore f))
     (is = (+ 7 4) (session-point editor))))
+
+(define-test (simple many-lines-joined-in-one-edit)
+  ;; joining a selection of many lines changes the text once, one step to undo, with M-^ and with
+  ;; g j alike (g j keeps the line end of the last line it touches); a count to g j joins that many
+  ;; lines below
+  (let* ((lines (make-list 20000 :initial-element "ab"))
+         (text (format nil "~{~a~%~}" lines))
+         (joined (format nil "~{~a~^ ~}" lines))
+         (edits 0))
+    (sb-int:encapsulate 'tuatara.buffer::buffer-edit 'edits
+                        (lambda (fn buffer &rest arguments)
+                          (when (string= "*scratch*" (tuatara.buffer:buffer-name buffer)) (incf edits))
+                          (apply fn buffer arguments)))
+    (unwind-protect
+         (loop for (keys result) in `(("C-x h M-^" ,joined)
+                                      ("C-x h M-x j o i n - s e l e c t e d - l i n e s RET"
+                                       ,(format nil "~a~%" joined)))
+               do (setf edits 0)
+                  (multiple-value-bind (f editor) (run-keys keys :text text)
+                    (declare (ignore f))
+                    (is string= result (session-text editor))
+                    (is = 1 edits "~a: ~:d edits" keys edits)))
+      (sb-int:unencapsulate 'tuatara.buffer::buffer-edit 'edits))
+    (is string= text (session-text (nth-value 1 (run-keys "C-x h M-^ C-/" :text text)))))
+  (is string= (format nil "a b c~%d")
+      (session-text (nth-value 1 (run-keys "C-u 2 M-x j o i n - s e l e c t e d - l i n e s RET"
+                                           :text (format nil "a~%  b~%c~%d"))))))

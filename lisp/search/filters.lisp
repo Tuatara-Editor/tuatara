@@ -31,7 +31,8 @@ records, TEST, when given, tries COMPILED on a record's line in its own way
 \(\"$2\"). HIDE is true when it leaves the entries it does not match. KEPT is
 which of the list's entries it and the filters before it leave, a bit for each,
 worked out for the whole list SOURCE. COUNT is how many entries that is,
-headings aside."
+headings aside. CUT is how many records TEST was tried on the start of alone,
+being longer than *REWRITE-LINE-LIMIT* octets."
   (string nil :documentation "The pattern of a search filter, as typed.")
   (kind nil :documentation "How a search filter's pattern is read: :REGEX or :LITERAL.")
   (fold nil :documentation "True when a search filter ignores case.")
@@ -45,7 +46,13 @@ line (a column), or NIL for the whole line.")
   (hide nil :documentation "True when a search filter leaves the entries it does not match.")
   (kept nil :documentation "Which entries a search filter and those before it leave, a bit each, or NIL.")
   (source nil :documentation "The whole list a search filter's KEPT was worked out for.")
-  (count 0 :documentation "How many entries a search filter and those before it leave."))
+  (count 0 :documentation "How many entries a search filter and those before it leave.")
+  (cut 0 :documentation "How many records a search filter tried on their start alone, being too long."))
+
+(defvar *lines-cut* nil
+  "When a cons, LINES-DECODED adds to its car each line, or record, it tries
+on its first *REWRITE-LINE-LIMIT* octets alone because it is longer; the
+work on every core of LINES-MATCHING-EVERYWHERE counts into the same cons.")
 
 (defun search-filter-scanner (filter)
   "FILTER's pattern compiled to try on a string: its matcher's regular
@@ -120,19 +127,20 @@ entries it shows, headings aside, each worked out once."
       "A LIST-SOURCE of a list's TEXT, SPANS, BUTTONS, ENTRIES and FIRST-LINE.")
 
 (define-record (list-filtering (:constructor make-list-filtering ()) (:copier nil))
-  "How a list is narrowed. FILTERS are those kept, the first first. TYPING is
-the filter being typed at the search prompt, or NIL. SOURCE is the whole list (a
-LIST-SOURCE) while filters narrow it. SHOWN is the bits of the entries shown, or
-NIL for all. JOB is the filters being worked out in the background. The rest is
-what the list says of itself (SET-SEARCH-FILTERING): TEXT, NOUNS, HEADING,
-EMPTY-HEADINGS, DECORATION, SEARCHES, PARTS and LIGHT-PART. For a file of records, LINES is how
-many header lines it has, always shown: 0 for none. There SOURCE is the version
-of its text the filters were worked out for, SHOWN the runs of lines shown and
-TOTAL how many records it has, once known. While JOB works the filters out,
-SHOWN is what they match from the window's top. SLOW is true when it works them
-out because a pattern was too slow on this text for the editor's thread. DUE
-holds the filters whose job waits for typing to pause."
-  (filters '() :documentation "The filters kept on a list, the first first.")
+  "How a list is narrowed. FILTERS are those kept, in the order they were added.
+TYPING is the filter being typed at the search prompt, or NIL. SOURCE is the
+whole list (a LIST-SOURCE) while filters narrow it. SHOWN is the bits of the
+entries shown, or NIL for all. JOB is the filters being worked out in the
+background. The rest is what the list says of itself (SET-SEARCH-FILTERING):
+TEXT, NOUNS, HEADING, EMPTY-HEADINGS, DECORATION, SEARCHES, PARTS and
+LIGHT-PART. For a file of records, LINES is how many header lines it has, always
+shown: 0 for none. There SOURCE is the version of its text the filters were
+worked out for, SHOWN the runs of lines shown and TOTAL how many records it has,
+once known. While JOB works the filters out, SHOWN is what they match from the
+window's top. SLOW is true when it works them out because a pattern was too slow
+on this text for the editor's thread. DUE holds the filters whose job waits for
+typing to pause."
+  (filters '() :documentation "The filters kept on a list, in the order they were added.")
   (typing nil :documentation "The filter being typed at the search prompt, or NIL.")
   (source nil :documentation "The whole list, a LIST-SOURCE, while filters narrow it.")
   (shown nil :documentation "The bits of the entries shown, or NIL for all of them.")
@@ -218,12 +226,30 @@ with its entries; with SEARCHES, only when its searches narrow it
        (or (not searches)
            (let ((filtering (list-filtering buffer))) (and filtering (list-filtering-searches filtering))))))
 
+(defun records-file-p (buffer)
+  "True when BUFFER is a file of records, a line each: a CSV or TSV, a log,
+a JSON Lines file and the others *LINE-RECORD-MODES* names
+\(FILTERS-HIDE-LINES-P)."
+  (filters-hide-lines-p (buffer-major-mode buffer) buffer))
+
+(defun say-not-records (command &optional instead)
+  "Say that COMMAND, a command's name, was not run because the buffer is no
+file of records (RECORDS-FILE-P), and INSTEAD, words naming what may serve,
+when given; NIL."
+  (message "Not a file of records (a CSV, a log): ~(~a~) was not run~@[; ~a~]" command instead)
+  nil)
+
+(defun filter-question (words what)
+  "The question asking for a filter's pattern, WORDS (keep lines) heading it,
+naming WHAT of each record or entry the pattern is tried on when given: keep
+lines whose CITY holds."
+  (format nil "~a~@[ whose ~a holds~]" words what))
+
 (defun search-filterable-p (buffer)
   "True when search filters can narrow BUFFER: a list with its entries
 \(SEARCH-FILTERS-LIST-P), or a file of records whose mode hides the lines
-they leave out (FILTERS-HIDE-LINES-P)."
-  (or (search-filters-list-p buffer)
-      (filters-hide-lines-p (buffer-major-mode buffer) buffer)))
+they leave out (RECORDS-FILE-P)."
+  (or (search-filters-list-p buffer) (records-file-p buffer)))
 
 (defun say-unfilterable (outcome)
   "Say that only a list or a file of records takes a filter, and OUTCOME, what
@@ -241,7 +267,8 @@ came of the command asked for."
           (and (list-filtering-typing filtering) (list (list-filtering-typing filtering)))))
 
 (defun search-filters (buffer)
-  "The search filters kept on BUFFER, a list, the first first; NIL for none."
+  "The search filters kept on BUFFER, a list, in the order they were added;
+NIL for none."
   (let ((filtering (list-filtering buffer)))
     (and filtering (list-filtering-filters filtering))))
 
@@ -387,11 +414,19 @@ at. Headings are left for LIST-SHOWN-LINES. O(entries) matches."
                (setf i end)))
     (values bits count)))
 
-(defun keep-worked-out (filter source bits count)
+(defun forget-worked-out (filters)
+  "Have each of FILTERS worked out again: what it leaves, and the list or
+text it was worked out for, are forgotten."
+  (dolist (filter filters)
+    (setf (search-filter-source filter) nil (search-filter-kept filter) nil)))
+
+(defun keep-worked-out (filter source bits count &optional (cut 0))
   "Keep in FILTER that it leaves the entries BITS, COUNT of them, of SOURCE,
-the whole list. Returns BITS."
+the whole list, CUT records tried on their start alone (LINES-DECODED).
+Returns BITS."
   (setf (search-filter-kept filter) bits
         (search-filter-count filter) count
+        (search-filter-cut filter) cut
         (search-filter-source filter) source)
   bits)
 

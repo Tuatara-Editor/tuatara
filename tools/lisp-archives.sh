@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tools/lisp-archives.sh --- Check, fetch and add the archives of the Lisp libraries Tuatara is built with.
+# tools/lisp-archives.sh --- Install Quicklisp, and check, fetch and add the archives of the Lisp libraries.
 # Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 # The libraries are Quicklisp's, each archive named with its SHA-256 in
 # tools/lisp-archives.sha256. This is the one place that list is read, by
@@ -11,10 +11,15 @@
 #   tools/lisp-archives.sh index [QUICKLISP]    download the Quicklisp set's index
 #   tools/lisp-archives.sh lock [QUICKLISP]     Quicklisp downloads nothing more,
 #                                               so a new library stops a load
-#   tools/lisp-archives.sh prepare [QUICKLISP]  check, then leave only the listed
-#                                               libraries, unpacked from their
-#                                               archives, and lock: for a copy
-#                                               a release is compiled from
+#   tools/lisp-archives.sh install QUICKLISP [CACHE]
+#                                               make a new Quicklisp in the new
+#                                               directory QUICKLISP from the
+#                                               pinned client, index and listed
+#                                               archives, then check and lock it:
+#                                               what a release is compiled with;
+#                                               downloads are kept in CACHE and
+#                                               taken from it again when their
+#                                               hash still matches
 #   tools/lisp-archives.sh add LIBRARY [QUICKLISP]
 #                                               download LIBRARY over HTTPS from
 #                                               the set's index and add its line
@@ -25,9 +30,19 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 . "$root/tools/fetch.sh"
 list="$root/tools/lisp-archives.sha256"
-# the Quicklisp set the list is made from; its libraries are checked one by
-# one, so its index files are not
+# the Quicklisp set the list is made from, and the SHA-256 of each of its index files
 dist_url=https://beta.quicklisp.org/dist/quicklisp/2026-01-01
+index_sha256=(
+  "distinfo.txt fc436eb7582c8b69f2ec87d77bdaa4087502328dec09f21c576d78fac8bf5e15"
+  "systems.txt cb8309321840887b542fa853dc4fe95f9a4ea2d7ca028c521d32b67d2bdf51c7"
+  "releases.txt 9cad59398e760032de0053cafcfdcf16eb437caf1a20d65668a8e3b726485da4")
+# the Quicklisp client, as client-info.sexp of its version 2021-02-13 names it
+client_url=https://beta.quicklisp.org/client/2021-02-13/quicklisp.tar
+client_sha256=a8a3c8c91b51dd185175abad4d7c3999ebb4e2520be5a6cee2127035ac6c87be
+setup_url=https://beta.quicklisp.org/client/2021-02-11/setup.lisp
+setup_sha256=549fe3e7e0f2669daede98437c99cd60e02c0b8536d3d135c9aa9d346ed951b6
+asdf_url=https://beta.quicklisp.org/asdf/3.2.1/asdf.lisp
+asdf_sha256=51912f3f7c2c62c204f515d97346d56011528399bbf0a76a123318343ebd8bf0
 
 fail() { echo "tools/lisp-archives.sh: $*" >&2; exit 1; }
 
@@ -69,23 +84,40 @@ check() {
   [ "$bad" = 0 ] || exit 1
 }
 
-index() {
+index_file() {  # download the set's index file $1 to $2, kept only with its hash
+  local entry
+  for entry in "${index_sha256[@]}"; do
+    if [ "${entry%% *}" = "$1" ]; then download "$dist_url/$1" "$2" "${entry#* }"; return; fi
+  done
+  fail "$1 is not an index file of the Quicklisp set"
+}
+
+index() {  # the set's index files in Quicklisp $1; downloads in $2, else there
   local dist="$1/dists/quicklisp" file
   mkdir -p "$dist/archives" "$1/config" "$1/local-projects"
   for file in distinfo.txt systems.txt releases.txt; do
-    https_curl --connect-timeout 30 --max-time 300 -o "$dist/$file" "$dist_url/$file" ||
-      fail "$dist_url/$file could not be downloaded"
+    if [ -n "${2:-}" ]; then
+      index_file "$file" "$2/$file"
+      cp "$2/$file" "$dist/$file"
+    else
+      index_file "$file" "$dist/$file"
+    fi
   done
   touch "$dist/enabled.txt"
 }
 
-fetch() {
-  local archives="$1/dists/quicklisp/archives" sha256 archive
+fetch() {  # the listed archives in Quicklisp $1; downloads in $2, else there
+  local archives="$1/dists/quicklisp/archives" sha256 archive url
   [ -s "$1/dists/quicklisp/releases.txt" ] || fail "$1 has no Quicklisp index: tools/lisp-archives.sh index makes one"
   mkdir -p "$archives"
   while read -r sha256 archive; do
-    if [ -f "$archives/$archive" ] && echo "$sha256  $archives/$archive" | sha256sum -c --status; then continue; fi
-    download "$(https_url "$1/dists/quicklisp/releases.txt" "$archive")" "$archives/$archive" "$sha256"
+    url="$(https_url "$1/dists/quicklisp/releases.txt" "$archive")"
+    if [ -n "${2:-}" ]; then
+      download "$url" "$2/$archive" "$sha256"
+      cp "$2/$archive" "$archives/$archive"
+    else
+      download "$url" "$archives/$archive" "$sha256"
+    fi
   done < <(entries)
 }
 
@@ -95,18 +127,20 @@ lock() {
   echo "http://127.0.0.1:9/" > "$1/config/proxy-url.txt"
 }
 
-prepare() {
-  local archives="$1/dists/quicklisp/archives" file
-  check "$1"
-  # only what the list names is compiled: no other archive, nothing unpacked
-  # earlier (Quicklisp unpacks the archives again), nothing of local-projects
-  for file in "$archives"/*; do
-    [ -e "$file" ] || continue
-    grep -q "^[0-9a-f]\{64\}  $(basename "$file")$" "$list" || rm -f "$file"
-  done
-  rm -rf "$1/dists/quicklisp/software" "$1/local-projects"
-  mkdir -p "$1/local-projects"
-  lock "$1"
+install() {  # a new Quicklisp in $1 holding only what is pinned here and listed; downloads kept in $2
+  local dir="$1" cache="$2"
+  [ ! -e "$dir" ] || [ -z "$(ls -A "$dir")" ] || fail "install: $dir is not a new directory"
+  mkdir -p "$dir" "$cache"
+  download "$client_url" "$cache/quicklisp.tar" "$client_sha256"
+  tar -xf "$cache/quicklisp.tar" -C "$dir"
+  download "$setup_url" "$cache/setup.lisp" "$setup_sha256"
+  cp "$cache/setup.lisp" "$dir/setup.lisp"
+  download "$asdf_url" "$cache/asdf.lisp" "$asdf_sha256"
+  cp "$cache/asdf.lisp" "$dir/asdf.lisp"
+  index "$dir" "$cache"
+  fetch "$dir" "$cache"
+  check "$dir"
+  lock "$dir"
 }
 
 add() {
@@ -114,8 +148,7 @@ add() {
   [ -n "$name" ] || fail "add: which library? (a Quicklisp project name, as releases.txt has it)"
   work="$(mktemp -d)"
   trap "rm -rf '$work'" EXIT
-  https_curl --connect-timeout 30 --max-time 300 -o "$work/releases.txt" "$dist_url/releases.txt" ||
-    fail "$dist_url/releases.txt could not be downloaded"
+  index_file releases.txt "$work/releases.txt"
   line=$(awk -v p="$name" '$1 == p { print; exit }' "$work/releases.txt")
   [ -n "$line" ] || fail "$name is not in the Quicklisp set $dist_url"
   url=$(echo "$line" | awk '{ print $2 }' | sed 's|^http:|https:|')
@@ -141,7 +174,17 @@ add() {
 
 command="${1:-}"
 case "$command" in
-  check|fetch|index|lock|prepare) shift; dir="$(quicklisp_dir "${1:-}")" || exit 1; "$command" "$dir" ;;
+  check|fetch|index|lock) shift; dir="$(quicklisp_dir "${1:-}")" || exit 1; "$command" "$dir" ;;
+  install)
+    [ -n "${2:-}" ] || fail "install: where? (a new directory)"
+    if [ -n "${3:-}" ]; then
+      install "$2" "$3"
+    else
+      cache="$(mktemp -d)"
+      trap 'rm -rf "$cache"' EXIT
+      install "$2" "$cache"
+    fi ;;
   add) shift; dir="$(quicklisp_dir "${2:-}")" || exit 1; add "${1:-}" "$dir" ;;
-  *) fail "usage: tools/lisp-archives.sh check|fetch|index|lock|prepare [QUICKLISP] | add LIBRARY [QUICKLISP]" ;;
+  *) fail "usage: tools/lisp-archives.sh check|fetch|index|lock [QUICKLISP] | install QUICKLISP [CACHE]" \
+          "| add LIBRARY [QUICKLISP]" ;;
 esac

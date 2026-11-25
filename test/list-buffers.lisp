@@ -49,9 +49,10 @@ is filled again only when the jobs have changed.")
       ;; the lists the owner named, and the kind each is
       (dolist (entry '(("BUFFERS-MODE" :manager) ("CACHE-LIST-MODE" :manager) ("BOOKMARKS-MODE" :manager)
                        ("RIMU-TRASH-MODE" :manager) ("GIT-REFS-MODE" :entries) ("PACKAGES-MODE" :manager)
-                       ("FACE-LIST-MODE" :entries) ("XREF-MODE" :entries) ("REGISTERS-MODE" :entries)
+                       ("FACE-LIST-MODE" :entries) ("XREF-MODE" :entries) ("REGISTERS-MODE" :manager)
+                       ("JOBS-MODE" :manager) ("GPG-KEYS-MODE" :manager) ("AUTO-SAVES-MODE" :manager)
                        ("REDACTIONS-MODE" :entries) ("LATEX-ERRORS-MODE" :entries) ("DIAGNOSTICS-MODE" :entries)
-                       ("GIT-BLAME-MODE" :entries) ("GIT-LOG-MODE" :drill-down) ("JOBS-MODE" :plain)
+                       ("GIT-BLAME-MODE" :entries) ("GIT-LOG-MODE" :drill-down)
                        ("GIT-STATUS-MODE" :plain) ("HELP-MODE" :text) ("MAN-MODE" :text) ("ABOUT-MODE" :text)))
         (destructuring-bind (name kind) entry
           (let ((mode (mode-named name)))
@@ -122,7 +123,7 @@ is filled again only when the jobs have changed.")
     (is string= (format nil " MR  ~18a ~9@a ~16a Filename/Process~% --  ~18a ~9@a ~16a ----------------~%"
                         "Name" "Size" "Mode" "----" "----" "----")
         (text (tuatara.defaults::table-heading-pieces tuatara.defaults::*buffers-columns*)))
-    (is string= (format nil "   ~20a ~26a Job~%   ~20a ~26a ---~%" "Buffer" "State" "------" "-----")
+    (is string= (format nil " M ~26a Job~% - ~26a ---~%" "State" "-----")
         (text (tuatara.defaults::table-heading-pieces tuatara.defaults::*jobs-columns*)))
     (is string= (format nil "D*%  a-name-longer-t... ~9@a Fundamental      ~%" "12,345")
         (text (tuatara.defaults::table-row-pieces tuatara.defaults::*buffers-columns*
@@ -134,11 +135,10 @@ is filled again only when the jobs have changed.")
     ;; a shaded column's face covers the spaces either side of it
     (multiple-value-bind (text spans)
         (tuatara.defaults::pieces-text (tuatara.defaults::table-row-pieces tuatara.defaults::*jobs-columns*
-                                                                          (list " D" (cons "b" :list-deletion)
-                                                                                (cons "Sorting 42%" :job-queued)
-                                                                                "Sorting")))
-      (is string= (format nil " D ~20a ~26a Sorting~%" "b" "Sorting 42%") text)
-      (is equal '((3 23 :list-deletion) (23 51 :job-queued)) spans))))
+                                                                          (list " D" (cons "Sorting 42%" :job-queued)
+                                                                                (cons "Sorting" :list-deletion))))
+      (is string= (format nil " D ~26a Sorting~%" "Sorting 42%") text)
+      (is equal '((2 30 :job-queued) (30 37 :list-deletion)) spans))))
 
 (define-test (list-buffers marks-sections-questions)
   ;; marks kept by their keys, the first marked first; those of entries gone dropped
@@ -220,7 +220,7 @@ is filled again only when the jobs have changed.")
   (let ((versions '()))
     (flet ((note () (push (tuatara.buffer:buffer-version (tuatara.buffer:find-buffer "*Jobs*")) versions)))
       (multiple-value-bind (f editor)
-          (run-keys (list "M-x l i s t - j o b s RET" #'note "j" :tick "k" :tick "j" #'note "r" #'note)
+          (run-keys (list "M-x j o b s - m a n a g e r RET" #'note "j" :tick "k" :tick "j" #'note "r" #'note)
                     :text "x" :width 150 :height 12)
         (declare (ignore f))
         (is string= "*Jobs*" (current-name editor))
@@ -232,7 +232,7 @@ is filled again only when the jobs have changed.")
         (seen nil))
     (with-background ()
       (multiple-value-bind (f editor)
-          (run-keys (list "r r % a / b RET r r % b / c RET M-x l i s t - j o b s RET"
+          (run-keys (list "r r % a / b RET r r % b / c RET M-x j o b s - m a n a g e r RET"
                           (lambda () (setf seen (search "Replacing" (session-text tuatara.command:*editor*))))
                           (lambda () (loop repeat 400
                                            until (search "No jobs in the background"
@@ -258,7 +258,7 @@ is filled again only when the jobs have changed.")
                                     (tuatara.runtime:job-status job) :done)))))
     (unwind-protect
          (multiple-value-bind (f editor)
-             (run-keys (list "M-x l i s t - j o b s RET" :tick :tick) :text "x" :width 100 :height 12)
+             (run-keys (list "M-x j o b s - m a n a g e r RET" :tick :tick) :text "x" :width 100 :height 12)
            (declare (ignore f))
            (is string= "*Jobs*" (current-name editor))
            (true (search "No jobs in the background" (session-text editor))))

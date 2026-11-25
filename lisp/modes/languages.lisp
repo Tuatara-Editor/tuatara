@@ -29,8 +29,8 @@ it would be beside the program when neither is there."
 comment such as ; inherits: ecma,_javascript.")
 
 (defparameter *rules-largest* (* 1024 1024)
-  "The largest set of rules read, in characters, so a rules file larger, or one
-whose ; inherits: lines make it larger, is not used, and that is said.")
+  "The largest set of rules read. A rules file of more octets, or one whose
+; inherits: lines make it more characters, is not used, and that is said.")
 
 (defun read-query (directory name &optional seen)
   "The text of the rules NAME.scm in DIRECTORY, or NIL when there is none;
@@ -42,7 +42,7 @@ they inherit is put in, are not used: NIL, and said."
       (let ((size (ignoring-errors-reported ("reading ~a" path)
                     (with-open-file (in path :element-type '(unsigned-byte 8)) (file-length in)))))
         (if (or (null size) (> size *rules-largest*))
-            (progn (rules-failed "The rules ~a are larger than ~:d characters: not used"
+            (progn (rules-failed "The rules ~a are larger than ~:d octets: not used"
                                  (namestring path)
                                  *rules-largest*)
                    nil)
@@ -179,33 +179,32 @@ against one meaning to, as a package runs Lisp with all the rights Tuatara has."
       (message "~(~a~) is one of Tuatara's own languages: a package or an init file adds languages, ~
                 it does not replace them (~(~a~) left as it is)"
                name name)
-      (return-from register-language nil)))
-  (let* ((injection-scanner
-           (and injection-names
-                (handling-errors-reported ("reading the injection names of ~(~a~)" name)
-                    (cl-ppcre:create-scanner (format nil "^(?i)(~a)$" injection-names))
-                  (error (e)
-                    (refuse "The injection names of ~(~a~), ~s, are not a regular expression: ~a"
-                            name injection-names e)))))
-         (old (find-language name))
-         (queries (or queries grammar))
-         (textobjects (let ((read (read-kind-query "textobjects" queries)))
-                        (if (and read more-textobjects)
-                            (format nil "~a~%~a" read more-textobjects)
-                            (or read more-textobjects))))
-         (definitions (if (eq definitions :textobjects) (textobject-definitions textobjects) definitions))
-         (language (make-language name doc grammar modes
-                                  (read-kind-query "rules" queries) (read-kind-query "indents" queries)
-                                  indent textobjects (read-kind-query "injections" queries) injection-names
-                                  (read-kind-query "locals" queries) definitions
-                                  (read-kind-query "tags" queries))))
-    (setf (language-injection-scanner language) injection-scanner)
-    (when old
-      (setf (language-style language) (language-style old)
-            (language-level language) (language-level old)))
-    (setf *languages* (cons language (remove old *languages*)))
-    (clrhash *injection-languages*)
-    name))
+      (return-from register-language nil))
+    (let* ((injection-scanner
+             (and injection-names
+                  (handling-errors-reported ("reading the injection names of ~(~a~)" name)
+                      (cl-ppcre:create-scanner (format nil "^(?i)(~a)$" injection-names))
+                    (error (e)
+                      (refuse "The injection names of ~(~a~), ~s, are not a regular expression: ~a"
+                              name injection-names e)))))
+           (queries (or queries grammar))
+           (textobjects (let ((read (read-kind-query "textobjects" queries)))
+                          (if (and read more-textobjects)
+                              (format nil "~a~%~a" read more-textobjects)
+                              (or read more-textobjects))))
+           (definitions (if (eq definitions :textobjects) (textobject-definitions textobjects) definitions))
+           (language (make-language name doc grammar modes
+                                    (read-kind-query "rules" queries) (read-kind-query "indents" queries)
+                                    indent textobjects (read-kind-query "injections" queries) injection-names
+                                    (read-kind-query "locals" queries) definitions
+                                    (read-kind-query "tags" queries))))
+      (setf (language-injection-scanner language) injection-scanner)
+      (when old
+        (setf (language-style language) (language-style old)
+              (language-level language) (language-level old)))
+      (setf *languages* (cons language (remove old *languages*)))
+      (clrhash *injection-languages*)
+      name)))
 
 (defmacro define-language (name doc &key grammar modes (indent 4) more-textobjects injection-names definitions queries)
   "Define language NAME (of code or of text, such as Markdown), documented by

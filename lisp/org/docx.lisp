@@ -121,13 +121,13 @@ of *DOCX-BASE-SIZE* (132 at 11 points in Courier New)."
 (defun font-file-tables (octets)
   "The tables of the TrueType or OpenType font OCTETS, each (TAG OFFSET LENGTH); NIL for another kind."
   (when (and (>= (length octets) 12)
-             (member (tuatara.io:octets-integer octets 0 4 :big-endian t) '(#x00010000 #x4F54544F)))
-    (loop for i below (tuatara.io:octets-integer octets 4 2 :big-endian t)
+             (member (tuatara.text:octets-integer octets 0 4 :big-endian t) '(#x00010000 #x4F54544F)))
+    (loop for i below (tuatara.text:octets-integer octets 4 2 :big-endian t)
           for at = (+ 12 (* 16 i))
           while (<= (+ at 16) (length octets))
           collect (list (tuatara.text:octets-latin-1 octets :start at :end (+ at 4))
-                        (tuatara.io:octets-integer octets (+ at 8) 4 :big-endian t)
-                        (tuatara.io:octets-integer octets (+ at 12) 4 :big-endian t)))))
+                        (tuatara.text:octets-integer octets (+ at 8) 4 :big-endian t)
+                        (tuatara.text:octets-integer octets (+ at 12) 4 :big-endian t)))))
 
 (defun font-character-ratio (family)
   "The width of a character of the font FAMILY as a part of its size, when it
@@ -144,10 +144,10 @@ ten of its glyphs that width. NIL otherwise."
                                   (flet ((table (tag) (second (assoc tag tables :test #'string=))))
                                     (let ((head (table "head")) (hhea (table "hhea")) (hmtx (table "hmtx")))
                                       (when (and head hhea hmtx)
-                                        (let* ((units (tuatara.io:octets-integer octets (+ head 18) 2 :big-endian t))
-                                               (metrics (tuatara.io:octets-integer octets (+ hhea 34) 2 :big-endian t))
+                                        (let* ((units (tuatara.text:octets-integer octets (+ head 18) 2 :big-endian t))
+                                               (metrics (tuatara.text:octets-integer octets (+ hhea 34) 2 :big-endian t))
                                                (widths (loop for i below metrics
-                                                             collect (tuatara.io:octets-integer
+                                                             collect (tuatara.text:octets-integer
                                                                       octets (+ hmtx (* 4 i)) 2 :big-endian t)))
                                                (counts (make-hash-table)))
                                           (dolist (w widths) (when (plusp w) (incf (gethash w counts 0))))
@@ -322,7 +322,7 @@ file as a hyperlink, a place in the note as a link to its bookmark."
     (cond ((org-latex-image-link-p node)
            (write-string (docx-picture node (org-export-attributes (org-node-parent node) "latex")) out))
           ((or (string= type "file") (org-link-address type path))
-           (let* ((url (if (string= type "file") (path-uri (org-export-path path)) (org-link-address type path)))
+           (let* ((url (if (string= type "file") (org-export-file-address path :whole t) (org-link-address type path)))
                   (id (docx-relation "hyperlink" url :external t)))
              (format out "<w:hyperlink r:id=\"~a\">~a</w:hyperlink>" id
                      (or words (docx-run path (list* :style "Hyperlink" *docx-run*))))))
@@ -619,15 +619,9 @@ from a page of their own), its bookmark on it for links and the contents
   "How the items of the list NODE are marked: :bullet, :none, :decimal,
 :decimal-paren, :lower-letter, :upper-letter, :lower-roman or :upper-roman,
 as its :EXPORT: drawer's style says, else as its first bullet is written."
-  (let ((style (org-export-setting node "style"))
+  (let ((style (export-list-style (org-export-setting node "style")))
         (bullet (string-trim '(#\Space #\Tab) (or (org-property (first (org-node-children node)) :bullet) ""))))
-    (cond ((string= (or style "") "numbers") :decimal)
-          ((string= (or style "") "letters") :lower-letter)
-          ((string= (or style "") "Letters") :upper-letter)
-          ((string= (or style "") "roman") :lower-roman)
-          ((string= (or style "") "Roman") :upper-roman)
-          ((string-equal (or style "") "none") :none)
-          ((string-equal (or style "") "bullets") :bullet)
+    (cond (style (second style))
           ((not (eq (org-property node :type) 'ordered)) :bullet)
           ((zerop (length bullet)) :decimal)
           ((lower-case-p (char bullet 0)) :lower-letter)

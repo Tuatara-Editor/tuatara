@@ -225,6 +225,21 @@ package repository's tests load theirs."
       (false (tuatara.io:path-kind (namestring (merge-pathnames "link" output)) :follow nil))
       (true (member 0 reports) "~a" reports))))
 
+(define-test (sandbox-call function-of-tuatara-own)
+  ;; a function of Tuatara's own runs shut in with no package loaded: an Office file's account of itself
+  (with-test-directory (dir)
+    (let ((xlsx (write-office-test-file (merge-pathnames "birds.xlsx" dir) *xlsx-test-parts*))
+          (output (namestring (ensure-directories-exist (merge-pathnames "out/" dir)))))
+      (tuatara.io:call-with-file
+       xlsx
+       (lambda (fd path size)
+         (declare (ignore path size))
+         (multiple-value-bind (result failure outcome)
+             (tuatara:sandbox-call 'tuatara.defaults::office-about-shut-in (list fd) output
+                                   :arguments '(:xlsx) :seconds 120)
+           (is eq :done outcome "~a" failure)
+           (true (search "- Made by :: Bo Kaikoura" (or result "")) "~a" result)))))))
+
 (define-test (sandbox-call failures-said)
   (with-sandbox-call-package (dir)
     (let ((output (namestring (ensure-directories-exist (merge-pathnames "out/" dir)))))
@@ -253,8 +268,11 @@ package repository's tests load theirs."
       (fail (tuatara:sandbox-call 'car '() output) 'tuatara.runtime:refusal))))
 
 (define-test (sandbox-call cancel-stops-it)
+  ;; the run stopped from outside ends within moments, its sandbox gone; sandboxes others started (the syntax
+  ;; helpers an editor session keeps for the Lisp's life) are not this run's
   (with-sandbox-call-package (dir)
     (let* ((output (namestring (ensure-directories-exist (merge-pathnames "out/" dir))))
+           (others (mapcar #'car tuatara.io::**sandboxes**))
            (cancel (list nil))
            (start nil)
            (thread (sb-thread:make-thread
@@ -262,7 +280,7 @@ package repository's tests load theirs."
                                                                                                     :seconds 600))))))
       ;; once it runs, stopped from outside
       (loop repeat 1200 until (probe-file (merge-pathnames "napping" output)) do (sleep 0.1))
-      (true tuatara.io::**sandboxes**)
+      (true (set-difference (mapcar #'car tuatara.io::**sandboxes**) others))
       (setf start (get-internal-real-time) (car cancel) t)
       (destructuring-bind (result failure outcome &rest rest) (sb-thread:join-thread thread)
         (declare (ignore rest))
@@ -270,7 +288,7 @@ package repository's tests load theirs."
         (is eq :cancelled outcome)
         (true (search "stopped" failure)))
       (true (< (- (get-internal-real-time) start) (* 5 internal-time-units-per-second)))
-      (false tuatara.io::**sandboxes**))))
+      (false (set-difference (mapcar #'car tuatara.io::**sandboxes**) others)))))
 
 (define-test (sandbox-call output-kept-as-written)
   ;; plain files and directories stay however deep they lie, past the length a path may have too; the

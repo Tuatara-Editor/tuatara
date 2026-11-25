@@ -615,15 +615,10 @@ by the key that opens it alone."
           ((null (rest openers)) (funcall (second (first openers))))
           (t (let* ((keymaps (list (mode-keymap 'calendar-mode)))
                     (keys (loop for (nil command) in openers collect (first (where-is command keymaps))))
-                    (key (tuatara.frontend:key-description
-                          (tuatara.frontend:key-spec
-                           (read-key (format nil "Open on ~a: ~{~{~a ~a~}~^, ~}" (calendar-date-words day)
-                                             (loop for k in keys for (nil nil what) in openers
-                                                   collect (list k what)))))))
-                    (chosen (position key keys :test #'equal)))
-               (if chosen
-                   (funcall (second (nth chosen openers)))
-                   (message "~a opens none of them" key)))))))
+                    (key (read-key-choice (format nil "Open on ~a:" (calendar-date-words day))
+                                          (loop for k in keys for (nil nil what) in openers
+                                                collect (cons k what)))))
+               (funcall (second (nth (position key keys :test #'equal) openers))))))))
 
 (define-command calendar-unmark ()
   "Take the marks off the calendar's days, until \\<calendar-mode>\\[calendar-mark-days] puts them back."

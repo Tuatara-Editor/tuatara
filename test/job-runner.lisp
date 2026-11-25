@@ -29,9 +29,9 @@ asks before stopping it, and what is said once it has stopped."
         (list "copy"
               (lambda (b)
                 (tuatara.defaults::make-rimu-operation :copy (list (cons "/nonexistent/a" "/nonexistent/b")) b nil))
-              "Stop copying at 0%? The file under way is taken away" "Stopped: copied 0 files")
+              "Stop copying at 0%?" "Stopped: copied 0 files")
         (list "save" (lambda (b) (tuatara.io::%make-save-job :buffer b :path "/nonexistent/saved.txt" :total 10))
-              "Stop saving at 0%? The file stays as it was" "Stopped: the file is as it was")
+              "Stop saving at 0%?" "Stopped: the file is as it was")
         (list "agenda" (lambda (b)
                          (let ((job (tuatara.defaults::make-agenda-refresh b nil nil)))
                            (setf (tuatara.buffer:buffer-local b 'tuatara.defaults::org-agenda-refresh) job)
@@ -122,7 +122,7 @@ questions asked, the first first; what would be shown below them is kept in
     (unwind-protect
          (let ((sort (tuatara.defaults::%make-sort-job :buffer b :words "Sorting" :total 200)))
            (setf (car (tuatara.defaults::sort-job-progress sort)) 84)
-           (is string= "Stop sorting at 42%?" (tuatara.runtime:job-stop-question sort))
+           (is equal '("Stop sorting at 42%?" nil) (multiple-value-list (tuatara.runtime:job-stop-question sort)))
            (is string= "Sorting 42%" (tuatara.runtime:job-state-words sort))
            (setf (tuatara.defaults::sort-job-counting sort) (cons 21 50))
            (is string= "Sorting: counting lines 42%" (tuatara.runtime:job-state-words sort))
@@ -221,22 +221,24 @@ questions asked, the first first; what would be shown below them is kept in
   ;; listed with the other jobs, and stopped there
   (multiple-value-bind (f editor job)
       (job-session (second (find "copy" (job-kinds) :key #'first :test #'string=))
-                   "M-x l i s t - j o b s RET" :height 12
+                   "M-x j o b s - m a n a g e r RET" :height 12
                    :after (lambda (job) (tuatara.runtime:job-stop job)))
     (declare (ignore editor))
     (true (processing-shown f "TUATARA["))
     (false (tuatara.frontend.fake:fake-frame-showing f "Copying 0/1"))
-    (true (tuatara.frontend.fake:fake-frame-showing f "*scratch*" "Copying 0%" "Copying 1 file to"))
+    (true (tuatara.frontend.fake:fake-frame-showing f "Copying 0%" "Copying 1 file to"))
+    (true (tuatara.frontend.fake:fake-frame-showing f "▾ *scratch* ("))
     (is eq :stopped (tuatara.runtime:job-status job))))
 
 (define-modal-test (job-runner agenda-and-marks-listed)
   ;; an agenda worked out and a calendar's days marked are jobs like the others: listed, and stoppable
   (multiple-value-bind (f editor job)
       (job-session (second (find "agenda" (job-kinds) :key #'first :test #'string=))
-                   "M-x l i s t - j o b s RET" :height 12
+                   "M-x j o b s - m a n a g e r RET" :height 12
                    :after (lambda (job) (tuatara.runtime:job-stop job)))
     (declare (ignore editor job))
-    (true (tuatara.frontend.fake:fake-frame-showing f "*scratch*" "Working out the agenda"))
+    (true (tuatara.frontend.fake:fake-frame-showing f "Working out the agenda"))
+    (true (tuatara.frontend.fake:fake-frame-showing f "▾ *scratch* ("))
     ;; P lit, as for any job
     (true (processing-shown f "TUATARA[")))
   ;; the calendar's marks, as the calendar starts them
@@ -244,8 +246,9 @@ questions asked, the first first; what would be shown below them is kept in
           (list (lambda (first last)
                   (declare (ignore first last))
                   (lambda () (loop repeat 50 do (sleep 0.01) (tuatara.runtime:job-check-stop)) '())))))
-    (let ((f (run-keys "M-x c a l e n d a r RET M-x l i s t - j o b s RET" :width 120 :height 24)))
-      (true (tuatara.frontend.fake:fake-frame-showing f "*Calendar*" "Marking the days")))))
+    (let ((f (run-keys "M-x c a l e n d a r RET M-x j o b s - m a n a g e r RET" :width 120 :height 24)))
+      (true (tuatara.frontend.fake:fake-frame-showing f "Marking the days"))
+      (true (tuatara.frontend.fake:fake-frame-showing f "▾ *Calendar* (")))))
 
 (define-test (job-runner no-thread-to-be-had)
   ;; a job whose thread cannot be made ends at once, failed, never left running
@@ -291,6 +294,17 @@ questions asked, the first first; what would be shown below them is kept in
              (true (find-if (lambda (text) (search "tuatara adding failed: No figures to add." text)) texts)
                    "~s" texts))))
     (drain-debug-reports)))
+
+(define-test (job-runner stop-questions-short)
+  ;; the question before a stop is the question alone; what stopping does is shown beside it
+  (let ((b (tuatara.buffer:make-buffer "job-runner stop questions" :text "abc")))
+    (unwind-protect
+         (let ((save (tuatara.io::%make-save-job :buffer b :path "/nonexistent/saved.txt" :total 10)))
+           (is equal '("Stop saving at 0%?" "The file stays as it was.")
+               (multiple-value-list (tuatara.runtime:job-stop-question save)))
+           (is equal '("Stop saving to change this text?" "Saving works on this text (0%). The file stays as it was.")
+               (multiple-value-list (tuatara.runtime:job-guard-question save))))
+      (tuatara.buffer:kill-buffer b))))
 
 (define-test (job-runner long-questions-short)
   ;; a question needing more than a line is asked short, what it is about shown below it
@@ -339,3 +353,26 @@ questions asked, the first first; what would be shown below them is kept in
              (true (< (- (get-internal-real-time) start) (* 5 internal-time-units-per-second)))))
       (ignore-errors (sb-thread:terminate-thread hanging))
       (tuatara.buffer:kill-buffer b))))
+
+(define-test (job-runner jobs-listed-by-their-buffer)
+  ;; in *Jobs*, a job of a buffer killed and one of a new buffer of the same name have sections of their own;
+  ;; RET on a job of no buffer says so
+  (let* ((old (tuatara.buffer:make-buffer "*job-runner sections*"))
+         (new (progn (tuatara.buffer:kill-buffer old) (tuatara.buffer:make-buffer "*job-runner sections*")))
+         (jobs (list (make-runner-test-job) (make-runner-test-job) (make-runner-test-job))))
+    (unwind-protect
+         (progn
+           (setf (tuatara.runtime:job-buffer (first jobs)) old
+                 (tuatara.runtime:job-buffer (second jobs)) new
+                 (tuatara.runtime:job-buffer (third jobs)) nil)
+           (is equal (list old new nil)
+               (mapcar #'car (tuatara.defaults::group-sections jobs #'tuatara.defaults::job-entry-buffer)))
+           (let ((list (tuatara.defaults::buffer-in-mode "*Jobs*" 'tuatara.defaults::jobs-mode)))
+             (unwind-protect
+                  (is string= "This job has no buffer"
+                      (tuatara.command:editor-message
+                       (nth-value 1 (run-keys (list (lambda ()
+                                                      (let ((mode (tuatara.modes:buffer-major-mode list)))
+                                                        (tuatara.defaults::visit-entry mode list (third jobs) nil))))))))
+               (tuatara.buffer:kill-buffer list))))
+      (tuatara.buffer:kill-buffer new))))

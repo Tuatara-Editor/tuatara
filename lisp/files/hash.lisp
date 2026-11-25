@@ -352,7 +352,7 @@ a selection of the octets selected, or in a buffer with no file of its whole
 text; keep it in *Messages* and put it on the kill ring. The file is read
 without changing its access time where the system allows. A large one is summed
 in the background with its progress in the mode line; \\[stop-job] stops it.
-While another job runs in the buffer it waits its turn (\\[list-jobs])."
+While another job runs in the buffer it waits its turn (\\[jobs-manager])."
   (let ((b (current-buffer)))
     (multiple-value-bind (start end) (and (tuatara.buffer:buffer-mark-active-p b) (tuatara.buffer:buffer-region b))
       (let ((selection (and start (< start end))))

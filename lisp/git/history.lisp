@@ -50,11 +50,12 @@ with it."
                              (funcall then name)
                              (message "Not a name git takes: ~a" (escape-controls name)))))))))))
 
-(defun git-sequence-step (what noun step top &key ask)
+(defun git-sequence-step (what noun step top &key ask details)
   "Go on with, skip or stop (STEP :CONTINUE, :SKIP or :ABORT) what git is in
 the middle of, WHAT a git command (rebase, merge, cherry-pick, revert, am)
-and NOUN what it is called, at TOP; ASK, when given, is asked first."
-  (when (or (null ask) (yes-or-no-p* ask))
+and NOUN what it is called, at TOP; ASK, when given, is asked first, with
+DETAILS shown beside it."
+  (when (or (null ask) (yes-or-no-p* ask :details details))
     (git-run (ecase step (:continue "Going on") (:skip "Skipping") (:abort "Stopping"))
              top (list what (ecase step (:continue "--continue") (:skip "--skip") (:abort "--abort")))
              (ecase step
@@ -84,7 +85,8 @@ saying what it is in their documentation."
                   noun)
          (with-git-repository (top)
            (git-sequence-step ,what ,noun :abort top
-                                          :ask ,(format nil "Stop the ~a? What was done for it is lost" noun)))))))
+                                          :ask ,(format nil "Stop the ~a?" noun)
+                                          :details "What was done for it is lost."))))))
 
 ;;; Merging
 
@@ -248,7 +250,12 @@ directory of a list it replaces with it."
     (when (and old (buffer-private-directory old))
       (delete-private-directory (buffer-private-directory old))))
   (git-edit-buffer "*git rebase: ~a*" top 'git-rebase-mode
-                   (format nil "# C-c C-c rebases as these lines say, C-c C-k gives it up.~%~a" todo) 1
+                   (format nil "# ~a~%~a"
+                           (substitute-command-keys
+                            (concatenate 'string "\\<git-rebase-mode>\\[git-rebase-todo-finish] rebases as these "
+                                         "lines say, \\[git-rebase-todo-cancel] gives it up."))
+                           todo)
+                   1
                    'git-rebase (list base switches directory)
                    'private-directory directory))
 
@@ -301,8 +308,12 @@ list's directory, the new messages in it, is deleted once git is done."
                            (lambda (text)
                              (when (live-buffer-p buffer) (tuatara.buffer:kill-buffer buffer))
                              (let ((stopped (search "Stopped at" text)))
-                               (message (if stopped
-                                            "Stopped at a commit to edit: c a amends it, R c goes on"
+                               (message "~a"
+                                        (if stopped
+                                            (substitute-command-keys
+                                             (concatenate 'string "Stopped at a commit to edit: "
+                                                          "\\<git-status-mode>\\[git-commit-menu] a amends it, "
+                                                          "\\[git-rebase-menu] c goes on"))
                                             "Rebased as the list said"))))
                            :after (lambda ()
                                     (delete-private-directory directory)
@@ -445,14 +456,15 @@ of each commit tried whether it is good or bad, or letting a command say.
 
 ;;; Resetting
 
-(defun git-reset-to (how prompt done &key ask)
+(defun git-reset-to (how prompt done &key ask details)
   "Move the branch checked out to a revision asked for with PROMPT, as git
 reset HOW (--soft, --mixed, --keep, --hard) does, DONE a format given it,
-saying once done; ASK, a format given it too, is asked first when given."
+saying once done; ASK, a format given it too, is asked first when given,
+with DETAILS shown beside it."
   (with-git-repository (top)
     (git-ask-revision prompt top
                       (lambda (revision)
-                        (when (or (null ask) (yes-or-no-p* (format nil ask revision)))
+                        (when (or (null ask) (yes-or-no-p* (format nil ask revision) :details details))
                           (git-run "Resetting" top (list "reset" how revision "--") (format nil done revision)))))))
 
 (define-command git-reset-mixed ()
@@ -474,7 +486,8 @@ keeping changes not committed; git refuses when they would be lost."
   "Move the branch checked out to a revision asked for, what is staged and
 the files with it, after asking: changes not committed are lost."
   (git-reset-to "--hard" "Reset to (hard): " "Reset to ~a, files and all"
-                :ask "Reset everything to ~a? Changes not committed are lost and cannot be got back"))
+                :ask "Reset everything to ~a?"
+                :details "Changes not committed are lost and cannot be got back."))
 
 (define-command git-reset-file ()
   "Put a file, the one on point's line of a status or the current one, back
@@ -483,8 +496,8 @@ committed are lost."
   (with-git-file (top path :missing "No file here to put back")
     (git-ask-revision (format nil "Put ~a back to: " (escape-controls path)) top
                       (lambda (revision)
-                        (when (yes-or-no-p* (format nil "Put ~a back to ~a? Its changes not committed are lost"
-                                                    (escape-controls path) revision))
+                        (when (yes-or-no-p* (format nil "Put ~a back to ~a?" (escape-controls path) revision)
+                                            :details "Its changes not committed are lost.")
                           (git-run "Putting a file back" top (list "checkout" revision "--" path)
                                    (format nil "Put ~a back to ~a" (escape-controls path) revision)))))))
 

@@ -49,16 +49,16 @@ until then."
 
 (defun line-record (memo rope line next ends)
   "The record of ROPE holding its line from LINE to NEXT (the start of the
-line after it), records ending as ENDS says (RECORD-ENDS): three values,
-where it starts, where the text of its last line ends and where the line
-after it starts. MEMO (a RECORD-MEMO), kept by one thread, holds the last
+line after it), records ending as ENDS says (RECORD-ENDS), a line each when
+ENDS is NIL: three values, where it starts, where the text of its last line
+ends and where the line after it starts. MEMO (a RECORD-MEMO), kept by one thread, holds the last
 record found and what was decided of it, so that the record's other lines,
 and the record after it, are known at once."
   (declare (type record-memo memo) (type fixnum line next))
   (let ((same (eq rope (record-memo-rope memo))))
     (unless (and same (<= (record-memo-start memo) line) (< line (record-memo-after memo)))
-      (let ((start (if (and same (= line (record-memo-after memo))) line (funcall ends rope line t))))
-        (multiple-value-bind (text-end after) (funcall ends rope start)
+      (let ((start (if (and same (= line (record-memo-after memo))) line (if ends (funcall ends rope line t) line))))
+        (multiple-value-bind (text-end after) (record-bounds rope start ends)
           (setf (record-memo-rope memo) rope (record-memo-start memo) start
                 (record-memo-text-end memo) text-end (record-memo-after memo) (max after next)
                 (record-memo-verdict memo) :unknown)))))

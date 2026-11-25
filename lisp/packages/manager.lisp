@@ -186,8 +186,8 @@ fetches them all again."
   (let ((list (buffer-in-mode "*Packages*" 'packages-mode)))
     (when (eq (tuatara.buffer:buffer-local list :list-preview :unset) :unset)
       (setf (list-preview-p list) t))
-    (packages-render list 2)
-    (show-buffer list)))
+    (show-buffer list)
+    (packages-render list :first-entry)))
 
 ;;; Finding the packages the init file names
 

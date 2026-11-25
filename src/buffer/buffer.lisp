@@ -635,13 +635,7 @@ BUFFER and return the byte offset just after it. GROUP is passed to
 BUFFER-EDIT. A rope of more than *LARGE-EDIT-OCTETS* goes in as one splice
 \(BUFFER-SPLICE), sharing its leaves. Refused outside a narrowing as
 CHECK-WITHIN-NARROWING says."
-  (check-position buffer byte)
-  (if (and (tuatara.text:rope-p text) (> (tuatara.text:rope-octet-length text) *large-edit-octets*))
-      (buffer-splice buffer byte byte text)
-      (let ((octets (text-octets text)))
-        (if (zerop (length octets))
-            byte
-            (aref (buffer-edit buffer (vector (tuatara.text:make-edit byte byte octets)) :group group) 0)))))
+  (buffer-replace buffer byte byte text :group group))
 
 (defun buffer-splice (buffer start end rope)
   "Put ROPE's text (NIL for none) in place of the octets from START below END
@@ -715,11 +709,8 @@ ROPE; NIL, nothing done, for no SPANS."
 *LARGE-EDIT-OCTETS* go as one splice (BUFFER-SPLICE). With GROUP true, the
 deletion joins the newest undo group, as BUFFER-EDIT says. Refused outside a
 narrowing as CHECK-WITHIN-NARROWING says."
-  (check-position buffer start) (check-position buffer end)
-  (when (< end start) (rotatef start end))
-  (cond ((> (- end start) *large-edit-octets*) (buffer-splice buffer start end nil))
-        ((< start end) (buffer-edit buffer (vector (tuatara.text:make-edit start end)) :group group)))
-  start)
+  (buffer-replace buffer start end "" :group group)
+  (min start end))
 
 (defun buffer-replace (buffer start end text &key group)
   "Replace the octets from START below END of BUFFER with TEXT (a string, an
@@ -727,17 +718,21 @@ octet vector or a rope) and return the byte offset just after the new text.
 With GROUP true, the change joins the newest undo group (BUFFER-EDIT). More
 than *LARGE-EDIT-OCTETS* going or coming as a rope make one splice
 \(BUFFER-SPLICE), an undo step of its own. Refused outside a narrowing as
-CHECK-WITHIN-NARROWING says."
+CHECK-WITHIN-NARROWING says. Nothing put in place of nothing changes
+nothing: no new version, no undo step, the buffer not marked modified."
   (check-position buffer start) (check-position buffer end)
   (when (< end start) (rotatef start end))
-  (if (or (> (- end start) *large-edit-octets*)
-          (and (tuatara.text:rope-p text) (> (tuatara.text:rope-octet-length text) *large-edit-octets*)))
-      (buffer-splice buffer start end (text-rope text))
-      (let ((octets (text-octets text)))
-        (aref (buffer-edit buffer
-                           (vector (tuatara.text:make-edit start end (if (plusp (length octets)) octets nil)))
-                           :group group)
-              0))))
+  (let ((empty (if (tuatara.text:rope-p text) (zerop (tuatara.text:rope-octet-length text)) (zerop (length text)))))
+    (cond ((and empty (= start end)) start)
+          ((or (> (- end start) *large-edit-octets*)
+               (and (not empty) (tuatara.text:rope-p text)
+                    (> (tuatara.text:rope-octet-length text) *large-edit-octets*)))
+           (buffer-splice buffer start end (and (not empty) (text-rope text))))
+          (t (let ((octets (text-octets text)))
+               (aref (buffer-edit buffer
+                                  (vector (tuatara.text:make-edit start end (if empty nil octets)))
+                                  :group group)
+                     0))))))
 
 (defun commit-without-record (buffer edits)
   "Commit EDITS to BUFFER without touching the undo stacks; return the batch.

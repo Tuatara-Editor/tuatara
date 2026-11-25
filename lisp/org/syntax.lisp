@@ -129,9 +129,20 @@ sets its own instead."
   "The character at POSITION of the text, or NIL past its end."
   (and (< -1 position (length *org-text*)) (char *org-text* position)))
 
+(defvar *org-line-found* nil
+  "While objects are parsed, (TEXT FROM . END): the line end ORG-LINE-END found
+last in TEXT, END, and FROM, where it looked from; every position between the
+two has that line end, so it is not looked for again on a long line.")
+
 (defun org-line-end (position)
   "Where the line holding POSITION ends: its newline, or the text's end."
-  (string-line-end *org-text* position))
+  (let ((found *org-line-found*))
+    (if (and found (eq (car found) *org-text*) (<= (cadr found) position (cddr found)))
+        (cddr found)
+        (let ((end (string-line-end *org-text* position)))
+          (when found
+            (setf (car found) *org-text* (cadr found) position (cddr found) end))
+          end))))
 
 (defun org-next-line (position)
   "Where the line after the one holding POSITION begins, or the text's end."
@@ -1315,7 +1326,8 @@ far on, make one pass through the stretch."
   "The objects from BEGIN below END that TYPES allow, in order, each with its
 contents parsed; none deeper than *ORG-DEPTH-LIMIT*."
   (let ((objects '()) (p begin) (*org-object-begin* begin) (*org-object-limit* end)
-        (*org-emphasis-misses* '()) (*org-closes-seen* '()) (*org-depth* (1+ *org-depth*)))
+        (*org-emphasis-misses* '()) (*org-closes-seen* '()) (*org-depth* (1+ *org-depth*))
+        (*org-line-found* (or *org-line-found* (list* nil -1 -1))))
     (when (> *org-depth* *org-depth-limit*)
       (return-from org-parse-objects '()))
     (loop
@@ -1618,7 +1630,12 @@ split at each comma not after a backslash, each trimmed."
 
 (defun org-statistics-cookie-parser (p)
   "The statistics cookie at P: [N/M], [N%], [/] or [%]."
-  (org-scan () *org-statistics-cookie-re* p
+  ;; looked for no further than its digits, % and / go: the search for its ] would run through the line
+  (org-scan () (*org-statistics-cookie-re*
+                :end (1+ (or (position-if-not (lambda (c) (or (digit-char-p c) (find c "%/"))) *org-text*
+                                              :start (1+ p) :end (org-line-end p))
+                             (1- (org-line-end p)))))
+      p
     (org-object-finish (make-org-node 'statistics-cookie :begin p
                                                          :properties (list :value (subseq *org-text* p match-end)))
                        match-end)))
@@ -1774,7 +1791,8 @@ time range after it too (<%%(diary-float t 1 1) 10:00>).")
 ;;; Links
 
 (defun org-link-parts (raw)
-  "RAW, a link's target as written, as two values: its type and path."
+  "RAW, a link's target as written, as two values: its type and path, a
+file's without the search after :: (./notes.org::*Intro is ./notes.org)."
   (let ((colon (position #\: raw)))
     (cond ((and (plusp (length raw)) (char= (char raw 0) #\#)) (values "custom-id" (subseq raw 1)))
           ((and (plusp (length raw)) (char= (char raw 0) #\() (char= (char raw (1- (length raw))) #\)))
@@ -1782,10 +1800,10 @@ time range after it too (<%%(diary-float t 1 1) 10:00>).")
           ((and colon (member (subseq raw 0 colon) *org-link-types* :test #'string=))
            (let ((type (subseq raw 0 colon)) (path (subseq raw (1+ colon))))
              (if (string= type "file")
-                 (values type (subseq path 0 (or (search "::" path) (length path))))
+                 (values type (subseq path 0 (search "::" path)))
                  (values type path))))
           ((or (uiop:string-prefix-p "/" raw) (uiop:string-prefix-p "./" raw) (uiop:string-prefix-p "~/" raw))
-           (values "file" raw))
+           (values "file" (subseq raw 0 (search "::" raw))))
           (t (values "fuzzy" raw)))))
 
 (defun org-link-unescape (link)
@@ -1850,7 +1868,12 @@ marks of emphasis (*bold*, /italic/, _under_, =code=, ~verbatim~, +struck+) off.
                    (setf (org-node-contents-begin node) (1+ after) (org-node-contents-end node) description-end))
                  (org-object-finish node end))))))))
     (#\<
-     (org-scan (type path) "<([a-z]+):([^]<>\\n]*?)>" p
+     ;; looked for no further than the first ], < or > after it, where it ends if anywhere
+     (org-scan (type path) ("<([a-z]+):([^]<>\\n]*?)>"
+                            :end (1+ (or (position-if (lambda (c) (find c "]<>")) *org-text*
+                                                      :start (1+ p) :end (org-line-end p))
+                                         (1- (org-line-end p)))))
+         p
        (when (member type *org-link-types* :test #'string=)
          (org-object-finish (make-org-node 'link :begin p :properties (list :type type :path path :format 'angle
                                                                             :raw-link (format nil "~a:~a" type path)))

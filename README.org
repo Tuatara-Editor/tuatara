@@ -43,7 +43,7 @@ from the rope up to the init file.
   Tuatara itself: nothing in a file is ever run.
 - Auto-save into a private directory of its own, never into the file itself
   (only a save writes that); =M-x recover-file= takes the changes back after a
-  crash or a quit without saving (=M-x list-auto-saves= lists them all).
+  crash or a quit without saving (=M-x auto-saves-manager= lists them all).
   Nothing opened safely is ever copied.
 - Encrypted files (.gpg) opened decrypted and saved encrypted by GnuPG, their
   text never written to disk (no auto-save, scratch file or clipboard but on
@@ -243,7 +243,7 @@ keys, faces and themes.
 
 * Status
 
-Version 0.90.43, a pre-release: in daily use by its author, its parts tested
+Version 0.90.44, a pre-release: in daily use by its author, its parts tested
 (=tools/test.sh=, about 225,000 checks), its interfaces still changing until
 1.0.0, the first stable release.
 

@@ -149,7 +149,7 @@ not sent, and neither is any text from an encrypted file, and with
 |-------+-----------------------------+---------------------------+-----------------------------------|
 | none  | ~<mouse-2>~                 | =mouse-yank-primary=      | Pastes the primary selection where the middle button was pressed. |
 | none  | ~M-x gpg-copy-to-clipboard~ | =gpg-copy-to-clipboard=   | Puts the text copied last on the system clipboard even when it came from an encrypted file. Other programs, a clipboard manager among them, can then read and keep it. |
-| none  | ~C~, ~C-c C~                | =server-toggle-clipboard= | In the list of servers, shares the clipboard with the server on the line, or stops sharing it. See chapter 18. |
+| none  | ~C-c C~                     | =server-toggle-clipboard= | In the list of servers, shares the clipboard with the server on the line, or stops sharing it. See chapter 18. |
 
 *** Settings
 
@@ -197,7 +197,7 @@ gives up. Keeping again under the same character replaces what was there.
 | none  | ~M-x register-prepend~ | =register-prepend= | Puts the selected text before the text a register keeps. |
 | none  | ~C-x r i~              | =register-insert=  | Writes what a register keeps at the cursor. Text goes in as it was, with the mark before it. A block goes in as a block, each row as many times as the number you gave first. A number goes in as digits. |
 | none  | ~C-x r j~              | =register-jump=    | Goes to the place a register keeps.    |
-| none  | ~C-x r l~              | =register-list=    | Lists the registers in a buffer, one per line. ~RET~ on a place goes there, and ~q~ closes the list. |
+| none  | ~C-x r l~              | =register-manager= | Lists the registers in a buffer, one per line, in a section for each kind they keep. ~RET~ or ~l~ on a place goes there, ~h~ folds a section, and ~q~ closes the list. |
 
 A register that keeps something that is not the right kind says what it
 keeps instead. A place worth keeping beyond this session is a bookmark rather

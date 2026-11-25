@@ -163,7 +163,8 @@ bracket however long it is. No more than 64 KB of it is kept."
                        ((= x 41) (decf level) (when (plusp level) (keep x)))
                        (t (keep x)))
                  (incf j))))
-    (values (if raw (coerce out '(simple-array (unsigned-byte 8) (*))) (pdf-string-text out)) j)))
+    ;; a backslash as the last octet of all takes J one past the end
+    (values (if raw (coerce out '(simple-array (unsigned-byte 8) (*))) (pdf-string-text out)) (min j n))))
 
 (defparameter *pdf-item-limit* 1000
   "The most items of a PDF array kept (PDF-OBJECT-AT): the rest of a longer
@@ -355,7 +356,7 @@ when no NUMBER GENERATION stands before P."
 
 (defun pdf-endstream-from (octets start)
   "Where the first endstream at or after START in OCTETS is, or NIL."
-  (tuatara.io:octets-search (load-time-value (tuatara.text:string-octets "endstream")) octets :start start))
+  (tuatara.text:octets-search (load-time-value (tuatara.text:string-octets "endstream")) octets :start start))
 
 (defun pdf-indirect-object-at (octets at &key endstream-from)
   "The object written in OCTETS from AT (its number: NUMBER GENERATION obj),
@@ -369,18 +370,18 @@ reaches an endstream."
     (multiple-value-bind (number after) (pdf-integer-at octets at)
       (multiple-value-bind (generation after) (and number (pdf-integer-at octets after))
         (let ((obj (and generation (pdf-skip-space octets after))))
-          (when (and obj (tuatara.io:octets-at-p octets "obj" obj)
+          (when (and obj (tuatara.text:octets-at-p octets "obj" obj)
                      (or (>= (+ obj 3) n) (pdf-delimiter-p (aref octets (+ obj 3)))))
             (multiple-value-bind (value value-end) (pdf-object-at octets (+ obj 3))
               (let* ((next (pdf-skip-space octets value-end))
                      (object (make-pdf-indirect :number number :generation generation :value value
                                                 :at at :end value-end)))
-                (when (and (tuatara.io:octets-at-p octets "stream" next)
+                (when (and (tuatara.text:octets-at-p octets "stream" next)
                            (or (>= (+ next 6) n) (member (aref octets (+ next 6)) '(10 13 32))))
                   (let* ((data (pdf-line-end-after octets (+ next 6)))
                          (length (pdf-get value "/Length"))
                          (exact (and (integerp length) (<= 0 length) (<= (+ data length) n)
-                                     (tuatara.io:octets-at-p octets "endstream" (pdf-skip-space octets (+ data length)))
+                                     (tuatara.text:octets-at-p octets "endstream" (pdf-skip-space octets (+ data length)))
                                      (+ data length)))
                          (close (or (and exact (pdf-skip-space octets exact)) (if endstream-from
                                                                                    (funcall endstream-from data)
@@ -397,7 +398,7 @@ reaches an endstream."
                           (and (or exact (and close (pdf-length-after-p octets length data close))) t)
                           next (if close (pdf-skip-space octets (+ close 9)) n))))
                 (setf (pdf-indirect-end object)
-                      (if (tuatara.io:octets-at-p octets "endobj" next)
+                      (if (tuatara.text:octets-at-p octets "endobj" next)
                           (+ next 6)
                           (max next (pdf-indirect-end object))))
                 object))))))))
@@ -412,13 +413,13 @@ endstream, as writers put a stream's length after it."
   (when (pdf-ref-p length)
     (let ((n (length octets))
           (mark (tuatara.text:string-octets (format nil "~d ~d obj" (second length) (third length)))))
-      (loop for at = (tuatara.io:octets-search mark octets :start close :end (min n (+ close 4096)))
-              then (tuatara.io:octets-search mark octets :start (1+ at) :end (min n (+ close 4096)))
+      (loop for at = (tuatara.text:octets-search mark octets :start close :end (min n (+ close 4096)))
+              then (tuatara.text:octets-search mark octets :start (1+ at) :end (min n (+ close 4096)))
             while at
             thereis (and (pdf-white-p (aref octets (1- at)))
                          (let ((value (pdf-object-at octets (+ at (length mark)))))
                            (and (integerp value) (<= 0 value) (<= (+ data value) n)
-                                (tuatara.io:octets-at-p octets "endstream"
+                                (tuatara.text:octets-at-p octets "endstream"
                                                         (pdf-skip-space octets (+ data value))))))))))
 
 (defun map-pdf-written-objects (function octets)
@@ -455,7 +456,7 @@ in step with its size."
                (setf looked-from start found (pdf-endstream-from octets start)))
              found))
       (loop
-        (let ((p (tuatara.io:octets-search mark octets :start i)))
+        (let ((p (tuatara.text:octets-search mark octets :start i)))
           (unless p (return nil))
           (when (zerop (mod (incf count) 4096)) (tuatara.runtime:job-check-stop))
           (let ((at (pdf-object-header-before octets p))
@@ -501,7 +502,7 @@ it."
   (let* ((mark (load-time-value (tuatara.text:string-octets "%%EOF")))
          (holding '()) (outside '()) (kept 0) (embedded nil))
     ;; the %%EOF lines outside confirmed streams, those within each passed over at once
-    (loop with at = (tuatara.io:octets-search mark octets)
+    (loop with at = (tuatara.text:octets-search mark octets)
           for count from 1
           while (and at (< kept *pdf-most-eof-lines*))
           do (when (zerop (logand count 4095)) (tuatara.runtime:job-check-stop))
@@ -509,14 +510,14 @@ it."
                (if stream
                    ;; the search goes on past the stream's end: a stream is met once
                    (progn (push stream holding)
-                          (setf at (tuatara.io:octets-search mark octets :start (pdf-indirect-stream-end stream))))
+                          (setf at (tuatara.text:octets-search mark octets :start (pdf-indirect-stream-end stream))))
                    (progn (push at outside) (incf kept)
-                          (setf at (tuatara.io:octets-search mark octets :start (+ at 5)))))))
+                          (setf at (tuatara.text:octets-search mark octets :start (+ at 5)))))))
     (flet ((embedded ()
              (or embedded (setf embedded (pdf-embedded-file-numbers octets objects)))))
       (let* ((sections (append (mapcar #'car (pdf-sections octets))
                                (loop for stream in holding append (pdf-sections-within octets stream))))
-             (named (remove nil (mapcar (lambda (at) (tuatara.io:octets-search mark octets :start at)) sections)))
+             (named (remove nil (mapcar (lambda (at) (tuatara.text:octets-search mark octets :start at)) sections)))
              (eofs (sort (remove-duplicates
                           (append outside (remove-if-not (lambda (at) (pdf-stream-holding objects at t)) named)))
                          #'<))
@@ -610,8 +611,8 @@ that lists an object written within that data, as its own. These are the
 saves of a file kept within the PDF, not the PDF's own."
   (let ((start (pdf-indirect-stream-start stream)) (end (pdf-indirect-stream-end stream))
         (mark (load-time-value (tuatara.text:string-octets "%%EOF"))))
-    (loop for eof = (tuatara.io:octets-search mark octets :start start :end end)
-            then (tuatara.io:octets-search mark octets :start (+ eof 5) :end end)
+    (loop for eof = (tuatara.text:octets-search mark octets :start start :end end)
+            then (tuatara.text:octets-search mark octets :start (+ eof 5) :end end)
           repeat 64
           while eof
           always (let ((named (pdf-startxref-written octets :start start :end eof)))
@@ -653,7 +654,7 @@ with %PDF-, and each %%EOF in its data is that file's own
 \(PDF-OWN-SAVES-P). A stream merely beginning with %PDF-, calling itself an
 /EmbeddedFile or named by a file specification nothing reaches is none."
   (and (gethash (pdf-indirect-number stream) embedded)
-       (tuatara.io:octets-at-p octets "%PDF-" (pdf-indirect-stream-start stream))
+       (tuatara.text:octets-at-p octets "%PDF-" (pdf-indirect-stream-start stream))
        (pdf-own-saves-p octets stream)))
 
 (defun pdf-table-names-objects-p (octets at shift)
@@ -685,24 +686,24 @@ a PDF kept whole as data, a section that stands where those offsets put it
 is that file's own, and none of these. A list of their offsets."
   (let* ((start (pdf-indirect-stream-start stream)) (end (pdf-indirect-stream-end stream))
          (base (pdf-offset-base octets))
-         (attachment (and (tuatara.io:octets-at-p octets "%PDF-" start) (pdf-own-saves-p octets stream)))
+         (attachment (and (tuatara.text:octets-at-p octets "%PDF-" start) (pdf-own-saves-p octets stream)))
          (found '()))
     (flet ((within-p (at) (and (integerp at) (<= start at) (< at end))))
-      (loop for at = (tuatara.io:octets-search (load-time-value (tuatara.text:string-octets "startxref")) octets
+      (loop for at = (tuatara.text:octets-search (load-time-value (tuatara.text:string-octets "startxref")) octets
                                                :start start :end end)
-              then (tuatara.io:octets-search (load-time-value (tuatara.text:string-octets "startxref")) octets
+              then (tuatara.text:octets-search (load-time-value (tuatara.text:string-octets "startxref")) octets
                                              :start (+ at 9) :end end)
             while at
             do (let ((n (pdf-integer-at octets (+ at 9) end)))
                  (when (and n (within-p (+ n base)) (pdf-section-at-p octets (+ n base))
                             (not (and attachment (pdf-section-at-p octets (+ n start)))))
                    (pushnew (+ n base) found))))
-      (loop for at = (tuatara.io:octets-search (load-time-value (tuatara.text:string-octets "xref")) octets
+      (loop for at = (tuatara.text:octets-search (load-time-value (tuatara.text:string-octets "xref")) octets
                                                :start start :end end)
-              then (tuatara.io:octets-search (load-time-value (tuatara.text:string-octets "xref")) octets
+              then (tuatara.text:octets-search (load-time-value (tuatara.text:string-octets "xref")) octets
                                              :start (+ at 4) :end end)
             while at
-            do (unless (or (and (>= at 5) (tuatara.io:octets-at-p octets "start" (- at 5))) (member at found))
+            do (unless (or (and (>= at 5) (tuatara.text:octets-at-p octets "start" (- at 5))) (member at found))
                  (when (and (pdf-table-names-objects-p octets at 0)
                             (not (and attachment (pdf-table-names-objects-p octets at (- start base)))))
                    (push at found)))))
@@ -716,10 +717,10 @@ an object header (N G obj) but no %%EOF; NIL when it holds neither, or is
 such a file."
   (let ((start (pdf-indirect-stream-start stream)) (end (pdf-indirect-stream-end stream)))
     (unless (pdf-attachment-p octets stream embedded)
-      (or (tuatara.io:octets-search (load-time-value (tuatara.text:string-octets "%%EOF")) octets :start start :end end)
-          (loop for p = (tuatara.io:octets-search (load-time-value (tuatara.text:string-octets "obj")) octets
+      (or (tuatara.text:octets-search (load-time-value (tuatara.text:string-octets "%%EOF")) octets :start start :end end)
+          (loop for p = (tuatara.text:octets-search (load-time-value (tuatara.text:string-octets "obj")) octets
                                                   :start start :end end)
-                  then (tuatara.io:octets-search (load-time-value (tuatara.text:string-octets "obj")) octets
+                  then (tuatara.text:octets-search (load-time-value (tuatara.text:string-octets "obj")) octets
                                                  :start (+ p 3) :end end)
                 while p
                 thereis (let ((at (pdf-object-header-before octets p)))
@@ -741,7 +742,7 @@ CONFIRMED or, with CONFIRMED NIL, when it is not; else NIL."
 (defun pdf-startxref-written (octets &key (start 0) (end (length octets)))
   "The number the last startxref from START below END in OCTETS is followed
 by, as written, and where that startxref is, as two values (PDF-STARTXREF)."
-  (let ((at (tuatara.io:octets-search (load-time-value (tuatara.text:string-octets "startxref")) octets
+  (let ((at (tuatara.text:octets-search (load-time-value (tuatara.text:string-octets "startxref")) octets
                                      :start start :end end :from-end t)))
     (values (and at (values (pdf-integer-at octets (+ at 9) end))) at)))
 
@@ -749,7 +750,7 @@ by, as written, and where that startxref is, as two values (PDF-STARTXREF)."
   "True when a cross-reference section of the PDF in OCTETS begins at AT: a
 table (xref) or a cross-reference stream."
   (and (integerp at) (< -1 at (length octets))
-       (or (tuatara.io:octets-at-p octets "xref" (pdf-skip-space octets at))
+       (or (tuatara.text:octets-at-p octets "xref" (pdf-skip-space octets at))
            (let ((object (pdf-indirect-object-at octets at)))
              (and object (equal (pdf-get (pdf-indirect-value object) "/Type") "/XRef"))))))
 
@@ -764,7 +765,7 @@ counted from there, as readers take such a file; else 0, its first octet."
   (let ((kept *pdf-offset-base-kept*))
     (if (eq (sb-ext:weak-pointer-value (car kept)) octets)
         (cdr kept)
-        (let* ((header (tuatara.io:octets-search (load-time-value (tuatara.text:string-octets "%PDF-")) octets))
+        (let* ((header (tuatara.text:octets-search (load-time-value (tuatara.text:string-octets "%PDF-")) octets))
                (named (and header (plusp header) (pdf-startxref-written octets)))
                (base (if (and named (not (pdf-section-at-p octets named)) (pdf-section-at-p octets (+ header named)))
                          header
@@ -794,13 +795,13 @@ a part of it could not be read; :UNREADABLE, where an entry could not be
 read. Then the trailer dictionary written where they ended, or NIL; and
 where they ended."
   (let* ((n (length octets)) (i (pdf-skip-space octets at)) (ending :end) (base 0))
-    (when (tuatara.io:octets-at-p octets "xref" i)
+    (when (tuatara.text:octets-at-p octets "xref" i)
       (setf base (pdf-offset-base octets))
       (setf i (+ i 4))
       (block sections
         (loop
           (setf i (pdf-skip-space octets i))
-          (when (or (>= i n) (tuatara.io:octets-at-p octets "trailer" i)) (return))
+          (when (or (>= i n) (tuatara.text:octets-at-p octets "trailer" i)) (return))
           (multiple-value-bind (start after) (pdf-integer-at octets i)
             (multiple-value-bind (count after) (and start (pdf-integer-at octets after))
               (unless count (setf ending :cut-short) (return))
@@ -819,7 +820,7 @@ where they ended."
                         (setf ending :stopped)
                         (return-from sections))
                       (setf i (1+ kind))))))))))
-      (let ((trailer (and (tuatara.io:octets-at-p octets "trailer" i) (pdf-object-at octets (+ i 7)))))
+      (let ((trailer (and (tuatara.text:octets-at-p octets "trailer" i) (pdf-object-at octets (+ i 7)))))
         (values ending (and (pdf-dictionary-p trailer) trailer) i)))))
 
 (defun map-pdf-cross-reference-stream (function dictionary data)
@@ -1350,7 +1351,7 @@ FOUND what is known of it); NIL when it is in neither."
   "True when DATA, a PDF's octets or an object stream's, writes NAME (a string
 with its /) as a whole name, the next octet ending it."
   (let ((mark (tuatara.text:string-octets name)) (n (length data)))
-    (loop for at = (tuatara.io:octets-search mark data) then (tuatara.io:octets-search mark data :start (1+ at))
+    (loop for at = (tuatara.text:octets-search mark data) then (tuatara.text:octets-search mark data :start (1+ at))
           while at
           thereis (let ((after (+ at (length mark))))
                     (or (= after n) (pdf-delimiter-p (aref data after)))))))
@@ -1448,7 +1449,7 @@ stop."
                  (loop
                    (setf j (pdf-skip-space octets j))
                    (when (>= j n) (return))
-                   (when (and (tuatara.io:octets-at-p octets "ID" j)
+                   (when (and (tuatara.text:octets-at-p octets "ID" j)
                               (or (>= (+ j 2) n) (pdf-white-p (aref octets (+ j 2)))))
                      (incf j 3) (return))
                    (multiple-value-bind (key end) (value j 0)
@@ -1458,8 +1459,8 @@ stop."
                        (when (stringp key) (push (cons key v) pairs))
                        (setf j after))))
                  (let ((close (loop with mark = (load-time-value (tuatara.text:string-octets "EI"))
-                                    for at = (tuatara.io:octets-search mark octets :start j)
-                                      then (tuatara.io:octets-search mark octets :start (+ at 2))
+                                    for at = (tuatara.text:octets-search mark octets :start j)
+                                      then (tuatara.text:octets-search mark octets :start (+ at 2))
                                     while at
                                     when (and (> at 0) (pdf-white-p (aref octets (1- at)))
                                               (or (>= (+ at 2) n) (pdf-white-p (aref octets (+ at 2)))

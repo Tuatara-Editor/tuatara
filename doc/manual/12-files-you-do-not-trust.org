@@ -552,7 +552,7 @@ decoded. It opens as bytes, and the echo area says how much room is needed,
 where, and that =*cache-directory*= moves the copies to another drive. A file
 that claims a huge size with almost nothing in it is caught in the same way.
 Copying a file of many gigabytes takes a while. It is done in the background,
-while you go on working, and a job listed by ~M-x list-jobs~ that is stopped
+while you go on working, and a job listed by ~M-x jobs-manager~ that is stopped
 stops its copy too.
 
 There is no largest file as standard. Set =*sandbox-input-limit*= to a size,

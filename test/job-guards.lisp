@@ -54,8 +54,8 @@ ARGUMENTS are RUN-KEYS's."
           (run-held (list (format nil "~a M-x s o r t - l i n e s RET C-g C-p C-p i x C-g" *select-three*))
                     :text *guard-lines* :width 120)
         (is = 1 (length prompts) "~s" prompts)
-        (true (search "Sorting works on this text (" (first prompts)) "~s" prompts)
-        (true (search "); stop sorting and change it?" (first prompts)) "~s" prompts)
+        (is equal '("Stop sorting to change this text?") prompts)
+        (true (search "Sorting works on this text (" (first *question-details*)) "~s" *question-details*)
         (true (tuatara.frontend.fake:fake-frame-showing f "Not changed: sorting goes on"))
         (is string= (lines-text "a" "b" "c" "end") (session-text editor))))
     ;; answered yes, at the question itself: the sort stops, the text typed is in
@@ -63,7 +63,7 @@ ARGUMENTS are RUN-KEYS's."
         (run-held (list (format nil "~a M-x s o r t - l i n e s RET C-g C-p C-p i x" *select-three*) :tick
                         "y C-g")
                   :text *guard-lines* :width 120)
-      (true (tuatara.frontend.fake:fake-frame-showing f "Sorting works on this text ("))
+      (true (tuatara.frontend.fake:fake-frame-showing f "Stop sorting to change this text?"))
       (true (tuatara.frontend.fake:fake-frame-showing f "Stopped: nothing was changed"))
       (is string= (lines-text "c" "xb" "a" "end") (session-text editor)))
     ;; typed on the line left out: nothing asked, the text typed kept, the lines sorted
@@ -169,7 +169,8 @@ ARGUMENTS are RUN-KEYS's."
     (with-questions (prompts nil)
       (multiple-value-bind (f editor) (session "j i x C-g")
         (is = 1 (length prompts) "~s" prompts)
-        (true (search "Making blocks works on this text (" (first prompts)) "~s" prompts)
+        (is equal '("Stop making blocks to change this text?") prompts)
+        (true (search "Making blocks works on this text (" (first *question-details*)) "~s" *question-details*)
         (true (tuatara.frontend.fake:fake-frame-showing f "Not changed: making blocks goes on"))
         (is string= (format nil "top~%#+BEGIN: held~%made~%#+END:~%end~%") (session-text editor))))
     ;; answered yes: stopped, the block as it was with the text typed

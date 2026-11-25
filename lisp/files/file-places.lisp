@@ -22,11 +22,10 @@ followed it (CONTEXT), and SAFE when the file was opened safely."
 (setf (documentation 'make-file-place 'function) "Return a FILE-PLACE.")
 
 (defun file-place-target (buffer)
-  "What a place of BUFFER is in: its file, or the directory a directory list shows;
-NIL for a buffer of neither."
-  (let ((file (tuatara.buffer:buffer-file buffer)))
-    (cond (file (tuatara.io:native file))
-          ((buffer-mode-named-p buffer 'rimu-mode) (buffer-directory buffer)))))
+  "What a place of BUFFER is in: its file, /ssh:HOST:/path for one on another
+machine, or the directory a directory list shows; NIL for a buffer of neither."
+  (or (buffer-visited-name buffer)
+      (and (buffer-mode-named-p buffer 'rimu-mode) (buffer-directory buffer))))
 
 (defun character-start (buffer octet)
   "OCTET of BUFFER, or the start of the character it falls inside, as far as
@@ -78,29 +77,47 @@ nearest place within a megabyte that does, else its offset (within the text)."
 
 (defun file-place-kind (path)
   "What the place at PATH is in, as the bookmark manager says it: \"file\",
-\"directory\", or \"gone\" when it is no longer there."
-  (let ((kind (tuatara.io:path-kind path)))
-    (case kind
-      ((nil) "gone")
-      (:directory "directory")
-      (t "file"))))
+\"directory\", \"gone\" when it is no longer there, or \"remote\" for one on
+another machine (/ssh:HOST:PATH), which is not connected to for this."
+  (if (remote-name-p path)
+      "remote"
+      (case (tuatara.io:path-kind path)
+        ((nil) "gone")
+        (:directory "directory")
+        (t "file"))))
+
+(defun place-buffer (path)
+  "The live buffer visiting the file at PATH, here (BUFFER-VISITING) or on
+another machine (/ssh:HOST:PATH, REMOTE-BUFFER), or NIL."
+  (if (remote-name-p path)
+      (multiple-value-bind (host remote-path) (remote-name-parts path)
+        (remote-buffer host remote-path))
+      (buffer-visiting path)))
 
 (defun go-to-file-place (name place &key other)
   "Visit the file or directory PLACE is in (in another window with OTHER), safely
 when it was opened so, and go to the place, found again where the text has
 moved it (FILE-PLACE-FOUND); a directory's in a rimu list of its project there
-is, moved there (*RIMU-REUSE-LISTS*), else in one of its own. Returns the
-buffer. A file or directory no longer there is said so with NAME, nothing made in
-its place, and NIL is returned."
+is, moved there (*RIMU-REUSE-LISTS*), else in one of its own. A place on
+another machine is visited as any file there is (VISIT-PATH), its connection
+made again when it was closed, and point goes to the place once the file has
+been read (REMOTE-WHEN-READ). Returns the buffer. A file or directory no longer
+there is said so with NAME, nothing made in its place, and NIL is returned."
   (let* ((path (file-place-path place))
          (kind (file-place-kind path))
-         (buffer (or (buffer-visiting path)
+         (buffer (or (place-buffer path)
                      (and (string= kind "directory") (rimu-show-in-project path :show #'identity))
-                     (and (string/= kind "gone")
-                          (visit-path path :safe (file-place-safe place) :show #'identity)))))
+                     (let ((visited (and (string/= kind "gone")
+                                         (visit-path path :safe (file-place-safe place) :show #'identity))))
+                       ;; a file on another machine read at once has already taken its placeholder's place
+                       (if (and visited (not (tuatara.buffer:live-buffer-p visited)))
+                           (place-buffer path)
+                           visited)))))
     (cond ((not (typep buffer 'tuatara.buffer:buffer))
            (message "~a: ~a is no longer there" name (abbreviated-path path))
            nil)
           (t (if other (pop-to-buffer buffer :other t) (show-buffer buffer))
-             (goto-shown buffer (file-place-found buffer place))
+             (flet ((go-to-place (buffer) (goto-shown buffer (file-place-found buffer place))))
+               (unless (remote-when-read buffer #'go-to-place)
+                 (go-to-place buffer)))
              buffer))))

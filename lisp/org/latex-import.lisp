@@ -837,7 +837,8 @@ cannot be read; writes over nothing that exists."
                                                     "% Made the Tuatara template ~a from ~a by "
                                                     "export-template-from-latex: each field a~%"
                                                     "% place, {{{body}}} the note's text. Change it as you like.~%~a")
-                                   name (tuatara.io:native-file-name path) (text-with-edits source edits)))))
+                                   name (org-safe-line (tuatara.io:native-file-name path))
+                                   (text-with-edits source edits)))))
       (setf template (latex-import-without-outside-files template))
       (when (search "\\input" text) (template-import-note "its \\input files not read (the template still names them)"))
       (template-import-commit

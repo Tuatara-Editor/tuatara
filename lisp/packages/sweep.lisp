@@ -202,8 +202,8 @@ named, the preview beside the package manager then showing its entry anew."
               (entry-preview-again t)
               (message "~{~a~^, ~} deleted, ~a freed; removed, so not loaded at the next start (\\[package-load] ~
                         loads ~:[it~;them~])"
-                       packages (tuatara.io:octets-words freed) (rest packages)))
-            (message "Package sources no longer named deleted: ~d, ~a freed" deleted (tuatara.io:octets-words freed)))
+                       packages (tuatara.text:octets-words freed) (rest packages)))
+            (message "Package sources no longer named deleted: ~d, ~a freed" deleted (tuatara.text:octets-words freed)))
         (let ((job (make-package-sweep :delete rest packages)))
           (setf *sweeping-directory* (tuatara.io:native (first (first rest)))
                 (package-sweep-freed job) freed
@@ -253,7 +253,7 @@ directory or the directory packages are compiled into, as looked at again now."
                                   (t "Deleting a package source"))
                             (or (tuatara.runtime:job-error job) "it ended unexpectedly")
                             (and (eq (package-sweep-phase job) :delete) (package-sweep-deleted job))
-                            (tuatara.io:octets-words (package-sweep-freed job))))))))
+                            (tuatara.text:octets-words (package-sweep-freed job))))))))
 
 (defun package-busy-p (name)
   "True while the package NAME is being fetched or checked, its version waits
@@ -272,19 +272,21 @@ now (PACKAGE-BUSY-P)."
                         (tuatara.io:path-file-name (package-where source)))))
 
 (defun packages-sweep-ask (directories)
-  "List DIRECTORIES, each (DIRECTORY WORDS OCTETS), found by package-remove-unused,
-in *Help*, and ask once whether to delete them, with their total; then
-delete them one by one, each looked at again first (SWEEP-NEXT)."
+  "Ask once whether to delete DIRECTORIES, each (DIRECTORY WORDS OCTETS), found
+by package-remove-unused, with their total, the list beside the question;
+then delete them one by one, each looked at again first (SWEEP-NEXT)."
   (if (null directories)
       (message "No package source kept is unused")
       (let ((total (reduce #'+ directories :key #'third)))
-        (show-help (format nil
-                           "Package sources kept that nothing names now, in ~a:~%~%~:{  ~10@a  ~a~%~}~%  ~10@a  in all~%"
-                           (abbreviated-path (tuatara.io:native (packages-directory)))
-                           (mapcar (lambda (f) (list (tuatara.io:octets-words (third f)) (second f))) directories)
-                           (tuatara.io:octets-words total)))
         (if (yes-or-no-p* (format nil
                                   "Delete ~[no package source~;1 package source~:;~:*~d package sources~] no longer named, ~a?"
-                                  (length directories) (tuatara.io:octets-words total)))
+                                  (length directories) (tuatara.text:octets-words total))
+                          :details (format nil
+                                           "Package sources kept that nothing names now, in ~a:~%~%~
+                                            ~:{  ~10@a  ~a~%~}~%  ~10@a  in all~%"
+                                           (abbreviated-path (tuatara.io:native (packages-directory)))
+                                           (mapcar (lambda (f) (list (tuatara.text:octets-words (third f)) (second f)))
+                                                   directories)
+                                           (tuatara.text:octets-words total)))
             (sweep-next directories 0 0)
             (message "Nothing deleted")))))

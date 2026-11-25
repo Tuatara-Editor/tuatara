@@ -130,11 +130,11 @@ would be lost); its commits after the revision stay in git's reflog."
                                    (format nil "Moved ~a to ~a" branch to)))))
                     :default :current :next :all)))
 
-(defun git-delete-asking-again (doing top arguments refusal forced question done kept failed)
+(defun git-delete-asking-again (doing top arguments refusal forced question details done kept failed)
   "Run git with ARGUMENTS for the repository at TOP as a job doing DOING; when
-git refuses, saying REFUSAL, ask QUESTION and, with yes, run it with FORCED
-instead; DONE is said once one has run, KEPT when the answer is no, FAILED
-when git failed otherwise. The status is read again."
+git refuses, saying REFUSAL, ask QUESTION, DETAILS shown beside it, and, with
+yes, run it with FORCED instead; DONE is said once one has run, KEPT when the
+answer is no, FAILED when git failed otherwise. The status is read again."
   (start-git-job doing
                  (lambda (job)
                    (multiple-value-bind (text ok said)
@@ -143,7 +143,7 @@ when git failed otherwise. The status is read again."
                      (values ok (search refusal said))))
                  (lambda (ok refused)
                    (cond (ok (message "~a" done))
-                         ((and refused (yes-or-no-p* question)) (git-run doing top forced done))
+                         ((and refused (yes-or-no-p* question :details details)) (git-run doing top forced done))
                          (refused (message "~a" kept))
                          (t (message "~a" failed))))
                  :after (lambda () (git-refresh-repository top))))
@@ -159,9 +159,8 @@ only in git's reflog then."
                             ((yes-or-no-p* (format nil "Delete the branch ~a?" branch))
                              (git-delete-asking-again "Deleting a branch" top (list "branch" "-d" branch)
                                                       "not fully merged" (list "branch" "-D" branch)
-                                                      (format nil "~a has commits no other branch has; ~
-                                                                   delete it all the same?"
-                                                              branch)
+                                                      (format nil "Delete ~a all the same?" branch)
+                                                      "Its commits on no other branch would then be only in the reflog."
                                                       (format nil "Deleted ~a" branch) (format nil "~a kept" branch)
                                                       (format nil "git branch: ~a could not be deleted" branch))))))))
 
@@ -292,13 +291,12 @@ asking again, as they would be lost."
     (git-ask-worktree "Delete worktree: " top
                       (lambda (path)
                         (let ((shown (abbreviated-path path)))
-                          (when (yes-or-no-p* (format nil "Delete the worktree ~a and its directory? Its branch stays"
-                                                      shown))
+                          (when (yes-or-no-p* (format nil "Delete the worktree ~a and its directory?" shown)
+                                              :details "Its branch stays.")
                             (git-delete-asking-again "Deleting a worktree" top (list "worktree" "remove" path)
                                                      "modified or untracked" (list "worktree" "remove" "--force" path)
-                                                     (format nil "~a has changes not committed; ~
-                                                                  delete it all the same? They cannot be got back"
-                                                             shown)
+                                                     (format nil "Delete ~a all the same?" shown)
+                                                     "It has changes not committed: they cannot be got back."
                                                      (format nil "Deleted the worktree ~a" shown) "Worktree kept"
                                                      (format nil "git worktree: ~a could not be deleted" shown)))))
                       :others t)))

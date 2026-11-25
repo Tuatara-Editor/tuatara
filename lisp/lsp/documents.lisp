@@ -14,14 +14,6 @@
 
 (in-package #:tuatara.lsp)
 
-(define-setting *lsp-largest-document* (* 8 1024 1024)
-  "The largest document, in octets, given to a language server: a file's
-whole text, or the code of a note's source blocks of one language, however
-large the note. A larger one is shown without its servers.
-- a size: a whole number of octets, or words such as \"16M\"; 8 MB (8388608) as
-  standard."
-  :values (octets 1 *))
-
 (defun lsp-refusal (buffer)
   "Why BUFFER is never given to a language server, in words, or NIL: no file,
 kept from other programs (OUTSIDE-PROGRAM-REFUSAL), or not all UTF-8, which
@@ -1000,4 +992,5 @@ again; in a project not trusted, none is started (\\[lsp] asks first)."
   (let ((buffer (current-buffer)))
     (mapc #'lsp-stop (buffer-servers buffer))
     (unless (lsp-connect buffer :start :trusted)
-      (message "No language server started: M-x lsp starts them, asking first in a project not trusted"))))
+      (message "~a" (substitute-command-keys
+                     "No language server started: \\[lsp] starts them, asking first in a project not trusted")))))

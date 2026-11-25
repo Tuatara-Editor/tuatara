@@ -77,12 +77,13 @@ is being read, read only, its keys *GIT-REWIND-KEYMAP*'s. Returns it."
 
 (defun git-rewind-file (top path &key (line 0) at list)
   "Go through the history of PATH (from TOP) in the repository at TOP, in a
-buffer of its own shown at once, in the mode of the file: the file as its
-latest commit left it, or with AT, a commit, as it was then; point at the
-start of LINE (0 the first). LIST is the directory's history it was opened
-from, if any."
+buffer of its own shown at once, in the mode of the file (plain text for a
+file that opens safely, MODE-FOR-SHOWN-TEXT): the file as its latest commit
+left it, or with AT, a commit, as it was then; point at the start of LINE (0
+the first). LIST is the directory's history it was opened from, if any."
   (let ((buffer (git-rewind-buffer top (format nil "*git rewind: ~a*" (tuatara.io:native-file-name path))
-                                   (mode-for-file (sb-ext:parse-native-namestring (concatenate 'string top path))))))
+                                   (mode-for-shown-text (sb-ext:parse-native-namestring (concatenate 'string top path))
+                                                        (tuatara.text:string-octets "")))))
     (setf (tuatara.buffer:buffer-local buffer 'git-rewind-path) path
           (tuatara.buffer:buffer-local buffer 'git-rewind-list) list)
     (start-git-job "Reading the file's history"
@@ -112,7 +113,8 @@ from, if any."
                            ((tuatara.io:binary-head-p octets)
                             (git-rewind-given-up buffer (format nil "~a is not text: \\[git-log-file] lists its commits"
                                                                 (escape-controls path))))
-                           (t (git-rewind-file-begin buffer path revisions index octets line))))
+                           (t (git-rewind-file-begin buffer (concatenate 'string top path) revisions index octets
+                                                     line))))
                    :quiet t :buffer buffer)))
 
 (defun git-rewind-given-up (buffer words)
@@ -135,20 +137,20 @@ repository at TOP when it is renamed in what is staged; NIL when it is not."
                    (pop fields))))))
 
 (defun git-rewind-file-begin (buffer path revisions index octets line)
-  "Show in BUFFER, opened by GIT-REWIND-FILE, the file PATH as the commit
+  "Show in BUFFER, opened by GIT-REWIND-FILE, the file at PATH as the commit
 INDEX of REVISIONS (GIT-REWIND-FILE-LOG) left it, OCTETS, point at the start
 of LINE (0 the first, the last there is when it has fewer); a file whose name
-gives no mode takes the one its first line gives (#!/bin/sh)."
-  (let ((first-line (tuatara.text:octets-first-line octets)))
-    (setf (tuatara.buffer:buffer-local buffer 'git-rewind-revisions) revisions
-          (tuatara.buffer:buffer-local buffer 'git-rewind-at) index
-          (tuatara.buffer:buffer-local buffer 'git-rewind-wanted) index)
-    (when (eq (type-of (buffer-major-mode buffer)) 'fundamental-mode)
-      (let ((mode (mode-for-file (sb-ext:parse-native-namestring path) (string-right-trim '(#\Return) first-line))))
-        (unless (eq mode 'fundamental-mode)
-          (set-major-mode buffer mode))))
-    (show-list-text buffer (tuatara.text:octets->rope (coerce octets 'tuatara.text:octets)) nil nil :point line)
-    (message "~a" (git-rewind-words buffer index))))
+gives no mode takes the one its first line gives (#!/bin/sh), unless it opens
+safely (MODE-FOR-SHOWN-TEXT)."
+  (setf (tuatara.buffer:buffer-local buffer 'git-rewind-revisions) revisions
+        (tuatara.buffer:buffer-local buffer 'git-rewind-at) index
+        (tuatara.buffer:buffer-local buffer 'git-rewind-wanted) index)
+  (when (eq (type-of (buffer-major-mode buffer)) 'fundamental-mode)
+    (let ((mode (mode-for-shown-text (sb-ext:parse-native-namestring path) octets)))
+      (unless (eq mode 'fundamental-mode)
+        (set-major-mode buffer mode))))
+  (show-list-text buffer (tuatara.text:octets->rope (coerce octets 'tuatara.text:octets)) nil nil :point line)
+  (message "~a" (git-rewind-words buffer index)))
 
 ;;; Going through it
 

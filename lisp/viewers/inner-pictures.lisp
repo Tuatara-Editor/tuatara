@@ -80,7 +80,7 @@ record's offset in OCTETS). A group's closing record is left out. At most
 *INNER-PICTURES-MOST* layers; reading stops where a record does not fit in
 OCTETS."
   (let ((length (length octets)) (layers '()))
-    (labels ((int (at n) (and (<= (+ at n) length) (tuatara.io:octets-integer octets at n :big-endian big)))
+    (labels ((int (at n) (and (<= (+ at n) length) (tuatara.text:octets-integer octets at n :big-endian big)))
              (signed (at n) (octets-signed (int at n) (* 8 n)))
              (key (at)
                ;; four letters, as the file writes them backwards when its numbers are
@@ -105,7 +105,7 @@ OCTETS."
                           (setf at (+ data size (mod size 2))))
                  (values name section))))
       (let* ((header "Adobe Photoshop Document Data Block")
-             (at (and (tuatara.io:octets-at-p octets header) (1+ (length header)))))
+             (at (and (tuatara.text:octets-at-p octets header) (1+ (length header)))))
         ;; the blocks of the data, to the one of the layers
         (loop while (and at (<= (+ at 12) length))
               for size = (int (+ at 8) 4)
@@ -195,7 +195,7 @@ each followed by the Photoshop layers it keeps, at most
 once. Frames are counted as ImageMagick draws them: a directory's layers
 of pixels right after it."
   (let ((big (= (aref head 0) 77)) (seen '()) (pictures '()) (frame 0))
-    (labels ((int (octets at n) (tuatara.io:octets-integer octets at n :big-endian big))
+    (labels ((int (octets at n) (tuatara.text:octets-integer octets at n :big-endian big))
              (directory-at (at)
                ;; the octets of the directory at AT, its count, entries and the offset of the next
                (let* ((count-octets (and (< 7 at size) (tuatara.io:read-fd-exactly fd 2 at)))
@@ -303,13 +303,13 @@ to begin as a JPEG does, at most *INNER-PICTURES-MOST* of them."
                (when (and at length (< (length pictures) *inner-pictures-most*) (< 1 length *jpeg-inner-largest*)
                           (<= (+ at length) size))
                  (let ((start (tuatara.io:read-fd-exactly fd (min length 65536) at)))
-                   (when (and start (tuatara.io:octets-at-p start '(#xFF #xD8 #xFF)))
+                   (when (and start (tuatara.text:octets-at-p start '(#xFF #xD8 #xFF)))
                      (multiple-value-bind (width height) (tuatara.io:octets-picture-size start)
                        (push (make-inner-picture label
                                                  (format nil "~a, from octet ~:d, ~a" place at (octets-words length))
                                                  width height (list :octets at length :jpeg))
                              pictures))))))
-             (int (at n big) (tuatara.io:octets-integer octets at n :big-endian big))
+             (int (at n big) (tuatara.text:octets-integer octets at n :big-endian big))
              (thumbnail-tag (fields tag)
                (third (find-if (lambda (f) (and (eq (first f) :thumbnail) (= (second f) tag))) fields)))
              (exif (start end)
@@ -323,7 +323,7 @@ to begin as a JPEG does, at most *INNER-PICTURES-MOST* of them."
              (photoshop (start end)
                ;; the image resources after "Photoshop 3.0": 8BIM, an id, a name, a size, the data
                (let ((at (+ start 14)) (count 0))
-                 (loop while (and (<= (+ at 12) end) (< (incf count) 1000) (tuatara.io:octets-at-p octets "8BIM" at))
+                 (loop while (and (<= (+ at 12) end) (< (incf count) 1000) (tuatara.text:octets-at-p octets "8BIM" at))
                        do (let* ((id (int (+ at 4) 2 t))
                                  (name (aref octets (+ at 6)))
                                  (size-at (+ at 6 (* 2 (ceiling (1+ name) 2))))
@@ -338,18 +338,18 @@ to begin as a JPEG does, at most *INNER-PICTURES-MOST* of them."
                ;; the MP index: a TIFF structure after "MPF", its offsets from that structure's start
                (let* ((base (+ start 4))
                       (index (subseq octets (min base end) end))
-                      (big (tuatara.io:octets-at-p index "MM"))
-                      (entry (and (or big (tuatara.io:octets-at-p index "II"))
+                      (big (tuatara.text:octets-at-p index "MM"))
+                      (entry (and (or big (tuatara.text:octets-at-p index "II"))
                                   (assoc #xB002 (tuatara.io:tiff-entries index :most 64 :little (not big)))))
                       (count (and entry (floor (third entry) 16)))
-                      (at (and entry (> (third entry) 4) (tuatara.io:octets-integer index (fifth entry) 4
+                      (at (and entry (> (third entry) 4) (tuatara.text:octets-integer index (fifth entry) 4
                                                                                     :big-endian big))))
                  (when at
                    (loop for i below (min count 64)
                          for e = (+ at (* 16 i))
-                         for attribute = (tuatara.io:octets-integer index e 4 :big-endian big)
-                         for length = (tuatara.io:octets-integer index (+ e 4) 4 :big-endian big)
-                         for offset = (tuatara.io:octets-integer index (+ e 8) 4 :big-endian big)
+                         for attribute = (tuatara.text:octets-integer index e 4 :big-endian big)
+                         for length = (tuatara.text:octets-integer index (+ e 4) 4 :big-endian big)
+                         for offset = (tuatara.text:octets-integer index (+ e 8) 4 :big-endian big)
                          while (and attribute length offset)
                          ;; the first, at 0, is the picture itself
                          when (plusp offset)
@@ -361,12 +361,12 @@ to begin as a JPEG does, at most *INNER-PICTURES-MOST* of them."
       (when octets
         (tuatara.io:jpeg-segments
          octets (lambda (marker start end)
-                  (cond ((and (= marker #xE1) (tuatara.io:octets-at-p octets (format nil "Exif~c~c" #\Nul #\Nul) start))
+                  (cond ((and (= marker #xE1) (tuatara.text:octets-at-p octets (format nil "Exif~c~c" #\Nul #\Nul) start))
                          (exif start end))
                         ((and (= marker #xED)
-                              (tuatara.io:octets-at-p octets (format nil "Photoshop 3.0~c" #\Nul) start))
+                              (tuatara.text:octets-at-p octets (format nil "Photoshop 3.0~c" #\Nul) start))
                          (photoshop start end))
-                        ((and (= marker #xE2) (tuatara.io:octets-at-p octets (format nil "MPF~c" #\Nul) start))
+                        ((and (= marker #xE2) (tuatara.text:octets-at-p octets (format nil "MPF~c" #\Nul) start))
                          (mpf start end)))
                   nil))))
     (nreverse pictures)))
@@ -388,7 +388,7 @@ it ends of each chunk of the PNG in OCTETS, in order, to IEND: at most
   (let ((at 8))
     (loop repeat 100000
           while (<= (+ at 12) (length octets))
-          do (let* ((length (tuatara.io:octets-integer octets at 4 :big-endian t))
+          do (let* ((length (tuatara.text:octets-integer octets at 4 :big-endian t))
                     (data (+ at 8))
                     (end (+ data length)))
                (when (> (+ end 4) (length octets)) (return))
@@ -408,7 +408,7 @@ out. At most *INNER-PICTURES-MOST* frames."
   (let ((frames '()) (idat-seen nil) (idat-framed nil))
     (map-png-chunks
      (lambda (type data end)
-       (flet ((int (at n) (tuatara.io:octets-integer octets at n :big-endian t)))
+       (flet ((int (at n) (tuatara.text:octets-integer octets at n :big-endian t)))
          (cond ((and (string= type "fcTL") (= (- end data) 26) (< (length frames) *inner-pictures-most*))
                 (let ((denominator (int (+ data 22) 2)))
                   (push (list :width (int (+ data 4) 4) :height (int (+ data 8) 4)
@@ -431,10 +431,10 @@ out. At most *INNER-PICTURES-MOST* frames."
 (defun png-chunk-octets (type data)
   "The octets of a PNG chunk of TYPE holding DATA: its length, type, data and CRC."
   (let ((out (make-array (+ 12 (length data)) :element-type '(unsigned-byte 8))))
-    (tuatara.io:octets-put-integer out (length data) 4 :at 0 :big-endian t)
+    (tuatara.text:octets-put-integer out (length data) 4 :at 0 :big-endian t)
     (loop for c across type for i from 4 do (setf (aref out i) (char-code c)))
     (replace out data :start1 8)
-    (tuatara.io:octets-put-integer out (tuatara.io:crc32 out 4 (+ 8 (length data))) 4 :at (+ 8 (length data))
+    (tuatara.text:octets-put-integer out (tuatara.io:crc32 out 4 (+ 8 (length data))) 4 :at (+ 8 (length data))
                                    :big-endian t)
     out))
 
@@ -459,8 +459,8 @@ frame."
                       octets)
       (when (and header (= (length header) 13) (getf frame :data))
         (unless (eq index :picture)
-          (tuatara.io:octets-put-integer header (getf frame :width) 4 :at 0 :big-endian t)
-          (tuatara.io:octets-put-integer header (getf frame :height) 4 :at 4 :big-endian t))
+          (tuatara.text:octets-put-integer header (getf frame :width) 4 :at 0 :big-endian t)
+          (tuatara.text:octets-put-integer header (getf frame :height) 4 :at 4 :big-endian t))
         (apply #'concatenate '(simple-array (unsigned-byte 8) (*))
                (coerce #(137 80 78 71 13 10 26 10) '(simple-array (unsigned-byte 8) (*)))
                (png-chunk-octets "IHDR" header)
@@ -514,17 +514,17 @@ frame), then each frame after it, with where it lies on the picture, how
 long it is shown and how it is laid over the frame before. Each chunk's
 header is read where it stands, at most 100,000 chunks and
 *INNER-PICTURES-MOST* frames; NIL for a WebP that is no animation."
-  (when (and (tuatara.io:octets-at-p head "RIFF") (tuatara.io:octets-at-p head "WEBPVP8X" 8))
+  (when (and (tuatara.text:octets-at-p head "RIFF") (tuatara.text:octets-at-p head "WEBPVP8X" 8))
     (let ((frames '()) (at 12))
       (loop repeat 100000
             while (and (<= (+ at 8) size) (< (length frames) *inner-pictures-most*))
             do (let* ((header (tuatara.io:read-fd-exactly fd 8 at))
                       (type (and header (tuatara.text:octets-latin-1 header :end 4)))
-                      (length (and header (tuatara.io:octets-integer header 4 4))))
+                      (length (and header (tuatara.text:octets-integer header 4 4))))
                  (unless (and type length (<= (+ at 8 length) size)) (return))
                  (when (and (string= type "ANMF") (>= length 16))
                    (let ((frame (tuatara.io:read-fd-exactly fd 16 (+ at 8))))
-                     (flet ((int (from) (tuatara.io:octets-integer frame from 3)))
+                     (flet ((int (from) (tuatara.text:octets-integer frame from 3)))
                        (push (list :x (* 2 (int 0)) :y (* 2 (int 3)) :width (1+ (int 6)) :height (1+ (int 9))
                                    :duration (int 12) :blend (not (logtest 2 (aref frame 15)))
                                    :dispose (logtest 1 (aref frame 15)) :at at)

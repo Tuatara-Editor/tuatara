@@ -239,7 +239,7 @@ garbage is made for them; BODY must not keep SAP."
                  %fgetxattr %getxattr %flistxattr %free %fsetxattr %fstatfs %fstatvfs %futimens %getgroups %getsockopt
                  %inotify-add-watch %inotify-init1 %inotify-rm-watch %ioctl %ioctl-with-int %lgetxattr %linkat
                  %linkat-named %listen %lsetxattr %memfd-create %memset %mkdirat %openat %pidfd-open %pidfd-send-signal
-                 %pipe2 %poll %pread %pwrite %read %readdir %readlinkat %realpath %realloc %recvmsg %renameat2
+                 %pipe2 %poll %pread %pwrite %read %readlinkat %realpath %realloc %recvmsg %renameat2
                  %send %sendmsg %shutdown %socket %socketpair %statvfs %statx %strlen %symlinkat %sync-file-range
                  %unlinkat %utimensat %write))
 
@@ -484,10 +484,13 @@ when it cannot be read."
     (unwind-protect
          (progn
            (sb-posix:lseek copy 0 sb-posix:seek-set)
-           (loop for entry = (%readdir dir)
+           ;; the end of the directory and a failure both give a null pointer: only a failure sets errno
+           (loop for entry = (progn (sb-alien:set-errno 0) (%readdir dir))
                  until (null-pointer-p entry)
                  ;; the name stands at octet 19 of the record, after its inode, offset, length and type
-                 do (funcall function (sap-octets (sb-sys:sap+ entry 19)))))
+                 do (funcall function (sap-octets (sb-sys:sap+ entry 19)))
+                 finally (let ((errno (sb-alien:get-errno)))
+                           (unless (zerop errno) (fail "read" path errno)))))
       ;; closes COPY too
       (%closedir dir))))
 
@@ -1450,7 +1453,7 @@ those that cannot be set are left out, as on file systems without them."
   "Ask the system to put a rename in DIRECTORY on disk, where it can: a file
 renamed over another is then there after a power cut too."
   (let ((fd (tuatara.runtime:ignoring-errors-reported ("opening ~a to sync it" directory)
-              (sb-posix:open (native directory) (logior sb-posix:o-rdonly sb-posix:o-directory)))))
+              (sb-posix:open (native directory) (logior sb-posix:o-rdonly sb-posix:o-directory +o-cloexec+)))))
     (when fd
       (tuatara.runtime:ignoring-errors-reported ("syncing ~a" directory) (sb-posix:fsync fd))
       (sb-posix:close fd))))
@@ -1579,19 +1582,35 @@ does in one place for every thread.")
   "The names of accounts and groups looked up so far, by (:USER . user id
 (UID)) and \(:GROUP . group id (GID)); NIL for a number with no name.")
 
+(defun system-owner-name (kind number)
+  "The name the system gives the account (KIND :USER) or group (KIND :GROUP)
+whose number is NUMBER, or NIL; true as a second value when that is its
+answer, NIL when the lookup failed."
+  (sb-alien:set-errno 0)
+  (let ((name (if (eq kind :user)
+                  (let ((entry (sb-posix:getpwuid number))) (and entry (sb-posix:passwd-name entry)))
+                  (let ((entry (sb-posix:getgrgid number))) (and entry (sb-posix:group-name entry))))))
+    ;; none found: errno 0, or one of those the system gives for a number with no name
+    (values name (or name (and (member (sb-alien:get-errno)
+                                       (list 0 sb-posix:enoent sb-posix:esrch sb-posix:ebadf sb-posix:eperm))
+                               t)))))
+
 (defun looked-up-name (kind number)
   "The name of the account (KIND :USER) or group (KIND :GROUP) whose number is
-NUMBER, looked up once and kept (*OWNER-NAMES*); NIL when it has none."
+NUMBER, looked up once and kept (*OWNER-NAMES*); NIL when it has none, or
+when it could not be looked up this time."
   (sb-thread:with-mutex (*owner-names-lock*)
     (let ((key (cons kind number)))
       (multiple-value-bind (name found) (gethash key *owner-names*)
         (if found
             name
-            (setf (gethash key *owner-names*)
-                  (tuatara.runtime:ignoring-errors-reported ("looking up the name of ~(~a~) ~d" kind number)
-                    (if (eq kind :user)
-                        (let ((entry (sb-posix:getpwuid number))) (and entry (sb-posix:passwd-name entry)))
-                        (let ((entry (sb-posix:getgrgid number))) (and entry (sb-posix:group-name entry)))))))))))
+            ;; a lookup that failed (the directory service away) is not kept: it is made again next time
+            (multiple-value-bind (name kept)
+                (tuatara.runtime:handling-errors-reported ("looking up the name of ~(~a~) ~d" kind number)
+                    (system-owner-name kind number)
+                  (error () (values nil nil)))
+              (when kept (setf (gethash key *owner-names*) name))
+              name))))))
 
 (defun owner-name (uid)
   "The name of the account whose number is user id (UID) (a file's owner:

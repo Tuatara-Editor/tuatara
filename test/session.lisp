@@ -199,7 +199,12 @@ A session file not of its own kind is left alone, nothing in it evaluated. Off, 
                             (format nil "tuatara session 1~%frame~%split stacked 2 #.(setf *session-file-evaluated* t) 0.5~%")
                             (format nil
                                     "tuatara session 1~%frame~%window 1 0 file 0 ~a~%window 0 0 file 0 ~a~%" one one)
-                            (format nil "tuatara session 1~%frame~%split stacked 100000 0.5 0.5~%")))
+                            (format nil "tuatara session 1~%frame~%split stacked 100000 0.5 0.5~%")
+                            ;; shares of a split that are none or less
+                            (format nil "tuatara session 1~%frame~%split stacked 2 0 1~%~
+                                         window 1 0 scratch 0 *scratch*~%window 0 0 scratch 0 *scratch*~%end~%")
+                            (format nil "tuatara session 1~%frame~%split stacked 2 -0.5 1.5~%~
+                                         window 1 0 scratch 0 *scratch*~%window 0 0 scratch 0 *scratch*~%end~%")))
           (forget-session-buffers)
           (alexandria:write-string-into-file text (tuatara.defaults::session-path) :if-exists :supersede)
           (multiple-value-bind (f editor) (session-start nil)

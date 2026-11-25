@@ -8,7 +8,6 @@
 set -euo pipefail
 root="$1"; out="$2"; sources="$3"; record="$4"
 . "$root/tools/grammar-build.sh"
-. "$root/tools/fetch.sh"
 fetch() { fetch_grammar "$sources/$1" "$2" "$3"; }  # fetch repository $2 at commit $3 into $sources/$1
 cli="$root/build/tools/tree-sitter"
 get_cli() {  # download the tree-sitter program from $1 unless it is there, checked against SHA-256 $2
@@ -127,7 +126,7 @@ while IFS=$'\t' read -r name url commit license subpath; do
       pristine "$name"
       checked "$name" ""
       [ -f "$root/syntax/patches/tree-sitter.patch" ] &&
-        grammar_git -C "$dir" apply "$root/syntax/patches/tree-sitter.patch"
+        https_git -C "$dir" apply "$root/syntax/patches/tree-sitter.patch"
       # without its assertions, as the grammars are: one that fails would end
       # the program, and the patch makes the parser check what a grammar gives
       # it instead (a parse that meets a wrong value fails); what names a

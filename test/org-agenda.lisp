@@ -555,11 +555,11 @@ help left out."
           (showing "SPC a a t C-u 2 r" "Global list of TODO items of type: NEXT" "NEXT Deadline this week")
           (showing "SPC a a u" "Untagged tasks" "errands:    TODO Second untagged")
           (showing "SPC a a m w o r k RET" "Headlines with TAGS match: work" "notes:      DONE Done work")
-          (showing "SPC a a z" "No agenda view on z")
+          (showing "SPC a a z" "Answer a, t, m, c")
           ;; the question goes once answered; C-g leaves it
           (multiple-value-bind (f editor b) (agenda "SPC a a a")
             (declare (ignore b))
-            (false (search "Agenda: a week" (tuatara.frontend.fake:fake-screen-line f 59)))
+            (false (search "Agenda: (" (tuatara.frontend.fake:fake-screen-line f 59)))
             (true (tuatara.command:editor-windows editor)))
           (multiple-value-bind (f editor b) (agenda "SPC a a C-g")
             (declare (ignore f editor))
@@ -2043,11 +2043,13 @@ help left out."
     ;; each date prompt that takes repeats names the key of the menu, in the calendar or not
     (dolist (in-calendar '(t nil))
       (let ((tuatara-user:*org-read-date-in-calendar* in-calendar))
-        (loop for (keys prompt) in '(("C-c C-s" "Schedule (C-r repeats): ") ("C-c C-d" "Deadline (C-r repeats): ")
-                                     ("C-c ." "Date (C-r repeats): ") ("C-c !" "Inactive date (C-r repeats): "))
+        (loop for (keys prompt) in '(("C-c C-s" "Schedule: ") ("C-c C-d" "Deadline: ")
+                                     ("C-c ." "Date: ") ("C-c !" "Inactive date: "))
               do (let ((f (run-keys (format nil "M-x o r g - m o d e RET ~a" keys)
                                     :text (format nil "* TODO Thing~%") :width 120 :height 24)))
-                   (true (tuatara.frontend.fake:fake-frame-showing f prompt) "~a ~a" keys in-calendar)))))
+                   (true (tuatara.frontend.fake:fake-frame-showing f prompt) "~a ~a" keys in-calendar)
+                   (true (tuatara.frontend.fake:fake-frame-showing f "C-r opens the menu of a repeat")
+                         "~a ~a" keys in-calendar)))))
     (flet ((written (keys) (org-text-after keys (format nil "* TODO Thing~%"))))
       (is string= (format nil "* TODO Thing~%SCHEDULED: <2026-10-23 Fri +1w>~%")
           (written (format nil "C-c C-s C-r r ~a RET RET" (typed-keys "Weekly"))))
@@ -3044,3 +3046,20 @@ buffer of FILE killed first."
     (dolist (old '("C-c C-x C-i" "C-c C-x TAB" "C-c C-x C-o" "C-c C-x C-q" "C-c C-x C-j" "C-c I" "C-c O"
                    "C-c J" "C-c C"))
       (false (key old) "~a" old))))
+
+(define-modal-test (org clock-goto-passes-bold-lines)
+  ;; the task of a running clock is its headline, not a line of its text beginning with *bold*
+  (with-test-directory (dir)
+    (let ((file (namestring (merge-pathnames "bold.org" dir)))
+          (tuatara.defaults::*org-clock* nil))
+      (alexandria:write-string-into-file
+       (format nil "* Other~%* Write the minutes~%*Bold* words~%:LOGBOOK:~%CLOCK: [2026-10-26 Mon 14:40]~%:END:~%") file)
+      (unwind-protect
+           (let ((tuatara-user:*org-agenda-files* (list file))
+                 (tuatara.defaults::*org-now* (encode-universal-time 0 55 14 26 10 2026)))
+             (multiple-value-bind (f editor) (run-keys "C-x a j" :width 80 :height 12)
+               (declare (ignore f))
+               (is string= "* Write the minutes" (org-line-of-point editor))))
+        (setf tuatara.defaults::*org-clock* nil)
+        (let ((buffer (tuatara.buffer:find-buffer "bold.org")))
+          (when buffer (tuatara.buffer:buffer-mark-saved buffer) (tuatara.buffer:kill-buffer buffer)))))))

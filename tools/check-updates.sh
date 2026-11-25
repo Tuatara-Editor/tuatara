@@ -127,16 +127,6 @@ check_repository ghostty "$(field repository)" "$(field commit)" vt- > "$work/gh
 zig_pinned="$(field zig)"
 zig_newest="$(GIT_TERMINAL_PROMPT=0 timeout 60 git ls-remote --tags https://codeberg.org/ziglang/zig 2>/dev/null | newest_tag || true)"
 
-# GitHub's REST API, read-only: by gh when it answers (installed and logged
-# in), else by curl without a token; nothing written when neither answers
-github_api() {
-  local answer
-  if command -v gh >/dev/null && answer="$(timeout 60 gh api "$1" 2>/dev/null)"; then
-    printf '%s\n' "$answer"
-  else
-    curl -fsS --max-time 60 -H 'Accept: application/vnd.github+json' "https://api.github.com/$1" 2>/dev/null
-  fi
-}
 # whether commit or tag $2 of GitHub repository $1 holds commit or tag $3:
 # true when it does, 1 when it does not, 2 when GitHub did not say
 github_holds() {
@@ -159,7 +149,7 @@ github_advisories() {
   all='[]'
   next="https://api.github.com/$path"
   while [ -n "$next" ]; do
-    got="$(curl -fsS --max-time 60 -D "$work/headers" -H 'Accept: application/vnd.github+json' "$next" 2>/dev/null)" ||
+    got="$(https_curl --max-time 60 -D "$work/headers" -H 'Accept: application/vnd.github+json' "$next" 2>/dev/null)" ||
       return 1
     jq -e 'type == "array"' >/dev/null 2>&1 <<<"$got" || return 1
     all="$(jq -s 'add' <<<"$all $got")"
@@ -200,11 +190,9 @@ else
     done > "$work/advisories"
 fi
 
-# where tools/quicklisp.lisp finds Quicklisp
-ql_setup="$(quicklisp_setup 2>/dev/null || true)"
-ql_dist="$(dirname "${ql_setup:-/nonexistent/setup.lisp}")/dists/quicklisp/distinfo.txt"
-ql_pinned="$(sed -n 's/^version: //p' "$ql_dist" 2>/dev/null || true)"
-ql_newest="$(curl -fsS --max-time 60 https://beta.quicklisp.org/dist/quicklisp.txt 2>/dev/null | sed -n 's/^version: //p' || true)"
+# the Quicklisp set tools/lisp-archives.sh pins, which a release is built from
+ql_pinned="$(sed -n 's|^dist_url=.*/||p' "$root/tools/lisp-archives.sh")"
+ql_newest="$(https_get https://beta.quicklisp.org/dist/quicklisp.txt | sed -n 's/^version: //p')"
 
 sbcl_pinned="$("$root/build/tuatara" --version 2>/dev/null | sed -n 's/.* on SBCL \([0-9.]*\).*/\1/p' || true)"
 sbcl_newest="$(GIT_TERMINAL_PROMPT=0 timeout 60 git ls-remote --tags https://github.com/sbcl/sbcl 2>/dev/null |

@@ -476,7 +476,7 @@ show their =/ssh:pinetree:= path.
 |-------+-----------+----------------------------+----------------------------------|
 | none  | ~C-x T t~ | =toggle-mode-line-tuatara= | Writes TUATARA before the modal state, or only the state. |
 | none  | ~C-x C-q~ | =read-only-mode=           | Makes the buffer read-only, or editable again. |
-| none  | ~C-x j~   | =list-jobs=                | Lists the jobs running or waiting, which P stands for. |
+| none  | ~C-x j~   | =jobs-manager=             | Lists the jobs running or waiting, which P stands for. |
 | none  | ~C-x J~   | =stop-job=                 | Stops the job running in this buffer, after asking. |
 
 Clicking a window's mode line with the mouse selects that window.

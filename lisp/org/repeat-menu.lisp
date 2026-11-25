@@ -332,8 +332,8 @@ or CURRENT when nothing is read."
 (defun read-repeat-time (prompt &optional current)
   "Ask PROMPT for a time of day, 10:00 or 10:00-11:00, CURRENT offered; an
 empty answer takes it away."
-  (read-string (format nil "~a(10:00 or 10:00-11:00) " prompt)
-               :initial (or current "") :select-initial t :trim t))
+  (read-string prompt :initial (or current "") :select-initial t :trim t
+                      :details "A time, 10:00, or a time it begins and ends, 10:00-11:00; nothing takes it away."))
 
 (defun read-repeat-kind (prompt &optional current)
   "Ask PROMPT how a repeat goes, the ways named from its start (REPEAT-KINDS); CURRENT the one it had."
@@ -448,17 +448,17 @@ calendar's day."
 
 (defun org-ask-date (prompt then &key several)
   "Ask PROMPT (Schedule, with no colon) for a date, a repeat in words too, with
-SEVERAL several days (READ-ORG-DATE), the key of the repeat menu named after
-PROMPT, and call THEN with what it read (an ORG-TS, the text of a
+SEVERAL several days (READ-ORG-DATE), the key of the repeat menu named beside
+it, and call THEN with what it read (an ORG-TS, the text of a
 timestamp by rule or of several timestamps, or NIL);
 or, when \\[org-date-repeat-menu] is typed, open the repeat menu from what
 was typed, or the calendar's day, THEN called when it writes."
   (let* ((asked (list nil nil nil))
          (value (let ((*org-date-repeat-asked* asked))
-                  (read-org-date (substitute-command-keys
-                                  (format nil "~a (\\[org-date-repeat-menu] repeats): " prompt)
-                                  :keymap **org-repeat-date-prompt-keymap**)
-                                 :repeating t :several several :keymap **org-repeat-date-prompt-keymap**))))
+                  (read-org-date (format nil "~a: " prompt)
+                                 :repeating t :several several :keymap **org-repeat-date-prompt-keymap**
+                                 :details (substitute-command-keys "\\[org-date-repeat-menu] opens the menu of a repeat"
+                                                                   :keymap **org-repeat-date-prompt-keymap**)))))
     (if (first asked)
         (let ((text (let ((typed (string-trim " " (or (second asked) "")))) (and (plusp (length typed)) typed)))
               (day (or (third asked) (org-today))))

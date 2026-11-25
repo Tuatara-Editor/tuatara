@@ -228,7 +228,7 @@ with the text. When that changes nothing and *tab-always-indent* is :complete
 \\<lisp-mode>\\[completion-at-point] does in Lisp. With the selection active,
 indent the lines it touches. Where the mode does not indent (text, Org, CSV),
 go on to the next tab stop, as \\[tab-to-tab-stop] (tab-to-tab-stop) does
-anywhere. After a snippet's key, the snippet (\\[insert-snippet])."
+anywhere. After a snippet's key, the snippet (\\[snippet-insert])."
   (when (hex-view-here-p)
     (return-from indent-for-tab-command (hex-switch-column)))
   ;; after a snippet's key: the snippet

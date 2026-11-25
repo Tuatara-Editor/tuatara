@@ -1658,6 +1658,22 @@ as messages from an editor; the client."
         (false (unpacks-p (tuatara.io:deflate (tuatara.text:make-octets 13))))
         (false (unpacks-p (tuatara.io:deflate (tuatara.text:make-octets 11))))))))
 
+(define-test (remote face-font-held-as-a-setting-is)
+  ;; a face naming a font with a control character in it is malformed, as the same name in the settings is
+  (flet ((faces-with-font (font)
+           (lambda (box)
+             (let ((names (tuatara.frontend::make-face-names))
+                   (face (tuatara.display::%make-face :far-font-test)))
+               (setf (tuatara.display:face-font face) font)
+               (tuatara.frontend::face-name-number names :far-font-test)
+               (tuatara.frontend::put-names box names)
+               (let ((at (tuatara.frontend::begin-message box :faces)))
+                 (tuatara.frontend::put-number box 1 2)
+                 (tuatara.frontend::put-face box names face)
+                 (tuatara.frontend::end-message box at))))))
+    (false (refused-as-malformed-p (faces-with-font "Cascadia Code")))
+    (true (refused-as-malformed-p (faces-with-font (format nil "Cascadia~cCode" (code-char 27)))))))
+
 (define-test (remote far-picture-acks-held-to-its-size)
   ;; a client saying more was taken than a picture holds ends the connection, and ack with no picture is ignored
   (let ((remote (make-instance 'tuatara.frontend:remote-frontend :fd -1))

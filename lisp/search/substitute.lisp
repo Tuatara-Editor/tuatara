@@ -530,7 +530,7 @@ or counted here."
         ((and pieces (asking-flags-p flags))
          (goto (car (first pieces)))
          (multiple-value-bind (next rest) (pieces-next-match buffer matcher regex pieces all)
-           (query-replace-loop buffer next replacement-for (search-line-pattern line) replacement :rest rest)))
+           (query-replace-loop buffer next replacement-for (search-line-pattern line) replacement rest)))
         ((asking-flags-p flags)
          ;; ask at each match; the scope's end moves as replacements change its length
          (let ((tail (- (tuatara.buffer:buffer-size buffer) high)) (first t))
@@ -547,20 +547,20 @@ or counted here."
                                      (setf first nil)
                                      (next-line-match buffer matcher regex from high stop)))
                                  replacement-for (search-line-pattern line) replacement
-                                 :rest (lambda (pos)
-                                         ;; ! : the rest at once from the match asked at, gathered within the budget
-                                         (let* ((rope (tuatara.buffer:buffer-text buffer))
-                                                (high (- (tuatara.buffer:buffer-size buffer) tail)))
-                                           (multiple-value-bind (found status count)
-                                               (line-matches rope matcher regex pos high :stop stop)
-                                             (if (eq status :over)
-                                                 ;; too many to hold: those in sight at once, the rest in the
-                                                 ;; background
-                                                 (progn (rewrite-after-sight buffer line regex pos high words flags
-                                                                             matcher replacement-for all)
-                                                        (values nil :background count))
-                                                 (values (if all found (first-per-line rope found))
-                                                         status count)))))))))
+                                 (lambda (pos)
+                                   ;; ! : the rest at once from the match asked at, gathered within the budget
+                                   (let* ((rope (tuatara.buffer:buffer-text buffer))
+                                          (high (- (tuatara.buffer:buffer-size buffer) tail)))
+                                     (multiple-value-bind (found status count)
+                                         (line-matches rope matcher regex pos high :stop stop)
+                                       (if (eq status :over)
+                                           ;; too many to hold: those in sight at once, the rest in the
+                                           ;; background
+                                           (progn (rewrite-after-sight buffer line regex pos high words flags
+                                                                       matcher replacement-for all)
+                                                  (values nil :background count))
+                                           (values (if all found (first-per-line rope found))
+                                                   status count)))))))))
         (t
          (let ((rope (tuatara.buffer:buffer-text buffer)) (counting (counting-flags-p flags)))
            (when (and (null pieces) (large-for-here-p low high))

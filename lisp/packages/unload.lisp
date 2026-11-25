@@ -162,7 +162,7 @@ was let load, and delete the directories one by one in the background, each
 looked at again first (SWEEP-NEXT)."
   (let ((total (reduce #'+ directories :key #'third)))
     (if (yes-or-no-p* (format nil "~a, ~a?" (list-question "Unload, remove and delete" "package" names)
-                              (tuatara.io:octets-words total)))
+                              (tuatara.text:octets-words total)))
         (let ((names (packages-not-busy names)))
           (dolist (name names)
             (remove-package name)

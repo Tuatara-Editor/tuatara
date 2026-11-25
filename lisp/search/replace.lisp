@@ -46,20 +46,18 @@ is replaced too, its fold kept folded and what replaces it hidden with it
     (when (and asked (eq (tuatara.display:window-buffer window) (first asked)))
       (list (list (second asked) (third asked) :search-current)))))
 
-(defun query-replace-loop (buffer next-match replacement-for from-description to-description &key rest)
+(defun query-replace-loop (buffer next-match replacement-for from-description to-description rest)
   "Walk the matches from point: NEXT-MATCH (a function of a byte offset) returns
 the next (START END ...) or NIL, or :STOPPED when a key or \`C-g' cut its
 search short, which ends the walk saying so; REPLACEMENT-FOR gives each match's replacement
 text. At each match, lit in :search-current with point after it, ask \\`y'
 \(replace), \\`n' (skip), \\`!' (replace all remaining as one batch), \\`.'
 \(replace and stop), \\`q' or \\`RET' (stop).
-REST, when given, gathers all the remaining matches for \\`!' from the start
-of the match asked at, as three values: the list, NIL or a reason it gave
-up (:STOPPED, :OVER, or :BACKGROUND when it handed them to a job of their
-own) and a count; without it they are gathered through NEXT-MATCH. A match
-in folded text
-is asked at too: its fold is opened first, so that it is seen, the other folds
-left as they are; \\`!' replaces those still folded with their folds kept.
+REST gathers all the remaining matches for \\`!' from the start of the match
+asked at, as three values: the list, NIL or a reason it gave up (:STOPPED,
+:OVER, or :BACKGROUND when it handed them to a job of their own) and a
+count. A match in folded text is asked at too: its fold is opened first, so
+that it is seen, the other folds left as they are; \\`!' replaces those still folded with their folds kept.
 Returns the number replaced."
   (let ((pos (point)) (replaced 0) (*asked-match* nil))
     ;; painted after every other highlight, over the search's other matches
@@ -97,13 +95,7 @@ Returns the number replaced."
                                  (1+ (second m))
                                  (past m (second m)))))
                   (#\!
-                   (multiple-value-bind (remaining status count)
-                       (if rest
-                           (funcall rest (first m))
-                           (loop for match = (funcall next-match pos)
-                                   then (and (< (second match) (tuatara.buffer:buffer-size buffer))
-                                             (funcall next-match (past match (second match))))
-                                 while match collect match))
+                   (multiple-value-bind (remaining status count) (funcall rest (first m))
                      (when status
                        ;; :background, the rest gone to a job of their own, which says how it ends
                        (unless (eq status :background)

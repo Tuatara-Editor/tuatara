@@ -13,7 +13,7 @@
 ;;;; written over in place instead. Nothing runs on such a copy that would read what
 ;;;; is around it here: no language server, git, auto-saved copy or build;
 ;;;; the settings a file names for itself, and the shared program parsing
-;;;; trusted text, only for the servers on the trusted list (M-x server-list).
+;;;; trusted text, only for the servers on the trusted list (M-x server-manager).
 ;;;; A file of evidence (*EVIDENCE-DIRECTORIES* naming /ssh:HOST:/directory/, HOST
 ;;;; any name ssh takes for that machine, the directory as written or where it
 ;;;; really is there) opens safely and is never written.
@@ -170,6 +170,13 @@ entry of the cache holding the copy (MAKE-CACHE-ENTRY), or NIL."
   (let ((remote (buffer-remote buffer)))
     (and remote (remote-name (remote-file-host remote) (remote-file-path remote)))))
 
+(defun buffer-visited-name (buffer)
+  "The name of the file BUFFER visits as you would give it: /ssh:HOST:/path for
+a copy of a file on another machine (BUFFER-REMOTE-NAME), else its native name;
+NIL for a buffer with no file."
+  (let ((file (tuatara.buffer:buffer-file buffer)))
+    (and file (or (buffer-remote-name buffer) (tuatara.io:native file)))))
+
 (defun remote-buffer (host path &key except)
   "The live buffer but EXCEPT visiting a copy of PATH on HOST, or of a file being read from there, or NIL."
   (find-if (lambda (buffer)
@@ -286,7 +293,7 @@ some directory; for work in the background."
     (and remote (remote-file-trusted remote) (null (remote-file-evidence remote)))))
 
 (defun remote-trusted-p (host)
-  "True when HOST is on the list of trusted servers (\\[server-list])."
+  "True when HOST is on the list of trusted servers (\\[server-manager])."
   (and (state-list-find *trusted-servers* host) t))
 
 (defun remote-find-file-functions (trusted)
@@ -829,12 +836,21 @@ noted in the cache, to be gone on with when the file is next visited
           (t (stop-using-cache-directory directory (tuatara.runtime:job-buffer job))
              (ignoring-errors-reported ("clearing ~a" directory) (clear-cache-path directory))))))
 
+(defun remote-when-read (buffer function)
+  "When BUFFER says a file on another machine is being read (VISIT-REMOTE),
+have FUNCTION called with the buffer that takes its place once the file is
+read, and return true; else NIL, nothing kept."
+  (when (tuatara.buffer:buffer-local buffer :remote-reading)
+    (push function (tuatara.buffer:buffer-local buffer :remote-when-read))
+    t))
+
 (defun remote-copy-in (placeholder job)
   "Visit the copy JOB read in a buffer of its own, which takes the place of
 PLACEHOLDER, the buffer that said it was being read, in every window, and its
-name; a buffer visiting the file already is shown instead. A directory is
-listed with rimu in its place. A copy whose rest is still to come is read
-into by a job of the buffer's own, started once the buffer has its name
+name; a buffer visiting the file already is shown instead. The functions
+REMOTE-WHEN-READ kept for PLACEHOLDER are then called with that buffer. A
+directory is listed with rimu in its place. A copy whose rest is still to come
+is read into by a job of the buffer's own, started once the buffer has its name
 \(REMOTE-REST-BEGIN); one that waits for all of it (REMOTE-WAITS-P) leaves
 PLACEHOLDER saying how much has come (REMOTE-WAIT-FOR-ARRIVAL)."
   (let* ((remote (remote-read-job-remote job))
@@ -855,14 +871,17 @@ PLACEHOLDER saying how much has come (REMOTE-WAIT-FOR-ARRIVAL)."
            (let ((buffer (if other
                              (progn (close-remote-copy job) other)
                              (remote-visit-copy remote path job)))
-                 (name (tuatara.buffer:buffer-name placeholder)))
+                 (name (tuatara.buffer:buffer-name placeholder))
+                 (when-read (reverse (tuatara.buffer:buffer-local placeholder :remote-when-read))))
              (dolist (window (buffer-windows placeholder))
                (tuatara.display:set-window-buffer window buffer :remember nil))
              (tuatara.buffer:kill-buffer placeholder)
              (unless other
                (setf (tuatara.buffer:buffer-name buffer) (tuatara.buffer:unique-buffer-name name))
                (when (remote-read-job-arrival job)
-                 (remote-rest-begin buffer job))))))))
+                 (remote-rest-begin buffer job)))
+             (dolist (function when-read)
+               (funcall function buffer)))))))
 
 (defun remote-octets-taken-over (buffer)
   "BUFFER, the octets of a file on another machine, has taken the place of the

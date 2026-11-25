@@ -4,7 +4,8 @@
 ;;;; In a status f opens the fetch menu, F the pull menu and P the push menu,
 ;;;; each from or to the branch's upstream, from or to a remote asked
 ;;;; for, every remote, tags. Git never asks for a password on the terminal
-;;;; (the editor's) and never runs a program an address names; the keys and
+;;;; (the editor's) and never runs a program an address names (it goes only
+;;;; over https, ssh, git and to directories here); the keys and
 ;;;; credentials it needs come from your agent and helpers. What ssh asks, a
 ;;;; server's key it has not seen or a key's passphrase, is put to you in the
 ;;;; minibuffer as for a server's files (remote/asking.lisp): ssh itself adds
@@ -23,17 +24,17 @@ configuration besides, when nobody is asked what ssh asks (GIT-NETWORK-VARIABLES
 
 (defun git-network-variables (ssh asking settings)
   "The environment (NAME=VALUE strings) git reaches a server with, SETTINGS,
-each (KEY VALUE), of its configuration besides: never to run a program an
-address of the ext:: kind names, nor the ssh a repository's own
-configuration names. The keys and credentials it needs come from your agent
+each (KEY VALUE), of its configuration besides: only over https, ssh, git
+and to directories on this computer, so never to run a program an address
+names (ext::, or NAME:: for a helper git-remote-NAME), nor the ssh a
+repository's own configuration names. The keys and credentials it needs come from your agent
 and helpers. With SSH, the command running ssh, and ASKING, its environment
 \(CALL-ANSWERING-SSH), what ssh asks is put to you in the minibuffer: a key
 not seen before, a key's passphrase. Without, a key's passphrase the agent
 does not hold is asked in ssh's own window on a desktop
 \(SSH-ASKPASS-WINDOW-P), never on the terminal, with no desktop ssh asks
 nothing and fails, and a server whose key ssh does not know yet is refused."
-  (let ((settings (cons '("protocol.ext.allow" "never") settings))
-        (askpass (and (null ssh) (ssh-askpass-window-p))))
+  (let ((askpass (and (null ssh) (ssh-askpass-window-p))))
     (append (cond ((and ssh (plain-path-p (first ssh)))
                    (cons (format nil "GIT_SSH_COMMAND=~{~a~^ ~}" ssh) asking))
                   (ssh (cons (format nil "GIT_SSH_COMMAND=ssh~{ ~a~}" (rest ssh)) asking))
@@ -41,7 +42,7 @@ nothing and fails, and a server whose key ssh does not know yet is refused."
                    (list "GIT_SSH_COMMAND=ssh -o StrictHostKeyChecking=yes" (format nil "SSH_ASKPASS=~a" askpass)
                          "SSH_ASKPASS_REQUIRE=force"))
                   (t (list "GIT_SSH_COMMAND=ssh -o BatchMode=yes")))
-            (list (format nil "GIT_CONFIG_COUNT=~d" (length settings)))
+            (list "GIT_ALLOW_PROTOCOL=https:ssh:git:file" (format nil "GIT_CONFIG_COUNT=~d" (length settings)))
             (loop for (key value) in settings
                   for i from 0
                   collect (format nil "GIT_CONFIG_KEY_~d=~a" i key)
@@ -71,7 +72,7 @@ it has one), then call THEN with its name; said so when it has none."
            #'git-remote-names
            (lambda (remotes)
              (if (null remotes)
-                 (message "No remote: M-x git-remote-add adds one")
+                 (message "~a" (substitute-command-keys "No remote: \\[git-remote-add] adds one"))
                  (let ((name (git-read-name prompt remotes
                                             :require-match t
                                             :default (if (member "origin" remotes :test #'string=)
@@ -170,7 +171,8 @@ take away commits it has, only once asked."
   (cond ((member "--force" arguments :test #'string=)
          (yes-or-no-p* "Force the push?" :details "Commits the remote has that this branch has not are taken away."))
         ((member "--force-with-lease" arguments :test #'string=)
-         (yes-or-no-p* "Force the push, if the remote has nothing new since the last fetch?"))
+         (yes-or-no-p* "Force the push, if the remote has nothing new?"
+                       :details "Its commits not on this branch go, unless it has new ones since the last fetch."))
         (t t)))
 
 (define-command git-push ()
@@ -240,23 +242,23 @@ in the background the first time they are wanted (GIT-RUN-COMMAND).")
 (defun git-built-in-commands ()
   "The commands built into git (*GIT-BUILT-IN-COMMANDS*): those it runs
 itself, never a program or an alias of a repository's or yours. Git is asked
-the first time, on the thread calling it."
+the first time, on the thread calling it, and again the next time when it
+could not list them; NIL then."
   (or *git-built-in-commands*
       (setf *git-built-in-commands*
-            (let ((git (tuatara.io:find-program "git")))
-              (and git (uiop:split-string
-                        (string-trim '(#\Newline)
-                                     (or (ignoring-errors-reported ("asking ~a for its own commands" git)
-                                           (multiple-value-bind (output said code)
-                                               (tuatara.io:filter-through-program (list git "--list-cmds=builtins") nil)
-                                             (declare (ignore said))
-                                             (and (eql code 0) (tuatara.text:lenient-string output))))
-                                         ""))
-                        :separator '(#\Newline)))))))
+            (let* ((git (tuatara.io:find-program "git"))
+                   (listed (and git
+                                (ignoring-errors-reported ("asking ~a for its own commands" git)
+                                  (multiple-value-bind (output said code)
+                                      (tuatara.io:filter-through-program (list git "--list-cmds=builtins") nil)
+                                    (declare (ignore said))
+                                    (and (eql code 0) (tuatara.text:lenient-string output)))))))
+              (and listed (remove "" (uiop:split-string listed :separator '(#\Newline)) :test #'string=))))))
 
-(defun git-command-refusal (words)
+(defun git-command-refusal (words &key (own nil own-given))
   "Why git is not run with WORDS, typed for \\[git-run-command], in words; NIL
-when it may be. While evidence directories are named (*EVIDENCE-DIRECTORIES*), three
+when it may be. OWN, when given, is what GIT-BUILT-IN-COMMANDS gave, read
+already. While evidence directories are named (*EVIDENCE-DIRECTORIES*), three
 rules hold. Only *GIT-LINE-OPTIONS-ALLOWED* may stand as an option before the
 command (-c, --config-env, --exec-path and the like could name a program for
 git to run or point it elsewhere). Only commands built into git are run (an
@@ -266,12 +268,15 @@ filters, programs)."
   (when (tuatara.io:writing-refused-anywhere-p)
     (let* ((rest (git-command-words words))
            (command (first rest))
-           (leading (git-leading-options-refused words rest)))
+           (leading (git-leading-options-refused words rest))
+           (own (if own-given own (and command (not leading) (git-built-in-commands)))))
       (cond (leading
              (format nil "while evidence directories are named, git is given no option before its command here ~
                           but ~{~a~^, ~} (not ~a)"
                      *git-line-options-allowed* (first leading)))
-            ((and command (not (member command (git-built-in-commands) :test #'string=)))
+            ((and command (null own))
+             "while evidence directories are named, only git's own commands run here, and git did not list them")
+            ((and command (not (member command own :test #'string=)))
              (format nil "while evidence directories are named, only git's own commands run here, not ~a ~
                           (an alias, or a program of its family)"
                      command))
@@ -286,9 +291,9 @@ what it printed; for what the menus have no action for. While evidence
 directories are named, only git's own commands, with no setting given on the
 line (GIT-COMMAND-REFUSAL)."
   (with-git-repository (top)
-    (multiple-value-bind (words ok) (tuatara.io:command-words (read-string "Run git: "))
-      (flet ((run ()
-               (let ((refusal (git-command-refusal words)))
+    (multiple-value-bind (words ok) (tuatara.text:command-words (read-string "Run git: "))
+      (flet ((run (&optional (own nil own-given))
+               (let ((refusal (if own-given (git-command-refusal words :own own) (git-command-refusal words))))
                  (if refusal
                      (message "Nothing run: ~a" refusal)
                      (git-show-output (format nil "Running git ~a" (first words)) top words "*git output*"
@@ -300,8 +305,8 @@ line (GIT-COMMAND-REFUSAL)."
               ((or *git-built-in-commands* (not (tuatara.io:writing-refused-anywhere-p))) (run))
               ;; git's own commands are asked of it once, in the background
               (t (start-git-job "Reading git's own commands"
-                                (lambda (job) (declare (ignore job)) (git-built-in-commands) nil)
-                                (lambda (&rest ignored) (declare (ignore ignored)) (run))
+                                (lambda (job) (declare (ignore job)) (git-built-in-commands))
+                                #'run
                                 :quiet t)))))))
 
 (defun install-git-remote ()

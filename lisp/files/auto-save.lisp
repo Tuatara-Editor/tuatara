@@ -336,12 +336,13 @@ is not there)."
                          copies)))))
     (sort copies #'> :key (lambda (c) (getf c :time)))))
 
-(define-major-mode auto-saves-mode marked-list-mode
-  "The auto-saved copies there are (\\[list-auto-saves]), a line each: its
-mark, when written, how large, whether newer than their file, and the file.
-The list is shown again as copies are written and deleted.
-\\<auto-saves-mode>\\[list-visit] opens the file on the line and offers to
-take its changes in. \\[list-mark-entry] marks a copy (>),
+(define-major-mode auto-saves-mode sectioned-list-mode
+  "The auto-saved copies there are (\\[auto-saves-manager]), in sections: those
+newer than their file, those older, those whose file is gone; a line each: its
+mark, when written, how large, and the file. The list is shown again as copies
+are written and deleted. \\<auto-saves-mode>\\[list-visit] opens the file on
+the line and offers to take its changes in; on a heading it folds or unfolds
+the section, \\[list-fold-heading] folds it. \\[list-mark-entry] marks a copy (>),
 \\[list-mark-for-deletion] marks it for deletion (D), \\[list-unmark-entry]
 unmarks it, \\[list-unmark-all] unmarks them all. \\[list-delete-marked]
 deletes the marked copies (the one on the line when none is),
@@ -353,57 +354,43 @@ touched. \\[revert-buffer] lists them again, and \\[quit-window] closes."
   "Keys of the list of auto-saved copies (auto-saves-mode's keymap).")
 
 (defparameter *auto-saves-columns*
-  '((" " :width 1) ("Written" :width 16) ("Size" :width 9 :right t :elide nil) ("State" :width 19)
-    ("File"))
+  '((" M" :width 2) ("Written" :width 16) ("Size" :width 9 :right t :elide nil) ("File"))
   "The columns of the list of auto-saved copies, as TABLE-HEADING-PIECES takes
-them: the mark (> or D), when a copy was written, its size, whether it is
-newer than its file, and the file.")
+them: the mark (> or D), when a copy was written, its size, and the file.")
 
-(defun auto-saves-show (buffer &optional (point 2))
-  "Fill BUFFER, the list of auto-saved copies, point on line POINT, or with
-:keep on the line it was on, marks kept on the copies still there; a copy
+(defparameter *auto-save-sections*
+  '((:newer . "Newer than the file") (:older . "Older than the file") (:gone . "The file is gone"))
+  "The sections of the list of auto-saved copies in order, each a state of a
+copy against its file and the heading of its section.")
+
+(defun auto-saves-show (buffer &optional (point :first-entry))
+  "Fill BUFFER, the list of auto-saved copies, point on the first copy, or
+with POINT :keep on the line it was on, marks kept on the copies still there; a copy
 newer than its file in :warning, the file of a marked one in its mark's face.
-The copies are looked at on a thread of their own (AUTO-SAVE-COPIES), so that
-a drive not answering holds nothing up, and BUFFER is filled once they are;
-a list still empty says meanwhile that they are being listed. Of listings
-that overlap, only the one begun last fills BUFFER."
-  (when (zerop (tuatara.buffer:buffer-size buffer))
-    (render-pieces buffer (list (format nil "Listing the auto-saved copies...~%")) :point :start))
-  (let ((listing (setf (tuatara.buffer:buffer-local buffer 'auto-saves-listing)
-                       (1+ (or (tuatara.buffer:buffer-local buffer 'auto-saves-listing) 0)))))
-    (tuatara.runtime:make-guarded-thread
-     (tuatara.runtime:carry-settings
-      '(*auto-save-directory*)
-      (lambda ()
-        (let ((copies (ignoring-errors-reported ("listing the auto-saves") (auto-save-copies))))
-          (defer-action (lambda () (auto-saves-take buffer listing copies point))))))
-     :name "tuatara auto-saves listed")))
-
-(defun auto-saves-take (buffer listing copies point)
-  "Fill BUFFER, the list of auto-saved copies, with COPIES, point as
-AUTO-SAVES-SHOW says, when LISTING, the number of the listing that found
-them, is the one begun last for it; else they are let go, older than what a
-later listing finds."
-  (when (and (live-buffer-p buffer) (eql listing (tuatara.buffer:buffer-local buffer 'auto-saves-listing)))
-    (auto-saves-fill buffer copies point)))
+The copies are looked at on a thread of their own (AUTO-SAVE-COPIES,
+SHOW-LIST-FROM-THREAD), and BUFFER filled once they are."
+  (show-list-from-thread buffer "Listing the auto-saved copies..."
+                         (lambda (wanted) (declare (ignore wanted)) (auto-save-copies))
+                         (lambda (copies) (auto-saves-fill buffer copies point))
+                         :settings '(*auto-save-directory*)))
 
 (defun auto-saves-fill (buffer copies point)
   "Fill BUFFER, the list of auto-saved copies, with COPIES (AUTO-SAVE-COPIES),
 point as AUTO-SAVES-SHOW says."
   (render-table-list
-   buffer *auto-saves-columns* copies
+   buffer *auto-saves-columns*
+   (group-sections copies (lambda (copy) (if (member (getf copy :state) '(:newer :older)) (getf copy :state) :gone))
+                   :order (lambda (a b) (< (position a *auto-save-sections* :key #'car)
+                                           (position b *auto-save-sections* :key #'car))))
    (lambda (copy mark section)
      (declare (ignore section))
      (let ((face (and (eq (getf copy :state) :newer) :warning)))
        (list (list-mark-sign mark)
              (cons (short-time-words (getf copy :time)) face)
              (cons (octets-words (getf copy :size)) face)
-             (cons (case (getf copy :state)
-                     (:newer "newer than the file")
-                     (:older "older than the file")
-                     (t "the file is gone"))
-                   face)
              (cons (abbreviated-path (getf copy :file)) (or (list-mark-face mark) face)))))
+   :sections t :section-title (lambda (state) (cdr (assoc state *auto-save-sections*)))
+   :section-face (lambda (state) (and (eq state :newer) :warning))
    :marked-by (lambda (copy section) (declare (ignore section)) (auto-save-copy-key copy))
    :after (list (format nil
                         "~%Auto-saved changes in ~a: ~d~%"
@@ -416,15 +403,16 @@ point as AUTO-SAVES-SHOW says."
   "What a mark on COPY, one of AUTO-SAVE-COPIES, in their list is kept by: the copy's path."
   (getf copy :copy))
 
-(define-command list-auto-saves ()
+(define-command auto-saves-manager ()
   "List the auto-saved copies of changes not saved (*AUTO-SAVE-DIRECTORY*), the
-newest first: after a crash or a quit without saving, what can be taken back.
+newest first, those newer than their file in a section before the rest: after a
+crash or a quit without saving, what can be taken back.
 There \\<auto-saves-mode>\\[list-visit] opens the file on the line and offers to take its
 changes in (\\[recover-file]), \\[list-delete-marked] deletes the marked copies or the one on
 the line."
   (let ((buffer (buffer-in-mode "*Auto-saves*" 'auto-saves-mode)))
-    (auto-saves-show buffer)
-    (show-buffer buffer)))
+    (show-buffer buffer)
+    (auto-saves-show buffer)))
 
 (defmethod list-entry-noun ((mode auto-saves-mode))
   "An auto-saved copy."
@@ -444,7 +432,12 @@ file no longer there is opened as a new one."
   (declare (ignore mark))
   (let ((copies (list-entries-of list keys)))
     (if (yes-or-no-p* (format nil "~a?" (list-question "Delete the auto-saved changes of" "file" copies :the nil
-                                                       :name-of (lambda (copy) (abbreviated-path (getf copy :file))))))
+                                                       :name-of (lambda (copy)
+                                                                  (tuatara.io:native-file-name (getf copy :file)))))
+                      :details (format nil "~{~a~%~}~@[and ~d more~]"
+                                       (mapcar (lambda (copy) (abbreviated-path (getf copy :file)))
+                                               (subseq copies 0 (min 20 (length copies))))
+                                       (and (> (length copies) 20) (- (length copies) 20))))
         (progn (dolist (copy copies)
                  (delete-auto-save-copy (getf copy :copy)))
                (unmark-list list)
@@ -458,7 +451,7 @@ whose auto-saved changes are newer than them (AUTO-SAVES-STARTUP-NOTICE).")
 (defun auto-saves-startup-notice (editor)
   "Tick function: say once, as the editor starts, how many files have
 auto-saved changes newer than them, and how to see them
-\(\\[list-auto-saves]); they are counted in the background, so that a file
+\(\\[auto-saves-manager]); they are counted in the background, so that a file
 on a drive not answering cannot hold the start up. Looks again every
 twentieth of a second until they are."
   (declare (ignore editor))
@@ -481,7 +474,7 @@ twentieth of a second until they are."
            (let ((newer (or (first (take-gathered counting)) 0)))
              (when (plusp newer)
                (message "~d file~:p ~:*~[~;has~:;have~] changes auto-saved and not saved: ~
-                         \\[list-auto-saves] lists them"
+                         \\[auto-saves-manager] lists them"
                         newer)))
            nil))))
 
@@ -498,4 +491,4 @@ many have newer copies said as the editor starts; bind the keys of their list."
   (when *auto-save* (pushnew 'auto-saves-startup-notice *tick-functions*))
   (entry-list-keys 'auto-saves-mode "the list of auto-saved copies"))
 
-(commands-for-mode 'auto-saves-mode "the list of auto-saved copies (\\[list-auto-saves])" 'list-visit)
+(commands-for-mode 'auto-saves-mode "the list of auto-saved copies (\\[auto-saves-manager])" 'list-visit)

@@ -356,10 +356,11 @@ restart, runs again \(ORG-CLOCK-RUNNING)."
         (unless (and clock (null *org-clock*)) (message "No clock is running"))
         (let ((buffer (org-clock-buffer clock)))
           (show-buffer buffer)
-          ;; the task's headline: the nearest line above beginning with *, the clock's line shown
-          (goto-shown buffer (loop for line = (tuatara.buffer:buffer-line-start buffer start)
+          ;; the task's headline: the nearest headline above, the clock's line shown
+          (goto-shown buffer (loop with rope = (tuatara.buffer:buffer-text buffer)
+                                   for line = (tuatara.buffer:buffer-line-start buffer start)
                                      then (tuatara.buffer:buffer-line-start buffer (1- line))
-                                   when (or (zerop line) (eql (tuatara.buffer:buffer-char-at buffer line) #\*))
+                                   when (or (zerop line) (org-stars rope line))
                                      return line)
                       :open start)))))
 
@@ -402,8 +403,9 @@ finished CLOCK: line, write its duration again from its two times; true when it 
   t)
 
 (defun install-org-clock ()
-  "Bind Org's clock keys in Org buffers, \\`C-c C-x' and a capital letter as
-\\`SPC a' has them, show the clock running, and ask about it before quitting."
+  "Bind Org's clock keys in Org buffers, \\`C-c C-x I' clocking in, \\`C-c C-x O'
+out, \\`C-c C-x C' cancelling and \\`C-c C-x J' going to the task, show the
+clock running, and ask about it before quitting."
   (let ((keymap (mode-keymap 'org-mode)))
     (define-key keymap "C-c C-x I" 'org-clock-in)
     (define-key keymap "C-c C-x O" 'org-clock-out)

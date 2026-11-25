@@ -92,7 +92,7 @@ goes on. More."))
     (is string= "a,b" (session-text editor))
     (false (typep (tuatara.modes:buffer-major-mode (session-buffer editor)) 'tuatara.defaults::jobs-mode)))
   ;; the commands that make those buffers still give them their modes
-  (multiple-value-bind (f editor) (run-keys "M-x l i s t - j o b s RET" :text "x" :width 150 :height 12)
+  (multiple-value-bind (f editor) (run-keys "M-x j o b s - m a n a g e r RET" :text "x" :width 150 :height 12)
     (declare (ignore f))
     (true (typep (tuatara.modes:buffer-major-mode (tuatara.display:window-buffer (tuatara.command:editor-window editor)))
                  'tuatara.defaults::jobs-mode))))

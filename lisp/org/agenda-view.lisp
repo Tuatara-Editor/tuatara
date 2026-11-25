@@ -109,7 +109,7 @@ true. It is drawn again just after midnight too, and whenever an agenda file
 changes, in a buffer or on disk.
 - a time: minutes, or words such as \"30m\" or \"1h\"; 10 as standard.
 - nil: only at midnight and when a file changes."
-  :values (or (member nil) (minutes 0 *)))
+  :values (or (member nil) (minutes 1 *)))
 
 (define-setting *org-agenda-custom-commands*
   '(("u" "Untagged tasks" :tags-todo "-{.*}" :header "Untagged tasks"))
@@ -878,17 +878,12 @@ asks for it, the words the question shows for it and the command showing it.")
 (*ORG-AGENDA-CUSTOM-COMMANDS*, \\`u' the tasks with no tag), or \\`c' the
 entries whose dates look wrong (\\[org-agenda-check-dates]), read from
 *ORG-AGENDA-FILES*."
-  (let* ((key (read-key (format nil "Agenda: ~{~a~^  ~}"
-                                (append (loop for (key words) in *org-agenda-views*
-                                              collect (format nil "~c ~a" key words))
-                                        (loop for (key words) in *org-agenda-custom-commands*
-                                              collect (format nil "~a ~a" key words))))))
-         (char (progn (when (quit-key-p key) (keyboard-quit-signal))
-                      (setf (editor-message *editor*) nil)
-                      (tuatara.frontend:key-base key)))
-         (view (find char *org-agenda-views* :key #'first))
-         (custom (and (characterp char)
-                      (find (string char) *org-agenda-custom-commands* :key #'first :test #'string=))))
+  (let* ((key (read-key-choice "Agenda:" (loop for (key words) in (append *org-agenda-views*
+                                                                          *org-agenda-custom-commands*)
+                                                collect (cons key words))))
+         (view (find key *org-agenda-views* :key #'first))
+         (custom (find key *org-agenda-custom-commands* :key #'first)))
+    (setf (editor-message *editor*) nil)
     (cond (view (funcall (third view)))
           (custom (destructuring-bind (key description type match &key header) custom
                     (declare (ignore key))
@@ -898,8 +893,7 @@ entries whose dates look wrong (\\[org-agenda-check-dates]), read from
                                                    :point :first))
                       (:tags (org-agenda-show (list :kind :match :match match :header (or header description))
                                               :point :first))
-                      (:todo (org-agenda-show (list :kind :todo :keyword match) :point :first)))))
-          (t (message "No agenda view on ~a" (tuatara.frontend:key-description (tuatara.frontend:key-spec key)))))))
+                      (:todo (org-agenda-show (list :kind :todo :keyword match) :point :first))))))))
 
 (define-command org-agenda-list ()
   "Show the agenda of this week (or *ORG-AGENDA-SPAN*): each day with its

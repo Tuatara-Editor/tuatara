@@ -157,12 +157,18 @@ not known."
   "What FILTERING's filters leave of TOTAL entries or records (NIL while not
 known), for a list's first line and a file's mode line, as in Filtered by kiwi,
 nz: 12 of 1,000 records. While they are being worked out in the background,
-it reads Filtered by kiwi: ... of 1,000 records (counting)."
-  (let ((patterns (mapcar #'search-filter-words (search-filter-chain filtering)))
-        (nouns (list-filtering-nouns filtering))
-        (left (filter-left filtering total)))
+it reads Filtered by kiwi: ... of 1,000 records (counting). Records a column
+was tried on the start of alone, being too long (LINES-DECODED), are counted
+after it: 2 lines longer than 16.0 MiB tried on their start."
+  (let* ((chain (search-filter-chain filtering))
+         (patterns (mapcar #'search-filter-words chain))
+         (nouns (list-filtering-nouns filtering))
+         (left (filter-left filtering total))
+         (cut (and left (reduce #'+ chain :key #'search-filter-cut))))
     (if left
-        (format nil "Filtered by ~{~a~^, ~}: ~:d of ~:d ~a" patterns left (or total 0) nouns)
+        (format nil "Filtered by ~{~a~^, ~}: ~:d of ~:d ~a~@[; ~:d line~:p longer than ~a tried on their start~]"
+                patterns left (or total 0) nouns (and (plusp cut) cut)
+                (tuatara.text:octets-words *rewrite-line-limit* :binary t))
         (format nil "Filtered by ~{~a~^, ~}: …~@[ of ~:d~] ~a (counting)" patterns total nouns))))
 
 (defun filter-count-figures (buffer)

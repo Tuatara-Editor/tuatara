@@ -85,6 +85,55 @@ cases/2026-0001/work/ (WORK), each bound to its native name ending in /."
                                 (:name "evidence" :within "/nowhere/")))
         (false (evidence-directory-of file))))))
 
+(define-test (evidence shown-text-mode-plain-when-safe)
+  ;; text of an evidence file shown in a buffer of another kind (an older version, a preview) is
+  ;; plain, as the file's own buffer is; outside an evidence directory its name and first line pick the mode
+  (with-case-directory (root evidence work)
+    (let ((octets (tuatara.text:string-octets (format nil "* heading~%")))
+          (shebang (tuatara.text:string-octets (format nil "#!/bin/sh~c~%echo~%" #\Return))))
+      (with-evidence-directories ((list (concatenate 'string root "cases/*/evidence/")))
+        (is eq 'tuatara.modes:fundamental-mode
+            (tuatara.defaults::mode-for-shown-text (concatenate 'string evidence "notes.org") octets))
+        (is eq 'tuatara.modes:fundamental-mode
+            (tuatara.defaults::mode-for-shown-text (concatenate 'string evidence "run") shebang)))
+      (with-evidence-directories ('())
+        (is eq 'tuatara.defaults::org-mode
+            (tuatara.defaults::mode-for-shown-text (concatenate 'string work "notes.org") octets))
+        (isnt eq 'tuatara.modes:fundamental-mode
+              (tuatara.defaults::mode-for-shown-text (concatenate 'string work "run") shebang))))))
+
+(define-test (evidence tick-sees-a-change-in-place)
+  ;; *evidence-directories* changed in place, the same list: a buffer of a file now in an evidence
+  ;; directory is made read-only as for a new value
+  (with-case-directory (root evidence work)
+    (let ((setting (list (concatenate 'string work "elsewhere/")))
+          (buffer (tuatara.buffer:make-buffer (tuatara.buffer:unique-buffer-name "a.txt"))))
+      (setf (tuatara.buffer:buffer-file buffer) (tuatara.io:expand-path (concatenate 'string evidence "a.txt")))
+      (unwind-protect
+           (with-evidence-directories (setting)
+             (tuatara.defaults::evidence-tick nil)
+             (false (tuatara.defaults::buffer-read-only-p buffer))
+             (setf (first setting) evidence)
+             (tuatara.defaults::evidence-tick nil)
+             (true (tuatara.defaults::buffer-read-only-p buffer)))
+        (tuatara.buffer:kill-buffer buffer)))))
+
+(define-test (evidence preview-mode-plain-when-safe)
+  ;; rimu's preview of an Org note in an evidence directory is plain text; one elsewhere is in Org mode
+  (with-case-directory (root evidence work)
+    (put-file (concatenate 'string evidence "notes.org") (format nil "* heading~%"))
+    (put-file (concatenate 'string work "notes.org") (format nil "* heading~%"))
+    (flet ((preview-mode (directory)
+             (rimu-session directory '("g f n o t e s . o r g RET" :tick :tick) :preview t :width 120)
+             (let ((preview (find-if (lambda (b) (search "notes.org (preview" (tuatara.buffer:buffer-name b)))
+                                     tuatara.buffer:*buffers*)))
+               (true preview)
+               (prog1 (and preview (type-of (tuatara.defaults::buffer-major-mode preview)))
+                 (rimu-forget)))))
+      (with-evidence-directories ((list (concatenate 'string root "cases/*/evidence/")))
+        (is eq 'tuatara.modes:fundamental-mode (preview-mode evidence))
+        (is eq 'tuatara.defaults::org-mode (preview-mode work))))))
+
 (define-test (evidence entries-read-or-said)
   ;; an entry that cannot be read is left out and said; the others still count
   (with-case-directory (root evidence work)

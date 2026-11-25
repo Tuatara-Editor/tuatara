@@ -504,17 +504,17 @@ words typed, in *Apropos*. Each name is a link to its description:
 \\[forward-button] and \\[backward-button] go from one link to the next."
   (let ((pattern (read-string "Apropos (words, any order): ")))
     (unless (zerop (length pattern))
-      (let ((commands (loop for s being the hash-keys of *commands*
-                            for name = (string-downcase (symbol-name s))
-                            when (candidate-score pattern (make-candidate
-                                                           (format nil "~a ~a" name
-                                                                   (first-sentence (documentation s 'function)))))
-                            collect s))
-            (variables (loop for s in (tuatara-variables)
-                             when (candidate-score pattern (make-candidate
-                                                            (format nil "~(~a~) ~a" s
-                                                                    (first-sentence (documentation s 'variable)))))
-                             collect s)))
+      (let* ((components (input-components pattern))
+             (commands (loop for s being the hash-keys of *commands*
+                             when (components-score components
+                                                    (format nil "~(~a~) ~a" s
+                                                            (first-sentence (documentation s 'function))))
+                               collect s))
+             (variables (loop for s in (tuatara-variables)
+                              when (components-score components
+                                                     (format nil "~(~a~) ~a" s
+                                                             (first-sentence (documentation s 'variable))))
+                                collect s)))
         (show-help-pieces
          (collecting-pieces (put)
                             (put (format nil "Apropos ~a~%~%Commands:~%" pattern))

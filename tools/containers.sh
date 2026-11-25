@@ -3,7 +3,8 @@
 #
 # The podman images tools/appimage.sh and tools/distro-packages.sh work in,
 # each pinned by its digest (tools/check-updates.sh says when a newer one is
-# out): Ubuntu 26.04 for the AppImage, Ubuntu 24.04 for the Ubuntu package, and
+# out): Ubuntu 26.04 for the AppImage, Ubuntu 24.04 for the Ubuntu package,
+# Fedora 44 and Arch for theirs.
 #
 # pinned_container NAME IMAGE SETUP  starts the container NAME, kept from one
 # run to the next, first making it from IMAGE and running the shell command

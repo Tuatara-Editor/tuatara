@@ -80,7 +80,7 @@ the words of a question of ssh's."
   (and *ssh-may-ask*
        (someone-to-ask-p (running-editor))
        (let ((version (openssh-version program)))
-         (and version (tuatara.io:software-version-at-least-p version '(8 5))))))
+         (and version (tuatara.text:software-version-at-least-p version '(8 5))))))
 
 (defun ssh-jump (program host)
   "The machines ssh, PROGRAM, goes through to reach HOST (ProxyJump), cleaned to be shown, or NIL."
@@ -354,7 +354,7 @@ again; too many questions stop JOB, ending the program that ran ssh."
               do (let ((ready (tuatara.io:wait-for-fds (list (ssh-asking-question asking)) 1/4)))
                    (when (and (consp ready) (not (answer-ssh-question asking))
                               (> (ssh-asking-asked asking) +ssh-most-questions+))
-                     (when job (setf (car (tuatara.runtime:job-cancel job)) t))
+                     (when job (tuatara.runtime:job-stop job))
                      (return))))
       (tuatara.runtime:job-stopped () nil))))
 

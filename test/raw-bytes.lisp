@@ -288,11 +288,11 @@ every boundary, characters, conversions and the string both ways."
   (false (text-from-character "abc" (char-code #\z))))
 
 (define-test (raw-bytes first-line-of-octets)
-  ;; the first line without its end, cut at the limit; a carriage return before a line feed stays
+  ;; the first line without its end, cut at the limit; a carriage return before a line feed goes with the end
   (flet ((first-line (text &optional (most 512))
            (tuatara.text:octets-first-line (tuatara.text:string-octets text) most)))
     (is string= "#!/bin/sh" (first-line (format nil "#!/bin/sh~%echo")))
-    (is string= (format nil "one~c" #\Return) (first-line (format nil "one~c~cthree" #\Return #\Linefeed)))
+    (is string= "one" (first-line (format nil "one~c~cthree" #\Return #\Linefeed)))
     (is string= "one" (first-line (format nil "one~ctwo" #\Return)))
     (is string= "no end" (first-line "no end"))
     (is string= "" (first-line ""))

@@ -82,7 +82,7 @@ one whose changes meet others is kept, said so."
   (with-git-repository (top)
     (git-ask-stash "Drop stash: " top
                    (lambda (name)
-                     (when (yes-or-no-p* (format nil "Drop ~a? It cannot be undone" name))
+                     (when (yes-or-no-p* (format nil "Drop ~a?" name) :details "It cannot be undone.")
                        (git-run "Dropping a stash" top (list "stash" "drop" name) (format nil "Dropped ~a" name)))))))
 
 (define-command git-stash-branch ()

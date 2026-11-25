@@ -279,26 +279,13 @@ straight after the headline at the top of a chapter (ORG-HTML-CHAPTER)."
 \(ORG-IMAGE-LINK-P, of *ORG-HTML-IMAGE-TYPES*)."
   (org-image-link-p node *org-html-image-types*))
 
-(defun org-html-full-name-p (name)
-  "True when NAME, a file a link names, is a full name and not relative to the page."
-  (or (uiop:string-prefix-p "/" name) (uiop:string-prefix-p "~" name)))
-
-(defun org-html-file-address (path)
-  "The address of the local file PATH as a link names it: as it stands, encoded,
-when relative to the page, a file:/// address when it is a full name; what
-it says after :: is left out."
-  (let ((name (subseq path 0 (search "::" path))))
-    (if (org-html-full-name-p name)
-        (path-uri (tuatara.io:expand-path name))
-        (tuatara.io:url-path name))))
-
 (defun org-html-picture-allowed-p (path full)
   "True when the page may show the picture a link names PATH, which is found at
 FULL: it is there, it stands where an export may take files from
 \(ORG-EXPORT-FILE-ALLOWED-P) and, named relative to the note, the page is beside
 the note, as a browser reads such a name from the page. NIL otherwise, the
 export saying why."
-  (cond ((and (org-html-elsewhere *org-html*) (not (org-html-full-name-p path)))
+  (cond ((and (org-html-elsewhere *org-html*) (not (org-export-full-name-p path)))
          (export-note "~a: a page written away from its note shows only pictures named in full; its name alone"
                       path))
         ((null (tuatara.io:path-stamp full :failure nil))
@@ -314,7 +301,7 @@ instead when the page may not show it (ORG-HTML-PICTURE-ALLOWED-P)."
          (name (tuatara.io:native-file-name full))
          (width (getf attributes :width)))
     (if (org-html-picture-allowed-p path full)
-        (format nil "<img src=\"~a\" alt=\"~a\"~@[ width=\"~a\"~]>" (xml-escape (org-html-file-address path))
+        (format nil "<img src=\"~a\" alt=\"~a\"~@[ width=\"~a\"~]>" (xml-escape (org-export-file-address path))
                 (xml-escape (or (getf attributes :alt) name))
                 (and width (cl-ppcre:scan "^\\d+%?$" width) width))
         (format nil "<code>~a</code>" (xml-escape name)))))
@@ -506,9 +493,9 @@ else as its description or its target, as words."
            (format out "<a href=\"~a\">~a</a>" (xml-escape address) (or description (xml-escape address))))
           ((string= type "file")
            (format out "<a href=\"~a\">~a</a>"
-                   (xml-escape (org-html-file-address (if (string-equal (tuatara.io:native-file-type path) "org")
-                                                          (replaced-type path "html")
-                                                          path)))
+                   (xml-escape (org-export-file-address (if (string-equal (tuatara.io:native-file-type path) "org")
+                                                            (replaced-type path "html")
+                                                            path)))
                    (or description (xml-escape path))))
           (t
            (let ((target (org-export-link-target node)))

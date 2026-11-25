@@ -61,18 +61,6 @@ committed_pin() {
     awk -F'\t' -v n="$1" '$1 == n { print $3, $2 }'
 }
 
-# a JSON answer of GitHub's API for the path $1, or nothing
-github() {
-  if command -v gh >/dev/null; then
-    gh api "$1" 2>/dev/null || true
-  elif [ -n "${GITHUB_TOKEN:-}" ]; then
-    # the token goes to curl on its input, not on a command line other accounts can read
-    printf 'header = "Authorization: Bearer %s"\n' "$GITHUB_TOKEN" |
-      curl -sSf --config - "${https_only[@]}" "https://api.github.com/$1" 2>/dev/null ||
-      true
-  fi
-}
-
 # field $2 of the JSON object $1 (a string, a number, true or false), or
 # nothing; $2 may go down into objects and lists: value.repoDid, alsoKnownAs.0
 field() {
@@ -95,13 +83,9 @@ except Exception:
     pass' "$2"
 }
 
-# the options that keep curl to HTTPS, redirects too, and to half a minute
+# the options that keep curl to HTTPS and to half a minute, for asking where
+# an address sends one without following it
 https_only=(--proto =https --proto-redir =https --max-time 30)
-
-# what curl fetches from $1 over HTTPS alone, redirects too, or nothing
-https_get() {
-  curl -sSf "${https_only[@]}" "$1" 2>/dev/null || true
-}
 
 # the DID document of the did:plc: DID $1 from the PLC directory, or nothing
 # when it cannot be had or is another DID's
@@ -233,7 +217,7 @@ where_now() {
       if ! command -v gh >/dev/null && [ -z "${GITHUB_TOKEN:-}" ]; then
         echo "! ? GitHub is asked through gh or with GITHUB_TOKEN, and there is neither"; return
       fi
-      answer=$(github "repos/$path")
+      answer=$(github_api "repos/$path" || true)
       echo "$(gone_or "$(field "$answer" full_name)") $(field "$answer" archived)" ;;
     https://codeberg.org/*)
       answer=$(https_get "https://codeberg.org/api/v1/repos/$path")
@@ -263,8 +247,8 @@ gone_or() {
 # fetch the history (commits only, no files) of every branch and tag of URL into $work/NAME.git
 fetch_history() {
   local name="$1" url="$2" dir="$work/${1//\//_}.git"
-  [ -d "$dir" ] || grammar_git init -q --bare "$dir" || return 1
-  grammar_git -C "$dir" fetch -q --filter=tree:0 --prune --force "$url" '+refs/heads/*:refs/heads/*' '+refs/tags/*:refs/tags/*' 2>/dev/null || return 1
+  [ -d "$dir" ] || https_git init -q --bare "$dir" || return 1
+  https_git -C "$dir" fetch -q --filter=tree:0 --prune --force "$url" '+refs/heads/*:refs/heads/*' '+refs/tags/*:refs/tags/*' 2>/dev/null || return 1
   echo "$dir"
 }
 
@@ -272,9 +256,9 @@ fetch_history() {
 # DIR, a repository of whole commits beside the one of histories alone
 fetch_files() {
   local dir="$1" url="$2" commit="$3"
-  [ -d "$dir" ] || grammar_git init -q --bare "$dir" || return 1
-  grammar_git -C "$dir" cat-file -e "$commit^{tree}" 2>/dev/null ||
-    grammar_git -C "$dir" fetch -q --depth 1 "$url" "$commit" 2>/dev/null
+  [ -d "$dir" ] || https_git init -q --bare "$dir" || return 1
+  https_git -C "$dir" cat-file -e "$commit^{tree}" 2>/dev/null ||
+    https_git -C "$dir" fetch -q --depth 1 "$url" "$commit" 2>/dev/null
 }
 
 while IFS=$'\t' read -r name url commit; do
@@ -300,18 +284,18 @@ while IFS=$'\t' read -r name url commit; do
     stops+=("$name: the history of $url could not be fetched")
     continue
   fi
-  if ! grammar_git -C "$dir" cat-file -e "$commit^{commit}" 2>/dev/null; then
+  if ! https_git -C "$dir" cat-file -e "$commit^{commit}" 2>/dev/null; then
     stops+=("$name: the pin ${commit:0:12} is on no branch or tag of $url")
   else
-    pin=$(grammar_git -C "$dir" rev-parse "$commit^{commit}")
-    on=$(grammar_git -C "$dir" for-each-ref --count=3 --contains "$pin" --format='%(refname:short)' refs/heads refs/tags | paste -sd' ')
+    pin=$(https_git -C "$dir" rev-parse "$commit^{commit}")
+    on=$(https_git -C "$dir" for-each-ref --count=3 --contains "$pin" --format='%(refname:short)' refs/heads refs/tags | paste -sd' ')
     if [ -z "$on" ]; then
       stops+=("$name: the pin ${commit:0:12} is on no branch or tag of $url")
-    elif [ -z "$(grammar_git -C "$dir" for-each-ref --contains "$pin" --count=1 refs/heads)" ]; then
+    elif [ -z "$(https_git -C "$dir" for-each-ref --contains "$pin" --count=1 refs/heads)" ]; then
       watches+=("$name: the pin ${commit:0:12} is only on a tag ($on), not on a branch, of $url: its history was rewritten since")
     fi
   fi
-  newest=$(grammar_git -C "$dir" for-each-ref --sort=-committerdate --count=1 --format='%(committerdate:unix)' refs/heads)
+  newest=$(https_git -C "$dir" for-each-ref --sort=-committerdate --count=1 --format='%(committerdate:unix)' refs/heads)
   if [ -n "$newest" ] && [ $(( (now - newest) / 86400 )) -gt "$stale_days" ]; then
     reports+=("$name: $url has had no commit since $(date -u -d "@$newest" +%Y-%m-%d)")
   fi
@@ -324,12 +308,12 @@ while IFS=$'\t' read -r name url commit; do
       out="$work/${name//\//_}.diff"
       { echo "$name: ${old:0:12} -> ${commit:0:12} (${old_url}${old_url:+ -> }$url)"
         # the commits between, where the history has both
-        grammar_git -C "$dir" log --oneline --no-decorate "$old..$commit" 2>/dev/null | head -50 || true
+        https_git -C "$dir" log --oneline --no-decorate "$old..$commit" 2>/dev/null | head -50 || true
         echo
-        grammar_git -C "$files" diff --stat "$old" "$commit"
+        https_git -C "$files" diff --stat "$old" "$commit"
         echo
         # the scanner and headers in full; the generated parser's size only
-        grammar_git -C "$files" diff "$old" "$commit" -- grammar.js '*.h' '*scanner.c' '*scanner.cc' '*.c' ':!*parser.c'
+        https_git -C "$files" diff "$old" "$commit" -- grammar.js '*.h' '*scanner.c' '*scanner.cc' '*.c' ':!*parser.c'
       } > "$out"
       diffs+=("$name: $out")
     else

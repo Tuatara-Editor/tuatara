@@ -525,10 +525,13 @@ that are all ASCII give a base string, which takes a quarter of the memory."
     (if (= n (length out)) out (subseq out 0 n))))
 
 (defun octets-first-line (octets &optional (most 512))
-  "The first line of OCTETS as a string, without its line end, looking no
-further than the first MOST octets."
-  (let ((end (min (length octets) most)))
-    (octets-string octets :end (or (octets-line-end-position octets 0 end) end))))
+  "The first line of OCTETS as a string, without its line end (a carriage
+return before the line feed too), looking no further than the first MOST
+octets."
+  (let* ((end (min (length octets) most))
+         (stop (or (octets-line-end-position octets 0 end) end)))
+    (when (and (plusp stop) (= (aref octets (1- stop)) 13)) (decf stop))
+    (octets-string octets :end stop)))
 
 (defun lenient-string (octets &key (start 0) (end (length octets)) (replacement #\?))
   "OCTETS from START below END read as UTF-8 text, what is not UTF-8 as

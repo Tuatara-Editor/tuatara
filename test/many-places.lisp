@@ -24,13 +24,13 @@ work in the background the one before began is done."
         (lines (format nil "abc~%abc~%abc~%abc~%")))
     (true (tuatara.frontend.fake:fake-frame-showing
            (many-frame "% f b RET" lines)
-           "Hold all 4 matches, with every key slow at that many (else those in sight)?"))
+           "Hold all 4 matches? (y or n)"))
     (true (tuatara.frontend.fake:fake-frame-showing
            (many-frame "V j j j t" lines)
-           "Hold all 4 cursors, with every key slow at that many (else those in sight)?"))
+           "Hold all 4 cursors? (y or n)"))
     (true (tuatara.frontend.fake:fake-frame-showing
            (many-frame "m v j j j c" lines)
-           "Hold all 4 cursors, with every key slow at that many (else those in sight)?"))
+           "Hold all 4 cursors? (y or n)"))
     ;; yes holds them all, no those in sight, and every one is written either way
     (true (tuatara.frontend.fake:fake-frame-showing (many-frame "% f b RET y" lines)
                                                     "Split: 4 places in the selection"))

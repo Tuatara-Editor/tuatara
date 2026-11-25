@@ -272,9 +272,9 @@ next
       (false (search "href=\"#nowhere" body)))))
 
 (define-test (html-export a-file-address)
-  (is string= "a%20b.org" (tuatara.defaults::org-html-file-address "a b.org"))
-  (is string= "b.org" (tuatara.defaults::org-html-file-address "b.org::*Head"))
-  (true (uiop:string-prefix-p "file:///" (tuatara.defaults::org-html-file-address "/tmp/x.png"))))
+  (is string= "a%20b.org" (tuatara.defaults::org-export-file-address "a b.org"))
+  (true (uiop:string-prefix-p "file:///" (tuatara.defaults::org-export-file-address "/tmp/x.png")))
+  (true (uiop:string-prefix-p "file:///" (tuatara.defaults::org-export-file-address "x.png" :whole t))))
 
 (define-test (html-export pictures-on-the-page)
   ;; a note given to you (in an untrusted directory) shows only pictures from its own directory

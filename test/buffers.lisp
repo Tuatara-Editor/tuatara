@@ -52,6 +52,11 @@ list starts on its first line, on a screen WIDTH by HEIGHT."
                                                 (tuatara.frontend:parse-key-sequence "w")))
   (false (tuatara.command:lookup-key (tuatara.modes:mode-keymap 'tuatara.defaults::buffers-mode)
                                      (tuatara.frontend:parse-key-sequence "V")))
+  ;; making another client the one that stays is C-c K alone
+  (flet ((key (keys) (tuatara.command:lookup-key (tuatara.modes:mode-keymap 'tuatara.defaults::buffers-mode)
+                                                 (tuatara.frontend:parse-key-sequence keys))))
+    (false (key "K"))
+    (is eq 'tuatara.defaults::buffers-keep-client (key "C-c K")))
   (is eq 'tuatara.defaults::list-fold-heading
       (tuatara.command:lookup-key (tuatara.modes:mode-keymap 'tuatara.defaults::buffers-mode)
                                   (tuatara.frontend:parse-key-sequence "h"))))
@@ -967,3 +972,22 @@ at the top shows it, without its line end."
              (isnt eql key (tuatara.defaults::buffers-key list) "a buffer killed")))
       (when (tuatara.buffer:live-buffer-p other) (tuatara.buffer:kill-buffer other))
       (tuatara.buffer:kill-buffer list))))
+
+(define-test (buffers save-some-asks-in-short)
+  ;; M-x save-some-buffers asks how many, short, the files named beside the question; n saves none
+  (with-test-directory (dir)
+    (let ((a (namestring (merge-pathnames "first.txt" dir)))
+          (b (namestring (merge-pathnames "second.txt" dir)))
+          (tuatara.defaults::*modal-editing* nil))
+      (alexandria:write-string-into-file "one" a)
+      (alexandria:write-string-into-file "two" b)
+      (unwind-protect
+           (let ((f (run-keys (format nil "x C-x C-f C-a C-k ~a RET x M-x ~a RET n" (rimu-typed b)
+                                      (rimu-typed "save-some-buffers"))
+                              :file a :width 100 :height 20)))
+             (true (tuatara.frontend.fake:fake-frame-showing f "Save the 2 changed files? (y or n)"))
+             (true (tuatara.frontend.fake:fake-frame-showing f (tuatara.defaults::abbreviated-path a)))
+             (false (tuatara.frontend.fake:fake-frame-showing f "files: first.txt"))
+             (is string= "one" (alexandria:read-file-into-string a)))
+        (dolist (buffer (copy-list tuatara.buffer:*buffers*))
+          (when (tuatara.buffer:buffer-file buffer) (tuatara.buffer:kill-buffer buffer)))))))

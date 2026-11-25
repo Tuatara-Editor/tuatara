@@ -4,9 +4,10 @@
 ;;;; A source block with :tangle FILE (on its #+begin_src line, in a
 ;;;; :header-args: property of a subtree, or in #+PROPERTY: header-args for
 ;;;; the whole file) has its code written to FILE, the blocks for one file
-;;;; one after another. tangle-code-files lists every file it would write,
+;;;; one after another. tangle-all-code-blocks lists every file it would write,
 ;;;; new, changed or the same, and those outside the Org file's directory, and
 ;;;; writes them only when told to; the Org file decides where they go.
+;;;; tangle-this-code-block does the same for the one file the block at point goes to.
 ;;;; Nothing in a block is run: <<name()>>, which Org would run, is left as it is.
 
 (in-package #:tuatara.defaults)
@@ -23,7 +24,7 @@
 Org file's name with it (notes.el); a language not here, its own name.")
 
 (define-setting *code-files-make-directories* nil
-  "Whether tangle-code-files makes the directories a file goes in.
+  "Whether tangle-all-code-blocks makes the directories a file goes in.
 - nil: only for blocks with :mkdirp yes, so that an Org file writes the same
   everywhere.
 - t: for every block, as :mkdirp yes does; a block's :mkdirp no still says
@@ -91,7 +92,7 @@ past *NOWEB-LIMIT* (BUDGET) left as they are."
         while n thereis (and (eq (org-node-type n) 'headline) (org-property n :commentedp))))
 
 (define-record (code-file (:conc-name code-file-))
-  "A file tangle-code-files writes: PATH (native), TEXT, the BLOCKS written to
+  "A file tangle-all-code-blocks writes: PATH (native), TEXT, the BLOCKS written to
 it (PIECES, the pieces of its text newest first, while they are gathered), MODE
 to give it (or NIL), MAKE-DIRECTORIES true for :mkdirp, and STATE
 \(:new, :changed, :same or :cannot), with why it cannot be written. REAL, where
@@ -162,11 +163,14 @@ after its :shebang; the file made executable by a shebang or given its
       (when (string= (argument "mkdirp") "yes")
         (setf (code-file-make-directories file) t)))))
 
-(defun org-code-files (tree org-file &optional (default (tuatara.io:native (tuatara.io:default-directory))))
+(defun org-code-files (tree org-file &optional (default (tuatara.io:native (tuatara.io:default-directory))) at)
   "The files TREE's source blocks write, as CODE-FILE objects in the order of
 their first block, ORG-FILE (a native path, or NIL) the Org file the blocks
-are in, relative :tangle files taken from its directory, else from DEFAULT."
-  (let ((files '()) (names (org-named-blocks tree))
+are in, relative :tangle files taken from its directory, else from DEFAULT.
+With the character position AT, only the file the source block there writes
+(made from all the blocks that go to it), or none when that block writes none
+or AT is in no block."
+  (let ((files '()) (names (org-named-blocks tree)) (own nil)
         (directory (if org-file (tuatara.io:parent-path org-file) default))
         (base (and org-file (tuatara.io:native-file-stem org-file)))
         (*org-file-properties-kept* (cons tree (make-hash-table :test 'equal))))
@@ -181,6 +185,8 @@ are in, relative :tangle files taken from its directory, else from DEFAULT."
                                          (tuatara.io:native (tuatara.io:expand-path target :directory directory))))
                                   (file (or (find path files :key #'code-file-path :test #'string=)
                                             (car (push (make-code-file :path path :text nil) files)))))
+                             (when (and at (<= (org-node-begin node) at) (org-before-blank-p node at))
+                               (setf own path))
                              (code-file-add-block file (org-block-tangled-code node arguments names) arguments)))))))
     ;; each file's text joined once, its pieces let go
     (dolist (file files)
@@ -188,7 +194,9 @@ are in, relative :tangle files taken from its directory, else from DEFAULT."
                                     (dolist (piece (reverse (code-file-pieces file)))
                                       (write-string piece out)))
             (code-file-pieces file) nil))
-    (nreverse files)))
+    (if at
+        (remove-if-not (lambda (file) (equal (code-file-path file) own)) files)
+        (nreverse files))))
 
 (defun code-file-place (file)
   "Where writing FILE (a CODE-FILE) lands, as CHECK-CODE-FILE found it: the
@@ -227,7 +235,7 @@ file its links lead to, or its own path."
     file))
 
 (define-major-mode code-files-mode special-mode
-  "The files tangle-code-files would write from an Org file's source blocks,
+  "The files tangle-all-code-blocks would write from an Org file's source blocks,
 listed while it asks whether to write them: each new, changed or the same
 (not written again), those it cannot write with why, and those outside the
 Org file's directory marked."
@@ -248,7 +256,7 @@ really landed when a link led elsewhere (out.sh → ~/.bashrc)."
           (and (code-file-real file) (abbreviated-path (code-file-real file)))))
 
 (defun code-files-listing (files org-file)
-  "The text listing FILES (CODE-FILE objects) for tangle-code-files, ORG-FILE the
+  "The text listing FILES (CODE-FILE objects) for tangle-all-code-blocks, ORG-FILE the
 Org file's native path or NIL: what writing each does, its blocks, and its
 path, from the Org file's directory when it is in it."
   (let ((home (and org-file (tuatara.io:parent-path org-file))))
@@ -295,17 +303,19 @@ over."
     (error (e) (format nil "~a" e))))
 
 (defparameter *code-files-wait* 1/10
-  "How many seconds tangle-code-files waits for the code files to be looked at
+  "How many seconds tangle-all-code-blocks waits for the code files to be looked at
 before it goes on in the background, the list shown once they are.")
 
 (define-record (code-files-look (:include tuatara.runtime:job)
-                                (:constructor make-code-files-look (buffer org-file tree))
+                                (:constructor make-code-files-look (buffer org-file tree at))
                                 (:copier nil))
   "The code files of the source blocks of an Org buffer, its parse TREE and its
 file ORG-FILE, worked out and compared with those on disk in the background
-for tangle-code-files, a job; FILES once it is done."
+for tangle-all-code-blocks, a job; FILES once it is done. With the position AT,
+only the file of the source block there (tangle-this-code-block)."
   (org-file nil :documentation "The native path of the Org file CODE-FILES-LOOK is for, or NIL.")
   (tree nil :documentation "The parse of the Org buffer CODE-FILES-LOOK is for.")
+  (at nil :documentation "The position of the source block CODE-FILES-LOOK is for alone, or NIL for all of them.")
   (files nil :documentation "The CODE-FILE objects CODE-FILES-LOOK found, as CHECK-CODE-FILE found them."))
 
 (tuatara.runtime:define-job-words code-files-look
@@ -322,18 +332,22 @@ the editor's next command; say why when it did not end well."
            (message "Code files: ~a" (tuatara.runtime:job-ending-words job)))
           ((live-buffer-p buffer)
            (let ((files (code-files-look-files job)) (org-file (code-files-look-org-file job)))
-             (defer-action (lambda () (offer-code-files buffer files org-file))))))))
+             (defer-action (lambda () (offer-code-files buffer files org-file (code-files-look-at job)))))))))
 
-(defun offer-code-files (buffer files org-file)
+(defun offer-code-files (buffer files org-file &optional single)
   "List FILES (CODE-FILE objects, as CHECK-CODE-FILE found them), those of the
 source blocks of the Org BUFFER whose file is ORG-FILE (native, or NIL), and
-write the new and changed ones when you say so (tangle-code-files)."
+write the new and changed ones when you say so (tangle-all-code-blocks). SINGLE
+true when FILES is the one file of the block at point (tangle-this-code-block)."
   (let ((to-write (remove-if-not (lambda (f) (member (code-file-state f) '(:new :changed))) files)))
     (cond
-      ((null files) (message "No source block here has :tangle: nothing to write"))
+      ((null files) (message (if single
+                                 "Point is in no source block with :tangle: nothing to write"
+                                 "No source block here has :tangle: nothing to write")))
       ((and (tuatara.io:buffer-plaintext-p buffer)
-            (not (yes-or-no-p* (format nil "~a is encrypted, but the code files it writes are not; go on?"
-                                       (tuatara.buffer:buffer-name buffer)))))
+            (not (yes-or-no-p* "Write the code files unencrypted?"
+                               :details (format nil "~a is encrypted, but the code files it writes are not."
+                                                (tuatara.buffer:buffer-name buffer)))))
        (message "No code files written"))
       (t
         (let ((listing (tuatara.buffer:make-buffer (tuatara.buffer:unique-buffer-name "*Code files*"))))
@@ -370,7 +384,31 @@ write the new and changed ones when you say so (tangle-code-files)."
                        (message "Nothing written")))
             (tuatara.buffer:kill-buffer listing)))))))
 
-(define-command tangle-code-files ()
+(defun start-code-files-look (command here)
+  "Start looking at the code files of the current Org buffer in the background,
+the list offered once they are (OFFER-CODE-FILES); with HERE true, only the
+file of the source block at point. COMMAND, a string, names the command in
+the message when the buffer is no Org buffer."
+  (let ((buffer (current-buffer)))
+    (if (not (typep (buffer-major-mode buffer) 'org-mode))
+        (message "~a writes the code of an Org file's source blocks: this is no Org buffer" command)
+        (let* ((parse (org-parse-now buffer))
+               (job (make-code-files-look buffer
+                                          (let ((file (tuatara.buffer:buffer-file buffer)))
+                                            (and file (tuatara.io:native file)))
+                                          (org-parse-tree parse)
+                                          (and here (org-parse-point parse))))
+               (default (tuatara.io:native (tuatara.io:default-directory))))
+          (tuatara.runtime:start-job-thread
+           job (lambda (job)
+                 (setf (code-files-look-files job)
+                       (mapcar #'check-code-file (org-code-files (code-files-look-tree job)
+                                                                 (code-files-look-org-file job) default
+                                                                 (code-files-look-at job)))))
+           :name "tuatara code files")
+          (take-in-soon job *code-files-wait* "Looking at the code files in the background")))))
+
+(define-command tangle-all-code-blocks ()
   "Write the code files of this Org file's source blocks (\\`C-c C-v t'), each
 block with :tangle FILE (on its #+begin_src line, in a subtree's property
 :header-args: or :header-args:LANGUAGE:, or in #+PROPERTY: header-args for the
@@ -383,25 +421,23 @@ makes it executable, :tangle-mode o755 gives it that mode; :noweb yes puts in
 the code <<name>> stands for. First it lists every file, new, changed, the same
 or not to be written, and those outside the Org file's directory, and writes the
 new and changed ones only when you say so. Nothing in a block is ever run."
-  (let ((buffer (current-buffer)))
-    (if (not (typep (buffer-major-mode buffer) 'org-mode))
-        (message "tangle-code-files writes the code of an Org file's source blocks: this is no Org buffer")
-        (let ((job (make-code-files-look buffer
-                                         (let ((file (tuatara.buffer:buffer-file buffer)))
-                                           (and file (tuatara.io:native file)))
-                                         (org-parse-tree (org-parse-now buffer))))
-              (default (tuatara.io:native (tuatara.io:default-directory))))
-          (tuatara.runtime:start-job-thread
-           job (lambda (job)
-                 (setf (code-files-look-files job)
-                       (mapcar #'check-code-file (org-code-files (code-files-look-tree job)
-                                                                 (code-files-look-org-file job) default))))
-           :name "tuatara code files")
-          (take-in-soon job *code-files-wait* "Looking at the code files in the background")))))
+  (start-code-files-look "tangle-all-code-blocks" nil))
+
+(define-command tangle-this-code-block ()
+  "Write the code file the source block at the cursor goes to (\\`C-c C-v b'),
+as tangle-all-code-blocks writes it: the file its :tangle names, worked out
+from the block's line, its subtree's :header-args: and the file's. When other
+blocks of the Org file go to the same file, it is made from all of them in
+order, so that no block's code is cut out; the list says how many blocks. It
+lists the file, new, changed or the same, and writes it only when you say so.
+Nothing is written when the cursor is in no source block or in one with no
+:tangle (or :tangle no). Nothing in a block is ever run."
+  (start-code-files-look "tangle-this-code-block" t))
 
 (defun install-code-files ()
-  "Bind \\`C-c C-v t' in Org buffers to tangle-code-files, under \\`C-c C-v'
-\(code files)."
+  "Bind \\`C-c C-v t' in Org buffers to tangle-all-code-blocks and \\`C-c C-v b' to
+tangle-this-code-block, under \\`C-c C-v' \(code files)."
   (let ((keymap (mode-keymap 'org-mode)))
-    (define-key keymap "C-c C-v t" 'tangle-code-files)
+    (define-key keymap "C-c C-v t" 'tangle-all-code-blocks)
+    (define-key keymap "C-c C-v b" 'tangle-this-code-block)
     (label-keys keymap '(("C-c C-v" "code files")))))

@@ -19,7 +19,7 @@
                 #:*export-languages* #:export-trusted-path-p #:file-kind #:file-sha256 #:find-pdf-decoder
                 #:forget-old-copies #:forget-pictures-past #:formatted-template-text #:formula #:formula-inline
                 #:formula-key #:formula-preamble #:formula-text #:*inline-picture-uses*
-                #:keeping-list-selected #:latex-import #:latex-mode #:latex-templates-directory #:logos-directory
+                #:keeping-list-selected #:latex-import #:latex-mode #:latex-templates-directory #:logos-directories
                 #:map-org-hiding-calls #:mouse-key-cell #:mouse-select-word #:new-empty-buffer
                 #:note-templates-directory #:octets-sha256 #:office-file-format #:office-reading #:open-externally-file
                 #:org-buffer-parse #:org-current-headline #:org-docx-document #:org-export-file-name #:org-export-path

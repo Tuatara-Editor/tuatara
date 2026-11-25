@@ -55,9 +55,9 @@ templates those in DIRECTORY's capture-templates/ (none unless a test makes them
     ;; thrown away: nothing filed
     (run-keys "SPC a c n N o p e C-c C-k" :text "x" :width 100 :height 16)
     (false (search "Nope" (file-text agenda)))
-    ;; a key with no template
+    ;; a key with no template: asked again
     (true (tuatara.frontend.fake:fake-frame-showing (run-keys "SPC a c Z" :text "x" :width 100 :height 16)
-                                                    "No capture template on that key"))))
+                                                    "Answer "))))
 
 (define-modal-test (capture templates-in-files)
   (with-capture (dir agenda)
@@ -88,8 +88,8 @@ templates those in DIRECTORY's capture-templates/ (none unless a test makes them
           (true (tuatara.defaults::capture-template-clock-resume meeting))))
       ;; the prompt says whose each is; yours files where it says
       (let ((f (run-keys "SPC a c t W r i t e C-c C-c" :text "x" :width 200 :height 16)))
-        (true (tuatara.frontend.fake:fake-frame-showing f "[t] My task (yours)"))
-        (true (tuatara.frontend.fake:fake-frame-showing f "[j] Journal entry  [m]")))
+        (true (tuatara.frontend.fake:fake-frame-showing f "t  My task (yours)"))
+        (true (tuatara.frontend.fake:fake-frame-showing f "j  Journal entry")))
       (true (search (format nil "** Leave me :home:~%** MINE Write") (file-text agenda)))
       (run-keys "SPC a c b D u n e RET C-c C-c" :text "x" :width 200 :height 16)
       (true (search (format nil "** Leave me :home:~%*** Dune") (file-text agenda)))
@@ -482,13 +482,14 @@ templates those in DIRECTORY's capture-templates/ (none unless a test makes them
           (handler-case (tuatara.defaults::org-agenda-main-file)
             (storage-condition () "the main file asked for itself without end"))))))
 
-(define-test (capture menu-fits-a-terminal)
-  ;; the choice of Tuatara's own templates is said whole within 120 columns, the first choice in sight
-  (let ((prompt (tuatara.defaults::org-capture-prompt
-                 (loop for (name text) in tuatara.defaults::*built-in-capture-templates*
-                       collect (tuatara.defaults::read-capture-template name text t)))))
-    (true (< (length prompt) 110) "~d characters: ~a" (length prompt) prompt)
-    (true (search "[j] Journal entry" prompt))))
+(define-test (capture choices-on-the-prompt)
+  ;; the prompt holds the keys alone, each template's name shown beside it while it is asked
+  (with-capture (dir agenda)
+    (let (during)
+      (let ((f (run-keys (list "SPC a c" (lambda () (setf during (question-details-seen))) "C-g")
+                         :text "x" :width 120 :height 20)))
+        (true (tuatara.frontend.fake:fake-frame-showing f "Capture: (j, m, M, n, r or t)"))
+        (true (search "j  Journal entry" (first during)) "~s" during)))))
 
 (defvar *capture-with-target* nil
   "Where CAPTURE-WITH-TEST-COMMAND files, for the test of ORG-CAPTURE-WITH.")

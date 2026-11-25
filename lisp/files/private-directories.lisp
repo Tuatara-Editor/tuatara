@@ -53,7 +53,7 @@ deleted meanwhile in the background (SWEEP-OLD-COPIES). With HOLD (as
 standard), the directory is kept, however old, until DELETE-PRIVATE-DIRECTORY
 deletes it or the session ends; with HOLD NIL, it goes *CACHE-KEEP* after it
 was last changed, as the copies opened in other programs do, unless it is an
-entry of the cache in use or pinned (\[cache-manager])."
+entry of the cache in use or pinned (\\[cache-manager])."
   (sweep-old-copies directory)
   (let ((place (tuatara.io:path-join directory (tuatara.io:slash-ended (tuatara.io:random-name)))))
     (tuatara.io:make-directory place #o700)

@@ -83,22 +83,24 @@ from."
 
 (defun function-package-place (function)
   "Where the package FUNCTION, a symbol naming one of its functions, was loaded
-from, as *LOADED-PACKAGE-DIRECTORIES* has it: (NAME DIRECTORY FILE). Refused
-when FUNCTION is no function of a package loaded."
+from, as *LOADED-PACKAGE-DIRECTORIES* has it: (NAME DIRECTORY FILE); NIL for
+a function of Tuatara's own (in TUATARA.DEFAULTS), which needs no package.
+Refused when FUNCTION is neither."
   (let* ((home (symbol-package function))
          (name (car (find-if (lambda (entry) (member home (cdr entry))) *package-code*)))
          (place (and name (assoc name *loaded-package-directories* :test #'string=))))
-    (unless (and place (fboundp function))
+    (unless (and (fboundp function) (or place (eq home (find-package "TUATARA.DEFAULTS"))))
       (refuse "~(~s~) is no function of a package loaded" function))
     place))
 
 (defun sandbox-call-request (place function inputs directory arguments)
   "What a Tuatara started by SANDBOX-CALL is given to do, as text read back
 without evaluating anything: load the package PLACE says (NAME DIRECTORY
-FILE), from where this Tuatara keeps it compiled, then call FUNCTION on
+FILE), from where this Tuatara keeps it compiled, none for PLACE NIL (a
+function of Tuatara's own), then call FUNCTION on
 INPUTS, DIRECTORY and ARGUMENTS, printed apart to be read once the package
 has loaded."
-  (destructuring-bind (name package-directory file) place
+  (destructuring-bind (&optional name package-directory file) place
     (with-standard-io-syntax
       (let ((*print-readably* t))
         (prin1-to-string
@@ -140,13 +142,13 @@ not among them. SECONDS and MEMORY are what it was given; DIRECTORY, where it
 wrote."
   (let ((reported-words (and (stringp (cdr reported)) (escape-controls (tuatara.text:one-line (cdr reported))))))
     (cond ((eq (car reported) :memory)
-           (format nil "~a ran out of memory~@[ (~a)~]" label (and memory (tuatara.io:octets-words memory))))
+           (format nil "~a ran out of memory~@[ (~a)~]" label (and memory (tuatara.text:octets-words memory))))
           ((or (eq outcome :memory) (search "exhausted" said))
-           (format nil "~a ran out of memory~@[ (~a)~]" label (and memory (tuatara.io:octets-words memory))))
+           (format nil "~a ran out of memory~@[ (~a)~]" label (and memory (tuatara.text:octets-words memory))))
           ((eq outcome :timeout) (format nil "~a was stopped after ~:d seconds" label (ceiling seconds)))
           ((eq outcome :full)
            (format nil "~a was stopped: the drive of ~a has less than ~a free" label (abbreviated-path directory)
-                   (tuatara.io:octets-words *sandbox-call-least-free*)))
+                   (tuatara.text:octets-words *sandbox-call-least-free*)))
           ((eq outcome :too-much) (format nil "~a said more than it may" label))
           ((eq (car reported) :failed) (format nil "~a failed: ~a" label reported-words))
           ((eq outcome :done) (format nil "~a ended without saying what it did" label))
@@ -213,8 +215,9 @@ its path; NIL when none changed."
 Tuatara of its own shut in by the sandbox, on INPUTS and DIRECTORY: there it
 is called as (apply FUNCTION INPUTS DIRECTORY ARGUMENTS), INPUTS the paths of
 files or directories it may read, DIRECTORY one it writes in. This is how a
-package takes a file from outside apart without parsing it in the editor.
-Each of INPUTS is a path or a descriptor open on a file or directory (as
+package takes a file from outside apart without parsing it in the editor,
+and Tuatara itself too: FUNCTION may be one of its own (in TUATARA.DEFAULTS),
+run with no package loaded. Each of INPUTS is a path or a descriptor open on a file or directory (as
 CALL-WITH-FILE gives one). A path is opened here, once; a descriptor is the
 file the caller checked and summed through it, whatever is put at its path
 meanwhile. Each is shown read only where it really is, and FUNCTION is given
@@ -250,7 +253,8 @@ said more than it may, or wrote more entries than may be looked through),
 :CHANGED (an input changed while it was read), or :UNAVAILABLE when there is
 no sandbox here or nothing to run Tuatara from; and how many entries of what
 it wrote were taken away. Refused when FUNCTION is no function of a package
-loaded; a FILE-SYSTEM-ERROR when an input is neither a file nor a directory."
+loaded nor of Tuatara's own; a FILE-SYSTEM-ERROR when an input is neither a
+file nor a directory."
   (let ((place (function-package-place function))
         (directory (tuatara.io:slash-ended (tuatara.io:native directory)))
         (open-inputs '()) (opened '()))
@@ -270,7 +274,8 @@ loaded; a FILE-SYSTEM-ERROR when an input is neither a file nor a directory."
 
 (defun sandbox-call-opened (place function inputs directory arguments seconds memory file-limit progress cancel label)
   "SANDBOX-CALL once its INPUTS are open, each (FD PATH), FUNCTION's package
-at PLACE, the rest as SANDBOX-CALL has them: its four values."
+at PLACE (NIL for a function of Tuatara's own), the rest as SANDBOX-CALL has
+them: its four values."
   (unless (eq :ready (tuatara.io:sandbox-status))
     (return-from sandbox-call-opened
       (values nil (sandbox-outcome-words :unavailable (nth-value 1 (tuatara.io:sandbox-status)) :label label)
@@ -289,9 +294,10 @@ at PLACE, the rest as SANDBOX-CALL has them: its four values."
                  :seconds seconds :memory memory :file-limit file-limit :cancel cancel
                  :output-limit (* 64 *sandbox-call-line-limit*) :output-kept nil
                  :directories (append shown
-                                      (list (packages-directory)
-                                            (tuatara.io:slash-ended (second place))
-                                            (compiled-directory-of (second place)))
+                                      (and place
+                                           (list (packages-directory)
+                                                 (tuatara.io:slash-ended (second place))
+                                                 (compiled-directory-of (second place))))
                                       (loop for (fd path) in inputs collect (cons fd path)))
                  :writable (list directory)
                  :files (list (cons *sandbox-call-request*
@@ -353,7 +359,7 @@ those between left out. Anywhere else, nothing."
   "Run a package's function as the editor asked, in a Tuatara it started shut
 in (SANDBOX-CALL): what it is to do read from *SANDBOX-CALL-REQUEST*, nothing
 in it evaluated; the package loaded from what was compiled of it, a file that
-would need compiling refused; the function called and its value said as
+would need compiling refused, or none for a function of Tuatara's own; the function called and its value said as
 JSON. What the package prints goes to the error output, never to the editor.
 Returns the exit code: 0 when the function returned, 1 when it failed, 3 when
 memory ran out, each said to the editor first. The programs the function
@@ -371,13 +377,14 @@ its files (SET-DUMPABLE)."
           (setf *tuatara-identity* (getf request :identity)
                 tuatara-user:*cache-directory* (getf request :cache)
                 tuatara-user:*packages-directory* (getf request :packages))
-          ;; the editor loaded it, the version of Tuatara it needs checked there
-          (let* ((*package-compiling* :refused)
-                 (*package-directory* (pathname (getf request :directory)))
-                 (*loading-package-name* (getf request :name))
-                 (*package-check* nil)
-                 (entry (package-entry *package-directory* (getf request :name) (getf request :file))))
-            (tuatara-user:load-package-file (or entry (refuse "The package has no entry to load"))))
+          ;; the editor loaded it, the version of Tuatara it needs checked there; none for a function of Tuatara's own
+          (when (getf request :name)
+            (let* ((*package-compiling* :refused)
+                   (*package-directory* (pathname (getf request :directory)))
+                   (*loading-package-name* (getf request :name))
+                   (*package-check* nil)
+                   (entry (package-entry *package-directory* (getf request :name) (getf request :file))))
+              (tuatara-user:load-package-file (or entry (refuse "The package has no entry to load")))))
           (let* ((home (or (find-package (getf request :package))
                            (refuse "The package made no Lisp package ~a" (getf request :package))))
                  (function (find-symbol (getf request :function) home))

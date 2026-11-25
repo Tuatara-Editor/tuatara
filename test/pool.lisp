@@ -97,6 +97,41 @@
                      (dotimes (i 4) (tuatara.runtime:stoppable (sleep 0.01)))
                      :finished)))
 
+(defun thread-wakings (thread)
+  "How many times THREAD has given up the processor of its own accord (waiting or
+asleep), as Linux counts it."
+  (with-open-file (in (format nil "/proc/self/task/~d/status" (sb-thread::thread-os-tid thread)))
+    (loop for line = (read-line in nil)
+          while line
+          when (eql 0 (search "voluntary_ctxt_switches:" line))
+            return (parse-integer line :start (1+ (position #\: line))))))
+
+(define-test (pool watch-asleep-while-a-prompt-waits)
+  ;; a prompt reads its keys inside the work of the key that opened it, which is given
+  ;; seconds; with no stoppable call under way the watching thread waits, never waking
+  (let ((wakings nil))
+    (run-keys (list "M-x" :wait
+                    (lambda ()
+                      (sleep 0.1)
+                      (let* ((watch tuatara.runtime::**stop-watch**)
+                             (before (thread-wakings watch)))
+                        (sleep 0.5)
+                        (setf wakings (- (thread-wakings watch) before))))
+                    "C-g"))
+    (true (< wakings 3))))
+
+(define-test (pool watch-told-once-per-wait)
+  ;; while the watching thread is held up between its waits, many short stoppable calls of
+  ;; work given seconds tell it of themselves at most once each time it begins to wait
+  (let ((told nil))
+    (tuatara.runtime:stoppable-work ((list nil) :slow 10)
+      (tuatara.runtime:stoppable nil)
+      (sb-thread:with-mutex (tuatara.runtime::**stop-lock**)
+        (dotimes (i 2000)
+          (tuatara.runtime:stoppable (loop repeat 2000 sum i)))
+        (setf told (sb-thread:semaphore-count tuatara.runtime::**stop-watch-wake**))))
+    (true (< told 4) "the watching thread was told ~d times" told)))
+
 (define-test (pool stopped-call-left-once)
   ;; a stoppable call cut short goes on leaving with its own clean-up done to the end, though
   ;; it is interrupted again on the way out, as the watch interrupts a thread still in a

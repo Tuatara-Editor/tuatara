@@ -794,7 +794,10 @@ Tuatara shows git's own words.
 
 The remote menu looks after the remotes themselves: ~M a~ adds one and ~M u~
 gives one a new address. The full menu also renames, removes, and forgets
-branches that the remote has deleted.
+branches that the remote has deleted. Git reaches a remote only over https,
+ssh or git's own protocol, or in a directory on your computer. An address
+such as =ext::...= or =NAME::...=, which would have git run a program, is
+refused.
 
 #+begin_try Try it, with a directory standing in for a server
 1. In a terminal, make an empty repository to play the server:
@@ -884,7 +887,9 @@ such as =3/5=. You cannot mistake the old text for the file as it is now.
 The text is read-only, but you can select and copy from it as from any
 buffer (chapter 4) and paste into the real file. The history follows the file
 back through a rename. Changes you have not committed are not part of it,
-since they are in no commit.
+since they are in no commit. A file that would open safely, such as one among
+evidence (chapter 9), is rewound as plain text, in no mode its name or first
+line asks for.
 
 Rewind works on directories too. Press ~C-x G~ in a directory listing (chapter
 10) and the listing shows the directory as its latest commit left it, with files

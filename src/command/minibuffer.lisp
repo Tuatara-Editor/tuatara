@@ -25,6 +25,11 @@ FUNCTION's values."
       (host-call-with-details tuatara.runtime:*host* details function)
       (funcall function)))
 
+(defmacro asking-with-details ((details) &body body)
+  "Run BODY, which asks a question, with DETAILS shown beside it
+\(CALL-WITH-QUESTION-DETAILS)."
+  `(call-with-question-details ,details (lambda () ,@body)))
+
 (defun password-prompt (prompt)
   "PROMPT, a question for a secret ending in \": \", as it is asked, in the
 frame of a client on another machine (CLIENT-FAR-P), saying that what is
@@ -46,25 +51,22 @@ without it. Returns the string, which the caller should wipe (WIPE-STRING)
 once it has handed it on. Every copy not returned is wiped, the question given up
 \(\\[keyboard-quit]) too. DETAILS are shown beside it while it is asked
 \(CALL-WITH-QUESTION-DETAILS)."
-  (when details
-    (return-from read-password
-      (call-with-question-details
-       details (lambda () (read-password prompt :confirm confirm :fresh fresh :update update)))))
-  (let* ((*minibuffer-hidden* t)
-         (tuatara.runtime:*secret-at-hand* t)
-         (prompt (password-prompt prompt))
-         (first (read-string prompt :fresh fresh :update update))
-         (returned nil))
-    (if (not confirm)
-        first
-        (unwind-protect
-             (let ((second (read-string "Again: " :update update)))
-               (unwind-protect
-                    (if (string= first second)
-                        (setf returned first)
-                        (refuse "The two passphrases differ: nothing done"))
-                 (wipe-string second)))
-          (unless returned (wipe-string first))))))
+  (asking-with-details (details)
+    (let* ((*minibuffer-hidden* t)
+           (tuatara.runtime:*secret-at-hand* t)
+           (prompt (password-prompt prompt))
+           (first (read-string prompt :fresh fresh :update update))
+           (returned nil))
+      (if (not confirm)
+          first
+          (unwind-protect
+               (let ((second (read-string "Again: " :update update)))
+                 (unwind-protect
+                      (if (string= first second)
+                          (setf returned first)
+                          (refuse "The two passphrases differ: nothing done"))
+                   (wipe-string second)))
+            (unless returned (wipe-string first)))))))
 
 (defun wipe-string (string)
   "Overwrite STRING, a secret no longer needed, so that it lies in memory no longer than it must."
@@ -549,7 +551,7 @@ going. Returns what FUNCTION returns."
       (setf (frame-keys-playing frame) playing (frame-keys-recording frame) recording))))
 
 (defun answer-keys-words (answers)
-  "The keys ANSWERS, a list of characters, in words: y, n or v."
+  "The keys ANSWERS, characters or key descriptions, in words: y, n or v."
   (format nil "~{~a~#[~; or ~:;, ~]~}" answers))
 
 (defun read-answer-key (prompt answers &key fresh details)
@@ -563,18 +565,35 @@ away, keys being recorded or played have no part in it, and \\`C-g' leaves
 a recording of keys going on. DETAILS, what each answer does, warnings and
 anything longer than the prompt should hold, are shown beside it while it is
 asked (CALL-WITH-QUESTION-DETAILS)."
-  (when details
-    (return-from read-answer-key
-      (call-with-question-details details (lambda () (read-answer-key prompt answers :fresh fresh)))))
-  (let ((asked prompt))
-    (loop
-      (let* ((key (read-key asked :fresh fresh))
-             (base (tuatara.frontend:key-base key))
-             (char (and (not (tuatara.frontend:key-ctrl key)) (not (tuatara.frontend:key-meta key))
-                        (characterp base) (char-downcase base))))
-        (cond ((quit-key-p key) (quit-asking fresh))
-              ((and char (member char answers)) (return char))
-              (t (setf asked (format nil "Answer ~a. ~a" (answer-keys-words answers) prompt))))))))
+  (asking-with-details (details)
+    (let ((asked prompt))
+      (loop
+        (let* ((key (read-key asked :fresh fresh))
+               (base (tuatara.frontend:key-base key))
+               (char (and (not (tuatara.frontend:key-ctrl key)) (not (tuatara.frontend:key-meta key))
+                          (characterp base) (char-downcase base))))
+          (cond ((quit-key-p key) (quit-asking fresh))
+                ((and char (member char answers)) (return char))
+                (t (setf asked (format nil "Answer ~a. ~a" (answer-keys-words answers) prompt)))))))))
+
+(defun read-key-choice (prompt choices)
+  "Ask PROMPT in the echo area, answered by one key of CHOICES. Each choice
+is a pair of a KEY, as KEY-DESCRIPTION writes it (\"j\", \"M\", \"C-x\"), and the
+WORDS saying what that key does, as in (\"j\" . \"one\"). The prompt ends with
+the keys (j, m, M or n) and each key with its words is shown beside it
+\(CALL-WITH-QUESTION-DETAILS). The case of a key counts. Returns the KEY of the
+choice made, as given; any other key says which keys answer and asks again;
+\\`C-g' signals QUIT."
+  (let* ((keys (mapcar (lambda (choice) (string (car choice))) choices))
+         (question (format nil "~a (~a)" prompt (answer-keys-words keys))))
+    (asking-with-details ((format nil "~{~a~^~%~}"
+                                  (loop for (key . words) in choices collect (format nil "~a  ~a" key words))))
+      (loop for asked = question then (format nil "Answer ~a. ~a" (answer-keys-words keys) question)
+            do (let ((key (read-key asked)))
+                 (when (quit-key-p key) (quit-asking nil))
+                 (let ((choice (find (tuatara.frontend:key-description (tuatara.frontend:key-spec key)) choices
+                                     :key (lambda (choice) (string (car choice))) :test #'string=)))
+                   (when choice (return (car choice)))))))))
 
 (defun y-or-n-p* (prompt &key fresh details)
   "Ask PROMPT, a question whose answer is easily undone, answered by one
@@ -924,19 +943,17 @@ too, says which answers it takes and asks again; \\`C-g' signals QUIT. A
 question whose answer is easily undone is answered by one key instead
 \(READ-ANSWER-KEY). DETAILS are shown beside it while it is asked, the
 answers given again included (CALL-WITH-QUESTION-DETAILS)."
-  (when details
-    (return-from read-typed-answer
-      (call-with-question-details details (lambda () (read-typed-answer prompt answers)))))
-  (let* ((keys (mapcar #'first answers))
-         (question (format nil "~a (~a, then ~a) " prompt (answer-keys-words keys)
-                           (substitute-command-keys "\\<minibuffer>\\[minibuffer-finish]"))))
-    (loop for asking = question then (format nil "Answer ~a. ~a" (answer-keys-words keys) question)
-          do (let* ((typed (read-string asking :trim t))
-                    (answer (find-if (lambda (answer)
-                                       (or (string-equal typed (string (first answer)))
-                                           (string-equal typed (second answer))))
-                                     answers)))
-               (when answer (return (first answer)))))))
+  (asking-with-details (details)
+    (let* ((keys (mapcar #'first answers))
+           (question (format nil "~a (~a, then ~a) " prompt (answer-keys-words keys)
+                             (substitute-command-keys "\\<minibuffer>\\[minibuffer-finish]"))))
+      (loop for asking = question then (format nil "Answer ~a. ~a" (answer-keys-words keys) question)
+            do (let* ((typed (read-string asking :trim t))
+                      (answer (find-if (lambda (answer)
+                                         (or (string-equal typed (string (first answer)))
+                                             (string-equal typed (second answer))))
+                                       answers)))
+                 (when answer (return (first answer))))))))
 
 (defun yes-or-no-p* (prompt &key details)
   "Ask PROMPT in the minibuffer, an answer typed and ended with \\`RET': for a

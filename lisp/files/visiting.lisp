@@ -153,7 +153,7 @@ question has not ended (*SLOW-LISTINGS*); those ended are let go of."
 
 (defun path-question-start (&key writing)
   "The text a question for a path starts with when it is given none: the
-directory chosen last (LAST-CHOSEN-DIRECTORY), else, or while that directory's
+directory chosen last (LAST-CHOSEN-NATIVE-DIRECTORY), else, or while that directory's
 listing has not ended (SLOW-LISTING-P), that of the current buffer
 \(BUFFER-DIRECTORY). With WRITING, for a question whose answer is written
 to, never a directory of evidence (*EVIDENCE-DIRECTORIES*): your home directory in its
@@ -180,7 +180,7 @@ INITIAL names a file."
 or something in it, by CHOSEN, the paths chosen lately (CHOSEN-PATHS). The
 result is a table from its name, a directory's with a slash after it, to its
 place among them, 0 the latest. Those in one of *UNTRUSTED-DIRECTORIES* are left out
-\(SAFE-DIRECTORY-OF, which may ask the disk; called where the directory is read),
+\(UNTRUSTED-DIRECTORY-OF, which may ask the disk; called where the directory is read),
 and with WRITING, for a question whose answer is written to, those in an
 evidence directory (EVIDENCE-PATH-P): only the paths in DIRECTORY are asked."
   (let ((ranks (make-hash-table :test 'equal)) (length (length directory)))

@@ -67,6 +67,18 @@
     (true (tuatara.buffer:buffer-undo b))
     (is string= "abc" (tuatara.buffer:buffer-string b))))
 
+(define-test (buffer nothing-for-nothing-changes-nothing)
+  ;; nothing put in place of nothing makes no version, no undo step, and leaves the buffer unmodified
+  (with-test-buffer (b "*u*" :text "abc")
+    (let ((version (tuatara.buffer:buffer-version b))
+          (undo (tuatara.buffer:buffer-undo-stack b)))
+      (is = 1 (tuatara.buffer:buffer-replace b 1 1 ""))
+      (is = 2 (tuatara.buffer:buffer-insert b 2 ""))
+      (is = 1 (tuatara.buffer:buffer-delete b 1 1))
+      (is eq version (tuatara.buffer:buffer-version b))
+      (is eq undo (tuatara.buffer:buffer-undo-stack b))
+      (false (tuatara.buffer:buffer-modified-p b)))))
+
 (define-test (buffer undo-redo)
   (with-test-buffer (b "*u*" :text "abc")
     (tuatara.buffer:buffer-insert b 3 "def")

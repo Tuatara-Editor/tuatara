@@ -222,7 +222,7 @@ echo commented
 ")
   "An Org file whose source blocks write code files, as tested against Org 9.7.11's org-babel-tangle.")
 
-(define-test (org tangle-code-files)
+(define-test (org tangle-all-code-blocks)
   (with-test-directory (dir)
     (let ((org (merge-pathnames "t.org" dir)))
       (alexandria:write-string-into-file *org-tangled* org)
@@ -304,8 +304,87 @@ echo commented
       (when (equal "t.org" (tuatara.buffer:buffer-name buffer))
         (tuatara.buffer:kill-buffer buffer)))))
 
-(define-test (org tangle-code-files-link-swapped)
-  ;; a link put in a code file's place after it was looked at, while tangle-code-files asks, is
+(define-test (org tangle-this-code-block)
+  ;; the block at point writes only its own file, made from every block that goes to it; the note's
+  ;; other files are left as they are; outside a block, or in one with no :tangle, nothing is written
+  (with-test-directory (dir)
+    (let ((org (merge-pathnames "t.org" dir)))
+      (alexandria:write-string-into-file
+       (format nil "#+begin_src sh :tangle a.sh~%echo a1~%#+end_src~%#+begin_src sh :tangle b.sh~%echo b~%#+end_src~%~
+                    Some text.~%#+begin_src sh :tangle a.sh~%echo a2~%#+end_src~%#+begin_src sh :tangle no~%echo no~%#+end_src~%")
+       org)
+      (alexandria:write-string-into-file "old" (merge-pathnames "b.sh" dir))
+      (flet ((session (keys)
+               (run-keys (format nil "C-x C-f C-a C-k ~a RET ~a" (rimu-typed (namestring org)) keys)
+                         :width 120
+                         :height 20))
+             (file (name) (let ((path (merge-pathnames name dir)))
+                            (and (probe-file path) (alexandria:read-file-into-string path))))
+             (close-note () (let ((open (tuatara.buffer:find-buffer "t.org")))
+                              (when open (tuatara.buffer:kill-buffer open)))))
+        ;; a file two blocks go to: both are in it, and its listing says so; the other file is not listed
+        (let ((f (session "C-n C-c C-v b n RET")))
+          (true (tuatara.frontend.fake:fake-frame-showing f "new" "2 blocks" "a.sh"))
+          (true (tuatara.frontend.fake:fake-frame-showing f "Write 1 file?")))
+        (false (file "a.sh"))
+        (close-note)
+        (session "C-n C-c C-v b y RET")
+        (is string= (format nil "echo a1~%~%echo a2~%") (file "a.sh"))
+        (is string= "old" (file "b.sh"))
+        ;; the other block's file: written over, a.sh left alone
+        (close-note)
+        (alexandria:write-string-into-file "kept" (merge-pathnames "a.sh" dir) :if-exists :supersede)
+        (let ((f (session "C-n C-n C-n C-c C-v b n RET")))
+          (true (tuatara.frontend.fake:fake-frame-showing f "changed" "1 block" "b.sh"))
+          (true (tuatara.frontend.fake:fake-frame-showing f "Write 1 file?")))
+        (close-note)
+        (session "C-n C-n C-n C-c C-v b y RET")
+        (is string= (format nil "echo b~%") (file "b.sh"))
+        (is string= "kept" (file "a.sh"))
+        ;; outside a block, and in a block with :tangle no: said, nothing written
+        (close-note)
+        (alexandria:write-string-into-file "old" (merge-pathnames "b.sh" dir) :if-exists :supersede)
+        (true (tuatara.frontend.fake:fake-frame-showing (session "C-n C-n C-n C-n C-n C-n C-c C-v b")
+                                                        "Point is in no source block with :tangle"))
+        (close-note)
+        (true (tuatara.frontend.fake:fake-frame-showing
+               (session "C-n C-n C-n C-n C-n C-n C-n C-n C-n C-n C-c C-v b")
+               "Point is in no source block with :tangle"))
+        (is string= "old" (file "b.sh"))
+        (close-note)))))
+
+(define-test (org tangle-this-code-block-after-multibyte-text)
+  ;; point is counted in octets by the buffer and in characters by the parse: the block at point
+  ;; is still the one written when accented letters and an emoji come before it
+  (with-test-directory (dir)
+    (let ((org (merge-pathnames "m.org" dir)))
+      (alexandria:write-string-into-file
+       (format nil "~a 😀~%#+begin_src sh :tangle a.sh~%echo a~%#+end_src~%#+begin_src sh :tangle b.sh~%echo b~%#+end_src~%"
+               (make-string 60 :initial-element (code-char 233)))
+       org :external-format :utf-8)
+      (run-keys (format nil "C-x C-f C-a C-k ~a RET C-n C-n C-n C-n C-n C-c C-v b y RET" (rimu-typed (namestring org)))
+                :width 120
+                :height 20)
+      (is string= (format nil "echo b~%") (alexandria:read-file-into-string (merge-pathnames "b.sh" dir)))
+      (false (probe-file (merge-pathnames "a.sh" dir)))
+      (let ((open (tuatara.buffer:find-buffer "m.org")))
+        (when open (tuatara.buffer:kill-buffer open))))))
+
+(define-test (org tangle-all-code-blocks-by-name)
+  ;; M-x tangle-all-code-blocks lists and writes every file of the note
+  (with-test-directory (dir)
+    (let ((org (merge-pathnames "t.org" dir)))
+      (alexandria:write-string-into-file
+       (format nil "#+begin_src sh :tangle a.sh~%echo a~%#+end_src~%#+begin_src sh :tangle b.sh~%echo b~%#+end_src~%") org)
+      (run-keys (format nil "C-x C-f C-a C-k ~a RET M-x t a n g l e - a l l - c o d e - b l o c k s RET y RET" (rimu-typed (namestring org)))
+                :width 120 :height 20)
+      (is string= (format nil "echo a~%") (alexandria:read-file-into-string (merge-pathnames "a.sh" dir)))
+      (is string= (format nil "echo b~%") (alexandria:read-file-into-string (merge-pathnames "b.sh" dir)))
+      (let ((open (tuatara.buffer:find-buffer "t.org")))
+        (when open (tuatara.buffer:kill-buffer open))))))
+
+(define-test (org tangle-all-code-blocks-link-swapped)
+  ;; a link put in a code file's place after it was looked at, while tangle-all-code-blocks asks, is
   ;; never followed: the file it leads to is left as it was
   (with-test-directory (dir)
     (let ((decoy (namestring (merge-pathnames "decoy" dir)))

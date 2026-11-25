@@ -192,7 +192,9 @@ many records are left, as in =Filtered by kiwi: 12 of 1,000 records=. A second
 filter narrows what the first left, so you can ask for Wanaka and then, of
 those, for 2023. ~C-x / l~ lists the filters, and ~d~ on a line there takes
 that one away. ~C-x / r~ takes them all away and shows the whole table. The
-header is shown whatever the filters say.
+header is shown whatever the filters say. A record longer than 16 MiB has its
+column tried on its first 16 MiB alone, and the mode line counts such records
+after the rest: =1 line longer than 16.0 MiB tried on their start=.
 
 You can edit the records you see. A change that would reach into a hidden
 record is refused, so a filter never changes what you cannot see.
@@ -337,7 +339,9 @@ A text search cannot find what cannot be typed. ~M-x hex-search-forward~ asks
 for octets in hex, with or without spaces between them, and goes to the next
 place after the cursor that holds them. =ff d8 ff= finds the start of a JPEG
 photo, for example, and =25 50 44 46= finds =%PDF=, the first four octets of a
-PDF. The echo area says where it was found, in hex and in decimal.
+PDF. The octets are found exactly as typed, wherever they stand: =0a= is the
+line feed alone, never a carriage return, and =c3 a9= finds the é that is
+made of them. The echo area says where it was found, in hex and in decimal.
 ~M-x hex-search-backward~ looks before the cursor.
 
 *** Changing octets
@@ -571,9 +575,11 @@ forms or scripts. This is useful when you wonder where a document came from.
 A PDF can carry other files inside it, as an email carries attachments. An
 invoice may hold its own figures as a spreadsheet, for example. ~a~ lists the
 files embedded in the PDF in a buffer beside it. There, ~n~ and ~p~ move from
-one to the next, and ~RET~ or ~s~ saves the one on the line. Tuatara asks where
-to put it and writes it there as it is. It never opens or runs an embedded
-file. If the PDF has none, the echo area says so.
+one to the next, and ~RET~, ~l~, ~o~ or ~s~ saves the one on the line. Tuatara
+asks where to put it and writes it there as it is. It never opens or runs an
+embedded file. If the PDF has none, the echo area says so. A PDF from outside
+that was replaced on disk since you opened it is not read again: the saving
+is refused.
 
 A PDF saved by Illustrator, Photoshop or InDesign with their editing kept can
 hold more than its pages: the program's own data, so that it can open the
@@ -739,9 +745,11 @@ dates disagree, the file's own record of when it was made is often the one to
 trust over the date in a directory listing, which changes each time the file is
 copied.
 
-The file is read in the background by Tuatara alone. Nothing in it is run, and
-the time your computer keeps for when the file was last read is left as it
-was.
+The file is read in the background by Tuatara alone. A Word, Excel,
+PowerPoint or OpenDocument file is read by a second Tuatara shut in by the
+sandbox, from the file as it was when the report began, so a file put in its
+place meanwhile is never read. Nothing in it is run, and the time your
+computer keeps for when the file was last read is left as it was.
 
 For an encrypted file, the report can also say whose the keys are, by looking
 them up in your own keyring. That runs the gpg program, so Tuatara asks first.

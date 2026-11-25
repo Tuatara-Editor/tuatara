@@ -92,7 +92,7 @@ archive or of a compound file as the kind's are; NIL for any other file."
          (office (and type (find-if (lambda (f) (member type (getf f :names) :test #'string-equal)) *office-formats*)))
          (head (and office (tuatara.io:file-head native))))
     (and head
-         (tuatara.io:octets-at-p head
+         (tuatara.text:octets-at-p head
                                  (if (eq (getf office :container) :ole)
                                      tuatara.io:*compound-file-signature*
                                      (list #x50 #x4B 3 4)))

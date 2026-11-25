@@ -265,13 +265,12 @@ nearly as much is preferred."
               (values best nil))
         (when shape (values (coerce shape 'simple-vector) prefix-p))))))
 
-(defun class-item-covers-newline (item surely)
-  "Whether the char-class ITEM of a parse tree includes a character that
-ends a line: the newline or the carriage return. Items not understood count
-as including one unless SURELY is true."
-  (cond ((characterp item) (or (char= item #\Newline) (char= item #\Return)))
-        ((and (consp item) (eq (first item) :range))
-         (or (char<= (second item) #\Newline (third item)) (char<= (second item) #\Return (third item))))
+(defun class-item-covers (item char surely)
+  "Whether the char-class ITEM of a parse tree includes CHAR, a character that
+ends a line (the newline or the carriage return). Items not understood count
+as including it unless SURELY is true."
+  (cond ((characterp item) (char= item char))
+        ((and (consp item) (eq (first item) :range)) (char<= (second item) char (third item)))
         ((member item '(:whitespace-char-class :non-digit-class :non-word-char-class)) t)
         ((member item '(:digit-class :word-char-class :non-whitespace-char-class)) nil)
         (t (not surely))))
@@ -310,8 +309,12 @@ crossing."
                                        (funcall (character-property (second x)) #\Return)))
                         (:inverted-property (not (and (funcall (character-property (second x)) #\Newline)
                                                       (funcall (character-property (second x)) #\Return))))
-                        (:char-class (some (lambda (item) (class-item-covers-newline item nil)) (rest x)))
-                        (:inverted-char-class (notany (lambda (item) (class-item-covers-newline item t)) (rest x)))
+                        (:char-class (some (lambda (item) (or (class-item-covers item #\Newline nil)
+                                                              (class-item-covers item #\Return nil)))
+                                           (rest x)))
+                        (:inverted-char-class
+                         (notevery (lambda (char) (some (lambda (item) (class-item-covers item char t)) (rest x)))
+                                   '(#\Newline #\Return)))
                         (t t))))))
     (and (walk tree) t)))
 
@@ -319,6 +322,20 @@ crossing."
   "True when one of KEYWORDS occurs anywhere in the parse TREE."
   (labels ((walk (x) (or (and (symbolp x) (member x keywords)) (and (consp x) (or (walk (car x)) (walk (cdr x)))))))
     (and (walk tree) t)))
+
+(defun end-anchored-p (tree)
+  "True when every match of the parse TREE ends at the end of the text: it
+ends in \\z or \\Z, outside any repeat or lookaround, or each of its
+choices does."
+  (labels ((walk (x)
+             (cond ((member x '(:modeless-end-anchor :modeless-end-anchor-no-newline)) t)
+                   ((atom x) nil)
+                   (t (case (first x)
+                        (:sequence (walk (car (last x))))
+                        (:alternation (every #'walk (rest x)))
+                        ((:group :register :named-register) (walk (car (last x))))
+                        (t nil))))))
+    (walk tree)))
 
 (define-record (regex-traits (:constructor make-regex-traits
                                           (&key needle shape fold prefix line-bound end-anchored reach context plain))

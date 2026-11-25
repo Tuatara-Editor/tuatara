@@ -13,7 +13,8 @@
    scanner's state is saved and taken back many times. A text that takes
    longer than its time is given up and said, as a parse in the editor is.
    The sanitizers end the program on the first fault they see, saying where;
-   the exit status is then not 0. Nothing is written but to standard error. */
+   the exit status is then not 0. The summary goes to standard output, the
+   rest to standard error. */
 
 #include <dlfcn.h>
 #include <stdint.h>

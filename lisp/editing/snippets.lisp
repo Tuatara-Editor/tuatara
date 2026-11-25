@@ -13,8 +13,8 @@
 ;;;;   #+end_src
 ;;;;
 ;;;; Its key typed before the cursor and \`TAB' put it in, the key's place
-;;;; taken; M-x insert-snippet chooses one by name, each listed with its key and
-;;;; whose it is; M-x copy-snippet makes one of Tuatara's yours to change. Its
+;;;; taken; M-x snippet-insert chooses one by name, each listed with its key and
+;;;; whose it is; M-x snippet-copy makes one of Tuatara's yours to change. Its
 ;;;; text is written as language servers write theirs: $1, $2... are fields
 ;;;; \`TAB' goes to in turn and \`S-TAB' back, ${1:text} one holding text that
 ;;;; typing replaces, ${1|a,b,c|} one offering a choice, $0 where the cursor
@@ -589,7 +589,7 @@ it is, VALUE what choosing it gives."
                                            (string/= (snippet-mode snippet) "fundamental-mode")
                                            (snippet-mode snippet)))))
 
-(define-command insert-snippet ()
+(define-command snippet-insert ()
   "Put in a snippet chosen by its name among those of the current buffer's
 mode (each listed with its key), at point; with the selection active, in its
 place, the selected text where it has $TM_SELECTED_TEXT."
@@ -606,23 +606,22 @@ place, the selected text where it has $TM_SELECTED_TEXT."
                 (setf (tuatara.buffer:buffer-mark-active-p buffer) nil)
                 (put-snippet buffer start end snippet :selected selected))))))))
 
-(define-command copy-snippet ()
+(define-command snippet-copy ()
   "Copy one of Tuatara's own snippets, chosen by its name, into your snippets
 directory (the first of *snippet-directories*, in the directory of its mode) and
 visit it: your copy, changed as you like, takes the place of Tuatara's. One
 you have already is visited as it is."
-  (copy-chosen-own-file "Copy snippet: "
-                        (loop for (mode file text) in *built-in-snippets*
+  (copy-chosen-own-file (loop for (mode file text) in *built-in-snippets*
                               collect (snippet-candidate (read-snippet-of mode file text t) (list mode file text)))
                         (snippet-directories)
                         "snippet")
   (clrhash *snippets-read-by-directory*))
 
 (defun install-snippets (editor)
-  "Bind \\`C-c y' to \\[insert-snippet] in text-mode and prog-mode, so in every
+  "Bind \\`C-c y' to \\[snippet-insert] in text-mode and prog-mode, so in every
 mode for text or code made from them; keep snippets' fields filled in as they
 are typed."
   (dolist (mode '(text-mode prog-mode))
-    (define-key (mode-keymap mode) "C-c y" 'insert-snippet))
+    (define-key (mode-keymap mode) "C-c y" 'snippet-insert))
   (pushnew 'snippet-before-command (editor-pre-command-functions editor))
   (pushnew 'snippet-after-command (editor-post-command-functions editor)))

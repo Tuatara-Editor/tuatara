@@ -109,8 +109,8 @@ repository with no commit yet too."
   "Delete the file you are in, or the one on point's line of a status, from
 the files and from git, after asking; the deletion is staged."
   (with-git-file (top path)
-    (when (yes-or-no-p* (format nil "Delete ~a from git and the files? Its changes not committed are lost"
-                                (escape-controls path)))
+    (when (yes-or-no-p* (format nil "Delete ~a from git and the files?" (escape-controls path))
+                        :details "Its changes not committed are lost.")
       (git-run "Deleting a file" top (list "rm" "-f" "--" path) (format nil "Deleted ~a" (escape-controls path))
                :then (lambda (text)
                        (declare (ignore text))

@@ -275,7 +275,7 @@ as a second value. Refused when they hold no layout."
                                (count (parse-integer (third words) :junk-allowed t))
                                (shares (mapcar #'session-number (nthcdr 3 words))))
                           (unless (and arrangement count (<= 2 count 64) (= count (length shares))
-                                       (every #'realp shares))
+                                       (every (lambda (share) (and (realp share) (plusp share))) shares))
                             (refuse "A split the session file cannot hold"))
                           (list* :split arrangement shares (loop repeat count collect (node (1+ depth))))))
                        ((string= (first words) "window")

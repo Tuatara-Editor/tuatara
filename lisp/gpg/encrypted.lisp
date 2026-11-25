@@ -735,8 +735,8 @@ when the question asked first is answered yes; else the save is refused."
   (when (and (tuatara.io:buffer-plaintext-p buffer)
              (not (encrypted-buffer-p buffer))
              (not (gpg-name-p (tuatara.io:native path)))
-             (not (yes-or-no-p* (format nil "~a holds text decrypted in place; save it unencrypted?"
-                                        (tuatara.buffer:buffer-name buffer)))))
+             (not (yes-or-no-p* (format nil "Save ~a unencrypted?" (tuatara.buffer:buffer-name buffer))
+                                :details "It holds text decrypted in place.")))
     (refuse "~a is not saved: it holds text decrypted in place" (tuatara.buffer:buffer-name buffer)))
   (when (or (encrypted-buffer-p buffer) (gpg-name-p (tuatara.io:native path)))
     (let ((encryption (tuatara.buffer:buffer-local buffer :encrypted)))
@@ -783,11 +783,14 @@ locked keyring or an agent that does not answer.")
 :SUBKEYS (the IDs of its subkeys, which a file names it by), :FINGERPRINT and
 :CAPABILITIES (gpg's letters: e encrypts, s signs, c certifies); with ALL, the
 keys that cannot encrypt too. Refused, saying why, when gpg gives no answer
-within *GPG-LISTING-SECONDS*; stopped when CANCEL, a cons, has a true car."
+within *GPG-LISTING-SECONDS*, or fails and lists nothing (a listing given with
+warnings is kept); stopped when CANCEL, a cons, has a true car."
   (flet ((lines (arguments)
-           (uiop:split-string (tuatara.text:lenient-string
-                               (or (gpg-run arguments :asker :agent :seconds *gpg-listing-seconds* :cancel cancel) #()))
-                              :separator '(#\Newline)))
+           (multiple-value-bind (output statuses ok said)
+               (gpg-run arguments :asker :agent :seconds *gpg-listing-seconds* :cancel cancel)
+             (when (and (not ok) (zerop (length output)) (not (and cancel (car cancel))))
+               (refuse "gpg could not list the keys: ~a" (gpg-failure-words statuses said)))
+             (uiop:split-string (tuatara.text:lenient-string output) :separator '(#\Newline))))
          (fields (line) (uiop:split-string line :separator '(#\:))))
     (let ((secret (loop for line in (lines (list "--list-secret-keys" "--with-colons"))
                         for f = (fields line)

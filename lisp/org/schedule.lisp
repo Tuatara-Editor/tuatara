@@ -120,6 +120,12 @@ prompt yet (*ORG-READ-DATE-IN-CALENDAR*): its ORG-DATE-CHOICE; NIL otherwise.")
   "The keys of Org's date question while it is answered in the calendar
 \(*ORG-READ-DATE-IN-CALENDAR*), before the question's own: each (KEY COMMAND).")
 
+(defparameter *org-date-choosing-details*
+  (concatenate 'string "In the calendar, till a key of the date is typed: h j k l move, m marks, u unmarks, "
+               "RET writes the days chosen at the prompt.")
+  "What the keys of Org's date question do while it is answered in the
+calendar, shown beside the question (*ORG-DATE-CHOOSE-KEYS*).")
+
 (defun org-date-choice-days (choice)
   "The days CHOICE stands for, in order: those marked, or the calendar's day
 when none is."
@@ -147,12 +153,10 @@ when none is."
 
 (defun org-date-choosing-prompt (prompt)
   "PROMPT as Org's date question shows it: while it is answered in the
-calendar, the days chosen and the keys after it."
+calendar, the days chosen after it."
   (let ((choice *org-date-choosing*))
     (if choice
-        (let ((days (org-date-choice-days choice)))
-          (format nil "~a~a  (h j k l move, m marks, u unmarks, RET writes ~:[it~;them~] here) "
-                  prompt (org-date-choice-text choice "%F %a" days) (rest days)))
+        (format nil "~a~a " prompt (org-date-choice-text choice "%F %a"))
         prompt)))
 
 (defun org-date-choice-shown (choice)
@@ -249,7 +253,20 @@ in words (ORG-WORDS-REPEAT)."
           (repeating (let ((value (org-words-repeat typed (org-now))))
                        (values value (and value (org-repeat-words value))))))))
 
-(defun read-org-date (prompt &key repeating several keymap)
+(defun read-org-date-with-details (details function)
+  "Call FUNCTION, which asks Org's date question, with DETAILS shown beside it
+\(CALL-WITH-QUESTION-DETAILS), the calendar below the question as tall as it
+was before they came."
+  (let* ((window (and *org-date-calendar* (buffer-window *org-date-calendar*)))
+         (rows (and window (tuatara.display:area-height window))))
+    (call-with-question-details details
+                                (lambda ()
+                                  (when (and window (member window (editor-windows *editor*)))
+                                    (tuatara.display:resize-area window (- rows (tuatara.display:area-height window))
+                                                                 :stacked))
+                                  (funcall function)))))
+
+(defun read-org-date (prompt &key repeating several keymap details)
   "Ask PROMPT for a date as any date is asked for (READ-DATE), what it reads
 shown as it is typed as the timestamp it makes, and the calendar below, its
 day marked (*ORG-READ-DATE-POPUP-CALENDAR*); a timestamp typed whole
@@ -259,8 +276,10 @@ month), and a timestamp by rule typed whole. The keys that move the
 calendar are those of **ORG-DATE-PROMPT-KEYMAP**, or of KEYMAP when given,
 whose parent it is. With SEVERAL, several days are read too, as the
 calendar writes them (ORG-READ-SEVERAL-DATES). Begun in the calendar as
-*ORG-READ-DATE-IN-CALENDAR* says. The ORG-TS, the text of a timestamp by rule
-or of several timestamps, or NIL when what was typed is no date."
+*ORG-READ-DATE-IN-CALENDAR* says, the calendar's keys then shown beside the
+prompt with DETAILS, the question's own keys, after them. The ORG-TS, the
+text of a timestamp by rule or of several timestamps, or NIL when what was
+typed is no date."
   (let* ((window (and *org-read-date-popup-calendar* (org-date-calendar-show (org-today))))
          (*org-date-calendar* (and *org-read-date-popup-calendar* (calendar-buffer)))
          (keymap (or keymap **org-date-prompt-keymap**))
@@ -276,20 +295,24 @@ or of several timestamps, or NIL when what was typed is no date."
                      prompt)))
     (unwind-protect
          (multiple-value-bind (time day hour minute end-hour end-minute)
-             (read-date asking :now (org-now)
-                               :shown (lambda (&rest parts) (org-ts-text (apply #'org-date-ts parts)))
-                               :follow (lambda (&rest parts)
-                                         ;; the calendar's day is the answer while it is chosen there
-                                         (unless *org-date-choosing*
-                                           (org-date-calendar-follow (apply #'org-date-ts parts))))
-                               ;; a key typed while the calendar is answered in begins the date at the prompt;
-                               ;; nothing is offered to take till then
-                               :typed (lambda (input)
-                                        (when (plusp (length input)) (org-date-choosing-end))
-                                        *org-date-choosing*)
-                               :other (lambda (typed)
-                                        (org-date-prompt-other typed :repeating repeating :several several))
-                               :keymap first-keys)
+             (read-org-date-with-details
+              (let ((lines (remove nil (list (and *org-date-choosing* *org-date-choosing-details*) details))))
+                (and lines (format nil "~{~a~^~%~}" lines)))
+              (lambda ()
+                (read-date asking :now (org-now)
+                                  :shown (lambda (&rest parts) (org-ts-text (apply #'org-date-ts parts)))
+                                  :follow (lambda (&rest parts)
+                                            ;; the calendar's day is the answer while it is chosen there
+                                            (unless *org-date-choosing*
+                                              (org-date-calendar-follow (apply #'org-date-ts parts))))
+                                  ;; a key typed while the calendar is answered in begins the date at the prompt;
+                                  ;; nothing is offered to take till then
+                                  :typed (lambda (input)
+                                           (when (plusp (length input)) (org-date-choosing-end))
+                                           *org-date-choosing*)
+                                  :other (lambda (typed)
+                                           (org-date-prompt-other typed :repeating repeating :several several))
+                                  :keymap first-keys)))
            (cond ((or (org-ts-p time) (stringp time)) time)
                  ((and (consp time) (eq (first time) :several)) (second time))
                  (t (and time (org-date-ts day hour minute end-hour end-minute)))))
@@ -669,7 +692,6 @@ it is the time of the line. \\`s' schedules the series."
   (if (prefix-argument)
       (org-plan "SCHEDULED" nil)
       (case (org-occurrence-choice "Schedule")
-        (:none nil)
         (:this (org-move-asked))
         (:series (org-ask-date "Schedule" (lambda (ts) (if ts (org-plan "SCHEDULED" ts) (org-no-date))))))))
 

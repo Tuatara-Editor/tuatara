@@ -17,8 +17,11 @@
 # libraries as Quicklisp gave them, Ghostty at the
 # commit of lisp/terminal/library.pin, and tree-sitter and every grammar at
 # the commit of syntax/grammars.tsv, each repository without its history.
-# The program is built from the last commit, copied with Quicklisp into a
-# new directory of its own, /tmp/tuatara-release-build.XXXXXX/, so that the places of its
+# The program is built from the last commit, put with a Quicklisp of its own
+# (tools/lisp-archives.sh install: the pinned client and the listed libraries,
+# nothing of this machine's Quicklisp; the downloads are kept in
+# build/lisp-downloads/) into a new directory,
+# /tmp/tuatara-release-build.XXXXXX/, so that the places of its
 # sources it keeps are that directory's; it is refused when it still names this
 # machine's home directory or user, as is the release when any file of it does.
 # The grammars and the terminal library are
@@ -31,7 +34,6 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
 . tools/inside.sh
 . tools/fetch.sh
-quicklisp_setup >/dev/null || exit 1
 if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
   echo "tools/release.sh: changes not committed are left out of the release" >&2
 fi
@@ -39,12 +41,11 @@ tools/grammars.sh
 tools/terminal-library.sh
 # nothing to do when the release there was made from this commit, nothing
 # changed since it, with these scripts, the same grammars and terminal
-# library, and the same Lisp libraries
+# library, the same Lisp libraries and the same SBCL
 stamp="$root/build/release/.built-from"
-wanted="$(git rev-parse HEAD) $(cat "$0" tools/lisp-archives.sh tools/lisp-archives.sha256 tools/build-image.lisp \
+wanted="$(git rev-parse HEAD) $( (cat "$0" tools/lisp-archives.sh tools/lisp-archives.sha256 tools/build-image.lisp \
             tools/build-image.sh tools/inside.sh tools/fetch.sh build/grammars/.built-from \
-            build/terminal/.built-from "$(dirname "$(quicklisp_setup)")/dists/quicklisp/distinfo.txt" | sha256sum |
-              cut -c1-16)"
+            build/terminal/.built-from; inside sbcl --version) | sha256sum | cut -c1-16)"
 if [ -z "$(git status --porcelain --untracked-files=no)" ] &&
    [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$wanted" ] && [ -x build/release/tuatara/tuatara ] &&
    [ -f build/release/tuatara-sources.tar.zst ]; then
@@ -52,7 +53,6 @@ if [ -z "$(git status --porcelain --untracked-files=no)" ] &&
   exit 0
 fi
 rm -f "$stamp"
-quicklisp="$(dirname "$(quicklisp_setup)")"
 # a new directory of this account's alone, which the toolbox sees at the same path;
 # it and the directory the sources are packed in go however the script ends
 work="$(mktemp -d /tmp/tuatara-release-build.XXXXXX)"
@@ -61,8 +61,7 @@ trap 'rm -rf "$work" ${pack:+"$pack"}' EXIT
 mkdir -p "$work/src/build" "$work/cache"
 git archive HEAD | tar -x -C "$work/src"
 cp -a build/grammars build/terminal "$work/src/build/"
-cp -a "$quicklisp" "$work/quicklisp"
-tools/lisp-archives.sh prepare "$work/quicklisp"
+tools/lisp-archives.sh install "$work/quicklisp" "$root/build/lisp-downloads"
 "$work/src/tools/build-image.sh" \
   QUICKLISP_SETUP="$work/quicklisp/setup.lisp" XDG_CACHE_HOME="$work/cache" \
   CL_SOURCE_REGISTRY="(:source-registry (:tree \"$work/src/\") :ignore-inherited-configuration)" \
@@ -159,17 +158,24 @@ rm -rf "$work"
 # patches of syntax/patches/ go with Tuatara's sources, applied as the build
 # does); a grammar a grammar requires lives in its node_modules/
 git archive --prefix=tuatara-sources/tuatara/ HEAD | tar -x -C "$pack"
-git -C build/terminal-sources archive --prefix=tuatara-sources/ghostty/ HEAD | tar -x -C "$pack"
+if [ "$(https_git -C build/terminal-sources rev-parse -q --verify HEAD)" != \
+     "$(awk -F'\t' '$1 == "commit" { print $2 }' lisp/terminal/library.pin)" ] ||
+   [ -n "$(https_git -C build/terminal-sources status --porcelain)" ]; then
+  echo "tools/release.sh: build/terminal-sources is not Ghostty as lisp/terminal/library.pin pins it, unchanged:" \
+       "remove it and run tools/terminal-library.sh" >&2
+  exit 1
+fi
+https_git -C build/terminal-sources archive --prefix=tuatara-sources/ghostty/ HEAD | tar -x -C "$pack"
 while IFS=$'\t' read -r name url commit licence subpath; do
   [ "$name" = tree-sitter-cli ] && continue
   mkdir -p "$top/grammars/$name"
-  if [ "$(grammar_git -C "build/grammar-sources/$name" rev-parse -q --verify "HEAD^{commit}")" != \
-       "$(grammar_git -C "build/grammar-sources/$name" rev-parse -q --verify "$commit^{commit}")" ]; then
+  if [ "$(https_git -C "build/grammar-sources/$name" rev-parse -q --verify "HEAD^{commit}")" != \
+       "$(https_git -C "build/grammar-sources/$name" rev-parse -q --verify "$commit^{commit}")" ]; then
     echo "tools/release.sh: build/grammar-sources/$name is not at the commit syntax/grammars.tsv pins:" \
          "run tools/grammars.sh" >&2
     exit 1
   fi
-  grammar_git -C "build/grammar-sources/$name" archive HEAD | tar -x -C "$top/grammars/$name"
+  https_git -C "build/grammar-sources/$name" archive HEAD | tar -x -C "$top/grammars/$name"
 done < <(grammar_manifest)
 cat > "$top/README" <<EOF
 The sources of Tuatara $(sed -n 's/^ *:version "\(.*\)"$/\1/p' tuatara.asd) ($(git rev-parse --short=7 HEAD)) and of

@@ -48,7 +48,7 @@ jobs:
             exit 1
           fi
 
-      - name: Install SBCL, Zig and Quicklisp
+      - name: Install SBCL and Zig
         run: tools/ci-setup.sh
 
       # tools/release.sh refuses a file naming the home directory or the account it

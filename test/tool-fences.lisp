@@ -59,6 +59,46 @@
     (true (search (format nil "GIT_CONFIG_GLOBAL=~agitconfig" (namestring scratch)) output) "~a" output)
     (uiop:delete-directory-tree scratch :validate t :if-does-not-exist :ignore)))
 
+(define-test (tools fence-commits-under-the-test-name)
+  ;; a Lisp of its own given a person's name, address and programs for git loads the fence and commits in a
+  ;; repository of its own: the commit is the fence's Test, and none of those programs is named after
+  (let* ((scratch (merge-pathnames (format nil "fence-~d/" (random 1000000)) *test-state-directory*))
+         (repository (namestring (merge-pathnames "repository/" scratch)))
+         (variables '("GIT_AUTHOR_NAME" "GIT_AUTHOR_EMAIL" "GIT_COMMITTER_NAME" "GIT_COMMITTER_EMAIL" "EMAIL"
+                      "GIT_SSH_COMMAND" "GIT_SSH" "GIT_ASKPASS" "SSH_ASKPASS" "GIT_EXEC_PATH" "GIT_TEMPLATE_DIR"))
+         (output (with-output-to-string (out)
+                   (sb-ext:run-program
+                    sb-ext:*runtime-pathname*
+                    (list "--non-interactive" "--no-userinit" "--no-sysinit"
+                          "--load" (namestring (asdf:system-relative-pathname :tuatara "tools/fence.lisp"))
+                          "--eval" (format nil "(tuatara.fence:fence-person-data ~s)" (namestring scratch))
+                          "--eval" (format nil "(dolist (name '~s) (format t \"~~a=~~a~~%\" name ~
+                                                (sb-posix:getenv name)))"
+                                           variables)
+                          "--eval" (format nil "(uiop:run-program '(\"git\" \"init\" \"-q\" ~s))" repository)
+                          "--eval" (format nil "(uiop:run-program '(\"git\" \"-C\" ~s \"commit\" \"-q\" ~
+                                                \"--allow-empty\" \"-m\" \"made in the fence\"))"
+                                           repository)
+                          "--eval" (format nil "(uiop:run-program '(\"git\" \"-C\" ~s \"log\" \"-1\" ~
+                                                \"--format=commit %an <%ae> %cn <%ce>\") :output t)"
+                                           repository))
+                    :output out :error nil
+                    :environment (append (mapcar (lambda (name)
+                                                   (format nil "~a=~a" name
+                                                           (cond ((search "NAME" name) "Outside")
+                                                                 ((search "EMAIL" name) "owner@example.org")
+                                                                 (t (format nil "/run/owner/~(~a~)" name)))))
+                                                 variables)
+                                         (remove-if (lambda (pair)
+                                                      (find-if (lambda (name)
+                                                                 (uiop:string-prefix-p (format nil "~a=" name) pair))
+                                                               variables))
+                                                    (sb-ext:posix-environ)))))))
+    (true (search "commit Test <test@example.invalid> Test <test@example.invalid>" output) "~a" output)
+    (dolist (name variables)
+      (true (search (format nil "~a=NIL" name) output) "~a is unset in the fence: ~a" name output))
+    (uiop:delete-directory-tree scratch :validate t :if-does-not-exist :ignore)))
+
 (define-test (tools fence-moves-the-state-files)
   ;; a fence made while the editor is loaded, as a manual builder makes one inside the tests, has the
   ;; lists kept between sessions read and written in the fence from then on, never in the state
@@ -80,6 +120,25 @@
       (setf tuatara.defaults:*config-file* config uiop:*temporary-directory* temporary)
       (tuatara.defaults::forget-state-paths)
       (uiop:delete-directory-tree scratch :validate t :if-does-not-exist :ignore))))
+
+(define-test (tools fence-gives-gnupg-an-agent-of-its-own)
+  ;; GnuPG in the tests' run talks to an agent at a socket of its own, never the developer's in
+  ;; /run/user/UID/gnupg/, which a fenced home's .gnupg would share; and a fence asked to put GNUPGHOME there, or
+  ;; anywhere in the fenced home, however it is spelt, is refused
+  (let ((gpgconf (ignore-errors (uiop:run-program '("gpgconf" "--list-dirs" "agent-socket")
+                                                  :output '(:string :stripped t) :error-output nil))))
+    (if (null gpgconf)
+        (skip "no gpgconf here" (true nil))
+        (true (search "/d." gpgconf) "the tests' agent socket is ~a" gpgconf)))
+  (dolist (gnupg '("home/.gnupg/" "home/.gnupg" "home/../home/.gnupg/" "./home/keys/"))
+    (true (search ".gnupg"
+                  (handler-case (progn (tuatara.fence:fence-person-data
+                                        (merge-pathnames (format nil "gnupg-~d/" (random 1000000))
+                                                         *test-state-directory*)
+                                        :places `(("HOME" . "home/") ("GNUPGHOME" . ,gnupg)))
+                                       "")
+                    (error (condition) (princ-to-string condition))))
+          "GNUPGHOME ~a" gnupg)))
 
 (define-test (tools tests-use-the-tools-fence)
   ;; the tests' own fence is the one the tools load, not a copy of it

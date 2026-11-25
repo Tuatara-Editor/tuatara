@@ -392,10 +392,15 @@ these, which may be a long time; no looking without cause but for polled files."
                              (/ (max 0 (- soonest (get-internal-real-time))) internal-time-units-per-second))))))))
 
 (defun send-watcher (request)
-  "Send REQUEST to the watcher, starting it first when needed, and wake it."
+  "Send REQUEST to the watcher, starting it first when needed, and wake it. A
+watcher started again, the one before having ended, is told first of all the
+files and directories watched so far (*WATCHED*, *WATCHED-DIRECTORIES*)."
   (unless *watcher-wake* (setf *watcher-wake* (make-wake-pipe)))
   (unless (and *watcher* (sb-thread:thread-alive-p *watcher*))
-    (setf *watcher* (tuatara.runtime:make-guarded-thread #'watcher-loop :name "tuatara file watcher")))
+    (setf *watcher* (tuatara.runtime:make-guarded-thread #'watcher-loop :name "tuatara file watcher"))
+    (when *watched* (sb-concurrency:send-message *watcher-requests* (list :watch *watched*)))
+    (when *watched-directories*
+      (sb-concurrency:send-message *watcher-requests* (list :directories *watched-directories*))))
   (sb-concurrency:send-message *watcher-requests* request)
   (wake *watcher-wake*))
 

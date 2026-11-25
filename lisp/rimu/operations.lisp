@@ -1400,7 +1400,7 @@ list shows it, point on it."
         ("=" rimu-diff)
         ("+" rimu-make-directory) ("K" rimu-take-out-lines)
         ("a" rimu-touch) ("A" rimu-make-formatted-file) ("C-x C-q" rimu-edit-names)
-        ("g t" rimu-trash) ("g w" rimu-wipe-files) ("C-c f m" rimu-mark-master)))
+        ("g t" trash-manager) ("g w" rimu-wipe-files) ("g m" rimu-mark-master)))
   (commands-for-mode 'rimu-mode "a rimu list (\\[rimu])"
                      'list-mark-entry 'list-mark-for-deletion 'list-unmark-entry 'list-unmark-all 'list-toggle-marks
                      'list-execute 'list-delete-marked 'rimu-mark-master)

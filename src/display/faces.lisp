@@ -51,6 +51,11 @@ list; themes start from these."))
 (defvar *face-generation* 0
   "Incremented whenever a face changes, so that painters can drop cached translations.")
 
+(defvar *theme-generation* 0
+  "Incremented whenever a theme is put in force (APPLY-THEME), every face
+returned to its base first, so that faces coloured apart from any theme (a
+terminal program's colours) are known to want their colours again.")
+
 (define-record (face-cache (:constructor make-face-cache ()) (:copier nil))
   "What a painter has worked out from face specs, kept until a face changes
 \(FACE-CACHE-TABLE)."
@@ -304,6 +309,7 @@ out the theme. Returns the theme's name."
     (dolist (setting *user-face-settings*)
       (apply #'set-face-attributes (car setting) (cdr setting)))
     (setf *current-theme* (and theme (theme-name theme)))
+    (incf *theme-generation*)
     (incf *face-generation*)
     *current-theme*))
 

@@ -54,6 +54,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import meaning
+from lisp_text import QUOTES, is_comment, split_form, tokens
+from repositories import lisp_files, package_roots
 
 INDEX = "test/api/reuse-index.txt"
 DEFINERS = ("defun", "defmacro", "defgeneric", "defmethod", "defvar", "defparameter")
@@ -108,49 +110,6 @@ def read_index():
         entries.append({"name": name.replace(" (internal)", ""), "kind": kind, "file": file,
                         "terms": sentence_words(sentence) | name_parts(name)})
     return list({(e["name"], e["file"]): e for e in entries}.values())
-
-
-def split_form(text, start):
-    """The top-level elements of the form beginning at START in TEXT, as strings; a list is kept whole."""
-    elements, depth, i, begin = [], 0, start, None
-    while i < len(text):
-        c = text[i]
-        if c == ";":
-            i = text.find("\n", i)
-            i = len(text) if i < 0 else i
-            continue
-        if c == "#" and text[i + 1:i + 2] == "\\":
-            i += 3
-            while i < len(text) and text[i].isalnum():
-                i += 1
-            continue
-        if c == '"':
-            j = i + 1
-            while j < len(text) and text[j] != '"':
-                j += 2 if text[j] == "\\" else 1
-            if depth == 1:
-                elements.append(text[i:j + 1])
-            i = j + 1
-            continue
-        if c == "(":
-            if depth == 1:
-                begin = i
-            depth += 1
-        elif c == ")":
-            depth -= 1
-            if depth == 1:
-                elements.append(text[begin:i + 1])
-            if depth == 0:
-                break
-        elif depth == 1 and not c.isspace():
-            j = i
-            while j < len(text) and not text[j].isspace() and text[j] not in "()\"":
-                j += 1
-            elements.append(text[i:j])
-            i = j
-            continue
-        i += 1
-    return elements
 
 
 def docstring(text, start):
@@ -291,28 +250,27 @@ COMMON_RUN = 30
 BINDERS = {"let", "let*", "dolist", "dotimes", "do-symbols", "do-external-symbols", "multiple-value-bind",
            "destructuring-bind", "lambda", "with-open-file", "with-input-from-string", "with-output-to-string",
            "handler-case"}
-TOKEN = re.compile(r'"(?:[^"\\]|\\.)*"|;[^\n]*|#\\(?:[A-Za-z0-9_-]+|.)|[()]|#?[\'`,@]+|[^\s()"\';`,]+')
 NUMBER = re.compile(r"^[-+]?(?:\d+\.?\d*(?:[eEdD][-+]?\d+)?|\d+/\d+|#x[0-9a-fA-F]+|#b[01]+|#o[0-7]+)$")
 
 
 def source_files(packages):
-    """The Lisp files the whole-tree reports read: those of the directories, and with PACKAGES those of the package
-    repositories (their own git directories, not the worktrees of their branches), leaving out any directory called
-    test or tests. Without ../tuatara-packages/ it says so on standard error and goes on."""
-    roots = list(DIRECTORIES)
+    """The Lisp files the whole-tree reports read: those git keeps in the directories, and with PACKAGES those the
+    package repositories keep (their own repositories, not the worktrees of their branches), leaving out any
+    directory called test or tests. Without ../tuatara-packages/ it says so on standard error and goes on."""
+    def kept(name):
+        """Whether the file NAME is in no directory of tests."""
+        return not {"test", "tests"} & set(name.split("/")[:-1])
+    for name in lisp_files("."):
+        if name.split("/")[0] in DIRECTORIES and kept(name):
+            yield name
     if packages:
         base = "../tuatara-packages"
-        if os.path.isdir(base):
-            roots += [os.path.join(base, d) for d in sorted(os.listdir(base))
-                      if os.path.isdir(os.path.join(base, d, ".git"))]
-        else:
+        if not os.path.isdir(base):
             print(f"{base}/ is not there: the package repositories are left out", file=sys.stderr)
-    for root in roots:
-        for directory, names, files in os.walk(root):
-            names[:] = sorted(n for n in names if n not in ("test", "tests", ".git"))
-            for name in sorted(files):
-                if name.endswith(".lisp"):
-                    yield os.path.join(directory, name)
+        for root in package_roots():
+            for name in lisp_files(root):
+                if kept(name):
+                    yield os.path.join(base, root.name, name)
 
 
 def tree_definitions(packages):
@@ -336,8 +294,17 @@ def tree_definitions(packages):
 
 
 def tokens_of(text):
-    """The tokens of TEXT without comments, a string being one token."""
-    return [t for t in TOKEN.findall(text) if not t.startswith(";")]
+    """The tokens of TEXT without comments, a string being one token and the quote marks before an atom one more."""
+    found = []
+    for _, token in tokens(text):
+        if is_comment(token):
+            continue
+        marks = QUOTES.match(token)
+        if marks and 0 < marks.end() < len(token) and not token.startswith(("#\\", '"')):
+            found += [marks.group(), token[marks.end():]]
+        else:
+            found.append(token)
+    return found
 
 
 def local_names(parameters, tokens):
@@ -541,8 +508,9 @@ def alike_meaning(corpus, found, apart, packages):
 
 def report_alike_meaning(packages, threshold, top):
     """Print the pairs of definitions alike in name and docstring by meaning, TOP of them, the count first."""
-    if meaning.command()[0] is None:
-        print(f"no meaning model here: {meaning.command()[1]}")
+    run_with, reason = meaning.command()
+    if run_with is None:
+        print(f"no meaning model here: {reason}")
         return
     corpus = meaning_corpus(packages, plain=True)
     answer = ask_model({"corpus": [c[2] for c in corpus], "pairs": threshold, "limit": PAIR_LIMIT},

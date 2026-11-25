@@ -95,7 +95,7 @@ words it begins with and what they set.")
   "What the line of OCTETS from START below END sets, when it is one of
 *SYNCTEX-HEADERS* with a number after it (Unit:1), as two values: the setting
 and the number; NIL for any other line."
-  (let ((header (find-if (lambda (header) (tuatara.io:octets-at-p octets (car header) start)) *synctex-headers*)))
+  (let ((header (find-if (lambda (header) (tuatara.text:octets-at-p octets (car header) start)) *synctex-headers*)))
     (when header
       (let ((number (synctex-number octets (+ start (length (car header))) end)))
         (and number (values (cdr header) number))))))
@@ -167,7 +167,7 @@ length. NIL when it says no SyncTeX version. In a job, it ends when the job
 is asked to stop."
   (declare (type (simple-array (unsigned-byte 8) (*)) octets))
   (let ((n (length octets)))
-    (unless (and (> n 16) (tuatara.io:octets-at-p octets "SyncTeX Version:" 0))
+    (unless (and (> n 16) (tuatara.text:octets-at-p octets "SyncTeX Version:" 0))
       (return-from read-synctex nil))
     (let* ((most (min *synctex-most-records* (1+ (count 10 octets))))
            (records (make-array (* +synctex-stride+ most) :element-type '(signed-byte 32)))
@@ -221,7 +221,7 @@ is asked to stop."
                               (when (and page (plusp page) (< (fill-pointer pages) *synctex-most-pages*))
                                 (vector-push-extend (list page first count) pages))
                               (setf page nil))
-                             ((tuatara.io:octets-at-p octets "Input:" start) (input start line-end))
+                             ((tuatara.text:octets-at-p octets "Input:" start) (input start line-end))
                              (t (multiple-value-bind (setting number) (synctex-header octets start line-end)
                                   (when setting (setf (getf settings setting) number)))))))
                    (setf start (1+ end))))

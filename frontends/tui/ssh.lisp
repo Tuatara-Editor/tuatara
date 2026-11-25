@@ -321,7 +321,7 @@ it unlimited."
          (host (ssh-link-host link))
          (version (and destinations (tuatara.defaults:openssh-version program))))
     (cond ((null destinations) (values '() nil))
-          ((and version (tuatara.io:software-version-at-least-p version '(8 9)))
+          ((and version (tuatara.text:software-version-at-least-p version '(8 9)))
            (let* ((there (known-host-name program host))
                   (machine (subseq there (1+ (or (position #\@ there) -1)))))
              (values (list* "-h" there (loop for destination in destinations

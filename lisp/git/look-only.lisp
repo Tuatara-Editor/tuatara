@@ -502,10 +502,10 @@ the shadow past *GIT-SHADOW-MOST*."
                           ((> (tuatara.io:stamp-size stamp) (git-file-most what))
                            (git-refuse-reading top "its ~a ~a is larger than any a repository holds (~a)" what
                                                (abbreviated-path from)
-                                               (tuatara.io:octets-words (tuatara.io:stamp-size stamp))))
+                                               (tuatara.text:octets-words (tuatara.io:stamp-size stamp))))
                           ((> (+ (git-shadow-copied shadow) (tuatara.io:stamp-size stamp)) *git-shadow-most*)
                            (git-refuse-reading top "its references, logs and index together are larger than ~a"
-                                               (tuatara.io:octets-words *git-shadow-most*)))
+                                               (tuatara.text:octets-words *git-shadow-most*)))
                           (t (incf (git-shadow-copied shadow) (tuatara.io:stamp-size stamp))
                              (ensure-directories-exist (sb-ext:parse-native-namestring (tuatara.io:parent-path to)))
                              (tuatara.io:copy-open-file-to in from to))))

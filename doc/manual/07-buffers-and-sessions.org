@@ -84,6 +84,11 @@ them all if every one is folded. On a heading, ~l~ and ~RET~ open the section,
 and ~h~ folds it. On any other line ~h~ does nothing, so a stray press does
 not close the list; ~q~ does that.
 
+A fold hides lines, never marks. A marked entry in a folded section stays
+marked, and a command on the marked entries acts on it too. Its question says
+how many of them a fold hides, as in =Kill the 3 buffers (1 in a folded
+section)?=.
+
 *** Marks
 
 The list works on one buffer at a time, or on several if you mark them.
@@ -92,7 +97,8 @@ is on and moves down a line, so you can mark a run of buffers by pressing ~m~
 over and over. A number before the key marks that many lines. ~u~ takes a mark
 off the line and moves down, and ~U~ takes every mark off. ~t~ swaps the two
 states: what was marked becomes unmarked and the other way round. That is a
-quick way to say "everything except these".
+quick way to say "everything except these". It leaves the entries of a folded
+section as they are, and the number it says counts every mark, theirs too.
 
 While any entry is marked, the mode line of the list says how many, for
 example "3 marked, 1 for deletion". It changes with each mark you put or take
@@ -118,11 +124,11 @@ again. You rarely need that, because the list updates itself while it is on the
 screen, and your marks stay.
 
 When Tuatara runs in the background, serving several windows of its own (a
-daemon, described in chapter 18), each of those windows is a client and the
-list has a section for each client instead. ~K~ on a client's section makes
-that client the one that stays when its last buffer is closed. The setting
-=*client-kept-without-buffers*= says which one stays when you do not choose.
-You can skip this until chapter 18.
+daemon, described in chapter 18), each of those windows is a client and the list
+has a section for each client instead. ~C-c K~ on a client's section makes that
+client the one that stays when its last buffer is closed. The setting
+=*client-kept-without-buffers*= says which one stays when you do not choose. You
+can skip this until chapter 18.
 
 #+begin_try Try it, with a letter and a shopping list
 1. Press ~C-x C-f~, type =~/letter.txt= and press ~RET~. Press ~i~ and type
@@ -278,6 +284,14 @@ bookmark whose file has gone is shown faint.
 A bookmark on a directory listing keeps the directory and the entry the cursor
 is on, so you can bookmark a directory you visit often.
 
+A bookmark can keep a place on another machine, such as
+=/ssh:server:/home/me/notes.txt= or a directory listed there. Going to it
+connects again when the connection has been closed, and the cursor goes to the
+place once the file has been read. The manager shows such a bookmark as
+=remote= at once, without connecting. The others are looked at in the
+background, and until that ends the last line says =looking for those gone=
+in place of how many are gone.
+
 #+begin_try Try it, with some notes
 1. Open =~/notes.txt= and type a few lines, such as =Plumber: Wanaka Plumbing=,
    =Dentist: 9 May=, =Car service: Taupo Motors=, each ended with ~RET~. Save.
@@ -374,11 +388,13 @@ takes them into the buffer, after asking. They arrive as one edit. ~C-/~ (modal:
 ~u~) takes it back if you change your mind, and ~C-x C-s~ writes it to the file
 if you do not.
 
-You can also see every copy that is waiting with ~M-x list-auto-saves~. The
-list shows when each copy was written, how big it is and which file it
-belongs to, with the newest first. It marks and acts as the buffer list
-does: ~RET~ recovers the copy on the line, after asking, and ~x~ and ~D~ delete
-copies.
+You can also see every copy that is waiting with ~M-x auto-saves-manager~. The
+copies newer than their file, the ones worth taking back, come first in a
+section of their own; those older than their file, and those whose file is
+gone, follow in sections of theirs. Each line shows when the copy was written,
+how big it is and which file it belongs to, the newest first. It marks and
+acts as the buffer list does: ~RET~ or ~l~ recovers the copy on the line, after
+asking, ~h~ folds a section, and ~x~ and ~D~ delete copies.
 
 Auto-save is on as standard, through =*auto-save*=. With =t= the changes of
 every buffer that visits a file are written now and then to a copy of their
@@ -406,7 +422,7 @@ you can point it at a directory on another drive. =*auto-save-idle*= and
    is back. Press ~C-x C-s~ to save it.
 #+end_try
 
-#+table: commands list-auto-saves recover-file
+#+table: commands auto-saves-manager recover-file
 
 #+table: settings *auto-save* *auto-save-directory* *auto-save-idle* *auto-save-interval* *auto-save-size-limit*
 

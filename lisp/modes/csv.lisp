@@ -575,25 +575,35 @@ the header, gives them, in order, without enclosing quotes (CSV-FIELD-VALUE);
 of a first line longer than a megabyte, only the fields of its first
 megabyte. A quoted name may hold a line break, the header then going on over
 it (CSV-RECORD-END). A byte-order mark the file begins with is no part of
-the first name."
+the first name. The octet where the header's text read ends is the second
+value."
   (let* ((rope (tuatara.buffer:buffer-text buffer))
          (delimiter (csv-delimiter buffer))
          (end (record-text-end rope (min (csv-record-end rope 0 :delimiter delimiter) +csv-scan-limit+)
                                (buffer-crlf-p buffer)))
          (text (tuatara.text:lenient-string (tuatara.text:rope-octets rope :start 0 :end end)))
          (start (if (and (plusp (length text)) (char= (char text 0) (code-char #xfeff))) 1 0)))
-    (map 'list (lambda (field) (csv-field-value text (car field) (cdr field)))
-         (csv-fields text start (length text) delimiter))))
+    (values (map 'list (lambda (field) (csv-field-value text (car field) (cdr field)))
+                 (csv-fields text start (length text) delimiter))
+            end)))
 
 (defun csv-header-name (buffer index)
   "The name of column INDEX (from 0) of BUFFER, as CSV-HEADER-NAMES gives
-them, or NIL; the names kept for BUFFER's text as it is."
+them, or NIL. The names are kept while the header and the separator are
+unchanged (UNCHANGED-BEFORE): an edit below the header reads it no more."
   (let ((version (tuatara.buffer:buffer-version buffer))
+        (delimiter (csv-delimiter buffer))
         (kept (tuatara.buffer:buffer-local buffer 'csv-header-names)))
-    (unless (and kept (eq (car kept) version))
-      (setf kept (cons version (coerce (csv-header-names buffer) 'simple-vector))
-            (tuatara.buffer:buffer-local buffer 'csv-header-names) kept))
-    (and (< index (length (cdr kept))) (svref (cdr kept) index))))
+    (when (and kept (not (eq (first kept) version)) (eql (third kept) delimiter)
+               (let ((low (unchanged-before (first kept) version)))
+                 (and low (> low (second kept)))))
+      (setf (first kept) version))
+    (unless (and kept (eq (first kept) version) (eql (third kept) delimiter))
+      (multiple-value-bind (names end) (csv-header-names buffer)
+        (setf kept (list version end delimiter (coerce names 'simple-vector))
+              (tuatara.buffer:buffer-local buffer 'csv-header-names) kept)))
+    (let ((names (fourth kept)))
+      (and (< index (length names)) (svref names index)))))
 
 (defmethod filters-hide-lines-p ((mode csv-mode) buffer)
   "A CSV's records, a line each under its header line."

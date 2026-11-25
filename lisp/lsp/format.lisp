@@ -31,11 +31,6 @@ settings, and some run code of the project's.
   its plugins from elsewhere)."
   :values boolean)
 
-(defvar *format-largest-text* (* 8 1024 1024)
-  "The largest text, in octets, given to a formatter, as large as a language
-server is given (*LSP-LARGEST-DOCUMENT*): a larger buffer is not formatted,
-and that is said.")
-
 (define-setting *format-seconds* 30
   "How long a formatter may take before it is stopped and nothing is changed; a
 language server laying out code that has not answered by then is no longer
@@ -186,9 +181,9 @@ formatter of the whole file is not run then, and that is said."
          (when then (funcall then buffer (not (member changed '(:none :too-large)))))))
       ((formatting-p buffer)
        (message "~a is being formatted already" (tuatara.buffer:buffer-name buffer)))
-      ((> (tuatara.buffer:buffer-size buffer) *format-largest-text*)
-       (message "~a is larger than a formatter is given (~a): not formatted"
-                (tuatara.buffer:buffer-name buffer) (tuatara.text:octets-words *format-largest-text* :binary t))
+      ((> (tuatara.buffer:buffer-size buffer) *lsp-largest-document*)
+       (message "~a is larger than a formatter is given (~a, *lsp-largest-document*): not formatted"
+                (tuatara.buffer:buffer-name buffer) (tuatara.text:octets-words *lsp-largest-document* :binary t))
        (when then (funcall then buffer nil)))
       (t
        (let ((version (tuatara.buffer:buffer-version buffer))

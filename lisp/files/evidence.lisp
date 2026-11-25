@@ -990,11 +990,12 @@ a copy of it, as (VALUE . COPY).")
 (defun evidence-tick (editor)
   "Tick function: once *EVIDENCE-DIRECTORIES* has changed, say what is wrong with
 its entries, and make each buffer whose file is evidence now, opened before,
-read-only, saying so; nothing is written there in any case. A comparison of
-one value when it has not changed."
+read-only, saying so; nothing is written there in any case. The setting is
+taken as changed unless it is the very value seen last, its entries as they
+were then: one changed in place is noticed too."
   (declare (ignore editor))
   (let ((value *evidence-directories*) (seen *evidence-directories-seen*))
-    (unless (or (eq value (car seen)) (and value (equal value (cdr seen))))
+    (unless (and (eq value (car seen)) (equal value (cdr seen)))
       (setf *evidence-directories-seen* (cons value (copy-tree value)))
       (dolist (words (evidence-problems-words)) (message "~a" words))
       (dolist (buffer (copy-list tuatara.buffer:*buffers*))
@@ -1127,8 +1128,8 @@ DIRECTORY; LOG, the log written beside them once done."
 
 (defun copy-from-evidence-paths (buffer)
   "The files \\[copy-from-evidence] copies from BUFFER: the marked ones in a
-rimu list, or the one on the line; else the file at point or BUFFER's
-\(THING-AT-POINT-PATH)."
+rimu list, or the one on the line; else the file at point or BUFFER's own
+\(SHOWN-FILE)."
   (if (rimu-list-p buffer)
       (rimu-chosen-paths buffer)
       (let ((path (shown-file buffer :at-point t)))

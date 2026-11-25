@@ -162,8 +162,7 @@ capture templates directory (the first of *CAPTURE-TEMPLATE-DIRECTORIES*) and
 visit it: your copy, changed as you like (where it files, its text), takes
 the place of Tuatara's on the same key. One you have already is visited as it
 is."
-  (copy-chosen-own-file "Copy capture template: "
-                        (loop for (file text) in *built-in-capture-templates*
+  (copy-chosen-own-file (loop for (file text) in *built-in-capture-templates*
                               for template = (read-capture-template file text t)
                               when template
                                 collect (make-candidate (capture-template-name template) :value (list nil file text)
@@ -184,7 +183,7 @@ is."
     (t (format nil "~s" target))))
 
 (defun org-capture-fill (template &key link selection target-buffer day)
-  "TEMPLATE with its %-escapes filled in (*CAPTURE-TEMPLATE-DIRECTORIES* lists them),
+  "TEMPLATE with its %-escapes filled in (*ORG-CAPTURE-ESCAPES* lists them),
 asking for what it asks, in order, as two values: the text, and where %? is
 in it (its end when it has none). LINK is (LINK LABEL) for %a, SELECTION the
 text for %i, TARGET-BUFFER the file whose tags %^g offers first, DAY a day
@@ -335,22 +334,15 @@ STARTED; with RESUME, stop it now and clock again what ran before."
                 (tuatara.text:anchor-position (second before) (tuatara.buffer:buffer-version b)))
           (org-clock-in-here b))))))
 
-(defun org-capture-prompt (templates)
-  "The question choosing among TEMPLATES: each key and name, yours marked, as
-short as it can be said on one line."
-  (format nil "Capture: ~{[~a] ~a~^  ~}"
-          (loop for template in templates
-                append (list (capture-template-key template)
-                             (format nil "~a~:[ (yours)~;~]" (capture-template-name template)
-                                     (capture-template-own template))))))
-
 (defun org-capture-choose (templates)
-  "The one of TEMPLATES whose key is pressed next, asked with all of them
-listed, or NIL for a key none has; \\`C-g' leaves."
-  (let ((key (read-key (org-capture-prompt templates))))
-    (when (quit-key-p key) (keyboard-quit-signal))
-    (find (tuatara.frontend:key-description (tuatara.frontend:key-spec key)) templates
-          :key #'capture-template-key :test #'string=)))
+  "The one of TEMPLATES whose key is pressed next, asked with each key on the
+prompt and its name beside it, yours marked; \\`C-g' leaves."
+  (let ((key (read-key-choice "Capture:" (loop for template in templates
+                                               collect (cons (capture-template-key template)
+                                                             (format nil "~a~:[ (yours)~;~]"
+                                                                     (capture-template-name template)
+                                                                     (capture-template-own template)))))))
+    (find key templates :key #'capture-template-key :test #'string=)))
 
 (defun org-capture-selection (origin)
   "The text selected in ORIGIN as its windows show it (REGION-TEXT), its lines
@@ -415,7 +407,6 @@ buffer; with DAY, a day number, for that day (ORG-CAPTURE-ON-DAY)."
   (let* ((origin (current-buffer))
          (chosen (org-capture-choose (capture-templates))))
     (cond
-      ((null chosen) (message "No capture template on that key"))
       ((null (capture-template-target chosen))
        (message "The capture template ~a says nowhere to file it: # file:, # heading:, # outline: or # journal: t"
                 (capture-template-file chosen)))

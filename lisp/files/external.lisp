@@ -357,21 +357,27 @@ it was decided. True."
 program, as the character answered, asked unless *OPEN-EXTERNALLY-ASK* is
 NIL: y a private copy, n nothing, e the file itself, trusted this once, or for
 EVIDENCE a private copy whatever its kind, so that nothing is written beside
-it. When REFUSAL says why no copy may be opened, y is not offered, and with
-nothing asked the refusal is said and NIL returned."
-  (let ((e-words (if evidence
-                     "e a copy of this evidence whatever its kind, which may run what it holds"
-                     "e the file itself, which may run what it holds")))
+it. The prompt is short; the kind, that the program runs outside the sandbox,
+what each answer does and REFUSAL are its details. When REFUSAL says why no
+copy may be opened, y is not offered, and with nothing asked the refusal is
+said and NIL returned."
+  (let ((prompt (format nil "Open ~a in ~a?" name label))
+        (e-words (if evidence
+                     "a copy of this evidence whatever its kind, which may run what it holds"
+                     "the file itself, which may run what it holds")))
     (cond ((not *open-externally-ask*)
            (if refusal (progn (message "~a" refusal) nil) #\y))
           (refusal
-           (read-typed-answer (format nil "Untrusted ~a is ~a, of which no copy is opened. In ~a: ~a"
-                                      name words label e-words)
-                              '((#\n "no") (#\e "execute"))))
+           (read-typed-answer prompt '((#\n "no") (#\e "execute"))
+                              :details (format nil "~a is untrusted, ~a, and opened outside the sandbox.~%~a.~%~%~
+                                                    n: nothing is opened.~%e: ~a.~%"
+                                               name words refusal e-words)))
           (t
-           (read-typed-answer (format nil "Open ~a (~a) in ~a, outside the sandbox? Untrusted: y a copy, ~a"
-                                      name words label e-words)
-                              '((#\y "yes") (#\n "no") (#\e "execute")))))))
+           (read-typed-answer prompt '((#\y "yes") (#\n "no") (#\e "execute"))
+                              :details (format nil "~a is untrusted, ~a, and opened outside the sandbox.~%~%~
+                                                    y: a copy, read only and yours alone.~%~
+                                                    n: nothing is opened.~%e: ~a.~%"
+                                               name words e-words))))))
 
 (defun open-externally-file (path &key also)
   "Open the file at PATH in the desktop's own program for its kind, or the one

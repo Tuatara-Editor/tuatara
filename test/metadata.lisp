@@ -25,10 +25,10 @@ the file's access time is left alone.")
 
 (defun le-octets (n count)
   "N as COUNT octets, least significant first."
-  (tuatara.io:octets-put-integer (make-array count :element-type '(unsigned-byte 8)) n count :at 0))
+  (tuatara.text:octets-put-integer (make-array count :element-type '(unsigned-byte 8)) n count :at 0))
 (defun be-octets (n count)
   "N as COUNT octets, most significant first."
-  (tuatara.io:octets-put-integer (make-array count :element-type '(unsigned-byte 8)) n count :at 0 :big-endian t))
+  (tuatara.text:octets-put-integer (make-array count :element-type '(unsigned-byte 8)) n count :at 0 :big-endian t))
 
 (defun tiff-test-octets (image exif gps thumbnail)
   "A little-endian TIFF structure (EXIF) of the IMAGE, EXIF, GPS and THUMBNAIL
@@ -678,6 +678,12 @@ endobj"))))
   ;; a backslash before a CR LF line end passes over both
   (is string= "ab" (tuatara.defaults::pdf-literal-string-at (octets-of "(a\\" 13 10 "b)") 0)))
 
+(define-test (metadata pdf-literal-string-ends-within)
+  ;; a string cut short by the end of the octets, a backslash last: it ends at the end, never past it
+  (multiple-value-bind (text end) (tuatara.defaults::pdf-literal-string-at (octets-of "(abc\\") 0)
+    (is string= "abc" text)
+    (is = 5 end)))
+
 (define-test (metadata pdf-streams-without-end-read-in-step)
   ;; streams with no endstream after them: the file is read in a time in step with its size, not its square
   (flet ((seconds (count)
@@ -700,18 +706,18 @@ endobj"))))
              (end (+ start (random (1+ (- (length octets) start)) random)))
              (from-end (zerop (random 2 random))))
         (unless (eql (search needle octets :start2 start :end2 end :from-end from-end)
-                     (tuatara.io:octets-search needle octets :start start :end end :from-end from-end))
+                     (tuatara.text:octets-search needle octets :start start :end end :from-end from-end))
           (push (list needle octets start end from-end) disagreeing))))
     (is equal '() disagreeing))
-  (is = 2 (tuatara.io:octets-search #(1 2) (make-array 4 :initial-contents '(0 0 1 2) :adjustable t)))
-  (false (tuatara.io:octets-search (octets-of "obj") (octets-of "ob")))
+  (is = 2 (tuatara.text:octets-search #(1 2) (make-array 4 :initial-contents '(0 0 1 2) :adjustable t)))
+  (false (tuatara.text:octets-search (octets-of "obj") (octets-of "ob")))
   ;; crossed or outside bounds answer NIL in any vector, never an error
   (let ((adjustable (make-array 4 :initial-contents '(0 0 1 2) :adjustable t)))
     (dolist (octets (list (octets-of 0 0 1 2) adjustable))
-      (false (tuatara.io:octets-search #(1) octets :start 3 :end 1))
-      (false (tuatara.io:octets-search #(1) octets :start 9))
-      (is = 2 (tuatara.io:octets-search #(1) octets :start -5 :end 99))
-      (false (tuatara.io:octets-search #() octets :start 3 :end 1)))))
+      (false (tuatara.text:octets-search #(1) octets :start 3 :end 1))
+      (false (tuatara.text:octets-search #(1) octets :start 9))
+      (is = 2 (tuatara.text:octets-search #(1) octets :start -5 :end 99))
+      (false (tuatara.text:octets-search #() octets :start 3 :end 1)))))
 
 (defun zlib-stored-octets (octets)
   "OCTETS as zlib data of one stored deflate block, as /FlateDecode takes them."
@@ -987,6 +993,30 @@ OPERANDS FROM END), and how many it counted, as two values."
           (tuatara.buffer:kill-buffer shown)))
       (is = 946681200 (sb-posix:stat-atime (sb-posix:stat path))))))
 
+(define-test (metadata office-read-shut-in)
+  ;; what an Office file says of itself is read shut in, on the file opened, whatever is put at its path
+  ;; meanwhile; the editor never reads it by its name
+  (with-test-directory (dir)
+    (let ((xlsx (write-office-test-file (merge-pathnames "birds.xlsx" dir) *xlsx-test-parts*))
+          (calls '()))
+      (sb-int:encapsulate 'tuatara.packages:sandbox-call 'recorded
+                          (lambda (function name inputs directory &rest more)
+                            (declare (ignore function more))
+                            (push (list name inputs) calls)
+                            (rename-file xlsx (merge-pathnames "kept.xlsx" dir))
+                            (alexandria:write-string-into-file "put in its place" xlsx)
+                            (values (tuatara.defaults::office-about-shut-in
+                                     (list (format nil "/proc/self/fd/~d" (first inputs))) directory :xlsx)
+                                    nil :done 0)))
+      (unwind-protect
+           (let ((note (metadata-of xlsx)))
+             (note-has note "* About this workbook")
+             (note-has note "- Made by :: Bo Kaikoura"))
+        (sb-int:unencapsulate 'tuatara.packages:sandbox-call 'recorded))
+      (is = 1 (length calls))
+      (is eq 'tuatara.defaults::office-about-shut-in (first (first calls)))
+      (true (integerp (first (second (first calls))))))))
+
 (define-test (metadata misleading-files)
   ;; loops, sizes past the end, counts in the millions: read as far as they make sense, never hanging
   (with-test-directory (dir)
@@ -1120,7 +1150,7 @@ OPERANDS FROM END), and how many it counted, as two values."
                                                        (openpgp-test-packet 18 (octets-of 1 2 3)))))
               (tuatara-user:*metadata-look-up-key-owners* :ask))
           (let ((f (docx-session path (list (format nil "M-x ~a RET" (rimu-typed "show-file-metadata")) "y RET" ""))))
-            (true (tuatara.frontend.fake:fake-frame-showing f "look up whose in your keyring")))
+            (true (tuatara.frontend.fake:fake-frame-showing f "Look up whose keys it is encrypted to?")))
           (let ((shown (tuatara.buffer:find-buffer "*Metadata: message.dat*")))
             (true shown)
             (when shown

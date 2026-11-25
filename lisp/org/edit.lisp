@@ -609,7 +609,7 @@ next date instead, unless REPEAT is NIL."
                    (let ((rule (org-rule-timestamp-in text line-end (org-entry-end headline text))))
                      (and rule (org-rule-goes-on-p rule (org-headline-property headline "LAST_REPEAT") now
                                                    (org-entry-notes headline text))))))
-      (return-from org-put-todo (org-repeat-entry parse headline (org-parse-point parse) old new now)))
+      (return-from org-put-todo (org-repeat-entry parse headline position old new now)))
     ;; the planning line under the headline: CLOSED: added or taken away
     (multiple-value-bind (keyword-at old-end) (org-keyword-span text headline old)
       (let* ((position (if (>= position old-end) (+ position (- (length inserted) (- old-end keyword-at))) position))
@@ -853,8 +853,8 @@ listed on TO's day, and a task done there done for the time it was."
   "For the headline point is under, whose date repeats, ask as VERB (Cancel,
 Schedule) whether to act on one time of it, the agenda's line's
 \(*ORG-AGENDA-OCCURRENCE*) or the one open now, or on the whole of it:
-:THIS for \\`t', :SERIES for \\`s', :NONE for any other key, said to do
-nothing; \\`C-g' quits. :SERIES unasked when it does not repeat."
+:THIS for \\`t', :SERIES for \\`s'; \\`C-g' quits. :SERIES unasked when it
+does not repeat."
   (with-org-structure (parse buffer tree text position)
     (let ((headline (org-current-headline tree position)))
       (if (not (and headline
@@ -862,14 +862,13 @@ nothing; \\`C-g' quits. :SERIES unasked when it does not repeat."
                                       (string-line-end text (org-node-begin headline))
                                       (org-entry-end headline text))))
           :series
-          (let ((key (read-key (format nil "~a: t this time~@[ (~a)~], s the series" verb
-                                       (and *org-agenda-occurrence* (org-occurrence-words *org-agenda-occurrence*))))))
-            (when (quit-key-p key) (keyboard-quit-signal))
-            (let ((words (tuatara.frontend:key-description (tuatara.frontend:key-spec key))))
-              (cond ((equal words "t") :this)
-                    ((equal words "s") :series)
-                    (t (message "~a is neither: t this time, s the series; nothing done" words)
-                       :none))))))))
+          (if (equal "t" (read-key-choice (format nil "~a:" verb)
+                                          (list (cons "t" (format nil "this time~@[ (~a)~]"
+                                                                  (and *org-agenda-occurrence*
+                                                                       (org-occurrence-words *org-agenda-occurrence*))))
+                                                (cons "s" "the series"))))
+              :this
+              :series)))))
 
 (defun org-move-asked ()
   "Ask for the day to move one time of the repeating entry point is under to,
@@ -918,11 +917,9 @@ ended, not moved on."
               (message "Not in a subtree")
               (multiple-value-bind (choice parse headline position)
                   (org-ask-about-headline parse headline (lambda () (org-occurrence-choice "Cancel"))
-                                          "The headline is no longer there: nothing cancelled"
-                                          :skip (lambda (choice) (eq choice :none)))
+                                          "The headline is no longer there: nothing cancelled")
                 (let ((keyword (org-cancel-keyword (org-parse-todo-keywords parse))))
-                  (cond ((eq choice :none))
-                        ((eq choice :this) (org-cancel-occurrence parse headline position *org-agenda-occurrence*))
+                  (cond ((eq choice :this) (org-cancel-occurrence parse headline position *org-agenda-occurrence*))
                         ((null keyword) (message "No CANCELLED among this file's #+TODO: keywords"))
                         (t (org-put-todo parse position headline keyword :repeat nil)
                            (org-todo-changed buffer))))))))))

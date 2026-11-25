@@ -401,7 +401,7 @@ commented inside another one commented (;;   ;; (setf ...) in a load-package's
         (tuatara-user:*logos-directory* nil)
         (tuatara.defaults::*note-templates-directory* nil))
     (dolist (directory (list (first (tuatara.defaults::capture-template-directories))
-                          (tuatara.defaults::logos-directory)
+                          (first (tuatara.defaults::logos-directories))
                           (tuatara.defaults::docx-templates-directory)
                           (tuatara.defaults::latex-templates-directory)
                           (tuatara.defaults::note-templates-directory)))

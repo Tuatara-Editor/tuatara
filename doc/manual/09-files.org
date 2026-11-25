@@ -596,7 +596,7 @@ so that opening the file again need not fetch it again (see "The cache" below).
 A file on another machine has no git marks, no language server, no auto-saved
 copy and no build, since those would read what is around the file, and what is
 around it is not here. A file's own settings are taken only from a machine you
-trust, listed by =M-x server-list=, chapter 18. Each request has
+trust, listed by =M-x server-manager=, chapter 18. Each request has
 =*remote-seconds*= to be answered, 30 as standard. Past that, the work in hand
 fails and says so.
 
@@ -800,11 +800,13 @@ that it has not been changed since.
 
 A file whose name ends in =.gpg= opens decrypted. The text on disk stays
 encrypted. The decrypted text lives in memory only. It is never auto-saved, and
-it is not placed on the system clipboard unless you ask for that. Each save
-encrypts it again. If the file is encrypted to a passphrase and not to a key,
-gpg-agent's prompt asks at once. When the minibuffer is what asks (next
-section), the buffer waits until you press ~RET~ first.
-~M-x gpg-decrypt-with-passphrase~ is the same.
+it is not placed on the system clipboard unless you ask for that. When you close
+the buffer, what you cut or copied from it goes too: its kills leave the kill
+ring, its registers are emptied, and the rectangle store lets go of a block
+taken from it. Each save encrypts it again. If the file is encrypted to a
+passphrase and not to a key, gpg-agent's prompt asks at once. When the
+minibuffer is what asks (next section), the buffer waits until you press ~RET~
+first. ~M-x gpg-decrypt-with-passphrase~ is the same.
 
 Whom a file is encrypted to is a choice for each save.
 ~M-x gpg-choose-encryption-keys~ chooses again, between keys and a passphrase,
@@ -883,9 +885,10 @@ tells you who signed only as far as you trust the key.
 
 *** Keys
 
-~M-x gpg-list-keys~ opens a list of your keys and those you have of others. The
-list fills in as gpg answers. ~M-x gpg-keys-details~ shows one key's
-fingerprint, names and expiry. ~M-x gpg-import-keys~ and
+~M-x gpg-keys-manager~ opens a list of your keys and those you have of others,
+each in a section of its own. The list fills in as gpg answers. ~RET~ or ~l~
+shows the fingerprint, names and expiry of the key on the line, and ~h~ folds
+a section. ~M-x gpg-import-keys~ and
 ~M-x gpg-import-keys-region~ add keys from a file or from selected text.
 ~M-x gpg-keys-export~ writes the public part of marked keys to a file, and
 ~M-x gpg-keys-insert~ puts it at the cursor in the buffer the list was opened
@@ -912,7 +915,7 @@ from. The directory list (chapter 10) has keys for the same jobs on files.
 
 *** Commands and settings
 
-#+table: commands gpg-encrypt-file gpg-decrypt-file gpg-encrypt-region gpg-decrypt-region gpg-decrypt-with-passphrase gpg-choose-encryption-keys gpg-copy-to-clipboard gpg-lock wipe-file gpg-sign-file gpg-sign-region gpg-verify-file gpg-verify-region gpg-import-keys gpg-import-keys-region gpg-list-keys gpg-keys-details gpg-keys-export gpg-keys-insert
+#+table: commands gpg-encrypt-file gpg-decrypt-file gpg-encrypt-region gpg-decrypt-region gpg-decrypt-with-passphrase gpg-choose-encryption-keys gpg-copy-to-clipboard gpg-lock wipe-file gpg-sign-file gpg-sign-region gpg-verify-file gpg-verify-region gpg-import-keys gpg-import-keys-region gpg-keys-manager gpg-keys-export gpg-keys-insert
 
 #+table: settings *gpg-program* *gpg-passphrase-from* *gpg-loopback-warning*
 
@@ -936,7 +939,9 @@ drives and the temporary directories as standard, or when it is a copy
 Tuatara made of an outside file or a file marked as come from outside
 (chapter 12). Links are followed first: a link in your notes that leads into
 your downloads is untrusted too. Tuatara asks before opening an untrusted file,
-and the answer is typed and ended with ~RET~:
+such as =Open photo.png in the desktop's program?=, with the file's kind and
+what each answer does shown below the question. The answer is typed and ended
+with ~RET~:
 
 - =y= opens a copy of the file that only you can read and nobody can change.
   Tuatara looks at what the file is, not what its name says, and only the kinds

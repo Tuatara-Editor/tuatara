@@ -87,17 +87,17 @@ NIL when it has none."
   (multiple-value-bind (begin end) (signature-block text kind)
     (let ((mark "-----BEGIN SSH SIGNATURE-----"))
       (when (and begin (string= mark text :start2 begin :end2 (min (length text) (+ begin (length mark)))))
-        (let* ((octets (tuatara.io:base64-octets (tuatara.text:string-octets (subseq text (+ begin (length mark))
+        (let* ((octets (tuatara.text:base64-octets (tuatara.text:string-octets (subseq text (+ begin (length mark))
                                                                                      (search "-----END" text :start2 begin :end2 end)))))
-               (size (tuatara.io:octets-integer octets 10 4 :big-endian t)))
-          (when (and size (tuatara.io:octets-at-p octets "SSHSIG") (<= (+ 14 size) (length octets)))
+               (size (tuatara.text:octets-integer octets 10 4 :big-endian t)))
+          (when (and size (tuatara.text:octets-at-p octets "SSHSIG") (<= (+ 14 size) (length octets)))
             (let* ((blob (subseq octets 14 (+ 14 size)))
-                   (type-size (tuatara.io:octets-integer blob 0 4 :big-endian t))
+                   (type-size (tuatara.text:octets-integer blob 0 4 :big-endian t))
                    (type (and type-size
                               (<= (+ 4 type-size) (length blob))
-                              (tuatara.io:octets-ascii blob 4 (+ 4 type-size)))))
+                              (tuatara.text:octets-ascii blob 4 (+ 4 type-size)))))
               (and type (cl-ppcre:scan "^[a-z0-9@.-]{1,64}$" type)
-                   (format nil "~a ~a" type (tuatara.io:base64-string blob))))))))))
+                   (format nil "~a ~a" type (tuatara.text:base64-string blob))))))))))
 
 (defun ssh-signature-p (text kind)
   "True when the signature of the git object TEXT, of KIND :commit or :tag, is

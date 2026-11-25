@@ -616,8 +616,8 @@ init file. =*format-on-save*= names the languages formatted before each save, or
 =t= for every language with a formatter installed. A formatter that takes longer
 than =*format-seconds*= is stopped and nothing changes. =*format-in-sandbox*=
 turns off the sandbox for a formatter that cannot work shut in. A file larger
-than 8 MiB, as large as a language server is given, is not given to a
-formatter, and the echo area says so.
+than =*lsp-largest-document*= (8 MB), the most a language server is given, is
+not given to a formatter either, and the echo area says so.
 
 *** Settings of your own
 
@@ -696,10 +696,10 @@ for today, =$TM_FILENAME= for the file, =$AUTHOR= for the name in
 
 Type the key and press ~TAB~, and the text goes in with the cursor in the first
 place. ~TAB~ moves on to the next place and ~S-TAB~ back to the one before.
-After the last place the cursor goes to =$0=. ~C-c y~ (=insert-snippet=), in
+After the last place the cursor goes to =$0=. ~C-c y~ (=snippet-insert=), in
 buffers of text and of code, chooses a snippet from a list by name, each with
 its key, and with text selected the selection goes where the snippet has
-=$TM_SELECTED_TEXT=. ~M-x copy-snippet~ copies one of Tuatara's own into your
+=$TM_SELECTED_TEXT=. ~M-x snippet-copy~ copies one of Tuatara's own into your
 directory so that you can change it, and yours takes the place of Tuatara's.
 
 #+begin_try Try it, with a Python script header
@@ -720,7 +720,7 @@ directory so that you can change it, and yours takes the place of Tuatara's.
 
 *** Commands and settings
 
-#+table: commands insert-snippet copy-snippet snippet-next-field snippet-previous-field
+#+table: commands snippet-insert snippet-copy snippet-next-field snippet-previous-field
 
 #+table: settings *snippet-directories* *snippet-tab* *user-full-name*
 

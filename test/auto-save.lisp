@@ -105,10 +105,10 @@ and the editor."
         ;; the editor started again says so; the list shows it, newer than its file
         ;; (counted in the background, said a moment after the start)
         (let ((f (auto-save-session (list (list :wait 0.3)
-                                          (format nil "M-x ~{~a~^ ~} RET" (map 'list #'string "list-auto-saves"))
+                                          (format nil "M-x ~{~a~^ ~} RET" (map 'list #'string "auto-saves-manager"))
                                           (list :until #'auto-saves-listed-p)))))
           (true (tuatara.frontend.fake:fake-frame-showing f "1 file has changes auto-saved and not saved"))
-          (true (tuatara.frontend.fake:fake-frame-showing f "newer than the file"))
+          (true (tuatara.frontend.fake:fake-frame-showing f "Newer than the file"))
           (let ((list (tuatara.buffer:find-buffer "*Auto-saves*")))
             (true (and list (search "notes.txt" (tuatara.buffer:buffer-string list))))
             (when list (tuatara.buffer:kill-buffer list))))
@@ -133,7 +133,7 @@ and the editor."
         (let ((buffer (tuatara.buffer:find-buffer "notes.txt")))
           (when buffer (tuatara.buffer:kill-buffer buffer)))
         ;; an open list follows the copies as they are written
-        (auto-save-session (list (format nil "M-x ~{~a~^ ~} RET" (map 'list #'string "list-auto-saves"))
+        (auto-save-session (list (format nil "M-x ~{~a~^ ~} RET" (map 'list #'string "auto-saves-manager"))
                                  (list :until #'auto-saves-listed-p)
                                  (format nil "C-x b ~a RET" (rimu-typed "*lisp-scratch*"))
                                  (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file))
@@ -141,7 +141,7 @@ and the editor."
                              (list :until (lambda () (copy)))
                                  (list :wait 0.2)))
         (let ((list (tuatara.buffer:find-buffer "*Auto-saves*")))
-          (true (and list (search "newer than the file" (tuatara.buffer:buffer-string list))))
+          (true (and list (search "Newer than the file" (tuatara.buffer:buffer-string list))))
           (when list (tuatara.buffer:kill-buffer list)))
         (let ((buffer (tuatara.buffer:find-buffer "notes.txt")))
           (when buffer
@@ -155,7 +155,7 @@ and the editor."
                              "M-> SPC b i r d"
                              (list :until (lambda () (copy)))))
         (tuatara.buffer:kill-buffer (tuatara.buffer:find-buffer "notes.txt"))
-        (auto-save-session (list (format nil "M-x ~{~a~^ ~} RET" (map 'list #'string "list-auto-saves"))
+        (auto-save-session (list (format nil "M-x ~{~a~^ ~} RET" (map 'list #'string "auto-saves-manager"))
                                  (list :until #'auto-saves-listed-p) "RET y"))
         (let ((buffer (tuatara.buffer:find-buffer "notes.txt")))
           (true buffer)
@@ -170,10 +170,17 @@ and the editor."
                              (list :until (lambda () (copy)))))
         (tuatara.buffer:kill-buffer (tuatara.buffer:find-buffer "notes.txt"))
         (true (copy))
+        ;; x asks a short question, the path beside it, and the list has the M column title
+        (let ((f (auto-save-session (list (format nil "M-x ~{~a~^ ~} RET" (map 'list #'string "auto-saves-manager"))
+                                          (list :until #'auto-saves-listed-p)
+                                          "d x"))))
+          (true (tuatara.frontend.fake:fake-frame-showing-across-rows f "Delete the auto-saved changes of notes.txt?"))
+          (true (tuatara.frontend.fake:fake-frame-showing f " M Written")))
+        (let ((list (tuatara.buffer:find-buffer "*Auto-saves*"))) (when list (tuatara.buffer:kill-buffer list)))
         (let ((editor (nth-value 1
                                  (auto-save-session (list (format nil
                                                                   "M-x ~{~a~^ ~} RET"
-                                                                  (map 'list #'string "list-auto-saves"))
+                                                                  (map 'list #'string "auto-saves-manager"))
                                                           (list :until #'auto-saves-listed-p)
                                                           "d x y RET")))))
           (is string= "Deleted 1 auto-saved copy" (tuatara.command:editor-message editor)))

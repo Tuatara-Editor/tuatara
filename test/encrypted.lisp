@@ -301,30 +301,30 @@ scratch file, given to the clipboard unasked, nor exported unasked. No core dump
             ;; the keys listed, yours marked as such; exported to a file
             (let ((exported (namestring (merge-pathnames "kea.asc" dir))))
               (multiple-value-bind (f editor)
-                  (auto-save-session (list (typed "gpg-list-keys")
+                  (auto-save-session (list (typed "gpg-keys-manager")
                                            (settle)
                                            "x"
                                            (format nil "C-a C-k ~a C-j" (rimu-typed exported))
                                            (settle)) :width 140)
                 (declare (ignore editor))
                 (true (tuatara.frontend.fake:fake-frame-showing f "Kea Taranaki <kea@example.org>"))
-                (true (tuatara.frontend.fake:fake-frame-showing f "yours")))
+                (true (tuatara.frontend.fake:fake-frame-showing f "▾ Yours (1)")))
               (true (search "-----BEGIN PGP PUBLIC KEY BLOCK-----" (alexandria:read-file-into-string exported)))
               ;; m marks the key on the line, u takes the mark off
-              (true (find-if (lambda (line) (uiop:string-prefix-p ">" line))
+              (true (find-if (lambda (line) (uiop:string-prefix-p ">" (string-left-trim " " line)))
                                              (uiop:split-string (tuatara.buffer:buffer-string
                                                                  (progn
-                                                                   (auto-save-session (list (typed "gpg-list-keys")
+                                                                   (auto-save-session (list (typed "gpg-keys-manager")
                                                                                             (settle)
                                                                                             "m") :width 140)
                                                                    (tuatara.buffer:find-buffer "*GnuPG keys*")))
                                                                 :separator '(#\Newline))))
-              (auto-save-session (list (typed "gpg-list-keys") (settle) "u") :width 140)
-              (false (find-if (lambda (line) (uiop:string-prefix-p ">" line))
+              (auto-save-session (list (typed "gpg-keys-manager") (settle) "u") :width 140)
+              (false (find-if (lambda (line) (uiop:string-prefix-p ">" (string-left-trim " " line)))
                                               (uiop:split-string (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*GnuPG keys*"))
                                                                  :separator '(#\Newline))))
               ;; RET shows the key's details as help
-              (auto-save-session (list (typed "gpg-list-keys") (settle) "RET" (settle)) :width 140)
+              (auto-save-session (list (typed "gpg-keys-manager") (settle) "RET" (settle)) :width 140)
               (let ((help (tuatara.buffer:find-buffer "*Help*")))
                 (true (and help (search (format nil "Key ~a" key) (tuatara.buffer:buffer-string help))))
                 (true (and help (search "Kea Taranaki" (tuatara.buffer:buffer-string help)))))
@@ -348,7 +348,8 @@ scratch file, given to the clipboard unasked, nor exported unasked. No core dump
                                               (lambda () (notany #'tuatara.io::save-job-p tuatara.runtime:*jobs*))))
                                   :width 140)))
         (let ((f (save "n")))
-          (true (tuatara.frontend.fake:fake-frame-showing f "holds text decrypted in place; save it unencrypted?"))
+          (true (tuatara.frontend.fake:fake-frame-showing f "Save mail.txt unencrypted?"))
+          (true (tuatara.frontend.fake:fake-frame-showing f "It holds text decrypted in place."))
           (true (tuatara.frontend.fake:fake-frame-showing f "not saved: it holds text decrypted in place"))
           (is string= "on disk" (alexandria:read-file-into-string file)))
         (save "y")
@@ -1133,3 +1134,107 @@ what it said) without running gpg."
         (true (tuatara.defaults::untrusted-path-p made))
         (tuatara.defaults::write-gpg-output keys (octets-of "keys"))
         (false (tuatara.defaults::untrusted-path-p keys))))))
+
+(define-test (encrypted gpg-keys-failure-said)
+  ;; gpg failing with nothing listed is said, with why, never taken for no keys; a listing given with warnings
+  ;; and a failing end is kept
+  (with-test-directory (dir)
+    (let ((tuatara.defaults::*gpg-program*
+            (put-program (merge-pathnames "gpg" dir)
+                         (format nil "#!/bin/sh~%[ \"$1\" = --dump-options ] && exit 0~%~
+                                      echo 'gpg: keyblock resource: General error' >&2~%exit 2~%"))))
+      (let ((words (handler-case (progn (tuatara.defaults::gpg-keys) nil)
+                     (tuatara.runtime:refusal (condition) (princ-to-string condition)))))
+        (true (search "keyblock resource: General error" (or words "")) "~a" words)))
+    (let ((tuatara.defaults::*gpg-program*
+            (put-program (merge-pathnames "gpg" dir)
+                         (format nil "#!/bin/sh~%[ \"$1\" = --dump-options ] && exit 0~%~
+                                      case \"$*\" in *--list-secret-keys*) exit 0;; *--list-keys*)~%~
+                                      echo 'pub:f:255:22:AB12CD34EF56AB78:1700000000::::::scESC:'~%~
+                                      echo 'uid:f::::1700000000::X::Kea <kea@example.org>::::::::::0:'~%;;~%esac~%~
+                                      echo 'gpg: a warning' >&2~%exit 2~%"))))
+      (is equal '("AB12CD34EF56AB78") (mapcar (lambda (key) (getf key :id)) (tuatara.defaults::gpg-keys))))))
+
+(define-test (encrypted keys-listing-stoppable)
+  ;; the list of keys is listed with the job's cancel cell, so that stopping the job stops gpg
+  (let ((work nil) (given :none))
+    (sb-int:encapsulate 'tuatara.defaults::gpg-in-background 'taken
+                        (lambda (function words next then &rest more)
+                          (declare (ignore function words then more))
+                          (setf work next)
+                          nil))
+    (sb-int:encapsulate 'tuatara.defaults::gpg-keys 'taken
+                        (lambda (function &rest arguments)
+                          (declare (ignore function))
+                          (setf given (getf arguments :cancel))
+                          '()))
+    (unwind-protect
+         (let ((cancel (list nil)))
+           (tuatara.defaults::gpg-keys-show (tuatara.buffer:make-buffer "*gpg keys stoppable*"))
+           (funcall work cancel)
+           (is eq cancel given))
+      (sb-int:unencapsulate 'tuatara.defaults::gpg-in-background 'taken)
+      (sb-int:unencapsulate 'tuatara.defaults::gpg-keys 'taken)
+      (let ((buffer (tuatara.buffer:find-buffer "*gpg keys stoppable*")))
+        (when buffer (tuatara.buffer:kill-buffer buffer))))))
+
+(define-test (encrypted decrypt-region-changed-meanwhile)
+  ;; the block's text changed while gpg decrypted it: nothing is put in, and the buffer is not kept from the disk
+  (let ((then nil) (tuatara-user:*gpg-passphrase-from* :agent))
+    (sb-int:encapsulate 'tuatara.defaults::run-gpg-work 'taken
+                        (lambda (function words arguments next &rest more)
+                          (declare (ignore function words arguments more))
+                          (setf then next)
+                          nil))
+    (unwind-protect
+         (run-keys (list (typed "gpg-decrypt-region")
+                         (lambda ()
+                           (let ((buffer (tuatara.buffer:find-buffer "*scratch*")))
+                             (tuatara.buffer:buffer-insert buffer 0 "changed ")
+                             (when then (funcall then (octets-of "plain") (list "DECRYPTION_OKAY") t "")))))
+                   :text (format nil "-----BEGIN PGP MESSAGE-----~%hQ~%-----END PGP MESSAGE-----~%"))
+      (sb-int:unencapsulate 'tuatara.defaults::run-gpg-work 'taken))
+    (let ((buffer (tuatara.buffer:find-buffer "*scratch*")))
+      (true then)
+      (false (search "plain" (tuatara.buffer:buffer-string buffer)))
+      (false (tuatara.io:buffer-plaintext-p buffer)))))
+
+(define-test (encrypted questions-short-details-beside)
+  ;; a question asks what it asks in a line; the names, the path and the why are shown beside it
+  (let ((asked '()))
+    (sb-int:encapsulate 'tuatara.command:yes-or-no-p* 'asked
+                        (lambda (function prompt &key details)
+                          (declare (ignore function))
+                          (push (cons prompt details) asked)
+                          nil))
+    (unwind-protect
+         (with-test-directory (dir)
+           (let ((list (tuatara.defaults::buffer-in-mode "*GnuPG keys questions*" 'tuatara.defaults::gpg-keys-mode))
+                 (keys (loop for i below 10
+                             collect (list :id (format nil "AB12CD34EF56AB~2,'0d" i)
+                                           :name (format nil "Kea Taranaki the ~:r <kea~d@example.org>" (1+ i) i)
+                                           :validity "full" :fingerprint (format nil "~40,'0d" i))))
+                 (deep (namestring (merge-pathnames (format nil "~a/kept.txt" (make-string 90 :initial-element #\d))
+                                                    dir))))
+             (unwind-protect
+                  (progn
+                    (tuatara.defaults::gpg-keys-draw list keys :start)
+                    (tuatara.defaults::delete-entries (tuatara.defaults::buffer-major-mode list) list
+                                                      (mapcar (lambda (key) (getf key :id)) keys) :marked)
+                    (destructuring-bind (prompt . details) (first asked)
+                      (is string= "Delete 10 keys from your keyring?" prompt)
+                      (true (search "Kea Taranaki the tenth" details) "~a" details))
+                    (tuatara.defaults::confirm-decrypting-to-disk "plans.txt.gpg")
+                    (destructuring-bind (prompt . details) (first asked)
+                      (is string= "Decrypt plans.txt.gpg to disk?" prompt)
+                      (true (search "where it can be read" details)))
+                    (ensure-directories-exist deep)
+                    (alexandria:write-string-into-file "kept" deep)
+                    (tuatara.defaults::gpg-target-free-p deep)
+                    (destructuring-bind (prompt . details) (first asked)
+                      (is string= "Write over kept.txt?" prompt)
+                      (true (search "dddd/kept.txt exists" details) "~a" details))
+                    (dolist (question asked)
+                      (true (< (length (car question)) 80) "~a" (car question))))
+               (tuatara.buffer:kill-buffer list))))
+      (sb-int:unencapsulate 'tuatara.command:yes-or-no-p* 'asked))))

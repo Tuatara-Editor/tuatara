@@ -9,7 +9,7 @@
     (auto-save-session steps :width 140 :height 24)))
 
 (define-test (daemon servers-trusted-by-commands)
-  ;; a server is trusted by server-trust with nothing given; in M-x server-list each thing is turned on after a
+  ;; a server is trusted by server-trust with nothing given; in M-x server-manager each thing is turned on after a
   ;; question, the agent's machines named, and D forgets it; a machine never trusted is given nothing
   (with-fresh-state
     (false (tuatara.defaults::server-permissions "build.example"))
@@ -17,33 +17,33 @@
     (is equal '(:agent nil :destinations () :gpg nil :clipboard nil :files nil)
         (tuatara.defaults::server-permissions "me@build.example"))
     (false (tuatara.defaults::server-permissions "build.example") "a host is trusted as written")
-    (let ((f (servers-session (typed-command "server-list") (list :wait 0.1) "A" (list :wait 0.1) "y" (list :wait 0.1)
-                              "C" (list :wait 0.1) "y" (list :wait 0.1) "H" "C-a C-k"
+    (let ((f (servers-session (typed-command "server-manager") (list :wait 0.1) "C-c A" (list :wait 0.1) "y"
+                              (list :wait 0.1) "C-c C" (list :wait 0.1) "y" (list :wait 0.1) "C-c H" "C-a C-k"
                               (typed-keys "github.com, git@git.example") "RET" (list :wait 0.1)
-                              "F" "C-a C-k" (typed-keys "in/drops") "RET" (list :wait 0.1))))
+                              "C-c F" "C-a C-k" (typed-keys "in/drops") "RET" (list :wait 0.1))))
       (true (tuatara.frontend.fake:fake-frame-showing-across-rows
              f "may then use your ssh keys, each use confirmed here"))
       (true (tuatara.frontend.fake:fake-frame-showing f "me@build.example")))
     (is equal '(:agent t :destinations ("github.com" "git@git.example") :gpg nil :clipboard t :files "in/drops")
         (tuatara.defaults::server-permissions "me@build.example"))
     ;; turning one off asks nothing; n to a question leaves it off
-    (servers-session (typed-command "server-list") (list :wait 0.1) "C" (list :wait 0.1) "G" (list :wait 0.1) "n"
-                     (list :wait 0.1))
+    (servers-session (typed-command "server-manager") (list :wait 0.1) "C-c C" (list :wait 0.1) "C-c G"
+                     (list :wait 0.1) "n" (list :wait 0.1))
     (let ((now (tuatara.defaults::server-permissions "me@build.example")))
       (false (getf now :clipboard))
       (false (getf now :gpg)))
     ;; a directory that is not plain is refused, the permission left as it was
-    (servers-session (typed-command "server-list") (list :wait 0.1) "F" (list :wait 0.1) "F" "C-a C-k"
+    (servers-session (typed-command "server-manager") (list :wait 0.1) "C-c F" (list :wait 0.1) "C-c F" "C-a C-k"
                      (typed-keys "../x") "RET" (list :wait 0.1))
     (false (getf (tuatara.defaults::server-permissions "me@build.example") :files))
-    (servers-session (typed-command "server-list") (list :wait 0.1) "D" (list :wait 0.1) "y" (list :wait 0.1))
+    (servers-session (typed-command "server-manager") (list :wait 0.1) "D" (list :wait 0.1) "y" (list :wait 0.1))
     (false (tuatara.defaults::server-permissions "me@build.example"))))
 
 (define-test (daemon servers-questions-short-details-beside)
   ;; the question to turn the gpg agent on is short and the passphrase caching is in its details
   (with-fresh-state
     (trust-server "build.example")
-    (let ((f (servers-session (typed-command "server-list") (list :wait 0.1) "G" (list :wait 0.1))))
+    (let ((f (servers-session (typed-command "server-manager") (list :wait 0.1) "C-c G" (list :wait 0.1))))
       (true (tuatara.frontend.fake:fake-frame-showing f "Forward gpg-agent to build.example? "))
       (true (tuatara.frontend.fake:fake-frame-showing-across-rows f "max-cache-ttl"))
       (false (tuatara.frontend.fake:fake-frame-showing f "turn it on?")))))
@@ -52,7 +52,7 @@
   ;; the word none, as the prompt says, names no machine: the agent may be used for any
   (with-fresh-state
     (trust-server "build.example" :agent t :destinations '("github.com"))
-    (servers-session (typed-command "server-list") (list :wait 0.1) "H" "C-a C-k" (typed-keys "None") "RET"
+    (servers-session (typed-command "server-manager") (list :wait 0.1) "C-c H" "C-a C-k" (typed-keys "None") "RET"
                      (list :wait 0.1))
     (is equal '() (getf (tuatara.defaults::server-permissions "build.example") :destinations))))
 
@@ -61,10 +61,26 @@
   (with-fresh-state
     (trust-server "one.example" :agent t)
     (trust-server "two.example" :agent t)
-    (servers-session (typed-command "server-list") (list :wait 0.1) "m" "m" "H" "C-a C-k"
+    (servers-session (typed-command "server-manager") (list :wait 0.1) "m" "m" "C-c H" "C-a C-k"
                      (typed-keys "github.com") "RET" "C-a C-k" (typed-keys "-evil") "RET" (list :wait 0.1))
     (dolist (host '("one.example" "two.example"))
       (is equal '() (getf (tuatara.defaults::server-permissions host) :destinations) "~a" host))))
+
+(define-test (daemon server-manager-keys-under-c-c)
+  ;; the list's own commands are under C-c alone, and M-x server-manager opens it
+  (run-keys "")
+  (let ((keymap (tuatara.modes:mode-keymap 'tuatara.defaults::servers-mode)))
+    (flet ((key (keys) (tuatara.command:lookup-key keymap (tuatara.frontend:parse-key-sequence keys))))
+      (loop for (letter command) in '(("+" tuatara.defaults::server-trust) ("A" tuatara.defaults::server-toggle-agent)
+                                      ("H" tuatara.defaults::server-agent-destinations)
+                                      ("G" tuatara.defaults::server-toggle-gpg)
+                                      ("C" tuatara.defaults::server-toggle-clipboard)
+                                      ("F" tuatara.defaults::server-toggle-files)
+                                      ("T" tuatara.defaults::server-tuatara-program))
+            do (false (key letter) "~a" letter)
+               (is eq command (key (format nil "C-c ~a" letter))))))
+  (true (tuatara.command:find-command "server-manager"))
+  (false (tuatara.command:find-command "server-list")))
 
 (define-test (daemon servers-list-fails-closed)
   ;; a line of the list not understood in every field gives nothing, never a permission; a field a later

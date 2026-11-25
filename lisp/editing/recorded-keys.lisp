@@ -162,7 +162,8 @@ recording begins."
 %03d for it in three digits with zeros before (001), %3d with spaces before,
 %-3d with spaces after, %% a per cent sign, the rest as it is (Item %d.
 writes Item 7.)."
-  (let* ((format (read-string "Counter format (%d the number, %03d in three digits): " :initial *keys-counter-format*))
+  (let* ((format (read-string "Counter format: " :initial *keys-counter-format*
+                              :details "%d the number, %03d in three digits with zeros before, %3d with spaces before."))
          (formatter (handling-errors-reported ("reading the counter format ~s" format)
                         (number-formatter format)
                       (error (e) (message "~a" (tuatara.runtime:failure-words e :said t)) nil))))

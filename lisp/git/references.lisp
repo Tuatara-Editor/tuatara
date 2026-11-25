@@ -2,8 +2,9 @@
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 ;;;;
 ;;;; In a status t opens the tag menu and M the remote menu, and y lists every branch and tag.
-;;;; A remote's address is never one of git's ext:: kind, which names a
-;;;; program to run, nor anything git would read as an option.
+;;;; A remote's address is never one of git's NAME:: kind (ext:: and the
+;;;; like), which names a program to run, nor anything git would read as an
+;;;; option.
 
 (in-package #:tuatara.git)
 
@@ -63,10 +64,12 @@ push menu send tags. \\`C-h' there lists every action."
 
 (defun git-address-p (address)
   "True when ADDRESS may be given to git as a remote's: not empty, not
-beginning with - (an option to git), not of the ext:: kind (a program to
-run), no space or control character in it."
+beginning with - (an option to git), not of the NAME:: kind (ext:: or
+another, a program to run), no space or control character in it."
   (and (git-name-p address)
-       (not (uiop:string-prefix-p "ext::" (string-downcase address)))))
+       (let ((helper (search "::" address)))
+         (not (and helper (plusp helper)
+                   (every (lambda (c) (or (alphanumericp c) (find c "+.-"))) (subseq address 0 helper)))))))
 
 (defun git-read-address (prompt &optional (initial ""))
   "Ask with PROMPT for a remote's address (INITIAL to begin with), a directory
@@ -221,7 +224,7 @@ section."
     (cond (ref (let ((name (second ref)))
                  (git-show-log (git-here)
                                (format nil "Log of ~a" name)
-                               (list (format nil "--max-count=~d" *git-log-length*) name "--")
+                               (list (format nil "--max-count=~d" *git-log-length*) "--end-of-options" name "--")
                                :other other)))
           ((eq (first entry) :section) (list-toggle-section list (second entry)))
           (t (message "No branch or tag on this line")))))

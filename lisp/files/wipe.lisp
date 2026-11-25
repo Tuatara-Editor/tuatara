@@ -110,13 +110,20 @@ with SAME-AS, octets, the one path only once it is seen to hold them
                  (incf before size)))))))
    :name "tuatara wipe"))
 
+(defun wipe-question (question caveat &optional details)
+  "Ask QUESTION, whether to wipe, a typed answer (YES-OR-NO-P*), true for yes.
+Its details are DETAILS, lines or NIL, then CAVEAT, what wiping cannot
+promise (WIPE-CAVEAT)."
+  (yes-or-no-p* question :details (format nil "~@[~a~]Wiping cannot promise all is gone: ~a." details caveat)))
+
 (defun confirm-wipe (paths &optional what)
-  "True when, asked, you say to wipe PATHS for good, what it cannot promise said;
-WHAT, words naming them (\"3 files in 2 directories\"), or the name of one or
-how many."
-  (yes-or-no-p* (format nil "Wipe ~a for good? (~a)"
-                        (or what (list-question nil "file" paths :the nil :name-of #'tuatara.io:native-file-name))
-                        (wipe-caveat paths))))
+  "True when, asked, you say to wipe PATHS for good, their names and what it
+cannot promise in the question's details; WHAT, words naming them (\"3 files
+in 2 directories\"), or the name of one or how many."
+  (wipe-question (format nil "Wipe ~a for good?"
+                         (or what (list-question nil "file" paths :the nil :name-of #'tuatara.io:native-file-name)))
+                 (wipe-caveat paths)
+                 (and (rest paths) (format nil "~{~a~%~}~%" (mapcar #'abbreviated-path paths)))))
 
 (define-command wipe-file ()
   "Wipe the file shown (in a list of a directory, the one on the line; with
@@ -143,11 +150,10 @@ again: with a passphrase, or to one of your own keys (its :YOURS)."
 \(YES-OR-NO-P*), true for yes. Its details say that the passphrase is asked
 again first, that to keys none of which is yours it cannot be opened again,
 and CAVEAT."
-  (yes-or-no-p* (format nil "Wipe ~a?" what)
-                :details (format nil "~:[~;The passphrase is asked again first.~%~]~
-                                      ~:[None of the keys is yours: it cannot be opened again.~%~;~]~
-                                      Wiping cannot promise all is gone: ~a."
-                                 (getf encryption :symmetric) (encryption-yours-p encryption) caveat)))
+  (wipe-question (format nil "Wipe ~a?" what) caveat
+                 (format nil "~:[~;The passphrase is asked again first.~%~]~
+                              ~:[None of the keys is yours: it cannot be opened again.~%~;~]"
+                         (getf encryption :symmetric) (encryption-yours-p encryption))))
 
 (defun wipe-original (path target encryption &key (passphrase nil passphrase-p))
   "Wipe the file at PATH, now encrypted as TARGET with ENCRYPTION: at once

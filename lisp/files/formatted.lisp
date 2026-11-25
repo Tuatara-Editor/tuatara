@@ -511,7 +511,7 @@ finding them in the background."
                                  (declare (ignore stamp-of now))
                                  (name-keyword-list (tuatara.io:native-file-name relative)))))
 
-(defun read-keywords (prompt &optional (listing nil listing-given))
+(defun read-keywords (prompt &optional (listing nil listing-given) details)
   "Ask for keywords with PROMPT, separated by commas, completing each on the
 keywords offered: *FORMATTED-FILE-KEYWORDS*, then those in the names of your
 files with formatted names, each once, those found in the background while
@@ -523,8 +523,8 @@ selected one, \\[minibuffer-complete] puts it in, \\[minibuffer-submit-input]
 takes what is typed. A keyword typed whole, or the start of one, selects it;
 any other word selects the line typed, a new keyword that
 \\[minibuffer-finish] takes as typed (READ-SEVERAL). While no keyword is
-begun, an empty line comes first, selected: no keywords, or no more. Returns a
-list of strings."
+begun, an empty line comes first, selected: no keywords, or no more. DETAILS
+are shown beside the question while it is open. Returns a list of strings."
   (let ((offered '()) (seen (make-hash-table :test 'equal)))
     (flet ((offer (keywords)
              (dolist (keyword keywords)
@@ -538,7 +538,7 @@ list of strings."
           (mapc #'offer kept)
           (unwind-protect
                (read-several prompt (lambda () (reverse offered))
-                             :none "no keywords" :more "no more keywords"
+                             :none "no keywords" :more "no more keywords" :details details
                              :source (and gathering
                                           (gathering-source gathering
                                                             (lambda (new)

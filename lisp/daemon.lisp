@@ -654,7 +654,7 @@ group of the client working in the frame first."
   (loop for (group . buffers) in (unsaved-by-group editor)
         do (let ((*buffers-asked-about* buffers))
              (when (char= #\s (read-answer-key
-                               (format nil "~d buffers with changes not saved (s or l) " (length buffers))
+                               (format nil "~d buffer~:p with changes not saved (s or l) " (length buffers))
                                '(#\s #\l)
                                :details (format nil "~a: ~{~a~^, ~}~%~%s    saves them~%l    leaves them unsaved~%~
                                                      C-g  keeps the daemon running"
@@ -766,7 +766,7 @@ it."
 
 (defun auto-save-unsaved ()
   "Write the changes not saved of the editor's buffers as auto-saved copies,
-for \\[recover-file] and \\[list-auto-saves] to offer on the next visit:
+for \\[recover-file] and \\[auto-saves-manager] to offer on the next visit:
 each that may be auto-saved (AUTO-SAVE-WANTED-P). Said in *Messages* and the
 daemon's log (SAY-IN-DAEMON-LOG)."
   (let ((written 0))

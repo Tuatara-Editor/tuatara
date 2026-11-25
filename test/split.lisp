@@ -224,6 +224,31 @@ whether the buffer has changes not saved; the frontend fourth."
         (is string= "fooXY fooXY" (first (lines editor)))
         (is string= "fooXY 299" (nth 300 (lines editor)))))))
 
+(define-modal-test (split typing-after-an-edge-deletion-in-sight)
+  ;; after a deletion past the places' edges, or a move into another place, each key is still
+  ;; written only at the places in sight, the others as the typing ends
+  (let ((tuatara.defaults::*split-sight-octets* 16)
+        (text (format nil "~{foo ~d~%~}" (loop for i below 3000 collect i)))
+        (written 0))
+    (flet ((counted (keys)
+             (list (lambda ()
+                     (setf written 0)
+                     (sb-int:encapsulate 'tuatara.defaults::place-edit 'written
+                                         (lambda (fn &rest arguments) (incf written) (apply fn arguments))))
+                   keys
+                   (lambda () (sb-int:unencapsulate 'tuatara.defaults::place-edit 'written))))
+           (lines (editor) (uiop:split-string (session-text editor) :separator '(#\Newline))))
+      (let ((editor (nth-value 1 (run-keys (append '("% f o o SPC RET i DEL") (counted "X") '("C-g"))
+                                           :text text :width 80 :height 10))))
+        (true (< written 300) "~:d places written for one key" written)
+        (is string= "Xoo 0" (first (lines editor)))
+        (is string= "Xoo 2999" (nth 2999 (lines editor))))
+      (let ((editor (nth-value 1 (run-keys (append '("% f f o o RET a X C-e") (counted "Y") '("C-g"))
+                                           :text (format nil "foo foo~%~a" text) :width 80 :height 10))))
+        (true (< written 300) "~:d places written for one key" written)
+        (is string= "fooXY fooXY" (first (lines editor)))
+        (is string= "fooXY 2999" (nth 3000 (lines editor)))))))
+
 (define-modal-test (split split-limit)
   ;; more matches than *split-limit*: those in sight held, as many as it allows,
   ;; counted as far as one past it, as the cursors are

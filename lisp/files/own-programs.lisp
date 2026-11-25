@@ -23,7 +23,7 @@ a name looked for where the sandbox finds programs (SANDBOX-FIND-PROGRAM)."
 format (ELF) program with the AppImage type 2 mark."
   (let ((head (ignoring-errors-reported ("reading ~a" path) (tuatara.io:file-head path 12))))
     (and head (>= (length head) 11)
-         (tuatara.io:octets-at-p head '(#x7f 69 76 70))
+         (tuatara.text:octets-at-p head '(#x7f 69 76 70))
          (= (aref head 8) 65) (= (aref head 9) 73) (= (aref head 10) 2))))
 
 (defun unpacked-appimage (program cancel)

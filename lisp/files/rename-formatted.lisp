@@ -267,9 +267,8 @@ buffers visiting a file follow it."
                   (let* ((name (tuatara.io:native-file-name path))
                          (title (read-string (format nil "Title of ~a: " name) :initial (title-for-renaming path)))
                          (kept (name-keyword-list name))
-                         (keywords (read-keywords (format nil "Keywords of ~a~@[ (nothing typed keeps ~{~a~^, ~})~]: "
-                                                          name kept)
-                                                  listing)))
+                         (keywords (read-keywords (format nil "Keywords of ~a: " name) listing
+                                                  (and kept (format nil "Nothing typed keeps ~{~a~^, ~}." kept)))))
                     (values title (or keywords kept)))))
             (when (second listing) (stop-gathering (second listing))))))))
 

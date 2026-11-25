@@ -482,12 +482,11 @@ is opened safely."
                 (text)
                 ((tuatara.io:binary-head-p octets)
                  (hex-view-on buffer))
-                ((not (or (tuatara.io:safe-visit-p (tuatara.display:window-buffer (rimu-preview-list-window state)))
-                          (ignoring-errors-reported ("asking whether ~a opens safely" path)
-                            (visit-safely-reason path))))
-                 (let ((first-line (tuatara.text:octets-first-line octets)))
-                   (ignoring-errors-reported ("giving the preview of ~a its mode" path)
-                     (set-major-mode buffer (mode-for-file path (string-right-trim '(#\Return) first-line)))))))
+                ((not (tuatara.io:safe-visit-p (tuatara.display:window-buffer (rimu-preview-list-window state))))
+                 (ignoring-errors-reported ("giving the preview of ~a its mode" path)
+                   (let ((mode (mode-for-shown-text path octets)))
+                     (unless (eq mode 'fundamental-mode)
+                       (set-major-mode buffer mode))))))
               (setf (buffer-read-only-p buffer) t
                     ;; an Office document's text read by Tuatara itself, its page alone drawn in the sandbox
                     (tuatara.buffer:buffer-local buffer :sandboxed)

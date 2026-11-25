@@ -204,8 +204,8 @@ them again, marks kept, as the list does by itself while it is shown."
 
 (defparameter *bookmarks-columns* '((" M" :width 2) ("Name" :width 24) ("Kind" :width 9) ("File or directory"))
   "The columns of the bookmark manager, as TABLE-HEADING-PIECES takes them: the
-mark (> or D), the name, whether it keeps a place in a file or a directory, and
-the file or directory.")
+mark (> or D), the name, whether it keeps a place in a file, a directory or
+one on another machine, and the file or directory.")
 
 (defun bookmark-name-face (mark kind)
   "The face of a bookmark's name in the bookmark manager: that of its MARK
@@ -248,13 +248,16 @@ its mark, name, kind (KIND, a function of a bookmark) and file."
 
 (defun bookmarks-summary (all kind)
   "The pieces of the bookmark manager's last line: how many bookmarks ALL
-holds, how many of them are gone (KIND, a function of a bookmark) and how
-many categories there are; with none, how to set one."
+holds, how many of them are gone (KIND, a function of a bookmark, blank for
+one not yet looked at), or that they are being looked for, and how many
+categories there are; with none, how to set one."
   (if all
       (table-row-pieces *bookmarks-columns*
                         (list "" (format nil "~[No bookmarks~;1 bookmark~:;~:*~d bookmarks~]" (length all))
                               ""
-                              (format nil "~:d gone, ~[no categories~;1 category~:;~:*~d categories~]"
+                              (format nil "~:[~:d gone~;~*looking for those gone~], ~
+                                           ~[no categories~;1 category~:;~:*~d categories~]"
+                                      (find "" all :key kind :test #'string=)
                                       (count "gone" all :key kind :test #'string=)
                                       (length (bookmark-category-names)))))
       (list (format nil "   No bookmarks: ~a sets one~%" (substitute-command-keys "\\[bookmark-set]")))))
@@ -290,11 +293,14 @@ the editor up. Nothing is started while a look is under way."
 SECTIONED-PIECES) and a summing-up line (BOOKMARKS-SUMMARY); marks kept on
 those still there, a mark kept by the bookmark's name and its section. What
 each file or directory is comes from a look in the background
-\(LOOK-AT-BOOKMARK-KINDS): blank until it ends."
+\(LOOK-AT-BOOKMARK-KINDS): blank until it ends; one on another machine is
+said to be at once, from its name."
   (let ((unknown '()))
     (flet ((kind (bookmark)
-             (or (gethash (bookmark-path bookmark) *bookmark-kinds*)
-                 (progn (pushnew (bookmark-path bookmark) unknown :test #'string=) ""))))
+             (let ((path (bookmark-path bookmark)))
+               (or (gethash path *bookmark-kinds*)
+                   (and (remote-name-p path) (file-place-kind path))
+                   (progn (pushnew path unknown :test #'string=) "")))))
       (render-table-list
        list *bookmarks-columns* (bookmark-sections)
        (lambda (bookmark mark section) (declare (ignore section)) (bookmark-cells bookmark mark #'kind))
@@ -329,7 +335,7 @@ stays in category b, and goes only when it is in no other.
   (let ((list (buffer-in-mode "*Bookmarks*" 'bookmarks-mode)))
     (clrhash *bookmark-kinds*)
     (show-buffer list)
-    (bookmarks-render list 3)))
+    (bookmarks-render list :first-entry)))
 
 (defmethod list-entry-noun ((mode bookmarks-mode))
   "A bookmark."

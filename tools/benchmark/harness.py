@@ -607,7 +607,7 @@ def count_text(path, needle):
         while chunk := f.read(1 << 24):
             block = tail + chunk
             count += block.count(needle)
-            tail = block[-(len(needle) - 1):]
+            tail = block[len(block) - (len(needle) - 1):]
     return count
 
 

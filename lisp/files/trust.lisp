@@ -178,7 +178,7 @@ copied, piece by piece, into a directory of your own."
 (defun source-untrusted-p (from)
   "True when what is made from FROM, a file or directory here or on another
 machine (/ssh:HOST:PATH), is untrusted: FROM is untrusted here
-\(UNTRUSTED-PATH-P), or is on a machine not trusted (\\[server-list]) or in
+\(UNTRUSTED-PATH-P), or is on a machine not trusted (\\[server-manager]) or in
 evidence there."
   (if (remote-name-p from)
       (multiple-value-bind (host path) (remote-name-parts from)
@@ -269,6 +269,15 @@ trusted (UNTRUSTED-REASON gives why). What opens safely, what the desktop's
 programs get a copy of, where a note's export takes files from and which
 projects run their own programs are all told by it alone."
   (and (untrusted-reason path) t))
+
+(defun mode-for-shown-text (path octets)
+  "The major mode for OCTETS, the text of the file at PATH, shown in a buffer
+that is not the file's own (an older version of it, its preview): the mode
+its name and first line call for (MODE-FOR-OCTETS), but plain text when the
+file opens safely (VISIT-SAFELY-REASON), as it would in a buffer of its own."
+  (if (visit-safely-reason (tuatara.io:native path))
+      'fundamental-mode
+      (mode-for-octets path octets)))
 
 ;;; Projects
 
@@ -363,7 +372,7 @@ while the project is still being looked through for evidence directories."
 
 (defmethod tuatara.syntax:host-trusted-text-p ((host defaults-host) buffer)
   "True when BUFFER visits a file of a project you trust (BUFFER-IN-TRUSTED-PROJECT-P),
-or a copy of a file on a trusted server (\\[server-list])."
+or a copy of a file on a trusted server (\\[server-manager])."
   (or (buffer-in-trusted-project-p buffer) (remote-text-trusted-p buffer)))
 
 (defun project-look-only-p (root)

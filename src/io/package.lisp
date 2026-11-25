@@ -21,7 +21,7 @@ file system offers them. It also copies, moves, deletes and wipes files and dire
 keeps the trash, and runs programs, shut in a sandbox when they read files from
 elsewhere.")
   (:export #:buffer-file-stamp #:buffer-plaintext-p)
-  (:export #:octets-words
+  (:export
    ;; errors
    #:file-system-error #:file-system-error-operation #:file-system-error-path #:file-system-error-reason
    #:file-system-error-errno
@@ -57,10 +57,9 @@ elsewhere.")
    #:home-directory #:expand-path #:default-directory #:directory-pathname #:directory-entries #:list-directory #:listed
    #:make-listed #:listed-p #:listed-name #:listed-octets #:listed-stamp #:listed-used #:listed-device #:listed-target
    #:listed-target-stamp #:listed-label #:read-entry-start #:call-with-entry #:call-with-file #:read-fd-start
-   #:octets-kind #:pdf-header-at #:octets-integer #:octets-signed #:octets-put-integer #:octets-at-p #:octets-search
-   #:octets-ascii #:base64-octets #:base64-string #:openpgp-packet-header #:openpgp-packet-p #:octets-picture-size
+   #:octets-kind #:pdf-header-at #:openpgp-packet-header #:openpgp-packet-p #:octets-picture-size
    #:tiff-octets-p #:tiff-entries #:box-contents-start #:octets-reader #:j2k-header #:jp2-header #:jxl-header
-   #:jxl-file-header #:jpeg-segments #:box-children #:box-find #:octet-at #:*compound-file-signature*
+   #:jxl-file-header #:jpeg-segments #:box-children #:box-find #:*compound-file-signature*
    #:kind-name-disagrees-p #:name-kinds
    #:sandbox-status #:sandbox-status-now #:sandbox-run #:sandbox-start #:end-sandbox #:*sandbox-carried-settings*
    #:end-sandboxes #:sandbox-memory-scope-p #:shown-place-p #:real-place #:sealed-copy #:sealed-copy-intact-p #:close-sealed-copy #:sandbox-input-refusal
@@ -71,9 +70,8 @@ elsewhere.")
    #:own-directory #:variable-listed-p #:listed-environment #:host-program-environment #:start-program #:in-starter
    #:holding-starter #:call-with-program #:done-with-program #:user-shell #:session-command #:session-leader
    #:session-processes #:signal-session #:process-unreaped-p #:filter-through-program #:*program-said-limit*
-   #:command-words #:setpriv-command #:terminal-p #:desktop-p #:askpass-program #:*askpass-programs*
-   #:*restricted-variables*
-   #:restricted-environment #:software-version-numbers #:software-version-at-least-p
+   #:setpriv-command #:terminal-p #:desktop-p #:askpass-program #:*askpass-programs*
+   #:*restricted-variables* #:restricted-environment
    #:rename-path #:make-directory #:path-join #:parent-path #:copy-path-tree #:delete-tree #:move-path #:trash-path
    #:walk-directory #:tree-size #:remove-special-entries
    #:trash-for #:home-trash #:scratch-directory #:buffer-scratch-directory #:kind-words #:size-words

@@ -116,6 +116,24 @@ the editor is busy, so that C-g can stop work and keys typed meanwhile are kept.
   (fresh-start "i ( d e f v a r SPC * t t - v * SPC 3 ) C-g C-M-x")
   (is = 3 (symbol-value (find-symbol "*TT-V*" :tuatara-user))))
 
+(define-test (scratch evaluation-reads-within-reach)
+  ;; an expression whose top-level form starts further back than the reach is not read for:
+  ;; C-x C-e and C-M-x say so at once, and one within reach is still evaluated
+  (let ((tuatara.defaults::*lisp-indent-reach* 1000)
+        (far (format nil "~{~a~%~}  (+ 1 2)" (loop repeat 1000 collect "  x"))))
+    (dolist (keys '("M-x l i s p - m o d e RET M-> C-x C-e" "M-x l i s p - m o d e RET M-> C-M-x"))
+      (true (tuatara.frontend.fake:fake-frame-showing (run-keys keys :text far :width 80)
+                                                      "No expression within reach")))
+    (let ((buffer (tuatara.buffer:make-buffer "*tt-reach*" :text far)))
+      (unwind-protect
+           (progn
+             (is eq :far (nth-value 1 (tuatara.defaults::expression-before buffer (length far))))
+             (is eq :far (nth-value 1 (tuatara.defaults::top-level-form-bounds buffer (length far)))))
+        (tuatara.buffer:kill-buffer buffer)))
+    (true (tuatara.frontend.fake:fake-frame-showing
+           (run-keys "M-x l i s p - m o d e RET M-> C-x C-e" :text (format nil "  x~%  (+ 1 2)") :width 80)
+           "=> 3"))))
+
 (define-test (scratch quitting)
   ;; typing in a scratch buffer does not make quitting ask
   (multiple-value-bind (f editor) (fresh-start "i x C-g C-x C-c")

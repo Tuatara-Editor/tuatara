@@ -124,11 +124,6 @@ octet so typed one step to undo. Refused in a buffer that may not be written
                     collect (parse-integer digits :start i :end (+ i 2) :radix 16))
               'tuatara.text:octets))))
 
-(defun octets-needle (octets)
-  "OCTETS as the string that stands for exactly them: ASCII as itself, other
-octets as raw bytes' characters, which encode back to the same octets."
-  (map 'string (lambda (b) (if (< b #x80) (code-char b) (tuatara.text:raw-byte-char b))) octets))
-
 (defun parse-offset (text)
   "The offset TEXT gives: hexadecimal after 0x, else decimal with digits grouped
 as the mode line shows them; NIL when it is neither."
@@ -200,14 +195,14 @@ the next place after it that holds them, or with BACKWARD the last before it;
          (octets (parse-octets typed)))
     (if (null octets)
         (message "Not octets in hex, such as de ad be ef")
-        (let ((rope (tuatara.buffer:buffer-text b)) (p (tuatara.display:hex-point b)) (needle (octets-needle octets)))
+        (let ((rope (tuatara.buffer:buffer-text b)) (p (tuatara.display:hex-point b)))
           (start-viewer-search
            b (format nil "the octets ~a" (string-trim " " typed))
            (lambda (stop)
              (if backward
-                 (tuatara.syntax:search-backward rope needle :start p :case-fold nil :stop stop)
-                 (tuatara.syntax:search-forward rope needle :start (min (1+ p) (tuatara.text:rope-octet-length rope))
-                                                            :case-fold nil :stop stop)))
+                 (tuatara.syntax:search-backward rope octets :start p :stop stop)
+                 (tuatara.syntax:search-forward rope octets :start (min (1+ p) (tuatara.text:rope-octet-length rope))
+                                                            :stop stop)))
            (lambda (&optional hit end)
              (cond ((eq end :stopped) (message "Search stopped"))
                    (hit (setf (tuatara.display:hex-view-p b) t

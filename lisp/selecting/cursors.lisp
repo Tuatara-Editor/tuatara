@@ -627,7 +627,7 @@ rows in sight are emptied and hold a cursor each, the real one on point's, and
 typing begins; the others are emptied and written in the background when it
 ends."
   (multiple-value-bind (limit why) (place-limit *rectangle-cursors-limit*)
-    (setf *killed-rectangle* (rectangle-source-of buffer))
+    (store-rectangle (rectangle-source-of buffer) buffer)
     (let* ((version (tuatara.buffer:buffer-version buffer))
            (here (point-line buffer))
            (before (tuatara.buffer:buffer-undo-stack buffer))

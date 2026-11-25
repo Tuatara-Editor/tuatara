@@ -1,4 +1,4 @@
-;;;; test/jobs.lisp --- Jobs in the background one after another: the queue, M-x list-jobs.
+;;;; test/jobs.lisp --- Jobs in the background one after another: the queue, M-x jobs-manager.
 ;;;; Copyright (C) 2026 Michael A Jones.  GPL-3.0-or-later; see LICENSE.
 
 (in-package #:tuatara.tests)
@@ -6,7 +6,7 @@
 (define-test jobs
   :description "A job asked for while another runs in its buffer waits its turn instead of being
 refused, first in first out, on the text as the one before leaves it; the mode line says how far
-the one running has got and counts those waiting, their text is painted, and M-x list-jobs lists
+the one running has got and counts those waiting, their text is painted, and M-x jobs-manager lists
 the jobs and drops those marked.")
 
 (defun waiting-spans (frontend)
@@ -69,6 +69,18 @@ the jobs and drops those marked.")
   (true (tuatara.frontend.fake:fake-frame-showing (run-keys "C-x j" :width 80) "No jobs in the background"))
   (true (tuatara.frontend.fake:fake-frame-showing (run-keys "C-x J" :width 80) "Nothing is running in this buffer")))
 
+(define-modal-test (jobs question-counts-folded-jobs)
+  ;; x asks as every list does: a capital, and the jobs a folded section hides counted
+  (let ((list (tuatara.buffer:find-buffer "*Jobs*"))) (when list (tuatara.buffer:kill-buffer list)))
+  (let ((tuatara.defaults::*rewrite-piece-hook* (lambda () (sleep 0.3))))
+    (with-background ()
+      (let ((f (run-keys "r r % a / b RET M-x j o b s - m a n a g e r RET d C-p TAB x" :text "a a a" :width 150
+                                                                                       :height 12)))
+        (true (tuatara.frontend.fake:fake-frame-showing-across-rows f "Stop the job *scratch* (1 in a folded section)?")))
+      (let ((list (tuatara.buffer:find-buffer "*Jobs*"))) (when list (tuatara.buffer:kill-buffer list)))
+      (let ((f (run-keys "r r % a / b RET M-x j o b s - m a n a g e r RET" :text "a a a" :width 150 :height 12)))
+        (true (tuatara.frontend.fake:fake-frame-showing f " M" "State"))))))
+
 (define-modal-test (jobs list-and-drop)
   ;; a list left by an earlier test would keep its point
   (let ((list (tuatara.buffer:find-buffer "*Jobs*"))) (when list (tuatara.buffer:kill-buffer list)))
@@ -76,23 +88,29 @@ the jobs and drops those marked.")
     (with-background ()
       ;; the list shows the job running and the one waiting; d then x drops it, after asking
       (multiple-value-bind (f editor)
-          (run-keys "r r % a / b RET r r % b / c RET M-x l i s t - j o b s RET j d x y RET q"
+          (run-keys "r r % a / b RET r r % b / c RET M-x j o b s - m a n a g e r RET j d x y RET q"
                     :text "a a a" :width 150 :height 12)
-        (true (tuatara.frontend.fake:fake-frame-showing f "Buffer" "State" "Job"))
-        (true (tuatara.frontend.fake:fake-frame-showing f "*scratch*" "Replacing" "Replacing a with b in the buffer"))
+        (true (tuatara.frontend.fake:fake-frame-showing f "State" "Job"))
+        (true (tuatara.frontend.fake:fake-frame-showing f "▾ *scratch* (2)"))
+        (true (tuatara.frontend.fake:fake-frame-showing f "Replacing" "Replacing a with b in the buffer"))
         (true (tuatara.frontend.fake:fake-frame-showing f "waiting, first in line" "Replacing b with c in the buffer"))
         (true (tuatara.frontend.fake:fake-frame-showing f "Dropped 1 waiting job"))
         (is string= "b b b" (session-text editor)))
       ;; x acts on those marked for deletion only; D on those marked (m), as in every list
       (let ((list (tuatara.buffer:find-buffer "*Jobs*"))) (when list (tuatara.buffer:kill-buffer list)))
       (multiple-value-bind (f editor)
-          (run-keys "r r % a / b RET r r % b / c RET M-x l i s t - j o b s RET j m x D y RET q"
+          (run-keys "r r % a / b RET r r % b / c RET M-x j o b s - m a n a g e r RET j m x D y RET q"
                     :text "a a a" :width 150 :height 12)
         (true (tuatara.frontend.fake:fake-frame-showing f "No jobs marked for deletion"))
         (true (tuatara.frontend.fake:fake-frame-showing f "Dropped 1 waiting job"))
         (is string= "b b b" (session-text editor)))
+      ;; l on a job goes to its buffer, as in every manager
+      (let ((list (tuatara.buffer:find-buffer "*Jobs*"))) (when list (tuatara.buffer:kill-buffer list)))
+      (let ((editor (nth-value 1 (run-keys "r r % a / b RET M-x j o b s - m a n a g e r RET l"
+                                           :text "a a a" :width 150 :height 12))))
+        (is string= "*scratch*" (tuatara.buffer:buffer-name (session-buffer editor))))
       ;; nothing in the background: the list says so
-      (true (tuatara.frontend.fake:fake-frame-showing (run-keys "M-x l i s t - j o b s RET"
+      (true (tuatara.frontend.fake:fake-frame-showing (run-keys "M-x j o b s - m a n a g e r RET"
                                                                 :text "x"
                                                                 :width 150
                                                                 :height 12)
@@ -122,3 +140,12 @@ the jobs and drops those marked.")
                 (is string= "Sorting the selection's lines" (tuatara.defaults::lines-done-words "Sorting" b 0 2))
                 (is string= "Sorting the selection's lines" (tuatara.defaults::lines-done-words "Sorting" b 2 4)))
       (tuatara.buffer:kill-buffer b))))
+
+(define-modal-test (jobs manager-opens-on-the-first-job)
+  (let ((tuatara.defaults::*rewrite-piece-hook* (lambda () (sleep 0.3))))
+    (with-background ()
+      ;; one job, then one running and one waiting, the list shown before: m marks the first
+      (dolist (keys '("C-x h r r % a / b RET C-x j q C-x j m" "C-x h r r % a / b RET r r % b / c RET C-x j q C-x j m"))
+        (let ((list (tuatara.buffer:find-buffer "*Jobs*"))) (when list (tuatara.buffer:kill-buffer list)))
+        (true (tuatara.frontend.fake:fake-frame-showing (run-keys keys :text "a a a" :width 150 :height 12)
+                                                        "1 marked"))))))

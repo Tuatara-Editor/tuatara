@@ -52,26 +52,39 @@ quote mark, a comma, a semicolon or a double quote."
   (let ((code (char-code char)))
     (or (> code 255) (and (lisp-symbol-octet-p code) (/= code 124)))))
 
-(defun lisp-text-start (rope position &optional reach block)
+(defparameter *lisp-indent-reach* (* 1024 1024)
+  "The most octets before a place that are read to find the Lisp form around
+it. Indenting a line reads a top-level form that starts further back (a large
+quoted list of data) from the first line within reach, as if it started
+there; evaluating or expanding the expression before point finds none.")
+
+(defun lisp-text-start (rope position reach &optional block)
   "Where to start reading ROPE to find the expressions around POSITION: the
 start of the nearest line at or before it that begins with an open bracket,
 taken to be where a top-level form begins (LINE-OPENER-BEFORE, reading into
-BLOCK when given); else the text's start. With REACH, looked for no further
-than REACH octets back: NIL when it is not found there."
-  (or (line-opener-before rope (1+ (min position (1- (tuatara.text:rope-octet-length rope))))
-                          :openers '(40) :reach (or reach most-positive-fixnum) :block block)
-      (and (null reach) 0)))
+BLOCK when given), looked for no further than REACH octets back. The text's
+start when there is no such line and the text starts within reach; NIL when
+there is none within reach."
+  (multiple-value-bind (opener far)
+      (line-opener-before rope (1+ (min position (1- (tuatara.text:rope-octet-length rope))))
+                          :openers '(40) :reach reach :block block)
+    (or opener (and (not far) 0))))
 
 (defun expression-before (buffer position)
   "Two values: the start and end of the Lisp expression that ends last at or
 before POSITION in BUFFER, a quote before it included; NIL when there is none.
-Strings, comments and #\( are told apart."
+Strings, comments and #\( are told apart. Read from the top-level form around
+POSITION, no more than *LISP-INDENT-REACH* octets back: when that form starts
+further back, NIL and :FAR."
   (let* ((rope (tuatara.buffer:buffer-text buffer))
-         (start (lisp-text-start rope position))
+         (start (lisp-text-start rope position *lisp-indent-reach*))
          (best nil))
-    (dolist (e (lisp-elements (tuatara.text:rope-octets rope :start start :end position)))
-      (when (or (null best) (> (second e) (second best))) (setf best e)))
-    (when best (values (+ start (first best)) (+ start (second best))))))
+    (if (null start)
+        (values nil :far)
+        (progn
+          (dolist (e (lisp-elements (tuatara.text:rope-octets rope :start start :end position)))
+            (when (or (null best) (> (second e) (second best))) (setf best e)))
+          (when best (values (+ start (first best)) (+ start (second best))))))))
 
 (defun bracket-form-bounds (rope start)
   "Two values: START and the end of the Lisp form of ROPE opening with the
@@ -86,9 +99,13 @@ at START, or the form is not closed there."
 (defun top-level-form-bounds (buffer position)
   "Two values: the start and end of the top-level form around POSITION in
 BUFFER, the form that begins with an open bracket at the start of a line; NIL
-when there is none, or it is not closed."
-  (let ((rope (tuatara.buffer:buffer-text buffer)))
-    (bracket-form-bounds rope (lisp-text-start rope position))))
+when there is none, or it is not closed. Looked for no more than
+*LISP-INDENT-REACH* octets back: when it starts further back, NIL and :FAR."
+  (let* ((rope (tuatara.buffer:buffer-text buffer))
+         (start (lisp-text-start rope position *lisp-indent-reach*)))
+    (if start
+        (bracket-form-bounds rope start)
+        (values nil :far))))
 
 ;;; Symbols: what a name in Lisp text stands for
 
@@ -537,6 +554,12 @@ setting given a value it does not take is said last, kept as it was."
   (dolist (words (evaluation-put-back evaluation))
     (message "~a" words)))
 
+(defun say-no-expression (far words)
+  "Say WORDS, that there is no expression to work on; when FAR, say instead
+that the form around point starts further back than is read
+\(*LISP-INDENT-REACH*)."
+  (message "~a" (if far "No expression within reach" words)))
+
 (define-command eval-print-last-expression ()
   "Evaluate the expression before point in the running editor and put what it
 printed and its value on the lines after it. \\`C-g' stops an evaluation that
@@ -544,7 +567,7 @@ runs on."
   (let ((b (current-buffer)) (end (point)))
     (multiple-value-bind (start stop) (expression-before b end)
       (if (null start)
-          (message "No expression before point")
+          (say-no-expression stop "No expression before point")
           (evaluate-and-report b (tuatara.buffer:buffer-string b :start start :end stop) :print-at end)))))
 
 (define-command eval-last-expression ()
@@ -555,7 +578,7 @@ goes to *Messages*."
   (let ((b (current-buffer)) (end (point)))
     (multiple-value-bind (start stop) (expression-before b end)
       (if (null start)
-          (message "No expression before point")
+          (say-no-expression stop "No expression before point")
           (evaluate-and-report b (tuatara.buffer:buffer-string b :start start :end stop)
                                :insert-at (and (prefix-argument) end))))))
 
@@ -581,7 +604,7 @@ it is."
         (evaluate-and-report (current-buffer)
                              (defvar-again (current-buffer)
                                  (tuatara.buffer:buffer-string (current-buffer) :start start :end end)))
-        (message "No top-level form around point"))))
+        (say-no-expression end "No top-level form around point"))))
 
 (define-command eval-region ()
   "Evaluate the Lisp forms in the selection one after another, as a file's are

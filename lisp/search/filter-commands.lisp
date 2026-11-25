@@ -11,12 +11,12 @@
 ;;; Typing, keeping and taking away filters
 
 (define-major-mode search-filters-mode special-mode
-  "The search filters narrowing a list (\\[search-filter-list]), the first
-first: each pattern, whether it is a regular expression or literal text,
-whether it ignores case, and how many entries it leaves of those the filters
-before it left. \\<search-filters-mode>\\[search-filter-remove] takes away the
-filter on the line, the list widening, and \\[search-filter-remove-all] all of
-them; \\[revert-buffer] lists them again; \\[quit-window] returns."
+  "The search filters narrowing a list (\\[search-filter-list]), in the order
+they were added: each pattern, whether it is a regular expression or literal
+text, whether it ignores case, and how many entries it leaves of those the
+filters before it left. \\<search-filters-mode>\\[search-filter-remove] takes
+away the filter on the line, the list widening, and \\[search-filter-remove-all]
+all of them; \\[revert-buffer] lists them again; \\[quit-window] returns."
   :lighter "Filters" :interactive nil)
 
 (defun filter-list-as-typed (state)
@@ -74,8 +74,7 @@ the list widens."
          (kept (list-filtering-filters filtering))
          (first (position-if (lambda (filter) (member filter filters)) kept)))
     (when first
-      (dolist (filter (nthcdr first kept))
-        (setf (search-filter-source filter) nil (search-filter-kept filter) nil))
+      (forget-worked-out (nthcdr first kept))
       (setf (list-filtering-filters filtering) (remove-if (lambda (filter) (member filter filters)) kept))
       (refilter buffer))))
 
@@ -91,41 +90,39 @@ or the list the list of filters there is for; NIL when there is none."
 ;;; The commands
 
 (define-command search-filter-regex ()
-  "Narrow the list here to the entries a regular expression matches, as it
-is typed: those whose line matches, or what more the list holds of them (a
-mailbox the headers and contents of its messages). Case is ignored while the
-pattern has no capital letter and names no case ([[:upper:]], \\p{Lu}), as a
-search ignores it. The pattern is typed in the minibuffer and
-edited there as any answer is, the list narrowed again at each change.
-\\<search>\\[search-exit] keeps the pattern
-as a filter on the list, and the next one narrows what it leaves;
+  "Narrow the list here to the entries a regular expression matches, as it is
+typed: those whose line matches, or what more the list holds of them (a mailbox
+the headers and contents of its messages). Case is ignored while the pattern has
+no capital letter and names no case ([[:upper:]], \\p{Lu}), as a search ignores
+it. The pattern is typed in the minibuffer and edited there as any answer is,
+the list narrowed again at each change. \\<search>\\[search-exit] keeps the
+pattern as a filter on the list, and the next one narrows what it leaves;
 \\[search-abort] lets the one typed go, the filters kept staying.
 \\[search-toggle-regex] switches to literal text;
-\\<minibuffer>\\[minibuffer-previous-history] and \\[minibuffer-next-history] bring back the patterns typed before,
-in any question that takes one (*PATTERN-HISTORY*). The list shows above its
-entries how many are left and by what; \\[search-filter-list] lists the
-filters, to take one away, and \\[search-filter-remove-all] takes them all away.
-A list made again is narrowed again.
-In a file of records, a line each, the records are narrowed the same way: in a
-comma-separated values (CSV) or tab-separated values (TSV) file, a log, a JSON
-Lines file and the others *LINE-RECORD-MODES* names. A line, or an entry's line
-in a list, is matched when any part of a match lies on it. That runs from the
-line holding the match's first character through the line holding its last, its
-line end counted with it. So 1\\ny keeps the line ending in 1 and the line
+\\<minibuffer>\\[minibuffer-previous-history] and \\[minibuffer-next-history]
+bring back the patterns typed before, in any question that takes one
+\(*PATTERN-HISTORY*). The list shows above its entries how many are left and by
+what; \\[search-filter-list] lists the filters, to take one away, and
+\\[search-filter-remove-all] takes them all away. A list made again is narrowed
+again. In a file of records, a line each, the records are narrowed the same way:
+in a comma-separated values (CSV) or tab-separated values (TSV) file, a log, a
+JSON Lines file and the others *LINE-RECORD-MODES* names. A line, or an entry's
+line in a list, is matched when any part of a match lies on it. That runs from
+the line holding the match's first character through the line holding its last,
+its line end counted with it. So 1\\ny keeps the line ending in 1 and the line
 starting with y, and a block wrapped over several lines keeps all of them. The
 lines left out are hidden, never deleted, a CSV's header line always shown, and
 the mode line says how many are left. Saving writes the whole file; editing the
 lines shown is allowed, and a line edited so that it no longer matches stays in
 sight until the filters are worked out again (a filter added or taken away, the
-file read again or sorted), but nothing changes the lines hidden.
-Where a list or file is large, what is typed is matched from the top of the
-window first and shown at once (*SEARCH-FILTER-SCREEN-SECONDS*), and the
-rest in the background on all but two cores, the mode line saying how far it
-has got (\\[stop-job] stops it, taking the filter away); the editor goes on
-meanwhile. So is a pattern so slow on some line that matching it there would
-hold the editor up, the prompt saying slow pattern. A pattern that cannot be
-used shows why in the prompt, and \\<search>\\[search-exit] waits for it to be
-mended."
+file read again or sorted), but nothing changes the lines hidden. Where a list
+or file is large, what is typed is matched from the top of the window first and
+shown at once (*SEARCH-FILTER-SCREEN-SECONDS*), and the rest in the background
+on all but two cores, the mode line saying how far it has got (\\[stop-job]
+stops it, taking the filter away); the editor goes on meanwhile. So is a pattern
+so slow on some line that matching it there would hold the editor up, the prompt
+saying slow pattern. A pattern that cannot be used shows why in the prompt, and
+\\<search>\\[search-exit] waits for it to be mended."
   (let ((buffer (current-buffer)))
     (if (search-filterable-p buffer)
         (progn (list-filtering-made buffer)
@@ -211,11 +208,11 @@ list of filters here is for: the whole list is shown again."
 (defun add-search-filter (buffer pattern &key (regex t) part hide (ignore-case :as-typed))
   "Narrow BUFFER, a list or a file of records, by PATTERN, kept with its other
 filters as one typed at the search prompt is (\\[search-filter-regex]): a
-regular expression when REGEX is true, else literal text; case ignored when
-it has no capital letter, or as IGNORE-CASE says when it is T or NIL. With PART, one of the parts the list names
-\(SET-SEARCH-FILTERING's PARTS), it looks at that part of each entry alone;
-with HIDE, it leaves the entries it does not match. Returns the filter, or
-NIL and why when the pattern cannot be used."
+regular expression when REGEX is true, else literal text; case ignored when it
+has no capital letter, or as IGNORE-CASE says when it is T or NIL. With PART,
+one of the parts the list names (SET-SEARCH-FILTERING's PARTS), it looks at that
+part of each entry alone; with HIDE, it leaves the entries it does not match.
+Returns the filter, or NIL and why when the pattern cannot be used."
   (multiple-value-bind (filter why) (make-search-filter pattern :regex regex :where part :part part :hide hide
                                                                 :fold ignore-case)
     (when filter
@@ -243,8 +240,7 @@ as when the text a list gives of its entries changed (a label put on): the
 entries they leave now are shown, in the background where that takes time."
   (let ((filtering (list-filtering buffer)))
     (when (and filtering (list-filtering-filters filtering))
-      (dolist (filter (list-filtering-filters filtering))
-        (setf (search-filter-source filter) nil (search-filter-kept filter) nil))
+      (forget-worked-out (list-filtering-filters filtering))
       (refilter buffer))))
 
 (defun entries-left-by-filters (list)
@@ -278,24 +274,24 @@ leaves what it does not match. COMMAND names the command in messages."
                      ;; a part of each entry asked for first, its text tried alone
                      (let ((part (read-list-part buffer "Filter by: ")))
                        (multiple-value-bind (pattern regex)
-                           (read-pattern (format nil "~a~@[ whose ~a holds~]" words part))
+                           (read-pattern (filter-question words part))
                          (values pattern regex nil part part))))
                     ((and (not (filters-lines-p buffer)) (list-table-columns buffer))
                      ;; a table: a column asked for first, its cell tried alone
                      (multiple-value-bind (column title) (read-list-column buffer "Filter by the column: ")
                        (multiple-value-bind (pattern regex)
-                           (read-pattern (format nil "~a~@[ whose ~a holds~]" words title))
+                           (read-pattern (filter-question words title))
                          (values pattern regex nil title (and column (list :column column buffer))))))
                     (t (multiple-value-bind (pattern regex matcher what)
                            (read-line-filter buffer words 0 (tuatara.buffer:buffer-size buffer))
                          (values pattern regex matcher what nil))))
             (if (zerop (length pattern))
-                (message "No pattern: ~(~a~) was not run" command)
+                (say-not-run command "No pattern")
                 (multiple-value-bind (filter why)
                     (make-search-filter pattern :regex regex :test (and what matcher) :part what :hide hide
                                                 :where where)
                   (if (null filter)
-                      (message "~a: ~(~a~) was not run" (string-capitalize why :end 1) command)
+                      (say-not-run command (string-capitalize why :end 1))
                       (keep-new-filter buffer filter)))))))))
 
 (define-command search-filter-show-records ()
@@ -314,9 +310,12 @@ file offers name, version and markers. todo.txt offers done, priority,
 completed, created, text, project, context and the keys of its key:value tags.
 JSON Lines offers its keys, strings read with their escapes undone, a path of
 keys apart by dots (user.id) reaching inside. A .gitignore and every list try
-the whole line. The filter is kept with the others, the next narrowing what it
-leaves; \\[search-filter-list] lists them and \\[search-filter-remove-all] takes
-them all away. \\[list-keep-records] deletes the others instead."
+the whole line. A line longer than *REWRITE-LINE-LIMIT* octets (16 MiB as
+shipped) has its column tried on its first part alone, and the mode line says
+how many lines were. The filter is kept
+with the others, the next narrowing what it leaves; \\[search-filter-list]
+lists them and \\[search-filter-remove-all] takes them all away.
+\\[list-keep-records] deletes the others instead."
   (filter-records-by 'search-filter-show-records nil))
 
 (define-command search-filter-hide-records ()

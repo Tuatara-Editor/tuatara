@@ -14,6 +14,7 @@
 # (iswspace), which answer for any code point; its names are kept inside the
 # grammar, as the same ones (Scanner::scan) are in several.
 grammar_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+. "$grammar_root/tools/fetch.sh"
 grammar_cflags=(-O2 -fPIC -shared -std=c11 -fno-strict-aliasing -DNDEBUG -include "$grammar_root/syntax/safe-ctype.h"
                 -include "$grammar_root/syntax/counted-memory.h")
 grammar_cxxflags=(-O2 -fPIC -fno-strict-aliasing -DNDEBUG -fvisibility=hidden)
@@ -82,13 +83,6 @@ grammar_manifest() {
 # (the manifest's fifth column), or nothing
 grammar_subpath() {
   grammar_manifest | awk -F'\t' -v n="$1" '$1 == n { print $5 }'
-}
-
-# grammar_git ARGUMENTS...: git run on a grammar's checkout, which never
-# runs a program the checkout names for itself (a file monitor, hooks), as
-# its .git could name one
-grammar_git() {
-  git -c core.fsmonitor=false -c core.hooksPath=/dev/null -c core.sshCommand=false "$@"
 }
 
 # generate_parser DIR CLI: generate the parser of the grammar in the directory
@@ -188,7 +182,7 @@ grammar_inputs_hash() {
 # commit_of DIR OBJECT: the commit OBJECT of the repository in DIR is or
 # points to (a tag names one through a tag object), or nothing when the
 # repository has no such object
-commit_of() { grammar_git -C "$1" rev-parse -q --verify "$2^{commit}" 2>/dev/null || true; }
+commit_of() { https_git -C "$1" rev-parse -q --verify "$2^{commit}" 2>/dev/null || true; }
 
 # fetch_grammar DIR URL COMMIT: DIR a checkout of the repository at URL at
 # COMMIT, fetched afresh unless it is one already (its HEAD that commit,
@@ -199,13 +193,13 @@ fetch_grammar() {
   local dir="$1" url="$2" commit="$3" head verbatim="* -text -ident -filter -working-tree-encoding"
   head="$(commit_of "$dir" HEAD)"
   if [ -z "$head" ] || [ "$head" != "$(commit_of "$dir" "$commit")" ] ||
-     [ "$(grammar_git -C "$dir" rev-parse --show-toplevel 2>/dev/null)" != "$dir" ] ||
+     [ "$(https_git -C "$dir" rev-parse --show-toplevel 2>/dev/null)" != "$dir" ] ||
      [ "$(cat "$dir/.git/info/attributes" 2>/dev/null)" != "$verbatim" ]; then
     rm -rf "$dir"; mkdir -p "$dir"
-    grammar_git -C "$dir" init -q
+    https_git -C "$dir" init -q
     mkdir -p "$dir/.git/info"; echo "$verbatim" > "$dir/.git/info/attributes"
-    grammar_git -C "$dir" fetch -q --depth 1 "$url" "$commit"
-    grammar_git -C "$dir" checkout -q FETCH_HEAD
+    https_git -C "$dir" fetch -q --depth 1 "$url" "$commit"
+    https_git -C "$dir" checkout -q FETCH_HEAD
   fi
 }
 
@@ -213,7 +207,7 @@ fetch_grammar() {
 # change and file of its own gone but node_modules/ (what its grammar.js
 # requires, fetched there)
 pristine_grammar() {
-  grammar_git -C "$1" checkout -q -- . && grammar_git -C "$1" clean -q -fdx -e node_modules
+  https_git -C "$1" checkout -q -- . && https_git -C "$1" clean -q -fdx -e node_modules
 }
 
 # grammar_checked NAME DIR RECORDED HASH: true when the checkout DIR of
@@ -222,7 +216,7 @@ pristine_grammar() {
 # the file RECORDED has for it; else says why, false
 grammar_checked() {
   local name="$1" dir="$2" recorded="$3" found="$4"
-  if [ -n "$(grammar_git -C "$dir" status --porcelain --ignored --untracked-files=all 2>/dev/null | grep -v "^.. node_modules/" || true)" ]; then
+  if [ -n "$(https_git -C "$dir" status --porcelain --ignored --untracked-files=all 2>/dev/null | grep -v "^.. node_modules/" || true)" ]; then
     echo "$dir has been changed, or has files of its own: delete it to fetch it again. Nothing is compiled." >&2
     return 1
   fi
@@ -259,7 +253,7 @@ prepare_grammar() {
   [ -f "$patch" ] && pristine_grammar "$dir"
   grammar_checked "$name" "$dir" "$recorded" "$(grammar_inputs_of "$root" "$name" "$subpath")" || return 1
   if [ -f "$patch" ]; then
-    grammar_git -C "$dir" apply "$patch" || return 1
+    https_git -C "$dir" apply "$patch" || return 1
     if grep -q "^diff --git a/grammar.js" "$patch"; then
       for required in $(grep -v "^#" "$root/syntax/grammars.tsv" | cut -f1 | grep "^$name/" || true); do
         grammar_checked "$required" "$root/build/grammar-sources/$required" "$recorded" \

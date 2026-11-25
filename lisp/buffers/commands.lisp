@@ -10,9 +10,10 @@
 (in-package #:tuatara.defaults)
 
 (defun buffer-listed-file (buffer)
-  "The file the lists of buffers name for BUFFER: the file it visits, or the
-picture, PDF or document it shows; NIL for none."
-  (or (tuatara.buffer:buffer-file buffer) (tuatara.buffer:buffer-local buffer :viewed-file)))
+  "The file the lists of buffers name for BUFFER: the file it visits
+\(/ssh:HOST:/path for one on another machine), or the picture, PDF or document
+it shows; NIL for none."
+  (or (buffer-visited-name buffer) (tuatara.buffer:buffer-local buffer :viewed-file)))
 
 (defun buffer-candidates ()
   "Completion candidates for the live buffers other than the current one, of
@@ -258,14 +259,19 @@ SAVE-BUFFERS-SAYING does; how many are saved or being saved."
 
 (define-command save-some-buffers ()
   "Save every buffer visiting a file with changes not saved, after asking once,
-the files named: the files a rename across a project changed, say. In a
+the files named beside the question: the files a rename across a project
+changed, say. In a
 client of an editor running in the background, the client's own buffers."
   (let ((changed (remove-if-not (lambda (b) (and (tuatara.buffer:buffer-file b) (tuatara.buffer:buffer-modified-p b)))
                                 (client-buffers))))
     (cond ((null changed) (message "(No files need saving)"))
           ((let ((*buffers-asked-about* changed))
-             (y-or-n-p* (format nil "Save ~d changed file~:p: ~{~a~^, ~}?"
-                                (length changed) (mapcar #'tuatara.buffer:buffer-name changed))))
+             (y-or-n-p* (format nil "~a?" (list-question "Save" "changed file" changed
+                                                         :name-of #'tuatara.buffer:buffer-name))
+                        :details (and (rest changed)
+                                      (format nil "~{~a~%~}" (mapcar (lambda (b)
+                                                                       (abbreviated-path (buffer-visited-name b)))
+                                                                     changed)))))
            (save-buffers-saying changed "Saved ~d file~:p"))
           (t (message "Nothing saved")))))
 

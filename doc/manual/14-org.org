@@ -198,8 +198,8 @@ The keys that move the cursor, held with Alt, move headings.
 
 Taking a star away is called promoting, and adding one is called demoting.
 The arrow keys with Alt do the same as the letters. Each move is one step
-for undo. On a list item ~M-h~ and ~M-l~ move the item instead, as the
-next section shows, and in a table they move a column.
+for undo. On a list item all four move the item instead, as the next
+section shows, and in a table they move a row or a column.
 
 To jump to a heading by name, press ~M-g o~, which chapter 13 describes. It
 lists every heading of the note, and typing a few letters narrows the list.
@@ -289,11 +289,12 @@ is the quick way to turn a plain list into a numbered one.
 ~TAB~ on an item that has sub-items or more lines under it folds it, as on a
 heading.
 
-The keys that change a heading's level move items too, when the cursor is on
-one.
+The keys that move a heading or change its level move items too, when the
+cursor is on one.
 
 | Modal | Non-modal     | What it does to the item the cursor is on                 |
 |-------+---------------+-----------------------------------------------------------|
+| none  | ~M-j~ / ~M-k~ | Moves it with its sub-items past the next item or the one above |
 | none  | ~M-l~ / ~M-h~ | Sets it in under the item above it, or out a level        |
 | none  | ~M-L~ / ~M-H~ | The same, with the sub-items under it                     |
 | none  | ~TAB~         | On an empty item, sets it in, and in or out on each press |
@@ -303,7 +304,8 @@ its last sub-item. Select lines with ~V~ and ~J~ first, and ~M-l~ or ~M-h~
 moves every item that begins on them. The first item of a list cannot be
 set in alone, as there is nothing above it to go under; ~M-L~ and ~M-H~ on
 it move the whole list a column. An item with sub-items is set out with
-~M-H~, which takes them along. Numbered items are numbered again.
+~M-H~, which takes them along. Numbered items are numbered again, and an
+item moved with ~M-j~ or ~M-k~ takes the number of the place it moves to.
 
 ~TAB~ on an item with nothing after its bullet, the one ~M-RET~ has just
 made, sets it in a level. Each ~TAB~ after it sets it further in while it can
@@ -618,7 +620,7 @@ of two ways.
 You can point. Before you have typed anything, ~l~ and ~h~ move a day
 forward and back and ~j~ and ~k~ move a week. ~RET~ writes the day at the
 prompt, and a second ~RET~ accepts it. Between the two you can add a time,
-such as =14:00=.
+such as =14:00=. These keys are written under the prompt while they work.
 
 Two settings change this. =*org-read-date-in-calendar*= is =t= as it comes:
 the question begins in the calendar, so that ~h~, ~l~, ~j~ and ~k~ move at
@@ -692,7 +694,7 @@ drawer and fold away with it. With =nil= they are written right under the
 heading's planning line and properties, in plain sight.
 
 If you cannot remember how to say a repeat in words, press ~C-r~ at the date
-prompt; the prompt itself says so, as =Schedule (C-r repeats):=. A menu opens
+prompt; the lines shown under the prompt say so. A menu opens
 where you choose the start, the time, how often and when it ends, and it
 shows in plain words what your choices come to. ~RET~ writes it. The menu
 opens only from a date prompt, so ~M-x~ does not offer it.
@@ -770,7 +772,8 @@ it.
 
 *** Opening it
 
-~C-x a a~ asks which view you want and waits for one more key.
+~C-x a a~ asks which view you want and waits for one more key. The prompt
+lists the keys, and what each one shows is written under it.
 
 | Modal | Non-modal | View                                                              |
 |-------+-----------+-------------------------------------------------------------------|
@@ -783,8 +786,10 @@ it.
 A match is read whole: a =|= inside ={a|b}= or ="a|b"= belongs to it, and a
 match with anything that is not a tag, a comparison or a ={pattern}= is
 refused with a message, not read in part. The same matches work in a clock
-table's =:match=, except a pattern that repeats a repeated part, which could
-take for ever; such a =:match= is left out and said to be.
+table's =:match=, except a pattern that repeats a part that can match in more
+than one way (a part that repeats, a choice whose choices may start alike, or a
+back-reference to a group that repeats), which could take for ever; such a
+=:match= is left out and said to be, with the reason.
 
 ~C-x a w~, ~C-x a m~ and ~C-x a y~ open the week, the month or the year
 without asking. Figure 14.2 shows a week.
@@ -999,8 +1004,9 @@ down without making you leave what you are doing. You press a key, type the
 thought in a small window, press another key, and you are back where you
 were. The thought has been filed in the right place.
 
-~C-x a c~ starts it and shows the templates to choose from. A template says
-what kind of entry to make and where to file it. Six come with Tuatara.
+~C-x a c~ starts it and asks for a template, the keys on the prompt and each
+template's name under it. A template says what kind of entry to make and
+where to file it. Six come with Tuatara.
 
 | Modal | Non-modal | Makes                                      | Files it                       |
 |-------+-----------+--------------------------------------------+--------------------------------|
@@ -1652,13 +1658,18 @@ echo "Water the beds at dawn"
 ,#+end_src
 #+end_example
 
-~C-c C-v t~ then writes every such block to its file. Blocks that name the
-same file go into it in order. Before anything is written, Tuatara lists the
-files and says which are new and which would change, and asks. The files are
+~C-c C-v t~ (=tangle-all-code-blocks=) then writes every such block to its file.
+Blocks that name the same file go into it in order. ~C-c C-v b~
+(=tangle-this-code-block=) writes only the file of the block the cursor is in.
+When other blocks of the note go to that file, it is made from all of them, so
+no block's code is cut out, and the list says how many blocks it is made from.
+With the cursor in no source block, or in one with no =:tangle= (or =:tangle
+no=), it says so and writes nothing. Before anything is written, Tuatara lists
+the files and says which are new and which would change, and asks. The files are
 worked out and compared with those on disk in the background, so a large note
-never holds up typing; the list comes up once that is done. This suits
-settings files well: the note says why each setting is there, and the file
-the program reads is made from it.
+never holds up typing; the list comes up once that is done. This suits settings
+files well: the note says why each setting is there, and the file the program
+reads is made from it.
 
 A file name with directories in it, such as =:tangle ~/.config/foot/foot.ini=,
 needs the directories to exist. A block with =:mkdirp yes= makes them as it is
@@ -1752,7 +1763,7 @@ Both follow ~RET~ on the link. Headings tagged =noexport=, those under a
 =COMMENT= heading, and keywords, priorities and tags in the titles are left
 out of either.
 
-#+table: commands tangle-code-files org-update-toc org-dynamic-block-insert-dblock org-dblock-update org-update-all-dblocks insert-formatted-links-block insert-formatted-missing-links-block insert-formatted-backlinks-block insert-formatted-files-block insert-formatted-files-as-headings-block insert-formatted-sequence-block
+#+table: commands tangle-all-code-blocks tangle-this-code-block org-update-toc org-dynamic-block-insert-dblock org-dblock-update org-update-all-dblocks insert-formatted-links-block insert-formatted-missing-links-block insert-formatted-backlinks-block insert-formatted-files-block insert-formatted-files-as-headings-block insert-formatted-sequence-block
 
 #+table: settings *org-src-languages* *code-files-make-directories* *org-toc-on-save* *org-toc-max-depth* *org-toc-style*
 
@@ -2042,7 +2053,10 @@ A template that shows a logo gets it from the directory =*logos-directory*=
 names. At =nil=, the standard, that is =logos/= in your configuration directory,
 =~/.config/tuatara/logos/=. A note's =#+logo: firm.pdf= line is looked for
 there. If your pictures are kept elsewhere,
-=(setf *logos-directory* "~/Pictures/logos")=.
+=(setf *logos-directory* "~/Pictures/logos")=. To keep them in more than one
+place, give a list: =(setf *logos-directory* '("~/.config/tuatara/logos/"
+"~/Pictures/logos/"))=. A name is looked for in each in turn, and the first
+directory that has it gives the picture.
 
 *** Hiding names
 

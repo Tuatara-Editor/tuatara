@@ -421,12 +421,14 @@ A field holding =FORMULA or :=FORMULA makes it a formula of the table, worked ou
     (org-table-go model (org-table-row model) (min (org-table-field model) (max 0 (1- (org-table-columns model)))))))
 
 (define-command org-metaup ()
-  "In an Org table, move the row up; else move the subtree up (\\`M-k')."
-  (unless (org-table-move-row -1) (org-move-subtree :up)))
+  "In an Org table, move the row up; on a list item, move it with its
+sub-items above the item before it; else move the subtree up (\\`M-k')."
+  (unless (or (org-table-move-row -1) (org-move-item :up)) (org-move-subtree :up)))
 
 (define-command org-metadown ()
-  "In an Org table, move the row down; else move the subtree down (\\`M-j')."
-  (unless (org-table-move-row 1) (org-move-subtree :down)))
+  "In an Org table, move the row down; on a list item, move it with its
+sub-items below the item after it; else move the subtree down (\\`M-j')."
+  (unless (or (org-table-move-row 1) (org-move-item :down)) (org-move-subtree :down)))
 
 (define-command org-metaleft ()
   "In an Org table, move the column left; on a list item, set it out a level,

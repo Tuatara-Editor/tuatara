@@ -37,11 +37,13 @@ it (\"not supported: \\K\")."))
     ("word" . "\\w") ("cntrl" . ,(format nil "~c-~c~c" (code-char 0) (code-char 31) (code-char 127)))
     ("print" . " -~") ("graph" . "!-~") ("ascii" . ,(format nil "~c-~c" (code-char 0) (code-char 127))))
   "The POSIX classes a set may hold, [:alpha:] in [[:alpha:]x], each (NAME .
-MEMBERS), MEMBERS as written inside a set: ASCII, as PCRE has them.")
+MEMBERS), MEMBERS as written inside a set: ASCII, as PCRE has them, but
+for word, which holds what \\w does, letters and digits of every language.")
 
-(defparameter *posix-negations* '(("digit" . "\\D") ("space" . "\\S") ("word" . "\\W"))
-  "The POSIX classes whose negation, [:^digit:], is an escape of its own, each
-(NAME . MEMBERS); the others are turned round by POSIX-COMPLEMENT.")
+(defparameter *posix-negations* '(("word" . "\\W"))
+  "The POSIX classes whose negation, [:^word:], is an escape of its own, each
+(NAME . MEMBERS); the others, of ASCII alone, are turned round by
+POSIX-COMPLEMENT.")
 
 (sb-ext:defglobal **posix-complements** (make-hash-table :test 'equal :synchronized t)
   "The members of each negated POSIX class worked out so far (POSIX-COMPLEMENT), by name.")
@@ -429,12 +431,12 @@ matches."
 
 (defun regex-case-fold-p (pattern)
   "True when a search for PATTERN ignores case (smart case). That is when it
-has no upper-case letter outside an escape such as \\W or \\S, a character's
-code (\\x4A, \\x{1F600}), a control character (\\cA), the name of a group
-\((?<Year>...), \\k<Year>) and the name of a character property (\\pL,
-\\p{Greek}). It must name no case either:
-no [:upper:] or [:lower:] (or [:^upper:], [:^lower:]) in a set, no \\p{Lu},
-\\p{Ll} or \\p{Lt} (written in any case, or by its long name,
+has no upper-case letter, in quoted text (\\Q...\\E) too, outside an escape
+such as \\W or \\S, a character's code (\\x4A, \\x{1F600}), a control
+character (\\cA), the name of a group ((?<Year>...), \\k<Year>) and the
+name of a character property (\\pL, \\p{Greek}). It must name no case
+either: no [:upper:] or [:lower:] (or [:^upper:], [:^lower:]) in a set, no
+\\p{Lu}, \\p{Ll} or \\p{Lt} (written in any case, or by its long name,
 Uppercase_Letter), which ask for case as a capital letter does."
   (let ((i 0) (n (length pattern)))
     (flet ((past (char from)
@@ -444,7 +446,13 @@ Uppercase_Letter), which ask for case as a capital letter does."
             do (let ((c (char pattern i))
                      (d (and (< (1+ i) n) (char pattern (1+ i)))))
                  (cond ((char= c #\\)
-                        (cond ((and (eql d #\x) (< (+ i 2) n) (char= (char pattern (+ i 2)) #\{))
+                        (cond ((eql d #\Q)
+                               ;; quoted text to \E: each letter in it as itself
+                               (let ((close (or (search "\\E" pattern :start2 (+ i 2)) n)))
+                                 (when (find-if #'upper-case-p pattern :start (+ i 2) :end close)
+                                   (return-from regex-case-fold-p nil))
+                                 (setf i (min n (+ close 2)))))
+                              ((and (eql d #\x) (< (+ i 2) n) (char= (char pattern (+ i 2)) #\{))
                                (setf i (past #\} i)))
                               ((eql d #\x)
                                ;; up to two hexadecimal digits

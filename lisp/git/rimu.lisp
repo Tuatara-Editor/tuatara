@@ -213,7 +213,7 @@ directory can have (., .. or one holding a /) is left out."
     (multiple-value-bind (blob ok too-large)
         (git-blob-octets top (git-rewound-hash source) (subseq path (length top)) :limit *git-shown-limit*)
       (cond (too-large (refuse "~a is larger than ~a" (tuatara.io:native-file-name path)
-                               (tuatara.io:octets-words *git-shown-limit*)))
+                               (tuatara.text:octets-words *git-shown-limit*)))
             ((not ok) (refuse "~a could not be read from git" (tuatara.io:native-file-name path)))
             (t (tuatara.io:call-with-memory-file (tuatara.io:native-file-name path) blob
                                                  (lambda (fd) (funcall function fd path (length blob)))))))))

@@ -16,7 +16,7 @@
 
 (define-setting tuatara-user:*terminal-send-escape* nil
   "Whether Escape goes to a full-screen program in a terminal (one on the
-alternate screen: nvim, less, htop) even while *ESCAPE-QUITS* is on. C-g
+alternate screen: less, htop, top) even while *ESCAPE-QUITS* is on. C-g
 stops typing in both cases.
 - t: Escape goes to the program; at a shell's prompt it still stops typing.
 - nil: *ESCAPE-QUITS* holds in a full-screen program too, and C-q ESC gives
@@ -114,12 +114,18 @@ does. C-x and its keys work as anywhere."
 cdr; its car the face generation (TUATARA.DISPLAY:*FACE-GENERATION*) they
 were made for.")
 
+(defparameter *terminal-looks-kept* 65536
+  "How many looks the faces are kept for (TERMINAL-FACES) before they are
+begun afresh, so that a program choosing ever new colours fills no more.")
+
 (defun terminal-faces (look)
   "The faces a cell of LOOK (EMULATOR-FRAME's, a number, see LOOK-LIST) is shown
 in: its colours, then bold, italic, underlined, dim and reversed. Made once
-for each look while the faces stay as they are."
+for each look while the faces stay as they are, *TERMINAL-LOOKS-KEPT* looks
+at most."
   (let ((known *terminal-look-faces*))
-    (unless (eql (car known) tuatara.display:*face-generation*)
+    (unless (and (eql (car known) tuatara.display:*face-generation*)
+                 (< (hash-table-count (cdr known)) *terminal-looks-kept*))
       ;; a fresh table, never one cleared: another thread may be reading the old one
       (setf known (cons tuatara.display:*face-generation* (make-hash-table :synchronized t))
             *terminal-look-faces* known))
@@ -175,8 +181,8 @@ basic colours are the theme's (THEME-TERMINAL-COLOUR), else the terminal's own."
                                                :bg shown)))
     name))
 
-(defvar *terminal-face-generation* nil
-  "The face generation (TUATARA.DISPLAY:*FACE-GENERATION*) the faces of
+(defvar *terminal-theme-generation* nil
+  "The theme generation (TUATARA.DISPLAY:*THEME-GENERATION*) the faces of
 programs' colours were last coloured for.")
 
 ;;; A terminal's text with its escape sequences, its colours made faces
@@ -625,9 +631,9 @@ output brings, but for a terminal whose library was held (a picture being
 drawn), looked at again a moment later. A terminal a waiting question is
 about is left as it is until the question is answered, what its program does
 meanwhile kept by its emulator (BUFFER-HELD-BY-QUESTION-P)."
-  (unless (eql *terminal-face-generation* tuatara.display:*face-generation*)
+  (unless (eql *terminal-theme-generation* tuatara.display:*theme-generation*)
     (recolour-terminal-faces)
-    (setf *terminal-face-generation* tuatara.display:*face-generation*))
+    (setf *terminal-theme-generation* tuatara.display:*theme-generation*))
   (let ((again nil))
     (flet ((again-in (seconds) (setf again (if again (min again seconds) seconds))))
       (dolist (buffer (copy-list *terminal-buffers*))

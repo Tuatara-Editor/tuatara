@@ -32,7 +32,7 @@ for every descriptor of it duplicated from FD too."
 (defun log-in-use-p (native)
   "True when another session has the log at NATIVE open (OPEN-ROTATED-LOG
 holds a shared lock on it for as long as it writes there)."
-  (let ((fd (handler-case (sb-posix:open native sb-posix:o-rdonly)
+  (let ((fd (handler-case (sb-posix:open native (logior sb-posix:o-rdonly sb-posix:o-nofollow +o-cloexec+))
               (sb-posix:syscall-error () nil))))
     (and fd
          (unwind-protect (not (lock-fd fd))
@@ -45,16 +45,21 @@ it while it is open. With ROTATE (once a session), when no other session is
 writing to it, a new one is begun, the logs of the sessions before kept as
 NATIVE.1, the one just before, to NATIVE.KEEP; while a session writes to the
 log no other puts it aside: one beginning meanwhile writes after its lines.
-The debug log and the log of standard error are kept so. An error when it
-cannot be opened."
+The debug log and the log of standard error are kept so. A symbolic link at
+NATIVE is not followed, and programs started are not given the descriptor. An
+error when it cannot be opened."
   (when (and rotate (not (log-in-use-p native)))
     (flet ((name (n) (if (zerop n) native (format nil "~a.~d" native n))))
       (loop for n from (1- keep) downto 0
             do (handler-case (sb-posix:rename (name n) (name (1+ n)))
                  (sb-posix:syscall-error () nil)))))
-  (let ((fd (sb-posix:open native (logior sb-posix:o-wronly sb-posix:o-creat sb-posix:o-append) #o600)))
+  (let ((fd (sb-posix:open native (logior sb-posix:o-wronly sb-posix:o-creat sb-posix:o-append sb-posix:o-nofollow
+                                         +o-cloexec+)
+                           #o600)))
     (with-fd-closed-on-error (fd)
       (handler-case (sb-posix:fchmod fd #o600)
         (sb-posix:syscall-error () nil))
-      (lock-fd fd :shared t)
+      ;; the shared lock is kept from it only for the moment another session looks whether it is in use
+      (unless (lock-fd fd :shared t :wait 1/10)
+        (debug-report :file "Writing to ~a without its lock: another session may put it aside" native))
       fd)))

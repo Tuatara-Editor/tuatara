@@ -76,8 +76,8 @@ did not work out, showing what those before them leave."
     (when (and current (live-buffer-p buffer) (eq (list-filtering-source filtering) source))
       (cond ((eq (tuatara.runtime:job-status job) :done)
              (let ((results (reverse (search-filter-job-results job))))
-               (loop for (filter kept count) in results
-                     do (keep-worked-out filter source kept count))
+               (loop for (filter kept count nil cut) in results
+                     do (keep-worked-out filter source kept count (or cut 0)))
                (when (and (search-filter-job-whole job) results)
                  (setf (list-filtering-total filtering) (fourth (first results))))))
             (t (setf (list-filtering-filters filtering)
@@ -139,7 +139,7 @@ one waits."
 PREVIOUS leaves: its entries' bits, or for records its runs of lines, kept
 in it (KEEP-WORKED-OUT), and returned."
   (if (list-filtering-lines filtering)
-      (let ((rope (tuatara.text:version-rope source)))
+      (let ((rope (tuatara.text:version-rope source)) (*lines-cut* (list 0)))
         (multiple-value-bind (runs count looked)
             (lines-matching (list filter) rope (or previous
                                                    (all-records rope
@@ -147,7 +147,7 @@ in it (KEEP-WORKED-OUT), and returned."
                                                                 (record-ends buffer)))
                            (buffer-crlf-p buffer) :ends (record-ends buffer))
           (unless previous (setf (list-filtering-total filtering) looked))
-          (keep-worked-out filter source runs count)))
+          (keep-worked-out filter source runs count (car *lines-cut*))))
       (multiple-value-call #'keep-worked-out filter source (work-out-filter filtering filter source previous))))
 
 (defvar *filter-as-typed* nil
@@ -200,13 +200,14 @@ once it is done."
                        (cancel (tuatara.runtime:job-cancel job)))
                    (dolist (filter left)
                      (setf (search-filter-job-progress job) (cons 0 (max 1 (runs-octets ranges))))
-                     (multiple-value-bind (runs count looked)
-                         (lines-matching-everywhere filter rope ranges crlf (search-filter-job-progress job)
-                                                   (lambda () (car cancel)) hook ends)
-                       (tuatara.runtime:job-check-stop)
-                       (push (list filter runs count looked) (search-filter-job-results job))
-                       (incf (search-filter-job-pass job))
-                       (setf ranges runs)))))
+                     (let ((*lines-cut* (list 0)))
+                       (multiple-value-bind (runs count looked)
+                           (lines-matching-everywhere filter rope ranges crlf (search-filter-job-progress job)
+                                                      (lambda () (car cancel)) hook ends)
+                         (tuatara.runtime:job-check-stop)
+                         (push (list filter runs count looked (car *lines-cut*)) (search-filter-job-results job))
+                         (incf (search-filter-job-pass job))
+                         (setf ranges runs))))))
            :name "tuatara record filter"))
         (progn
           (list-source-entry-lines source)

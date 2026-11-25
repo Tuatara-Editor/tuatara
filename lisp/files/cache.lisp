@@ -741,26 +741,16 @@ it is cleared once unused, or that it is not cleared by itself."
           ((getf item :in-use) "while in use")
           (t (format nil "until ~a" (short-time-words clears))))))
 
-(defun cache-list-show (buffer &optional (point 2))
-  "Fill BUFFER, the list of the cache, point on line POINT, or with :keep on
-the line it was on, marks kept on the entries still there. What the cache
-holds and the sizes are read on a thread of their own (CACHE-LISTING), and
-BUFFER filled once they are; an empty list says meanwhile that it is being
-read. Of listings that overlap, only the one begun last fills BUFFER, and an
-older one stops summing sizes."
-  (when (zerop (tuatara.buffer:buffer-size buffer))
-    (render-pieces buffer (list (format nil "Reading what the cache holds...~%")) :point :start))
-  (let ((listing (setf (tuatara.buffer:buffer-local buffer 'cache-listing)
-                       (1+ (or (tuatara.buffer:buffer-local buffer 'cache-listing) 0)))))
-    (flet ((wanted ()
-             (and (live-buffer-p buffer) (eql listing (tuatara.buffer:buffer-local buffer 'cache-listing)))))
-      (tuatara.runtime:make-guarded-thread
-       (tuatara.runtime:carry-settings
-        '(*cache-keep* *cache-directory*)
-        (lambda ()
-          (let ((sections (ignoring-errors-reported ("listing the cache") (cache-listing :wanted #'wanted))))
-            (defer-action (lambda () (when (wanted) (cache-list-fill buffer sections point)))))))
-       :name "tuatara cache listed"))))
+(defun cache-list-show (buffer &optional (point :first-entry))
+  "Fill BUFFER, the list of the cache, point on the first entry, or with
+POINT :keep on the line it was on, marks kept on the entries still there. What the cache
+holds and the sizes are read on a thread of their own (CACHE-LISTING,
+SHOW-LIST-FROM-THREAD), and BUFFER filled once they are; a listing overlapped
+by a later one stops summing sizes."
+  (show-list-from-thread buffer "Reading what the cache holds..."
+                         (lambda (wanted) (cache-listing :wanted wanted))
+                         (lambda (sections) (cache-list-fill buffer sections point))
+                         :settings '(*cache-keep* *cache-directory*)))
 
 (defun cache-list-fill (buffer sections point)
   "Fill BUFFER, the list of the cache, with SECTIONS (CACHE-LISTING), point as
@@ -801,8 +791,8 @@ they are cleared (*CACHE-KEEP*), and whether they are in use. There
 \\<cache-list-mode>\\[list-visit] opens an entry, \\[cache-toggle-pin] pins or
 unpins it, \\[list-mark-for-deletion] and \\[list-execute] delete."
   (let ((buffer (buffer-in-mode "*Cache*" 'cache-list-mode)))
-    (cache-list-show buffer)
-    (show-buffer buffer)))
+    (show-buffer buffer)
+    (cache-list-show buffer)))
 
 (defun cache-items-of (list keys)
   "The items of LIST, the list of the cache, known by KEYS, their paths."

@@ -25,7 +25,8 @@ has a code lens counting its calls (its title given only when resolved, its
 command logged as "ran NAME"); the selection grows from the word to its line
 to the whole text; and it finds "elsewhere found" in elsewhere.py, a file of
 its project never opened. It writes what it was told, one method a line, to the file its first
-argument names.
+argument names. It logs the workspace folders it is started in ("started in
+NAME") and asks for them again as it starts ("answered folders NAME").
 
 To try the editor's care: it asks a question no editor answers as it starts,
 and logs the answer's error code ("answered unknown CODE"); a text holding
@@ -412,6 +413,10 @@ while True:
         if os.environ.get('STAND_IN_SLOW_START'):
             time.sleep(1.5)
         ROOT[0] = params.get('rootUri')
+        if LOG and params.get('capabilities', {}).get('workspace', {}).get('workspaceFolders'):
+            for folder in params.get('workspaceFolders') or []:
+                LOG.write(f"started in {folder['name']}\n")
+            LOG.flush()
         send({'jsonrpc': '2.0', 'id': message['id'], 'result': {'capabilities': {
             'positionEncoding': 'utf-8', 'textDocumentSync': 2, 'hoverProvider': True, 'definitionProvider': True,
             'referencesProvider': True, 'renameProvider': True, 'documentFormattingProvider': True,
@@ -426,6 +431,10 @@ while True:
             'semanticTokensProvider': {'legend': {'tokenTypes': ['variable', 'function'], 'tokenModifiers': []},
                                        'full': True}}}})
     elif method is None and 'id' in message:
+        if LOG and message['id'] == 'folders':
+            for folder in message.get('result') or []:
+                LOG.write(f"answered folders {folder['name']}\n")
+            LOG.flush()
         if LOG and message['id'] == 'unknown':
             LOG.write(f"answered unknown {message.get('error', {}).get('code')}\n"); LOG.flush()
         if LOG and message['id'] == 'edit':
@@ -445,6 +454,7 @@ while True:
                 'uri': ROOT[0].rstrip('/') + '/elsewhere.py',
                 'diagnostics': [{'range': {'start': {'line': 1, 'character': 4}, 'end': {'line': 1, 'character': 8}},
                                  'severity': 2, 'source': 'stand-in', 'message': 'elsewhere found'}]}})
+        send({'jsonrpc': '2.0', 'id': 'folders', 'method': 'workspace/workspaceFolders', 'params': None})
         send({'jsonrpc': '2.0', 'id': 'unknown', 'method': 'tuatara/no-such-question', 'params': {}})
         send({'jsonrpc': '2.0', 'id': 'watch', 'method': 'client/registerCapability',
               'params': {'registrations': [{'id': 'py', 'method': 'workspace/didChangeWatchedFiles',

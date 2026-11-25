@@ -100,7 +100,7 @@ packages not loaded, bookmarks whose file is gone, files ignored in rimu and in
 a git status, a value missing in the health report (\\[check-health]), a line
 saying more are not shown." :fg :bright-black)
 (define-face :list-directory "The names of directories in a list: in rimu (\\[rimu])
-and where a link to a directory leads, in the trash (\\[rimu-trash]) and among
+and where a link to a directory leads, in the trash (\\[trash-manager]) and among
 bookmarks (\\[bookmark-manager])." :fg :blue)
 (define-face :list-date "Dates and times in a list or beside completion
 candidates: when a file last changed, the date in a formatted name, a rimu
@@ -155,7 +155,7 @@ in a window of its own, a line under it in a terminal."
   "Text a job in the background (a replacement, a sort, a rectangle's change)
 has still to work through (for a replacement only its matches), all of
 what it changes again while the lines of its new text are counted, until it
-is taken in; and a job's state in the list of jobs (\\[list-jobs]). What it
+is taken in; and a job's state in the list of jobs (\\[jobs-manager]). What it
 has been through looks as it does meanwhile."
   :extend t)
 (define-face :job-waiting "Text a job waiting its turn behind another in the background will change." :extend t)

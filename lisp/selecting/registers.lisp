@@ -176,13 +176,16 @@ character, as \\[register-add] puts it after."
 
 (defun forget-plaintext-copies (buffer)
   "Let go of every copy of BUFFER's decrypted text the editor keeps beside
-it: the kills taken from it (*PLAINTEXT-KILLS*) leave the kill ring, and the
-registers keeping its text or a block of it are emptied. Runs as a buffer is
-killed, and as its client ends."
+it: the kills taken from it (*PLAINTEXT-KILLS*) leave the kill ring, the
+rectangle store lets go of a block taken from it (*PLAINTEXT-RECTANGLES*), and
+the registers keeping its text or a block of it are emptied. Runs as a buffer
+is killed, and as its client ends."
   (let ((editor (or *editor* (running-editor))))
     (when editor
       (setf (editor-kill-ring editor)
             (remove-if (lambda (kill) (member buffer (gethash kill *plaintext-kills*))) (editor-kill-ring editor)))))
+  (when (member buffer (gethash *killed-rectangle* *plaintext-rectangles*))
+    (setf *killed-rectangle* nil))
   (loop for name in (register-names)
         when (member buffer (register-sources (gethash name *registers*)))
         do (remhash name *registers*)))
@@ -253,11 +256,13 @@ following), so that the register still leads there."
 
 ;;; The list
 
-(define-major-mode registers-mode marked-list-mode
-  "The list of registers (\\[register-list]): a line for each, with the
-character that names it, what it keeps and a look at that.
+(define-major-mode registers-mode sectioned-list-mode
+  "The list of registers (\\[register-manager]), in a section for each kind
+they keep (places, text, rectangles, numbers): a line for each, with the
+character that names it and a look at what it keeps.
 \\<registers-mode>\\[list-visit] or \\`RET' goes to the place on the line (a
-message for the others, \\[list-visit-other] in another window).
+message for the others, \\[list-visit-other] in another window); on a heading
+it folds or unfolds the section, \\[list-fold-heading] folds it.
 \\[list-mark-entry] marks a register (>), \\[list-mark-for-deletion] marks it
 for deletion (D), \\[list-unmark-entry] and \\[list-unmark-all] unmark.
 \\[list-delete-marked] empties the marked registers (the one on the line when
@@ -265,12 +270,14 @@ none is) after asking, \\[list-execute] those marked for deletion.
 \\[revert-buffer] lists them again, and \\[quit-window] returns."
   :lighter "Registers" :interactive nil)
 
-(defparameter *registers-title-lines* 2
-  "The lines of *Registers* above its first register: the column titles and the dashes under them.")
-
-(defparameter *registers-columns* '((" M" :width 2) ("Register" :width 10) ("Keeps" :width 12) ("Contents"))
+(defparameter *registers-columns* '((" M" :width 2) ("Register" :width 10) ("Contents"))
   "The columns of the register list, as TABLE-HEADING-PIECES takes them: the
-mark (> or D), the character, what it keeps and a look at that.")
+mark (> or D), the character and a look at what it keeps.")
+
+(defparameter *register-sections*
+  '((:position . "Places") (:text . "Text") (:block . "Rectangles") (:number . "Numbers"))
+  "The sections of the register list in order, each a kind a register keeps
+\(REGISTER-KIND) and the heading of its section.")
 
 (defun register-contents-words (register)
   "A look at what REGISTER keeps, on one line: the file or buffer and octet of
@@ -298,24 +305,28 @@ a place, the start of a text and how long it is, a block's size, a number."
       (:number (format nil "~d" value)))))
 
 (defun registers-render (list &optional (point :line))
-  "Fill LIST, the register list, with a line for each register (REGISTER-NAMES),
-marks kept on those still there, point on the same register or line, at its
-start, or with POINT :keep at its column."
+  "Fill LIST, the register list, with a section for each kind kept
+\(*REGISTER-SECTIONS*) and a line for each register (REGISTER-NAMES), marks
+kept on those still there, point on the same register or line, at its start,
+or with POINT :keep at its column."
   (render-table-list
-   list *registers-columns* (register-names)
+   list *registers-columns*
+   (group-sections (register-names) (lambda (name) (register-kind (gethash name *registers*)))
+                   :order (lambda (a b) (< (position a *register-sections* :key #'car)
+                                           (position b *register-sections* :key #'car))))
    (lambda (name mark section)
      (declare (ignore section))
      (let ((register (gethash name *registers*)))
        (list (list-mark-sign mark)
              (cons (string name) (list-mark-face mark))
-             (string-capitalize (register-kind-words register) :end 1)
              (register-contents-words register))))
+   :sections t :section-title (lambda (kind) (cdr (assoc kind *register-sections*)))
    :after (and (null (register-names))
                (list (format nil "~%   No registers: ~a keeps a selection, ~a a place, ~a a number~%"
                              (substitute-command-keys "\\[register-copy]")
                              (substitute-command-keys "\\[register-point]")
                              (substitute-command-keys "\\[register-number]"))))
-   :point point :first-line *registers-title-lines*
+   :point point
    :refill (lambda (list) (registers-render list :keep))))
 
 (defun registers-key (list)
@@ -326,15 +337,16 @@ the object it keeps; another key means the list is out of date (KEEP-SHOWN-CURRE
 
 (keep-shown-current 'registers-mode 'registers-key)
 
-(define-command register-list ()
-  "List the registers in *Registers*: the character that names each, what it
-keeps (a place, text, a rectangle, a number) and a look at that.
-\\<registers-mode>\\[list-visit] or \\`RET' goes to the place on the line,
-\\[list-mark-entry] marks a register, \\[list-delete-marked] empties the marked ones (the one on the line
-when none is), \\[quit-window] returns."
+(define-command register-manager ()
+  "List the registers in *Registers*, in a section for each kind they keep (a
+place, text, a rectangle, a number): the character that names each and a look
+at what it keeps. \\<registers-mode>\\[list-visit] or \\`RET' goes to the
+place on the line, \\[list-fold-heading] folds a section, \\[list-mark-entry]
+marks a register, \\[list-delete-marked] empties the marked ones (the one on
+the line when none is), \\[quit-window] returns."
   (let ((list (buffer-in-mode "*Registers*" 'registers-mode)))
-    (registers-render list)
-    (show-buffer list)))
+    (show-buffer list)
+    (registers-render list :first-entry)))
 
 (defmethod list-entry-noun ((mode registers-mode))
   "A register."
@@ -348,8 +360,8 @@ others, say what they keep and how to put it in."
     (cond ((null register))
           ((eq (register-kind register) :position)
            (jump-to-register-place name (register-value register) :other other))
-          (t (message "Register ~a keeps ~a: ~a puts it in the text where point is"
-                      name (register-kind-words register) (substitute-command-keys "\\[register-insert]"))))))
+          (t (message "Register ~a keeps ~a: \\[register-insert] puts it in the text where point is"
+                      name (register-kind-words register))))))
 
 (defmethod delete-entries ((mode registers-mode) list names mark)
   "Empty the registers NAMES, after asking."
@@ -366,4 +378,4 @@ the copies of a decrypted buffer's text forgotten then, and give the register
 list its keys."
   (pushnew 'forget-plaintext-copies tuatara.buffer:*kill-buffer-functions*)
   (pushnew 'keep-registered-places tuatara.buffer:*kill-buffer-functions*)
-  (entry-list-keys 'registers-mode "the register list (\\[register-list])"))
+  (entry-list-keys 'registers-mode "the register list (\\[register-manager])"))

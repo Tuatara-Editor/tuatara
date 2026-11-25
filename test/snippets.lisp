@@ -67,12 +67,14 @@
         (session-text (nth-value 1 (run-keys "M-x o r g - m o d e RET SPC SPC < q TAB H i" :text ""))))))
 
 (define-test (snippets whose-and-copied)
-  ;; C-c y says whose each snippet is; copy-snippet makes one of Tuatara's yours, which then takes its place
+  ;; C-c y says whose each snippet is; snippet-copy makes one of Tuatara's yours, which then takes its place
   (with-snippets (("org-mode" "mine" (format nil "# name: Mine~%# key: <m~%# --~%mine")))
     (let ((f (run-keys "M-x o r g - m o d e RET C-c y" :text "" :width 100 :height 30)))
       (true (tuatara.frontend.fake:fake-frame-showing f "<m  yours (org-mode)"))
       (true (tuatara.frontend.fake:fake-frame-showing f "<q  Tuatara's (org-mode)")))
-    (run-keys "M-x c o p y - s n i p p e t RET Q u o t e RET" :text "" :width 100)
+    (true (tuatara.frontend.fake:fake-frame-showing
+           (run-keys "M-x s n i p p e t - c o p y RET Q u o t e RET" :text "" :width 100)
+           "Copy Tuatara's snippet:"))
     (let* ((dir (first tuatara-user:*snippet-directories*))
            (copy (merge-pathnames "org-mode/quote-block" dir)))
       (true (probe-file copy))

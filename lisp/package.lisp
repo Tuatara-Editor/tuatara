@@ -9,7 +9,8 @@
            #:switch-to-buffer #:insert #:widen #:narrow-to-region)
   (:shadowing-import-from #:tuatara.display #:define-theme)
   (:import-from #:tuatara.display #:define-face #:set-face-attributes)
-  (:import-from #:tuatara.io #:octets-integer #:octets-signed #:octets-words #:directory-name #:walk-directory)
+  (:import-from #:tuatara.io #:directory-name #:walk-directory)
+  (:import-from #:tuatara.text #:octets-integer #:octets-signed #:octets-words)
   (:import-from #:tuatara.io #:fd-octets #:crc32 #:zip-octets #:zip-entries #:zip-entry-octets #:inflate #:zip-error
                 #:*zip-largest-entry* #:*zip-largest-ratio*)
   (:import-from #:tuatara.buffer #:buffer-read-only-p #:buffer-char-before #:next-line-start #:buffer-line-head)

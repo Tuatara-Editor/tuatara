@@ -70,7 +70,7 @@ cut, as past *SFTP-MOST-LISTED* entries.")
 (defun sftp-put-integer (box value count)
   "Put the unsigned integer VALUE in COUNT octets of BOX, most significant first."
   (let ((at (tuatara.frontend:outbox-room box count)))
-    (tuatara.io:octets-put-integer (tuatara.frontend:outbox-octets box) value count :at at :big-endian t)))
+    (tuatara.text:octets-put-integer (tuatara.frontend:outbox-octets box) value count :at at :big-endian t)))
 
 (defun sftp-put (box field)
   "Put FIELD in BOX as SFTP writes it: an integer as 4 octets, a string as
@@ -103,7 +103,7 @@ left as the server has them."
 
 (defun sftp-take-integer (inbox count)
   "The unsigned integer in the next COUNT octets of the packet being read from INBOX, most significant first."
-  (tuatara.io:octets-integer (tuatara.frontend:inbox-octets inbox) (tuatara.frontend:take-place inbox count) count
+  (tuatara.text:octets-integer (tuatara.frontend:inbox-octets inbox) (tuatara.frontend:take-place inbox count) count
                              :big-endian t))
 
 (defun sftp-take-span (inbox most what)
@@ -162,7 +162,7 @@ does: its mode, then that count); NIL when it does not say one."
 in order; NIL when the other end has gone. A packet shorter than its kind, longer than
 +SFTP-MOST-PACKET+, or of a kind no server sends, is malformed."
   (unless (tuatara.frontend:fill-inbox inbox 4) (return-from sftp-take-packet nil))
-  (let ((length (tuatara.io:octets-integer (tuatara.frontend:inbox-octets inbox) (tuatara.frontend:inbox-start inbox)
+  (let ((length (tuatara.text:octets-integer (tuatara.frontend:inbox-octets inbox) (tuatara.frontend:inbox-start inbox)
                                            4 :big-endian t)))
     (unless (<= 1 length +sftp-most-packet+)
       (tuatara.frontend:malformed "a packet of ~d octets, past ~d" length +sftp-most-packet+))
@@ -449,7 +449,7 @@ as the next request unless it is :INIT; its number."
       (sftp-put-integer box id 4)
       (incf (sftp-link-waiting link)))
     (dolist (field fields) (sftp-put box field))
-    (tuatara.io:octets-put-integer (tuatara.frontend:outbox-octets box) (- (tuatara.frontend:outbox-fill box) at 4) 4
+    (tuatara.text:octets-put-integer (tuatara.frontend:outbox-octets box) (- (tuatara.frontend:outbox-fill box) at 4) 4
                                    :at at :big-endian t)
     id))
 

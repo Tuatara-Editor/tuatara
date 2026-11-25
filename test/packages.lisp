@@ -1311,7 +1311,9 @@ no Lisp package any more, each (COMMAND . PLACE)."
           (sb-posix:symlink (string-right-trim "/" (namestring outside))
                             (concatenate 'string top "https%3A%2F%2Fexample.org%2Flink"))
           (tuatara-user:load-package "off" :source "https://example.org/off" :disabled t)
-          ;; n: nothing deleted
+          ;; n: nothing deleted; the list shown beside the question, gone with it
+          (let ((help (tuatara.buffer:find-buffer "*Help*")))
+            (when help (tuatara.buffer:kill-buffer help)))
           (let ((f (auto-save-session
                     (list "M-x p a c k a g e - r e m o v e - u n u s e d RET"
                           (list :until (lambda () (tuatara.command::editor-minibuffer-active tuatara.command:*editor*)))
@@ -1321,7 +1323,8 @@ no Lisp package any more, each (COMMAND . PLACE)."
             (true (tuatara.frontend.fake:fake-frame-showing f "other from https://example.org/used"))
             (true (tuatara.frontend.fake:fake-frame-showing f "Delete 2 package sources no longer named"))
             (false (tuatara.frontend.fake:fake-frame-showing f "example.org/off"))
-            (false (tuatara.frontend.fake:fake-frame-showing f "example.org/link")))
+            (false (tuatara.frontend.fake:fake-frame-showing f "example.org/link"))
+            (false (tuatara.buffer:find-buffer "*Help*")))
           (true (probe-file gone))
           (true (probe-file other))
           ;; yes: those two go, the rest stays

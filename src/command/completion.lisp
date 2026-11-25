@@ -206,11 +206,6 @@ value how closely the one matching least closely matches (0 with none)."
                (setf closeness (max closeness close))))
     (values score closeness)))
 
-(defun candidate-score (input candidate)
-  "The score of CANDIDATE against INPUT, the sum of its components' (lower is
-better, COMPONENT-SCORE), or NIL when some component does not match."
-  (components-score (input-components input) (candidate-string candidate)))
-
 (defparameter *filter-room-kept* 131072
   "The most candidates FILTER-CANDIDATES keeps room for between one question's
 keys and the next: room made for more is let go of once used.")
@@ -565,12 +560,6 @@ string for NIL."
              (blank (search (format nil "~%~%") string))
              (end (min (or stop (length string)) (or blank (length string)))))
         (substitute #\Space #\Newline (string-trim '(#\Space #\Newline) (subseq string 0 end))))))
-
-(defun first-line (string)
-  "The first line of STRING, or an empty string for NIL."
-  (if string
-      (subseq string 0 (or (position #\Newline string) (length string)))
-      ""))
 
 (defun prefix-entries (keymaps prefix)
   "For the key specs PREFIX, the entries reachable one key further in KEYMAPS

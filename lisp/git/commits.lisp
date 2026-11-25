@@ -169,7 +169,7 @@ its editor), save it and end the editor git started, so that git goes on."
                       (list* "commit" "--cleanup=strip" "-F" "-"
                              (tuatara.buffer:buffer-local buffer 'git-commit-arguments))
                       (lambda (text)
-                        (let ((first (first-line text)))
+                        (let ((first (subseq text 0 (or (position #\Newline text) (length text)))))
                           (if (plusp (length first)) first "Committed")))
                       :input message
                       :then (lambda (text)

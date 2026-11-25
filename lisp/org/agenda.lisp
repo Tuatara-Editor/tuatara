@@ -267,13 +267,19 @@ agenda keeps them (ORG-AGENDA-FILES-KEPT), never opened for it."
 
 (defun org-file-keyword (text name)
   "The value of TEXT's first #+NAME: line, NAME in any case, blanks about it
-left out; NIL when it has none or that line's is empty."
-  (flet ((blank-p (c) (or (char= c #\Space) (char= c #\Tab))))
-    (let ((length (length text)) (size (length name)))
+left out, the lines of its blocks (#+begin_ to #+end_) passed over; NIL when
+it has none or that line's is empty."
+  (flet ((blank-p (c) (or (char= c #\Space) (char= c #\Tab)))
+         (begins-p (prefix at end) (and (<= (+ at (length prefix)) end)
+                                        (string-equal prefix text :start2 at :end2 (+ at (length prefix))))))
+    (let ((length (length text)) (size (length name)) (in-block nil))
       (loop for start = 0 then (1+ end)
             for end = (or (position #\Newline text :start start) length)
             do (let ((at (or (position-if-not #'blank-p text :start start :end end) end)))
-                 (when (and (< (+ at 2 size) end)
+                 (cond (in-block (when (begins-p "#+end_" at end) (setf in-block nil)))
+                       ((begins-p "#+begin_" at end) (setf in-block t)))
+                 (when (and (not in-block)
+                            (< (+ at 2 size) end)
                             (string= "#+" text :start2 at :end2 (+ at 2))
                             (string-equal name text :start2 (+ at 2) :end2 (+ at 2 size))
                             (char= (char text (+ at 2 size)) #\:))

@@ -206,9 +206,12 @@ buffers of its files killed after."
             (true agenda)
             (when agenda
               (is = (calendar-day 2026 10 2) (tuatara.defaults::org-agenda-day-at-point agenda))))
-          ;; on a day with both: asked which, each by its own key; n the journal entry
+          ;; on a day with both: asked which, each by its own key, the keys named on the question; n the journal
+          ;; entry
+          (let ((f (on-day "C-b C-b RET")))
+            (true (tuatara.frontend.fake:fake-frame-showing f "Open on" "(a or n)")))
           (multiple-value-bind (f editor) (on-day "C-b C-b RET n")
-            (true (tuatara.frontend.fake:fake-frame-showing f "a agenda" "n journal entry"))
+            (declare (ignore f))
             (is string= "20261001T120000--thursday-1-october-2026__journal.org" (current-file-name editor)))
           (forget-file-buffers)
           ;; on a day with neither: said so, nothing opened

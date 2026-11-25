@@ -76,7 +76,7 @@ prefix argument put it in after the call."
          (insert (prefix-argument)))
     (multiple-value-bind (start end) (expression-at-or-before b (point))
       (if (null start)
-          (message "No expression at point to expand")
+          (say-no-expression end "No expression at point to expand")
           (multiple-value-bind (form refusal)
               (read-expansion-call (tuatara.buffer:buffer-string b :start start :end end) (lisp-package b))
             (let* ((result (and (not refusal)

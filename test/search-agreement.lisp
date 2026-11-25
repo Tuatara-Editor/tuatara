@@ -527,3 +527,59 @@ left, or with KEEP false those it does not find it on."
     (is equal '(1 3) (mapcar (lambda (candidate) (second (tuatara.command::candidate-value candidate)))
                              (tuatara.defaults::lines-on-disk (uiop:native-namestring file) "bom.txt" "/tmp/" "kiwi"
                                                               :parallel nil)))))
+
+(defun scan-spans (rope pattern)
+  "Every non-empty match of PATTERN in ROPE as (START END), as a scan of the
+rope window by window finds them (MAP-REGEX-MATCHES)."
+  (let ((spans '()))
+    (tuatara.syntax:map-regex-matches (lambda (start end &rest more)
+                                        (declare (ignore more))
+                                        (when (> end start) (push (list start end) spans))
+                                        nil)
+                                      rope (tuatara.syntax:compile-regex pattern) 0
+                                      (tuatara.text:rope-octet-length rope))
+    (nreverse spans)))
+
+(define-test (search-agreement inverted-class-of-one-line-end-crosses)
+  ;; a set leaving out only one kind of line end holds the other, so its matches go over lines
+  (flet ((crosses (pattern) (tuatara.syntax::crosses-lines-p (cl-ppcre:parse-string pattern))))
+    (true (crosses "[^\\r]*x"))
+    (true (crosses "[^\\n]"))
+    (false (crosses "[^\\n\\r]+"))
+    (false (crosses "[^\\r\\n,]*x")))
+  (dolist (case (list (list (format nil "xx~%bar") "[^\\r]*bar")
+                      (list (format nil "ab~%bar") "\\w+[^\\r]bar")
+                      (list (format nil "ab~cbar" #\Return) "\\w+[^\\n]bar")))
+    (destructuring-bind (text pattern) case
+      (let ((oracle (matches-of-scan text pattern)))
+        (true oracle "~s matches" pattern)
+        (is equal oracle (scan-spans (tuatara.text:string->rope text) pattern) "every match of ~s" pattern)))))
+
+(define-test (search-agreement end-anchor-inside-looks-at-every-window)
+  ;; \z inside a lookahead or one choice of several does not keep the scan to the text's end
+  (let* ((text (concatenate 'string "xfoo" (make-string (* 2 1024 1024) :initial-element #\b)))
+         (rope (tuatara.text:string->rope text)))
+    (dolist (case '(("x(?!\\z)" 0) ("foo|\\z" 1) ("(?:foo|bar)(?=b)" 1)))
+      (destructuring-bind (pattern at) case
+        (is eql at (tuatara.syntax:regex-search-forward rope pattern) "first ~s" pattern)))
+    (is eql (1- (length text)) (tuatara.syntax:regex-search-forward rope "b\\z"))
+    (is eql (1- (length text)) (tuatara.syntax:regex-search-forward rope "(?:a|b)\\z"))
+    (true (tuatara.syntax::end-anchored-p (cl-ppcre:parse-string "(x|y\\Z)\\z")))
+    (false (tuatara.syntax::end-anchored-p (cl-ppcre:parse-string "x(?!\\z)")))
+    (false (tuatara.syntax::end-anchored-p (cl-ppcre:parse-string "foo|\\z")))))
+
+(define-test (search-agreement hex-octets-found-as-they-are)
+  ;; octets asked for in hex are found as exactly those octets: 0a is the line feed alone,
+  ;; never a carriage return, and the octets of a character are found inside it
+  (let ((rope (tuatara.text:string->rope (format nil "a~cb~c~cc~cé" #\Return #\Return #\Newline #\Newline))))
+    (flet ((forward (hex &optional (start 0))
+             (multiple-value-list (tuatara.syntax:search-forward rope (tuatara.defaults::parse-octets hex)
+                                                                 :start start)))
+           (backward (hex)
+             (tuatara.syntax:search-backward rope (tuatara.defaults::parse-octets hex))))
+      (is equal '(4 5) (forward "0a"))
+      (is equal '(6 7) (forward "0a" 5))
+      (is eql 6 (backward "0a"))
+      (is equal '(6 9) (forward "0a c3 a9"))
+      (is equal '(8 9) (forward "a9"))
+      (is equal '(nil) (forward "0D 0A 0D")))))

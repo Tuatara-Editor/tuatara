@@ -309,7 +309,7 @@ stamp, a file put in its place since that stamp was taken is refused
 CALL-WITH-PDF-COPY), for JOB on a thread of its own; what it returns goes to
 JOB's RESULT, and JOB is DONE after; the editor is woken then, the view's
 tick taking it in. Returns JOB. A JOB with a buffer, the text taken out, is
-started by the job runner: \\[list-jobs] lists it, \\[stop-job] and
+started by the job runner: \\[jobs-manager] lists it, \\[stop-job] and
 \\[keyboard-quit] stop it, and the mode line lights P while it runs. The
 pages are not: many are drawn and given up as you turn them, and the mode
 line says the page."
@@ -368,8 +368,10 @@ killed.")
 (defun pdf-view-task (view buffer words work finish &key quiet)
   "Run WORK, a function of the open PDF of VIEW, BUFFER's, in the background,
 a job doing WORDS (QUIET as a PDF-VIEW-TASK has it); FINISH, a function of
-its result, takes it in on the editor's thread, VIEW killed in between or not."
-  (let ((same-as (tuatara.buffer:buffer-local buffer :viewed-stamp)))
+its result, takes it in on the editor's thread, VIEW killed in between or not.
+A file put in place of VIEW's since its visit judged it is refused
+\(PDF-VIEW-CHECKED-STAMP), whichever buffer the task is for."
+  (let ((same-as (pdf-view-checked-stamp view)))
     (tuatara.runtime:start-job-thread
      (make-pdf-view-task buffer words finish quiet)
      (tuatara.runtime:carry-settings
@@ -1460,54 +1462,57 @@ reads them in the sandbox; there, \\<pdf-attachments-mode>\\[pdf-attachment-save
 one there after asking: taken out of the PDF in the sandbox, as its program
 reads it, and written as it is, never opened. Up to 64 MB. In a list narrowed
 by search filters, the file on the line among those they leave."
-  (let* ((list (current-buffer))
-         (view (tuatara.buffer:buffer-local list 'pdf-attachments-view)))
+  (visit-entry-at nil))
+
+(defmethod visit-entry ((mode pdf-attachments-mode) list entry other)
+  "Save ENTRY, the embedded file on the line of LIST, as
+\\[pdf-attachment-save] does, OTHER or not."
+  (declare (ignore other))
+  (let ((view (tuatara.buffer:buffer-local list 'pdf-attachments-view)))
     (when view
-      (let ((entry (list-entry-at list)))
-        (if (null entry)
-            (message "No embedded file on this line")
-            (destructuring-bind (number name) entry
-              (let* ((suggested (attachment-file-name name (format nil "attachment-~d" number)))
-                     (shown (escape-controls name))
-                     ;; nothing written beside an untrusted file: your download directory offered instead, made
-                     ;; when it is not there, so that what is saved stays untrusted
-                     (directory (if (untrusted-path-p (pdf-view-path view))
-                                    (let ((downloads (tuatara.io:download-directory)))
-                                      (if (ignoring-errors-reported ("making ~a" downloads)
-                                            (ensure-directories-exist (sb-ext:parse-native-namestring downloads)))
-                                          downloads
-                                          (opened-copies-directory)))
-                                    (buffer-directory list)))
-                     (typed (read-native-path (format nil "Save ~a to: " suggested) :kind :any
-                                              :initial (concatenate 'string (abbreviated-path directory) suggested)
-                                              :writing t))
-                     ;; a directory chosen: the file goes in it under the name suggested
-                     (target (and typed
-                                  (if (eq (tuatara.io:path-kind typed) :directory)
-                                      (concatenate 'string (tuatara.io:slash-ended typed) suggested)
-                                      typed))))
-                (when (and target
-                           (or (not (tuatara.io:path-stamp target))
-                               (yes-or-no-p* (format nil "~a exists; replace it?" target))))
-                  (pdf-view-task view list (format nil "Taking ~a out" shown)
-                                 (lambda (fd)
-                                   (multiple-value-bind (output outcome said)
-                                       (tuatara.io:sandbox-run
-                                        "sh"
-                                        (list "-c" "pdfdetach -save \"$1\" -o /tmp/embedded fd://0 && cat /tmp/embedded"
-                                              "sh" (princ-to-string number))
-                                        :input fd :output-limit (* 64 1024 1024))
-                                     (if (eq outcome :done)
-                                         (handling-errors-reported ("saving ~a" target)
-                                             (progn (keeping-untrusted ((pdf-view-path view) target)
-                                                      (tuatara.io:replace-file target output))
-                                                    (format nil "Saved ~a (~:d octets), not opened" target (length output)))
-                                           (error (e) (format nil "~a could not be saved: ~a" shown e)))
-                                         (format nil "~a could not be taken out: ~a" shown
-                                                 (sandbox-outcome-words outcome said :label "pdfdetach")))))
-                                 (lambda (said) (message "~a"
-                                                (or said (format nil "~a could not be taken out" shown)))))
-                  (message "Taking ~a out..." shown)))))))))
+      (destructuring-bind (number name) entry
+        (let* ((suggested (attachment-file-name name (format nil "attachment-~d" number)))
+               (shown (escape-controls name))
+               ;; nothing written beside an untrusted file: your download directory offered instead, made
+               ;; when it is not there, so that what is saved stays untrusted
+               (directory (if (untrusted-path-p (pdf-view-path view))
+                              (let ((downloads (tuatara.io:download-directory)))
+                                (if (ignoring-errors-reported ("making ~a" downloads)
+                                      (ensure-directories-exist (sb-ext:parse-native-namestring downloads)))
+                                    downloads
+                                    (opened-copies-directory)))
+                              (buffer-directory list)))
+               (typed (read-native-path (format nil "Save ~a to: " suggested) :kind :any
+                                        :initial (concatenate 'string (abbreviated-path directory) suggested)
+                                        :writing t))
+               ;; a directory chosen: the file goes in it under the name suggested
+               (target (and typed
+                            (if (eq (tuatara.io:path-kind typed) :directory)
+                                (concatenate 'string (tuatara.io:slash-ended typed) suggested)
+                                typed))))
+          (when (and target
+                     (or (not (tuatara.io:path-stamp target))
+                         (yes-or-no-p* (format nil "Replace ~a?" (tuatara.io:native-file-name target))
+                                       :details (format nil "~a exists." target))))
+            (pdf-view-task view list (format nil "Taking ~a out" shown)
+                           (lambda (fd)
+                             (multiple-value-bind (output outcome said)
+                                 (tuatara.io:sandbox-run
+                                  "sh"
+                                  (list "-c" "pdfdetach -save \"$1\" -o /tmp/embedded fd://0 && cat /tmp/embedded"
+                                        "sh" (princ-to-string number))
+                                  :input fd :output-limit (* 64 1024 1024))
+                               (if (eq outcome :done)
+                                   (handling-errors-reported ("saving ~a" target)
+                                       (progn (keeping-untrusted ((pdf-view-path view) target)
+                                                (tuatara.io:replace-file target output))
+                                              (format nil "Saved ~a (~:d octets), not opened" target (length output)))
+                                     (error (e) (format nil "~a could not be saved: ~a" shown e)))
+                                   (format nil "~a could not be taken out: ~a" shown
+                                           (sandbox-outcome-words outcome said :label "pdfdetach")))))
+                           (lambda (said) (message "~a"
+                                          (or said (format nil "~a could not be taken out" shown)))))
+            (message "Taking ~a out..." shown)))))))
 
 ;;; The mode line and the keys
 
@@ -1539,9 +1544,8 @@ by search filters, the file on the line among those they leave."
                                    ("T" pdf-view-toggle-text) ("d" pdf-view-toggle-dark)
                                    ("i" pdf-view-facts) ("a" pdf-view-attachments)))
   (define-key *pdf-view-override-keymap* "C-s" 'pdf-view-search)
-  (define-keys *pdf-attachments-keymap* '(("RET" pdf-attachment-save) ("s" pdf-attachment-save)
-                                          ("n" list-next-entry) ("p" list-previous-entry)))
-  (commands-for-mode 'pdf-attachments-mode "*PDF embedded files*" 'list-next-entry 'list-previous-entry)
+  (entry-list-keys 'pdf-attachments-mode "*PDF embedded files*")
+  (define-key *pdf-attachments-keymap* "s" 'pdf-attachment-save)
   (pushnew 'pdf-view-visit *file-views*)
   (pushnew 'pdf-view-visit *sandboxed-file-views*)
   (pushnew 'stop-decoding *keyboard-quit-functions*)

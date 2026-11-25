@@ -364,7 +364,7 @@ take, and back where it was. On a drawer's first line
 SCHEDULED:, DEADLINE:), a drawer's :END: or a line inside a drawer, nothing,
 so that what Org keeps there stays as written. In a table, align it and go
 to the next field. After a snippet's key (<s for a source block), the snippet
-\(\\[insert-snippet]). Elsewhere, what \\`TAB' does in text."
+\(\\[snippet-insert]). Elsewhere, what \\`TAB' does in text."
   (let* ((buffer (current-buffer))
          (start (tuatara.buffer:buffer-line-start buffer (point)))
          ;; the line's beginning tells what it is: a line of a million characters is not read whole

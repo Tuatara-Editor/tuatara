@@ -74,16 +74,17 @@ many matches is read once."
 
 (defun lines-found (matcher rope ranges crlf &key progress halt most ends hide carry)
   "LINES-MATCHING for one filter tried on whole lines, found by MATCHER as a
-search finds it: a line is matched when any part of a match of one scan of
-the stretch lies on it (MAP-MATCH-UNITS), from the line holding the match's
-first octet through the line holding its last, or an empty match is in it.
-With ENDS, the records that may hold line breaks are matched the same way,
-whole, and each of their lines kept with them; with HIDE, the lines not
-matched are those left. CARRY, when given, is (FROM . REACH): a match of the
-text before ran on to REACH, so a stretch starting at FROM has its lines
-matched up to there and its scan goes on from there. Nothing is decoded but
-where a regular expression is tried. A fourth value, the CARRY for the text
-after: when the last stretch's last match runs past its end, (END . REACH)."
+search finds it: a line is matched when any part of a match of one scan of the
+stretch lies on it (MAP-MATCH-UNITS), from the line holding the match's first
+octet through the line holding its last, or an empty match is in it. With ENDS,
+the records that may hold line breaks are matched the same way, whole, and each
+of their lines kept with them; with HIDE, the lines not matched are those left.
+CARRY, when given, is (FROM . REACH): a match of the text before ran on to
+REACH, so a stretch starting at FROM has its lines matched up to there and its
+scan goes on from there, as a stretch starting where the one before it ends has
+a match of that one carried into it. Nothing is decoded but where a regular
+expression is tried. A fourth value, the CARRY for the text after: when the last
+stretch's last match runs past its end, (END . REACH)."
   (let* ((total (tuatara.text:rope-octet-length rope))
          (runs (make-array 16 :element-type 'fixnum :adjustable t :fill-pointer 0))
          (count 0) (looked 0) (onward nil)
@@ -136,10 +137,11 @@ after: when the last stretch's last match runs past its end, (END . REACH)."
                                 (read-record)))
                      (setf marked at))
                    (setf scan marked)
-                   (when (and carry (= low (car carry)) (> (cdr carry) low))
-                     ;; a match of the text before runs into this stretch
-                     (try low (cdr carry) nil nil)
-                     (setf scan (cdr carry)))
+                   (let ((before (if (and onward (= low (car onward))) onward carry)))
+                     (when (and before (= low (car before)) (> (cdr before) low))
+                       ;; a match of the text before, or of the stretch just before, runs into this one
+                       (try low (cdr before) nil nil)
+                       (setf scan (cdr before))))
                    (when (< scan high)
                      (stretch-matches #'try rope matcher scan high (= high total) nil halt total))
                    (when ends
@@ -166,10 +168,10 @@ after: when the last stretch's last match runs past its end, (END . REACH)."
 (defun lines-decoded (filter rope ranges crlf &key progress halt most ends)
   "LINES-MATCHING for one FILTER that tries its pattern in its own way (a
 column, SEARCH-FILTER-TEST): each line decoded and tried as it stands, a line
-longer than *REWRITE-LINE-LIMIT* octets on its first that many; with ENDS a
-record over several lines tried once, whole, its lines left or not with it.
-Reads a block of the text at a time, and makes nothing for a line that does
-not match."
+longer than *REWRITE-LINE-LIMIT* octets on its first that many, counted in
+*LINES-CUT*; with ENDS a record over several lines tried once, whole, its
+lines left or not with it. Reads a block of the text at a time, and makes
+nothing for a line that does not match."
   (let* ((holder (list (make-string 256)))
          (runs (make-array 16 :element-type 'fixnum :adjustable t :fill-pointer 0))
          (count 0) (looked 0) (limit *rewrite-line-limit*) (since 0)
@@ -189,6 +191,7 @@ not match."
                  (multiple-value-bind (start text-end after)
                      (if ends (line-record memo rope line next ends) (values line end next))
                    (let* ((first (= start line))
+                          (cut (and first *lines-cut* (> (- text-end start) limit)))
                           (leaves (if (and first (= after next))
                                       (leaves-p octets at (+ at (- (min end (+ line limit)) line)))
                                       ;; a line of a record over several lines: the record tried once, whole
@@ -196,6 +199,7 @@ not match."
                                                       (lambda (text length)
                                                         (search-filter-leaves-line-p filter text length))))))
                      (when first (incf looked))
+                     (when cut (sb-ext:atomic-incf (car *lines-cut*)))
                      (when leaves
                        (when first (incf count))
                        (add-run runs line next)
@@ -313,7 +317,8 @@ vector, a run ending where the next begins made one with it."
 *FILTER-PIECE* octets matched on all but two cores at once, the runs put
 together in order: the same three values, the same as one scan finds them;
 a piece into which a match of the pieces before runs is matched again from
-where that match ends. Each piece begins by calling HOOK, when given
+where that match ends; lines tried on their start alone are counted in
+*LINES-CUT* as it is here. Each piece begins by calling HOOK, when given
 \(*REWRITE-PIECE-HOOK* as the work began); records ending as ENDS says
 \(RECORD-ENDS). HALT, a function of none, asked after each piece is cut and
 now and then while they are matched, stops the work when it answers true,
@@ -326,13 +331,15 @@ nothing found when that is before matching began."
                                           (values (make-array 0 :element-type 'fixnum) 0 0))))
                                     rope ranges *filter-piece* (piece-lines (sort-workers nil)))
                    (coerce (nreverse all) 'simple-vector)))
+         (cut *lines-cut*)
          (results (tuatara.runtime:run-tasks
                    (map 'simple-vector (lambda (piece)
                                          (lambda ()
                                            (when hook (funcall hook))
-                                           (multiple-value-list
-                                            (lines-matching (list filter) rope piece crlf
-                                                            :progress progress :halt halt :ends ends))))
+                                           (let ((*lines-cut* cut))
+                                             (multiple-value-list
+                                              (lines-matching (list filter) rope piece crlf
+                                                              :progress progress :halt halt :ends ends)))))
                         pieces)
                    :parallelism (max 1 (- (tuatara.runtime:cpu-count) 2))))
          (carry nil))
@@ -463,8 +470,7 @@ left, every line is shown."
           (t (pushnew buffer *buffers-filtered-by-lines*)
              (let ((source (list-filtering-source filtering)))
                (unless (and source (text-unchanged-since source buffer))
-                 (dolist (filter (search-filter-chain filtering))
-                   (setf (search-filter-source filter) nil (search-filter-kept filter) nil))
+                 (forget-worked-out (search-filter-chain filtering))
                  (setf (list-filtering-source filtering) (tuatara.buffer:buffer-version buffer)
                        (list-filtering-total filtering) nil)))
              (work-out-filters buffer filtering)

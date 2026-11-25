@@ -225,13 +225,15 @@ no longer the window's, and of the rows painted with them (FORGET-KEPT-ROWS)."
   "Let go of everything F keeps for painting its window, for a window that
 closes: the layouts and the rows painted with them (FORGET-LAYOUTS), the
 pictures kept for either way of drawing (LET-GO-OF-PICTURES), the pictures
-of its grid, and its font descriptions, its faces' too."
+of its grid, its font descriptions, its faces' too, and its input method."
   (forget-layouts f)
   (let-go-of-pictures f t)
   (let-go-of-pictures f nil)
   (setf (fill-pointer (gtk-pictures f)) 0)
   (when (gtk-fonts f)
     (loop for font across (shiftf (gtk-fonts f) nil) do (pango-font-description-free font)))
+  (when (gtk-im f)
+    (g-object-unref (shiftf (gtk-im f) nil)))
   (forget-face-fonts f))
 
 (defun layouts-at-scale (layouts scale)

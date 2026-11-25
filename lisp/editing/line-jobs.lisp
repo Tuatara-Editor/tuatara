@@ -106,7 +106,8 @@ octet vector with a fill pointer, made larger when it has no room; OUT."
 (defvar *rewrite-line-limit* (* 16 1024 1024)
   "Octets of a line a filter trying a column reads (LINES-DECODED): a longer
 line is tried on its first that many, so that a line of gigabytes is never
-held in memory whole.")
+held in memory whole. A search filter counts such lines on the mode line,
+and flush-lines and keep-lines by a column then delete nothing.")
 
 (defun decode-into (octets start end holder)
   "Decode OCTETS from START below END into the string in the car of HOLDER,

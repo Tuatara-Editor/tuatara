@@ -13,9 +13,10 @@
 (in-package #:tuatara.defaults)
 
 (define-major-mode rimu-trash-mode sectioned-list-mode
-  "What is in the trash (\\[rimu-trash]), as the buffer list (\\[buffer-manager]) has
-its buffers, a section for your own trash and one for each drive's, a line
-each thing: its mark, name, when it went there and where it was.
+  "What is in the trash (\\[trash-manager]), as the buffer list
+\(\\[buffer-manager]) has its buffers, a section for your own trash and one
+for each drive's, a line each thing: its mark, name, when it went there and
+where it was.
 \\<support>\\[next-line] and \\[previous-line] move.
 \\<rimu-trash-mode>\\[list-visit] or \\`RET' opens the thing on the line
 safely, to look at \(on a heading, folds or unfolds its section),
@@ -275,7 +276,7 @@ could not be read."
                     (lambda (list) (declare (ignore list)) *trash-changes*)
                     (lambda (list window) (declare (ignore window)) (rimu-trash-read list)))
 
-(define-command rimu-trash ()
+(define-command trash-manager ()
   "List what is in the trash, as the buffer list (\\[buffer-manager]) lists buffers: a
 section for your own trash and one for each drive's, the last to go there
 first, each thing's name, when it went and where it was. There
@@ -339,21 +340,17 @@ it went, or NIL (said why)."
         (error (e) (message "~a not put back: ~a" (tuatara.io:native-file-name (trashed-path thing)) e) nil)))))
 
 (defun trash-restore-question (things refused)
-  "Ask whether to put THINGS back, where they go said, answered by one key
-\(Y-OR-N-P*), true for yes; REFUSED, each (THING . WHY), those left in the
-trash (TRASH-RESTORE-REFUSAL), are said in its details."
+  "Ask whether to put THINGS back, answered by one key (Y-OR-N-P*), true for
+yes. Its details say where they go and REFUSED, each (THING . WHY), those
+left in the trash (TRASH-RESTORE-REFUSAL)."
   (let ((directories (remove-duplicates (mapcar (lambda (thing)
                                               (abbreviated-path (tuatara.io:parent-path (trashed-path thing)))) things)
                                     :test #'string= :from-end t)))
     (y-or-n-p* (format nil "~a?"
                        (list-question "Put back" "thing" things
-                                      :name-of (lambda (thing) (abbreviated-path (trashed-path thing)))
-                                      :where (and (rest things)
-                                                  (format nil "to ~{~a~^, ~}~@[ and ~d more directories~]"
-                                                          (subseq directories 0 (min 3 (length directories)))
-                                                          (and (> (length directories) 3)
-                                                               (- (length directories) 3))))))
-               :details (and refused (format nil "Left in the trash:~%~{  ~a~%~}" (trash-refused-words refused))))))
+                                      :name-of (lambda (thing) (abbreviated-path (trashed-path thing)))))
+               :details (format nil "Put back to:~%~{  ~a~%~}~@[~%Left in the trash:~%~{  ~a~%~}~]"
+                                directories (and refused (trash-refused-words refused))))))
 
 (defun trash-refused-words (refused)
   "Each of REFUSED, (THING . WHY), as its name and why, or NIL for none."
@@ -455,5 +452,5 @@ after asking twice, in the background."
   (declare-list-kind 'rimu-trash-mode :manager)
   (define-keys *rimu-trash-keymap* '(("R" rimu-trash-restore) ("X" rimu-trash-empty))))
 
-(commands-for-mode 'rimu-trash-mode "the list of the trash (\\[rimu-trash])"
+(commands-for-mode 'rimu-trash-mode "the list of the trash (\\[trash-manager])"
                    'list-visit 'list-visit-other 'rimu-trash-restore 'rimu-trash-empty)

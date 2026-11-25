@@ -131,16 +131,27 @@ to every part that asks.")
     (is = 1 asked)
     (false (aref holders 1))))
 
+(define-test (shared-helpers context-keys-take-every-letter)
+  ;; a mode's keys of one character are under C-c too, x, s and t as much as any other: git status's s stages
+  ;; and x reverses there as well
+  (run-keys "")
+  (flet ((key (text) (tuatara.command:lookup-key (tuatara.modes:mode-keymap 'tuatara.git::git-status-mode)
+                                                 (tuatara.frontend:parse-key-sequence text))))
+    (is eq 'tuatara.git::git-stage (key "C-c s"))
+    (is eq 'tuatara.git::git-reverse (key "C-c x"))
+    (false (boundp 'tuatara.defaults::*context-keys-left-free*))))
+
 (define-test (shared-helpers list-keys-bound-one-way)
-  ;; h and C-b do what the list's kind says: fold a heading in a manager, go back from a list entered from
-  ;; another view, nothing of their own elsewhere; a list of entries to open has the same keys for them
+  ;; h and C-b do what the list's kind says: fold a heading in a manager (the jobs among them), go back from
+  ;; a list entered from another view, nothing of their own elsewhere; a list of entries to open has the same
+  ;; keys for them
   (run-keys "")
   (flet ((key (mode text) (tuatara.command:lookup-key (tuatara.modes:mode-keymap mode)
                                                       (tuatara.frontend:parse-key-sequence text))))
     (dolist (text '("h" "C-b"))
       (is eq 'tuatara.defaults::list-fold-heading (key 'tuatara.defaults::bookmarks-mode text))
       (is eq 'tuatara.defaults::quit-window (key 'tuatara.git::git-log-mode text))
-      (false (key 'tuatara.defaults::jobs-mode text))
+      (is eq 'tuatara.defaults::list-fold-heading (key 'tuatara.defaults::jobs-mode text))
       (false (key 'tuatara.git::git-blame-mode text)))
     (is eq 'tuatara.defaults::list-next-entry (key 'tuatara.defaults::bookmarks-mode "n"))
     (is eq 'tuatara.defaults::list-visit-other (key 'tuatara.defaults::bookmarks-mode "o"))
@@ -269,3 +280,56 @@ to every part that asks.")
     (is eql (length iban) (tuatara:iban-length (subseq iban 0 2)) iban))
   (false (tuatara:iban-check-p "RU0304452522540817810538091310418"))
   (false (tuatara:iban-length "ZZ")))
+
+(define-test (shared-helpers first-line-of-octets-without-carriage-return)
+  ;; a Windows file's first line ends with CR LF: the mode rules see neither
+  (flet ((first-line (text) (tuatara.text:octets-first-line (tuatara.text:string-octets text))))
+    (is string= "a" (first-line (format nil "a~c~%b" #\Return)))
+    (is string= "a" (first-line (format nil "a~%b")))
+    (is string= "" (first-line (format nil "~c~%b" #\Return)))
+    (is string= "ab" (first-line "ab"))
+    (is string= "" (first-line ""))
+    (is eq 'tuatara.defaults::bash-mode
+        (tuatara.modes:mode-for-octets #p"/tmp/G0-script" (tuatara.text:string-octets
+                                                             (format nil "#!/bin/sh~c~%echo~%" #\Return))))))
+
+(define-test (shared-helpers content-line-escapes)
+  ;; one way to write a text value and a parameter value of a vCard or iCalendar line
+  (is string= (format nil "a\\\\b\\;c\\,d\\ne") (tuatara.text:content-text-escaped (format nil "a\\b;c,d~c~%e" #\Return)))
+  (is string= "plain" (tuatara.text:content-text-escaped "plain"))
+  (is string= "\"Smith, John\"" (tuatara.text:content-parameter-text "Smith, John"))
+  (is string= "Smith" (tuatara.text:content-parameter-text "Smith"))
+  (is string= "a^'b^^c^nd" (tuatara.text:content-parameter-text (format nil "a\"b^c~%d")))
+  (is string= "\"x^'y;z\"" (tuatara.text:content-parameter-text "x\"y;z")))
+
+(define-test (shared-helpers check-digits-of-bad-input)
+  ;; the exported checks answer no, never an error, for what cannot be a number
+  (true (tuatara.syntax:luhn-p "4111111111111111"))
+  (false (tuatara.syntax:luhn-p ""))
+  (false (tuatara.syntax:luhn-p "4111 1111"))
+  (false (tuatara.syntax:luhn-p "41a1"))
+  (true (tuatara.syntax:iban-check-p "GB82WEST12345698765432"))
+  (false (tuatara.syntax:iban-check-p ""))
+  (false (tuatara.syntax:iban-check-p "GB82 WEST"))
+  (false (tuatara.syntax:iban-check-p "GB8"))
+  (false (tuatara.syntax:iban-check-p "GB82-WEST12345698765432")))
+
+(defun ask-which-key (prompt)
+  "Ask PROMPT as a question of four keys, j, m, M and n, each with its words."
+  (tuatara.command:read-key-choice prompt '(("j" . "one") ("m" . "two") ("M" . "three") ("n" . "none"))))
+
+(define-test (shared-helpers one-key-choice)
+  ;; a key and its words on the prompt, the rows beside it, the case of the key kept, C-g leaves
+  (let ((ask (key-string "(setf tuatara.tests::*yes-or-no-answer* (tuatara.tests::ask-which-key \"Pick\"))"))
+        during)
+    (dolist (case '(("M" "M") ("m" "m") ("x M" "M")))
+      (setf *yes-or-no-answer* :none)
+      (run-keys (list (format nil "M-: ~a RET" ask)
+                      (lambda () (setf during (question-details-seen)))
+                      (first case))
+                :width 120 :height 20)
+      (is equal (second case) *yes-or-no-answer* "~s" (first case))
+      (true (search (format nil "M  three~%n  none") (first during)) "~s" during))
+    (setf *yes-or-no-answer* :none)
+    (run-keys (list (format nil "M-: ~a RET" ask) "C-g") :width 120 :height 20)
+    (is eq :none *yes-or-no-answer*)))

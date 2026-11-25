@@ -210,7 +210,8 @@ change alone and says so when it ends.
 
 A sort and a filter are different, because they move whole lines about and
 an edit in the middle would spoil the result. If you try to change text they
-are working on, Tuatara asks whether to stop the job. Answer =y= to stop it
+are working on, Tuatara asks whether to stop the job, as in =Stop sorting to
+change this text?=, with how far it has got shown below. Answer =y= to stop it
 and make your change, or =n= to let it finish.
 
 *** Undo and jobs
@@ -234,33 +235,41 @@ when you gave a command by mistake and want to drop it before its turn comes.
 #+caption: Figure 11.2. The list of jobs: one runs, one waits.
 #+name: fig-jobs
 #+begin_example
-  Buffer        State                    Job
-  ------        -----                    ---
-  sales.csv     Replacing 12%            Replacing kereru with kea in the buffer
-  sales.csv     waiting, first in line   Sorting the buffer
-  access.log    Saving 60%               Saving access.log
+     State                      Job
+     -----                      ---
+▾ sales.csv (2)
+     Replacing 12%              Replacing kereru with kea in the buffer
+     waiting, first in line     Sorting the buffer
+
+▾ access.log (1)
+     Saving 60%                 Saving access.log
 #+end_example
 
-Each line is a job. The first column names the buffer it works in. The second
-says what it is doing and how far it has got, or that it waits and where it
-stands in the line. The third says in words what the job is. Jobs are listed
-buffer by buffer, the running one first and those waiting below it in the
-order they will run. The list keeps itself up to date while it is on the
-screen.
+Each buffer with work has a section, its heading the buffer's name. A job whose
+buffer was closed while it ends has a section apart from a new buffer of the
+same name, and one with no buffer is under No buffer. Each line under it is a
+job. The list opens with the cursor on the first job. The first column says what
+the job is doing and how far it has got, or that it waits and where it stands in
+the line. The second says in words what the job is. The running job comes first
+and those waiting below it, in the order they will run. The list keeps itself up
+to date while it is on the screen.
 
-The list works like the buffer list of chapter 7. ~d~ marks the job on the
-cursor's line with a =D=, and ~x~ carries it out after asking: a job that
-waits is dropped, and one that runs is stopped. ~m~ marks a job and ~u~ takes
-the mark off. ~D~ drops or stops the marked jobs, or the one on the line if
-none is marked. ~q~ closes the list.
+The list works like the buffer list of chapter 7. ~RET~ or ~l~ goes to the
+buffer of the job on the line, and on a heading folds or unfolds its section;
+~h~ folds it. ~d~ marks the job on the cursor's line with a =D=, and ~x~
+carries it out after asking: a job that waits is dropped, and one that runs is
+stopped. ~m~ marks a job and ~u~ takes the mark off. ~D~ drops or stops the
+marked jobs, or the one on the line if none is marked. ~q~ closes the list.
 
-#+table: commands list-jobs list-mark-for-deletion list-execute list-mark-entry list-unmark-entry list-delete-marked
+#+table: commands jobs-manager list-mark-for-deletion list-execute list-mark-entry list-unmark-entry list-delete-marked
 
 *** Stopping a job
 
 ~C-x J~, with a capital J, stops the job running in the buffer you are in.
-It asks first, so a slip of the finger costs nothing. The buffer is left as
-it is, and a file that was being saved is left as it was before the save. A
+It asks first, as in =Stop saving at 60%?=, so a slip of the finger costs
+nothing; what stopping leaves, when the job can say, is shown below the
+question. The buffer is left as it is, and a file that was being saved is left
+as it was before the save. A
 program the job runs is asked to end, and killed if it has not ended two
 seconds later, with every program it started. If other jobs wait behind the
 one you stopped, they start one after another. To get rid of those as well,

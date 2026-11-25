@@ -540,8 +540,9 @@ rectangle. The answer is :ALL when it is answered yes, else :IN-SIGHT."
   (multiple-value-bind (limit why memory) (place-limit setting)
     (if (or (<= n limit)
             (and (eq why :setting) *split-limit-ask* exact (<= n memory)
-                 (y-or-n-p* (format nil "Hold all ~:d ~a, with every key slow at that many (else those in sight)?"
-                                    n noun))))
+                 (y-or-n-p* (format nil "Hold all ~:d ~a?" n noun)
+                            :details (format nil "y    holds them all, every key slow at that many~%~
+                                                  n    holds those in sight, the others written in the background"))))
         :all
         :in-sight)))
 
@@ -832,7 +833,7 @@ BEGIN[\\s\\S]*?END around a large block, can be missed;
                                                                :count (and (not too-many) (length spans)))
                                          (hold-split b regexp spans words whole :hidden hidden))))))))))))
 
-(define-command split-selection-thorough ()
+(define-thorough-command split-selection-thorough split-selection
   "Hold every match of a regexp in the selection, as \\<normal>\\[split-selection]
 does, finding every match of up to a megabyte (about a million characters of
 ASCII) whole however many lines it spans, where \\[split-selection] may miss one of
@@ -841,8 +842,7 @@ out of sight the same. A match of more than a megabyte is still cut short, or
 missed when it needs text further on. As quick as \\[split-selection] for a
 pattern kept within a line or no longer than 4 KB; about twice as slow for one
 that may run on across lines without end. In its place, in the init file:
-(bind-key \"f\" 'split-selection-thorough :map :normal)."
-  (let ((tuatara.syntax:*regex-thorough* t)) (split-selection)))
+(bind-key \"f\" 'split-selection-thorough :map :normal).")
 
 ;;; Searching a large text in the background
 
@@ -1798,18 +1798,37 @@ before (when given)."
                                                           (octets (split-diff-middle diff))))))
                          to)))))))
 
+(defun place-index (split place index)
+  "Where PLACE is in the places of SPLIT, INDEX tried first; NIL when it is
+none of them."
+  (let ((places (split-places split)))
+    (if (and (< -1 index (length places)) (eq (aref places index) place))
+        index
+        (let ((start (place-bounds (split-buffer split) place)))
+          (position place places :start (max 0 (1- (places-index-range split start start))))))))
+
 (defun write-places (split items &key check)
   "Write ITEMS of SPLIT, each (PLACE . DIFF): as the SPLIT-DIFF says, nothing
 for NIL or :HERE (the primary place, as it should be already); one change
-joining the command's for undo. With CHECK, ITEMS are every place in order,
-each checked against the one before (PLACE-EDIT). A deletion past the edges
-is made at a match only where the very text deleted is there, at a cursor
-where as many characters are. True when written; else, writing nothing, NIL
-and why: :DIFFERS when the text beside a place is not the same, :MEETS when a
-deletion would reach the place before."
-  (let ((b (split-buffer split)) (edits '()) (previous-end -1) (exact (not (split-cursors split))))
+joining the command's for undo. With CHECK, ITEMS are in the order of their
+places, each checked against the place before it (PLACE-EDIT), as that place
+is written here or stands. A deletion past the edges is made at a match only
+where the very text deleted is there, at a cursor where as many characters
+are. True when written; else, writing nothing, NIL and why: :DIFFERS when the
+text beside a place is not the same, :MEETS when a deletion would reach the
+place before."
+  (let ((b (split-buffer split)) (places (split-places split))
+        (edits '()) (previous-end -1) (index -1) (exact (not (split-cursors split))))
     (loop for (place . diff) in items
-          do (if (or (null diff) (eq diff :here))
+          do (when check
+               (let ((here (place-index split place (1+ index))))
+                 (when here
+                   ;; the place before, when not written just now, as it stands
+                   (unless (= here (1+ index))
+                     (setf previous-end
+                           (if (plusp here) (nth-value 1 (place-bounds b (aref places (1- here)))) -1)))
+                   (setf index here))))
+             (if (or (null diff) (eq diff :here))
                  (setf previous-end (nth-value 1 (place-bounds b place)))
                  (multiple-value-bind (edit end) (place-edit b place diff (and check previous-end) :exact exact)
                    (when (member edit '(:differs :meets)) (return-from write-places (values nil edit)))
@@ -1880,15 +1899,40 @@ a key costs the same however many places are already in sight."
                    (setf (split-typing-covered typing) (tuatara.text:merge-ranges (acons lo hi covered)))))))
     (nreverse new)))
 
+(defun write-places-in-sight (split typing here step text edges)
+  "Write while TYPING at SPLIT's places: STEP (a SPLIT-DIFF, or NIL) at the
+places it has written, but HERE, where it was typed; and at the places come
+into sight since it last looked (PLACES-COME-INTO-SIGHT), and HERE when not
+written yet, all that was typed since it began, the primary place holding TEXT
+and EDGES deleted past its edges by this command as well. Those are written
+from then on. A deletion past the edges is checked against the neighbours of
+the places written. True when written; else NIL and why, as WRITE-PLACES says."
+  (let ((live (split-typing-live typing))
+        (b (split-buffer split))
+        (since :unknown)
+        (items '()))
+    (loop for place being the hash-keys of live
+          do (push (cons place (if (eq place here) :here step)) items))
+    (dolist (place (if (gethash here live)
+                       (places-come-into-sight split typing)
+                       (cons here (places-come-into-sight split typing))))
+      (unless (gethash place live)
+        (when (eq since :unknown)
+          (setf since (split-diff (split-typing-original typing) text (append (split-typing-edges typing) edges))))
+        (push (cons place since) items)
+        (setf (gethash place live) t)))
+    (if (find-if (lambda (item) (and (split-diff-p (cdr item)) (split-diff-edges (cdr item)))) items)
+        (write-places split (sort items #'< :key (lambda (item) (place-bounds b (car item)))) :check t)
+        (write-places split items))))
+
 (defun copy-to-places (split here)
   "Write what the command did at the place HERE onto the other places of
 SPLIT: its text, and the deletions just past its edges, one change joining the
 command's for undo. While typing (*SPLIT-TYPING*), only at the places in sight
-or near it, and those written so before; the others once the typing ends
-(WRITE-PENDING-PLACES). A deletion past the edges is
-written at every place at once, checked against its neighbours, and so is
-every key after it. True when written; else, the command's change left at
-HERE alone and the split as it was before it, NIL and why (WRITE-PLACES)."
+or near it, and those written so before (WRITE-PLACES-IN-SIGHT); the others
+once the typing ends (WRITE-PENDING-PLACES). True when written; else, the
+command's change left at HERE alone and the split as it was before it, NIL
+and why (WRITE-PLACES)."
   (let* ((b (split-buffer split))
          (typing *split-typing*)
          (old (split-text split))
@@ -1898,21 +1942,8 @@ HERE alone and the split as it was before it, NIL and why (WRITE-PLACES)."
     (setf (split-edges split) '())
     (multiple-value-bind (written why)
         (cond ((null step) t)
-              ((or (null typing) edges (= (hash-table-count (split-typing-live typing)) (length (split-places split))))
-               (write-every-place split step here))
-              (t
-               (let ((live (split-typing-live typing))
-                     (since :unknown)
-                     (items (list (cons here :here))))
-                 (loop for place being the hash-keys of live
-                       unless (eq place here) do (push (cons place step) items))
-                 (dolist (place (places-come-into-sight split typing))
-                   (unless (gethash place live)
-                     (when (eq since :unknown)
-                       (setf since (split-diff (split-typing-original typing) new (split-typing-edges typing))))
-                     (push (cons place since) items)
-                     (setf (gethash place live) t)))
-                 (write-places split items))))
+              ((null typing) (write-every-place split step here))
+              (t (write-places-in-sight split typing here step new edges)))
       (when written
         (when (and typing edges)
           (setf (split-typing-edges typing) (append (split-typing-edges typing) edges)))
@@ -1959,8 +1990,9 @@ point is in onto the others, or end the split when that cannot be done."
     (cond ((null here) (dissolve-split))
           (t
            (unless (eq here (split-primary split))
-             ;; the place moved into holds what was last copied, as every place then does
-             (when *split-typing* (write-every-place split nil nil))
+             ;; the place moved into holds what was last copied, as the places in sight then do
+             (when *split-typing*
+               (write-places-in-sight split *split-typing* here nil (split-text split) '()))
              (multiple-value-bind (s e) (place-bounds b here)
                (setf (split-primary split) here
                      (split-text split) (place-text b here)

@@ -55,7 +55,7 @@ made."
   "Decrypt the files marked (or the one on the line), each into its name
 without .gpg, for you alone, after asking once: their text is then on disk."
   (multiple-value-bind (paths what) (rimu-gpg-files "decrypt")
-    (when (yes-or-no-p* (format nil "This writes the text of ~a to disk, where it can be read; go on?" what))
+    (when (confirm-decrypting-to-disk what)
       (gpg-files-in-turn (gpg-free-targets paths #'decrypted-name)
                          (lambda (path after) (decrypt-file-to path (decrypted-name path) :after after))))))
 

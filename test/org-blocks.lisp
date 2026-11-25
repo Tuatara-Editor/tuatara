@@ -588,3 +588,15 @@
                (is equal '("note.python" "YES") written)
                (is equal written seen))
           (tuatara.buffer:kill-buffer buffer))))))
+
+(define-test (org sequence-children-of-a-lettered-sequence)
+  ;; the files under one whose sequence has letters (1a) are listed with it, numbered as it is
+  (let ((files (mapcar (lambda (name) (cons (concatenate 'string "/notes/" name) name))
+                       '("20260101T090000==1a--one.org" "20260101T090001==1a1--two.org"
+                         "20260101T090002==1b--three.org" "20260101T090003==1=1--four.org"))))
+    (is equal '("1a" "1a1")
+        (mapcar #'tuatara.defaults::formatted-signature (tuatara.defaults::formatted-sequence-family "1a" files)))
+    (is equal '("1" "1=1")
+        (mapcar #'tuatara.defaults::formatted-signature
+                (tuatara.defaults::formatted-sequence-family "1" (cons (cons "/notes/x" "20260101T090004==1--x.org")
+                                                                       files))))))

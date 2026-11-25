@@ -21,7 +21,7 @@
 (in-package #:tuatara.defaults)
 
 (defparameter *org-export-settings*
-  '(("numbered" (:heading) "no prints the heading without a number, as :UNNUMBERED: t does; yes, as standard, with one")
+  `(("numbered" (:heading) "no prints the heading without a number, as :UNNUMBERED: t does; yes, as standard, with one")
     ("annex" (:heading) #.(concatenate 'string "yes begins the annexes at this heading, on a page of their own, "
                            "numbered anew, as the :appendix: tag does"))
     ("contents" (:heading) "no leaves the heading out of the table of contents; yes, as standard, in it")
@@ -66,7 +66,7 @@
                          "right (down its sides), columns (between the columns), rows (between "
                          "every row); box (top bottom left right), all, or none; top header "
                          "rules bottom, as standard"))
-    ("style" (:list) "bullets, none (no bullets), numbers, letters (a), Letters (A), roman (i), Roman (I)")
+    ("style" (:list) ,(format nil "~{~{~a~*~*~@[ (~a)~]~}~^, ~}" *export-list-styles*))
     ("place" (:picture) #.(concatenate 'string "here puts a picture with a caption exactly where it is written; "
                            "anywhere, where it fits best, as LaTeX chooses"))
     ("beside" (:picture) "left or right: the picture beside the paragraph after it, on that side, as two columns"))
@@ -98,10 +98,10 @@ Any of them may be auto, which leaves it as the export would have it.")
 for it, and the part of the text's size it makes, as LaTeX's are of 11 points.")
 
 (defparameter *export-setting-words*
-  '(("numbered" "yes" "no") ("annex" "yes" "no") ("contents" "yes" "no") ("new page" "before" "after" "both" "no")
+  `(("numbered" "yes" "no") ("annex" "yes" "no") ("contents" "yes" "no") ("new page" "before" "after" "both" "no")
     ("page" "landscape" "portrait") ("align" "left" "right" "centre" "center" "justify" "auto")
     ("position" "left" "right" "centre" "center") ("repeat header" "yes" "no")
-    ("style" "bullets" "none" "numbers" "letters" "roman") ("place" "here" "anywhere") ("beside" "left" "right"))
+    ("style" ,@(mapcar #'first *export-list-styles*)) ("place" "here" "anywhere") ("beside" "left" "right"))
   "The words each setting of *ORG-EXPORT-SETTINGS* that takes words is given,
 in any case; align one for each column of a table.")
 
@@ -682,9 +682,8 @@ so that other programs exporting the note as Org leave the drawers out too."
                              drawer)))
             (org-replace-chars parse at at drawer :point (+ at (search ":EXPORT:" drawer) (length ":EXPORT:") 1))
             (let ((said (org-export-hide-drawers-option buffer)))
-              (message "An :EXPORT: drawer for this ~(~a~): change auto to what you want ~
-                        (M-x describe-export-settings)~@[; ~a~]"
-                       kind said)))))))
+              (message "An :EXPORT: drawer for this ~(~a~): change auto to what you want (~a)~@[; ~a~]"
+                       kind (substitute-command-keys "\\[describe-export-settings]") said)))))))
 
 (defun org-export-hide-drawers-option (buffer)
   "Have BUFFER's #+options: leave :EXPORT: drawers out when other programs export it

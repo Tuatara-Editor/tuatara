@@ -716,14 +716,11 @@ FORMAT string of the counter's name (\\alph{~a}) for a, \\Alph for A,
   "Write the plain list NODE to OUT, as itemize, enumerate or description;
 in the enhanced export as the style its :EXPORT: drawer gives says (bullets,
 none, numbers, letters, Letters, roman, Roman)."
-  (let* ((style (org-export-setting node "style"))
-         (numbered (cdr (assoc style
-                               '(("numbers" . "\\arabic{~a}.") ("letters" . "\\alph{~a})") ("Letters" . "\\Alph{~a}.")
-                                 ("roman" . "\\roman{~a}.") ("Roman" . "\\Roman{~a}."))
-                               :test #'equal)))
+  (let* ((style (export-list-style (org-export-setting node "style")))
+         (numbered (third style))
          (environment (cond ((eq (org-property node :type) 'descriptive) "description")
                             (numbered "enumerate")
-                            ((member style '("bullets" "none") :test #'string-equal) "itemize")
+                            (style "itemize")
                             ((eq (org-property node :type) 'ordered) "enumerate")
                             (t "itemize")))
          (depth (count 'plain-list
@@ -734,7 +731,7 @@ none, numbers, letters, Letters, roman, Roman)."
     (format out "\\begin{~a}~%" environment)
     (cond (numbered
            (format out "\\renewcommand{\\labelenum~a}{~a}~%" level (format nil numbered (format nil "enum~a" level))))
-          ((and (string-equal style "none") (string= environment "itemize"))
+          ((and (eq (second style) :none) (string= environment "itemize"))
            (format out "\\renewcommand{\\labelitem~a}{}~%" level)))
     ;; in the enhanced export a numbered list keeps its kind of number: a) A. 1)
     (when (and (org-export-enhanced *org-export*) (string= environment "enumerate") (not numbered)
@@ -1095,11 +1092,8 @@ description."
                  (format out "\\href{~a}{~a}" (latex-url url) description)
                  (format out "\\url{~a}" (latex-url url)))))
           ((string= type "file")
-           ;; a full name as file:///..., one relative to the document as it is
-           (let ((target (if (or (uiop:string-prefix-p "/" path) (uiop:string-prefix-p "~" path))
-                             (path-uri (tuatara.io:expand-path path))
-                             path)))
-             (format out "\\href{~a}{~a}" (latex-url target) (or description (latex-escape path)))))
+           (format out "\\href{~a}{~a}" (latex-url (org-export-file-address path))
+                   (or description (latex-escape path))))
           (t
            (let ((target (org-export-link-target node)))
              (cond ((and target (null description)
@@ -1499,13 +1493,13 @@ LaTeX says of a line to be told at the Org text's; :MISSING, the characters no
 font here has, each (CHARACTER . LINE) (enhanced only); :NOTES, what else to
 say of it, a list of sentences (a picture not shown); :TRUSTED, the texts of
 its template and setup files that are your own (EXPORT-TRUSTED-PATH-P), which
-alone may name pictures from other directories, with the files your own
-template asks the note for by its {{{NAME:path}}} places (a logo); :PICTURES,
-the files its own pictures are drawn from (ORG-LATEX-IMAGE), the only ones of
-the note's directory a LaTeX program is shown when that directory may not be
-shown whole; :LANGUAGE, the code of the language the note's #+LANGUAGE sets
-\(sv), or NIL, for the hyphenation patterns it needs to be looked for
-\(LATEX-LANGUAGE-PATTERNS-NOTE)."
+alone may name pictures from other directories; :PICTURES, the files its own
+pictures are drawn from (ORG-LATEX-IMAGE), the only ones of the note's
+directory a LaTeX program is shown when that directory may not be shown
+whole, and, when the template is your own, the files it asks the note for by
+its {{{NAME:path}}} places (a logo, TEMPLATE-PICTURE-PATH); :LANGUAGE, the
+code of the language the note's #+LANGUAGE sets \(sv), or NIL, for the
+hyphenation patterns it needs to be looked for \(LATEX-LANGUAGE-PATTERNS-NOTE)."
   (with-org-export-reading (expanded tree directory) (text file :enhanced enhanced :lines lines :latex t)
     (org-latex-written tree directory text file engine enhanced)))
 
@@ -1518,6 +1512,7 @@ FILE, for the LaTeX program ENGINE, ENHANCED or not."
           (if (and compiler (plusp (length compiler))) (string-trim " " compiler) engine)))
   (multiple-value-bind (template template-path) (org-latex-chosen-template enhanced directory)
     (let ((body (org-latex-body tree template text file))
+          (own-template (or (null template-path) (export-trusted-path-p template-path)))
           (missing '()))
       (when enhanced
         (multiple-value-setq (body missing) (org-latex-font-plan body (search "{{{fonts}}}" template))))
@@ -1530,10 +1525,11 @@ FILE, for the LaTeX program ENGINE, ENHANCED or not."
               :map map
               :missing (org-latex-missing-lines missing latex)
               :notes (reverse (org-export-notes *org-export*))
-              :trusted (if (or (null template-path) (export-trusted-path-p template-path))
-                           (list* template (append (org-latex-paths *org-export*) (org-export-trusted *org-export*)))
+              :trusted (if own-template
+                           (cons template (org-export-trusted *org-export*))
                            (org-export-trusted *org-export*))
-              :pictures (reverse (org-latex-pictures *org-export*))
+              :pictures (append (reverse (org-latex-pictures *org-export*))
+                                (and own-template (reverse (org-latex-paths *org-export*))))
               :bibliographies (reverse (org-latex-bibliography-files *org-export*))
               :language (let ((row (org-latex-language-row)))
                           (and row (not (latex-loads-language-p template)) (first row))))))))

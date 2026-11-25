@@ -564,3 +564,31 @@
       (true (search (format nil "* Two~%- [X] last~%") (session-text editor)) "~a"
             (subseq (session-text editor) (- (length (session-text editor)) 40)))
       (is = 0 parses))))
+
+(define-test (org bare-path-link-with-a-search)
+  ;; a link written as a path, ./other.org::*Wanted, opens the file at the headline, and the exports
+  ;; link to the file alone
+  (multiple-value-bind (type path) (tuatara.defaults::org-link-parts "./other.org::*Wanted")
+    (is string= "file" type)
+    (is string= "./other.org" path))
+  (with-test-directory (dir)
+    (alexandria:write-string-into-file (format nil "* First~%* Wanted~%") (merge-pathnames "other.org" dir))
+    (let ((text (format nil "[[./other.org::*Wanted][there]]~%"))
+          (file (merge-pathnames "links.org" dir)))
+      (alexandria:write-string-into-file text file)
+      (unwind-protect
+           (multiple-value-bind (line name)
+               (org-line-of-point (nth-value 1
+                                             (run-keys (format nil "C-x C-f C-a C-k ~a RET RET"
+                                                               (rimu-typed (namestring file)))
+                                                       :width 120
+                                                       :height 12)))
+             (is string= "other.org" name)
+             (is string= "* Wanted" line))
+        (dolist (name '("other.org" "links.org"))
+          (let ((buffer (tuatara.buffer:find-buffer name)))
+            (when buffer (tuatara.buffer:kill-buffer buffer)))))
+      (let ((latex (getf (tuatara.defaults::org-latex-parts text :file (namestring file)) :latex))
+            (html (getf (tuatara.defaults::org-html-parts text :file (namestring file)) :body)))
+        (true (search "\\href{./other.org}{there}" latex) "~a" latex)
+        (false (search "::" html) "~a" html)))))

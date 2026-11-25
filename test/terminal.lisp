@@ -212,6 +212,42 @@ list, has the frontend show pictures. Returns the frontend and the editor."
       (tuatara.display:apply-theme theme)
       (tuatara.terminal-emulator::recolour-terminal-faces))))
 
+(define-test (terminal colours-again-only-for-a-theme)
+  ;; programs' colours are coloured again once a theme is put in force, not each time a face
+  ;; changes: that would go through every colour programs ever chose, on the editor's thread
+  (let ((theme tuatara.display:*current-theme*) (walked 0)
+        (faces (loop for i below 300
+                     collect (tuatara.terminal-emulator::terminal-colour-face
+                              :fg (format nil "#~2,'0x~2,'0x40" (* 17 (mod i 16)) (* 17 (floor i 16))))))
+        (tuatara.terminal-emulator::*terminal-buffers* '()))
+    (sb-int:encapsulate 'tuatara.terminal-emulator::terminal-colour-face 'walked
+                        (lambda (function &rest arguments) (incf walked) (apply function arguments)))
+    (unwind-protect
+         (progn
+           (tuatara.display:apply-theme 'tuatara.defaults::ao-light)
+           (tuatara.terminal-emulator::terminal-tick nil)
+           (is equal "#11ff44" (tuatara.display:face-attribute (nth 241 faces) :fg))
+           (setf walked 0)
+           (tuatara.display:set-face-attributes :mode-line-sign-idle
+                                                :fg (tuatara.display:face-attribute :mode-line-sign-idle :fg))
+           (tuatara.terminal-emulator::terminal-tick nil)
+           (is = 0 walked "~d faces coloured again after a face changed" walked))
+      (sb-int:unencapsulate 'tuatara.terminal-emulator::terminal-colour-face 'walked)
+      (tuatara.display:apply-theme theme)
+      (tuatara.terminal-emulator::recolour-terminal-faces))))
+
+(define-test (terminal look-faces-bounded)
+  ;; a program choosing a new true colour for every character fills the faces kept for looks no further than
+  ;; *terminal-looks-kept*
+  (let ((text (with-output-to-string (out)
+                (dotimes (i 100000)
+                  (format out "~c[38;2;~d;~d;~dm~c[48;2;~d;~d;~dmx" #\Escape
+                          (ldb (byte 8 16) i) (ldb (byte 8 8) i) (ldb (byte 8 0) i)
+                          #\Escape (ldb (byte 8 0) i) (ldb (byte 8 8) i) (ldb (byte 8 16) i))))))
+    (is = 100000 (length (tuatara.terminal-emulator:ansi-pieces text)))
+    (true (<= (hash-table-count (cdr tuatara.terminal-emulator::*terminal-look-faces*))
+              tuatara.terminal-emulator::*terminal-looks-kept*))))
+
 (define-modal-test (terminal normal-state-as-text)
   ;; C-\ stops typing: the screen stands still as text, keys move point there
   (multiple-value-bind (f editor)

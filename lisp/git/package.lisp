@@ -23,7 +23,7 @@
                 #:git-rebase-mode #:*global-keymap* #:goto-shown #:kill-text #:killed-job-buffer-p #:list-entry-at
                 #:list-entry-noun #:list-visit
                 #:list-folded #:list-section-at #:list-step-entry #:list-toggle-all-folds
-                #:list-toggle-fold
+                #:list-toggle-fold #:mode-for-shown-text
                 #:list-toggle-section #:*made-text-keymap* #:make-owned-directory #:make-rimu-listing
                 #:marked-directory #:new-private-directory #:open-externally #:paths-changed #:private-cache-directory
                 #:private-directory #:project-look-only-reason #:project-trusted-p #:quit-window #:read-native-path

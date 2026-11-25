@@ -146,8 +146,9 @@ closed."
 KEY: with DENOTE in Org's regexp syntax, case ignored; else as
 Tuatara's searches read it, case ignored unless it has a capital letter. NIL
 when there is none; :BAD, and said, when it is no regular expression, is not
-text (a list), or repeats a repeated part, which could take for ever: a
-pattern from a file is never run then."
+text (a list), or could take for ever on some text (NESTED-REPEAT-TREE-P: a
+repeat of a repeat, a back-reference to a repeated group, choices that start
+alike): a pattern from a file is never run then."
   (let ((regex (formatted-param params key)))
     (cond ((null regex) nil)
           ((not (stringp regex))
@@ -591,7 +592,9 @@ is; NIL when there is none of the first."
                      (first same)))
          (children (remove-if-not (lambda (file)
                                     (let ((other (formatted-signature file)))
-                                      (and (formatted-sequence-numeric-p other)
+                                      (and (formatted-sequence-p other)
+                                           (eq (not (formatted-sequence-numeric-p other))
+                                               (not (formatted-sequence-numeric-p sequence)))
                                            (let ((other-parts (formatted-sequence-parts other)))
                                              (and (> (length other-parts) depth)
                                                   (every #'string= parts other-parts))))))
@@ -877,7 +880,8 @@ those under it (a block also written denote-sequence): the file asked for, and
 how many levels to list, its own the first."
   (let ((sequence (read-formatted-sequence)))
     (when sequence
-      (let ((depth (read-whole-number "Levels to list, the file's own the first (default ~d): " 2)))
+      (let ((depth (read-whole-number "Levels (default ~d): " 2
+                                      :details "How many levels of the sequence to list, the file's own the first.")))
         (dblock-insert "formatted-sequence" (list :sequence sequence :depth depth))))))
 
 (loop for (name command) in '(("formatted-links" insert-formatted-links-block)

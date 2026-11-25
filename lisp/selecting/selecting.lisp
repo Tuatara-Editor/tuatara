@@ -356,26 +356,20 @@ instead, and the key pressed again pastes."
 
 (define-command join-selected-lines ()
   "Pull the following line up onto this one, COUNT times; with a selection,
-join the lines it touches into one, in the background when it holds more than
-32 MB."
+join the lines it touches into one, or the line it touches and the next.
+In the background when the lines hold more than 32 MB."
   (let ((b (current-buffer)))
     (multiple-value-bind (start end) (selection-range)
-      (when (and start (large-for-here-p start end))
-        (setf (tuatara.buffer:buffer-mark-active-p b) nil)
-        (line-selection-clear)
-        (return-from join-selected-lines
-          (join-lines-in-background b start (max start (tuatara.buffer:buffer-forward-char b end -1)))))
-      (let ((n (if start
-                   (max 1
-                        (- (tuatara.buffer:buffer-line-number b
-                                                              (max start (tuatara.buffer:buffer-forward-char b end -1)))
-                           (tuatara.buffer:buffer-line-number b start)))
-                   (prefix))))
+      (let* ((top (tuatara.buffer:buffer-line-start b (or start (point))))
+             (last (if start
+                       (max (tuatara.buffer:buffer-forward-char b end -1) (tuatara.buffer:next-line-start b top))
+                       (let ((line top))
+                         (dotimes (i (max 0 (prefix)) line)
+                           (setf line (tuatara.buffer:next-line-start b line)))))))
         (when start
-          (goto start)
           (setf (tuatara.buffer:buffer-mark-active-p b) nil)
           (line-selection-clear))
-        (dotimes (i (max 0 n)) (join-following-line b))))))
+        (join-lines b top last)))))
 
 ;;; The position ring and jump-back
 

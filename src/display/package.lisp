@@ -30,7 +30,7 @@ fonts, rich cells, windows and frames.")
            #:face #:define-face #:find-face #:set-face-attributes #:resolve-face-spec #:face-ground #:cursor-colour
            #:resolve-face-underline-colour #:combine-faces #:resolve-face-font #:*row-scaling* #:row-scale #:text-scale
            #:row-float-start
-           #:face-attribute #:*faces* #:*face-generation* #:make-face-cache #:face-cache-table
+           #:face-attribute #:*faces* #:*face-generation* #:*theme-generation* #:make-face-cache #:face-cache-table
            #:face-doc #:face-fg #:face-bg #:face-bold #:face-italic #:face-underline #:face-reverse #:face-dim
            #:face-extend #:face-font #:face-inherit #:face-underline-colour #:face-height #:*basic-colour-names*
            #:face-base #:face-name #:reset-face #:register-face

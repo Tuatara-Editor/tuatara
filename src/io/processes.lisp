@@ -11,7 +11,7 @@
 (defun proc-text (path)
   "The file at PATH under /proc read whole, each octet a character (a
 program's name there may be any octets); NIL when it cannot be read."
-  (let ((fd (handler-case (sb-posix:open path sb-posix:o-rdonly) (sb-posix:syscall-error () nil))))
+  (let ((fd (handler-case (sb-posix:open path (logior sb-posix:o-rdonly +o-cloexec+)) (sb-posix:syscall-error () nil))))
     (when fd
       (unwind-protect
            (handler-case (map 'string #'code-char (read-fd-octets fd :path path :size-hint 1024))
@@ -46,7 +46,7 @@ or once PROCESS has ended, its number no longer its own."
 
 (defun process-numbers ()
   "The numbers of every process there is, from /proc; NIL when it cannot be read."
-  (let ((fd (handler-case (sb-posix:open "/proc" (logior sb-posix:o-rdonly sb-posix:o-directory))
+  (let ((fd (handler-case (sb-posix:open "/proc" (logior sb-posix:o-rdonly sb-posix:o-directory +o-cloexec+))
               (sb-posix:syscall-error () nil)))
         (numbers '()))
     (when fd
@@ -113,7 +113,7 @@ parent changes while it is looked at."
   "The process group and the session of the process with process id (PID), as
 two values, read from /proc into BUFFER, octets enough for the line it
 reads \(1024); NIL when there is no such process."
-  (let ((fd (handler-case (sb-posix:open (format nil "/proc/~d/stat" pid) sb-posix:o-rdonly)
+  (let ((fd (handler-case (sb-posix:open (format nil "/proc/~d/stat" pid) (logior sb-posix:o-rdonly +o-cloexec+))
               (sb-posix:syscall-error () nil))))
     (when fd
       (let* ((n (unwind-protect (or (handler-case (read-fd-into fd buffer) (file-system-error () nil)) 0)

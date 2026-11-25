@@ -242,7 +242,7 @@ place, where the text as it is now has them: each (AT TEXT FACE)."
         (dolist (name '(tuatara.defaults::rope-line-hashes tuatara.text:rope-octets tuatara.lsp::start-formatting))
           (sb-int:unencapsulate name 'format-threads))
         (let ((buffer (tuatara.buffer:find-buffer "a.py"))) (when buffer (tuatara.buffer:kill-buffer buffer))))
-      (let ((tuatara.lsp::*format-largest-text* 10))
+      (let ((tuatara.lsp::*lsp-largest-document* 10))
         (multiple-value-bind (f editor)
             (auto-save-session (list (format nil "C-x C-f C-a C-k ~a RET" (rimu-typed file))
                                      "M-x f o r m a t - b u f f e r RET")
@@ -396,7 +396,7 @@ place, where the text as it is now has them: each (AT TEXT FACE)."
                  (true (search (format nil "bad = 0~%total") (first (at :completed))))
                  (true (search "sum = add(1, 2)" (first (at :renamed))))
                  (true (search (format nil "~%sum") (first (at :renamed))))
-                 (true (tuatara.frontend.fake:fake-frame-showing f "Save 1 changed file: b.py?"))
+                 (true (tuatara.frontend.fake:fake-frame-showing f "Save the changed file b.py?"))
                  (true (search "return a + b" (first (at :formatted))))
                  (true (search "good = 0" (first (at :fixed))))
                  (true (tuatara.frontend.fake:fake-frame-showing f "Renamed in 1 file; not saved"))
@@ -509,10 +509,12 @@ place, where the text as it is now has them: each (AT TEXT FACE)."
   (let ((buffers (tuatara.defaults::mode-keymap 'tuatara.defaults::buffers-mode)))
     (is eq 'tuatara.defaults::list-mark-entry
         (tuatara.command:lookup-key buffers (tuatara.frontend:parse-key-sequence "C-c m")))
-    (false (tuatara.command:lookup-key buffers (tuatara.frontend:parse-key-sequence "C-c x"))))
+    (is eq 'tuatara.defaults::list-execute
+        (tuatara.command:lookup-key buffers (tuatara.frontend:parse-key-sequence "C-c x"))))
   (let ((rimu tuatara.defaults::*rimu-keymap*))
-    ;; x stays rimu's alone: C-c x is left for your own keys
-    (false (tuatara.command:lookup-key rimu (tuatara.frontend:parse-key-sequence "C-c x")))
+    ;; x is under C-c too, as every letter is
+    (is eq 'tuatara.defaults::list-execute
+        (tuatara.command:lookup-key rimu (tuatara.frontend:parse-key-sequence "C-c x")))
     (true (tuatara.command:lookup-key rimu (tuatara.frontend:parse-key-sequence "C-c m"))))
   (true (member (tuatara.command:lookup-key (tuatara.defaults::mode-keymap 'tuatara.terminal-emulator:terminal-mode)
                                             (tuatara.frontend:parse-key-sequence "C-c q"))
@@ -616,7 +618,7 @@ place, where the text as it is now has them: each (AT TEXT FACE)."
                                                 (lambda ()
                                                   (tuatara.lsp::server-work (tuatara.lsp::buffer-servers (buffer)))))
                                           (list :wait 0.1)
-                                          (typed "list-jobs") (list :wait 0.1) "q"
+                                          (typed "jobs-manager") (list :wait 0.1) "q"
                                           ;; resting on total: its uses lit
                                           "C-x b f . p y RET M-< C-n C-f C-f C-f C-f C-f"
                                           (list :until
@@ -1478,11 +1480,18 @@ place, where the text as it is now has them: each (AT TEXT FACE)."
                                           (list :until (lambda () (= 2 (length (applied))))))
                                     :width 200)
                (declare (ignore editor))
-               (true (tuatara.frontend.fake:fake-frame-showing f "python3 asks to change 3 files (1 outside"))
+               (true (tuatara.frontend.fake:fake-frame-showing
+                      f "python3 asks to change 3 files (1 outside its project); change them? (y or n)"))
+               ;; the files named beside the question, the one outside first
+               (true (tuatara.frontend.fake:fake-frame-showing
+                      f (format nil "  ~a" (tuatara.command:abbreviated-path (merge-pathnames "outside.txt" dir)))))
                (true (search "missing.txt is not there"
                              (tuatara.buffer:buffer-string (tuatara.buffer:find-buffer "*Messages*")))))
           (tuatara.lsp::lsp-stop-all))
         (true (member "answered unknown -32601" (told log) :test #'string=))
+        ;; the project given as the workspace folder at the start, and again when asked
+        (true (member "started in proj" (told log) :test #'string=))
+        (true (member "answered folders proj" (told log) :test #'string=))
         ;; refused, then made where it could be: never a new file
         (is equal '("applied false" "applied false") (applied))
         (let ((inside (tuatara.buffer:find-buffer "inside.txt"))
@@ -2793,6 +2802,24 @@ which offers CAPABILITY and never answers: the buffer and the server."
       (is equal (list (concatenate 'string root "new/"))
           (remove-if-not (lambda (d) (uiop:string-prefix-p (concatenate 'string root "new/") d))
                          (tuatara.lsp::watched-tree-directories tree))))))
+
+(define-test (lsp lens-resolve-given-up-when-late)
+  ;; what a code lens says is asked with the time a server is given to answer, so one
+  ;; that never answers is given up on and asked again later
+  (multiple-value-bind (buffer doc server) (one-doc-session (format nil "x = 1~%"))
+    (let ((lenses (list (tuatara.text:json-object
+                         "range" (tuatara.text:json-object
+                                  "start" (tuatara.text:json-object "line" 0 "character" 0)
+                                  "end" (tuatara.text:json-object "line" 0 "character" 1)))))
+          (given '()))
+      (sb-int:encapsulate 'tuatara.lsp::lsp-request 'kept
+                          (lambda (f server method lens then &rest keys)
+                            (declare (ignore f server method lens then))
+                            (setf given keys)
+                            0))
+      (unwind-protect (tuatara.lsp::resolve-lenses buffer doc server lenses (cons 0 10))
+        (sb-int:unencapsulate 'tuatara.lsp::lsp-request 'kept))
+      (is eql tuatara-user:*lsp-wait* (getf given :seconds)))))
 
 (define-test (lsp lens-resolve-asked-again-when-it-failed)
   ;; what a code lens says is asked again when the server failed to answer, a few times at most

@@ -326,7 +326,7 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
         (true (member "SSH_ASKPASS=/bin/true" env :test #'string=))
         (true (member "SSH_ASKPASS_REQUIRE=force" env :test #'string=))
         ;; still no program an address names
-        (true (member "GIT_CONFIG_VALUE_0=never" env :test #'string=)))
+        (true (member "GIT_ALLOW_PROTOCOL=https:ssh:git:file" env :test #'string=)))
       (dolist (env (list (with-env "/bin/true" nil) (with-env "/bin/true" "") (with-env "/nonexistent/askpass" ":0")
                          (with-env nil ":0")))
         (true (member "GIT_SSH_COMMAND=ssh -o BatchMode=yes" env :test #'string=))
@@ -412,7 +412,7 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
                   :test #'string=))
     (true (member "SSH_ASKPASS=/c/ask" env :test #'string=))
     (false (find-if (lambda (setting) (search "BatchMode" setting)) env))
-    (true (member "GIT_CONFIG_VALUE_0=never" env :test #'string=)))
+    (true (member "GIT_ALLOW_PROTOCOL=https:ssh:git:file" env :test #'string=)))
   ;; a path the shell would read otherwise is not put in git's ssh command
   (is equal "GIT_SSH_COMMAND=ssh -o StrictHostKeyChecking=ask"
       (first (tuatara.git::git-network-variables '("/a b/ssh" "-o" "StrictHostKeyChecking=ask") '() '()))))
@@ -507,7 +507,8 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
                                   ;; the second hunk reversed, asked, which says it cannot be undone
                                   "M-< C-s L 1 5 RET x y e s RET"
                                   (list :until (lambda () (not (search "L15" (unstaged)))))))))
-        (true (tuatara.frontend.fake:fake-frame-showing f "Reverse the hunk of a.txt? It cannot be undone"))
+        (true (tuatara.frontend.fake:fake-frame-showing f "Reverse the hunk of a.txt? (y or n"))
+        (true (tuatara.frontend.fake:fake-frame-showing f "It cannot be undone: git kept no copy of them."))
         (true (tuatara.frontend.fake:fake-frame-showing f "Reversed the hunk of a.txt"))
         (is equal (numbered-lines 20 2) (alexandria:read-file-into-string (merge-pathnames "a.txt" dir)))))
     ;; two lines added, one of them selected and staged
@@ -621,6 +622,34 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
       (true tuatara.git::*git-built-in-commands*)
       (false on-editor))))
 
+(define-test (git own-commands-not-kept-when-git-fails)
+  ;; git failing to list its own commands is said, not kept: asked again, the list is read
+  (with-test-directory (dir)
+    (let ((ev (namestring (ensure-directories-exist (merge-pathnames "ev/" dir))))
+          (kept tuatara.git::*git-built-in-commands*))
+      (with-evidence-directories ((list ev))
+        (unwind-protect
+             (progn
+               (setf tuatara.git::*git-built-in-commands* nil)
+               (sb-int:encapsulate 'tuatara.io:filter-through-program 'failing
+                                   (lambda (function &rest arguments)
+                                     (declare (ignore function arguments))
+                                     (values (tuatara.text:string-octets "") "" 1)))
+               (unwind-protect
+                    (true (search "git did not list them" (or (tuatara.git::git-command-refusal '("log")) "")))
+                 (sb-int:unencapsulate 'tuatara.io:filter-through-program 'failing))
+               (false tuatara.git::*git-built-in-commands*)
+               (false (tuatara.git::git-command-refusal '("log")))
+               (true (member "log" tuatara.git::*git-built-in-commands* :test #'string=)))
+          (setf tuatara.git::*git-built-in-commands* kept))))))
+
+(define-test (git helper-addresses-refused)
+  ;; an address naming a helper program (NAME::) is never given to git; others are
+  (dolist (address '("ext::sh" "fd::17" "Transport::x" "a+b.c-d::y"))
+    (false (tuatara.git::git-address-p address) "~s" address))
+  (dolist (address '("https://example.invalid/r.git" "git@example.invalid:r.git" "/tmp/a::b" "ssh://h/r::x"))
+    (true (tuatara.git::git-address-p address) "~s" address)))
+
 (define-test (git stage-hunk-in-a-file-of-lone-returns)
   ;; in a file whose carriage returns end lines alone, git counts lines by newlines: the
   ;; hunk staged is git's at point's line, never the one at the editor's line of that number
@@ -657,12 +686,18 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
   (lambda () (let ((message (tuatara.command:editor-message tuatara.command:*editor*)))
                (and message (search words message)))))
 
-(defun asking (prompt)
-  "A function true while the editor asks a question whose prompt holds PROMPT."
+(defun asking (prompt &key details)
+  "A function true while the editor asks a question whose prompt holds PROMPT;
+with DETAILS, a prompt under 80 columns with DETAILS in the details shown
+beside it."
   (lambda ()
-    (let ((editor tuatara.command:*editor*))
-      (and editor (tuatara.command:editor-minibuffer-active editor)
-           (search prompt (or (tuatara.command:editor-minibuffer-prompt editor) ""))))))
+    (let* ((editor tuatara.command:*editor*)
+           (asked (and editor (tuatara.command:editor-minibuffer-active editor)
+                       (or (tuatara.command:editor-minibuffer-prompt editor) "")))
+           (beside (tuatara.buffer:find-buffer "*Question*")))
+      (and asked (search prompt asked)
+           (or (null details)
+               (and (< (length asked) 80) beside (search details (tuatara.buffer:buffer-string beside))))))))
 
 (defun git-branch-names (dir)
   "The branches of the repository DIR, as git lists them."
@@ -728,7 +763,7 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
     (git-session dir "a.txt"
                  (list "b d" (list :until (asking "Delete branch:")) "s i d e RET"
                        (list :until (asking "Delete the branch side?")) "y e s RET"
-                       (list :until (asking "has commits no other branch has")) "y e s RET"
+                       (list :until (asking "Delete side all the same?" :details "on no other branch")) "y e s RET"
                        (list :until (lambda () (equal '("main") (git-branch-names dir))))))
     (is equal '("main") (git-branch-names dir))
     ;; a name git would read as an option is never given to it
@@ -919,7 +954,7 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
                                   "z z" (list :until (asking "Stash message")) "RET"
                                   (list :until (lambda () (plusp (length (stashes)))))
                                   "z d" (list :until (asking "Drop stash")) "RET"
-                                  (list :until (asking "It cannot be undone")) "y e s RET"
+                                  (list :until (asking "Drop stash@{0}?" :details "It cannot be undone")) "y e s RET"
                                   (list :until (lambda () (zerop (length (stashes)))))))))
         (true (tuatara.frontend.fake:fake-frame-showing f "Put the changes aside"))
         (true (search "+two" (tuatara.buffer:buffer-string (git-buffer-named "*git stash@{0}*"))))
@@ -998,7 +1033,8 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
                           (list :until (lambda () (notany #'tuatara.git::git-job-p tuatara.runtime:*jobs*)))
                           (list :wait 0.1)
                           "F u" (list :until (lambda () (equal "Theirs" (first (git-log-subjects repo)))))
-                          "P - f p" (list :until (asking "Force the push")) "n o RET" (list :wait 0.3))
+                          "P - f p" (list :until (asking "Force the push, if the remote" :details "unless it has new ones"))
+                          "n o RET" (list :wait 0.3))
                     :width 120 :height 30)))
             (true (tuatara.frontend.fake:fake-frame-showing f "Pushed"))
             (true (tuatara.frontend.fake:fake-frame-showing f "Fetched"))
@@ -1073,7 +1109,8 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
                               (list "X m" (list :until (asking "Reset to")) "H E A D ~ 1 RET"
                                     (list :until (lambda () (equal "Topic file" (first (subjects)))))
                                     "X H" (list :until (asking "Reset to (hard)")) "RET"
-                                    (list :until (asking "Changes not committed are lost")) "y e s RET"
+                                    (list :until (asking "Reset everything to" :details "not committed are lost"))
+                                    "y e s RET"
                                     (list :until (lambda () (zerop (length (git-output dir "status" "--porcelain"))))))
                               :width 120 :height 30)))
           (true (tuatara.frontend.fake:fake-frame-showing f "Reset to HEAD~1, the files as they were"))
@@ -1704,7 +1741,9 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
                                 "M-< C-s b SPC m o v e d RET u"
                                 (list :until
                                       (lambda () (search "?? \"b moved.txt\"" (git-output dir "status" "--short"))))
-                                "M-< C-s a SPC m o v e d RET x" (list :until (asking "It cannot be undone")) "y e s RET"
+                                "M-< C-s a SPC m o v e d RET x"
+                                (list :until (asking "Reverse the changes of" :details "It cannot be undone"))
+                                "y e s RET"
                                 (list :until (lambda () (probe-file (merge-pathnames "a.txt" dir))))
                                 (list :wait 0.3))
                           :width 140)))
@@ -1833,11 +1872,11 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
 (define-test (git run-words-split)
   ;; the words of ! are split as a shell splits them, though no shell runs
   (is equal '("log" "-1" "--format=[%s] two words")
-      (tuatara.io:command-words "log -1 \"--format=[%s] two words\""))
+      (tuatara.text:command-words "log -1 \"--format=[%s] two words\""))
   (is equal '("a b" "c\"d" "e f" "$HOME")
-      (tuatara.io:command-words "'a b' \"c\\\"d\" e\\ f $HOME"))
-  (is equal '(nil nil) (subseq (multiple-value-list (tuatara.io:command-words "log 'open")) 0 2))
-  (is equal '(nil t) (multiple-value-list (tuatara.io:command-words "   "))))
+      (tuatara.text:command-words "'a b' \"c\\\"d\" e\\ f $HOME"))
+  (is equal '(nil nil) (subseq (multiple-value-list (tuatara.text:command-words "log 'open")) 0 2))
+  (is equal '(nil t) (multiple-value-list (tuatara.text:command-words "   "))))
 
 (define-test (git pull-detached)
   ;; a pull with HEAD detached says so, git not run
@@ -2001,6 +2040,39 @@ DIR is visited and its status read, the project trusted. Returns the frontend."
             (is equal (format nil "~a 1/4" (subseq (git "log" "-1" "--format=%ad" "--date=short") 0 10)) place)
             ;; back in the file as it is, on the line the history was on
             (is equal '("b.txt" 1) back)))))))
+
+(define-test (git rewind-of-evidence-is-plain-text)
+  ;; a file rewound in a repository among evidence is shown as plain text, in no
+  ;; mode its name or first line calls for, as it would open safely; elsewhere in its mode
+  (with-test-directory (dir)
+    (let ((seized (namestring (ensure-directories-exist (merge-pathnames "ev/seized/" dir)))))
+      (scratch-repository seized)
+      (put-file (merge-pathnames "run" seized) (format nil "#!/bin/sh~%echo one~%"))
+      (put-file (merge-pathnames "b.py" seized) (format nil "x = 1~%"))
+      (git-output seized "add" "run" "b.py")
+      (git-output seized "commit" "-q" "-m" "Second")
+      (flet ((modes ()
+               (let ((seen '()))
+                 (auto-save-session
+                  (loop for name in '("run" "b.py")
+                        for buffer-name = (format nil "*git rewind: ~a*" name)
+                        append (list (let ((name name)) (lambda () (tuatara.git::git-rewind-file seized name)))
+                                     (let ((buffer-name buffer-name))
+                                       (list :until
+                                             (lambda ()
+                                               (let ((b (git-buffer-named buffer-name)))
+                                                 (and b (tuatara.buffer:buffer-local
+                                                         b 'tuatara.git::git-rewind-revisions))))))
+                                     (let ((buffer-name buffer-name))
+                                       (lambda ()
+                                         (let ((b (git-buffer-named buffer-name)))
+                                           (push (type-of (tuatara.modes:buffer-major-mode b)) seen)
+                                           (tuatara.buffer:kill-buffer b)))))))
+                 (reverse seen))))
+        (let ((tuatara-user:*untrusted-directories* '()))
+          (true (notany (lambda (mode) (eq mode 'tuatara.modes:fundamental-mode)) (modes)))
+          (with-evidence-directories ((list (namestring (merge-pathnames "ev/" dir))))
+            (is equal '(tuatara.modes:fundamental-mode tuatara.modes:fundamental-mode) (modes))))))))
 
 (define-test (git rewind-directory)
   ;; in rimu M-x git-rewind lists the directory as its commits left it, in a rimu

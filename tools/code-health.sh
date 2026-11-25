@@ -10,8 +10,9 @@
 # the places that join, sort, reverse or delete from in place a list a cache
 # keeps and gives again, the definitions this tree adds to main with
 # the entries of the index nearest to them, the questions asked at a prompt
-# built from more than 80 columns of text with no details beside it (the
-# package repositories included) and, when the local embedding model
+# built from more than 80 columns of text or saying more than its keys after
+# its question mark, with no details beside it (the package repositories
+# included) and, when the local embedding model
 # is there (tools/meaning.py), the pairs of definitions alike by meaning. The
 # editor's code is loaded once, for the sections that need it.
 # Usage: tools/code-health.sh [REPORT-FILE]
@@ -33,12 +34,14 @@ in_tree :tuatara/tests \
   { cat "$work/load.log" >&2; exit 1; }
 tools/possible-copies.sh --bodies --packages >"$work/1-bodies"
 tools/possible-copies.sh --pass-through >"$work/5-pass"
-{ tools/line-check.py --summary --packages | tail -n 1; tools/line-check.py --summary --packages | head -n -1; } >"$work/2-lines"
-{ tools/package-reaches.py --summary --packages | tail -n 1; tools/package-reaches.py --summary --packages | head -n -1; } >"$work/8-reaches"
+# a report script's total, which it prints last, first
+total_first() { "$@" >"$work/run"; tail -n 1 "$work/run"; head -n -1 "$work/run"; }
+total_first tools/line-check.py --summary --packages >"$work/2-lines"
+total_first tools/package-reaches.py --summary --packages >"$work/8-reaches"
 { tools/possible-copies.sh main || echo "possible-copies.sh main failed"; } >"$work/7-copies.body"
 { echo "$(grep -c '^[^ ]' "$work/7-copies.body") definitions added to main here have near matches in the reuse index"
   cat "$work/7-copies.body"; } >"$work/7-copies"
-{ tools/long-prompts.py --packages | tail -n 1; tools/long-prompts.py --packages | head -n -1; } >"$work/10-prompts"
+total_first tools/long-prompts.py --packages >"$work/10-prompts"
 sections="1-bodies 2-lines 3-dead 4-sizes 5-pass 6-index 7-copies 8-reaches 9-kept 10-prompts"
 tools/possible-copies.sh --alike-meaning --packages >"$work/11-meaning"
 if head -n 1 "$work/11-meaning" | grep -q '^no meaning model'; then :; else sections="$sections 11-meaning"; fi

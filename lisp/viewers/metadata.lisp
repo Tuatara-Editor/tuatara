@@ -152,8 +152,8 @@ offset checked, each part read once, at most
 *METADATA-MOST-FIELDS* tags. Values are read as their type says: text,
 numbers, fractions as written (1/125), dates as written; text and octets
 to their first 4 KB."
-  (let* ((big (cond ((tuatara.io:octets-at-p octets "MM" start) t)
-                    ((tuatara.io:octets-at-p octets "II" start) nil)
+  (let* ((big (cond ((tuatara.text:octets-at-p octets "MM" start) t)
+                    ((tuatara.text:octets-at-p octets "II" start) nil)
                     (t (return-from exif-read '()))))
          (fields '()) (seen '()) (count 0))
     (labels ((int (at n) (octets-integer octets (+ start at) n :big-endian big))
@@ -207,7 +207,7 @@ to their first 4 KB."
         ((and (vectorp value) (member tag '(#x9C9B #x9C9C #x9C9D #x9C9E #x9C9F))) (utf-16-text value))
         ((and (vectorp value) (= tag #x9286) (>= (length value) 8))
          ;; a comment: its first eight octets name its characters
-         (if (tuatara.io:octets-at-p value "UNICODE") (utf-16-text value :start 8) (octets-text value 8 (length value))))
+         (if (tuatara.text:octets-at-p value "UNICODE") (utf-16-text value :start 8) (octets-text value 8 (length value))))
         ((and (vectorp value) (member tag '(#x9000 #xA000 0)) (<= (length value) 8))
          (if (= tag 0) (format nil "~{~d~^.~}" (coerce value 'list)) (octets-text value 0 (length value))))
         ((and (vectorp value) (= tag #x927C)) (format nil
@@ -269,7 +269,7 @@ when it has none. PAGES as EXIF-READ takes it."
   (let ((sections '()) (comments '()))
     (tuatara.io:jpeg-segments
      octets (lambda (marker start end)
-              (cond ((and (= marker #xE1) (tuatara.io:octets-at-p octets (format nil "Exif~c~c" #\Nul #\Nul) start)
+              (cond ((and (= marker #xE1) (tuatara.text:octets-at-p octets (format nil "Exif~c~c" #\Nul #\Nul) start)
                           (< (+ start 6) end))
                      (push (exif-section (subseq octets (+ start 6) end) 0 "in its APP1 segment") sections))
                     ((= marker #xFE)
@@ -399,7 +399,7 @@ stop ends the reading between two of them."
                     (data (+ at 8)) (end (and length (+ data length))))
                (when (or (null length) (> end (length octets)) (> (incf count) 10000)) (return))
                (when (string= type "EXIF")
-                 (let ((start (min end (if (tuatara.io:octets-at-p octets "Exif" data) (+ data 6) data))))
+                 (let ((start (min end (if (tuatara.text:octets-at-p octets "Exif" data) (+ data 6) data))))
                    (push (exif-section (subseq octets start end) 0 "in its EXIF chunk") sections)))
                (setf at (+ end (mod length 2)))))
     (nreverse sections)))
@@ -471,7 +471,7 @@ brand, and its own items (title, maker, model, place, software)."
     (dolist (path '(("moov" "udta" "meta") ("moov" "meta")))
       (let ((meta (apply #'tuatara.io:box-find octets 0 n path)))
         (when meta
-          (let* ((inner (if (tuatara.io:octets-at-p octets "hdlr" (+ (second meta) 4)) (second meta) (+ (second meta) 4)))
+          (let* ((inner (if (tuatara.text:octets-at-p octets "hdlr" (+ (second meta) 4)) (second meta) (+ (second meta) 4)))
                  (keys (let ((box (find "keys"
                                         (tuatara.io:box-children octets inner (third meta))
                                         :key #'first
@@ -557,12 +557,12 @@ larger than *METADATA-XMP-MOST* is named with its size, not read."
         (end-mark (map '(vector (unsigned-byte 8)) #'char-code "</x:xmpmeta>"))
         (sections '()) (at 0))
     (loop repeat 4
-          for start = (tuatara.io:octets-search start-mark octets :start at)
-          for end = (and start (tuatara.io:octets-search end-mark octets :start start))
+          for start = (tuatara.text:octets-search start-mark octets :start at)
+          for end = (and start (tuatara.text:octets-search end-mark octets :start start))
           while end
           do (let* ((size (- (+ end (length end-mark)) start))
                     (heading (format nil "XMP~@[ (packet ~d)~]"
-                                     (and (or sections (tuatara.io:octets-search start-mark octets :start (1+ end)))
+                                     (and (or sections (tuatara.text:octets-search start-mark octets :start (1+ end)))
                                           (1+ (length sections)))))
                     (tree (and (<= size *metadata-xmp-most*)
                                (ignoring-errors-reported ("reading an XMP packet")
@@ -605,7 +605,7 @@ what it says of them: what in the file could act, none of it run.")
          (trailer (pdf-trailer octets))
          (info (if trailer
                    (pdf-resolve octets (pdf-get trailer "/Info"))
-                   (let ((at (tuatara.io:octets-search (load-time-value (tuatara.text:string-octets "/Info")) octets
+                   (let ((at (tuatara.text:octets-search (load-time-value (tuatara.text:string-octets "/Info")) octets
                                                        :from-end t)))
                      (note-pdf-scanned)
                      (and at (pdf-resolve octets (pdf-object-at octets (+ at 5)))))))
@@ -678,7 +678,7 @@ bits in each."
 (defun id3-metadata (octets)
   "The sections of the note for the MP3 in OCTETS: its ID3 tags, version 2 at its start and version 1 at its end."
   (let ((fields '()))
-    (when (and (tuatara.io:octets-at-p octets "ID3") (> (length octets) 10))
+    (when (and (tuatara.text:octets-at-p octets "ID3") (> (length octets) 10))
       (let* ((major (aref octets 3)) (flags (aref octets 5))
              (size (id3-synchsafe octets 6))
              (end (min (length octets) (+ 10 size)))
@@ -740,7 +740,7 @@ bits in each."
                            fields))
                    (setf at data-end)))))
     (let ((v1 (- (length octets) 128)))
-      (when (and (>= v1 0) (tuatara.io:octets-at-p octets "TAG" v1))
+      (when (and (>= v1 0) (tuatara.text:octets-at-p octets "TAG" v1))
         (loop for (label start width) in '(("Title (ID3v1)" 3 30) ("Artist (ID3v1)" 33 30) ("Album (ID3v1)" 63 30)
                                            ("Year (ID3v1)" 93 4) ("Comment (ID3v1)" 97 30))
               do (push (cons label (tuatara.text:octets-latin-1 octets :start (+ v1 start) :end (or (position 0 octets :start (+ v1 start) :end (+ v1 start width)) (+ v1 start width))))
@@ -783,19 +783,51 @@ bits in each."
 
 ;;; Office and OpenDocument files: their text view's own account
 
-(defun office-metadata (path kind &key &allow-other-keys)
+(defun office-about (note)
+  "The section of NOTE, the Org note an Office or OpenDocument reader made,
+whose heading begins * About this; NIL when it has none."
+  (let* ((start (search (format nil "~%* About this") note))
+         (start (if start (1+ start) (and (uiop:string-prefix-p "* About this" note) 0)))
+         (end (and start (search (format nil "~%* ") note :start2 (1+ start)))))
+    (and start (subseq note start (if end (1+ end) (length note))))))
+
+(defun office-about-shut-in (inputs directory kind)
+  "Run shut in by OFFICE-METADATA (TUATARA:SANDBOX-CALL), never in the editor:
+what the Office or OpenDocument file, the first of INPUTS, of KIND (the :KIND
+of an entry of *OFFICE-FORMATS*), says of itself (OFFICE-ABOUT), read by its
+kind's reader. DIRECTORY is not written in."
+  (declare (ignore directory))
+  (let ((path (first inputs))
+        (office (find kind *office-formats* :key (lambda (f) (getf f :kind)))))
+    (office-about (funcall (getf office :read) path :octets (tuatara.io:file-octets path :limit *docx-largest-file*)))))
+
+(defun office-metadata (path kind &key fd size &allow-other-keys)
   "The section of the note giving what the Office or OpenDocument file at PATH,
-of KIND, says of itself: the first section of the note its reader makes."
+of KIND, open as file descriptor (FD), of SIZE octets, says of itself: the
+first section of the note its reader makes (OFFICE-ABOUT). The reader runs
+shut in by the sandbox on that very file (OFFICE-ABOUT-SHUT-IN), whatever is
+at PATH by then. With no sandbox here it runs in the editor, on the octets
+read through FD, for a file not from outside, and not at all for one from
+outside (UNTRUSTED-PATH-P), the section saying why."
   (let* ((office (office-preview-format kind (tuatara.io:native-file-name path)))
-         (read (and office (getf office :read))))
+         (read (getf office :read)))
     (when read
-      (let* ((note (handling-errors-reported ("reading what ~a says of itself" path)
-                       (funcall read path)
-                     (error (e) (format nil "* About this file~%It could not be read: ~a~%" e))))
-             (start (search (format nil "~%* About this") note))
-             (start (if start (1+ start) (and (uiop:string-prefix-p "* About this" note) 0)))
-             (end (and start (search (format nil "~%* ") note :start2 (1+ start)))))
-        (and start (list (subseq note start (if end (1+ end) (length note)))))))))
+      (flet ((unread (why) (format nil "* About this file~%It could not be read: ~a~%" why)))
+        (let ((directory (new-private-directory (private-cache-directory "sandbox-copies/"))))
+          (list
+           (unwind-protect
+                (multiple-value-bind (about failure outcome)
+                    (tuatara.packages:sandbox-call 'office-about-shut-in (list fd) directory
+                                                   :arguments (list (getf office :kind))
+                                                   :label (format nil "The reader of the ~a" (getf office :words)))
+                  (cond ((eq outcome :done) (if (stringp about) about ""))
+                        ((and (eq outcome :unavailable) (not (untrusted-path-p path)))
+                         (handling-errors-reported ("reading what ~a says of itself" path)
+                             (or (office-about (funcall read path :octets (fd-octets fd path size *docx-largest-file*)))
+                                 "")
+                           (error (e) (unread e))))
+                        (t (unread failure))))
+             (delete-private-directory directory))))))))
 
 ;;; The note
 
@@ -909,7 +941,7 @@ encrypted file is for (*METADATA-LOOK-UP-KEY-OWNERS*).")
   "The packets armoured in OCTETS (-----BEGIN PGP MESSAGE-----), decoded from
 its first 256 KB, and its headers (Version, Comment) as (NAME . VALUE); NIL
 when OCTETS are not armoured."
-  (when (tuatara.io:octets-at-p octets "-----BEGIN PGP MESSAGE-----")
+  (when (tuatara.text:octets-at-p octets "-----BEGIN PGP MESSAGE-----")
     (let* ((first-end (or (position 10 octets) (length octets)))
            (headers '())
            (at (1+ first-end)))
@@ -925,10 +957,10 @@ when OCTETS are not armoured."
                (setf at (1+ line-end)))
       (setf at (min at (length octets)))
       (let* ((most (min (length octets) (+ at (* 256 1024))))
-             (end (or (tuatara.io:octets-search (load-time-value (tuatara.text:string-octets "-----END")) octets
+             (end (or (tuatara.text:octets-search (load-time-value (tuatara.text:string-octets "-----END")) octets
                                                 :start at :end most)
                       most)))
-        (values (tuatara.io:base64-octets octets :start (min at end) :end end) (nreverse headers))))))
+        (values (tuatara.text:base64-octets octets :start (min at end) :end end) (nreverse headers))))))
 
 (defun openpgp-octets-hex (octets start end)
   "OCTETS from START below END in hexadecimal capitals; NIL when they are cut short."
@@ -940,17 +972,17 @@ when OCTETS are not armoured."
 :FINGERPRINT (a version 6 packet's) and :ALGORITHM; NIL for a packet not read."
   (case (aref octets body)
     (3 (let ((id (openpgp-octets-hex octets (+ body 1) (+ body 9)))
-             (algorithm (tuatara.io:octet-at octets (+ body 9))))
+             (algorithm (tuatara.text:octet-at octets (+ body 9))))
          (and id algorithm
               (list :id (and (find-if (lambda (c) (char/= c #\0)) id) id)
                     :algorithm (openpgp-name *openpgp-key-algorithms* algorithm)))))
-    (6 (let ((n (tuatara.io:octet-at octets (+ body 1))))
+    (6 (let ((n (tuatara.text:octet-at octets (+ body 1))))
          (cond ((null n) nil)
-               ((zerop n) (let ((algorithm (tuatara.io:octet-at octets (+ body 2))))
+               ((zerop n) (let ((algorithm (tuatara.text:octet-at octets (+ body 2))))
                             (and algorithm (list :id nil :algorithm (openpgp-name *openpgp-key-algorithms* algorithm)))))
-               (t (let ((version (tuatara.io:octet-at octets (+ body 2)))
+               (t (let ((version (tuatara.text:octet-at octets (+ body 2)))
                         (fingerprint (openpgp-octets-hex octets (+ body 3) (+ body 2 n)))
-                        (algorithm (tuatara.io:octet-at octets (+ body 2 n))))
+                        (algorithm (tuatara.text:octet-at octets (+ body 2 n))))
                     (and version fingerprint algorithm (>= (length fingerprint) 16)
                          (list :id (if (= version 4)
                                        (subseq fingerprint (- (length fingerprint) 16))
@@ -959,16 +991,16 @@ when OCTETS are not armoured."
 
 (defun openpgp-s2k-words (octets at)
   "How the passphrase is made a key by the S2K in OCTETS at AT, as words."
-  (let ((type (tuatara.io:octet-at octets at))
-        (hash (let ((h (tuatara.io:octet-at octets (1+ at)))) (and h (openpgp-name *openpgp-hashes* h)))))
+  (let ((type (tuatara.text:octet-at octets at))
+        (hash (let ((h (tuatara.text:octet-at octets (1+ at)))) (and h (openpgp-name *openpgp-hashes* h)))))
     (case type
       (0 (format nil "~a of the passphrase alone, no salt: weak" hash))
       (1 (format nil "~a, salted, once: weak" hash))
-      (3 (let ((c (tuatara.io:octet-at octets (+ at 10))))
+      (3 (let ((c (tuatara.text:octet-at octets (+ at 10))))
            (format nil "~a, salted and repeated~@[, ~:d octets hashed~]" hash
                    (and c (ash (+ 16 (logand c 15)) (+ (ash c -4) 6))))))
-      (4 (let ((passes (tuatara.io:octet-at octets (+ at 17))) (lanes (tuatara.io:octet-at octets (+ at 18)))
-               (memory (tuatara.io:octet-at octets (+ at 19))))
+      (4 (let ((passes (tuatara.text:octet-at octets (+ at 17))) (lanes (tuatara.text:octet-at octets (+ at 18)))
+               (memory (tuatara.text:octet-at octets (+ at 19))))
            (if (and passes lanes memory (< memory 64))
                (format nil "Argon2, ~d pass~:*~[es~;~:;es~], ~d lane~:p, ~d ~a of memory" passes lanes
                        (ash 1 (mod memory 10)) (case (floor memory 10) (0 "KiB") (1 "MiB") (2 "GiB") (t "TiB")))
@@ -984,23 +1016,23 @@ when OCTETS are not armoured."
                                      (if cipher (openpgp-name *openpgp-ciphers* cipher) "a cipher not read")
                                      (openpgp-s2k-words octets at))))
       (case version
-        (4 (words (tuatara.io:octet-at octets (+ body 1)) (+ body 2)))
-        (5 (words (tuatara.io:octet-at octets (+ body 1)) (+ body 3)))
-        (6 (words (tuatara.io:octet-at octets (+ body 2)) (+ body 5)))
+        (4 (words (tuatara.text:octet-at octets (+ body 1)) (+ body 2)))
+        (5 (words (tuatara.text:octet-at octets (+ body 1)) (+ body 3)))
+        (6 (words (tuatara.text:octet-at octets (+ body 2)) (+ body 5)))
         (t (format nil "a passphrase packet of version ~d, not read" version))))))
 
 (defun openpgp-protection-words (tag octets body)
   "How the data of the packet of TAG in OCTETS at BODY is kept from being changed, as words."
   (flet ((aead-words ()
            ;; the cipher and the mode, after the version
-           (let ((c (tuatara.io:octet-at octets (+ body 1))) (m (tuatara.io:octet-at octets (+ body 2))))
+           (let ((c (tuatara.text:octet-at octets (+ body 1))) (m (tuatara.text:octet-at octets (+ body 2))))
              (format nil
                      "~a, ~a"
                      (if c (openpgp-name *openpgp-ciphers* c) "?")
                      (if m (openpgp-name *openpgp-aead-modes* m) "?")))))
     (case tag
       (9 "none: an old form without a modification check; what it holds could have been changed unnoticed")
-      (18 (case (tuatara.io:octet-at octets body)
+      (18 (case (tuatara.text:octet-at octets body)
             (1 "a modification check (SHA-1), as gpg writes it")
             (2 (format nil "authenticated encryption: ~a" (aead-words)))
             (t "an encrypted data packet of a version not known")))
@@ -1108,7 +1140,7 @@ of its own and the rest still given."
              (:openpgp (openpgp-metadata octets))
              (:mp4 (mp4-metadata octets))))
           ;; an MP3's ID3 tag may come before what the contents are told by
-          (when (and (not (eq kind :mp3)) (tuatara.io:octets-at-p octets "ID3")) (metadata-part (id3-metadata octets)))
+          (when (and (not (eq kind :mp3)) (tuatara.text:octets-at-p octets "ID3")) (metadata-part (id3-metadata octets)))
           (metadata-part (xmp-sections octets))))
 
 (defun built-in-metadata (path kind &key fd size)
@@ -1190,7 +1222,9 @@ it says :ask, only of a file encrypted to keys it names."
             (and head
                  (eq (nth-value 1 (tuatara.io:octets-kind head)) :openpgp)
                  (openpgp-key-ids head)
-                 (y-or-n-p* "It is encrypted to keys: look up whose in your keyring (runs gpg --list-keys)?"))))
+                 (y-or-n-p* "Look up whose keys it is encrypted to?"
+                            :details (concatenate 'string "It is encrypted to keys; their owners are looked up "
+                                                  "in your keyring by gpg --list-keys.")))))
     (t t)))
 
 (define-command show-file-metadata ()

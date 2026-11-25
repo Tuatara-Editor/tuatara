@@ -63,43 +63,7 @@ mark does in Lisp (' ` , #), so that no space follows it when lines are joined."
   (let ((lisp (find-class 'lisp-mode nil)))
     (and lisp (typep (buffer-major-mode buffer) lisp) (find char "'`,#"))))
 
-(defun fixup-whitespace-at (buffer position)
-  "Leave one space or none at POSITION of BUFFER in place of the spaces and
-tabs around it: none at a line's start or end, before a closing bracket, or
-after an opening one or a quote mark of Lisp. Returns where the spaces began,
-the space left after it."
-  (multiple-value-bind (start end) (space-bounds buffer position)
-    (when (< start end) (tuatara.buffer:buffer-delete buffer start end))
-    (let ((after (tuatara.buffer:buffer-char-at buffer start))
-          (before (and (plusp start) (tuatara.buffer:buffer-char-at buffer (1- start)))))
-      (unless (or (null after) (member after '(#\Newline #\Return)) (find after tuatara.text:*closers*)
-                  (null before) (char= before #\Newline) (find before tuatara.text:*openers*)
-                  (lisp-prefix-char-p buffer before))
-        (tuatara.buffer:buffer-insert buffer start " "))
-      start)))
-
 ;;; Joining lines
-
-(defun join-lines-above (buffer bound)
-  "Join the line point is on to the one above it, and so on upwards while the
-line's start is after BOUND and after the start of the part shown while
-the buffer is narrowed: each line end goes, and the spaces about it become
-one or none (FIXUP-WHITESPACE-AT), point left at the last join."
-  (loop
-    (let ((bol (tuatara.buffer:buffer-line-start buffer (point))))
-      ;; past the bound, point stays at the last join
-      (unless (> bol bound) (return))
-      (goto bol)
-      ;; at the start of the text, or of the part shown: nothing above to join
-      (unless (and (> bol (tuatara.buffer:buffer-start buffer))
-                   (member (tuatara.buffer:buffer-char-at buffer (1- bol)) '(#\Newline #\Return)))
-        (return))
-      (let ((start (if (and (> bol 1) (eql (tuatara.buffer:buffer-char-at buffer (1- bol)) #\Newline)
-                            (eql (tuatara.buffer:buffer-char-at buffer (- bol 2)) #\Return))
-                       (- bol 2)
-                       (1- bol))))
-        (tuatara.buffer:buffer-delete buffer start bol)
-        (goto (fixup-whitespace-at buffer start))))))
 
 (defun join-report ()
   "A job's REPORT for joining lines in the background."
@@ -112,10 +76,12 @@ one or none (FIXUP-WHITESPACE-AT), point left at the last join."
 (defun joining-line (top bottom prefixes)
   "A function changing each line for START-LINE-JOB, so that the lines from the
 one starting at TOP to the one starting at BOTTOM become one, as
-JOIN-LINES-ABOVE joins them. Every line but the first loses the blanks it begins
-with, every line but the last the blanks it ends with and its line end. Blank
-lines go. Between two lines' texts goes a space unless FIXUP-WHITESPACE-AT would
-leave none (PREFIXES are the quote marks of Lisp)."
+JOIN-LINES joins them. Every line but the first loses the blanks it begins
+with, every line but the last the blanks it ends with and its line end (a
+carriage return before the newline with it). Blank lines go. Between two
+lines' texts goes a space, none where a line begins or ends, before a closing
+bracket, or after an opening one or one of PREFIXES (the quote marks of
+Lisp)."
   (let ((space (tuatara.text:string-octets " "))
         (none (make-array 0 :element-type '(unsigned-byte 8)))
         (bound nil))
@@ -123,7 +89,9 @@ leave none (PREFIXES are the quote marks of Lisp)."
       (flet ((octet (p) (slice-octet slice p))
              (blank-p (b) (or (= b 32) (= b 9))))
         (let* ((line (line-slice-start slice))
-               (line-end (line-slice-end slice))
+               ;; a carriage return before the newline goes with it, as one line end
+               (line-end (let ((end (line-slice-end slice)))
+                           (if (and (> end line) (= (octet (1- end)) 13)) (1- end) end)))
                (next (line-slice-next slice))
                (text (loop for p from line below line-end
                            unless (blank-p (octet p)) return p
@@ -150,34 +118,36 @@ leave none (PREFIXES are the quote marks of Lisp)."
                                  space
                                  none)))))))))))
 
-(defun join-lines-in-background (buffer start last)
+(defun join-lines (buffer start last)
   "Join the lines of BUFFER from the one holding START to the one holding LAST
-into one, as JOIN-LINES-ABOVE joins them, in the background on all but two
-cores, a line at a time (JOINING-LINE); one change for undo."
+into one, a line at a time (JOINING-LINE): each line end between them goes,
+and the spaces about it become one, or none where a line begins or ends,
+before a closing bracket or after an opening one or a quote mark of Lisp.
+Point is left after the first line's text. One change for undo, made at once,
+or in the background on all but two cores when the lines hold more than
+*REWRITE-THRESHOLD* octets. Nothing when LAST is on START's line."
   (check-writable buffer)
-  (let ((top (tuatara.buffer:buffer-line-start buffer start))
-        (bottom (tuatara.buffer:buffer-line-start buffer last)))
-    (start-line-job buffer top (tuatara.buffer:buffer-line-end buffer bottom)
-                    (joining-line top bottom (if (lisp-prefix-char-p buffer #\') "'`,#" ""))
-                    :doing "Joining" :what "Joining the lines" :report (join-report)
-                    :verb "join the lines" :leaves "the lines are as they were"
-                    ;; point at the first join, after the first line's text, as joining here leaves it
-                    :goal (lambda (from)
-                            (let ((end (loop with p = (tuatara.buffer:buffer-line-end buffer from)
-                                             while (and (> p from)
-                                                        (member (tuatara.buffer:buffer-char-at buffer (1- p))
-                                                                '(#\Space #\Tab)))
-                                             do (decf p)
-                                             finally (return p))))
-                              (lambda (b) (declare (ignore b)) end)))
-                    :announce "Joining the lines")))
-
-(defun join-following-line (buffer)
-  "Join the line after point's line to it, as \\[join-line] does with
-\\[universal-argument]."
-  (let ((bound (1- (next-line-start buffer (point)))))
-    (goto (next-line-start buffer (point)))
-    (join-lines-above buffer bound)))
+  (let* ((top (tuatara.buffer:buffer-line-start buffer (max start (tuatara.buffer:buffer-start buffer))))
+         (bottom (tuatara.buffer:buffer-line-start buffer (min last (tuatara.buffer:buffer-end buffer))))
+         (end (min (tuatara.buffer:next-line-start buffer bottom) (tuatara.buffer:buffer-end buffer)))
+         (per-line (joining-line top bottom (if (lisp-prefix-char-p buffer #\') "'`,#" ""))))
+    (flet ((first-text-end (from)
+             (loop with p = (tuatara.buffer:buffer-line-end buffer from)
+                   while (and (> p from) (member (tuatara.buffer:buffer-char-at buffer (1- p)) '(#\Space #\Tab)))
+                   do (decf p)
+                   finally (return p))))
+      (cond ((>= top bottom) nil)
+            ((large-for-here-p top end)
+             (start-line-job buffer top (tuatara.buffer:buffer-line-end buffer bottom) per-line
+                             :doing "Joining" :what "Joining the lines" :report (join-report)
+                             :verb "join the lines" :leaves "the lines are as they were"
+                             :goal (lambda (from)
+                                     (let ((goal (first-text-end from)))
+                                       (lambda (b) (declare (ignore b)) goal)))
+                             :announce "Joining the lines"))
+            (t (let ((goal (first-text-end top)))
+                 (rewrite-lines-here buffer top end per-line)
+                 (goto goal)))))))
 
 (define-command join-line ()
   "Join this line to the one before it: the line end between them goes, and
@@ -187,16 +157,15 @@ before a closing bracket or after an opening one. With
 every line it takes in, in the background when it holds more than 32 MB."
   (let* ((b (current-buffer))
          (arg (prefix-argument))
-         (region (and (not arg) (tuatara.buffer:buffer-mark-active-p b))))
-    (cond (region
+         (line (tuatara.buffer:buffer-line-start b (point))))
+    (cond ((and (not arg) (tuatara.buffer:buffer-mark-active-p b))
            (multiple-value-bind (start end) (tuatara.buffer:buffer-region b)
              (setf (tuatara.buffer:buffer-mark-active-p b) nil)
-             (if (large-for-here-p start end)
-                 (join-lines-in-background b start end)
-                 (progn (goto (if (> end (tuatara.buffer:buffer-line-end b start)) end start))
-                        (join-lines-above b start)))))
-          (arg (join-following-line b))
-          (t (join-lines-above b (1- (tuatara.buffer:buffer-line-start b (point))))))))
+             (join-lines b start end)))
+          (arg (join-lines b line (tuatara.buffer:next-line-start b line)))
+          ;; at the start of the text, or of the part shown: nothing above to join
+          ((<= line (tuatara.buffer:buffer-start b)) (goto line))
+          (t (join-lines b (1- line) line)))))
 
 ;;; Opening and going to lines
 
@@ -755,7 +724,7 @@ after it (two spaces, a tab or a line end with *SENTENCE-END-DOUBLE-SPACE*), or
 at a blank line. The lines search filters hide (\\[search-filter-regex]) are not
 counted. A large text is counted in the background, its progress in the mode
 line; \\[stop-job] stops it. While another job runs in the buffer it waits its
-turn (\\[list-jobs])."
+turn (\\[jobs-manager])."
   (let ((b (current-buffer)))
     (multiple-value-bind (start end what)
         (if (tuatara.buffer:buffer-mark-active-p b)

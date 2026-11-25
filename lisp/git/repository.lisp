@@ -95,9 +95,9 @@ at the newest commit of the branch each follows instead."
   (with-git-repository (top)
     (git-ask-submodule "Remove submodule: " top
                        (lambda (path)
-                         (when (yes-or-no-p* (format nil
-                                                     "Remove the submodule ~a and its directory? Changes in it are lost"
-                                                     (escape-controls path)))
+                         (when (yes-or-no-p* (format nil "Remove the submodule ~a and its directory?"
+                                                     (escape-controls path))
+                                             :details "Changes in it are lost.")
                            (start-git-job "Removing a submodule"
                                           (lambda (job)
                                             (git-job-output job top (list "submodule" "deinit" "-f" "--" path))
@@ -237,7 +237,8 @@ without changing it."
                                  (lambda (note)
                                    (let ((new (read-string (format nil "Note on ~a: " revision) :initial note)))
                                      (if (zerop (length new))
-                                         (message "No note written: M-x git-notes-remove takes one away")
+                                         (message "~a" (substitute-command-keys
+                                                       "No note written: \\[git-notes-remove] takes one away"))
                                          (git-run "Writing a note" top (list "notes" "add" "-f" "-m" new revision)
                                                   (format nil "Wrote a note on ~a" revision))))))))))
 

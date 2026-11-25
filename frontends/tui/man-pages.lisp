@@ -105,9 +105,9 @@ new one at each empty line."
 (defun options-roff ()
   "The options of *OPTION-HELP* as paragraphs of OPTIONS: the ways of writing
 each, what it does, and for an option with a choice why someone would take it
-and what it costs."
+and what it costs; those this build lists (OPTION-LISTED-P)."
   (with-output-to-string (out)
-    (dolist (entry *option-help*)
+    (dolist (entry (remove-if-not #'option-listed-p *option-help*))
       (format out ".TP~%~a~%~a" (roff-flags (getf entry :flags))
               (roff-entry-body (getf entry :text) (getf entry :why))))))
 
@@ -296,10 +296,10 @@ takes is a file name.")
 (defun completion-options ()
   "The options of *OPTION-HELP* that bash completes, each as a list of its
 name, the number of values that follow it and what they are (:FILES, :NONE or
-a list of choices): all but those of the legacy AppImage's launcher. An
-option written with an optional =NAME is a name only."
+a list of choices): those this build lists (OPTION-LISTED-P). An option
+written with an optional =NAME is a name only."
   (let (options)
-    (dolist (entry (remove :legacy-appimage *option-help* :key (lambda (entry) (getf entry :only))))
+    (dolist (entry (remove-if-not #'option-listed-p *option-help*))
       (loop for (flag argument) in (getf entry :flags)
             unless (char= (char flag 0) #\+)
               do (let ((name (bare-flag flag))

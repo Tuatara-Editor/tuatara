@@ -8,7 +8,7 @@
     (:use #:cl #:tuatara.command #:tuatara.modes #:tuatara.dates #:tuatara-user)
   ;; the command of this name, apart from Common Lisp's function
   (:shadow #:compile)
-  (:import-from #:tuatara.io #:octets-words)
+  (:import-from #:tuatara.text #:octets-words)
   (:import-from #:tuatara.runtime #:define-record #:ignoring-errors-reported #:define-setting)
   (:import-from #:tuatara.defaults
                 #:buffer-in-mode #:commands-for-mode #:keeping-list-selected #:list-entry-noun #:list-visit

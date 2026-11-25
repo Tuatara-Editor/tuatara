@@ -36,7 +36,7 @@ The file is written into one array of its size, made once."
     (declare (type (simple-array (unsigned-byte 8) (*)) out) (type fixnum at))
     (labels ((put (&rest octets) (dolist (o octets) (setf (aref out at) o) (incf at)))
              (put-integer (n count &key big-endian)
-               (tuatara.io:octets-put-integer out n count :at at :big-endian big-endian)
+               (tuatara.text:octets-put-integer out n count :at at :big-endian big-endian)
                (incf at count))
              (chunk (type length writer)
                (put-integer length 4 :big-endian t)

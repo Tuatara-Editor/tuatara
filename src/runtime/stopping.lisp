@@ -30,6 +30,11 @@ calls it is, a number; NIL elsewhere.")
 counts its stoppable calls, so that each call is told from any other, of this
 work or another, without reading the clock.")
 
+(defvar *watched-work* nil
+  "True on a thread doing work given seconds for its calls (STOPPABLE-WORK
+with :SLOW), or a piece of such work: its stoppable calls wake the watching
+thread.")
+
 (defvar *slow-call-seconds* 1/40
   "Seconds one stoppable call of work run on the editor's thread may take
 \(STOPPABLE-WORK with :SLOW) before the work is cut short as slow and carried
@@ -57,6 +62,10 @@ SLOW seconds, or NIL for no limit.")
 
 (sb-ext:defglobal **stop-watch-wake** (sb-thread:make-semaphore :name "tuatara stoppable work")
   "Signalled when there is work for the watching thread to watch.")
+
+(sb-ext:defglobal **stop-watch-waiting** nil
+  "True while the watching thread waits for a stoppable call to watch, from
+just before it last looked for one, until the first call begun since tells it.")
 
 (defun stopped-cell ()
   "The cancel of the outermost work this thread does that has been asked to
@@ -87,6 +96,11 @@ again on the way out, the thread goes on leaving it."
   (if *stoppable-call*
       (funcall function)
       (let ((*stoppable-call* (incf (the fixnum (car *stoppable-calls*)))))
+        (when *watched-work*
+          ;; the watching thread looks at this call, or the first call since it began to wait tells it
+          (sb-thread:barrier (:memory))
+          (when (sb-ext:compare-and-swap (symbol-value '**stop-watch-waiting**) t nil)
+            (sb-thread:signal-semaphore **stop-watch-wake**)))
         (check-stopped)
         (funcall function))))
 
@@ -110,14 +124,15 @@ the work in the background, which may take every processor."
                                                                       :niceness 0))))
 
 (defun enter-stoppable-work (cancel slow)
-  "Note that this thread begins the work of CANCEL, whose calls may take SLOW seconds (or NIL)."
+  "Note that this thread begins the work of CANCEL, whose calls may take SLOW
+seconds (or NIL). True when its calls are given seconds."
   (sb-thread:with-mutex (**stop-lock**)
     (let ((entry (or (gethash cancel **stop-entries**)
                      (setf (gethash cancel **stop-entries**) (make-stop-entry slow)))))
       (push sb-thread:*current-thread* (stop-entry-threads entry))
       (when (stop-entry-slow entry)
         (ensure-stop-watch)
-        (sb-thread:signal-semaphore **stop-watch-wake**)))))
+        t))))
 
 (defun leave-stoppable-work (cancel)
   "Note that this thread has left the work of CANCEL."
@@ -146,17 +161,18 @@ and return what it returns."
 
 (defun call-stoppable-work (cancel slow function)
   "Call FUNCTION as STOPPABLE-WORK does."
-  (enter-stoppable-work cancel slow)
-  (unwind-protect
-       (let ((values nil) (done nil))
-         (let ((reason (catch cancel
-                         ;; its calls its own, even inside a stoppable call of other work
-                         (let ((*stop-cells* (cons cancel *stop-cells*))
-                               (*stoppable-call* nil)
-                               (*stoppable-calls* (or *stoppable-calls* (list 0))))
-                           (setf values (multiple-value-list (funcall function)) done t)))))
-           (if done (values-list values) (values nil reason))))
-    (leave-stoppable-work cancel)))
+  (let ((watched (enter-stoppable-work cancel slow)))
+    (unwind-protect
+         (let ((values nil) (done nil))
+           (let ((reason (catch cancel
+                           ;; its calls its own, even inside a stoppable call of other work
+                           (let ((*stop-cells* (cons cancel *stop-cells*))
+                                 (*watched-work* (or watched *watched-work*))
+                                 (*stoppable-call* nil)
+                                 (*stoppable-calls* (or *stoppable-calls* (list 0))))
+                             (setf values (multiple-value-list (funcall function)) done t)))))
+             (if done (values-list values) (values nil reason))))
+      (leave-stoppable-work cancel))))
 
 (defmacro stoppable-work ((cancel &key slow) &body body)
   "Run BODY as the work CANCEL, a cons, stops: once STOP-WORK turns CANCEL's
@@ -233,21 +249,24 @@ internal real time, kept for the next look in **CALLS-SEEN**."
 
 (defun watch-stoppable-work ()
   "What the watching thread does, for as long as the editor runs. Every few
-milliseconds while a stoppable call runs (less often while there is work to
-watch but none does), it stops as slow the innermost work given seconds whose
-stoppable call on some thread has been seen to run longer. It interrupts again
-a thread still in a stoppable call of work asked to stop. It is asleep while
-there is none."
+milliseconds while a stoppable call runs, it stops as slow the innermost work
+given seconds whose stoppable call on some thread has been seen to run longer.
+It interrupts again a thread still in a stoppable call of work asked to stop.
+It waits while no thread is in a stoppable call, until one of work given
+seconds begins (CALL-STOPPABLE) or work is asked to stop."
   (loop
-    (let ((slow '()) (stopped '()) (watching nil) (calling nil) (looked '()) (now (get-internal-real-time)))
+    ;; told of every call begun from here on; what it was told before, it looks at now
+    (setf **stop-watch-waiting** t)
+    (sb-thread:barrier (:memory))
+    (loop while (sb-thread:try-semaphore **stop-watch-wake**))
+    (let ((slow '()) (stopped '()) (calling nil) (looked '()) (now (get-internal-real-time)))
       (sb-thread:with-mutex (**stop-lock**)
         (maphash (lambda (cancel entry)
                    (cond ((car cancel)
                           (when (some #'thread-in-stoppable-call (stop-entry-threads entry))
-                            (setf watching t calling t)
+                            (setf calling t)
                             (push cancel stopped)))
                          ((stop-entry-slow entry)
-                          (setf watching t)
                           (dolist (thread (stop-entry-threads entry))
                             (let ((call (thread-in-stoppable-call thread)))
                               (when call
@@ -264,7 +283,6 @@ there is none."
                **calls-seen**)
       (dolist (cancel slow) (stop-work cancel :slow))
       (dolist (cancel stopped) (interrupt-stoppable cancel))
-      (cond (calling (sleep 0.005))
-            ;; work given seconds, between its calls: looked at less often
-            (watching (sleep 0.02))
+      (cond (calling (setf **stop-watch-waiting** nil)
+                     (sleep 0.005))
             (t (sb-thread:wait-on-semaphore **stop-watch-wake**))))))

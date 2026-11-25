@@ -125,7 +125,7 @@ is killed or the editor left.")
 
 (defun start-git-job (doing work then &key after quiet (buffer (current-buffer)))
   "Run WORK, a function of the job, on a thread of its own as a job of BUFFER
-doing DOING (GIT-JOB), listed by \\[list-jobs] and stopped by \\[stop-job];
+doing DOING (GIT-JOB), listed by \\[jobs-manager] and stopped by \\[stop-job];
 THEN is called on the editor's thread with the values WORK returned once it
 did all of it, AFTER, a function of no arguments, however it ended. QUIET for
 work that only reads."
@@ -193,7 +193,7 @@ wrong (GIT-FAILURE-WORDS) or that it printed too much."
                              :environment environment :input input :limit limit)
     (cond (too-large
            (throw 'git-failed (format nil "git ~a printed more than ~a: too much to show" (first arguments)
-                                      (tuatara.io:octets-words (or limit *program-output-limit*)))))
+                                      (tuatara.text:octets-words (or limit *program-output-limit*)))))
           (ok (or octets (make-array 0 :element-type '(unsigned-byte 8))))
           (t (tuatara.runtime:job-check-stop)
              ;; what it said, or, saying nothing, what it printed (nothing to commit)
@@ -1545,10 +1545,10 @@ names; a submodule is left as it is. On a hunk, its changes alone; with
 lines selected in hunks, those lines."
   (multiple-value-bind (chosen section) (git-hunks-chosen)
     (if chosen
-        (when (yes-or-no-p* (format nil
-                                    "Reverse ~a~:[~;, staged and in the file~]? It cannot be undone"
+        (when (yes-or-no-p* (format nil "Reverse ~a~:[~;, staged and in the file~]?"
                                     (git-hunks-words chosen section)
-                                    (eq section :staged)))
+                                    (eq section :staged))
+                            :details "It cannot be undone: git kept no copy of them.")
           (git-apply-hunks chosen section (if (eq section :staged) :reverse-staged :reverse)
                            "Reversing changes" "Reversed ~a"))
         (git-reverse-files))))
@@ -1558,15 +1558,12 @@ lines selected in hunks, those lines."
 files of the section whose title it is, after asking, as \\[git-reverse] does."
   (multiple-value-bind (files section) (git-files (list-entry-at))
     (cond ((null files) (message "No file on this line"))
-          ((yes-or-no-p* (if (member section '(:untracked :ignored))
-                             (format nil "Move to the trash ~:[~*~a~;~d files~*~]?"
-                                     (rest files) (length files) (escape-controls (first (first files))))
-                             (format nil "Reverse the changes of ~:[~*~a~;~d files~*~]~:[~;, staged and in the file~]? ~
-                                          It cannot be undone"
-                                     (rest files)
-                                     (length files)
-                                     (escape-controls (first (first files)))
-                                     (eq section :staged))))
+          ((let ((trash (member section '(:untracked :ignored))))
+             (yes-or-no-p* (format nil "~:[Reverse the changes of~;Move to the trash~] ~:[~*~a~;~d files~*~]~
+                                        ~:[~;, staged and in the file~]?"
+                                   trash (rest files) (length files) (escape-controls (first (first files)))
+                                   (and (not trash) (eq section :staged)))
+                           :details (unless trash "It cannot be undone: git kept no copy of them.")))
            (let ((top (git-here)))
              (start-git-job "Reversing changes" (git-reverse-work top files section (git-unborn-here-p))
                             (lambda (changed moved left)

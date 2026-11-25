@@ -24,7 +24,7 @@ searched for then, a plist."
 (defun rimu-forget-found (buffer)
   "Make the rimu list BUFFER a list of a directory again, no longer of files found."
   (let ((job (tuatara.buffer:buffer-local buffer 'rimu-search)))
-    (when job (setf (car (tuatara.runtime:job-cancel job)) t)))
+    (when job (tuatara.runtime:job-stop job)))
   (setf (tuatara.buffer:buffer-local buffer 'rimu-found) nil
         (tuatara.buffer:buffer-local buffer 'rimu-search) nil))
 
@@ -265,7 +265,7 @@ of it, the list saying meanwhile that they are being found."
   (let* ((spec (rimu-found-p buffer))
          (old (tuatara.buffer:buffer-local buffer 'rimu-search))
          (job (make-rimu-search buffer spec)))
-    (when old (setf (car (tuatara.runtime:job-cancel old)) t))
+    (when old (tuatara.runtime:job-stop old))
     (setf (tuatara.buffer:buffer-local buffer 'rimu-search) job
           (tuatara.buffer:buffer-local buffer 'rimu-listing) nil)
     (rimu-show-layout buffer

@@ -271,16 +271,20 @@ with. For a stop it is Stopped: what that left. Otherwise it is Could not do it:
     (:failed (format nil "Could not ~a: ~a" (job-verb job) (or (job-error job) "it ended unexpectedly")))))
 
 (defun job-stop-question (job)
-  "The question asked before JOB is stopped: Stop sorting at 42%? and what
-stopping does, when the job says (JOB-CONSEQUENCE)."
-  (format nil "Stop ~(~a~)~@[ at ~d%~]?~@[ ~a~]" (job-doing job) (job-percent job) (job-consequence job)))
+  "The question asked before JOB is stopped, as Stop sorting at 42%?, and as a
+second value the words to show beside it: what stopping does, when the job
+says (JOB-CONSEQUENCE), else NIL."
+  (values (format nil "Stop ~(~a~)~@[ at ~d%~]?" (job-doing job) (job-percent job))
+          (let ((consequence (job-consequence job))) (and consequence (format nil "~a." consequence)))))
 
 (defun job-guard-question (job)
   "The question asked before an edit that would spoil the work of JOB, running
-over the text edited, is made: Sorting works on this text (42%); stop sorting
-and change it? and what stopping does, when the job says (JOB-CONSEQUENCE)."
-  (format nil "~a works on this text~@[ (~d%)~]; stop ~(~a~) and change it?~@[ ~a~]"
-          (job-doing job) (job-percent job) (job-doing job) (job-consequence job)))
+over the text edited, is made, as Stop sorting to change this text?, and as a
+second value the words to show beside it: Sorting works on this text (42%),
+and what stopping does when the job says (JOB-CONSEQUENCE)."
+  (values (format nil "Stop ~(~a~) to change this text?" (job-doing job))
+          (format nil "~a works on this text~@[ (~d%)~].~@[ ~a.~]"
+                  (job-doing job) (job-percent job) (job-consequence job))))
 
 (defun job-guard-refusal (job)
   "What is said when an edit that would spoil the work of JOB is not made, as Not

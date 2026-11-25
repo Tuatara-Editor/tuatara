@@ -91,6 +91,15 @@ server, its buffers and its source blocks in notes none, \\[lsp] saying so.
 - :not and languages, '(:not markdown latex): every one but those."
   :values (or (member t) (list-of "a language's name, or :not first")))
 
+(define-setting *lsp-largest-document* (* 8 1024 1024)
+  "The largest document, in octets, given to a language server or a
+formatter: a file's whole text, or the code of a note's source blocks of one
+language, however large the note. A larger one is shown without its servers,
+and is not formatted.
+- a size: a whole number of octets, or words such as \"16M\"; 8 MB (8388608) as
+  standard."
+  :values (octets 1 *))
+
 (defun lsp-language-on-p (language)
   "True when *LSP-LANGUAGES* lets LANGUAGE's servers be used."
   (let ((setting *lsp-languages*))

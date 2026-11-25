@@ -42,7 +42,7 @@ file.
 
 (defun make-scratch-buffer (name &optional (kind name))
   "Make the scratch buffer NAME as KIND, the name of one of *SCRATCH-BUFFERS*,
-is made: in its mode holding its first text, with point after it and nothing
+says: in its mode, holding its first text, with point after it and nothing
 to undo; a plain empty buffer when KIND is none of them. Return it."
   (let ((entry (assoc kind *scratch-buffers* :test #'string=)))
     (if (null entry)

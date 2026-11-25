@@ -380,7 +380,8 @@ file changed on disk since it was read (for a buffer EXISTING already)."
   (cond ((tuatara.io:safe-visit-p buffer) (format nil "it is opened safely, ~a" (tuatara.io:safe-visit-reason buffer)))
         ((buffer-read-only-p buffer) "its buffer is read-only")
         ((and existing (tuatara.io:file-disk-state buffer))
-         "the file changed on disk since its buffer read it (\\[revert-buffer] reads it again)")))
+         (substitute-command-keys
+          "the file changed on disk since its buffer read it (\\[revert-buffer] reads it again)"))))
 
 (defun line-write-edit (buffer entry text &optional start end)
   "The edit that puts TEXT in the place of the line ENTRY was found on in BUFFER, keeping the white space
@@ -515,8 +516,8 @@ changed there, so that undoing in it takes the change back; one with changes of 
 changed at its own line of that number and left unsaved, said. Any other file is read for the purpose
 and closed again. The files are saved without a question (*SEARCH-RESULTS-SAVE-FILES*), with whatever
 a save does in that buffer's mode, and a save that would ask (the file changed on disk, write-protected)
-is refused. A file that opens safely, evidence among them, one reached through a link, a file in a
-project looked at only, one that may not be written, and a read-only buffer are refused. It goes on in
+is refused. A file that opens safely, evidence among them, a file in a project looked at only, one
+that may not be written, a link reaching any of these, and a read-only buffer are refused. It goes on in
 the background, the editor free meanwhile, \\[stop-job] stopping it; lines written count as the text found,
 and those not written stay changed here. A line listed twice and changed to the same text is written
 once."

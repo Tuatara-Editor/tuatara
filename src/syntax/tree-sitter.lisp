@@ -479,7 +479,7 @@ name of each capture, by number. PREDICATES is, for each pattern, a list of
 the tests its matches must pass. STARTS is the octet in the source each
 pattern starts at. PROPERTIES is, for each pattern, what its #set! directives
 set. NON-LOCAL is the numbers of its patterns that are not local, see
-QUERY-NON-LOCAL-PATTERNS. DISABLED is the numbers of those made to match
+QUERY-NON-LOCAL. DISABLED is the numbers of those made to match
 nothing."
   (grammar nil :read-only t :documentation "The grammar the query is for.")
   (number 0 :type fixnum :read-only t :documentation "The number the helpers know the query by.")
@@ -564,10 +564,9 @@ LONGEST octets ends the helper (REPLY-OVERRUN)."
 
 (defun compile-regex-for-query (string)
   "A scanner for the regular expression STRING of a #match? predicate; one that
-never matches when STRING is not a regular expression, or repeats without
-bound a part that repeats or holds a choice (NESTED-REPEAT-TREE-P), as a rule
-written in a file may. STRING is read once, and what is checked is what is
-scanned."
+never matches when STRING is not a regular expression, or is one that
+NESTED-REPEAT-TREE-P with ALTERNATIONS refuses, as a rule written in a file
+may be. STRING is read once, and what is checked is what is scanned."
   (or (tuatara.runtime:ignoring-errors-reported ("reading the regular expression ~s" string)
         (handler-case (let ((tree (cl-ppcre:parse-string string)))
                         (and (not (nested-repeat-tree-p tree :alternations t))
@@ -632,12 +631,13 @@ of their octets, start and end (LOGIOR (ASH START 31) END); NIL when not
 known, and #is-not? local then passes.")
 
 (defun parse-predicate (steps &optional (symbols #()))
-  "The test for one predicate, from STEPS as PREDICATE-STEP-STRINGS gives them;
-NIL for a directive or a predicate this editor does not know, which passes.
-A test is a list (KIND CAPTURE ARGUMENT NEGATED). SYMBOLS, the names of the
-grammar's symbols, are for tests of a node's kind. #is? local, true when a
-node the match captures names a local definition, and #is-not? local, true
-when none does, are the test :LOCAL (see *LOCAL-REFERENCES*)."
+  "The test for one predicate, from STEPS as READ-QUERY-SOURCE and
+REPLY-PREDICATE-STEPS give them; NIL for a directive or a predicate this
+editor does not know, which passes. A test is a list (KIND CAPTURE ARGUMENT
+NEGATED). SYMBOLS, the names of the grammar's symbols, are for tests of a
+node's kind. #is? local, true when a node the match captures names a local
+definition, and #is-not? local, true when none does, are the test :LOCAL (see
+*LOCAL-REFERENCES*)."
   (unless (and steps (stringp (first steps)) (plusp (length (first steps))))
     (return-from parse-predicate nil))
   (when (and (member (first steps) '("is?" "is-not?") :test #'equal) (equal (second steps) "local"))
@@ -927,8 +927,8 @@ compiling rules, as the query numbered NUMBER (COMPILE-QUERY-TEXT)."
                                              (disagreeing-rules helper grammar)))
                                        ;; no string longer than the rules' text, in octets
                                        (* 4 (length source)))
-              (let ((own (and (< i (length own-patterns)) (elt own-patterns i))))
-                (unless (and own (= (car own) (aref starts i)) (equal (cdr own) steps))
+              (let ((own (elt own-patterns i)))
+                (unless (and (= (car own) (aref starts i)) (equal (cdr own) steps))
                   (disagreeing-rules helper grammar)))
               (setf at after
                     (aref predicates i) (remove nil (mapcar (lambda (step)
@@ -936,8 +936,6 @@ compiling rules, as the query numbered NUMBER (COMPILE-QUERY-TEXT)."
                                                             steps))
                     (aref properties i) (loop for (key value) in (remove nil (mapcar #'parse-directive steps))
                                               append (list key value)))))
-          (unless (= patterns (length own-patterns))
-            (disagreeing-rules helper grammar))
           (setf (gethash number (helper-queries helper)) t)
           (let ((query (%make-query :grammar grammar :number number :source source :captures captures
                                     :predicates predicates :starts starts :properties properties

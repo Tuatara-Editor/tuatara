@@ -139,7 +139,7 @@ every kind, a paste in pieces and answers."
   (loop with at = 0
         while (<= (+ at 5) (length octets))
         collect at
-        do (incf at (+ 4 (tuatara.io:octets-integer octets at 4)))))
+        do (incf at (+ 4 (tuatara.text:octets-integer octets at 4)))))
 
 (defun spoil (octets)
   "A copy of OCTETS spoilt in one to four ways at random."
@@ -167,7 +167,7 @@ every kind, a paste in pieces and answers."
                 ;; a message's length made wrong
                 (4 (if starts
                        (let ((at (nth (random (length starts) *random*) starts)))
-                         (tuatara.io:octets-put-integer out (random (ash 1 (+ 3 (random 29 *random*)))
+                         (tuatara.text:octets-put-integer out (random (ash 1 (+ 3 (random 29 *random*)))
                                                                     *random*) 4 :at at))
                        out))
                 ;; a message's kind changed

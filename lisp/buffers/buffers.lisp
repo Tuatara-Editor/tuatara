@@ -508,7 +508,7 @@ each has."
 (defun install-buffers ()
   "Bind the *Buffers* keys and the global entry points."
   (entry-list-keys 'buffers-mode "the buffer list (\\[buffer-manager])")
-  (define-keys *buffers-keymap* '(("s" buffers-save) ("K" buffers-keep-client)))
+  (define-keys *buffers-keymap* '(("s" buffers-save) ("C-c K" buffers-keep-client)))
   (define-keys *global-keymap* '(("C-x C-b" buffer-manager) ("C-x p k" kill-project-buffers))))
 
 (commands-for-mode 'buffers-mode "the buffer list (\\[buffer-manager])" 'buffers-save)

@@ -217,7 +217,7 @@ in the background."
       (tuatara.io:sandbox-run program arguments :input fd :seconds *page-drawing-seconds* :memory *page-drawing-memory*
                                                 :cancel cancel :files files
                                                 :directories (append directories (sandbox-font-directories)))
-    (unless (and (eq outcome :done) (tuatara.io:octets-at-p octets "%PDF"))
+    (unless (and (eq outcome :done) (tuatara.text:octets-at-p octets "%PDF"))
       (refuse "~a" (or (sandbox-outcome-words outcome said :label label :seconds-setting '*page-drawing-seconds*)
                       (format nil "~a drew no pages" label))))
     (tuatara.io:memory-file "tuatara-pages" octets :kept nil)))
@@ -500,21 +500,21 @@ octets are HEAD, has, as their kind gives its size
 are HEAD, carries of its picture (its header gives where, at octet 84, and
 how long, at 88), read with pread; NIL when FD is no such raw or the JPEG
 is not where it says."
-  (when (and head (tuatara.io:octets-at-p head "FUJIFILMCCD-RAW"))
-    (let ((offset (tuatara.io:octets-integer head 84 4 :big-endian t))
-          (length (tuatara.io:octets-integer head 88 4 :big-endian t)))
+  (when (and head (tuatara.text:octets-at-p head "FUJIFILMCCD-RAW"))
+    (let ((offset (tuatara.text:octets-integer head 84 4 :big-endian t))
+          (length (tuatara.text:octets-integer head 88 4 :big-endian t)))
       (when (and offset length (< 0 length (* 64 1024 1024)))
         (let ((jpeg (tuatara.io:read-fd-exactly fd length offset)))
-          (and jpeg (tuatara.io:octets-at-p jpeg '(#xFF #xD8 #xFF)) jpeg))))))
+          (and jpeg (tuatara.text:octets-at-p jpeg '(#xFF #xD8 #xFF)) jpeg))))))
 
 (defun tiff-file-size (fd head)
   "The width and height of the first image of the TIFF open as file descriptor
 (FD), whose first octets are HEAD, its first directory read where it
 stands, as two values; NIL when it cannot be."
   (let* ((little (= (aref head 0) 73))
-         (ifd (tuatara.io:octets-integer head 4 4 :big-endian (not little)))
+         (ifd (tuatara.text:octets-integer head 4 4 :big-endian (not little)))
          (count-octets (and ifd (tuatara.io:read-fd-exactly fd 2 ifd)))
-         (count (and count-octets (min 512 (tuatara.io:octets-integer count-octets 0 2 :big-endian (not little)))))
+         (count (and count-octets (min 512 (tuatara.text:octets-integer count-octets 0 2 :big-endian (not little)))))
          (directory (and count (plusp count) (tuatara.io:read-fd-exactly fd (+ 2 (* 12 count)) ifd)))
          (entries (and directory (tuatara.io:tiff-entries directory :ifd 0 :little little)))
          (width (fourth (assoc 256 entries)))
@@ -587,7 +587,7 @@ for another kind."
       (:jxl (or (tuatara.io:jxl-file-header head)
                 (tuatara.io:jxl-file-header head :read read)))
       ((:jp2 :j2k)
-       (if (tuatara.io:octets-at-p head '(#xFF #x4F #xFF #x51))
+       (if (tuatara.text:octets-at-p head '(#xFF #x4F #xFF #x51))
            (tuatara.io:j2k-header head)
            (or (tuatara.io:jp2-header head)
                (let* ((start (tuatara.io:box-contents-start head '("jp2c") :read read))

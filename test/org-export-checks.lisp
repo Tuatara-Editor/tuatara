@@ -29,9 +29,9 @@
                    (dotimes (i (length p) p) (setf (aref p i) (mod (* 37 i) 256)))))
          (png (copy-seq (tuatara.defaults::png-octets (tuatara.frontend:make-image 4 2 4 pixels))))
          (path (namestring (merge-pathnames "deep.png" dir))))
-    (tuatara.io:octets-put-integer png 2 4 :at 16 :big-endian t)
+    (tuatara.text:octets-put-integer png 2 4 :at 16 :big-endian t)
     (setf (aref png 24) 16)
-    (tuatara.io:octets-put-integer png (tuatara.defaults::crc32 png 12 29) 4 :at 29 :big-endian t)
+    (tuatara.text:octets-put-integer png (tuatara.defaults::crc32 png 12 29) 4 :at 29 :big-endian t)
     (alexandria:write-byte-vector-into-file png path)
     path))
 

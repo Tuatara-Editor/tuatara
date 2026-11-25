@@ -649,8 +649,8 @@ through, =$0= is where the cursor ends, and =${1:text}= is a place that begins
 with text you can type over. =$AUTHOR= is your name, and =$CURRENT_DATE=,
 =$CURRENT_MONTH= and =$CURRENT_YEAR= are today's date.
 
-~C-c y~ (=insert-snippet=) chooses one from a list by name, in buffers of
-text and of code. ~M-x copy-snippet~
+~C-c y~ (=snippet-insert=) chooses one from a list by name, in buffers of
+text and of code. ~M-x snippet-copy~
 copies one of Tuatara's own into your directory, so that you can change it.
 Yours then takes its place.
 

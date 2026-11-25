@@ -143,7 +143,7 @@ make symbolic and hard links to them, \\[rimu-rename] renames one,
 for good). \\[rimu-make-directory] makes a directory, \\[rimu-touch] an empty
 file or touches one there, \\[rimu-make-formatted-file] a file with a
 formatted name. \\[rimu-edit-names] edits the names as text to rename them.
-\\[rimu-trash] lists the trash, to put things back. \\[search-filter-regex]
+\\[trash-manager] lists the trash, to put things back. \\[search-filter-regex]
 narrows the list to the entries whose lines match what is typed, as in every
 list. The filters are kept while it is read again and dropped when another
 directory is listed. The commands on the marked entries take those it hides
@@ -252,7 +252,7 @@ name coming before the longer names it starts."
 (defun rimu-size-words (octets)
   "OCTETS as a rimu list says a size, in its columns and its first lines: as
 narrow as a column wants, in units of 1,024, 4.1K, 12M."
-  (tuatara.io:octets-words octets :compact t))
+  (tuatara.text:octets-words octets :compact t))
 
 ;;; Columns
 
@@ -538,10 +538,12 @@ directories than the one it shows, the files not looked at on the disk."
 
 (defun rimu-mark-still-there-p (key &optional files-only)
   "True when the file KEY names, one marked (RIMU-MARK-KEY), is still there;
-with FILES-ONLY, only when it is a regular file, or a link to one."
-  (if files-only
-      (eq (tuatara.io:path-kind key) :regular)
-      (tuatara.io:path-kind key :follow nil)))
+with FILES-ONLY, only when it is a regular file, or a link to one. A file on
+another machine (/ssh:HOST:/path) is not looked at and counts as there: the
+operation taking it says so when it has gone."
+  (cond ((remote-name-p key))
+        (files-only (eq (tuatara.io:path-kind key) :regular))
+        (t (tuatara.io:path-kind key :follow nil))))
 
 (defun rimu-view-of (buffer)
   "How the rimu list BUFFER lays its directory out now, a RIMU-VIEW."
@@ -1706,7 +1708,7 @@ directory not on the disk those it does not do (RIMU-SOURCE-REFUSAL)."
   (dolist (command '(rimu-copy rimu-move rimu-symlink rimu-hardlink rimu-rename list-delete-marked list-execute
                      rimu-make-directory rimu-edit-names rimu-names-finish rimu-touch rimu-make-formatted-file
                      rimu-wipe-files
-                     rimu-trash rimu-trash-restore rimu-trash-empty
+                     trash-manager rimu-trash-restore rimu-trash-empty
                      rimu-encrypt-files rimu-decrypt-files rimu-sign-files
                      rimu-archive-create rimu-archive-extract rename-formatted rename-formatted-keywords))
     (pushnew command *file-changing-commands*))

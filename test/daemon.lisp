@@ -1679,14 +1679,14 @@ thread, no client chosen to keep before or after."
                             (type-keys two "C-x k RET")
                             (is eq :late (client-ends one-runner 1))
                             (is eq :late (client-ends two-runner 1))))
-        ;; shown in the buffer list, K moves it to the client whose group the cursor is in
+        ;; in the buffer list, C-c K moves it to the client whose group the cursor is in
         (two-clients :first (lambda (one one-runner two two-runner)
                               (type-keys one "C-x C-b")
                               (true (shows one "(persistent)"))
                               (type-keys one "C-x k RET")
                               (true (shows one "alpha text"))
                               (type-keys two "C-x C-b")
-                              (type-keys two "K")
+                              (type-keys two "C-c K")
                               (true (shows two "(persistent)"))
                               (type-keys two "C-x k RET")
                               (true (shows two "beta text"))

@@ -108,11 +108,12 @@ visited as it is, never written over or through."
                         what file-name (abbreviated-path path)))
         (progn (visit-path path) (message "~a is yours already" (abbreviated-path path))))))
 
-(defun copy-chosen-own-file (prompt candidates directories what)
-  "Ask with PROMPT for one of CANDIDATES, each one of Tuatara's own WHAT
-\(\"snippet\") whose value is (DIRECTORY FILE-NAME TEXT), DIRECTORY NIL for none,
-and copy it into the first of DIRECTORIES (COPY-OWN-FILE)."
-  (let ((chosen (completing-read-value prompt candidates :require-match t)))
+(defun copy-chosen-own-file (candidates directories what)
+  "Ask for one of CANDIDATES, each one of Tuatara's own WHAT (\"snippet\")
+whose value is (DIRECTORY FILE-NAME TEXT), DIRECTORY NIL for none, and copy it
+into the first of DIRECTORIES (COPY-OWN-FILE). Every such copy asks Copy
+Tuatara's WHAT."
+  (let ((chosen (completing-read-value (format nil "Copy Tuatara's ~a: " what) candidates :require-match t)))
     (when (consp chosen)
       (destructuring-bind (directory file-name text) chosen
         (copy-own-file directories directory file-name text what)))))

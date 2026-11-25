@@ -640,6 +640,27 @@ could not show its daemon."
        :name "tuatara window of words" :niceness 0)
       (run-gtk-loop (lambda () (and done (null (open-windows))))))))
 
+(defun greet-another-window (fd asking word show gone)
+  "Greet the editor at the other end of FD, a connection made for a further
+window it asked for over ASKING, to be attached with WORD, and call SHOW with
+what it said (TUATARA.FRONTEND:GREET-EDITOR), the settings this client took
+with its first window kept as they are. When the window is never shown, the
+editor refusing it or the greeting failing, FD is closed and GONE, a function
+of no arguments, called; a refusal is said to the editor over ASKING."
+  (let ((shown nil))
+    (unwind-protect
+         (let ((greeted (handler-case (tuatara.frontend:greet-editor fd :take nil)
+                          (tuatara.frontend:remote-refused (condition)
+                            (tuatara.frontend:decline-window
+                             asking word (tuatara.frontend:remote-refused-words condition))
+                            nil))))
+           (when greeted
+             (setf shown t)
+             (funcall show greeted)))
+      (unless shown
+        (tuatara.frontend:shut-and-close fd)
+        (funcall gone)))))
+
 (defun run-window-client (fd greeted request &key standard-input connect allow)
   "Show the editor at the other end of the local socket FD, which has said
 hello (GREETED, as TUATARA.FRONTEND:GREET-EDITOR read it, its settings taken
@@ -685,20 +706,15 @@ painted (one that came too late) gives none."
                                                   tuatara.frontend:+most-client-windows+))))
                        (tuatara.runtime:make-guarded-thread
                         (lambda ()
-                          ;; the settings this client took as its first window opened stay as they are
-                          (let ((greeted (handler-case (tuatara.frontend:greet-editor fd :take nil)
-                                           (tuatara.frontend:remote-refused (condition)
-                                             (tuatara.frontend:decline-window
-                                              asking word (tuatara.frontend:remote-refused-words condition))
-                                             nil))))
-                            (if greeted
-                                (show (let ((f (make-gtk-frontend))) (setf (gtk-renderer-checked f) t) f) fd greeted
-                                      (tuatara.frontend:make-request
-                                       :directory (tuatara.frontend:request-directory request) :joins word
-                                       :far (tuatara.frontend:request-far request))
-                                      nil)
-                                (progn (tuatara.frontend:shut-and-close fd)
-                                       (gone)))))
+                          (greet-another-window
+                           fd asking word
+                           (lambda (greeted)
+                             (show (let ((f (make-gtk-frontend))) (setf (gtk-renderer-checked f) t) f) fd greeted
+                                   (tuatara.frontend:make-request
+                                    :directory (tuatara.frontend:request-directory request) :joins word
+                                    :far (tuatara.frontend:request-far request))
+                                   nil))
+                           #'gone))
                         :name "tuatara window client greeting" :niceness 0)))))
         (let ((f (open-plain-window)))
           (tuatara.runtime:make-guarded-thread (lambda () (show f fd greeted request standard-input))

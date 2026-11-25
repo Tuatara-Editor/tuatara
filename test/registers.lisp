@@ -134,9 +134,11 @@ text, a rectangle or a number in, C-x r j goes back to a place, C-x r + adds, C-
         (alexandria:write-string-into-file (format nil "one~%two~%three~%") path)
         (run-keys "C-n C-x r p b C-SPC C-e C-x r s c C-u 4 C-x r n d" :file (namestring path) :width 80)
         (let ((text (session-text (nth-value 1 (run-keys "C-x r l" :width 100 :height 12)))))
-          (true (cl-ppcre:scan "(?m)^ *b +A place +notes.txt, octet 4" text) "~a" text)
-          (true (cl-ppcre:scan "(?m)^ *c +Text +two" text) "~a" text)
-          (true (cl-ppcre:scan "(?m)^ *d +A number +4" text) "~a" text))
+          ;; a section for each kind kept, in order
+          (true (cl-ppcre:scan "(?s)▾ Places \\(1\\).*▾ Text \\(1\\).*▾ Numbers \\(1\\)" text) "~a" text)
+          (true (cl-ppcre:scan "(?m)^ *b +notes.txt, octet 4" text) "~a" text)
+          (true (cl-ppcre:scan "(?m)^ *c +two" text) "~a" text)
+          (true (cl-ppcre:scan "(?m)^ *d +4" text) "~a" text))
         ;; RET on the place goes there; d x y empties the register on the line
         (forget-file-buffers)
         (let ((editor (nth-value 1 (run-keys "C-x r l RET" :width 100 :height 12))))
@@ -229,3 +231,66 @@ text, a rectangle or a number in, C-x r j goes back to a place, C-x r + adds, C-
       (let ((f (run-keys keys :text "one two" :width 60 :height 8)))
         (false (some (lambda (row) (search "register: " row)) (tuatara.frontend.fake:fake-screen f))
                "~a" keys)))))
+
+(define-test (registers manager-opens-on-the-first-register)
+  (with-clean-registers
+    (let ((list (tuatara.buffer:find-buffer "*Registers*"))) (when list (tuatara.buffer:kill-buffer list)))
+    ;; point on the first register, whatever the buffer left had selected, the first time and again
+    (dolist (keys '("C-x h C-x r s a C-x r p p C-u 7 C-x r n n C-x r l"
+                    "C-x h C-x r s a C-x r p p C-u 7 C-x r n n C-x r l q C-x r l"))
+      (multiple-value-bind (f editor) (run-keys keys :text "one two" :width 100 :height 14)
+        (declare (ignore f))
+        (let ((list (session-buffer editor)))
+          (is string= "*Registers*" (tuatara.buffer:buffer-name list))
+          (is eql #\p (tuatara.defaults::list-member-at list)))))))
+
+(define-test (registers marks-in-a-folded-section-kept)
+  (with-clean-registers
+    (flet ((session (keys)
+             (let ((list (tuatara.buffer:find-buffer "*Registers*"))) (when list (tuatara.buffer:kill-buffer list)))
+             (run-keys (concatenate 'string "C-x h C-x r s a C-x r p p C-u 7 C-x r n n C-x r l " keys)
+                       :text "one two" :width 100 :height 14)))
+      ;; a marked in Text, the section folded: what the list acts on is still a, as the mode line counts it
+      (let ((list (session-buffer (nth-value 1 (session "C-n C-n C-n m C-p C-p TAB")))))
+        (is equal '(#\a) (tuatara.defaults::list-entries-of list (tuatara.defaults::list-acted-on list))))
+      ;; t marks the two shown and counts the hidden one too
+      (is string= "3 marked" (tuatara.command:editor-message (nth-value 1 (session "C-n C-n C-n m C-p C-p TAB t"))))
+      ;; the question says which of them a fold hides
+      (true (tuatara.frontend.fake:fake-frame-showing-across-rows
+             (session "C-n C-n C-n m C-p C-p TAB t D n")
+             "Empty the 3 registers (1 in a folded section)?")))))
+
+(define-test (registers rectangle-store-forgets-decrypted-text)
+  ;; a block copied from a decrypted buffer is let go of when the buffer is killed, as its kills are
+  (let ((tuatara.defaults::*killed-rectangle* nil) (tuatara.defaults::*modal-editing* nil))
+    (run-keys (list (lambda () (setf (tuatara.io:buffer-plaintext-p (tuatara.buffer:find-buffer "*scratch*")) t))
+                    "C-f M-x r e c t a n g l e - m a r k - m o d e RET C-n C-f M-w")
+              :text (format nil "abc~%def~%ghi"))
+    (is equal '("b" "e") tuatara.defaults::*killed-rectangle*)
+    (tuatara.buffer:kill-buffer (tuatara.buffer:find-buffer "*scratch*"))
+    (false tuatara.defaults::*killed-rectangle*))
+  ;; from a buffer of plain text it stays
+  (let ((tuatara.defaults::*killed-rectangle* nil) (tuatara.defaults::*modal-editing* nil))
+    (run-keys "C-f M-x r e c t a n g l e - m a r k - m o d e RET C-n C-f M-w" :text (format nil "abc~%def~%ghi"))
+    (tuatara.buffer:kill-buffer (tuatara.buffer:find-buffer "*scratch*"))
+    (is equal '("b" "e") tuatara.defaults::*killed-rectangle*)))
+
+(define-test (registers tall-rectangle-pasted-at-the-end-at-once)
+  ;; rows past the last line, as many as a rectangle may have, are joined once, not one after another
+  (let ((b (tuatara.buffer:make-buffer "tall rectangle" :text "x"))
+        (rows (loop repeat 65536 collect "ab")))
+    (unwind-protect
+         (let ((start (thread-cpu-time)))
+           (tuatara.defaults::insert-rectangle-at b 1 rows)
+           (true (< (- (thread-cpu-time) start) (* 1/2 internal-time-units-per-second)))
+           (is string= (format nil "xab~{~%~a~}" (loop repeat 65535 collect " ab")) (tuatara.buffer:buffer-string b)))
+      (tuatara.buffer:kill-buffer b))))
+
+(define-test (registers listed-text-says-its-key)
+  ;; RET on text in the list says the key that puts it in, in the colour of keys
+  (with-clean-registers
+    (let ((list (tuatara.buffer:find-buffer "*Registers*"))) (when list (tuatara.buffer:kill-buffer list)))
+    (let* ((editor (nth-value 1 (run-keys "C-x h C-x r s a C-x r l RET" :text "one" :width 100 :height 12)))
+           (said (tuatara.command:editor-message editor)))
+      (is string= "Register a keeps text: C-x r i puts it in the text where point is" said)
+      (is equal '((23 30 :help-key-binding)) (tuatara.command:text-spans said)))))

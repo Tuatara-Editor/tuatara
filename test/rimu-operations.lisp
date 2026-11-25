@@ -242,7 +242,7 @@ for rimu's operations to finish. Returns the frontend and the editor."
         (trashed "one" (format nil "~aone" (tuatara.io:url-path (namestring dir))))
         (trashed "two" (format nil "~asub/two" (tuatara.io:url-path (namestring dir))))
         (let ((f (ops-session dir "g t m m R n RET" :width 300)))
-          (true (tuatara.frontend.fake:fake-frame-showing f "Put back the 2 things to "))
+          (true (tuatara.frontend.fake:fake-frame-showing f "Put back the 2 things? (y or n)"))
           (true (tuatara.frontend.fake:fake-frame-showing f (format nil "~asub/" (tuatara.command::abbreviated-path (namestring dir)))))))))
   ;; a drive's: within the drive, its directories as they really are
   (with-operations-tree (dir)
@@ -442,7 +442,7 @@ for rimu's operations to finish. Returns the frontend and the editor."
         (false (eq things :hung))
         (is = 1 (length things))
         (is string= (format nil "~aline~%break.txt" (namestring dir)) (tuatara.defaults::trashed-path (first things))))
-      (ops-session dir "M-x r i m u - t r a s h RET")
+      (ops-session dir "M-x t r a s h - m a n a g e r RET")
       (let ((list (tuatara.buffer:find-buffer "*Trash*")))
         (true list)
         (let ((text (tuatara.buffer:buffer-string list)))
@@ -493,8 +493,13 @@ for rimu's operations to finish. Returns the frontend and the editor."
           (true (uiop:string-prefix-p "#+title: My notes" text))
           (true (search "#+filetags: :project:" text))
           (true (search "Some notes." text)))))
-    ;; a formatted one: its identifier kept, the header's title and keywords written anew
-    (ops-session dir "g f 2 0 2 6 0 1 0 1 RET SPC d r C-a C-k N e w SPC t i t l e RET g a r d e n RET RET")
+    ;; a formatted one: its identifier kept, the header's title and keywords written anew; the keywords kept
+    ;; when nothing is typed said beside the question
+    (let ((f (ops-session dir "g f 2 0 2 6 0 1 0 1 RET SPC d r C-a C-k N e w SPC t i t l e RET g a r d e n RET RET"
+                          :width 140)))
+      (true (tuatara.frontend.fake:fake-frame-showing f "Keywords of 20260101T101010--old__old.org: "))
+      (true (tuatara.frontend.fake:fake-frame-showing f "Nothing typed keeps old."))
+      (false (tuatara.frontend.fake:fake-frame-showing f "(nothing typed keeps")))
     (let ((text (alexandria:read-file-into-string (here dir "20260101T101010--new-title__garden.org"))))
       (true (uiop:string-prefix-p (format nil "#+title: New title~%#+filetags: :garden:~%") text))
       (true (search "Body." text)))
@@ -635,6 +640,53 @@ for rimu's operations to finish. Returns the frontend and the editor."
            (true (functionp answer))
            (false (car (tuatara.defaults::rimu-operation-cancel (first tuatara.runtime:*jobs*)))))
       (sb-int:unencapsulate 'tuatara.command:y-or-n-p* 'test))))
+
+(define-test (rimu-operations directory-read-failure-not-its-end)
+  ;; a directory that fails to be read part of the way is said to fail, never taken as
+  ;; holding only what was read of it
+  (with-operations-tree (dir)
+    (let ((calls 0) (self sb-thread:*current-thread*))
+      (sb-int:encapsulate 'tuatara.io::%readdir 'failing
+                          (lambda (readdir directory)
+                            (if (and (eq sb-thread:*current-thread* self) (= (incf calls) 2))
+                                (progn (sb-alien:set-errno sb-posix:eio) (sb-sys:int-sap 0))
+                                (funcall readdir directory))))
+      (unwind-protect
+           (progn
+             (multiple-value-bind (entries reason) (tuatara.io:list-directory (namestring dir))
+               (false entries)
+               (is string= (sb-int:strerror sb-posix:eio) reason))
+             ;; a move to another file system whose copy could not read the directory: the source stays
+             (when (and (probe-file "/dev/shm/")
+                        (not (eql (tuatara.io:stamp-dev (tuatara.io:path-stamp "/dev/shm/"))
+                                  (tuatara.io:stamp-dev (tuatara.io:path-stamp (namestring dir))))))
+               (let ((there (format nil "/dev/shm/tuatara-test-unread-~d/" (random 1000000))))
+                 (ensure-directories-exist (here dir "unread/"))
+                 (alexandria:write-string-into-file "x" (here dir "unread/f.txt"))
+                 (ensure-directories-exist there)
+                 (setf calls 0)
+                 (unwind-protect
+                      (progn
+                        (fail (tuatara.io:move-path (namestring (here dir "unread/"))
+                                                    (concatenate 'string there "unread")))
+                        (true (probe-file (here dir "unread/f.txt"))))
+                   (ignore-errors (tuatara.io:delete-tree there))))))
+        (sb-int:unencapsulate 'tuatara.io::%readdir 'failing)))))
+
+(define-test (rimu-operations copy-time-refused-said)
+  ;; a copy whose modification time the file system refuses to set fails, as a refused mode does
+  (with-operations-tree (dir)
+    (sb-int:encapsulate 'tuatara.io::set-fd-modification-time 'refused
+                        (lambda (set fd nanoseconds)
+                          (declare (ignore set fd nanoseconds))
+                          (sb-alien:set-errno sb-posix:eperm)
+                          -1))
+    (unwind-protect
+         (progn
+           (fail (tuatara.io:copy-path-tree (namestring (here dir "a.txt")) (namestring (here dir "a-copy.txt")))
+                 'tuatara.io:file-system-error)
+           (false (probe-file (here dir "a-copy.txt"))))
+      (sb-int:unencapsulate 'tuatara.io::set-fd-modification-time 'refused))))
 
 (define-test (rimu-operations trash-on-other-drives)
   ;; Path= on another drive is counted from its top, read back from it
@@ -1331,7 +1383,7 @@ to the locked zipcrypt one.")
   (with-operations-tree (dir)
     (bsdtar-make (here dir "open.zip") "zip" "-C" (namestring dir) "a.txt")
     (loop for (name base64) in (append *locked-zip-samples* *locked-7z-samples*)
-          do (alexandria:write-byte-vector-into-file (tuatara.io:base64-octets (tuatara.text:string-octets base64))
+          do (alexandria:write-byte-vector-into-file (tuatara.text:base64-octets (tuatara.text:string-octets base64))
                                                      (here dir name)))
     (with-each-archive-program (program)
       (flet ((locked-p (name)
@@ -1701,7 +1753,13 @@ extra field of the AE-x kind (ID #x9901) saying strength 3."
       (tuatara.defaults::seven-zip-listing
        (format nil "Listing archive: x.7z~%~%--~%Path = x.7z~%Type = 7z~%~%----------~%Path = a.txt~%Size = 6~%~
                     Modified = 2026-11-03 21:33:46.1675118~%Attributes = A -rw-r--r--~%Encrypted = -~%~%~
-                    Path = sub~%Size = 0~%Modified = 2026-11-03 21:33:46.1712538~%Attributes = D drwxr-xr-x~%~%"))))
+                    Path = sub~%Size = 0~%Modified = 2026-11-03 21:33:46.1712538~%Attributes = D drwxr-xr-x~%~%")))
+  ;; a directory 7-Zip marks only by its Folder field, with no attributes kept, is a directory still
+  (is string=
+      (format nil "d--------- -/- ~12@a 2026-11-03 21:33:46 docs~%" 0)
+      (tuatara.defaults::seven-zip-listing
+       (format nil "Listing archive: y.7z~%~%--~%Path = y.7z~%Type = 7z~%~%----------~%Path = docs~%Folder = +~%~
+                    Size = 0~%Modified = 2026-11-03 21:33:46.1712538~%Attributes = ~%~%"))))
 
 (define-test (rimu-operations archives-bomb-held)
   ;; a zip archive holding far more than it takes up stops before the drive is full, said so
@@ -1742,7 +1800,7 @@ extra field of the AE-x kind (ID #x9901) saying strength 3."
       (true (tuatara.frontend.fake:fake-frame-showing f "rimu-home"))
       ;; with the g keys a list's parent mode gives it: g r reads the list again
       (true (tuatara.frontend.fake:fake-frame-showing f "revert-buffer"))
-      (true (tuatara.frontend.fake:fake-frame-showing f "rimu-trash"))
+      (true (tuatara.frontend.fake:fake-frame-showing f "trash-manager"))
       (false (tuatara.frontend.fake:fake-frame-showing f "undefined")))))
 
 (define-modal-test (rimu-operations names-as-text)
@@ -2162,10 +2220,9 @@ extra field of the AE-x kind (ID #x9901) saying strength 3."
       (true (tuatara.frontend.fake:fake-frame-showing f "3 things in the trash")))
     ;; sub, then b, marked (the last to go first), put back after one question
     (let ((f (ops-session dir "g t m m R y" :width 200)))
-      (true (tuatara.frontend.fake:fake-frame-showing f
-                                                      (format nil
-                                                              "Put back the 2 things to ~a?"
-                                                              (tuatara.command::abbreviated-path (namestring dir)))))
+      (true (tuatara.frontend.fake:fake-frame-showing f "Put back the 2 things? (y or n)"))
+      (true (tuatara.frontend.fake:fake-frame-showing
+             f (format nil "  ~a" (tuatara.command::abbreviated-path (namestring dir)))))
       (true (probe-file (here dir "b.txt")))
       (true (probe-file (here dir "sub/c.txt")))
       (true (tuatara.frontend.fake:fake-frame-showing f "1 thing in the trash")))
@@ -2181,7 +2238,7 @@ extra field of the AE-x kind (ID #x9901) saying strength 3."
   (with-operations-tree (dir)
     (ops-session dir "g f a . t x t RET m m D y")
     (unwind-protect
-         (loop for (keys question) in '(("R n" "Put back the 2 things (1 hidden by the filter) to ")
+         (loop for (keys question) in '(("R n" "Put back the 2 things (1 hidden by the filter)? (y or n)")
                                         ("D n" "Delete the 2 things (1 hidden by the filter) for good?"))
                do (let ((f (ops-session dir (format nil "g t C-x / r M-< C-n C-n C-n m m C-x / s a . t x t RET ~a" keys)
                                         :width (width-for dir 200))))
@@ -2330,11 +2387,22 @@ extra field of the AE-x kind (ID #x9901) saying strength 3."
       (true (probe-file (here dir "a.txt"))))
     (rimu-forget)))
 
+(define-test (rimu-operations mark-keys-mirrored-under-c-c)
+  ;; C-c m marks like m, and the master mark is on g m, so that no C-c key hides the mirror of m
+  (with-operations-tree (dir)
+    (multiple-value-bind (f editor) (ops-session dir "g f a . t x t RET C-c m")
+      (declare (ignore f))
+      (true (find-if (lambda (l) (and (uiop:string-prefix-p "> " l) (search "a.txt" l))) (rimu-lines editor)))
+      (false (find-if (lambda (l) (uiop:string-prefix-p "M " l)) (rimu-lines editor))))
+    (multiple-value-bind (f editor) (ops-session dir "g f a . t x t RET g m")
+      (declare (ignore f))
+      (true (find-if (lambda (l) (and (uiop:string-prefix-p "M " l) (search "a.txt" l))) (rimu-lines editor))))))
+
 (define-test (rimu-operations masters-marked-apart)
-  ;; C-c f m marks a master (M) and goes on; the masters marked anywhere and the files marked here
+  ;; g m marks a master (M) and goes on; the masters marked anywhere and the files marked here
   ;; come apart, a master never among those compared with it
   (with-operations-tree (dir)
-    (multiple-value-bind (f editor) (ops-session dir "g f a . t x t RET C-c f m g f b . t x t RET m")
+    (multiple-value-bind (f editor) (ops-session dir "g f a . t x t RET g m g f b . t x t RET m")
       (declare (ignore f))
       (let ((buffer (session-buffer editor)))
         (true (find-if (lambda (l) (and (uiop:string-prefix-p "M " l) (search "a.txt" l))) (rimu-lines editor)))

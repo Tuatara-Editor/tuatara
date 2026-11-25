@@ -974,3 +974,47 @@ out), a CLOCK: line, where a logged line goes, and clocking in from any key.")
            (tuatara.defaults::org-formula-preamble buffer)
            (is = 2 reads))
       (sb-int:unencapsulate 'tuatara.buffer:buffer-string 'org-preamble-reads))))
+
+(define-test (org-internals export-parses-a-note-once)
+  ;; a note without macros is parsed once for its export: the round looking for macros gives its parse
+  (let ((note (format nil "#+title: Note~%* One~%Some text.~%"))
+        (parses 0))
+    (sb-int:encapsulate 'tuatara.defaults::org-parse 'parses-counted
+                        (lambda (parse text &rest more)
+                          (when (equal text note) (incf parses))
+                          (apply parse text more)))
+    (unwind-protect (tuatara.defaults::org-latex-parts note)
+      (sb-int:unencapsulate 'tuatara.defaults::org-parse 'parses-counted))
+    (is = 1 parses)))
+
+(define-test (org-internals file-keyword-not-in-a-block)
+  ;; a keyword written inside a block is the block's text, not the file's
+  (is string= "right"
+      (tuatara.defaults::org-file-keyword
+       (format nil "#+begin_example~%#+CATEGORY: wrong~%#+end_example~%#+category: right~%") "CATEGORY"))
+  (is equal '("work")
+      (tuatara.defaults::org-file-tags (format nil "#+BEGIN_SRC org~%#+filetags: :home:~%#+END_SRC~%#+filetags: :work:~%"))))
+
+(define-test (org-internals docstrings-name-the-right-things)
+  ;; the clock's keys as they are bound, the table the %-escapes are listed in
+  (false (search "SPC a" (documentation 'tuatara.defaults::install-org-clock 'function)))
+  (true (search "C-c C-x J" (documentation 'tuatara.defaults::install-org-clock 'function)))
+  (true (search "*ORG-CAPTURE-ESCAPES*" (documentation 'tuatara.defaults::org-capture-fill 'function))))
+
+(define-test (org-internals agenda-refresh-of-no-minutes-refused)
+  ;; an agenda drawn again every 0 minutes would be drawn without end
+  (true (tuatara.runtime:setting-value-fault 'tuatara-user:*org-agenda-refresh-minutes* 0))
+  (false (tuatara.runtime:setting-value-fault 'tuatara-user:*org-agenda-refresh-minutes* 1))
+  (false (tuatara.runtime:setting-value-fault 'tuatara-user:*org-agenda-refresh-minutes* nil)))
+
+(define-test (org-internals list-styles-said-and-written-alike)
+  ;; each list style is taken by the setting, said when another word is given, and written by both exports
+  (let ((fault (tuatara.defaults::export-setting-fault "style" "greek")))
+    (dolist (word '("bullets" "none" "numbers" "letters" "Letters" "roman" "Roman"))
+      (true (search word fault) "~a in ~a" word fault)
+      (false (tuatara.defaults::export-setting-fault "style" word) "~a" word)))
+  (let* ((note (format nil "#+title: Lists~%* One~%:EXPORT:~%style: Roman~%:END:~%- one~%- two~%"))
+         (latex (getf (tuatara.defaults::org-latex-parts note :enhanced t) :latex))
+         (docx (docx-text (tuatara.defaults::org-docx-document note))))
+    (true (search "\\renewcommand{\\labelenumi}{\\Roman{enumi}.}" latex))
+    (true (search "upperRoman" docx))))

@@ -28,10 +28,13 @@ downloads), with the directory of a fence it is set to.")
     "WAYLAND_DISPLAY" "WAYLAND_SOCKET" "XAUTHORITY" "PULSE_SERVER" "PIPEWIRE_REMOTE" "SWAYSOCK" "I3SOCK"
     "HYPRLAND_INSTANCE_SIGNATURE" "TMUX" "KITTY_LISTEN_ON" "WEZTERM_UNIX_SOCKET" "GNOME_KEYRING_CONTROL"
     "GIT_DIR" "GIT_WORK_TREE" "GIT_INDEX_FILE" "GIT_OBJECT_DIRECTORY" "GIT_ALTERNATE_OBJECT_DIRECTORIES"
-    "GIT_COMMON_DIR" "GIT_CONFIG_PARAMETERS" "GIT_CONFIG_COUNT")
+    "GIT_COMMON_DIR" "GIT_CONFIG_PARAMETERS" "GIT_CONFIG_COUNT" "GIT_AUTHOR_NAME" "GIT_AUTHOR_EMAIL"
+    "GIT_COMMITTER_NAME" "GIT_COMMITTER_EMAIL" "EMAIL" "GIT_SSH_COMMAND" "GIT_SSH" "GIT_ASKPASS" "SSH_ASKPASS"
+    "GIT_EXEC_PATH" "GIT_TEMPLATE_DIR")
   "Each environment variable that leads a program to a person's running agents and servers outside their runtime
 directory (their ssh and GnuPG agents, session bus, display, sound, window manager, terminal multiplexer and
-keyrings), or git to one of their repositories or settings given for one run, unset in a fence. Their Kerberos
+keyrings), or git to one of their repositories, their name and address, their programs for ssh, passwords and
+git's own commands, or settings given for one run, unset in a fence. Their Kerberos
 tickets are fenced apart: KRB5CCNAME names a file in the fence, as Kerberos would otherwise look in their keyring. A test that needs a display starts its own and names it.")
 
 (defparameter *private-variables* '("GNUPGHOME" "XDG_RUNTIME_DIR")
@@ -80,6 +83,16 @@ nothing planted in its place is used."
               (sb-posix:syscall-error (e)
                 (unless (= (sb-posix:syscall-errno e) sb-posix:eexist) (error e))))))))
 
+(defun fenced-directory (place root)
+  "The directory PLACE names, taken from ROOT when it is relative, with each . and .. in it worked out, so
+that two spellings of one directory give equal pathnames."
+  (let ((path (uiop:ensure-directory-pathname (merge-pathnames place root)))
+        (parts '()))
+    (dolist (part (rest (pathname-directory path)))
+      (cond ((member part '(:up :back)) (pop parts))
+            ((not (equal part ".")) (push part parts))))
+    (make-pathname :directory (cons :absolute (reverse parts)) :name nil :type nil :version nil :defaults path)))
+
 (defun fence-person-data (directory &key places)
   "Point every variable of *FENCED-VARIABLES* at a directory of its own under DIRECTORY, made if missing (GNUPGHOME's
 private to its owner), unset those of *CLOSED-VARIABLES*, point KRB5CCNAME at a file in the fence, git at
@@ -103,6 +116,15 @@ the tests are when they run a manual builder, that fence is kept and nothing is 
       (return-from fence-person-data (uiop:ensure-directory-pathname fenced))))
   (unless directory (remove-stale-fences))
   (let ((root (if directory (uiop:ensure-directory-pathname directory) (make-fence-directory))))
+    ;; GnuPG takes HOME/.gnupg for its usual directory and gives its agent the person's own socket in
+    ;; /run/user/UID/gnupg/, which the fence does not move: a fenced run would reach their agent there
+    (flet ((place (name)
+             (or (cdr (assoc name places :test #'string=)) (cdr (assoc name *fenced-variables* :test #'string=)))))
+      (let ((home (place "HOME")) (gnupg (place "GNUPGHOME")))
+        (when (and (stringp home) (stringp gnupg)
+                   (uiop:subpathp (fenced-directory gnupg root) (fenced-directory home root)))
+          (error "GNUPGHOME may not be inside the fenced home: as its .gnupg, GnuPG would use the agent ~
+                  socket of the person's own keys"))))
     (dolist (entry *fenced-variables*)
       (let ((place (or (cdr (assoc (car entry) places :test #'string=)) (cdr entry))))
         (unless (eq place :keep)

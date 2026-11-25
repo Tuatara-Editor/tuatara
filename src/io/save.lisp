@@ -207,9 +207,11 @@ refuses the rename or the naming, for the caller to write in place."
         (sync-directory directory)
         :done))))
 
-(defun backup-copy (target existing &key cancel)
+(defun backup-copy (target existing &key cancel nofollow)
   "Copy TARGET, described by EXISTING, to a backup beside it (or in the cache
-directory when its own cannot hold files), flushed to disk. Returns the backup's
+directory when its own cannot hold files), flushed to disk; with NOFOLLOW,
+never read through a symbolic link at TARGET. A file opened there that is not
+the one EXISTING describes signals FILE-CHANGED-ON-DISK. Returns the backup's
 descriptor and path, or NIL when CANCEL's car turned true first."
   (let* ((directory (parent-path target))
          (place (if (writable-p directory) directory (cache-directory)))
@@ -228,13 +230,20 @@ descriptor and path, or NIL when CANCEL's car turned true first."
                        (fail "create a backup of" target (sb-posix:syscall-errno e)))))))
          (done nil))
     (unwind-protect
-         (let ((source (handler-case (sb-posix:open (native target) sb-posix:o-rdonly)
+         (let ((source (handler-case (sb-posix:open (native target)
+                                                    ;; never held up opening a named pipe put in its place
+                                                    (logior sb-posix:o-rdonly sb-posix:o-nonblock +o-cloexec+
+                                                            (if nofollow +o-nofollow+ 0)))
                          (sb-posix:syscall-error (e) (fail "read" target (sb-posix:syscall-errno e))))))
            (unwind-protect
-                (when (or (clone-fd source fd)
-                          (copy-fd-contents source fd (stamp-size existing) :path target :cancel cancel))
-                  (flush-fd fd path)
-                  (setf done t))
+                (progn
+                  ;; another file swapped in at the path since it was examined is not copied
+                  (unless (same-content-p existing (fd-stamp source target))
+                    (error 'file-changed-on-disk :path target))
+                  (when (or (clone-fd source fd)
+                            (copy-fd-contents source fd (stamp-size existing) :path target :cancel cancel))
+                    (flush-fd fd path)
+                    (setf done t)))
              (sb-posix:close source)))
       (unless done
         (tuatara.runtime:close-fd-quietly fd "the backup of ~a" target)
@@ -261,7 +270,7 @@ touched. Returns :DONE, or :STOPPED."
   (when (and cancel (car cancel))
     (return-from write-in-place :stopped))
   (multiple-value-bind (backup-fd backup-path)
-      (if (and backup existing) (backup-copy target existing :cancel cancel) (values nil nil))
+      (if (and backup existing) (backup-copy target existing :cancel cancel :nofollow nofollow) (values nil nil))
     (when (and backup existing (null backup-fd))
       (return-from write-in-place :stopped))
     (flet ((drop-backup ()
@@ -289,7 +298,7 @@ touched. Returns :DONE, or :STOPPED."
                                                             (logior sb-posix:o-wronly sb-posix:o-creat sb-posix:o-excl))
                                                            (backup sb-posix:o-wronly)
                                                            (t (logior sb-posix:o-wronly sb-posix:o-trunc)))
-                                                     sb-posix:o-noctty (if nofollow +o-nofollow+ 0))
+                                                     sb-posix:o-noctty +o-cloexec+ (if nofollow +o-nofollow+ 0))
                                              #o666)
                   (sb-posix:syscall-error (e)
                     ;; nothing was written: the backup is not needed

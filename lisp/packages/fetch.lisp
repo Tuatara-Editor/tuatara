@@ -158,7 +158,7 @@ lower it to refuse large fetches, as on a metered link.
   ((where :initarg :where :reader package-too-large-where))
   (:report (lambda (condition stream)
              (format stream "~a takes more than ~a: the package was not fetched"
-                     (package-too-large-where condition) (tuatara.io:octets-words *package-size-limit*))))
+                     (package-too-large-where condition) (tuatara.text:octets-words *package-size-limit*))))
   (:documentation "Signalled when a package fetched from WHERE grows past *PACKAGE-SIZE-LIMIT*."))
 
 (setf (documentation 'package-too-large-where 'function) "Where the package too large was fetched from.")

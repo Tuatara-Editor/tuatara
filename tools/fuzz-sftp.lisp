@@ -28,7 +28,7 @@ SFTP-PUT writes fields."
         (tuatara.defaults::sftp-put-integer box 0 4)
         (tuatara.defaults::sftp-put-integer box (second (assoc (first packet) tuatara.defaults::*sftp-types*)) 1)
         (dolist (field (rest packet)) (tuatara.defaults::sftp-put box field))
-        (tuatara.io:octets-put-integer (tuatara.frontend:outbox-octets box) (- (tuatara.frontend:outbox-fill box) at 4)
+        (tuatara.text:octets-put-integer (tuatara.frontend:outbox-octets box) (- (tuatara.frontend:outbox-fill box) at 4)
                                        4 :at at :big-endian t)))
     (subseq (tuatara.frontend:outbox-octets box) 0 (tuatara.frontend:outbox-fill box))))
 
@@ -69,7 +69,7 @@ SFTP-PUT writes fields."
                                     (subseq out at))))
                   ;; a length or count made huge or zero
                   (3 (let ((at (random (max 1 (- n 4)) *random*)))
-                       (tuatara.io:octets-put-integer out (if (zerop (random 2 *random*)) #xFFFFFFFF 0) (min 4 (- n at))
+                       (tuatara.text:octets-put-integer out (if (zerop (random 2 *random*)) #xFFFFFFFF 0) (min 4 (- n at))
                                                       :at at :big-endian t)
                        out))
                   ;; a piece repeated

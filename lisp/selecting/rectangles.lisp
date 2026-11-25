@@ -281,11 +281,20 @@ how many as the second value (RECTANGLE-SHOWN-SOURCES)."
   (multiple-value-bind (sources left-out) (rectangle-shown-sources buffer)
     (values (mapcan #'source-texts sources) left-out)))
 
-(defun store-rectangle (texts)
-  "Keep TEXTS as the rectangle \\<normal>\\[yank-rectangle] pastes,
-unless no row has any: true when kept."
-  (when (some (lambda (text) (plusp (length text))) texts)
-    (setf *killed-rectangle* texts)
+(defvar *plaintext-rectangles* (make-hash-table :test 'eq :weakness :key)
+  "The rectangles taken from a decrypted file's text (TUATARA.IO:BUFFER-PLAINTEXT-P),
+each with the buffers it came from: the rectangle store lets go of one with
+any of those buffers (FORGET-PLAINTEXT-COPIES).")
+
+(defun store-rectangle (rectangle buffer)
+  "Keep RECTANGLE, taken from BUFFER, as the rectangle
+\\<normal>\\[yank-rectangle] pastes: a list of its rows' texts, unless no row
+has any, or a RECTANGLE-SOURCE. True when kept. One taken from decrypted text
+is let go of when BUFFER is killed (FORGET-PLAINTEXT-COPIES)."
+  (when (or (rectangle-source-p rectangle) (some (lambda (text) (plusp (length text))) rectangle))
+    (let ((sources (plaintext-sources buffer)))
+      (when sources (setf (gethash rectangle *plaintext-rectangles*) sources)))
+    (setf *killed-rectangle* rectangle)
     t))
 
 (defun copy-selected-rectangle ()
@@ -298,10 +307,10 @@ of those are left out. A block with no width copies nothing and stays."
       (multiple-value-bind (sources left-out) (rectangle-shown-sources b)
         (cond ((= left right) (message "Nothing to copy: the rectangle has no width"))
               ((and (zerop left-out) (large-rectangle-p b))
-               (setf *killed-rectangle* (first sources)
-                     (tuatara.buffer:buffer-mark-active-p b) nil)
+               (store-rectangle (first sources) b)
+               (setf (tuatara.buffer:buffer-mark-active-p b) nil)
                (message "Copied a rectangle of ~:d row~:p" (killed-rectangle-rows)))
-              ((store-rectangle (mapcan #'source-texts sources))
+              ((store-rectangle (mapcan #'source-texts sources) b)
                (setf (tuatara.buffer:buffer-mark-active-p b) nil)
                (message "Copied a rectangle of ~:d row~:p~a" (killed-rectangle-rows) (left-out-note left-out)))
               (t (message "Nothing to copy: the rectangle has no width")))))))
@@ -346,13 +355,13 @@ that would be is left as it is."
             ((large-rectangle-p b)
              (let ((source (rectangle-source-of b)))
                (when (start-rectangle-job b :cut)
-                 (setf *killed-rectangle* source
-                       (tuatara.buffer:buffer-mark-active-p b) nil))))
+                 (store-rectangle source b)
+                 (setf (tuatara.buffer:buffer-mark-active-p b) nil))))
             (t
              (let ((texts (rectangle-texts b)))
                (if (some (lambda (text) (plusp (length text))) texts)
                    (progn (replace-rectangle-rows b (region-rectangle-rows b) "" :pad nil)
-                          (store-rectangle texts)
+                          (store-rectangle texts b)
                           (setf (tuatara.buffer:buffer-mark-active-p b) nil))
                    (message "Nothing to delete: the rectangle has no width"))))))))
 
@@ -388,7 +397,7 @@ any is read."
            ;; a block over much text is kept by where it is, not read
            (kept (if (large-rectangle-p b) (rectangle-source-of b) (rectangle-texts b))))
       (replace-rectangle-rows b rows "")
-      (if (rectangle-source-p kept) (setf *killed-rectangle* kept) (store-rectangle kept))
+      (store-rectangle kept b)
       (setf (tuatara.buffer:buffer-mark-active-p b) nil)
       ;; no line was made or taken away: each row is still its line
       (flet ((row-at-line (line)
@@ -439,17 +448,20 @@ GROUP. Returns the byte offset after the last row."
                      (tuatara.buffer:refuse-outside-narrowing buffer))
                    (push (list size size (concatenate 'string newline (spaces column) text)) edits)
                    (setf last-tail 0))))
-    ;; the rows made at the end go in with the last line's, as one insertion
-    (let ((merged '()))
+    ;; the rows made at the end go in with the last line's, as one insertion, their texts joined once
+    (let ((merged '()))                 ; (start end texts), texts the last first
       (dolist (edit (nreverse edits))
-        (if (and merged (= (first (first merged)) (first edit) (second edit)))
-            (setf (third (first merged)) (concatenate 'string (third (first merged)) (third edit)))
-            (push (copy-list edit) merged)))
+        (destructuring-bind (start end text) edit
+          (if (and merged (= (first (first merged)) start end))
+              (push text (third (first merged)))
+              (push (list start end (list text)) merged))))
       (let ((positions (tuatara.buffer:buffer-edit
                         buffer
                         (map 'simple-vector
-                             (lambda (edit) (tuatara.text:make-edit (first edit) (second edit)
-                                                                    (tuatara.text:string-octets (third edit))))
+                             (lambda (edit)
+                               (tuatara.text:make-edit (first edit) (second edit)
+                                                       (tuatara.text:string-octets
+                                                        (format nil "~{~a~}" (reverse (third edit))))))
                              (reverse merged))
                         :group group)))
         (- (aref positions (1- (length positions))) last-tail)))))

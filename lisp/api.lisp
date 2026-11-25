@@ -151,8 +151,9 @@ takes). :ARGUMENTS is what its form says, as ORG-READ-RULE reads them. :HOUR,
     tuatara.command:y-or-n-p* tuatara.command:complete-in-minibuffer tuatara.command:*question-variables*
     tuatara.command:*buffers-asked-about* read-date tuatara.dates:read-date-text read-path read-file-path
     read-directory-path read-native-path read-new-native-path read-whole-number tuatara.command:wait-interruptibly
-    tuatara.command:wait-until-interruptibly tuatara.command:first-line tuatara.text:one-line read-decimal-number
-    read-fraction fraction-p read-several pattern-regex tuatara.command:read-password tuatara.command:wipe-string
+    tuatara.command:wait-until-interruptibly tuatara.text:one-line read-decimal-number
+    read-fraction fraction-p read-several pattern-regex tuatara.command:read-password tuatara.command:read-key-choice
+    tuatara.command:wipe-string
     ;; telling what has just happened, on the desktop and in *Notifications*
     notify
     ;; lists and text made by a command
@@ -163,7 +164,7 @@ takes). :ARGUMENTS is what its form says, as ORG-READ-RULE reads them. :HOUR,
     refilter-search-filters marked-list-mode sectioned-list-mode
     sectioned-pieces entry-member entry-mark keep-list-marks list-acted-on list-mark-sign list-mark-face list-question
     list-toggle-section quit-window list-entries-of list-entry-noun delete-entries visit-entry list-visit
-    list-visit-other list-execute list-delete-marked entry-list-keys declare-list-kind list-step-entry list-next-entry
+    list-visit-other visit-section list-execute list-delete-marked entry-list-keys declare-list-kind list-step-entry list-next-entry
     list-previous-entry
     preview-entry entry-preview-width entry-preview-keys list-toggle-preview side-preview-note
     ;; menus, help and switches
@@ -203,14 +204,15 @@ takes). :ARGUMENTS is what its form says, as ORG-READ-RULE reads them. :HOUR,
     tuatara.io:fit-name tuatara.io:percent-decoded tuatara.io:file-text tuatara.io:ensure-directories
     ;; evidence, and the places nothing is written in
     tuatara.io:writing-refusal tuatara.io:writing-refused copy-file-checked tuatara.io:percent-decoded-octets file-kind
-    tuatara.io:octets-kind tuatara.io:kind-name-disagrees-p tuatara.io:+binary-sample+
+    tuatara.io:octets-kind tuatara.io:octets-picture-size tuatara.io:kind-name-disagrees-p tuatara.io:+binary-sample+
     tuatara.io:*compound-file-signature*
     ;; octets, text and dates
-    tuatara.text:octets tuatara.io:octets-at-p tuatara.io:octets-search tuatara.io:octets-integer
-    tuatara.io:octets-signed tuatara.io:base64-octets tuatara.io:base64-string tuatara.io:octets-words
+    tuatara.text:octets tuatara.text:octets-at-p tuatara.text:octets-search tuatara.text:octets-integer
+    tuatara.text:octets-signed tuatara.text:base64-octets tuatara.text:base64-string tuatara.text:octets-words
     tuatara.text:octets-string
     tuatara.text:octets-latin-1 tuatara.text:charset-text tuatara.text:utf-16-text tuatara.text:string-octets
     tuatara.text:string-octet-length tuatara.text:char-octet-length tuatara.text:fold-content-line
+    tuatara.text:content-text-escaped tuatara.text:content-parameter-text
     tuatara.text:string-line-start tuatara.text:parse-decimal tuatara.text:whole-number
     tuatara.text:lenient-string tuatara.text:merge-ranges tuatara.text:string-hash tuatara.text:octets-hash
     tuatara.text:blank-text-p tuatara.text:xml-entity tuatara.text:xml-tag-end tuatara.text:xml-text-value
@@ -220,6 +222,7 @@ takes). :ARGUMENTS is what its form says, as ORG-READ-RULE reads them. :HOUR,
     tuatara.text:json-items tuatara.text:json-integer tuatara.text:json-text tuatara.dates:format-time
     tuatara.dates:valid-date-p tuatara.dates:time-words tuatara.dates:short-time-words tuatara.dates:utc-time-words
     iso-date-time tuatara.dates:*short-month-names* tuatara.dates:*short-weekday-names*
+    tuatara.dates:*month-names* tuatara.dates:*weekday-names*
     ;; days as numbers, and time zones by name
     tuatara.dates:day-number tuatara.dates:day-date tuatara.dates:weekday tuatara.dates:month-length
     tuatara.dates:leap-year-p tuatara.dates:add-months tuatara.dates:time-zone tuatara.dates:time-zone-p
@@ -257,7 +260,7 @@ takes). :ARGUMENTS is what its form says, as ORG-READ-RULE reads them. :HOUR,
     tuatara.packages:sandbox-call tuatara.packages:sandbox-call-report
     tuatara.packages:sandbox-call-heap
     ;; a program of your own run on what a job gives it through a pipe, its arguments split as a shell would
-    tuatara.io:call-with-program tuatara.io:filter-through-program tuatara.io:command-words
+    tuatara.io:call-with-program tuatara.io:filter-through-program tuatara.text:command-words
     tuatara.io:read-stream-octets tuatara.io:sandbox-find-program run-on-copies copies-original-names
     run-on-copies-for-report sandbox-outcome-words sandbox-pdf program-health-words user-program-path
     start-detached open-externally-file new-private-directory private-cache-directory private-state-directory

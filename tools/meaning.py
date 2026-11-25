@@ -63,6 +63,7 @@ there. Check that the card's vectors match the processor's (cosine above
 Embedding the whole tree (9364 definitions) took 82 minutes on the processor;
 a second run only embeds changed definitions.
 """
+import functools
 import hashlib
 import json
 import os
@@ -84,10 +85,11 @@ TASK = "Given a description of what a piece of code does, find the existing func
 BATCH = 64
 
 
+@functools.cache
 def command():
     """The command that runs this file where llama-server and numpy are, as a list, or None with a one-line reason
     in the second place of the pair (COMMAND, REASON): the model file must be there, and llama-server on the path or
-    in the toolbox TOOLBOX."""
+    in the toolbox TOOLBOX. Worked out once in a run."""
     if not os.path.isfile(MODEL):
         return None, f"the model file {MODEL} is not there (set-up: see the header of tools/meaning.py)"
     me = [os.path.abspath(__file__)]

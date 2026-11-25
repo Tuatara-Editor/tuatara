@@ -15,12 +15,22 @@ CHANGE-LINES does it, in the background when large, one step to undo.
 REPORT, a function of how many lines went, gives what is said once done.
 WORDS names the work (\"Filtering\"). Returns the job, :QUEUED
 \(QUEUE-IF-BUSY), or NIL. With ENDS (RECORD-ENDS), records that may hold
-line breaks are kept or deleted whole."
-  (let ((gone (list 0)))
+line breaks are kept or deleted whole. A FILTER trying a column deletes
+nothing when a line is longer than *REWRITE-LINE-LIMIT* octets, as its
+column is then tried on the line's start alone, and says so."
+  (let ((gone (list 0)) (cut (list 0)))
     (multiple-value-bind (per-line prepare) (filtered-line filter keep gone :ends ends :crlf (buffer-crlf-p buffer))
-      (change-lines buffer start end words per-line
-                    (lambda (done) (format nil "~a~@[ ~a~]" (funcall report (car gone)) done))
-                    :prepare prepare))))
+      (change-lines buffer start end words
+                    (lambda (function slice)
+                      (when (zerop (car cut)) (funcall per-line function slice)))
+                    (lambda (done)
+                      (if (plusp (car cut))
+                          (format nil "Nothing deleted: ~:d line~:p longer than ~a, where a column is tried ~
+on the start alone~@[ ~a~]"
+                                  (car cut) (tuatara.text:octets-words *rewrite-line-limit* :binary t) done)
+                          (format nil "~a~@[ ~a~]" (funcall report (car gone)) done)))
+                    :prepare (lambda (&rest arguments)
+                               (let ((*lines-cut* cut)) (apply prepare arguments)))))))
 
 (defun read-line-filter (buffer words start end)
   "Ask how to filter the lines of BUFFER from START below END, WORDS (keep
@@ -39,7 +49,7 @@ one after a file of records' header (LIST-HEADER-P), or NIL."
           (let ((counter (make-pattern-count))
                 (lines (list (cons (max start (or first 0)) end))))
             (unwind-protect
-                 (read-pattern (format nil "~a~@[ whose ~a holds~]" words what)
+                 (read-pattern (filter-question words what)
                                ;; how many lines the pattern matches, when it is tried on the whole line
                                :count (and (null what)
                                            (lambda (text regex)
@@ -88,23 +98,20 @@ letter, or naming a case ([[:upper:]], \\p{Lu}), heeds case. Says how many were
 deleted. In a file of records cut into columns, a CSV, a log, JSON Lines and the
 others \\[search-filter-show-records] names, a column is asked for first
 \(nothing for the whole line), the pattern tried on its value alone, and a
-header line always stays. Without a selection, does nothing and says so; a large
-selection is handled in the background."
+header line always stays. A column of a line longer than *REWRITE-LINE-LIMIT*
+octets (16 MiB as shipped) would be tried on its first part alone, so then
+nothing is deleted, and that is said. Without a selection, does nothing and
+says so; a large selection is handled in the background."
   (filter-lines 'flush-lines nil))
 
 (define-command keep-lines ()
   "Delete the lines the selection touches in which a regular expression, asked
 for in the minibuffer, finds no match, keeping those it matches. The pattern is
-found as for flush-lines, in a file of records on the column asked for. Says how
-many were deleted. Without a selection, does nothing and says so; a large
-selection is handled in the background."
+found as for flush-lines, in a file of records on the column asked for, nothing
+deleted when a line is longer than *REWRITE-LINE-LIMIT* octets (16 MiB as
+shipped). Says how many were deleted. Without a selection, does nothing and
+says so; a large selection is handled in the background."
   (filter-lines 'keep-lines t))
-
-(defun records-file-p (buffer)
-  "True when BUFFER is a file of records, a line each: a CSV or TSV, a log,
-a JSON Lines file and the others *LINE-RECORD-MODES* names
-\(FILTERS-HIDE-LINES-P)."
-  (filters-hide-lines-p (buffer-major-mode buffer) buffer))
 
 (define-command list-keep-records ()
   "Keep the records whose line a regular expression matches and delete the rest,
@@ -116,7 +123,7 @@ search. One step to undo; a large file is filtered in the background.
 \\[search-filter-show-records] hides the others instead, deleting nothing."
   (if (records-file-p (current-buffer))
       (filter-lines 'list-keep-records t :whole t :noun "record" :words "keep records")
-      (message "Not a file of records (a CSV, a log): list-keep-records was not run; keep-lines filters any lines")))
+      (say-not-records 'list-keep-records "keep-lines filters any lines")))
 
 (define-command list-delete-records ()
   "Delete the records whose line a regular expression matches, keeping the
@@ -125,7 +132,7 @@ line always stays. \\[search-filter-hide-records] hides them instead,
 deleting nothing."
   (if (records-file-p (current-buffer))
       (filter-lines 'list-delete-records nil :whole t :noun "record" :words "delete records")
-      (message "Not a file of records (a CSV, a log): list-delete-records was not run; flush-lines filters any lines")))
+      (say-not-records 'list-delete-records "flush-lines filters any lines")))
 
 (defun list-header-line (window)
   "Header line function: the first line of WINDOW's buffer, its header, as the
@@ -162,8 +169,7 @@ is zero or less. A CSV's first line is its header; in a log and the other
 files of records \\[list-toggle-header] makes it one first.
 *LIST-HEADER-LOCK* keeps a header there wherever there is one."
   (let ((buffer (current-buffer)))
-    (cond ((not (filters-hide-lines-p (buffer-major-mode buffer) buffer))
-           (message "Not a file of records (a CSV, a log): list-toggle-header-lock was not run"))
+    (cond ((not (records-file-p buffer)) (say-not-records 'list-toggle-header-lock))
           ((not (list-header-p buffer))
            (message (substitute-command-keys "No header: \\[list-toggle-header] makes the first line one")))
           (t (let ((on (switched-by-count (tuatara.display:buffer-header-line buffer))))
@@ -181,16 +187,15 @@ what \\[list-toggle-header] said of its first line are let go."
 (define-command list-toggle-header ()
   "Take the first line of a file of records as its header, or as a record like
 the rest; the same again switches back; with a count, a header when it is
-positive, a record when it is zero or less. A header is always shown by
-search filters and never deleted by \\[list-keep-records] and
-\\[list-delete-records], and its words name the columns offered; a record
-is filtered with the rest, the columns offered by their numbers but where
-the file's kind names them. A CSV's first line is its header unless *CSV-HEADER* is NIL; a
-log's, a JSON Lines file's and the others' is a record. Filters set are
-worked out again at once."
+positive, a record when it is zero or less. A header is always shown by search
+filters and never deleted by \\[list-keep-records] and \\[list-delete-records],
+and its words name the columns offered; a record is filtered with the rest, the
+columns offered by their numbers but where the file's kind names them. A CSV's
+first line is its header unless *CSV-HEADER* is NIL; a log's, a JSON Lines
+file's and the others' is a record. Filters set are worked out again at once."
   (let ((buffer (current-buffer)))
-    (if (not (filters-hide-lines-p (buffer-major-mode buffer) buffer))
-        (message "Not a file of records (a CSV, a log): list-toggle-header was not run")
+    (if (not (records-file-p buffer))
+        (say-not-records 'list-toggle-header)
         (let ((on (switched-by-count (list-header-p buffer)))
               (filtering (list-filtering buffer)))
           (setf (tuatara.buffer:buffer-local buffer :list-header) on)

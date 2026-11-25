@@ -69,7 +69,7 @@ writes fields, an integer first being the request's number."
           (if (and (consp field) (eq (first field) :raw))
               (tuatara.frontend:put-octets box (coerce (second field) 'tuatara.text:octets))
               (tuatara.defaults::sftp-put box field)))
-        (tuatara.io:octets-put-integer (tuatara.frontend:outbox-octets box) (- (tuatara.frontend:outbox-fill box) at 4)
+        (tuatara.text:octets-put-integer (tuatara.frontend:outbox-octets box) (- (tuatara.frontend:outbox-fill box) at 4)
                                        4 :at at :big-endian t)))
     (subseq (tuatara.frontend:outbox-octets box) 0 (tuatara.frontend:outbox-fill box))))
 
@@ -321,6 +321,76 @@ with a failure and nothing after it, the other writes sent on unanswered.")
                           "no longer in use")))
             (kill-remote-buffers))))))
 
+(define-test (remote-files bookmark-connects-again)
+  ;; a bookmark of a file or directory on another machine is gone to with no buffer of it open and its
+  ;; connection closed: connected again, the file read and point put where it was kept, the directory listed;
+  ;; the bookmark manager calls it remote without connecting
+  (if (null (sftp-server-program))
+      (skip "no sftp-server here" (true nil))
+      (with-stand-in-sftp (dir log)
+        (let* ((there (namestring dir))
+               (file (concatenate 'string there "notes.txt"))
+               (name (concatenate 'string "/ssh:box:" file))
+               (folder (tuatara.defaults::remote-directory-name (concatenate 'string "/ssh:box:" there))))
+          (alexandria:write-string-into-file (format nil "one~%two~%three~%") file)
+          (flet ((keep (bookmark path offset context)
+                   (tuatara.defaults::state-list-put
+                    tuatara.defaults::*bookmarks*
+                    (list (tuatara.defaults::make-bookmark
+                           bookmark (tuatara.defaults::make-file-place path offset context nil) '()))))
+                 (folder-list ()
+                   (find-if (lambda (buffer)
+                              (and (tuatara.defaults::rimu-list-p buffer)
+                                   (equal folder (tuatara.defaults::rimu-list-directory buffer))))
+                            tuatara.buffer:*buffers*)))
+            (unwind-protect
+                 (progn
+                   (keep "far" name 5 (format nil "wo~%three~%"))
+                   (keep "far-dir" folder 0 "")
+                   (is string= "remote" (tuatara.defaults::file-place-kind name))
+                   (false (probe-file log) "nothing connected to for the kind")
+                   (remote-session (format nil "C-x m b ~a RET" (typed-keys "far"))
+                                   (list :until (lambda () (remote-buffer-of name))))
+                   (let ((buffer (remote-buffer-of name)))
+                     (true buffer)
+                     (is = 5 (tuatara.buffer:buffer-point buffer)))
+                   (kill-remote-buffers)
+                   (tuatara.defaults::close-remote-links)
+                   (remote-session (format nil "C-x m b ~a RET" (typed-keys "far-dir"))
+                                   (list :until #'folder-list))
+                   (true (folder-list)))
+              (kill-remote-buffers)
+              (let ((list (folder-list))) (when list (tuatara.buffer:kill-buffer list)))
+              (dolist (bookmark (tuatara.defaults::bookmark-names))
+                (tuatara.defaults::state-list-drop tuatara.defaults::*bookmarks* (list bookmark)))))))))
+
+(define-test (remote-files places-keep-the-remote-name)
+  ;; a bookmark or a register of a place in a file on another machine keeps its /ssh: name, not the cache copy's;
+  ;; the buffer list names that file the same way
+  (if (null (sftp-server-program))
+      (skip "no sftp-server here" (true nil))
+      (with-stand-in-sftp (dir log)
+        (let* ((file (concatenate 'string (namestring dir) "notes.txt"))
+               (name (concatenate 'string "/ssh:box:" file))
+               (tuatara.defaults::*bookmark-set-asks-categories* nil))
+          (alexandria:write-string-into-file (format nil "one~%two~%") file)
+          (unwind-protect
+               (progn
+                 (remote-session (visit-keys name) (list :until (lambda () (remote-buffer-of name)))
+                                 "C-n" "C-x m m RET" "C-x r p q")
+                 (let ((bookmark (tuatara.defaults::find-bookmark "notes.txt"))
+                       (register (gethash #\q tuatara.defaults::*registers*)))
+                   (true bookmark)
+                   (is string= name (tuatara.defaults::file-place-path (tuatara.defaults::bookmark-place bookmark)))
+                   (is = 4 (tuatara.defaults::file-place-offset (tuatara.defaults::bookmark-place bookmark)))
+                   (is string= name (tuatara.defaults::file-place-path
+                                     (tuatara.defaults::register-place-place
+                                      (tuatara.defaults::register-value register))))
+                   (is string= name (tuatara.defaults::buffer-listed-file (remote-buffer-of name)))))
+            (kill-remote-buffers)
+            (remhash #\q tuatara.defaults::*registers*)
+            (tuatara.defaults::state-list-drop tuatara.defaults::*bookmarks* (list "notes.txt")))))))
+
 (define-test (remote-files save-refused-when-changed-there)
   ;; a file changed on the server since it was read is not written over: the buffer stays modified
   (if (null (sftp-server-program))
@@ -472,6 +542,31 @@ with a failure and nothing after it, the other writes sent on unanswered.")
                                  (tuatara.defaults::rimu-source-refusal 'tuatara.defaults::rimu-symlink list)))
                    (true (tuatara.defaults::rimu-source-refusal 'tuatara.defaults::rimu-find list))
                    (false (tuatara.defaults::rimu-source-refusal 'tuatara.defaults::rimu-copy list))))
+            (kill-remote-lists))))))
+
+(define-test (remote-files marks-there-in-other-directories)
+  ;; files marked in two other directories on the server are counted in the list's header and taken by C, never
+  ;; looked for on the disk here
+  (if (null (sftp-server-program))
+      (skip "no sftp-server here" (true nil))
+      (with-stand-in-sftp (dir log)
+        (let* ((there (namestring dir))
+               (keys (list (format nil "/ssh:box:~aone/a.txt" there) (format nil "/ssh:box:~atwo/b.txt" there))))
+          (put-file (ensure-directories-exist (merge-pathnames "one/a.txt" dir)) "a")
+          (put-file (ensure-directories-exist (merge-pathnames "two/b.txt" dir)) "b")
+          (unwind-protect
+               (progn
+                 (remote-session (format nil "C-x C-f C-a C-k ~a C-j" (typed-keys (concatenate 'string "/ssh:box:"
+                                                                                                there)))
+                                 (list :until #'remote-list-read))
+                 (let ((list (remote-rimu-buffer)))
+                   (dolist (key keys) (tuatara.defaults::rimu-put-mark list key #\>))
+                   (is equal keys (tuatara.defaults::rimu-marked-elsewhere list))
+                   (let ((f (remote-session (format nil "C-x b ~a RET" (typed-keys (tuatara.buffer:buffer-name list)))
+                                            "I" "C")))
+                     (true (tuatara.frontend.fake:fake-frame-showing f "2 marked in other directories"))
+                     (true (tuatara.frontend.fake:fake-frame-showing-across-rows
+                            f "Copy 2 files in 2 directories to:")))))
             (kill-remote-lists))))))
 
 (define-test (remote-files opened-by-what-they-are)
@@ -1320,6 +1415,28 @@ through SSH_ASKPASS, writes the answer in said, and goes no further without one.
                                         (tuatara.buffer:buffer-string (tuatara.command::messages-buffer)))))))
           (kill-buffers-visiting repo))))))
 
+(define-test (remote-files ssh-too-many-questions-stop-the-job)
+  ;; past the most questions ssh may ask, the job it is run for is stopped as any job is, its program ended
+  (let* ((asking (tuatara.defaults::make-ssh-asking "box" nil "/nowhere/" -1 -1))
+         (job (tuatara.defaults::make-rimu-search nil '(:kind :name)))
+         (stopped '()))
+    (setf (tuatara.defaults::ssh-asking-asked asking) (1+ tuatara.defaults::+ssh-most-questions+))
+    (sb-int:encapsulate 'tuatara.io:wait-for-fds 'always-ready (lambda (function fds timeout)
+                                                             (declare (ignore function timeout))
+                                                             fds))
+    (sb-int:encapsulate 'tuatara.defaults::answer-ssh-question 'answering-none (lambda (function asking)
+                                                                         (declare (ignore function asking))
+                                                                         nil))
+    (sb-int:encapsulate 'tuatara.runtime:job-stop 'stops-seen (lambda (function job)
+                                                            (push job stopped)
+                                                            (funcall function job)))
+    (unwind-protect (tuatara.defaults::answer-ssh-questions asking (list nil) job)
+      (sb-int:unencapsulate 'tuatara.io:wait-for-fds 'always-ready)
+      (sb-int:unencapsulate 'tuatara.defaults::answer-ssh-question 'answering-none)
+      (sb-int:unencapsulate 'tuatara.runtime:job-stop 'stops-seen))
+    (is equal (list job) stopped)
+    (true (car (tuatara.runtime:job-cancel job)))))
+
 (define-test (remote-files ssh-question-kinds)
   ;; only ssh's own shapes take the host-key or local form; a server's question, prefixed by ssh, never does
   (is eq :key (tuatara.defaults::ssh-question-kind *key-question*))
@@ -1507,6 +1624,36 @@ killed after."
                        ,open t)
                  (sb-thread:signal-semaphore ,gate 1000)
                  (kill-remote-buffers))))))))
+
+(define-test (remote-files bookmark-place-kept-while-read)
+  ;; a bookmark gone to while its file on another machine is still being read (not waited for at all here):
+  ;; point put at the place once the file has come in place of the buffer saying it is being read
+  (let* ((text (arrival-numbered-text 90000))
+         (offset (search "line 000005" text)))
+    (with-arrival-held (dir name release)
+      (unwind-protect
+           (progn
+             (tuatara.defaults::state-list-put
+              tuatara.defaults::*bookmarks*
+              (list (tuatara.defaults::make-bookmark
+                     "slow" (tuatara.defaults::make-file-place name offset (subseq text offset (+ offset 40)) nil)
+                     '())))
+             (let ((tuatara.defaults::*save-wait* 0))
+               (remote-session (format nil "C-x m b ~a RET" (typed-keys "slow"))
+                               (list :until (lambda ()
+                                              (let ((reading (find-if (lambda (buffer)
+                                                                        (tuatara.buffer:buffer-local buffer
+                                                                                                     :remote-reading))
+                                                                      tuatara.buffer:*buffers*)))
+                                                (and reading
+                                                     (true (tuatara.buffer:buffer-local reading :remote-when-read)
+                                                           "the place kept for when it has come")
+                                                     (progn (release) t)))))
+                               (list :until (lambda ()
+                                              (let ((buffer (remote-buffer-of name)))
+                                                (and buffer (= offset (tuatara.buffer:buffer-point buffer)))))))))
+        (dolist (bookmark (tuatara.defaults::bookmark-names))
+          (tuatara.defaults::state-list-drop tuatara.defaults::*bookmarks* (list bookmark)))))))
 
 (defun arrival-frontend ()
   "The fake frontend of the editor running."

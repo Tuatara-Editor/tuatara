@@ -685,7 +685,7 @@ is not offered by M-x either; NIL when it runs there."
     (is equalp #(137 80 78 71 13 10 26 10) (subseq png 0 8))
     (is equalp #(0 0 0 2 0 0 0 1 8 2) (subseq png 16 26))
     (is = (tuatara.defaults::crc32 png 12 29)
-        (tuatara.io:octets-integer png 29 4 :big-endian t)))
+        (tuatara.text:octets-integer png 29 4 :big-endian t)))
   (with-test-directory (dir)
     (alexandria:write-string-into-file
      "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"40\" height=\"20\"><rect width=\"40\" height=\"20\" fill=\"#3a6ea5\"/></svg>"
@@ -706,7 +706,7 @@ is not offered by M-x either; NIL when it runs there."
             (let ((octets (alexandria:read-file-into-byte-vector (subseq png 1))))
               (is equalp #(137 80 78 71) (subseq octets 0 4))
               ;; 40 pixels wide drawn at 300 dots an inch, not at its own size
-              (true (> (tuatara.io:octets-integer octets 18 2 :big-endian t) 40)))))
+              (true (> (tuatara.text:octets-integer octets 18 2 :big-endian t) 40)))))
         ;; one that is no picture: its name in a frame, and why said
         (true (search "\\fbox{\\texttt{broken.svg}}" latex))
         (true (some (lambda (n) (search "broken.svg is no picture" n)) notes)))
@@ -1917,6 +1917,62 @@ Shut in.
     (true trusted)
     (false (some (lambda (text) (search "/elsewhere/passport.pdf" text)) trusted))))
 
+(define-test (latex-export template-logo-shown-to-the-sandbox)
+  ;; the logo a template asks the note for ({{{logo:path}}}) from your logos directory is shown to LaTeX shut
+  ;; in, that file alone and read only, as the template's own pictures are
+  (with-test-directory (dir)
+    (with-test-directory (logos)
+      (let* ((tuatara-user:*logos-directory* (namestring logos))
+             (tuatara-user:*untrusted-directories* '())
+             (logo (namestring (merge-pathnames "logo.png" logos)))
+             (note (namestring (merge-pathnames "note.org" dir)))
+             (tex (namestring (merge-pathnames "note.tex" dir))))
+        (alexandria:write-byte-vector-into-file *one-pixel-png* logo)
+        (alexandria:write-string-into-file
+         (format nil "\\documentclass{article}~%\\usepackage{graphicx}~%\\begin{document}~%~
+                      \\includegraphics[height=1cm]{{{{logo:path}}}}~%{{{body}}}~%\\end{document}~%")
+         (merge-pathnames "report.tex" dir))
+        (let ((parts (tuatara.defaults::org-latex-parts (format nil "#+template: ./report~%#+logo: logo.png~%Text.~%")
+                                                        :file note :enhanced t))
+              (job (tuatara.export::make-pdf-export nil note :org :file nil nil nil)))
+          (true (search logo (getf parts :latex)))
+          (alexandria:write-string-into-file (getf parts :latex) tex)
+          (setf (tuatara.export::pdf-export-trusted job) (getf parts :trusted)
+                (tuatara.export::pdf-export-pictures job) (getf parts :pictures))
+          (destructuring-bind (&key directories &allow-other-keys)
+              (tuatara.export::latex-sandbox-places job tex (stand-in-latex dir "xelatex") "/build/")
+            (true (member logo directories :test #'string=) "~s" directories)
+            (false (member (string-right-trim "/" (namestring logos)) directories :test #'string=))))))))
+
+(define-test (latex-export logos-from-several-directories)
+  ;; *logos-directory* as a list: a name alone is looked for in each in order, the first that has it giving
+  ;; it; a picture an untrusted note names by its path is let in from any of them, never from elsewhere
+  (with-test-directory (dir)
+    (with-test-directory (first)
+      (with-test-directory (second)
+        (with-test-directory (elsewhere)
+          (let ((tuatara-user:*logos-directory* (list (namestring first) (namestring second)))
+                (tuatara-user:*untrusted-directories* (list (namestring dir))))
+            (dolist (path (list (merge-pathnames "both.png" first) (merge-pathnames "both.png" second)
+                                (merge-pathnames "later.png" second) (merge-pathnames "stray.png" elsewhere)))
+              (alexandria:write-byte-vector-into-file *one-pixel-png* path))
+            (is equal (list (namestring first) (namestring second)) (tuatara.defaults::logos-directories))
+            (flet ((picture (value)
+                     (let ((tuatara.defaults::*org-export*
+                             (tuatara.defaults::make-org-export "" (namestring dir)
+                                                                (namestring (merge-pathnames "note.org" dir)))))
+                       (tuatara.defaults::template-picture-path value))))
+              (is string= (namestring (merge-pathnames "both.png" first)) (picture "both.png"))
+              (is string= (namestring (merge-pathnames "later.png" second)) (picture "later.png"))
+              (is string= (namestring (merge-pathnames "later.png" second))
+                  (picture (namestring (merge-pathnames "later.png" second))))
+              (false (picture "missing.png"))
+              (false (picture (namestring (merge-pathnames "stray.png" elsewhere)))))
+            ;; an export never writes in any of them unasked
+            (let ((kept (tuatara.export::export-kept-places)))
+              (true (member (namestring first) kept :test #'string=))
+              (true (member (namestring second) kept :test #'string=)))))))))
+
 (define-test (latex-export docx-footnote-style)
   ;; a footnote's paragraphs take the footnotes' own style
   (let ((text (docx-text (tuatara.defaults::org-docx-document (format nil
@@ -2180,7 +2236,7 @@ Shut in.
     (let* ((image (picture 200))
            (png (tuatara.defaults::png-octets image))
            (idat (search (map 'vector #'char-code "IDAT") png))
-           (length (tuatara.io:octets-integer png (- idat 4) 4 :big-endian t))
+           (length (tuatara.text:octets-integer png (- idat 4) 4 :big-endian t))
            (raw (tuatara.io:inflate png :start (+ idat 6) :end (+ idat 4 length -4))))
       (is = (* 200 (1+ (* 200 4))) (length raw))
       (true (loop for y below 200
@@ -2188,7 +2244,7 @@ Shut in.
                               (equalp (subseq raw (1+ (* y 801)) (* (1+ y) 801))
                                       (subseq (tuatara.frontend:image-pixels image) (* y 800) (* (1+ y) 800))))))
       (is = (tuatara.defaults::crc32 png idat (+ idat 4 length))
-            (tuatara.io:octets-integer png (+ idat 4 length) 4 :big-endian t))
+            (tuatara.text:octets-integer png (+ idat 4 length) 4 :big-endian t))
       (is = (+ idat 4 length 4 12) (length png)))
     (flet ((consed (side)
              (let ((image (picture side)))
@@ -2210,9 +2266,9 @@ Shut in.
            (sixteen (copy-seq eight))
            (deep (namestring (merge-pathnames "deep.png" dir)))
            (plain (namestring (merge-pathnames "plain.png" dir))))
-      (tuatara.io:octets-put-integer sixteen 2 4 :at 16 :big-endian t)
+      (tuatara.text:octets-put-integer sixteen 2 4 :at 16 :big-endian t)
       (setf (aref sixteen 24) 16)
-      (tuatara.io:octets-put-integer sixteen (tuatara.defaults::crc32 sixteen 12 29) 4 :at 29 :big-endian t)
+      (tuatara.text:octets-put-integer sixteen (tuatara.defaults::crc32 sixteen 12 29) 4 :at 29 :big-endian t)
       (alexandria:write-byte-vector-into-file sixteen deep)
       (alexandria:write-byte-vector-into-file eight plain)
       (true (tuatara.defaults::png-sixteen-bit-p deep))
@@ -2261,7 +2317,7 @@ Shut in.
           (dotimes (x (* width channels)) (vector-push-extend (aref pixels (+ (* y width channels) x)) wanted)))
         (true (equalp raw wanted))
         (loop for octet across wanted do (setf a (mod (+ a octet) 65521) b (mod (+ b a) 65521)))
-        (is = (logior (ash b 16) a) (tuatara.io:octets-integer png at 4 :big-endian t))))))
+        (is = (logior (ash b 16) a) (tuatara.text:octets-integer png at 4 :big-endian t))))))
 
 (define-test (latex-export docx-picture-stored-once)
   ;; a picture shown twice is stored in the Word document once, each showing its own drawing

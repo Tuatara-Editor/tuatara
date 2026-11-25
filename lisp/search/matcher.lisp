@@ -40,10 +40,10 @@ the things it names.")
 
 (defun regex-problem (condition)
   "Words for the prompt on why a pattern does not compile, from CONDITION:
-\"incomplete\" when it lacks a closing parenthesis or bracket or ends early,
-else \"invalid\" and the reason in plain words (*REGEX-PROBLEMS*), or \"not supported\" and what
-(TUATARA.SYNTAX:PATTERN-REFUSED). A problem not
-known is said by where it is, never by what the program holds."
+\"incomplete\" when it lacks a closing parenthesis or bracket or ends early;
+for a pattern refused (TUATARA.SYNTAX:PATTERN-REFUSED), \"not supported\" and
+what; else \"invalid\" and the reason in plain words (*REGEX-PROBLEMS*). A
+problem not known is said by where it is, never by what the program holds."
   (cond ((typep condition 'tuatara.syntax:pattern-refused) (tuatara.syntax:pattern-refused-words condition))
         ((typep condition 'cl-ppcre:ppcre-syntax-error)
          (let* ((control (simple-condition-format-control condition))
@@ -79,15 +79,15 @@ found as literal text, which is several times faster and finds the same
 matches. Not so when COMPILED asks for it compiled whatever it is (a
 rectangle's rows are matched as text). Literal text is compiled when case is
 ignored and it has letters beyond ASCII, whose other case only the regular
-expression knows. It is also compiled when it holds a raw byte, which then
-matches only a byte standing on its own, never one inside a character. ^ and
-$ match at every kind of line end (TUATARA.SYNTAX:COMPILE-REGEX)."
-  (let ((past-ascii (and fold (some (lambda (c) (and (>= (char-code c) 128) (both-case-p c))) pattern)))
-        (raw (some (lambda (c) (tuatara.text:raw-byte-code-p (char-code c))) pattern)))
-    (cond ((and (not regex) (or past-ascii raw))
+expression knows, when it holds a raw byte, which then matches only a byte
+standing on its own, never one inside a character, and when it holds a
+newline, which matches a line end of either kind (TUATARA.SYNTAX:BY-PATTERN-P).
+^ and $ match at every kind of line end (TUATARA.SYNTAX:COMPILE-REGEX)."
+  (let ((by-pattern (tuatara.syntax:by-pattern-p pattern fold)))
+    (cond ((and (not regex) by-pattern)
            (%make-matcher :regex pattern (tuatara.syntax:compile-pattern pattern :regex nil :case-fold fold) fold))
           ((or (not regex)
-               (and (not compiled) (not past-ascii) (plusp (length pattern))
+               (and (not compiled) (not by-pattern) (plusp (length pattern))
                     (tuatara.syntax:literal-pattern-p pattern)))
            (%make-matcher :literal pattern nil fold))
           (t (handling-errors-reported ("compiling a search pattern")

@@ -634,7 +634,7 @@ DIRECTORY and return the RUN; NIL when JOB was stopped first."
                 (loop for r across order
                       do (let* ((s (aref starts r)) (e (aref ends r))
                                 (number (if numbers (aref numbers r) 0d0)))
-                           (flet ((put (at value) (tuatara.io:octets-put-integer header value 4 :at at)))
+                           (flet ((put (at value) (tuatara.text:octets-put-integer header value 4 :at at)))
                              (put 0 r)
                              (put 4 (- (aref key-starts r) s))
                              (put 8 (- (aref key-ends r) s))

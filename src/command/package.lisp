@@ -46,19 +46,20 @@ hooks, the minibuffer core, the modal state slot.")
            #:candidate #:make-candidate #:candidate-string #:candidate-annotation #:candidate-value #:candidate-result
            #:candidate-group #:candidate-columns #:candidate-suffix #:candidate-rank #:candidate-ranked #:group-candidates #:match-spans
            #:join-fields #:fit-fields #:fields-columns #:panel-columns
-           #:filter-candidates #:component-match #:first-line #:first-sentence #:where-is #:prefix-entries
+           #:filter-candidates #:component-match #:first-sentence #:where-is #:prefix-entries
            #:set-key-label #:key-label
            ;; keys named in text
            #:substitute-command-keys #:unmark-keys #:text-spans #:mark-key #:key-mark-p #:key-description< #:command-key
            #:host-keymap-named #:keymap-summary #:valid-key-text-p #:host-key-keymaps
            #:completing-read #:completing-read-value #:key-waiting-p #:completion #:editor-completion #:editor-key-hints
            #:editor-width #:editor-height
-           #:active-keymaps #:host-state-keymaps #:host-show-prefix-help #:resolve-keys #:candidate-score #:panel-rows
+           #:active-keymaps #:host-state-keymaps #:host-show-prefix-help #:resolve-keys #:panel-rows
            #:input-components #:components-score
            #:*highlight-functions* #:*view-change-functions* #:look-at-views-again #:*key-hint-focus-functions*
            #:*job-highlight-functions*
            #:*syntax-highlight-functions* #:*text-highlight-functions* #:window-highlights-for #:window-syntax
-           #:read-key #:read-answer-key #:read-event #:*tick-functions* #:*last-input-time* #:*after-tick-functions*
+           #:read-key #:read-answer-key #:read-key-choice #:read-event #:*tick-functions* #:*last-input-time*
+           #:*after-tick-functions*
            #:*title-functions* #:*background-work* #:*tick-interval* #:run-tick-functions
            #:*gutter-providers* #:add-gutter-provider #:gutter-width #:gutter-width-except #:window-margin-for
            #:gutter-cells #:*ruler-functions*

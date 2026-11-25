@@ -69,7 +69,26 @@ where they may not come, left out.")
           :documentation "The text of each setup file ORG-EXPORT read, by its path, NIL for one that could not be.")
   (macro-room *org-macro-limit*
               :documentation "How many more characters the macro calls of ORG-EXPORT may add, below 0 once they would
-pass *ORG-MACRO-LIMIT*."))
+pass *ORG-MACRO-LIMIT*.")
+  (macro-definitions nil
+                     :documentation "The macros the keywords of ORG-EXPORT define, as (KEYWORDS . DEFINITIONS), made
+again when its keywords change (ORG-MACRO-DEFINITIONS)."))
+
+(defparameter *export-list-styles*
+  '(("bullets" :bullet nil nil) ("none" :none nil "no bullets") ("numbers" :decimal "\\arabic{~a}." nil)
+    ("letters" :lower-letter "\\alph{~a})" "a") ("Letters" :upper-letter "\\Alph{~a}." "A")
+    ("roman" :lower-roman "\\roman{~a}." "i") ("Roman" :upper-roman "\\Roman{~a}." "I"))
+  "The styles the style setting of an :EXPORT: drawer gives a list, each
+\(WORD KIND LATEX-LABEL SHOWN): the word naming it; how the Word export marks
+the items (DOCX-LIST-KIND); the label LaTeX numbers them with, a format of
+the counter's name, NIL for bullets or none; and what the marks look like,
+said with the word in help, or NIL.")
+
+(defun export-list-style (word)
+  "The entry of *EXPORT-LIST-STYLES* that WORD, a style setting's value, names:
+the one written as WORD is, else one in any case (NUMBERS, None); NIL for none."
+  (and word (or (assoc word *export-list-styles* :test #'string=)
+                (assoc word *export-list-styles* :test #'string-equal))))
 
 (defvar *org-export* nil
   "The ORG-EXPORT of the note being exported: an ORG-LATEX when it is written
@@ -95,6 +114,20 @@ ARGUMENTS, once however often it comes; NIL."
 directory, a relative name taken from DIRECTORY, the directory of the note being
 exported when not given, your home directory for a note with no file."
   (tuatara.io:native (tuatara.io:expand-path name :directory (or directory (tuatara.io:home-directory)))))
+
+(defun org-export-full-name-p (name)
+  "True when NAME, a file a link names, is a full name (/..., ~/...) and not
+relative to the document."
+  (or (uiop:string-prefix-p "/" name) (uiop:string-prefix-p "~" name)))
+
+(defun org-export-file-address (path &key whole)
+  "The address a document links to the local file PATH, a link's path, with:
+a file:/// address for a full name (ORG-EXPORT-FULL-NAME-P) or with WHOLE,
+the name relative to the note taken from its directory (ORG-EXPORT-PATH);
+else PATH as it stands, relative to the document, encoded as an address."
+  (if (or whole (org-export-full-name-p path))
+      (path-uri (org-export-path path))
+      (tuatara.io:url-path path)))
 
 (defun org-export-untrusted-p (&optional (export *org-export*))
   "True when the note EXPORT exports is untrusted (UNTRUSTED-PATH-P): its file,
@@ -146,35 +179,44 @@ nothing to take in."
                        (abbreviated-path path)))))
 
 (define-setting *logos-directory* nil
-  "The directory of the pictures your templates ask a note for.
-This is where the logo a note's #+logo: names is found (LOGOS-DIRECTORY).
+  "The directory, or directories, of the pictures your templates ask a note for.
+This is where the logo a note's #+logo: names is found (LOGOS-DIRECTORIES).
 - a directory: that directory.
+- a list of directories: those, looked in in order; the first that has the
+  picture gives it.
 - nil, as standard: logos/ in the configuration directory."
-  :values (or (member nil) directory))
+  :values (or (member nil) directory (list-of directory)))
 
-(defun logos-directory ()
+(defun logos-directories ()
   "Where the pictures your templates ask a note for are kept (the logo its
-#+logo: names): *LOGOS-DIRECTORY*, or logos/ in the configuration directory
-\(~/.config/tuatara/logos/), ending in /."
-  (let ((directory (if *logos-directory*
-                       (tuatara.io:native (tuatara.io:expand-path *logos-directory*))
-                       (config-path "logos/"))))
-    (tuatara.io:slash-ended directory)))
+#+logo: names), in the order they are looked in: *LOGOS-DIRECTORY*, or logos/
+in the configuration directory (~/.config/tuatara/logos/), each ending in /."
+  (if *logos-directory*
+      (mapcar (lambda (directory) (tuatara.io:slash-ended (tuatara.io:native (tuatara.io:expand-path directory))))
+              (alexandria:ensure-list *logos-directory*))
+      (list (tuatara.io:slash-ended (config-path "logos/")))))
+
+(defun logos-picture-path (name)
+  "The file NAME, a name alone (logo.png), stands for in your logos directories
+\(LOGOS-DIRECTORIES): in the first that has it, else in the first of them."
+  (let ((paths (mapcar (lambda (directory) (concatenate 'string directory name)) (logos-directories))))
+    (or (find-if #'tuatara.io:path-stamp paths) (first paths))))
 
 (defun template-picture-path (value)
   "The file of the picture a template asks the note for with {{{NAME:path}}},
-VALUE what the note's keyword says: a name alone (logo.png) in your logos directory
-\(LOGOS-DIRECTORY), else a path, read as the note's links are. NIL, said after
-the export, for one that is not there, or stands elsewhere than the logos directory
+VALUE what the note's keyword says: a name alone (logo.png) in your logos directories
+\(LOGOS-PICTURE-PATH), else a path, read as the note's links are. NIL, said after
+the export, for one that is not there, or stands elsewhere than the logos directories
 and the directories an export takes files from \(ORG-EXPORT-DIRECTORY-P), so that a
 note given to you cannot have your template take in a picture of yours."
   (let* ((name (string-trim " " value))
          (path (if (or (find #\/ name) (uiop:string-prefix-p "~" name))
                    (org-export-path name)
-                   (concatenate 'string (logos-directory) name))))
-    (cond ((not (or (tuatara.io:path-in-directories-p path (list (logos-directory))) (org-export-directory-p path)))
-           (export-note "~a: a picture a template asks for comes from ~a or the note's own directory, so left out"
-                        (abbreviated-path path) (abbreviated-path (logos-directory))))
+                   (logos-picture-path name))))
+    (cond ((not (or (tuatara.io:path-in-directories-p path (logos-directories)) (org-export-directory-p path)))
+           (export-note "~a: a picture a template asks for comes from ~{~a~^, ~} or the note's own directory, ~
+                         so left out"
+                        (abbreviated-path path) (mapcar #'abbreviated-path (logos-directories))))
           ((not (tuatara.io:path-stamp path))
            (export-note "~a: no such picture, so left out" (abbreviated-path path)))
           (t path))))
@@ -474,14 +516,18 @@ DIRECTORY the note's directory for setup files named relative to it."
   "The macros the note EXPORT reads defines with #+MACRO: lines, its setup
 files' too, as (NAME . BODY), each name once with its last definition, in
 the order of their first."
-  (let ((definitions '()))
-    (dolist (line (org-export-keyword-all "MACRO" export))
-      (let ((name (first (tuatara.text:split-words line))))
-        (when name
-          (let ((body (string-trim '(#\Space #\Tab) (subseq line (+ (search name line) (length name)))))
-                (known (assoc name definitions :test #'string-equal)))
-            (if known (setf (cdr known) body) (push (cons name body) definitions))))))
-    (nreverse definitions)))
+  (let ((made (org-export-macro-definitions export)))
+    (if (and made (eq (car made) (org-export-keywords export)))
+        (cdr made)
+        (let ((definitions '()))
+          (dolist (line (org-export-keyword-all "MACRO" export))
+            (let ((name (first (tuatara.text:split-words line))))
+              (when name
+                (let ((body (string-trim '(#\Space #\Tab) (subseq line (+ (search name line) (length name)))))
+                      (known (assoc name definitions :test #'string-equal)))
+                  (if known (setf (cdr known) body) (push (cons name body) definitions))))))
+          (cdr (setf (org-export-macro-definitions export)
+                     (cons (org-export-keywords export) (nreverse definitions))))))))
 
 (defparameter *redacted-words* "[redacted]"
   "What stands for hidden text where only plain words can be: a PDF's
@@ -526,7 +572,8 @@ text redacted or protected in it, when it is hidden, as [redacted]."
 while what they stand for holds more, at most eight times: a call Org's
 syntax reads as one (never in a block), a macro not known left as it is,
 and the calls that would make TEXT longer than *ORG-MACRO-LIMIT* characters
-left as they are."
+left as they are. The parse of the text returned, its keywords those of
+*ORG-EXPORT*, is the second value when a round found no more calls, else NIL."
   (setf (org-export-macro-room *org-export*) (- *org-macro-limit* (length text)))
   (loop repeat 8
         until (minusp (org-export-macro-room *org-export*))
@@ -539,7 +586,7 @@ left as they are."
                                    (when (eq (org-node-type node) 'macro)
                                      (let ((value (org-export-macro-value node)))
                                        (when value (push (list node value) calls))))))
-             (when (null calls) (return text))
+             (when (null calls) (return (values text tree)))
              ;; where each call's text lands after the round, for errors to be told at the text as written
              (let ((shift 0) (moves '()))
                (dolist (call (sort (copy-list calls) #'< :key (lambda (c) (org-node-begin (first c)))))
@@ -679,16 +726,18 @@ names; NIL when none."
                    (org-export-keyword "LATEX_STYLE"))))
     (and value (plusp (length (string-trim " " value))) (string-trim " " value))))
 
-(defun org-export-take-in (text tree directory)
+(defun org-export-take-in (text tree directory &key keywords-read)
   "Have *ORG-EXPORT* know the note being written, TEXT (its macros expanded)
-parsed as TREE, DIRECTORY its directory: its keywords and options, its lowest
+parsed as TREE, DIRECTORY its directory: its keywords (unless KEYWORDS-READ
+says *ORG-EXPORT* holds those of TREE already) and options, its lowest
 level of headline, its footnotes' definitions by label, the parts it keeps
 out, and, in the enhanced export, its :EXPORT: drawers' settings; for the
 PDF and the Word export alike."
   (setf (org-export-text *org-export*) text
         (org-export-tree *org-export*) tree
-        (org-export-targets *org-export*) nil
-        (org-export-keywords *org-export*) (org-export-collect-keywords tree directory))
+        (org-export-targets *org-export*) nil)
+  (unless keywords-read
+    (setf (org-export-keywords *org-export*) (org-export-collect-keywords tree directory)))
   (org-export-read-options *org-export*)
   (let ((levels '()))
     (org-walk-tree tree (lambda (n)
@@ -709,7 +758,8 @@ redact and protect hide checked for (enhanced only; LINES as
 ORG-EXPORT-CHECK-HIDDEN takes them), parsed and taken in (ORG-EXPORT-TAKE-IN).
 TEXT is bound to the text as expanded, TREE to its parse and DIRECTORY to
 FILE's directory, or NIL."
-  (let ((original (gensym "ORIGINAL")) (where (gensym "FILE")) (enhanced-p (gensym "ENHANCED")))
+  (let ((original (gensym "ORIGINAL")) (where (gensym "FILE")) (enhanced-p (gensym "ENHANCED"))
+        (parsed (gensym "PARSED")))
     `(let* ((,original ,source)
             (,where ,file)
             (,enhanced-p ,enhanced)
@@ -720,14 +770,16 @@ FILE's directory, or NIL."
                                             (make-org-export ,original ,directory ,where))))
                             (setf (org-export-enhanced export) ,enhanced-p)
                             export))
-            (,text (let ((expanded (org-export-expand-macros ,original)))
+            (,parsed nil)
+            (,text (multiple-value-bind (expanded tree) (org-export-expand-macros ,original)
                      ;; no name to hide printed where Org reads no macros
                      (when ,enhanced-p (org-export-check-hidden expanded ,original ,lines))
+                     (setf ,parsed tree)
                      expanded))
-            (,tree (org-parse ,text))
+            (,tree (or ,parsed (org-parse ,text)))
             (*org-export-text* ,text))
        (declare (ignorable ,text ,tree ,directory))
-       (org-export-take-in ,text ,tree ,directory)
+       (org-export-take-in ,text ,tree ,directory :keywords-read ,parsed)
        ,@body)))
 
 ;;; What every export shares

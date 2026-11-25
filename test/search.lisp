@@ -429,6 +429,46 @@ newlines and some multibyte characters."
   (is equal '("(a+)+")
       (cl-ppcre:all-matches-as-strings (tuatara.syntax:compile-pattern "(a+)+" :untrusted t :or-text t) "x(a+)+")))
 
+(define-test (search file-patterns-ambiguous-repeats-refused)
+  ;; from a file, a repeated choice whose choices may start alike, or a repeated
+  ;; back-reference, is refused as a repeated repeat is; choices apart are run
+  (dolist (pattern '("(a|aa)+$" "(a*)\\1+b" "(?:x|\\w)*!" "(a|A)+$"))
+    (fail (tuatara.syntax:compile-pattern pattern :untrusted t) 'tuatara.syntax::pattern-refused)
+    (true (tuatara.syntax:compile-pattern pattern) "~s typed is run" pattern))
+  (dolist (pattern '("(foo|bar)*" "(?:kiwi|tui|weka)+" "(a)\\1"))
+    (true (tuatara.syntax:compile-pattern pattern :untrusted t) "~s from a file is run" pattern)))
+
+(define-test (search file-patterns-safe-repeats-run)
+  ;; from a file, a repeated back-reference to a group of one character, and a repeated
+  ;; choice whose first characters or classes cannot be alike, are run; a refusal says why
+  (dolist (pattern '("(.)\\1+" "([\"'])(?:(?!\\1).)*\\1" "(\\d|-)+" "(?:\\s|,)+" "(?:[a-c]|[d-f]x)+$"))
+    (true (tuatara.syntax:compile-pattern pattern :untrusted t) "~s from a file is run" pattern))
+  (dolist (refused '(("(a|aa)+$" . "choice") ("(?:[a-c]|[C-F]x)+$" . "choice") ("(\\w|\\d)+$" . "choice")
+                     ("(a*)\\1+b" . "back-reference") ("(a+)+$" . "itself repeats")))
+    (true (search (cdr refused)
+                  (handler-case (progn (tuatara.syntax:compile-pattern (car refused) :untrusted t) "")
+                    (tuatara.syntax::pattern-refused (condition) (princ-to-string condition))))
+          "~s refused for its ~a" (car refused) (cdr refused))))
+
+(define-test (search quoted-capital-heeds-case)
+  ;; a capital letter in quoted text asks for case as one outside it does
+  (false (tuatara.syntax:regex-case-fold-p "\\Qa\\Sb\\E"))
+  (false (tuatara.syntax:regex-case-fold-p "x\\QK"))
+  (true (tuatara.syntax:regex-case-fold-p "\\Qa.b\\E\\S"))
+  (is equal '("a\\Sb")
+      (cl-ppcre:all-matches-as-strings (tuatara.syntax:compile-pattern "\\Qa\\Sb\\E") "A\\SB a\\Sb")))
+
+(define-test (search posix-class-turned-round-exactly)
+  ;; a POSIX class turned round holds just what the class does not: the vertical tab is
+  ;; a space, never a non-space, and a digit of another script is no [:digit:]
+  (flet ((holds (pattern char) (and (cl-ppcre:scan (tuatara.syntax:compile-regex pattern) (string char)) t)))
+    (dolist (case (list (list "space" (code-char 11)) (list "space" #\Space) (list "space" #\x)
+                        (list "digit" #\7) (list "digit" (code-char #x0663)) (list "word" (code-char #x016B))
+                        (list "word" #\,)))
+      (destructuring-bind (name char) case
+        (is eq (not (holds (format nil "[[:~a:]]" name) char)) (holds (format nil "[[:^~a:]]" name) char)
+            "~s in one of [:~a:] and [:^~a:]" char name name)))))
+
 (define-test (search crlf-plain-text-kept-plain)
   ;; a pattern of plain text alone, its special characters escaped, means the same in CRLF text
   (let ((text (format nil "~c[1m 1.5 1x5 (a+b) aab~c~%" (code-char 27) #\Return)))

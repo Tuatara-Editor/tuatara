@@ -226,6 +226,22 @@ reports not yet shown."
              (is = #o600 (logand #o777 (sb-posix:stat-mode (sb-posix:stat (tuatara.io:native log))))))
         (drain-debug-reports)))))
 
+(define-test (debug-reports log-kept-from-programs-and-links)
+  ;; a shared log's descriptor is not given to a program started, the editor started again among
+  ;; them; a symbolic link put where the log goes is not written through
+  (with-test-directory (dir)
+    (let* ((log (tuatara.io:native (merge-pathnames "shared.log" dir)))
+           (fd (tuatara.runtime:open-rotated-log log)))
+      (unwind-protect (true (logtest 1 (sb-posix:fcntl fd sb-posix:f-getfd))) ; FD_CLOEXEC
+        (sb-posix:close fd))
+      (let ((elsewhere (tuatara.io:native (merge-pathnames "elsewhere.txt" dir)))
+            (link (tuatara.io:native (merge-pathnames "linked.log" dir))))
+        (put-file elsewhere "")
+        (sb-posix:symlink elsewhere link)
+        (fail (tuatara.runtime:open-rotated-log link))
+        (false (tuatara.runtime::log-in-use-p link))
+        (is = 0 (sb-posix:stat-size (sb-posix:stat elsewhere)))))))
+
 (define-test (debug-reports busy-editor-leaves-a-trace)
   ;; a thread busy past *hang-report-seconds* writes the calls under way in it, once
   (let ((was tuatara.runtime:*hang-report-seconds*)

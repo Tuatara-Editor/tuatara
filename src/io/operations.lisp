@@ -339,7 +339,7 @@ PATH named, when it cannot be."
 (defun set-fd-modification-time (fd nanoseconds)
   "Give the file open as file descriptor (FD) the modification time
 NANOSECONDS (as a stamp has it), or the time now for :NOW, its access time
-left as it is."
+left as it is: 0 when done, else -1 and the errno."
   (let ((times (make-array 32 :element-type '(unsigned-byte 8) :initial-element 0))
         (now (eq nanoseconds :now)))
     (with-octets-sap (sap times)
@@ -369,7 +369,7 @@ first (OUT then holds part of it)."
             (copy-fd-contents in out (stamp-size stamp) :path to-path :cancel cancel :progress progress))
     (copy-xattrs in out)
     (sb-posix:fchmod out (logand (stamp-mode stamp) #o777))
-    (set-fd-modification-time out (stamp-mtime stamp))
+    (check-call (set-fd-modification-time out (stamp-mtime stamp)) "set the time of" to-path)
     t))
 
 (defun copy-open-file (in to-dirfd to-name path to-path &key cancel progress)
@@ -492,7 +492,7 @@ their paths, for messages), DEPTH directories down the tree (CHECK-TREE-DEPTH)."
                                                 cancel progress skipped (1+ depth))
                            (setf whole nil)))
                        (sb-posix:fchmod to-fd (logand (stamp-mode stamp) #o777))
-                       (set-fd-modification-time to-fd (stamp-mtime stamp))
+                       (check-call (set-fd-modification-time to-fd (stamp-mtime stamp)) "set the time of" to-path)
                        whole)
                   (sb-posix:close to-fd)))
            (sb-posix:close from-fd))))

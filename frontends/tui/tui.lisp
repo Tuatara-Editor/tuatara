@@ -836,7 +836,7 @@ ASK-TERMINAL to offer the terminal; NIL when none could be made."
 (defun shared-name-payload (name)
   "The shared memory object NAME as a graphics command names it: in base 64."
   (let ((octets (sb-ext:string-to-octets (concatenate 'string "/" name) :external-format :latin-1)))
-    (tuatara.io:base64-string octets)))
+    (tuatara.text:base64-string octets)))
 
 (defun shared-picture-name ()
   "A new name for a shared memory object holding a picture: tuatara-, this
@@ -1743,7 +1743,7 @@ pieces of 4096 digits of base 64."
                                         (tuatara.frontend:image-width image) (tuatara.frontend:image-height image)
                                         number (if more 1 0))
                                 (format nil "m=~d" (if more 1 0)))
-                            (tuatara.io:base64-string pixels :start start :end end)))
+                            (tuatara.text:base64-string pixels :start start :end end)))
     (finish-output *standard-output*)))
 
 (defun image-cells (image columns rows width height)

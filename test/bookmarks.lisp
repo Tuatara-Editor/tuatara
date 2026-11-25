@@ -358,3 +358,25 @@
              (is = 4 (tuatara.defaults::file-place-offset place)))
            (is string= "" (tuatara.defaults::text-after-place b 0)))
       (tuatara.buffer:kill-buffer b))))
+
+(define-test (bookmarks remote-kind-said-at-once)
+  ;; a bookmark on another machine says so on the first draw; while the others are looked at, the last
+  ;; line says so rather than that none is gone
+  (with-test-directory (dir)
+    (let ((gate (sb-thread:make-semaphore)))
+      (tuatara.defaults::state-list-put tuatara.defaults::*bookmarks*
+                                        (list (list "far" "/ssh:nohost:/etc/hosts" 0 "")
+                                              (list "near" (namestring (merge-pathnames "near.txt" dir)) 0 "")))
+      (sb-int:encapsulate 'tuatara.defaults::file-place-kind 'held
+                          (lambda (function path)
+                            (unless (tuatara.defaults::remote-name-p path)
+                              (sb-thread:wait-on-semaphore gate :timeout 10))
+                            (funcall function path)))
+      (unwind-protect
+           (let ((text (session-text (nth-value 1 (run-keys "C-x m l" :width 120 :height 14)))))
+             (true (cl-ppcre:scan "far +remote" text) "~a" text)
+             (true (search "looking for those gone" text) "~a" text))
+        (sb-thread:signal-semaphore gate 10)
+        (sb-int:unencapsulate 'tuatara.defaults::file-place-kind 'held)
+        (wait-for-bookmark-kinds)
+        (tuatara.defaults::state-list-drop tuatara.defaults::*bookmarks* (list "far" "near"))))))

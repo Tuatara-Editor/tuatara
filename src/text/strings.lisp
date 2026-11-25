@@ -65,6 +65,37 @@ ended by a carriage return and a line feed, the next one begun with a space."
     (write-char #\Return stream)
     (write-char #\Newline stream)))
 
+(defun content-text-escaped (text)
+  "TEXT as the value of a vCard or iCalendar text property holds it: a
+backslash, semicolon or comma with a backslash before it, each line break
+written \\n, carriage returns left out."
+  (with-output-to-string (out)
+    (loop for c across text
+          do (case c
+               ((#\\ #\; #\,) (write-char #\\ out) (write-char c out))
+               (#\Newline (write-string "\\n" out))
+               (#\Return)
+               (t (write-char c out))))))
+
+(defun content-parameter-text (value)
+  "VALUE as the value of a parameter of a vCard or iCalendar content line
+is written: ^, a line break and a double quote as RFC 6868 writes them (^^,
+^n, ^'), the whole in double quotes when it holds a semicolon, colon or
+comma."
+  (let ((encoded (if (find-if (lambda (c) (find c (load-time-value (coerce (list #\^ #\Newline #\") 'string) t)))
+                              value)
+                     (with-output-to-string (out)
+                       (loop for c across value
+                             do (case c
+                                  (#\^ (write-string "^^" out))
+                                  (#\Newline (write-string "^n" out))
+                                  (#\" (write-string "^'" out))
+                                  (t (write-char c out)))))
+                     value)))
+    (if (find-if (lambda (c) (find c ";:,")) encoded)
+        (concatenate 'string "\"" encoded "\"")
+        encoded)))
+
 (defparameter *charset-aliases*
   '(("us-ascii" . :latin-1) ("ascii" . :latin-1) ("ansi_x3.4-1968" . :latin-1) ("utf8" . :utf-8) ("latin1" . :latin-1)
     ("iso-8859-8-i" . :iso-8859-8) ("gb2312" . :gbk) ("x-gbk" . :gbk) ("cp936" . :gbk) ("cp932" . :shift_jis)

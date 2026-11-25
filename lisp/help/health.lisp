@@ -24,10 +24,10 @@
   "The sets of rules \\[check-health] checks for each language: a keyword, the
 heading of its column, and the function giving the rules' text.")
 
-(define-record (health-check (:include tuatara.runtime:job) (:constructor make-health-check (languages grammars))
+(define-record (health-check (:include tuatara.runtime:job) (:constructor make-health-check (languages))
                             (:copier nil))
   "The rules of LANGUAGES being checked, a job, GRAMMARS the grammar of each
-(or NIL), found beforehand on the editor's thread. Once done, RESULTS holds for
+(or NIL), found on the check's thread. Once done, RESULTS holds for
 each language a list of (KIND . STATUS), STATUS :GOOD, :NONE (no such rules),
 :UNCHECKED (no grammar to check them with) or (:BAD . TEXT), SANDBOX what
 trying the sandbox found, (STATUS DETAIL) as TUATARA.IO:SANDBOX-STATUS gives,
@@ -43,8 +43,7 @@ grammars, or NIL, and GRAMMAR-PLACES, the directories grammars are looked for
 in, in words, both found on the check's thread."
   (languages '() :read-only t :documentation "The languages whose rules HEALTH-CHECK checks.")
   (grammars '()
-            :documentation "The grammar of each language of HEALTH-CHECK, or NIL, found beforehand on the editor's
-thread.")
+            :documentation "The grammar of each language of HEALTH-CHECK, or NIL, found on the check's thread.")
   (results '()
            :documentation "For each language of HEALTH-CHECK a list of (KIND . STATUS), STATUS :GOOD, :NONE,
 :UNCHECKED or (:BAD . TEXT), once done.")
@@ -137,7 +136,7 @@ them to start, and in a window, how it draws each way it can
          (frontend (and *editor* (editor-frontend *editor*))))
     (multiple-value-bind (renderers in-use) (and frontend (tuatara.frontend:frontend-renderers frontend))
       (tuatara.runtime:start-job-thread
-       (make-health-check languages '())
+       (make-health-check languages)
        (lambda (check)
          (setf (health-check-grammars check)
                (mapcar (lambda (l) (health-grammar (language-grammar l))) languages)
@@ -383,7 +382,7 @@ and the suggested ones apart, each found or missing with what to install."
 (defun glibc-version ()
   "The version of the C library (glibc) Tuatara runs with, as a list of
 numbers: (2 43) for 2.43."
-  (tuatara.io:software-version-numbers
+  (tuatara.text:software-version-numbers
    (sb-alien:alien-funcall (sb-alien:extern-alien "gnu_get_libc_version" (function sb-alien:c-string)))))
 
 (defun appimage-words (appimage glibc)
@@ -395,7 +394,7 @@ numbers: which it is and, for the legacy one, which to take next."
         (format nil "the legacy one (Ubuntu 24.04's libraries, glibc 2.39 or later), the last of its kind; ~a~:[: ~
 later releases need glibc 2.43 or later~;: take Tuatara-x86_64.AppImage, whose window follows the ~
 desktop's light or dark style~]"
-                have (tuatara.io:software-version-at-least-p glibc '(2 43)))
+                have (tuatara.text:software-version-at-least-p glibc '(2 43)))
         (format nil "Ubuntu 26.04's libraries, for glibc 2.43 or later; ~a" have))))
 
 (defun write-health-report (check)

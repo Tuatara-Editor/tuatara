@@ -291,9 +291,9 @@ new ones are, and keep the keys the old ones had.")
     (false (tuatara.command:find-command old) "~a is still a command" old))
   (dolist (new '("gpg-encrypt-region" "gpg-encrypt-file" "gpg-decrypt-region" "gpg-decrypt-file"
                  "gpg-decrypt-with-passphrase" "gpg-sign-region" "gpg-sign-file" "gpg-verify-region"
-                 "gpg-verify-file" "gpg-list-keys" "gpg-import-keys" "gpg-import-keys-region"
+                 "gpg-verify-file" "gpg-keys-manager" "gpg-import-keys" "gpg-import-keys-region"
                  "gpg-choose-encryption-keys" "register-copy" "register-insert" "register-jump"
-                 "register-point" "register-number" "register-add" "register-prepend" "register-list"
+                 "register-point" "register-number" "register-add" "register-prepend" "register-manager"
                  "bookmark-rename" "bookmark-set-categories" "package-update-marked" "search-filter-list"
                  "search-filter-remove" "search-filter-remove-all" "search-filter-hide-records"
                  "search-filter-show-records" "font-list" "rimu-archive-list"
@@ -309,8 +309,18 @@ new ones are, and keep the keys the old ones had.")
     (loop for (command keys) in '(("register-copy" "C-x r s") ("register-point" "C-x r p")
                                   ("register-number" "C-x r n") ("register-add" "C-x r +")
                                   ("register-insert" "C-x r i") ("register-jump" "C-x r j")
-                                  ("register-list" "C-x r l") ("search-filter-list" "C-x / l")
+                                  ("register-manager" "C-x r l") ("search-filter-list" "C-x / l")
                                   ("search-filter-remove-all" "C-x / r")
                                   ("search-filter-show-records" "C-x / f")
                                   ("search-filter-hide-records" "C-x / h"))
           do (is string= keys (tuatara.command:substitute-command-keys (format nil "\\[~a]" command))))))
+
+(define-test (command-families managers)
+  ;; a list of things to change or delete opens by NAME-manager, as buffer-manager does
+  (loop for (old new) in '(("list-jobs" "jobs-manager") ("gpg-list-keys" "gpg-keys-manager")
+                           ("list-auto-saves" "auto-saves-manager") ("register-list" "register-manager")
+                           ("rimu-trash" "trash-manager"))
+        do (false (tuatara.command:find-command old) "~a is still a command" old)
+           (true (tuatara.command:find-command new) "~a is not a command" new))
+  (with-editor-session (editor)
+    (is string= "C-x j" (tuatara.command:substitute-command-keys "\\[jobs-manager]"))))

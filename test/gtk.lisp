@@ -1302,7 +1302,7 @@ windows side by side, \"floated\" for an Org note's two pictures."
         (with-open-file (in png :element-type '(unsigned-byte 8))
           (let ((octets (make-array (file-length in) :element-type '(unsigned-byte 8))))
             (read-sequence octets in)
-            (flet ((u32 (at) (tuatara.io:octets-integer octets at 4 :big-endian t)))
+            (flet ((u32 (at) (tuatara.text:octets-integer octets at 4 :big-endian t)))
               (is = size (u32 16))
               (is = size (u32 20))
               (let ((kinds (loop with at = 8
@@ -1740,3 +1740,50 @@ windows side by side, \"floated\" for an Org note's two pictures."
                    (subseq (gtk-frontend-source)
                            (search "(defun open-window (f)" (gtk-frontend-source))
                            (search "(defun log-stderr-unless-terminal" (gtk-frontend-source)))))))
+
+(define-test (gtk further-window-greeting-failure-let-go)
+  ;; a further window whose greeting fails is let go of: its connection closed, and counted
+  ;; gone, so that the client ends once its other windows have closed
+  (multiple-value-bind (mine theirs) (tuatara.io:socket-pair)
+    (let ((gone 0) (shown nil))
+      (sb-int:encapsulate 'tuatara.frontend:greet-editor 'failing
+                          (lambda (greet fd &rest options)
+                            (declare (ignore greet options))
+                            (error 'end-of-file :stream (make-string-input-stream (format nil "~d" fd)))))
+      (unwind-protect
+           (progn
+             (fail (tuatara.frontend.gtk::greet-another-window mine nil "word"
+                                                               (lambda (greeted) (setf shown greeted))
+                                                               (lambda () (incf gone)))
+                   'end-of-file)
+             (false shown)
+             (is = 1 gone)
+             ;; the editor's end reads that the connection is closed, never waiting on it
+             (sb-posix:fcntl theirs sb-posix:f-setfl
+                             (logior sb-posix:o-nonblock (sb-posix:fcntl theirs sb-posix:f-getfl)))
+             (sb-alien:with-alien ((octet (array sb-alien:unsigned-char 1)))
+               (is eql 0 (handler-case (sb-posix:read theirs (sb-alien:alien-sap octet) 1)
+                           (sb-posix:syscall-error () :open)))))
+        (sb-int:unencapsulate 'tuatara.frontend:greet-editor 'failing)
+        (sb-posix:close theirs)))))
+
+(define-test (gtk input-method-let-go-with-its-window)
+  ;; a window that closes lets go of its input method, which would else stay for as long as the editor runs
+  (with-painting-window (f)
+    (let ((object (sb-alien:alien-funcall
+                   (sb-alien:extern-alien "g_object_new_with_properties"
+                                          (function sb-sys:system-area-pointer sb-alien:unsigned-long
+                                                    sb-alien:unsigned-int sb-sys:system-area-pointer
+                                                    sb-sys:system-area-pointer))
+                   ;; a plain GObject (G_TYPE_OBJECT), with no properties given
+                   80 0 (sb-sys:int-sap 0) (sb-sys:int-sap 0))))
+      (flet ((references () (sb-sys:sap-ref-32 object 8)))
+        ;; held here too, so that it is still there to be looked at
+        (sb-alien:alien-funcall (sb-alien:extern-alien "g_object_ref"
+                                                       (function sb-sys:system-area-pointer sb-sys:system-area-pointer))
+                                object)
+        (setf (tuatara.frontend.gtk::gtk-im f) object)
+        (tuatara.frontend.gtk::release-window-resources f)
+        (false (tuatara.frontend.gtk::gtk-im f))
+        (is = 1 (references))
+        (tuatara.gtk:g-object-unref object)))))

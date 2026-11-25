@@ -431,25 +431,24 @@ the nearest of its parents that takes a file that large."
         when (or (null largest) (<= octets largest)) return mode
         finally (return 'fundamental-mode)))
 
+(defun mode-for-octets (path octets)
+  "The major mode for a file at PATH that begins with OCTETS: MODE-FOR-FILE,
+given as first line the one OCTETS begin with."
+  (mode-for-file path (tuatara.text:octets-first-line octets)))
+
 (defun set-auto-mode (buffer)
   "Give BUFFER the major mode its file name and first line call for, or one
 of that mode's parents when the file is too large for it (MODE-FOR-SIZE),
 saying so."
   (let* ((path (tuatara.buffer:buffer-file buffer))
          (rope (tuatara.buffer:buffer-text buffer))
-         (first-line (let ((end (min (tuatara.text:rope-octet-length rope) 512)))
-                       (and path (plusp end)
-                            (let ((octets (tuatara.text:rope-octets rope :start 0 :end end)))
-                              ;; a Windows file's first line ends with a carriage return too
-                              (string-right-trim
-                               '(#\Return)
-                               (tuatara.text:lenient-string
-                                octets :end (or (tuatara.text:octets-line-end-position octets 0 (length octets))
-                                                (length octets)))))))))
-    (let* ((wanted (if path (mode-for-file path first-line) 'fundamental-mode))
-           (mode (mode-for-size wanted (tuatara.text:rope-octet-length rope))))
-      (unless (eq mode wanted)
-        (tuatara.command:message "~a is larger than ~(~a~) opens (~a): opened in ~(~a~)"
-                                 (tuatara.buffer:buffer-name buffer) wanted
-                                 (tuatara.io:octets-words (mode-largest-file wanted)) mode))
-      (set-major-mode buffer mode))))
+         (end (min (tuatara.text:rope-octet-length rope) 512))
+         (wanted (if path
+                     (mode-for-octets path (tuatara.text:rope-octets rope :start 0 :end end))
+                     'fundamental-mode))
+         (mode (mode-for-size wanted (tuatara.text:rope-octet-length rope))))
+    (unless (eq mode wanted)
+      (tuatara.command:message "~a is larger than ~(~a~) opens (~a): opened in ~(~a~)"
+                               (tuatara.buffer:buffer-name buffer) wanted
+                               (tuatara.text:octets-words (mode-largest-file wanted)) mode))
+    (set-major-mode buffer mode)))

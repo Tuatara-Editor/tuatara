@@ -10,7 +10,8 @@
     ("C-x C-c" save-buffers-kill-editor)
     ("C-x C-q" read-only-mode)
     ("C-x C-r" find-recent-file) ("C-x x b" switch-other-buffer)
-    ("C-x x n" narrow-to-region) ("C-x x s" narrow-to-section) ("C-x x w" widen) ("C-x j" list-jobs) ("C-x J" stop-job)
+    ("C-x x n" narrow-to-region) ("C-x x s" narrow-to-section) ("C-x x w" widen)
+    ("C-x j" jobs-manager) ("C-x J" stop-job)
     ;; windows swapped, rotated and turned, beside the C-x 0 1 2 3 o ^ { } + - keys
     ("C-x w h" swap-window-left)
     ("C-x w j" swap-window-below)
@@ -79,7 +80,7 @@
     ("C-x r d" delete-rectangle) ("C-x r y" yank-rectangle) ("C-x r t" string-rectangle)
     ("C-x r c" clear-rectangle) ("C-x r N" number-rectangle-lines)
     ("C-x r s" register-copy) ("C-x r p" register-point) ("C-x r n" register-number)
-    ("C-x r +" register-add) ("C-x r i" register-insert) ("C-x r j" register-jump) ("C-x r l" register-list)
+    ("C-x r +" register-add) ("C-x r i" register-insert) ("C-x r j" register-jump) ("C-x r l" register-manager)
     ("C-/" undo) ("C-_" undo) ("M-_" redo) ("C-?" redo) ("C-M-_" redo) ("C-g" keyboard-quit) ("C-u" universal-argument)
     ("M-^" join-line) ("M-\\" delete-horizontal-space) ("M-SPC" cycle-spacing) ("C-o" open-line)
     ("M-m" back-to-indentation) ("C-x C-o" delete-blank-lines)
@@ -200,9 +201,6 @@ on, so that a setting written wrong never stops the editor starting."
 
 ;;; C-c in every mode
 
-(defparameter *context-keys-left-free* '("x" "s" "t")
-  "The keys after \\`C-c' never given a mode's command, left for your own (C-c x).")
-
 (defparameter *context-keys-kept-from* '(tuatara.terminal-emulator:terminal-mode)
   "The modes whose keys are not put under \\`C-c': the terminal, where C-c goes to the program.")
 
@@ -221,8 +219,8 @@ parent modes put under \\`C-c', so that \\`C-c' there goes to the program it run
 (defun mirror-mode-keys (name)
   "Put the keys of one character the major mode called NAME binds itself (a
 list's h, r, q) under \\`C-c' too, and take away there those it takes away;
-those under \\`C-c' already, and *CONTEXT-KEYS-LEFT-FREE*, left alone. A
-parent mode's keys are under its own \\`C-c', which the mode's falls through to."
+those under \\`C-c' already left alone. A parent mode's keys are under its own
+\\`C-c', which the mode's falls through to."
   (let* ((keymap (mode-keymap name))
          (inherited (and (keymap-parent keymap) (keymap-entries (keymap-parent keymap)))))
     (loop for (spec . binding) in (keymap-entries keymap)
@@ -230,7 +228,6 @@ parent mode's keys are under its own \\`C-c', which the mode's falls through to.
           for under = (format nil "C-c ~a" key)
           when (and (= 1 (length key)) (graphic-char-p (char key 0)) (char/= (char key 0) #\Space)
                     (symbolp binding) binding
-                    (not (member key *context-keys-left-free* :test #'string=))
                     (not (eq binding (cdr (assoc spec inherited :test #'equal)))))
             do (let ((there (lookup-key keymap (tuatara.frontend:parse-key-sequence under))))
                  (cond ((not (eq binding :undefined)) (unless there (define-key keymap under binding)))

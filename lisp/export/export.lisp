@@ -1780,8 +1780,7 @@ already there is visited as it is, never written over. In a template,
 first lines say which it takes. A template of your own for another kind of
 document (a report) can start from one of these, kept there or anywhere a
 note's #+template: names by its path."
-  (copy-chosen-own-file "Copy the export template: "
-                        (loop for (name . text) in *built-in-latex-templates*
+  (copy-chosen-own-file (loop for (name . text) in *built-in-latex-templates*
                               collect (make-candidate name :value (list nil (concatenate 'string name ".tex") text)))
                         (list (latex-templates-directory))
                         "export template"))

@@ -654,3 +654,14 @@ said of it."
                                tops (make-list count :initial-element sideways) upright)))))))
       (let ((small (seconds 500)) (large (seconds 4000)))
         (true (< (/ large small) 24) "~,3fs for 500 elements, ~,3fs for 4,000" small large)))))
+
+(define-test (template-import latex-file-name-on-one-line)
+  ;; the name of the document a template is made from, a line end in it, stays on the template's comment line
+  (with-test-directory (dir)
+    (let* ((source (namestring (merge-pathnames (format nil "sur~%vey.tex") dir)))
+           (tex (namestring (merge-pathnames "lines-template.tex" dir)))
+           (tuatara.defaults::*note-templates-directory* (namestring (merge-pathnames "note-templates/" dir))))
+      (alexandria:write-string-into-file *survey-latex* source)
+      (tuatara.defaults::latex-import source "lines" :tex tex)
+      (let ((template (alexandria:read-file-into-string tex)))
+        (false (search (format nil "~%vey.tex") template) "~a" (subseq template 0 200))))))

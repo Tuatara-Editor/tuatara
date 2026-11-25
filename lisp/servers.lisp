@@ -7,7 +7,7 @@
 ;;;; thing turned on by itself and off until it is: the ssh agent, gpg-agent,
 ;;;; the clipboard and files dropped on the window. The list is kept between
 ;;;; sessions (a list of trust: a line not understood gives nothing) and
-;;;; changed only by the commands of M-x server-list; the client reads it
+;;;; changed only by the commands of M-x server-manager; the client reads it
 ;;;; before it runs ssh, so nothing on the other machine can turn one on.
 
 (in-package #:tuatara.defaults)
@@ -114,7 +114,7 @@ TUATARA.IO:*PROGRAM-SAID-LIMIT* octets of each, never to be shown raw."
 (defun openssh-version (program)
   "The version of OpenSSH whose ssh is PROGRAM, as a list of numbers, 10.2
 as (10 2) (TUATARA.IO:SOFTWARE-VERSION-NUMBERS); NIL when it does not say one."
-  (tuatara.io:software-version-numbers (nth-value 2 (run-bounded program '("-V") :seconds 10)) "OpenSSH_"))
+  (tuatara.text:software-version-numbers (nth-value 2 (run-bounded program '("-V") :seconds 10)) "OpenSSH_"))
 
 (defun ssh-settings (program host)
   "What ssh, PROGRAM, makes of its configuration for HOST (ssh -G), as a
@@ -231,7 +231,7 @@ be understood, or the line gives nothing; fields after them are passed over
                        # first: the machine as ssh takes it; the ssh agent forwarded; the machines its keys~%~
                        # may be used for from there; gpg-agent forwarded; the clipboard shared; the directory~%~
                        # there dropped files go to; the day it was trusted; the tuatara to run there, when~%~
-                       # another than the one on its PATH. Changed by M-x server-list.~%")
+                       # another than the one on its PATH. Changed by M-x server-manager.~%")
   :path-of #'first :fields 8 :trust t :line-key (field-line-key 7 0))
 
 (defun server-permissions (host)
@@ -251,7 +251,7 @@ NIL for a machine not on the list, which is given nothing."
 ;;; The list's buffer
 
 (define-major-mode servers-mode marked-list-mode
-  "The trusted servers (\\[server-list]): a line each machine whose daemon a
+  "The trusted servers (\\[server-manager]): a line each machine whose daemon a
 client here may be given more than keys and the screen, and what it is
 given. \\<servers-mode>\\[server-trust] trusts another; on the line's
 server, or those marked, \\[server-toggle-agent] turns forwarding the ssh agent on or off,
@@ -306,7 +306,7 @@ trusted, and the tuatara to run there.")
 
 (keep-shown-current 'servers-mode (lambda (list) (declare (ignore list)) (state-list-entries *trusted-servers*)))
 
-(define-command server-list ()
+(define-command server-manager ()
   "List the trusted servers, the machines whose daemons a client here
 \(tuatara --client=HOST) may give more than the keys typed and the size of
 the screen, each with what it is given: the ssh agent, with the machines its
@@ -322,7 +322,7 @@ There \\<servers-mode>\\[server-trust] trusts another, \\[server-toggle-agent], 
 (define-command server-trust ()
   "Trust a machine asked for in the minibuffer, as tuatara --client= names
 it (build.example, me@build.example, or an alias of ~/.ssh/config): it goes
-on the list of trusted servers (\\[server-list]) with nothing given yet, each
+on the list of trusted servers (\\[server-manager]) with nothing given yet, each
 thing then turned on there by itself."
   (let ((host (read-string "Trust the server (as tuatara --client= names it): " :trim t)))
     (cond ((host-refusal host) (message "~a" (host-refusal host)))
@@ -330,7 +330,7 @@ thing then turned on there by itself."
           (t (state-list-put *trusted-servers*
                              (list (server-entry host nil '() nil nil nil (format-time "%F" (get-universal-time)))))
              (refill-open-list "*Servers*" 'servers-mode)
-             (message "~a is trusted, with nothing given yet: \\[server-list] turns each thing on" host)))))
+             (message "~a is trusted, with nothing given yet: \\[server-manager] turns each thing on" host)))))
 
 (defun change-servers (noun change &key ask)
   "Change the servers marked in the list of trusted servers, or the one on
@@ -462,17 +462,18 @@ shell on that machine."
       (message "Kept")))
 
 (defun install-servers ()
-  "Bind the keys of the list of trusted servers: \\`+' trusts another,
-\\`A', \\`H', \\`G', \\`C' and \\`F' change what the servers marked are given,
-\\`T' the tuatara run there."
+  "Bind the keys of the list of trusted servers, all under \\`C-c': \\`C-c +'
+trusts another, \\`C-c A', \\`C-c H', \\`C-c G', \\`C-c C' and \\`C-c F' change
+what the servers marked are given, \\`C-c T' the tuatara run there."
   (declare-list-kind 'servers-mode :plain)
-  (define-keys *servers-keymap* '(("+" server-trust) ("A" server-toggle-agent) ("H" server-agent-destinations)
-                                  ("G" server-toggle-gpg) ("C" server-toggle-clipboard) ("F" server-toggle-files)
-                                  ("T" server-tuatara-program)))
-  (commands-for-mode 'servers-mode "the list of trusted servers (\\[server-list])" 'server-toggle-agent
+  (define-keys *servers-keymap* '(("C-c +" server-trust) ("C-c A" server-toggle-agent)
+                                  ("C-c H" server-agent-destinations) ("C-c G" server-toggle-gpg)
+                                  ("C-c C" server-toggle-clipboard) ("C-c F" server-toggle-files)
+                                  ("C-c T" server-tuatara-program)))
+  (commands-for-mode 'servers-mode "the list of trusted servers (\\[server-manager])" 'server-toggle-agent
                      'server-agent-destinations 'server-toggle-gpg 'server-toggle-clipboard 'server-toggle-files
                      'server-tuatara-program 'server-bring-language-server 'server-remove-language-server)
-  (commands-for-mode 'gpg-keys-mode "the list of GnuPG keys (\\[gpg-list-keys])" 'server-copy-keys))
+  (commands-for-mode 'gpg-keys-mode "the list of GnuPG keys (\\[gpg-keys-manager])" 'server-copy-keys))
 
 ;;; Public keys for the servers' keyrings
 
@@ -533,7 +534,7 @@ saying what was done (IMPORT-WORDS), as gpg there said it."
             (format nil "On ~a: ~a" host (import-words statuses (server-said-shown complained))))))))
 
 (define-command server-copy-keys ()
-  "Copy the public keys marked in the list of GnuPG keys (\\[gpg-list-keys]),
+  "Copy the public keys marked in the list of GnuPG keys (\\[gpg-keys-manager]),
 or the one at the cursor, into gpg's keyring on a trusted server asked for,
 so that \\[gpg-encrypt-file] there can encrypt to them: exported here and
 imported there over ssh, in the background. Nothing secret is sent; ssh

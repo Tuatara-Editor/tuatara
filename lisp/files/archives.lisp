@@ -38,7 +38,7 @@
     (:cpio :programs (:bsdtar) :words "cpio" :format "cpio" :endings (".cpio")))
   "The kinds of archive listed and unpacked, each the kind of its first octets
 \(TUATARA.IO:OCTETS-KIND) and a property list. :PROGRAMS are the programs that
-read it, the first installed that can taken (ARCHIVE-PROGRAM), GNU tar (:TAR),
+read it, the first of them installed taken (ARCHIVE-PROGRAM), GNU tar (:TAR),
 which also makes the archives it reads, 7-Zip (:7ZZ) or bsdtar (:BSDTAR).
 :OPTION is tar's option compressing it. :WORDS is what a message calls it.
 :FORMAT is how bsdtar names the format it read (in its own words, the start of
@@ -416,7 +416,7 @@ link leads."
               (let* ((attributes (tuatara.text:split-words (or (field "Attributes") "")))
                      (unix (find-if (lambda (word) (and (= (length word) 10) (find (char word 0) "-dlbcps")))
                                     attributes))
-                     (directory (or (equal (field "Directory") "+") (find "D" attributes :test #'string=)))
+                     (directory (or (equal (field "Folder") "+") (find "D" attributes :test #'string=)))
                      (time (or (field "Modified") ""))
                      (link (or (field "Symbolic Link") (field "Link"))))
                 (format out "~a ~a/~a ~12@a ~a ~a~@[ -> ~a~]~%"
@@ -707,7 +707,7 @@ it has less than *ARCHIVE-FREE-RESERVE* free."
   "Say no to unpacking more into DIRECTORY, whose drive has less than
 *ARCHIVE-FREE-RESERVE* free."
   (refuse "unpacking stopped: ~a has less than ~a free (*archive-free-reserve*)"
-          (abbreviated-path directory) (tuatara.io:octets-words *archive-free-reserve*)))
+          (abbreviated-path directory) (tuatara.text:octets-words *archive-free-reserve*)))
 
 (defun unpack-archive (program kind archive copy directory cancel password)
   "Unpack ARCHIVE, of KIND (*ARCHIVE-KINDS*), read from COPY, its sealed copy,

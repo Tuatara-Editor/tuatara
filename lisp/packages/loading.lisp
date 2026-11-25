@@ -638,8 +638,8 @@ says none, or has no entry."
   "True when this Tuatara is the version NEEDED or later, each number
 compared in turn, one left out counted 0; true too when this one's version
 is not known."
-  (let ((have (tuatara.io:software-version-numbers (tuatara:version))))
-    (or (null have) (tuatara.io:software-version-at-least-p have (tuatara.io:software-version-numbers needed)))))
+  (let ((have (tuatara.text:software-version-numbers (tuatara:version))))
+    (or (null have) (tuatara.text:software-version-at-least-p have (tuatara.text:software-version-numbers needed)))))
 
 (defun unfitting-version (directory name file)
   "The version of Tuatara the package NAME in DIRECTORY needs when it is newer

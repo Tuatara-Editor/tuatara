@@ -5,8 +5,9 @@
 # Unicode version SBCL's character data is (15.0.0), each checked against its
 # SHA-256, into build/bidi-conformance/, and runs every case through the order
 # Tuatara shows a line in (src/display/bidi.lisp), in the toolbox when there is
-# one; prints how many of each passed. The files are under the Unicode License
-# v3 (https://www.unicode.org/license.txt) and are not kept in the repository.
+# one; prints how many of each passed, and exits with 1 when any case failed.
+# The files are under the Unicode License v3
+# (https://www.unicode.org/license.txt) and are not kept in the repository.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 . tools/inside.sh
@@ -21,4 +22,5 @@ fetch BidiCharacterTest.txt 3c423c301f7b8dc41b879062cbf01fd1b4ec2ea4826e20d276c4
 fetch BidiBrackets.txt 333ae1e99db0504ca8a046a07dc45b5e7aa91869c685e6bf955ebe674804827a
 in_tree :tuatara/core \
   '(load "tools/bidi-conformance.lisp")' \
-  "(let ((*print-pretty* nil)) (tuatara.bidi-conformance:run-bidi-conformance (truename \"$directory/\")))"
+  "(let ((*print-pretty* nil))
+     (sb-ext:exit :code (if (tuatara.bidi-conformance:run-bidi-conformance (truename \"$directory/\")) 0 1)))"

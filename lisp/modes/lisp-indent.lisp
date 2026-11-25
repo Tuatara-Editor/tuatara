@@ -705,11 +705,6 @@ single semicolon goes to *COMMENT-COLUMN*."
 
 ;;; Indenting lines
 
-(defparameter *lisp-indent-reach* (* 1024 1024)
-  "The most octets before a line that are read to indent it as Lisp: a
-top-level form that starts further back (a large quoted list of data) is read
-from the first line within reach, as if it started there.")
-
 (defun top-level-start (rope position syntax)
   "Where the top-level form holding the line starting at POSITION of ROPE
 starts: by SYNTAX's tree when there is one and that form reads without error,

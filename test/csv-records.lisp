@@ -156,6 +156,27 @@ newline outside double quotes, or the end."
     (with-records (f buffer path) ('("C-x / s t u i RET") :text text)
       (is equal (list "\"bird" "name\",place" "tui,Raglan") (records-shown buffer)))))
 
+(define-test (csv-records header-kept-over-edits-below)
+  ;; the names of the columns are read once: an edit below the header keeps them, one in it
+  ;; or a new separator reads them again
+  (with-records (f buffer path) ('() :text (format nil "name,place~%kiwi,Akaroa~%"))
+    (let ((reads 0))
+      (is string= "place" (tuatara.defaults::csv-header-name buffer 1))
+      (sb-int:encapsulate 'tuatara.defaults::csv-header-names 'reads
+                          (lambda (fn buffer) (incf reads) (funcall fn buffer)))
+      (unwind-protect
+           (progn
+             (tuatara.buffer:buffer-insert buffer (tuatara.buffer:buffer-size buffer) "tui,Raglan")
+             (is string= "place" (tuatara.defaults::csv-header-name buffer 1))
+             (is = 0 reads)
+             (tuatara.buffer:buffer-insert buffer 4 "s")
+             (is string= "names" (tuatara.defaults::csv-header-name buffer 0))
+             (is = 1 reads)
+             (setf (tuatara.buffer:buffer-local buffer :csv-delimiter) 59)
+             (is string= "names,place" (tuatara.defaults::csv-header-name buffer 0))
+             (is = 2 reads))
+        (sb-int:unencapsulate 'tuatara.defaults::csv-header-names 'reads)))))
+
 (define-test (csv-records separator-read-as-matched)
   ;; a filter by a column kept before the separator is changed cuts records by the new one
   (with-records (f buffer path) ('() :text (format nil "a;b~%1;x~%2;y~%"))
@@ -182,6 +203,16 @@ newline outside double quotes, or the end."
                           (format nil "N,V~%b,10~%c,\"100\"~%a,9~%")))
   ;; elsewhere the fields are apart by blanks, from 1
   (is string= (lines-text "x 1" "y 2") (sorted-text "M-x s o r t - f i e l d s RET" (lines-text "y 2" "x 1"))))
+
+(define-test (csv-records sorted-by-a-field-a-line-each)
+  ;; a file of records a line each, a password file or the hosts file, sorts by its named field
+  (is string= (format nil "bob:x:2:2::/a:/bin/sh~%amy:x:1:1::/b:/bin/sh~%")
+      (list-records-after "C-x h M-x s o r t - f i e l d s RET h o m e RET"
+                          (format nil "amy:x:1:1::/b:/bin/sh~%bob:x:2:2::/a:/bin/sh~%")
+                          :mode "etc-passwd-generic-mode"))
+  (is string= (format nil "10.0.0.2 a~%10.0.0.1 b~%")
+      (list-records-after "C-x h M-x s o r t - f i e l d s RET n a m e RET"
+                          (format nil "10.0.0.1 b~%10.0.0.2 a~%") :mode "hosts-generic-mode")))
 
 (define-test (csv-records stray-quote-in-a-field)
   ;; a quote inside a field, as in 12" for inches, opens no quoted field: the records after it

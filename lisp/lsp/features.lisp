@@ -753,14 +753,18 @@ change; else words saying why not."
 
 (defun workspace-edit-question (server paths asked)
   "The question whether to make SERVER's change of the files at PATHS: one it
-ASKED for of itself, or one that reaches outside its project."
-  (let ((outside (remove-if (lambda (p) (tuatara.io:really-within-p p (lsp-server-root server))) paths)))
-    (format nil "~a ~:[would change~;asks to change~] ~d file~:p~:[~*~; (~:*~d outside ~a)~]: ~
-                 ~{~a~^, ~}~:[~;, ...~]; change ~:[it~;them~]?"
-            (lsp-server-name server) asked (length paths)
-            (and outside (length outside)) (abbreviated-path (lsp-server-root server))
-            (mapcar #'abbreviated-path (subseq (or outside paths) 0 (min 4 (length (or outside paths)))))
-            (> (length (or outside paths)) 4) (rest paths))))
+ASKED for of itself, or one that reaches outside its project. Two values:
+the prompt, and the details beside it naming the files, those outside the
+project first."
+  (let* ((root (lsp-server-root server))
+         (outside (remove-if (lambda (p) (tuatara.io:really-within-p p root)) paths))
+         (inside (set-difference paths outside :test #'equal)))
+    (values (format nil "~a ~:[would change~;asks to change~] ~d file~:p~@[ (~d outside its project)~]; ~
+                         change ~:[it~;them~]?"
+                    (lsp-server-name server) asked (length paths) (and outside (length outside)) (rest paths))
+            (format nil "~{~{~a ~a:~%~{  ~a~^~%~}~}~^~%~}"
+                    (loop for (where files) in (list (list "Outside" outside) (list "In" inside))
+                          when files collect (list where (abbreviated-path root) (mapcar #'abbreviated-path files)))))))
 
 (defun lsp-apply-workspace-edit (server edit &key asked)
   "Make EDIT, a server's WorkspaceEdit, in the buffers of its files, those not
@@ -775,7 +779,8 @@ what was left alone, or NIL."
     (let ((paths (remove nil (mapcar (lambda (change) (uri-path (car change))) changes))))
       (when (or (null paths)
                 (not (or asked (notevery (lambda (p) (tuatara.io:really-within-p p (lsp-server-root server))) paths)))
-                (y-or-n-p* (workspace-edit-question server paths asked) :fresh asked))
+                (multiple-value-bind (prompt details) (workspace-edit-question server paths asked)
+                  (y-or-n-p* prompt :fresh asked :details details)))
         (let ((done 0) (left '()))
           (loop for (uri . edits) in changes
                 do (let ((outcome (lsp-apply-file-edits server uri edits)))

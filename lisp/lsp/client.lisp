@@ -594,7 +594,7 @@ SERVER and ARGUMENTS bound."
   (let ((o #'tuatara.text:json-object))
     (funcall o
              "general" (funcall o "positionEncodings" #("utf-8" "utf-16"))
-             "workspace" (funcall o "configuration" t "workspaceDirectories" t "applyEdit" t
+             "workspace" (funcall o "configuration" t "workspaceFolders" t "applyEdit" t
                                   "workspaceEdit" (funcall o "documentChanges" t)
                                   "inlayHint"
                                   (funcall o "refreshSupport" t)
@@ -671,7 +671,7 @@ program cannot be started (said so)."
                   "processId" (sb-posix:getpid)
                   "clientInfo" (tuatara.text:json-object "name" "Tuatara")
                   "rootUri" (path-uri root) "rootPath" (tuatara.io:native root)
-                  "workspaceDirectories"
+                  "workspaceFolders"
                   (vector (tuatara.text:json-object "uri" (path-uri root) "name" (tuatara.io:native-file-name root)))
                   "capabilities" (lsp-capabilities)
                   "initializationOptions" (or options :omit))
@@ -752,7 +752,7 @@ directories are no longer watched for it."
                          :null)))
          (tuatara.text:json-items params "items"))))
 
-(define-lsp-request "workspace/workspaceDirectories" (server params)
+(define-lsp-request "workspace/workspaceFolders" (server params)
   (let ((root (lsp-server-root server)))
     (vector (tuatara.text:json-object "uri" (path-uri root) "name" (tuatara.io:native-file-name root)))))
 

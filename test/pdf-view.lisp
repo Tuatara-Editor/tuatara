@@ -500,6 +500,47 @@ and zooms kept for the next time."
         (true (tuatara.frontend.fake:fake-frame-showing f "report.pdf has no embedded files")))
       (pdf-forget))))
 
+(define-test (pdf-view embedded-file-replaced-refused)
+  ;; a PDF from outside replaced at its path after its embedded files were listed: saving one takes nothing
+  ;; out of the file put in its place
+  (with-test-directory (dir)
+    (with-test-directory (trusted)
+      (let ((file (namestring (merge-pathnames "report.pdf" dir)))
+            (other (namestring (merge-pathnames "other.pdf" dir)))
+            (saved (merge-pathnames "note.txt" trusted))
+            (untrusted tuatara-user:*untrusted-directories*))
+        (alexandria:write-byte-vector-into-file (pdf-octets '("Hello") :attachment '("note.txt" "secret inside")) file)
+        (alexandria:write-byte-vector-into-file (pdf-octets '("Other") :attachment '("note.txt" "put in its place"))
+                                                other)
+        ;; set, not bound: the saving is done on a thread of its own
+        (setf tuatara-user:*untrusted-directories* (list (namestring dir)))
+        (unwind-protect
+             (progn
+               (pdf-forget)
+               (let ((f (pdf-session file "a"
+                                     (list (lambda () (rename-file other file))
+                                           (format nil "C-x o s C-a C-k ~a RET" (rimu-typed (namestring trusted)))
+                                           (after-pdf-views (lambda () nil)) :tick)
+                                     :cell-pixels '(10 20) :width 160)))
+                 (false (probe-file saved))
+                 (true (tuatara.frontend.fake:fake-frame-showing f "another file now"))))
+          (setf tuatara-user:*untrusted-directories* untrusted)
+          (pdf-forget))))))
+
+(define-test (pdf-view embedded-files-list-kind)
+  ;; the list of embedded files is a list whose entries are opened: RET, l and o save the file on the line
+  (is eq :entries (tuatara.defaults::list-kind 'tuatara.defaults::pdf-attachments-mode))
+  (with-test-directory (dir)
+    (let ((file (merge-pathnames "report.pdf" dir))
+          (saved (merge-pathnames "note.txt" dir)))
+      (alexandria:write-byte-vector-into-file (pdf-octets '("Hello") :attachment '("note.txt" "secret inside")) file)
+      (dolist (key '("RET" "l" "o"))
+        (pdf-forget)
+        (pdf-session file "a" (format nil "C-x o ~a RET" key) :cell-pixels '(10 20) :width 160)
+        (true (loop repeat 200 thereis (probe-file saved) do (sleep 0.02)) "~a" key)
+        (when (probe-file saved) (delete-file saved)))
+      (pdf-forget))))
+
 (define-test (pdf-view attachment-saved-untrusted)
   ;; a file taken out of a PDF from outside and saved into a trusted directory stays untrusted
   (with-test-directory (dir)

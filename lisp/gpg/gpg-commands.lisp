@@ -8,7 +8,7 @@
 ;;;; a signed file FILE.gpg) or its signature verified, saying who signed it,
 ;;;; when, and how far that key is trusted; the same on the region, the armoured
 ;;;; blocks in it decrypted or verified in place; and the keys listed (M-x
-;;;; gpg-list-keys), their details shown, imported from a file or the region,
+;;;; gpg-keys-manager), their details shown, imported from a file or the region,
 ;;;; exported, inserted, deleted. gpg reads and writes through pipes as for
 ;;;; encrypted files (encrypted.lisp): a file is read by Tuatara without
 ;;;; changing its access time, and what gpg gives back is written by Tuatara, a
@@ -160,7 +160,14 @@ FROM a file come from outside, it is marked as come from outside too
 (defun gpg-target-free-p (path)
   "True when nothing is at PATH, or you say to write over what is."
   (or (null (tuatara.io:path-stamp path :follow nil))
-      (yes-or-no-p* (format nil "~a exists; write over it?" (abbreviated-path path)))))
+      (yes-or-no-p* (format nil "Write over ~a?" (tuatara.io:native-file-name path))
+                    :details (format nil "~a exists." (abbreviated-path path)))))
+
+(defun confirm-decrypting-to-disk (what)
+  "True when, asked, you say to decrypt WHAT (words naming a file, or files) to
+disk, where its text can then be read."
+  (yes-or-no-p* (format nil "Decrypt ~a to disk?" what)
+                :details "Its text is then on disk, where it can be read."))
 
 (defun gpg-stripped-name (path endings)
   "PATH without the first of ENDINGS it ends in (.gpg), or NIL."
@@ -264,10 +271,7 @@ the encrypted file instead: its text stays in memory."
   (let* ((path (shown-file-argument "Decrypt file: "))
          (offered (decrypted-name path))
          (target (read-native-path "Decrypt to: " :initial (abbreviated-path offered) :kind :any :writing t)))
-    (when (and target (gpg-target-free-p target)
-               (yes-or-no-p* (format nil
-                                     "This writes the text of ~a to disk, where it can be read; go on?"
-                                     (tuatara.io:native-file-name path))))
+    (when (and target (gpg-target-free-p target) (confirm-decrypting-to-disk (tuatara.io:native-file-name path)))
       (decrypt-file-to path target))))
 
 (defparameter *signature-kinds*
@@ -370,12 +374,14 @@ AFTER as RUN-GPG-WORK takes it."
 error when no text is selected."
   (values-list (or (selected-region buffer) (refuse "Select the text first"))))
 
-(defun replace-region-when-unchanged (buffer start end version text words)
+(defun replace-region-when-unchanged (buffer start end version text words &key before)
   "Replace BUFFER's text from START below END with TEXT (octets) as one edit, when
-the buffer is still at VERSION, the selection ending with the text it held; else
-say that WORDS was not put in, the text having changed."
+the buffer is still at VERSION, the selection ending with the text it held,
+BEFORE, a function of no arguments, called first when given; else say that
+WORDS was not put in, the text having changed. True when it was put in."
   (if (and (live-buffer-p buffer) (eq (tuatara.buffer:buffer-version buffer) version))
-      (progn (tuatara.buffer:buffer-replace buffer start end text)
+      (progn (when before (funcall before))
+             (tuatara.buffer:buffer-replace buffer start end text)
              (drop-selection buffer)
              t)
       (progn (message "~a: the text changed meanwhile, nothing put in" words) nil)))
@@ -461,11 +467,11 @@ decrypted text to the file unencrypted."
             (run-gpg-work "decrypting the block" (list "--decrypt" "--output" "-")
                           (lambda (output statuses ok said)
                             (if (and ok (gpg-status-p statuses "DECRYPTION_OKAY"))
-                                (progn (keep-from-disk buffer)
-                                       (when (replace-region-when-unchanged buffer start end version
-                                                                            output "Decrypting")
-                                         (message "Decrypted in place: not auto-saved, and a save asks before ~
-                                                   writing it unencrypted")))
+                                ;; kept from the disk before the decrypted text goes in
+                                (when (replace-region-when-unchanged buffer start end version output "Decrypting"
+                                                                     :before (lambda () (keep-from-disk buffer)))
+                                  (message "Decrypted in place: not auto-saved, and a save asks before ~
+                                            writing it unencrypted"))
                                 (message "Not decrypted: ~a" (gpg-failure-words statuses said)))
                             (fill output 0))
                           :input cipher
@@ -513,13 +519,14 @@ is trusted."
 
 ;;; The keys
 
-(define-major-mode gpg-keys-mode marked-list-mode
-  "Your GnuPG keys and those you have of others, one a line: validity, ID, name,
-expiry, what it can do (e encrypt, s sign, c certify), yours.
-\\<gpg-keys-mode>\\[list-mark-entry] marks the key at the cursor and moves down,
+(define-major-mode gpg-keys-mode sectioned-list-mode
+  "Your GnuPG keys and those you have of others, in two sections, one a line:
+ID, validity, what it can do (e encrypt, s sign, c certify), expiry, name.
+\\<gpg-keys-mode>\\[list-visit] shows the details of the key at the cursor, on
+a heading folds or unfolds its section, \\[list-fold-heading] folds it.
+\\[list-mark-entry] marks the key at the cursor and moves down,
 \\[list-unmark-entry] unmarks it, \\[list-unmark-all] unmarks them all,
-\\[list-toggle-marks] swaps marked and unmarked. \\[gpg-keys-details] shows its
-details. \\[gpg-import-keys] imports keys from a file, \\[gpg-keys-export]
+\\[list-toggle-marks] swaps marked and unmarked. \\[gpg-import-keys] imports keys from a file, \\[gpg-keys-export]
 exports the keys marked (or the one at the cursor) to a file,
 \\[gpg-keys-insert] puts them in the buffer you came from,
 \\[list-delete-marked] deletes them, after asking. \\[revert-buffer] lists them
@@ -527,25 +534,28 @@ again."
   :lighter "Keys" :interactive nil)
 
 (defvar *gpg-keys-keymap* (make-keymap :name "The list of GnuPG keys, before the modal keys")
-  "Keys of the list of GnuPG keys (\\[gpg-list-keys]), before the modal keys.")
+  "Keys of the list of GnuPG keys (\\[gpg-keys-manager]), before the modal
+keys.")
 
 (defparameter *gpg-keys-columns* '((" M" :width 2) ("ID" :width 16) ("Validity" :width 9) ("Can" :width 4)
-                                   ("Expires" :width 10) ("Yours" :width 5) ("Name"))
+                                   ("Expires" :width 10) ("Name"))
   "The columns of the list of keys, as TABLE-HEADING-PIECES takes them: the
 mark, the key's ID, how far it is trusted, what it can do (e encrypt, s sign,
-c certify), when it expires, whether it is yours, and its name.")
+c certify), when it expires, and its name.")
 
 (defun gpg-keys-show (buffer &optional (point :keep))
   "Fill BUFFER, the list of keys, as gpg has them now, listed in the
 background, point on line POINT or kept."
-  (gpg-in-background "listing keys" (lambda (cancel) (declare (ignore cancel)) (gpg-keys :all t))
+  (gpg-in-background "listing keys" (lambda (cancel) (gpg-keys :all t :cancel cancel))
                      (lambda (keys) (when (live-buffer-p buffer) (gpg-keys-draw buffer keys point)))
                      :asker :agent :buffer buffer :quiet t))
 
 (defun gpg-keys-draw (buffer keys &optional (point :keep))
-  "Make BUFFER, the list of keys, show KEYS (GPG-KEYS), point on line POINT or kept."
+  "Make BUFFER, the list of keys, show KEYS (GPG-KEYS), yours in a section
+before those of others, point on line POINT or kept."
   (render-table-list
-   buffer *gpg-keys-columns* keys
+   buffer *gpg-keys-columns*
+   (group-sections keys (lambda (key) (if (getf key :secret) :yours :others)) :first :yours)
    (lambda (key mark section)
      (declare (ignore section))
      (list (list-mark-sign mark)
@@ -553,8 +563,8 @@ background, point on line POINT or kept."
            (getf key :validity)
            (or (getf key :capabilities) "")
            (let ((e (getf key :expires))) (if e (format-time "%F" e) ""))
-           (if (getf key :secret) "yours" "")
            (escape-controls (or (getf key :name) ""))))
+   :sections t :section-title (lambda (section) (if (eq section :yours) "Yours" "Others'"))
    :marked-by (lambda (key section) (declare (ignore section)) (gpg-key-id key))
    :after (list (format nil "~%   ~[No keys~;1 key~:;~:*~d keys~], ~d yours~%" (length keys)
                         (count-if (lambda (key) (getf key :secret)) keys)))
@@ -566,9 +576,9 @@ background, point on line POINT or kept."
   "The ID of KEY, one of GPG-KEYS: what a mark on it in the list of keys is kept by."
   (getf key :id))
 
-(define-command gpg-list-keys ()
-  "List your GnuPG keys and those you have of others: there
-\\<gpg-keys-mode>\\[list-mark-entry] marks one, \\[gpg-keys-details] shows its
+(define-command gpg-keys-manager ()
+  "List your GnuPG keys and those you have of others, in a section each: there
+\\<gpg-keys-mode>\\[list-mark-entry] marks one, \\[list-visit] shows its
 details, \\[gpg-import-keys] imports keys from a file, \\[gpg-keys-export]
 exports, \\[gpg-keys-insert] inserts and \\[list-delete-marked] deletes those
 marked."
@@ -576,7 +586,7 @@ marked."
         (buffer (buffer-in-mode "*GnuPG keys*" 'gpg-keys-mode)))
     (unless (eq from buffer) (setf (tuatara.buffer:buffer-local buffer 'gpg-keys-from) from))
     (setf (buffer-override-keymap buffer) *gpg-keys-keymap*)
-    (gpg-keys-show buffer 2)
+    (gpg-keys-show buffer 3)
     (show-buffer buffer)))
 
 (defun gpg-keys-chosen ()
@@ -591,20 +601,23 @@ each line written as the editor shows them (ESCAPE-CONTROLS)."
                                                                        (tuatara.text:lenient-string octets))
                                                     :separator '(#\Newline)))))
 
-(define-command gpg-keys-details ()
-  "Show the details of the key at the cursor: its fingerprint, its names, its
-subkeys and what they can do, when they expire."
-  (let ((key (list-entry-at)))
-    (if (null key)
-        (message "No key on this line")
-        (run-gpg-work (format nil "showing the details of ~a" (getf key :id))
-                      (list "--list-keys" "--with-subkey-fingerprints" "--fingerprint" (getf key :fingerprint))
-                      (lambda (output statuses ok said)
-                        (declare (ignore ok))
-                        (if (plusp (length output))
-                            (show-help (format nil "Key ~a~%~%~a" (getf key :id) (key-details-text output)))
-                            (message "No details of ~a: ~a" (getf key :id) (gpg-failure-words statuses said))))
-                      :asker :agent :quiet t))))
+(defmethod visit-entry ((mode gpg-keys-mode) list key other)
+  "Show the details of KEY (GPG-SHOW-KEY-DETAILS)."
+  (declare (ignore list other))
+  (gpg-show-key-details key))
+
+(defun gpg-show-key-details (key)
+  "Show the details of KEY, one of GPG-KEYS, as help: its fingerprint, its
+names, its subkeys and what they can do, when they expire; gpg asked in the
+background."
+  (run-gpg-work (format nil "showing the details of ~a" (getf key :id))
+                (list "--list-keys" "--with-subkey-fingerprints" "--fingerprint" (getf key :fingerprint))
+                (lambda (output statuses ok said)
+                  (declare (ignore ok))
+                  (if (plusp (length output))
+                      (show-help (format nil "Key ~a~%~%~a" (getf key :id) (key-details-text output)))
+                      (message "No details of ~a: ~a" (getf key :id) (gpg-failure-words statuses said))))
+                :asker :agent :quiet t))
 
 (define-command gpg-import-keys ()
   "Import the keys in a file asked for (armoured or not) into your keyring; say what was imported."
@@ -686,9 +699,10 @@ yours with its secret part, asked twice."
   (declare (ignore mark))
   (let ((keys (list-entries-of list ids)))
     (cond ((null keys) (message "No key on this line"))
-          ((not (yes-or-no-p* (format nil
-                                      "Delete ~{~a~^, ~} from your keyring?"
-                                      (mapcar (lambda (k) (or (getf k :name) (getf k :id))) keys))))
+          ((not (yes-or-no-p* (format nil "Delete ~d key~:p from your keyring?" (length keys))
+                              :details (format nil "~{~a~^~%~}"
+                                               (mapcar (lambda (k) (escape-controls (or (getf k :name) (getf k :id))))
+                                                       keys))))
            (message "Nothing deleted"))
           ((and (some (lambda (k) (getf k :secret)) keys)
                 (not (yes-or-no-p* "Delete your own keys too?"
@@ -724,7 +738,7 @@ not, in words."
 
 (defun install-gpg-commands ()
   "Bind the keys of the list of GnuPG keys; its keys have no mark for deletion."
-  (declare-list-kind 'gpg-keys-mode :plain)
+  (entry-list-keys 'gpg-keys-mode "the list of GnuPG keys (\\[gpg-keys-manager])")
   (define-key (mode-keymap 'gpg-keys-mode) "d" :undefined)
-  (define-keys *gpg-keys-keymap* '(("RET" gpg-keys-details) ("i" gpg-import-keys) ("x" gpg-keys-export)
+  (define-keys *gpg-keys-keymap* '(("i" gpg-import-keys) ("x" gpg-keys-export)
                                    ("I" gpg-keys-insert) ("D" list-delete-marked))))

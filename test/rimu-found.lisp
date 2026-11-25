@@ -61,6 +61,24 @@ Returns the frontend and the editor."
   "The first of LINES holding TEXT."
   (find-if (lambda (l) (search text l)) lines))
 
+(define-test (rimu-found search-stopped-as-any-job)
+  ;; a list no longer of files found stops its search as any job is stopped, a matcher in the middle of a
+  ;; file cut short with it
+  (let* ((buffer (tuatara.buffer:make-buffer (tuatara.buffer:unique-buffer-name "found")))
+         (job (tuatara.defaults::make-rimu-search buffer '(:kind :name)))
+         (stopped '()))
+    (setf (tuatara.buffer:buffer-local buffer 'tuatara.defaults::rimu-search) job
+          (tuatara.buffer:buffer-local buffer 'tuatara.defaults::rimu-found) '(:kind :name))
+    (sb-int:encapsulate 'tuatara.runtime:job-stop 'stops-seen (lambda (function job)
+                                                            (push job stopped)
+                                                            (funcall function job)))
+    (unwind-protect (tuatara.defaults::rimu-forget-found buffer)
+      (sb-int:unencapsulate 'tuatara.runtime:job-stop 'stops-seen)
+      (tuatara.buffer:kill-buffer buffer))
+    (is equal (list job) stopped)
+    (true (car (tuatara.runtime:job-cancel job)))
+    (false (tuatara.defaults::rimu-found-p buffer))))
+
 (define-test (rimu-found by-name)
   (with-found-tree (dir)
     (let ((box (merge-pathnames "box/" dir)))
