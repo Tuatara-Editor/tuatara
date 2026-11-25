@@ -1807,6 +1807,25 @@ message said TEXT since the step before began (SAID-IN-SESSION)."
       (false (tuatara.frontend.fake:fake-frame-showing f "restart Tuatara"))
       (is string= "loaded" (tuatara.packages::declared-package-condition "structpkg")))))
 
+(define-test (packages new-structure-on-a-name-in-use-loaded-at-once)
+  ;; a new version defining a structure on a name the running one already uses for something
+  ;; else is loaded over it: weighing its structures leaves nothing behind under that name
+  (with-structure-package (dir where)
+    (structure-package-version dir "one" "(defun crate () :one)")
+    (let ((f (auto-save-session
+              (list (list :until (lambda () (tuatara-user:load-package "structpkg" :source where :version "latest") t))
+                    (list :until (lambda () (equal "one" (package-test-version))))
+                    (list :until (lambda ()
+                                   (structure-package-version dir "two" "(defstruct crate a)
+(defun crate-mark (c) (setf (crate-a c) :marked) c)")))
+                    "M-x p a c k a g e - u p d a t e RET"
+                    (list :until (lambda () (or (equal "two" (package-test-version))
+                                                (package-messages-said "could not be loaded")))))
+              :width 200)))
+      (false (tuatara.frontend.fake:fake-frame-showing f "could not be loaded"))
+      (is equal "two" (package-test-version))
+      (is eq :marked (structpkg-call "CRATE-A" (structpkg-call "CRATE-MARK" (structpkg-call "MAKE-CRATE" :a 1)))))))
+
 (define-test (packages check-named-as-a-check)
   ;; a check of who signed a version kept says so in the list of jobs and the log, never "Fetching"
   (let ((check (tuatara.packages::make-package-fetch "kept" "https://example.invalid/kept" nil nil nil))

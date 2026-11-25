@@ -208,9 +208,11 @@ slot, its name, its place, the kind of value kept in it and its type. A
 structure can be defined again in a running Tuatara only as it was laid out
 before; one laid out otherwise needs a new start. NIL when NAME names no
 structure."
-  (let ((definition (sb-kernel:find-defstruct-description name nil))
-        (layout (sb-kernel:find-layout name)))
-    (when (and definition layout)
+  (let* ((definition (sb-kernel:find-defstruct-description name nil))
+         ;; only for a structure: on any other name FIND-LAYOUT makes an empty layout, which a
+         ;; structure of that name loaded later from a compiled file cannot take
+         (layout (and definition (sb-kernel:find-layout name))))
+    (when layout
       (with-standard-io-syntax
         (let ((*package* (find-package :keyword)) (*print-readably* nil) (*print-pretty* nil))
           (list (sb-kernel:layout-length layout)
